@@ -68,14 +68,38 @@ Run `mutineer --list-operators` to see them. Default (Tier 1): `arithmetic`,
 Available but off by default (Tier 2, enable via `--operators`): `return_nil`,
 `literal_mutation`, `condition_negation`.
 
+## Rails apps
+
+Rails code needs its environment booted before the suite runs, so point Mutineer
+at your app with `--rails` and run it inside the project's bundle:
+
+```sh
+RAILS_ENV=test bundle exec mutineer run \
+  app/models/order.rb --test test/models/order_test.rb --rails
+```
+
+`--rails` boots `config/environment` once in the parent process (every mutant
+then forks and inherits it), defaults `--strategy` to `redefine` (surgical — it
+avoids reloading files into the app tree), and reconnects ActiveRecord in each
+fork so the database connection is fork-safe. Use `--boot FILE` to boot a
+different entry point. Boot mode requires at least one `--test` file and runs
+those tests for every mutant (coverage-guided selection is not yet available in
+boot mode).
+
+Add Mutineer to your Gemfile's test group:
+
+```ruby
+gem "mutineer", group: :test, require: false
+```
+
 ## Configuration
 
 Mutineer reads an optional `.mutineer.yml` from the project root (nearest one,
 walking up). CLI flags override config; config overrides defaults.
 
 Sources are positional CLI arguments and test files come from `--test`; the
-config file accepts these keys: `operators`, `threshold`, `jobs`, `only`, and
-`require` (extra files to load before mutating).
+config file accepts these keys: `operators`, `threshold`, `jobs`, `only`,
+`require` (extra files to load before mutating), and `boot`/`rails`.
 
 ```yaml
 # .mutineer.yml

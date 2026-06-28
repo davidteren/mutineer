@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-06-28
+
+### Added
+- **Boot mode for Rails (and any app needing its environment booted)** —
+  `--rails` boots `config/environment` once in the parent and forks per mutant
+  (children inherit the booted app), defaults the strategy to `redefine`, and
+  reconnects ActiveRecord in each fork for DB fork-safety. `--boot FILE` boots a
+  custom entry point. Boot mode requires `--test` files and runs them for every
+  mutant (coverage-guided selection in boot mode is future work). `.mutineer.yml`
+  accepts `boot:` and `rails:`.
+- GitHub Actions CI (test suite + gem build on Ruby 3.4, ubuntu + macos).
+
+### Changed
+- `--strategy` values are now `reload` / `redefine` (canonical); `7a` / `7b`
+  remain accepted as deprecated aliases.
+
 ## [0.1.0] - 2026-06-28
 
 ### Added
@@ -22,4 +38,5 @@ All notable changes to this project are documented here. The format is based on
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.2.0]: https://github.com/davidteren/mutineer/releases/tag/v0.2.0
 [0.1.0]: https://github.com/davidteren/mutineer/releases/tag/v0.1.0
