@@ -1,21 +1,117 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "stringio"
 
 class ReporterTest < Minitest::Test
-  def test_score_excludes_no_coverage_from_denominator
-    results = [
-      Brutus::Result.killed, Brutus::Result.killed, Brutus::Result.killed,
-      Brutus::Result.survived, Brutus::Result.no_coverage, Brutus::Result.no_coverage
-    ]
-    out = Brutus::Reporter.report(results)
-    # 3 killed / (3 killed + 1 survived) = 75%, the 2 no-coverage excluded.
-    assert_includes out, "Mutation score: 75.0%"
-    assert_includes out, "No coverage: 2"
+  SRC = "class Pricing\n  def total(price)\n    if price >= 100\n    end\n  end\nend\n"
+  FILE = "pricing.rb"
+
+  def survivor_result
+    def_node = Brutus::Parser.parse_string(SRC).value.statements.body.first.body.body.first
+    subject = Brutus::Subject.new(file: FILE, namespace: ["Pricing"], name: :total,
+                                  singleton: false, def_node: def_node)
+    off = SRC.index(">=")
+    mutation = Brutus::Mutation.new(start_offset: off, end_offset: off + 2,
+                                    replacement: ">", operator: :comparison)
+    Brutus::Result.survived.with(subject: subject, mutation: mutation)
   end
 
-  def test_no_killable_mutations_reports_na
-    out = Brutus::Reporter.report([Brutus::Result.no_coverage])
-    assert_includes out, "Mutation score: N/A"
+  def aggregate(results) = Brutus::AggregateResult.new(results)
+
+  # --- AggregateResult contract ---
+
+  def test_empty_score_is_nil
+    agg = aggregate([])
+    assert_nil agg.mutation_score
+    assert_equal 0, agg.total
+  end
+
+  def test_score_excludes_no_coverage
+    agg = aggregate([Brutus::Result.killed, Brutus::Result.survived,
+                     Brutus::Result.no_coverage, Brutus::Result.no_coverage])
+    assert_equal 50.0, agg.mutation_score
+  end
+
+  def test_score_excludes_errored_and_skipped
+    agg = aggregate([Brutus::Result.killed, Brutus::Result.killed, Brutus::Result.killed,
+                     Brutus::Result.survived, Brutus::Result.no_coverage,
+                     Brutus::Result.no_coverage, Brutus::Result.error, Brutus::Result.skipped])
+    assert_equal 75.0, agg.mutation_score
+    assert_equal 8, agg.total
+  end
+
+  def test_all_no_coverage_score_nil
+    assert_nil aggregate([Brutus::Result.no_coverage]).mutation_score
+  end
+
+  # --- exit_code ---
+
+  def test_exit_code_threshold_off
+    assert_equal 0, reporter([Brutus::Result.survived]).exit_code(threshold: 0)
+  end
+
+  def test_exit_code_below
+    assert_equal 1, reporter([Brutus::Result.killed, Brutus::Result.survived]).exit_code(threshold: 80.0)
+  end
+
+  def test_exit_code_at_threshold_inclusive
+    r = reporter([Brutus::Result.killed, Brutus::Result.killed,
+                  Brutus::Result.killed, Brutus::Result.killed, Brutus::Result.survived])
+    assert_equal 0, r.exit_code(threshold: 80.0) # 80.0 >= 80.0
+  end
+
+  def test_exit_code_nil_score_skips_gate
+    assert_equal 0, reporter([Brutus::Result.no_coverage]).exit_code(threshold: 80.0)
+  end
+
+  # --- rendering / streams ---
+
+  def test_zero_mutations_message_on_stderr
+    out = StringIO.new
+    err = StringIO.new
+    reporter([]).report(out: out, err: err)
+    assert_empty out.string
+    assert_includes err.string, "No mutations generated"
+  end
+
+  def test_survivor_diff_and_grouping
+    out = StringIO.new
+    reporter([survivor_result]).report(out: out, err: StringIO.new)
+    s = out.string
+    assert_includes s, "Pricing#total"
+    assert_includes s, "comparison  (>= -> >)"
+    assert_includes s, "- if price >= 100"
+    assert_includes s, "+ if price > 100"
+    assert_includes s, FILE
+  end
+
+  def test_na_score_warns_on_stderr
+    out = StringIO.new
+    err = StringIO.new
+    reporter([Brutus::Result.no_coverage]).report(out: out, err: err)
+    assert_includes out.string, "Mutation score: N/A"
+    assert_includes err.string, "threshold check is skipped"
+  end
+
+  def test_verdict_line_passed
+    out = StringIO.new
+    r = reporter([Brutus::Result.killed, Brutus::Result.killed,
+                  Brutus::Result.killed, Brutus::Result.killed, survivor_result])
+    r.report(out: out, err: StringIO.new, threshold: 80.0)
+    assert_includes out.string, "PASSED: 80.0% >= threshold 80.0%"
+  end
+
+  def test_verdict_line_failed
+    out = StringIO.new
+    reporter([Brutus::Result.killed, survivor_result])
+      .report(out: out, err: StringIO.new, threshold: 80.0)
+    assert_includes out.string, "FAILED: 50.0% < threshold 80.0%"
+  end
+
+  private
+
+  def reporter(results)
+    Brutus::Reporter.new(aggregate(results), { FILE => SRC })
   end
 end

@@ -11,6 +11,9 @@ class CoverageMapTest < Minitest::Test
   CALC        = File.expand_path("fixtures/calculator.rb", __dir__)
   STRONG_TEST = File.expand_path("fixtures/calculator_strong_test.rb", __dir__)
   WEAK_TEST   = File.expand_path("fixtures/calculator_weak_test.rb", __dir__)
+  # Exercises only #add, so #modulo's line is uncovered (the M4 strong suite
+  # now covers every method, so it can no longer demonstrate no-coverage).
+  ADD_ONLY_TEST = File.expand_path("fixtures/calculator_add_only_test.rb", __dir__)
 
   def build(test_paths, cache_dir: Dir.mktmpdir("brutus-cache"))
     Brutus::CoverageMap.new(
@@ -34,7 +37,7 @@ class CoverageMapTest < Minitest::Test
   end
 
   def test_uncovered_line_returns_empty
-    map = build([STRONG_TEST]) # strong suite never calls #modulo
+    map = build([ADD_ONLY_TEST]) # add-only suite never calls #modulo
     assert_empty map.tests_for(CALC, line_of("a % b"))
   end
 
@@ -119,7 +122,7 @@ class CoverageMapTest < Minitest::Test
   end
 
   def test_mutation_on_uncovered_line_is_no_coverage
-    map = build([STRONG_TEST]) # no test exercises #modulo
+    map = build([ADD_ONLY_TEST]) # no test exercises #modulo
     result = Brutus::Runner.run(modulo_mutation, source_file: CALC, coverage_map: map)
     assert_predicate result, :no_coverage?, "got #{result.status}"
   end
