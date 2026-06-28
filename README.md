@@ -82,9 +82,9 @@ RAILS_ENV=test bundle exec mutineer run \
 then forks and inherits it), defaults `--strategy` to `redefine` (surgical — it
 avoids reloading files into the app tree), and reconnects ActiveRecord in each
 fork so the database connection is fork-safe. Use `--boot FILE` to boot a
-different entry point. Boot mode requires at least one `--test` file and runs
-those tests for every mutant (coverage-guided selection is not yet available in
-boot mode).
+different entry point. Boot mode requires at least one `--test` file and is
+coverage-guided — each mutant runs only the test files that exercise its line
+(coverage is captured by forking the booted app, then cached).
 
 Add Mutineer to your Gemfile's test group:
 

@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-06-28
+
+### Added
+- **Coverage-guided test selection in boot mode** (#1) — `--rails`/`--boot` now
+  captures coverage by forking the booted app and runs only the test files that
+  cover each mutant's line (uncovered lines report `no_coverage`), instead of
+  running every `--test` file for every mutant. Cached like standalone mode.
+
 ## [0.2.0] - 2026-06-28
 
 ### Added
@@ -38,5 +46,6 @@ All notable changes to this project are documented here. The format is based on
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.3.0]: https://github.com/davidteren/mutineer/releases/tag/v0.3.0
 [0.2.0]: https://github.com/davidteren/mutineer/releases/tag/v0.2.0
 [0.1.0]: https://github.com/davidteren/mutineer/releases/tag/v0.1.0
