@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-06-28
+
+### Fixed
+- **`class << self` methods are now discovered and mutated** (#3) — previously
+  they were treated as instance methods, so the redefine strategy mis-targeted
+  them. `class << other_obj` blocks are skipped (not representable).
+- **Worker pool no longer deadlocks on large results** (#4) — pipes are drained
+  with `IO.select` and children reaped on EOF, so a result bigger than the OS
+  pipe buffer (~64KB) can't wedge the run.
+
 ## [0.4.0] - 2026-06-28
 
 ### Added
@@ -54,6 +64,7 @@ All notable changes to this project are documented here. The format is based on
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.5.0]: https://github.com/davidteren/mutineer/releases/tag/v0.5.0
 [0.4.0]: https://github.com/davidteren/mutineer/releases/tag/v0.4.0
 [0.3.0]: https://github.com/davidteren/mutineer/releases/tag/v0.3.0
 [0.2.0]: https://github.com/davidteren/mutineer/releases/tag/v0.2.0
