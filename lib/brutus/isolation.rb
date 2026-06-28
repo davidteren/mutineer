@@ -58,8 +58,13 @@ module Brutus
     # Strategy 7a (default): write the whole mutated file and `load` it, which
     # reopens its classes and redefines every method in place. Re-runs file-level
     # side effects. Child-only — mutates the loaded program.
-    def self.apply_whole_file(mutated)
-      Tempfile.create(["brutus_mutant", ".rb"]) do |f|
+    #
+    # The tempfile is created in the ORIGINAL file's directory, not the system
+    # temp dir, so any `require_relative` in the mutated source resolves against
+    # its real neighbours (e.g. a mutator's `require_relative "base"`). Writing it
+    # elsewhere makes those requires resolve to the temp dir and raise LoadError.
+    def self.apply_whole_file(mutated, source_file)
+      Tempfile.create(["brutus_mutant", ".rb"], File.dirname(source_file)) do |f|
         f.write(mutated)
         f.flush
         load f.path

@@ -100,16 +100,33 @@ module Brutus
       m = result.mutation
       file = result.subject.file
       source = @source_map[file] || File.read(file)
-      idx = source[0...m.start_offset].count("\n")
-      original = source.lines[idx].chomp
-      mutated = m.apply(source).lines[idx].chomp
+      start_line, original_block, mutated_block, = diff_for(m, source)
+      minus = original_block.each_line.map { |l| "-#{l.chomp}" }.join("\n")
+      plus  = mutated_block.each_line.map { |l| "+#{l.chomp}" }.join("\n")
       {
         subject: result.subject.qualified_name,
         file: file,
-        line: idx + 1,
+        line: start_line,
         operator: m.operator.to_s,
-        diff: "--- a/#{file}\n+++ b/#{file}\n@@ -#{idx + 1} +#{idx + 1} @@\n-#{original}\n+#{mutated}\n"
+        diff: "--- a/#{file}\n+++ b/#{file}\n@@ -#{start_line} +#{start_line} @@\n#{minus}\n#{plus}\n"
       }
+    end
+
+    # Builds a line-aligned diff for a mutation whose byte range may span several
+    # lines (e.g. statement-removal of a multi-line statement). Returns the
+    # mutation's 1-based start line, the full original line-block it touches, the
+    # spliced mutated block, and a single-line token label for the header.
+    def diff_for(m, source)
+      line_begin = m.start_offset.zero? ? 0 : (source.rindex("\n", m.start_offset - 1) || -1) + 1
+      line_end   = source.index("\n", m.end_offset) || source.length
+      before = source[line_begin...m.start_offset]
+      after  = source[m.end_offset...line_end]
+      original_block = source[line_begin...line_end]
+      mutated_block  = "#{before}#{m.replacement}#{after}"
+      start_line  = source[0...m.start_offset].count("\n") + 1
+      token       = source[m.start_offset...m.end_offset].gsub(/\s+/, " ").strip
+      token       = "#{token[0, 47]}..." if token.length > 50
+      [start_line, original_block, mutated_block, token]
     end
 
     def no_coverage_json(result)
@@ -161,15 +178,12 @@ module Brutus
     def survivor(out, file, result)
       m = result.mutation
       source = @source_map[file] || File.read(file)
-      line_index = source[0...m.start_offset].count("\n") # 0-based
-      original = source.lines[line_index].chomp
-      mutated  = m.apply(source).lines[line_index].chomp
-      token = source[m.start_offset...m.end_offset]
+      start_line, original_block, mutated_block, token = diff_for(m, source)
 
-      out.puts "  #{result.subject.qualified_name} (#{File.basename(file)}:#{line_index + 1})"
+      out.puts "  #{result.subject.qualified_name} (#{File.basename(file)}:#{start_line})"
       out.puts "  Operator: #{m.operator}  (#{token} -> #{m.replacement})"
-      out.puts "  - #{original.strip}"
-      out.puts "  + #{mutated.strip}"
+      original_block.each_line { |l| out.puts "  - #{l.chomp}" }
+      mutated_block.each_line  { |l| out.puts "  + #{l.chomp}" }
     end
 
     def verdict(out, threshold)

@@ -82,7 +82,7 @@ module Brutus
         if strategy == "7b"
           Isolation.apply_surgical(mutation, subject, source)
         else
-          Isolation.apply_whole_file(mutated)
+          Isolation.apply_whole_file(mutated, source_file)
         end
         MinitestIntegration.run(abs_tests)
       end

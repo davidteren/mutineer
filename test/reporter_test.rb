@@ -81,9 +81,37 @@ class ReporterTest < Minitest::Test
     s = out.string
     assert_includes s, "Pricing#total"
     assert_includes s, "comparison  (>= -> >)"
-    assert_includes s, "- if price >= 100"
-    assert_includes s, "+ if price > 100"
+    # indentation is preserved (conventional diff fidelity)
+    assert_includes s, "-     if price >= 100"
+    assert_includes s, "+     if price > 100"
     assert_includes s, FILE
+  end
+
+  # Regression: a mutation whose byte range spans multiple lines (e.g.
+  # statement-removal of a multi-line statement) must render every original line
+  # as `-` and the spliced replacement as `+`, with a single-line token label —
+  # not a fragment of two lines mashed together.
+  def test_multiline_statement_removal_diff_is_not_mangled
+    src = "class Foo\n  def bar(x)\n    log(x,\n        y)\n    x + 1\n  end\nend\n"
+    def_node = Brutus::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subject = Brutus::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                  singleton: false, def_node: def_node)
+    start = src.index("log")
+    finish = src.index(")", start) + 1 # end of `y)`
+    mutation = Brutus::Mutation.new(start_offset: start, end_offset: finish,
+                                    replacement: "nil", operator: :statement_removal)
+    result = Brutus::Result.survived.with(subject: subject, mutation: mutation)
+
+    out = StringIO.new
+    Brutus::Reporter.new(Brutus::AggregateResult.new([result]), { "foo.rb" => src })
+                    .report(out: out, err: StringIO.new)
+    s = out.string
+
+    assert_includes s, "Operator: statement_removal  (log(x, y) -> nil)" # token single-lined
+    assert_includes s, "-     log(x,"   # first original line, indentation kept
+    assert_includes s, "-         y)"   # second original line shown too
+    assert_includes s, "+     nil"      # spliced replacement
+    refute_match(/lonil|nilx|eminil/, s) # no fragment mashing
   end
 
   def test_na_score_warns_on_stderr
