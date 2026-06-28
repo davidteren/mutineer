@@ -4,7 +4,9 @@ require "rake/testtask"
 
 Rake::TestTask.new(:test) do |t|
   t.libs << "lib" << "test"
-  t.test_files = FileList["test/**/*_test.rb"]
+  # Fixtures include *_test.rb files that are loaded into forked children by
+  # the runner — they are not part of Brutus's own suite.
+  t.test_files = FileList["test/**/*_test.rb"].exclude("test/fixtures/**/*")
   t.warning = false
 end
 
