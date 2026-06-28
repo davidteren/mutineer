@@ -88,7 +88,7 @@ class ConfigTest < Minitest::Test
   def test_resolve_defaults_when_neither
     cfg = Config.resolve({}, {}, Set.new)
     assert_nil cfg.operators            # nil => Runner uses DEFAULT_NAMES
-    assert_equal "7a", cfg.strategy
+    assert_equal "reload", cfg.strategy
     assert_equal "human", cfg.format
     assert_operator cfg.jobs, :>=, 1    # Etc.nprocessors
   end

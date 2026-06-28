@@ -33,7 +33,7 @@ module Mutineer
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
         --only NAME          Restrict to one fully-qualified subject
         --jobs N             Parallel worker count (default: processor count)
-        --strategy 7a|7b     Mutation application strategy (default: 7a)
+        --strategy NAME      reload (whole-file) or redefine (surgical); default: reload
         --format human|json  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
@@ -46,6 +46,9 @@ module Mutineer
 
     # Field symbols whose config-file value is suppressed when the flag is typed.
     PRECEDENCE_FLAGS = %i[operators jobs threshold only].freeze
+
+    # Deprecated internal strategy names, mapped to their canonical equivalents.
+    STRATEGY_ALIASES = { "7a" => "reload", "7b" => "redefine" }.freeze
 
     def self.start(argv)
       opts = {}            # symbol => value, the CLI-provided Config fields
@@ -167,8 +170,11 @@ module Mutineer
         exit 2
       end
 
-      unless %w[7a 7b].include?(config.strategy)
-        warn %(mutineer: unknown strategy "#{config.strategy}". Expected: 7a, 7b)
+      # Canonical strategies are reload|redefine; 7a/7b are accepted as deprecated
+      # aliases. Normalize to canonical so the rest of the pipeline sees one name.
+      config.strategy = STRATEGY_ALIASES.fetch(config.strategy, config.strategy)
+      unless %w[reload redefine].include?(config.strategy)
+        warn %(mutineer: unknown strategy "#{config.strategy}". Expected: reload, redefine)
         exit 2
       end
 
