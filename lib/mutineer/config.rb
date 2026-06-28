@@ -24,12 +24,12 @@ module Mutineer
     :sources, :tests, :operators, :threshold, :only, :dry_run,
     :cache_dir, :project_root, :load_paths,
     :jobs, :format, :output, :strategy, :require_paths,
-    :boot, :rails,
+    :boot, :rails, :since,
     keyword_init: true
   ) do
     CONFIG_FILE = ".mutineer.yml"
     # Keys accepted in .mutineer.yml (R7). `require` maps to the :require_paths field.
-    KNOWN_KEYS = %w[operators jobs threshold only require boot rails].freeze
+    KNOWN_KEYS = %w[operators jobs threshold only require boot rails since].freeze
 
     def initialize(**kwargs)
       super

@@ -6,6 +6,7 @@ require_relative "result"
 require_relative "isolation"
 require_relative "minitest_integration"
 require_relative "coverage_map"
+require_relative "changed_lines"
 require_relative "mutator_registry"
 require_relative "worker_pool"
 
@@ -85,6 +86,8 @@ module Mutineer
         end
       end
 
+      jobs = filter_since(jobs, source_map, config) if config.since
+
       # C3: 7a writes mutineer_mutant*.rb into each source dir (so require_relative
       # resolves). A SIGKILL'd child skips the tempfile's ensure-unlink, orphaning
       # it. `ensure` is unreliable vs SIGKILL, so the PARENT sweeps each source dir
@@ -108,6 +111,22 @@ module Mutineer
         end
 
       [AggregateResult.new(results), source_map]
+    end
+
+    # --since: keep only jobs whose mutation lands on a line changed since the git
+    # ref. Composes with coverage selection (it only narrows the job list; each
+    # surviving mutant still goes through Runner.run's coverage check). A file with
+    # no changed lines (absent from the diff) contributes no jobs. Line is computed
+    # exactly as Runner.run does, from the already-read source in source_map.
+    def self.filter_since(jobs, source_map, config)
+      changed = ChangedLines.for(ref: config.since, files: config.sources,
+                                 project_root: config.project_root)
+      jobs.select do |subject, mutation|
+        source = source_map[subject.file]
+        line = source.byteslice(0, mutation.start_offset).count("\n") + 1
+        abs = File.expand_path(subject.file, config.project_root)
+        changed.fetch(abs, []).include?(line)
+      end
     end
 
     # For each test file, the directory to add to $LOAD_PATH so its

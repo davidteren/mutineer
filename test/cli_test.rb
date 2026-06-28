@@ -89,6 +89,16 @@ class CliTest < Minitest::Test
     assert_includes err, "--boot/--rails requires at least one --test file"
   end
 
+  # --since with a ref git cannot resolve is a usage error (exit 2). Run inside
+  # the mutineer repo (chdir: ROOT) so git exists and we're in a work tree; the
+  # ref name is one that cannot exist.
+  def test_since_unknown_ref_exits_two
+    _, err, status = mutineer("run", "lib/mutineer/version.rb",
+                              "--since", "definitely-not-a-ref-xyz", chdir: ROOT)
+    assert_equal 2, status.exitstatus
+    assert_includes err, "unknown git ref: definitely-not-a-ref-xyz"
+  end
+
   # --- happy paths driven through bin/mutineer -----------------------------
 
   def test_successful_run_exits_zero

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "minitest/mock"
 require "tmpdir"
 # Pre-require the fixture (R5/KTD4): with it already in $LOADED_FEATURES, the
 # test files' `require_relative "calculator"` is a no-op in the child, so the
@@ -46,5 +47,51 @@ class RunnerTest < Minitest::Test
     result = Mutineer::Runner.run(plus_mutation(replacement: ")"),
                                 source_file: CALC, coverage_map: coverage_map(STRONG_TEST))
     assert_predicate result, :skipped?, "expected skipped, got #{result.status}"
+  end
+
+  # --since restricts the job list to mutations on changed lines. Deterministic:
+  # stub ChangedLines.for (no real git) so only line 5 (`a + b`) is "changed",
+  # then assert filter_since keeps only line-5 jobs and drops the rest.
+  def test_filter_since_keeps_only_jobs_on_changed_lines
+    config = Mutineer::Config.new(sources: [CALC], project_root: ROOT, since: "HEAD~1")
+    source_map = { CALC => File.read(CALC) }
+    jobs = build_jobs(config, source_map)
+
+    lines = jobs.map { |_s, m| line_of(m, source_map[CALC]) }.uniq
+    assert_includes lines, 5
+    assert_operator lines.length, :>, 1, "fixture should yield mutations on several lines"
+
+    Mutineer::ChangedLines.stub(:for, { CALC => Set[5] }) do
+      kept = Mutineer::Runner.filter_since(jobs, source_map, config)
+      assert kept.length.positive?, "line 5 mutations should survive"
+      assert kept.length < jobs.length, "off-line mutations should be filtered out"
+      assert(kept.all? { |_s, m| line_of(m, source_map[CALC]) == 5 })
+    end
+  end
+
+  def test_filter_since_file_absent_from_diff_yields_no_jobs
+    config = Mutineer::Config.new(sources: [CALC], project_root: ROOT, since: "HEAD~1")
+    source_map = { CALC => File.read(CALC) }
+    jobs = build_jobs(config, source_map)
+
+    Mutineer::ChangedLines.stub(:for, {}) do
+      assert_empty Mutineer::Runner.filter_since(jobs, source_map, config)
+    end
+  end
+
+  private
+
+  def line_of(mutation, source)
+    source.byteslice(0, mutation.start_offset).count("\n") + 1
+  end
+
+  def build_jobs(config, source_map)
+    klass = Mutineer::MutatorRegistry.resolve(["arithmetic"]).first
+    jobs = []
+    Mutineer::Project.discover(config.sources).each do |subject|
+      source = source_map[subject.file]
+      klass.new.mutations_for(subject, source).each { |m| jobs << [subject, m] }
+    end
+    jobs
   end
 end

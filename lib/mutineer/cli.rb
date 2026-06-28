@@ -2,10 +2,12 @@
 
 require "optparse"
 require "set"
+require "open3"
 require_relative "version"
 require_relative "config"
 require_relative "parser"
 require_relative "project"
+require_relative "changed_lines"
 require_relative "runner"
 require_relative "reporter"
 require_relative "mutator_registry"
@@ -32,10 +34,11 @@ module Mutineer
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
         --only NAME          Restrict to one fully-qualified subject
+        --since REF          Only mutate lines changed since git REF (e.g. origin/main)
         --jobs N             Parallel worker count (default: processor count)
         --strategy NAME      reload (whole-file) or redefine (surgical); default: reload
         --boot FILE          Require FILE once in the parent to boot the app env, then
-                             fork per mutant (Rails apps; requires --test, no coverage)
+                             fork per mutant (Rails apps; requires --test)
         --rails              Sugar for --boot config/environment --strategy redefine
         --format human|json  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
@@ -71,6 +74,7 @@ module Mutineer
         o.on("--list-operators") { show_operators = true }
         o.on("--dry-run") { opts[:dry_run] = true }
         o.on("--only NAME") { |v| opts[:only] = v; explicit << :only }
+        o.on("--since REF") { |v| opts[:since] = v; explicit << :since }
         o.on("--test FILE") { |v| (opts[:tests] ||= []) << v }
         o.on("--operators LIST") { |v| opts[:operators] = v.split(",").map(&:strip); explicit << :operators }
         o.on("--threshold FLOAT") { |v| opts[:threshold] = v.to_f; explicit << :threshold }
@@ -190,8 +194,29 @@ module Mutineer
         exit 2
       end
 
+      validate_since!(config) if config.since
       preflight_output!(config.output) if config.output
       validate_paths!(config)
+    end
+
+    # --since needs a real git repo and a resolvable ref; either failure is a
+    # usage error (exit 2) so CI sees "bad invocation," not "tests too weak."
+    def self.validate_since!(config)
+      _out, _err, status = Open3.capture3(
+        "git", "-C", config.project_root, "rev-parse", "--verify", "--quiet",
+        "#{config.since}^{commit}"
+      )
+      return if status.success?
+
+      inside, = Open3.capture3(
+        "git", "-C", config.project_root, "rev-parse", "--is-inside-work-tree"
+      )
+      msg = inside.strip == "true" ? "unknown git ref: #{config.since}" : "--since requires a git repository"
+      warn "mutineer: #{msg}"
+      exit 2
+    rescue Errno::ENOENT
+      warn "mutineer: --since requires git on PATH"
+      exit 2
     end
 
     # R5: validate path existence up front so a typo is a clean usage error (exit
@@ -234,6 +259,13 @@ module Mutineer
       per_operator = Hash.new(0)
       skipped = 0
 
+      # --since narrows the preview to changed lines too, so `--dry-run --since`
+      # shows exactly what a real `--since` run would mutate.
+      changed = if config.since
+                  ChangedLines.for(ref: config.since, files: config.sources,
+                                   project_root: config.project_root)
+                end
+
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (sources[subject.file] ||= Parser.parse_file(subject.file).source.source)
         operator_classes.each do |klass|
@@ -241,6 +273,10 @@ module Mutineer
             unless mutation.valid?(source)
               skipped += 1
               next
+            end
+            if changed
+              line = source.byteslice(0, mutation.start_offset).count("\n") + 1
+              next unless changed[File.expand_path(subject.file, config.project_root)]&.include?(line)
             end
             per_operator[mutation.operator] += 1
             original = source.byteslice(mutation.start_offset...mutation.end_offset)

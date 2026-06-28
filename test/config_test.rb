@@ -77,6 +77,19 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  # --since is accepted from the config file and resolves onto the Config.
+  def test_from_file_accepts_since
+    with_config("since: origin/main\n") do |path|
+      out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty out
+      assert_empty err
+      assert_equal({ since: "origin/main" }, @hash)
+
+      cfg = Config.resolve({}, @hash, Set.new)
+      assert_equal "origin/main", cfg.since
+    end
+  end
+
   # R8: the lib layer raises a typed error rather than calling exit (which would
   # kill an embedding host). The CLI maps it to exit 2.
   def test_from_file_malformed_yaml_raises_config_error
