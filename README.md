@@ -10,6 +10,8 @@ testing anything.
 - **Fork-isolated**, parallel execution (Linux + macOS).
 - **Coverage-guided** — each mutant runs only the test files that cover its line.
 
+📖 **[mutineer.github.io →](https://davidteren.github.io/mutineer/)** — overview, operators, and usage.
+
 ## Install
 
 ```sh
