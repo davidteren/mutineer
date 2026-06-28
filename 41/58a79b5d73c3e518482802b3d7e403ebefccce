@@ -1,0 +1,28 @@
+CHANGELOG.md
+  s_0214cb1e158c48::t_2402725ac8cca1 24
+  s_0214cb1e158c48::t_59ded0ed7c3155 7
+mutineer.gemspec
+  s_0214cb1e158c48::t_6f2cdef66025c1 33-34
+README.md
+  s_0214cb1e158c48::t_c6289f2e23df3f 74-77,83-84
+lib/mutineer/version.rb
+  s_0214cb1e158c48::t_4d901187b9a14d 4
+docs/reviews/deep-review-mutineer-20260628.md
+  s_0214cb1e158c48::t_cf655650dd9dad 133-161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "4158a79b5d73c3e518482802b3d7e403ebefccce",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
