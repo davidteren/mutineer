@@ -1,0 +1,39 @@
+test/fixtures/calculator_weak_test.rb
+  s_0214cb1e158c48::t_3ccde7e89d9e0a 1-12
+lib/brutus/runner.rb
+  s_0214cb1e158c48::t_1f1813773a6657 3-8,10-16,18-33
+lib/brutus.rb
+  s_0214cb1e158c48::t_a8c57e57442b2c 14-17
+Rakefile
+  s_0214cb1e158c48::t_51f9387689eba1 7-9
+test/result_test.rb
+  s_0214cb1e158c48::t_b3ecb61064de8b 1-43
+test/isolation_test.rb
+  s_0214cb1e158c48::t_11a13fedcc8321 1-40
+lib/brutus/minitest_integration.rb
+  s_0214cb1e158c48::t_298c9cbd1c40af 3-5,7-16,18-38
+lib/brutus/isolation.rb
+  s_0214cb1e158c48::t_917a7f4eff95d4 3-4,6-18,20-65
+test/runner_test.rb
+  s_0214cb1e158c48::t_17dc99e6ff0647 1-39
+lib/brutus/result.rb
+  s_0214cb1e158c48::t_b5ed499cb7d26c 4-25
+test/fixtures/calculator_strong_test.rb
+  s_0214cb1e158c48::t_f20f4044280124 1-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "5dc5915a6b56b3f2d13fac4d0dd56d01971ba34b",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
