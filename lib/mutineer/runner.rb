@@ -38,29 +38,39 @@ module Mutineer
       # parse that needs nothing loaded. Standalone mode requires the sources as
       # before so their classes exist for the children to inherit.
       if config.boot
+        # Coverage instruments only files loaded AFTER it starts. Start it BEFORE
+        # the boot require so the entire app loaded during boot is instrumented;
+        # forked children then measure each test's coverage delta against it.
+        require "coverage"
+        Coverage.start(lines: true) unless Coverage.running?
         require File.expand_path(config.boot, config.project_root)
       else
         config.sources.each { |f| require File.expand_path(f, config.project_root) }
       end
       config.require_paths.each { |f| require File.expand_path(f, config.project_root) }
 
-      # Boot mode skips coverage selection entirely: every mutant runs the given
-      # --test files (precomputed absolute here, used directly by Runner.run).
       if config.boot
-        coverage_map = nil
-        boot_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
         # Rails/Minitest test files do `require "test_helper"`, which needs the
         # test root on $LOAD_PATH (`bin/rails test` adds it). Prepend each test
         # file's helper root here in the parent so loading them in the fork
-        # children resolves. Inherited by every fork.
+        # children (both coverage capture and per-mutant) resolves.
+        boot_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
         test_load_roots(boot_tests).each { |d| $LOAD_PATH.unshift(d) unless $LOAD_PATH.include?(d) }
+
+        # Boot mode now uses coverage selection too: capture each test's coverage
+        # by forking the booted parent, then select covering tests per mutant.
+        coverage_map = CoverageMap.new(
+          source_paths: config.sources, test_paths: config.tests,
+          cache_dir: config.cache_dir, project_root: config.project_root,
+          load_paths: config.load_paths,
+          boot_path: File.expand_path(config.boot, config.project_root)
+        ).build_via_fork(rails: config.rails)
       else
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: config.cache_dir, project_root: config.project_root,
           load_paths: config.load_paths
         ).build_or_load
-        boot_tests = nil
       end
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
@@ -88,8 +98,7 @@ module Mutineer
         begin
           bare = WorkerPool.new(config.jobs).run(jobs) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
-                subject: subject, strategy: strategy,
-                test_files: boot_tests, rails: config.rails)
+                subject: subject, strategy: strategy, rails: config.rails)
           end
           # The bare Results carry only status (Subjects hold live AST nodes that
           # do not marshal); reattach subject+mutation in the parent, in order.
@@ -131,24 +140,21 @@ module Mutineer
     end
 
     def self.run(mutation, source_file:, coverage_map: nil, subject: nil, strategy: "reload",
-                 timeout: Isolation::DEFAULT_TIMEOUT, test_files: nil, rails: false)
+                 timeout: Isolation::DEFAULT_TIMEOUT, rails: false)
       source  = File.read(source_file)
       mutated = mutation.apply(source)
 
       # Validity rule: a mutant that doesn't re-parse is skipped before forking.
       return Result.skipped if Parser.parse_string(mutated).errors.any?
 
-      # Boot mode passes its tests directly (already absolute); standalone mode
-      # selects covering tests from the map and is :no_coverage when none cover it.
-      if test_files
-        abs_tests = test_files
-      else
-        line   = source.byteslice(0, mutation.start_offset).count("\n") + 1
-        chosen = coverage_map.tests_for(source_file, line)
-        return Result.no_coverage if chosen.empty?
+      # Coverage selection (both standalone and boot mode): a mutation on a line
+      # no test exercises is :no_coverage (no fork); otherwise exactly the
+      # covering test files run in the child.
+      line   = source.byteslice(0, mutation.start_offset).count("\n") + 1
+      chosen = coverage_map.tests_for(source_file, line)
+      return Result.no_coverage if chosen.empty?
 
-        abs_tests = chosen.map { |t| File.expand_path(t, coverage_map.project_root) }
-      end
+      abs_tests = chosen.map { |t| File.expand_path(t, coverage_map.project_root) }
 
       Isolation.run(timeout: timeout) do
         # Forking inherits the parent's live DB connection; sharing one socket

@@ -5,6 +5,8 @@ require "json"
 require "digest"
 require "fileutils"
 require "rbconfig"
+require "coverage"
+require_relative "minitest_integration"
 
 module Mutineer
   # Maps `(source_file, line) -> [test_files]` so each mutant runs only against
@@ -21,35 +23,35 @@ module Mutineer
 
     def initialize(source_paths:, test_paths:, cache_dir: ".mutineer",
                    load_paths: ["lib"], project_root: Dir.pwd,
-                   capture_timeout: DEFAULT_CAPTURE_TIMEOUT)
+                   capture_timeout: DEFAULT_CAPTURE_TIMEOUT, boot_path: nil)
       @source_paths = Array(source_paths)
       @test_paths   = Array(test_paths)
       @cache_dir    = cache_dir
       @load_paths   = Array(load_paths)
       @project_root = project_root
       @capture_timeout = capture_timeout
+      @boot_path    = boot_path
       @map          = {}
       @failed_test_files = []
       @phase_a_ran  = false
     end
 
-    # Phase A entry point: load the cached map when the content digest matches,
-    # otherwise rebuild from subprocesses and overwrite the cache.
+    # Phase A entry point (standalone): load the cached map when the content
+    # digest matches, otherwise rebuild from subprocesses and overwrite the cache.
     def build_or_load
       warn_external_sources
-      @digest = compute_digest
+      cached_or { run_phase_a }
+    end
 
-      cached = read_cache
-      if cached && cached["digest"] == @digest
-        @map = cached["map"] || {}
-        @failed_test_files = cached["failed_test_files"] || []
-        warn_incomplete unless @failed_test_files.empty?
-        return self
-      end
-
-      run_phase_a
-      save
-      self
+    # Boot-mode Phase A: Coverage is already running in the parent (started before
+    # the app booted, so booted source lines are instrumented). A clean `ruby`
+    # subprocess has no booted env, so per-test coverage is captured by FORKING
+    # the booted parent instead. Inverts into the same map #tests_for reads, and
+    # reuses the digest cache (the digest mixes in the boot file so a boot cache
+    # never collides with a standalone one).
+    def build_via_fork(rails: false)
+      warn_external_sources
+      cached_or { run_phase_a_via_fork(rails: rails) }
     end
 
     # Phase B lookup: the test files that cover `file:line`, or [] when none do.
@@ -60,6 +62,23 @@ module Mutineer
     end
 
     private
+
+    # Shared cache dance for both build paths: hit the digest-keyed cache, else
+    # yield to populate @map and persist it.
+    def cached_or
+      @digest = compute_digest
+      cached = read_cache
+      if cached && cached["digest"] == @digest
+        @map = cached["map"] || {}
+        @failed_test_files = cached["failed_test_files"] || []
+        warn_incomplete unless @failed_test_files.empty?
+        return self
+      end
+
+      yield
+      save
+      self
+    end
 
     def run_phase_a
       @phase_a_ran = true
@@ -72,6 +91,65 @@ module Mutineer
 
         record(coverage, test_path)
       end
+    end
+
+    # Boot-mode Phase A. For each test file, fork the booted parent; the child
+    # resets its Coverage delta, runs that ONE test, and marshals back the raw
+    # per-source coverage counts. record() inverts them exactly as the subprocess
+    # path does. ponytail: serial fork (one test at a time) — boot apps fork
+    # cheaply via COW and per-test isolation matters more than throughput here.
+    def run_phase_a_via_fork(rails:)
+      @phase_a_ran = true
+      @map = {}
+      @failed_test_files = []
+      abs_sources = abs_source_paths
+
+      @test_paths.each do |test_path|
+        coverage = fork_capture(absolute(test_path), abs_sources, rails)
+        next fail_test(test_path, "fork capture produced no result") unless coverage
+
+        record(coverage, test_path)
+      end
+    end
+
+    # Fork the booted parent, run one test under the inherited Coverage, and
+    # return its per-source counts hash (or nil on failure). Reuses the same
+    # fork + Marshal-over-pipe + hard-exit! discipline as WorkerPool/Isolation.
+    def fork_capture(abs_test, abs_sources, rails)
+      rd, wr = IO.pipe
+      pid = fork do
+        rd.close
+        payload =
+          begin
+            Runner.send(:reconnect_active_record) if rails
+            Coverage.result(clear: true, stop: false) # discard pre-test delta
+            MinitestIntegration.run([abs_test])
+            # lines:true yields {file => {lines: [...]}}; reduce to the counts
+            # array record() expects, keeping only our source files.
+            Coverage.result(stop: false)
+                    .select { |f, _| abs_sources.include?(f) }
+                    .transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
+          rescue Exception # rubocop:disable Lint/RescueException
+            nil
+          end
+        begin
+          wr.write(Marshal.dump(payload))
+        rescue StandardError # rubocop:disable Lint/SuppressedException
+          # pipe gone; parent records "no result"
+        ensure
+          wr.close
+          exit!(0) # skip at_exit so the parent suite's autorun never re-fires here
+        end
+      end
+      wr.close
+      data = rd.read
+      rd.close
+      Process.waitpid(pid)
+      return nil if data.empty?
+
+      Marshal.load(data)
+    rescue StandardError
+      nil
     end
 
     # Spawns a fresh `ruby` reading an inline script from stdin. A fork would
@@ -154,8 +232,15 @@ module Mutineer
       d = Digest::SHA256.new
       digest_group(d, "source", @source_paths)
       digest_group(d, "test", @test_paths)
+      digest_group(d, "boot", [boot_digest_path]) if @boot_path
       @load_paths.sort.each { |lp| d.update("loadpath\0#{lp}\0") }
       d.hexdigest
+    end
+
+    # boot_path is a require-style path (e.g. "config/environment", no extension);
+    # resolve it to the real file for reading, appending ".rb" when needed.
+    def boot_digest_path
+      File.exist?(absolute(@boot_path)) ? @boot_path : "#{@boot_path}.rb"
     end
 
     def digest_group(digest, role, paths)
