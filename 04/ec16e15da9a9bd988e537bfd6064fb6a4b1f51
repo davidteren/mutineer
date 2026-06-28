@@ -1,0 +1,19 @@
+README.md
+  s_89855e157328b6::t_e4d57ff3a85944 13-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "04ec16e15da9a9bd988e537bfd6064fb6a4b1f51",
+  "prompts": {},
+  "sessions": {
+    "s_89855e157328b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e90a1157-fb08-4207-8bdf-39caaed8cd24",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
