@@ -1,0 +1,36 @@
+docs/reviews/deep-review-mutineer-20260628.md
+  s_0214cb1e158c48::t_91fc00593bee7d 1-132
+mutineer-implementation-spec.md
+  s_0214cb1e158c48::t_d07a73681ced54 1-297
+docs/index.html
+  s_89855e157328b6::t_f758c755b90d80 222
+  s_89855e157328b6::t_e4248b89a3d01d 12
+  s_89855e157328b6::t_383a2dd56bbd31 6-7,9,241,260,288,293,311,362,400
+  s_89855e157328b6::t_c09e6d8adb0e63 228,244,253,256,258,332,352,367,370,372,378,380-381,391,404-405,416,427
+.gitignore
+  s_89855e157328b6::t_7e02cecbec58a8 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "6f053120276fa3065fc50160987e0b69a41071dc",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_89855e157328b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e90a1157-fb08-4207-8bdf-39caaed8cd24",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
