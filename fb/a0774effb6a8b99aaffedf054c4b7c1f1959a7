@@ -1,0 +1,24 @@
+README.md
+  s_0214cb1e158c48::t_01c2581507dc9e 85-87
+lib/mutineer/version.rb
+  s_0214cb1e158c48::t_bad9d3a7aac73b 4
+CHANGELOG.md
+  s_0214cb1e158c48::t_e6562c6ce9400c 7-14
+  s_0214cb1e158c48::t_d3a2c06207eb2e 49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "fba0774effb6a8b99aaffedf054c4b7c1f1959a7",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
