@@ -1,7 +1,19 @@
 # frozen_string_literal: true
 
+require_relative "parser"
+
 module Brutus
-  # ponytail: stub — implemented in M1+
-  class Mutation
+  # One atomic byte-range edit. Immutable. One mutation per mutant — never
+  # combine. Source is mutated textually, never regenerated from the AST.
+  Mutation = Data.define(:start_offset, :end_offset, :replacement, :operator) do
+    # Pure: returns a new string, does not mutate `source`.
+    def apply(source)
+      source[0...start_offset] + replacement + source[end_offset..]
+    end
+
+    # Validity rule: a mutation is valid iff the mutated source re-parses clean.
+    def valid?(source)
+      Parser.parse_string(apply(source)).errors.empty?
+    end
   end
 end
