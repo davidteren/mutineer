@@ -4,7 +4,7 @@ require "prism"
 require_relative "parser"
 require_relative "subject"
 
-module Brutus
+module Mutineer
   # Subject discovery: parse each path and walk its AST for method definitions,
   # tracking the enclosing class/module namespace.
   class Project

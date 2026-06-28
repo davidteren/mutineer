@@ -2,7 +2,7 @@
 
 require_relative "parser"
 
-module Brutus
+module Mutineer
   # One atomic byte-range edit. Immutable. One mutation per mutant — never
   # combine. Source is mutated textually, never regenerated from the AST.
   Mutation = Data.define(:start_offset, :end_offset, :replacement, :operator) do

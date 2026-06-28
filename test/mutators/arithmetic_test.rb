@@ -5,14 +5,14 @@ require_relative "../test_helper"
 class ArithmeticTest < Minitest::Test
   # Build a Subject directly from a parsed snippet (no file needed).
   def subject_for(source)
-    def_node = Brutus::Parser.parse_string(source).value.statements.body.first
-    Brutus::Subject.new(file: "snippet.rb", namespace: [], name: def_node.name,
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    Mutineer::Subject.new(file: "snippet.rb", namespace: [], name: def_node.name,
                         singleton: false, def_node: def_node)
   end
 
   def run_mutator(body)
     source = "def m\n  #{body}\nend\n"
-    [Brutus::Mutators::Arithmetic.new.mutations_for(subject_for(source), source), source]
+    [Mutineer::Mutators::Arithmetic.new.mutations_for(subject_for(source), source), source]
   end
 
   def assert_single(body, original, replacement)
@@ -59,9 +59,9 @@ class ArithmeticTest < Minitest::Test
   end
 
   def test_empty_body_yields_none
-    def_node = Brutus::Parser.parse_string("def m\nend\n").value.statements.body.first
-    subject = Brutus::Subject.new(file: "s.rb", namespace: [], name: :m,
+    def_node = Mutineer::Parser.parse_string("def m\nend\n").value.statements.body.first
+    subject = Mutineer::Subject.new(file: "s.rb", namespace: [], name: :m,
                                   singleton: false, def_node: def_node)
-    assert_empty Brutus::Mutators::Arithmetic.new.mutations_for(subject, "def m\nend\n")
+    assert_empty Mutineer::Mutators::Arithmetic.new.mutations_for(subject, "def m\nend\n")
   end
 end

@@ -3,19 +3,19 @@
 require_relative "test_helper"
 require "tmpdir"
 
-# End-to-end acceptance gate: run Brutus against the fixtures via the library API
+# End-to-end acceptance gate: run Mutineer against the fixtures via the library API
 # (no CLI subprocess) and assert the EXACT survivor set. These fixtures are the
 # spec's correctness oracle (spec §12) — if an assertion here fails, selection or
 # execution is broken, not the test.
 class IntegrationTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
-  def run_brutus(sources:, tests:, operators: nil)
-    config = Brutus::Config.new(
+  def run_mutineer(sources:, tests:, operators: nil)
+    config = Mutineer::Config.new(
       sources: sources, tests: tests, operators: operators,
-      cache_dir: Dir.mktmpdir("brutus-cache"), project_root: ROOT
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
     )
-    aggregate, = Brutus::Runner.execute(config)
+    aggregate, = Mutineer::Runner.execute(config)
     aggregate
   end
 
@@ -26,7 +26,7 @@ class IntegrationTest < Minitest::Test
 
   # Scenario A — pricing boundary survivor (R9)
   def test_pricing_boundary_survivor
-    result = run_brutus(sources: ["test/fixtures/pricing.rb"],
+    result = run_mutineer(sources: ["test/fixtures/pricing.rb"],
                         tests: ["test/fixtures/pricing_test.rb"])
 
     assert_equal 1, result.survived_count,
@@ -43,7 +43,7 @@ class IntegrationTest < Minitest::Test
 
   # Scenario B — calculator + strong, perfect score (R10)
   def test_calculator_strong_kills_all
-    result = run_brutus(sources: ["test/fixtures/calculator.rb"],
+    result = run_mutineer(sources: ["test/fixtures/calculator.rb"],
                         tests: ["test/fixtures/calculator_strong_test.rb"])
 
     assert_equal 0, result.survived_count, "Expected 0 survivors with strong test"
@@ -53,7 +53,7 @@ class IntegrationTest < Minitest::Test
 
   # Scenario C — calculator + weak, exactly two survivors (R11)
   def test_calculator_weak_leaves_two
-    result = run_brutus(sources: ["test/fixtures/calculator.rb"],
+    result = run_mutineer(sources: ["test/fixtures/calculator.rb"],
                         tests: ["test/fixtures/calculator_weak_test.rb"])
 
     assert_equal 2, result.survived_count, "Expected exactly 2 survivors with weak test"
@@ -78,7 +78,7 @@ class IntegrationTest < Minitest::Test
 
   # R2 — operator restriction
   def test_operators_flag_restricts_set
-    result = run_brutus(sources: ["test/fixtures/pricing.rb"],
+    result = run_mutineer(sources: ["test/fixtures/pricing.rb"],
                         tests: ["test/fixtures/pricing_test.rb"],
                         operators: ["arithmetic"])
     # Only the arithmetic *->/ mutation; the comparison >=->> survivor is absent.

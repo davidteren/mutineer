@@ -15,8 +15,8 @@ class CoverageMapTest < Minitest::Test
   # now covers every method, so it can no longer demonstrate no-coverage).
   ADD_ONLY_TEST = File.expand_path("fixtures/calculator_add_only_test.rb", __dir__)
 
-  def build(test_paths, cache_dir: Dir.mktmpdir("brutus-cache"))
-    Brutus::CoverageMap.new(
+  def build(test_paths, cache_dir: Dir.mktmpdir("mutineer-cache"))
+    Mutineer::CoverageMap.new(
       source_paths: [CALC], test_paths: test_paths,
       cache_dir: cache_dir, project_root: ROOT
     ).build_or_load
@@ -59,7 +59,7 @@ class CoverageMapTest < Minitest::Test
   # --- Cache: digest, load/save, invalidation ------------------------------
 
   def test_cache_written_and_reused_without_rerunning_phase_a
-    dir = Dir.mktmpdir("brutus-cache")
+    dir = Dir.mktmpdir("mutineer-cache")
     first = build([STRONG_TEST], cache_dir: dir)
     assert first.phase_a_ran
     assert_path_exists File.join(dir, "coverage.json")
@@ -71,8 +71,8 @@ class CoverageMapTest < Minitest::Test
   end
 
   def test_content_change_invalidates_cache_and_rebuilds
-    dir = Dir.mktmpdir("brutus-proj")
-    cache = Dir.mktmpdir("brutus-cache")
+    dir = Dir.mktmpdir("mutineer-proj")
+    cache = Dir.mktmpdir("mutineer-cache")
     src  = File.join(dir, "thing.rb")
     test = File.join(dir, "thing_test.rb")
     File.write(src, "class TmpThing\n  def go\n    42\n  end\nend\n")
@@ -85,7 +85,7 @@ class CoverageMapTest < Minitest::Test
     RUBY
 
     mk = lambda do
-      Brutus::CoverageMap.new(source_paths: [src], test_paths: [test],
+      Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test],
                               cache_dir: cache, project_root: dir).build_or_load
     end
 
@@ -98,7 +98,7 @@ class CoverageMapTest < Minitest::Test
   end
 
   def test_corrupt_cache_is_rebuilt
-    dir = Dir.mktmpdir("brutus-cache")
+    dir = Dir.mktmpdir("mutineer-cache")
     File.write(File.join(dir, "coverage.json"), "{not valid json")
     map = build([STRONG_TEST], cache_dir: dir)
     assert map.phase_a_ran
@@ -110,26 +110,111 @@ class CoverageMapTest < Minitest::Test
   def plus_mutation
     source = File.read(CALC)
     plus = source.index("a + b") + 2
-    Brutus::Mutation.new(start_offset: plus, end_offset: plus + 1,
+    Mutineer::Mutation.new(start_offset: plus, end_offset: plus + 1,
                          replacement: "-", operator: :arithmetic)
   end
 
   def modulo_mutation
     source = File.read(CALC)
     mod = source.index("a % b") + 2
-    Brutus::Mutation.new(start_offset: mod, end_offset: mod + 1,
+    Mutineer::Mutation.new(start_offset: mod, end_offset: mod + 1,
                          replacement: "*", operator: :arithmetic)
   end
 
   def test_mutation_on_uncovered_line_is_no_coverage
     map = build([ADD_ONLY_TEST]) # no test exercises #modulo
-    result = Brutus::Runner.run(modulo_mutation, source_file: CALC, coverage_map: map)
+    result = Mutineer::Runner.run(modulo_mutation, source_file: CALC, coverage_map: map)
     assert_predicate result, :no_coverage?, "got #{result.status}"
   end
 
   def test_mutation_on_covered_line_runs_and_is_killed
     map = build([STRONG_TEST])
-    result = Brutus::Runner.run(plus_mutation, source_file: CALC, coverage_map: map)
+    result = Mutineer::Runner.run(plus_mutation, source_file: CALC, coverage_map: map)
     assert_predicate result, :killed?, "got #{result.status} (#{result.details})"
+  end
+
+  # --- R6: non-JSON / R3 timeout / Hash-format coverage --------------------
+
+  def test_non_json_subprocess_output_is_skipped_not_fatal
+    bad = File.join(Dir.mktmpdir, "noisy_test.rb")
+    File.write(bad, %(puts "GARBAGE NOT JSON"\n)) # pollutes stdout before the JSON
+    map = nil
+    _, err = capture_subprocess_io { map = build([STRONG_TEST, bad]) }
+    assert_includes map.failed_test_files.map { |f| File.basename(f) }, "noisy_test.rb"
+    assert_includes err, "invalid coverage output"
+    refute_empty map.tests_for(CALC, line_of("a + b")), "good test still recorded"
+  end
+
+  def test_hanging_test_file_times_out_and_is_skipped
+    hang = File.join(Dir.mktmpdir, "hang_test.rb")
+    File.write(hang, "sleep 30\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(
+        source_paths: [CALC], test_paths: [STRONG_TEST, hang],
+        cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, capture_timeout: 0.5
+      ).build_or_load
+    end
+    assert_includes map.failed_test_files.map { |f| File.basename(f) }, "hang_test.rb"
+    refute_empty map.tests_for(CALC, line_of("a + b")), "good test still recorded"
+  end
+
+  def test_record_handles_hash_format_coverage_lines
+    map = build([STRONG_TEST])
+    src = File.join(ROOT, "lib", "made_up.rb") # in-project absolute path
+    map.send(:record, { src => { "lines" => [nil, 1, 0, 2] } }, "t_test.rb")
+    assert_equal ["t_test.rb"], map.tests_for(src, 2)
+    assert_empty map.tests_for(src, 3) # count 0 => uncovered
+  end
+
+  # --- R4: digest path / role sensitivity ----------------------------------
+
+  def test_digest_is_path_sensitive
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "a.rb"), "X = 1\n")
+      File.write(File.join(dir, "b.rb"), "X = 1\n") # identical content, other path
+      m1 = Mutineer::CoverageMap.new(source_paths: ["a.rb"], test_paths: [], cache_dir: dir, project_root: dir)
+      m2 = Mutineer::CoverageMap.new(source_paths: ["b.rb"], test_paths: [], cache_dir: dir, project_root: dir)
+      refute_equal m1.send(:compute_digest), m2.send(:compute_digest)
+    end
+  end
+
+  def test_digest_is_role_sensitive
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "x.rb"), "X = 1\n")
+      File.write(File.join(dir, "y.rb"), "Y = 2\n")
+      m1 = Mutineer::CoverageMap.new(source_paths: ["x.rb"], test_paths: ["y.rb"], cache_dir: dir, project_root: dir)
+      m2 = Mutineer::CoverageMap.new(source_paths: ["y.rb"], test_paths: ["x.rb"], cache_dir: dir, project_root: dir)
+      refute_equal m1.send(:compute_digest), m2.send(:compute_digest)
+    end
+  end
+
+  # --- R7: source outside project root warns -------------------------------
+
+  def test_source_outside_project_root_warns
+    Dir.mktmpdir do |dir|
+      sub = File.join(dir, "proj")
+      FileUtils.mkdir_p(sub)
+      File.write(File.join(dir, "outside.rb"), "Z = 1\n")
+      _, err = capture_subprocess_io do
+        Mutineer::CoverageMap.new(source_paths: ["../outside.rb"], test_paths: [],
+                                cache_dir: Dir.mktmpdir, project_root: sub).build_or_load
+      end
+      assert_includes err, "outside project root"
+    end
+  end
+
+  # --- R6/cache: a cache HIT with recorded failures must still warn ---------
+
+  def test_cache_hit_with_failed_files_warns
+    dir = Dir.mktmpdir("mutineer-cache")
+    bad = File.join(Dir.mktmpdir, "broken_test.rb")
+    File.write(bad, "require 'does/not/exist'\n")
+    capture_subprocess_io { build([STRONG_TEST, bad], cache_dir: dir) } # populate cache
+
+    second = nil
+    _, err = capture_subprocess_io { second = build([STRONG_TEST, bad], cache_dir: dir) }
+    refute second.phase_a_ran, "second build should be a cache hit"
+    assert_includes err, "cached coverage map may be incomplete"
   end
 end

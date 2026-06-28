@@ -4,13 +4,13 @@ require_relative "../test_helper"
 
 class LiteralMutationTest < Minitest::Test
   def subject_for(source)
-    def_node = Brutus::Parser.parse_string(source).value.statements.body.first
-    Brutus::Subject.new(file: "snippet.rb", namespace: [], name: def_node.name,
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    Mutineer::Subject.new(file: "snippet.rb", namespace: [], name: def_node.name,
                         singleton: false, def_node: def_node)
   end
 
   def replacements(source)
-    Brutus::Mutators::LiteralMutation.new.mutations_for(subject_for(source), source).map(&:replacement)
+    Mutineer::Mutators::LiteralMutation.new.mutations_for(subject_for(source), source).map(&:replacement)
   end
 
   def test_integer_five_yields_zero_one_six
@@ -39,7 +39,7 @@ class LiteralMutationTest < Minitest::Test
 
   def test_operator_name
     src = "def f\n  x = 5\nend\n"
-    op = Brutus::Mutators::LiteralMutation.new.mutations_for(subject_for(src), src).first.operator
+    op = Mutineer::Mutators::LiteralMutation.new.mutations_for(subject_for(src), src).first.operator
     assert_equal :literal_mutation, op
   end
 end

@@ -9,11 +9,11 @@ require_relative "mutators/return_nil"
 require_relative "mutators/literal_mutation"
 require_relative "mutators/condition_negation"
 
-module Brutus
+module Mutineer
   # Maps operator name -> operator class. DEFAULT_NAMES is the v1 default set
   # (the M4 Tier-1 + statement-removal operators per locked decision #2). The
   # three Tier-2 operators live in ALL but are OFF by default — they only run
-  # when named via --operators or `operators:` in .brutus.yml (KTD8). Keeping
+  # when named via --operators or `operators:` in .mutineer.yml (KTD8). Keeping
   # DEFAULT_NAMES an explicit subset (not ALL.keys) is what keeps the M4 default
   # survivor set unchanged.
   class MutatorRegistry

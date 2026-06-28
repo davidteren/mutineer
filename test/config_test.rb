@@ -4,7 +4,7 @@ require_relative "test_helper"
 require "tmpdir"
 
 class ConfigTest < Minitest::Test
-  Config = Brutus::Config
+  Config = Mutineer::Config
 
   # --- find_file (KTD4) ---
 
@@ -12,7 +12,7 @@ class ConfigTest < Minitest::Test
     Dir.mktmpdir do |root|
       deep = File.join(root, "a", "b", "c")
       FileUtils.mkdir_p(deep)
-      cfg = File.join(root, "a", ".brutus.yml")
+      cfg = File.join(root, "a", ".mutineer.yml")
       File.write(cfg, "jobs: 2\n")
       # home is unrelated so the walk does not stop early
       assert_equal cfg, Config.find_file(deep, File.join(root, "nowhere"))
@@ -30,7 +30,7 @@ class ConfigTest < Minitest::Test
       home = File.join(root, "home")
       child = File.join(home, "proj")
       FileUtils.mkdir_p(child)
-      File.write(File.join(root, ".brutus.yml"), "jobs: 9\n") # above home -> not seen
+      File.write(File.join(root, ".mutineer.yml"), "jobs: 9\n") # above home -> not seen
       assert_nil Config.find_file(child, home)
     end
   end
@@ -66,7 +66,7 @@ class ConfigTest < Minitest::Test
   # kill an embedding host). The CLI maps it to exit 2.
   def test_from_file_malformed_yaml_raises_config_error
     with_config("operators: [\n") do |path|
-      assert_raises(Brutus::ConfigError) { Config.from_file(path) }
+      assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
     end
   end
 
@@ -97,7 +97,7 @@ class ConfigTest < Minitest::Test
 
   def with_config(yaml)
     Dir.mktmpdir do |root|
-      path = File.join(root, ".brutus.yml")
+      path = File.join(root, ".mutineer.yml")
       File.write(path, yaml)
       yield path
     end

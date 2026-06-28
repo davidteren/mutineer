@@ -2,19 +2,34 @@
 
 require_relative "test_helper"
 require "open3"
+require "tmpdir"
+require "fileutils"
+require "json"
 
-# Drives bin/brutus as a real subprocess so flag parsing, validation exit codes,
+# Drives bin/mutineer as a real subprocess so flag parsing, validation exit codes,
 # and --list-operators are exercised end to end.
 class CliTest < Minitest::Test
-  ROOT = File.expand_path("..", __dir__)
-  BIN  = File.join(ROOT, "bin", "brutus")
+  ROOT     = File.expand_path("..", __dir__)
+  BIN      = File.join(ROOT, "bin", "mutineer")
+  FIXTURES = File.expand_path("fixtures", __dir__)
 
-  def brutus(*args)
-    Open3.capture3(RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", BIN, *args, chdir: Dir.tmpdir)
+  def mutineer(*args, chdir: Dir.tmpdir)
+    Open3.capture3(RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", BIN, *args, chdir: chdir)
+  end
+
+  # An isolated project dir with the calculator fixtures copied in, so the run is
+  # real but the .mutineer cache lands in the temp dir, never the repo.
+  def with_project
+    Dir.mktmpdir("mutineer-proj") do |proj|
+      %w[calculator.rb calculator_strong_test.rb calculator_weak_test.rb].each do |f|
+        FileUtils.cp(File.join(FIXTURES, f), File.join(proj, f))
+      end
+      yield proj
+    end
   end
 
   def test_list_operators_shows_default_and_disabled
-    out, _, status = brutus("--list-operators")
+    out, _, status = mutineer("--list-operators")
     assert_equal 0, status.exitstatus
     assert_match(/arithmetic\s+tier 1\s+default/, out)
     assert_match(/return_nil\s+tier 2\s+disabled/, out)
@@ -25,34 +40,90 @@ class CliTest < Minitest::Test
   # C7: every flag/usage failure exits 2 (usage), distinct from exit 1 (tests too
   # weak) and exit 0 (success).
   def test_jobs_zero_exits_two
-    _, err, status = brutus("run", "x.rb", "--jobs", "0")
+    _, err, status = mutineer("run", "x.rb", "--jobs", "0")
     assert_equal 2, status.exitstatus
     assert_includes err, "--jobs requires a positive integer"
   end
 
   def test_unknown_format_exits_two
-    _, err, status = brutus("run", "x.rb", "--format", "csv")
+    _, err, status = mutineer("run", "x.rb", "--format", "csv")
     assert_equal 2, status.exitstatus
     assert_includes err, %(unknown format "csv")
   end
 
   def test_unknown_strategy_exits_two
-    _, err, status = brutus("run", "x.rb", "--strategy", "bogus")
+    _, err, status = mutineer("run", "x.rb", "--strategy", "bogus")
     assert_equal 2, status.exitstatus
     assert_includes err, %(unknown strategy "bogus")
   end
 
   def test_unwritable_output_exits_two
-    _, err, status = brutus("run", "x.rb", "--test", "t.rb", "--output", "/no-such-dir/out.json")
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--output", "/no-such-dir/out.json")
     assert_equal 2, status.exitstatus
     assert_includes err, "cannot write to"
   end
 
   # R5: a missing source/test path is a clean usage error, not an ENOENT backtrace.
   def test_missing_source_path_exits_two
-    _, err, status = brutus("run", "no_such_source.rb", "--test", "no_such_test.rb")
+    _, err, status = mutineer("run", "no_such_source.rb", "--test", "no_such_test.rb")
     assert_equal 2, status.exitstatus
     assert_includes err, "no such file"
     refute_includes err, "(Errno::ENOENT)"
+  end
+
+  # --- happy paths driven through bin/mutineer -----------------------------
+
+  def test_successful_run_exits_zero
+    with_project do |proj|
+      out, _, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus
+      assert_includes out, "Mutation score: 100.0%"
+    end
+  end
+
+  def test_below_threshold_exits_one
+    with_project do |proj|
+      _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                              "--threshold", "90", chdir: proj)
+      assert_equal 1, status.exitstatus
+    end
+  end
+
+  def test_dry_run_prints_breakdown
+    with_project do |proj|
+      out, _, status = mutineer("run", "calculator.rb", "--dry-run", chdir: proj)
+      assert_equal 0, status.exitstatus
+      assert_includes out, "mutations (dry run, not executed)"
+      assert_includes out, "arithmetic:"
+    end
+  end
+
+  def test_json_output_round_trips_to_file
+    with_project do |proj|
+      _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                              "--format", "json", "--output", "report.json", chdir: proj)
+      assert_equal 0, status.exitstatus
+      doc = JSON.parse(File.read(File.join(proj, "report.json")))
+      assert_equal "1.0", doc["schema_version"]
+      assert_equal 100.0, doc["summary"]["score"]
+    end
+  end
+
+  def test_strategy_surgical_smoke
+    with_project do |proj|
+      _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                              "--strategy", "7b", chdir: proj)
+      assert_equal 0, status.exitstatus
+    end
+  end
+
+  # A syntactically invalid source is reported cleanly, not as a raw backtrace.
+  def test_syntax_error_source_is_handled_cleanly
+    with_project do |proj|
+      File.write(File.join(proj, "broken.rb"), "def oops(\n")
+      _, err, status = mutineer("run", "broken.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      refute_equal 0, status.exitstatus
+      refute_includes err, "cli.rb:", "no internal backtrace should leak"
+    end
   end
 end

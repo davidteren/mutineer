@@ -9,7 +9,7 @@ require_relative "coverage_map"
 require_relative "mutator_registry"
 require_relative "worker_pool"
 
-module Brutus
+module Mutineer
   # Orchestrates one mutation end-to-end: apply it textually, validate the
   # result, select its covering test files from the coverage map, then run only
   # those against the mutated source in an isolated child process (strategy 7a —
@@ -51,7 +51,7 @@ module Brutus
         end
       end
 
-      # C3: 7a writes brutus_mutant*.rb into each source dir (so require_relative
+      # C3: 7a writes mutineer_mutant*.rb into each source dir (so require_relative
       # resolves). A SIGKILL'd child skips the tempfile's ensure-unlink, orphaning
       # it. `ensure` is unreliable vs SIGKILL, so the PARENT sweeps each source dir
       # before and after the run — orphans are impossible after a normal run.
@@ -78,7 +78,7 @@ module Brutus
 
     def self.sweep_orphans(dirs)
       dirs.each do |dir|
-        Dir.glob(File.join(dir, "brutus_mutant*.rb")).each do |f|
+        Dir.glob(File.join(dir, "mutineer_mutant*.rb")).each do |f|
           File.unlink(f) rescue nil # rubocop:disable Style/RescueModifier
         end
       end

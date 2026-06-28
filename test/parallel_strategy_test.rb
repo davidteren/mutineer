@@ -8,14 +8,14 @@ require "tmpdir"
 class ParallelStrategyTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
-  def run_brutus(strategy: "7a", jobs: nil)
-    config = Brutus::Config.new(
+  def run_mutineer(strategy: "7a", jobs: nil)
+    config = Mutineer::Config.new(
       sources: ["test/fixtures/calculator.rb"],
       tests: ["test/fixtures/calculator_weak_test.rb"],
-      cache_dir: Dir.mktmpdir("brutus-cache"), project_root: ROOT,
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT,
       strategy: strategy, jobs: jobs
     )
-    Brutus::Runner.execute(config).first
+    Mutineer::Runner.execute(config).first
   end
 
   def survivor_keys(agg)
@@ -23,28 +23,28 @@ class ParallelStrategyTest < Minitest::Test
   end
 
   def test_jobs_one_matches_jobs_four
-    serial   = run_brutus(jobs: 1)
-    parallel = run_brutus(jobs: 4)
+    serial   = run_mutineer(jobs: 1)
+    parallel = run_mutineer(jobs: 4)
     assert_equal serial.mutation_score, parallel.mutation_score
     assert_equal serial.killed_count, parallel.killed_count
     assert_equal survivor_keys(serial), survivor_keys(parallel)
   end
 
   def test_strategy_7b_matches_7a
-    a = run_brutus(strategy: "7a", jobs: 1)
-    b = run_brutus(strategy: "7b", jobs: 1)
+    a = run_mutineer(strategy: "7a", jobs: 1)
+    b = run_mutineer(strategy: "7b", jobs: 1)
     assert_equal a.mutation_score, b.mutation_score
     assert_equal survivor_keys(a), survivor_keys(b)
   end
 
   def run_namespaced(strategy:)
-    config = Brutus::Config.new(
+    config = Mutineer::Config.new(
       sources: ["test/fixtures/namespaced.rb"],
       tests: ["test/fixtures/namespaced_test.rb"],
-      cache_dir: Dir.mktmpdir("brutus-cache"), project_root: ROOT,
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT,
       strategy: strategy, jobs: 1
     )
-    Brutus::Runner.execute(config).first
+    Mutineer::Runner.execute(config).first
   end
 
   # C2 proof: a MULTI-STATEMENT, NAMESPACED method run end-to-end under BOTH
@@ -92,13 +92,13 @@ class ParallelStrategyTest < Minitest::Test
     pid = fork do
       rd.close
       eval(src, TOPLEVEL_BINDING) # rubocop:disable Security/Eval
-      def_node = Brutus::Parser.parse_string(src).value.statements.body.first.body.body.first
-      subject = Brutus::Subject.new(file: "x.rb", namespace: ["S7bMB"],
+      def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+      subject = Mutineer::Subject.new(file: "x.rb", namespace: ["S7bMB"],
                                     name: def_node.name, singleton: false, def_node: def_node)
       off = src.byteindex("1")
-      mutation = Brutus::Mutation.new(start_offset: off, end_offset: off + 1,
+      mutation = Mutineer::Mutation.new(start_offset: off, end_offset: off + 1,
                                       replacement: "9", operator: :literal_mutation)
-      Brutus::Isolation.apply_surgical(mutation, subject, src)
+      Mutineer::Isolation.apply_surgical(mutation, subject, src)
       wr.write(eval("S7bMB.new.val", TOPLEVEL_BINDING).to_s) # rubocop:disable Security/Eval
       wr.close
       exit!(0)
@@ -119,13 +119,13 @@ class ParallelStrategyTest < Minitest::Test
     pid = fork do
       rd.close
       eval(src, TOPLEVEL_BINDING) # rubocop:disable Security/Eval
-      def_node = Brutus::Parser.parse_string(src).value.statements.body.first.body.body.first
-      subject = Brutus::Subject.new(file: "x.rb", namespace: namespace,
+      def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+      subject = Mutineer::Subject.new(file: "x.rb", namespace: namespace,
                                     name: def_node.name, singleton: singleton, def_node: def_node)
       off = src.index(token)
-      mutation = Brutus::Mutation.new(start_offset: off, end_offset: off + token.length,
+      mutation = Mutineer::Mutation.new(start_offset: off, end_offset: off + token.length,
                                       replacement: replacement, operator: :literal_mutation)
-      Brutus::Isolation.apply_surgical(mutation, subject, src)
+      Mutineer::Isolation.apply_surgical(mutation, subject, src)
       wr.write(eval(call, TOPLEVEL_BINDING).to_s) # rubocop:disable Security/Eval
       wr.close
       exit!(0)

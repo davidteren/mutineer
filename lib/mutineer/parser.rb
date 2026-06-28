@@ -2,7 +2,7 @@
 
 require "prism"
 
-module Brutus
+module Mutineer
   # Raised only for I/O failures while reading a source file. Prism syntax
   # errors are NOT raised — they are in-band via ParseResult#errors.
   class ParseError < StandardError; end
@@ -11,7 +11,7 @@ module Brutus
   # callers use result.value (AST root), result.source.source (raw bytes), and
   # result.errors uniformly. No wrapping struct.
   class Parser
-    # Returns Prism::ParseResult. Re-raises I/O failures as Brutus::ParseError.
+    # Returns Prism::ParseResult. Re-raises I/O failures as Mutineer::ParseError.
     def self.parse_file(path)
       Prism.parse_file(path)
     rescue SystemCallError => e

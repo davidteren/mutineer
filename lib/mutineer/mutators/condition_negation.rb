@@ -2,7 +2,7 @@
 
 require_relative "base"
 
-module Brutus
+module Mutineer
   module Mutators
     # Condition-negation operator (Tier 2, OFF by default). Wraps an if/unless/
     # ternary condition in `!( ... )` textually. Ruby ternaries parse as IfNode in

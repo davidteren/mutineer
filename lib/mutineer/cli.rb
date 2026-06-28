@@ -10,9 +10,9 @@ require_relative "runner"
 require_relative "reporter"
 require_relative "mutator_registry"
 
-module Brutus
+module Mutineer
   # Command-line entry point. `start` is the single public method called by
-  # bin/brutus; it parses argv, acts, and exits with a pinned code.
+  # bin/mutineer; it parses argv, acts, and exits with a pinned code.
   #
   # Exit codes (taxonomy consistent across M1–M5):
   #   0  success / requested output (--version, --help, score >= threshold)
@@ -21,7 +21,7 @@ module Brutus
   #      out-of-range threshold)
   class CLI
     BANNER = <<~USAGE
-      Usage: brutus [options] <command> [args]
+      Usage: mutineer [options] <command> [args]
 
       Commands:
         run [options] <source...> --test <test...>   Mutate, run, and report
@@ -55,7 +55,7 @@ module Brutus
       parser = OptionParser.new do |o|
         o.banner = BANNER
         o.on("--version") do
-          puts Brutus::VERSION
+          puts Mutineer::VERSION
           exit 0
         end
         o.on("--help") do
@@ -77,7 +77,7 @@ module Brutus
       begin
         parser.parse!(argv)
       rescue OptionParser::InvalidOption, OptionParser::MissingArgument => e
-        warn "brutus: #{e.message}"
+        warn "mutineer: #{e.message}"
         exit 2
       end
 
@@ -95,10 +95,10 @@ module Brutus
         file_path = Config.find_file
         file_hash = file_path ? Config.from_file(file_path) : {}
         config = Config.resolve(opts, file_hash, explicit)
-      rescue Brutus::ConfigError => e
+      rescue Mutineer::ConfigError => e
         # R8: the lib layer raises instead of killing the host; the CLI maps a
         # config (usage) error to exit 2.
-        warn "brutus: #{e.message}"
+        warn "mutineer: #{e.message}"
         exit 2
       end
 
@@ -107,7 +107,7 @@ module Brutus
         config.sources = argv[1..]
         run(config)
       else
-        warn "brutus: unknown command '#{argv.first}'"
+        warn "mutineer: unknown command '#{argv.first}'"
         exit 2
       end
     end
@@ -122,7 +122,7 @@ module Brutus
 
     def self.run(config)
       if config.sources.empty?
-        warn "brutus: run requires at least one source file"
+        warn "mutineer: run requires at least one source file"
         exit 2
       end
       validate!(config)
@@ -130,20 +130,20 @@ module Brutus
       config.dry_run ? dry_run(config) : execute(config)
     rescue ArgumentError => e
       # Unknown --operators value surfaces here; no backtrace reaches the user.
-      warn "brutus: #{e.message}"
+      warn "mutineer: #{e.message}"
       exit 2
     rescue SystemCallError => e
       # R5: a missing/unreadable path reaches here as Errno::ENOENT etc. — a plain
       # message and usage exit, never a raw backtrace.
-      warn "brutus: #{e.message}"
+      warn "mutineer: #{e.message}"
       exit 2
     rescue SyntaxError => e
       # A syntactically invalid source file surfaces when `require`d; report it
       # cleanly rather than dumping a backtrace.
-      warn "brutus: cannot load source: #{e.message}"
+      warn "mutineer: cannot load source: #{e.message}"
       exit 1
-    rescue Brutus::ParseError => e
-      warn "brutus: error reading: #{e.message}"
+    rescue Mutineer::ParseError => e
+      warn "mutineer: error reading: #{e.message}"
       exit 1
     end
 
@@ -151,24 +151,24 @@ module Brutus
     # taxonomy above — CI can tell "mistyped flag" from "tests too weak."
     def self.validate!(config)
       unless (0.0..100.0).cover?(config.threshold)
-        warn "brutus: --threshold must be between 0 and 100"
+        warn "mutineer: --threshold must be between 0 and 100"
         exit 2
       end
 
       jobs = Integer(config.jobs.to_s, exception: false)
       if jobs.nil? || jobs < 1
-        warn "brutus: --jobs requires a positive integer (got: #{config.jobs})"
+        warn "mutineer: --jobs requires a positive integer (got: #{config.jobs})"
         exit 2
       end
       config.jobs = jobs
 
       unless %w[human json].include?(config.format)
-        warn %(brutus: unknown format "#{config.format}". Expected: human, json)
+        warn %(mutineer: unknown format "#{config.format}". Expected: human, json)
         exit 2
       end
 
       unless %w[7a 7b].include?(config.strategy)
-        warn %(brutus: unknown strategy "#{config.strategy}". Expected: 7a, 7b)
+        warn %(mutineer: unknown strategy "#{config.strategy}". Expected: 7a, 7b)
         exit 2
       end
 
@@ -184,7 +184,7 @@ module Brutus
                 .reject { |p| File.exist?(File.expand_path(p, config.project_root)) }
       return if missing.empty?
 
-      warn "brutus: no such file: #{missing.join(', ')}"
+      warn "mutineer: no such file: #{missing.join(', ')}"
       exit 2
     end
 
@@ -193,13 +193,13 @@ module Brutus
       return if File.directory?(dir) && File.writable?(dir)
 
       reason = File.directory?(dir) ? "directory is not writable" : "no such directory"
-      warn "brutus: cannot write to #{path}: #{reason}"
+      warn "mutineer: cannot write to #{path}: #{reason}"
       exit 2
     end
 
     def self.execute(config)
       if config.tests.empty?
-        warn "brutus: run requires at least one --test file (or use --dry-run)"
+        warn "mutineer: run requires at least one --test file (or use --dry-run)"
         exit 2
       end
 

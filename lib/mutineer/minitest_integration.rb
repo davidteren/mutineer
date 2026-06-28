@@ -3,7 +3,7 @@
 require "minitest"
 require "stringio"
 
-module Brutus
+module Mutineer
   # Child-process-only: loads a test file in the current process and runs it
   # programmatically, returning an exit status integer (0 = all passed,
   # 1 = any failure/error).

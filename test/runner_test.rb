@@ -18,32 +18,32 @@ class RunnerTest < Minitest::Test
   def plus_mutation(replacement: "-")
     source = File.read(CALC)
     plus = source.index("a + b") + 2 # skip "a "
-    Brutus::Mutation.new(start_offset: plus, end_offset: plus + 1,
+    Mutineer::Mutation.new(start_offset: plus, end_offset: plus + 1,
                          replacement: replacement, operator: :arithmetic)
   end
 
   # A CoverageMap built over the fixture and the given test file(s), cached in a
   # throwaway dir so the run is real (Phase A subprocess) but leaves no trace.
   def coverage_map(*test_paths)
-    Brutus::CoverageMap.new(
+    Mutineer::CoverageMap.new(
       source_paths: [CALC], test_paths: test_paths,
-      cache_dir: Dir.mktmpdir("brutus-cache"), project_root: ROOT
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
     ).build_or_load
   end
 
   def test_mutation_killed_by_strong_suite
-    result = Brutus::Runner.run(plus_mutation, source_file: CALC, coverage_map: coverage_map(STRONG_TEST))
+    result = Mutineer::Runner.run(plus_mutation, source_file: CALC, coverage_map: coverage_map(STRONG_TEST))
     assert_predicate result, :killed?, "expected killed, got #{result.status} (#{result.details})"
   end
 
   def test_mutation_survives_weak_suite
-    result = Brutus::Runner.run(plus_mutation, source_file: CALC, coverage_map: coverage_map(WEAK_TEST))
+    result = Mutineer::Runner.run(plus_mutation, source_file: CALC, coverage_map: coverage_map(WEAK_TEST))
     assert_predicate result, :survived?, "expected survived, got #{result.status} (#{result.details})"
   end
 
   def test_syntactically_invalid_mutation_is_skipped
     # Replacing `+` with `)` makes `a ) b` — unparseable, so no fork happens.
-    result = Brutus::Runner.run(plus_mutation(replacement: ")"),
+    result = Mutineer::Runner.run(plus_mutation(replacement: ")"),
                                 source_file: CALC, coverage_map: coverage_map(STRONG_TEST))
     assert_predicate result, :skipped?, "expected skipped, got #{result.status}"
   end

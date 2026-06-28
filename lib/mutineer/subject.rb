@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Brutus
+module Mutineer
   # One discoverable method: its location, namespace context, and the live
   # Prism::DefNode mutators walk. Struct (not Data) because def_node is a live
   # AST node — value-equality would be hollow, so we don't promise it.

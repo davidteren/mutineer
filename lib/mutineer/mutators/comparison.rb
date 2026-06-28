@@ -2,7 +2,7 @@
 
 require_relative "base"
 
-module Brutus
+module Mutineer
   module Mutators
     # Comparison / boundary operator: <->-<=, >->-=>, ==->!=, etc. The single
     # highest-value Tier-1 family (spec §4) — exposes off-by-one and boundary

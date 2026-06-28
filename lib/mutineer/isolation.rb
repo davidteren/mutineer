@@ -4,7 +4,7 @@ require "tempfile"
 require_relative "result"
 require_relative "parser"
 
-module Brutus
+module Mutineer
   # Fork-based isolation for running one mutant. The block runs in a child
   # process; the parent enforces a wall-clock timeout and decodes the child's
   # exit status into a Result.
@@ -14,7 +14,7 @@ module Brutus
   # by the parent's monitor flag, not by status.signaled? (which is true for ANY
   # signal death, e.g. SIGSEGV — it cannot tell our SIGKILL apart from the OS's).
   #
-  # brutus: the 7a strategy this enables (whole-file `load`) re-executes the
+  # mutineer: the 7a strategy this enables (whole-file `load`) re-executes the
   # entire file — any top-level code runs again. Acceptable for POROs; document
   # if users hit issues with initializers/callbacks. Upgrade path: M5 strategy
   # 7b (class_eval surgical redefinition).
@@ -33,7 +33,7 @@ module Brutus
         rescue SystemExit => e
           code = e.status
         rescue Exception => e # rubocop:disable Lint/RescueException
-          warn "[brutus-child] #{e.class}: #{e.message}"
+          warn "[mutineer-child] #{e.class}: #{e.message}"
           code = 2
         end
         $stderr.flush
@@ -71,7 +71,7 @@ module Brutus
     # its real neighbours (e.g. a mutator's `require_relative "base"`). Writing it
     # elsewhere makes those requires resolve to the temp dir and raise LoadError.
     def self.apply_whole_file(mutated, source_file)
-      Tempfile.create(["brutus_mutant", ".rb"], File.dirname(source_file)) do |f|
+      Tempfile.create(["mutineer_mutant", ".rb"], File.dirname(source_file)) do |f|
         f.write(mutated)
         f.flush
         load f.path

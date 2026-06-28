@@ -4,13 +4,13 @@ require_relative "../test_helper"
 
 class ReturnNilTest < Minitest::Test
   def subject_for(source)
-    def_node = Brutus::Parser.parse_string(source).value.statements.body.first
-    Brutus::Subject.new(file: "snippet.rb", namespace: [], name: def_node.name,
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    Mutineer::Subject.new(file: "snippet.rb", namespace: [], name: def_node.name,
                         singleton: false, def_node: def_node)
   end
 
   def run_mutator(source)
-    [Brutus::Mutators::ReturnNil.new.mutations_for(subject_for(source), source), source]
+    [Mutineer::Mutators::ReturnNil.new.mutations_for(subject_for(source), source), source]
   end
 
   def tokens(mutations, source)

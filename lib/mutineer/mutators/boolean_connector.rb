@@ -2,7 +2,7 @@
 
 require_relative "base"
 
-module Brutus
+module Mutineer
   module Mutators
     # Boolean connector operator: && <-> ||, and <-> or. Replacement is derived
     # from the actual source token (operator_loc.slice) so symbolic and keyword

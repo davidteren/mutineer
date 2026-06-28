@@ -2,7 +2,7 @@
 
 require_relative "base"
 
-module Brutus
+module Mutineer
   module Mutators
     # Arithmetic operator: +<->-, *<->/, %->*, **->*. One mutation per
     # occurrence, rewriting the operator token (CallNode#message_loc).

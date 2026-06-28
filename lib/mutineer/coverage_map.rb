@@ -6,10 +6,10 @@ require "digest"
 require "fileutils"
 require "rbconfig"
 
-module Brutus
+module Mutineer
   # Maps `(source_file, line) -> [test_files]` so each mutant runs only against
   # the tests that actually exercise its line. Built once (Phase A), then queried
-  # per mutant (Phase B via #tests_for). Persisted to .brutus/coverage.json with
+  # per mutant (Phase B via #tests_for). Persisted to .mutineer/coverage.json with
   # a content-based digest that rebuilds the map whenever any tracked file changes.
   #
   # Keys are "file:line" strings (relative to project_root) everywhere — in
@@ -19,7 +19,7 @@ module Brutus
 
     attr_reader :project_root, :failed_test_files, :phase_a_ran
 
-    def initialize(source_paths:, test_paths:, cache_dir: ".brutus",
+    def initialize(source_paths:, test_paths:, cache_dir: ".mutineer",
                    load_paths: ["lib"], project_root: Dir.pwd,
                    capture_timeout: DEFAULT_CAPTURE_TIMEOUT)
       @source_paths = Array(source_paths)
@@ -105,7 +105,7 @@ module Brutus
     def fail_test(test_path, reason)
       rel = relativize(test_path)
       @failed_test_files << rel
-      warn "[brutus] coverage skipped for #{rel}: #{reason}"
+      warn "[mutineer] coverage skipped for #{rel}: #{reason}"
       nil
     end
 
@@ -178,7 +178,7 @@ module Brutus
       @source_paths.each do |p|
         next unless relativize(absolute(p)).start_with?("/")
 
-        warn "[brutus] source #{p} is outside project root #{@project_root}; " \
+        warn "[mutineer] source #{p} is outside project root #{@project_root}; " \
              "its coverage will be ignored"
       end
     end
@@ -202,7 +202,7 @@ module Brutus
     end
 
     def warn_incomplete
-      warn "[brutus] cached coverage map may be incomplete; these test files " \
+      warn "[mutineer] cached coverage map may be incomplete; these test files " \
            "failed to contribute: #{@failed_test_files.join(', ')}"
     end
 

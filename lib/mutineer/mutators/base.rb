@@ -3,7 +3,7 @@
 require "prism"
 require_relative "../mutation"
 
-module Brutus
+module Mutineer
   module Mutators
     # Base Prism visitor for operators. Subclasses override visit_* methods to
     # push Mutation objects onto @mutations. Visiting only def_node.body is the

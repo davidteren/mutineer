@@ -2,7 +2,7 @@
 
 require_relative "base"
 
-module Brutus
+module Mutineer
   module Mutators
     # Statement-removal operator: replace each non-final method statement with
     # "nil". Tests whether the suite detects a missing side effect. The final

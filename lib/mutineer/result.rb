@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Brutus
+module Mutineer
   # Immutable outcome of running one mutant. Six distinct states:
   #   killed      — a test failed/errored, so the mutation was caught.
   #   survived    — every test passed, so the mutation went undetected.

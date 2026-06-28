@@ -4,7 +4,7 @@ require "etc"
 require "yaml"
 require "set"
 
-module Brutus
+module Mutineer
   # Raised by the config layer instead of calling exit/abort — a data class must
   # never kill the host process (R8). The CLI rescues this and maps it to exit 2.
   class ConfigError < StandardError; end
@@ -22,8 +22,8 @@ module Brutus
     :jobs, :format, :output, :strategy, :require_paths,
     keyword_init: true
   ) do
-    CONFIG_FILE = ".brutus.yml"
-    # Keys accepted in .brutus.yml (R7). `require` maps to the :require_paths field.
+    CONFIG_FILE = ".mutineer.yml"
+    # Keys accepted in .mutineer.yml (R7). `require` maps to the :require_paths field.
     KNOWN_KEYS = %w[operators jobs threshold only require].freeze
 
     def initialize(**kwargs)
@@ -32,7 +32,7 @@ module Brutus
       self.tests         ||= []
       self.threshold     ||= 0.0
       self.dry_run       ||= false
-      self.cache_dir     ||= ".brutus"
+      self.cache_dir     ||= ".mutineer"
       self.project_root  ||= Dir.pwd
       self.load_paths    ||= ["lib"]
       self.jobs          ||= Etc.nprocessors
@@ -41,7 +41,7 @@ module Brutus
       self.require_paths ||= []
     end
 
-    # Walk from `start` toward `home`, returning the first .brutus.yml path found
+    # Walk from `start` toward `home`, returning the first .mutineer.yml path found
     # or nil. Checks `home` itself, then stops; if `start` is above `home`
     # (e.g. /tmp), the walk continues to the filesystem root (KTD4). Pure
     # discovery — reads no file content.
@@ -60,7 +60,7 @@ module Brutus
       nil
     end
 
-    # Parse a .brutus.yml into a symbol-keyed hash of recognized keys. Unknown
+    # Parse a .mutineer.yml into a symbol-keyed hash of recognized keys. Unknown
     # keys / unknown operator names emit a one-line stderr warning and are ignored
     # (R7). A YAML syntax error raises ConfigError (R7a/R8) — never a silent
     # fallback to defaults, and never an exit from the lib layer.
@@ -68,7 +68,7 @@ module Brutus
       raw = YAML.safe_load(File.read(path)) || {}
       name = File.basename(path)
       unless raw.is_a?(Hash)
-        warn "brutus: #{name} ignored: expected a YAML mapping of keys to values"
+        warn "mutineer: #{name} ignored: expected a YAML mapping of keys to values"
         return {}
       end
 
@@ -76,7 +76,7 @@ module Brutus
       raw.each do |key, value|
         ks = key.to_s
         unless KNOWN_KEYS.include?(ks)
-          warn "brutus: unknown config key #{ks.inspect} in #{name} " \
+          warn "mutineer: unknown config key #{ks.inspect} in #{name} " \
                "(known: #{KNOWN_KEYS.join(', ')}); ignored"
           next
         end
@@ -119,7 +119,7 @@ module Brutus
       names.select do |n|
         next true if known.include?(n)
 
-        warn "brutus: unknown operator #{n.inspect} in #{file_name} " \
+        warn "mutineer: unknown operator #{n.inspect} in #{file_name} " \
              "(known: #{known.join(', ')}); ignored"
         false
       end

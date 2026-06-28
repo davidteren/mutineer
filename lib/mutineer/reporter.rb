@@ -4,10 +4,10 @@ require "json"
 require "stringio"
 require_relative "mutation"
 
-module Brutus
+module Mutineer
   # Renders an AggregateResult: the summary block, mutation score, and per-file
   # survivor diffs. Stream discipline (R14): the report goes to `out` (stdout),
-  # diagnostics/warnings go to `err` (stderr), so `brutus ... > report.txt`
+  # diagnostics/warnings go to `err` (stderr), so `mutineer ... > report.txt`
   # captures only the report.
   #
   # `source_map` is { file_path => raw source string }, used to extract the
@@ -47,7 +47,7 @@ module Brutus
         return
       end
 
-      out.puts "Brutus — Mutation Results"
+      out.puts "Mutineer — Mutation Results"
       out.puts "========================="
       out.puts
       summary(out)
@@ -159,7 +159,7 @@ module Brutus
                  "#{@agg.errored_count + @agg.timeout_count} errored excluded"
       if score.nil?
         out.puts "Mutation score: N/A  (no covered mutants)"
-        err.puts "[brutus] no covered mutations; mutation score is N/A and the threshold check is skipped."
+        err.puts "[mutineer] no covered mutations; mutation score is N/A and the threshold check is skipped."
       else
         out.puts "Mutation score: #{score}%  (killed / (killed + survived); #{excluded})"
       end

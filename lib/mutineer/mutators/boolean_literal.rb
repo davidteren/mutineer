@@ -2,7 +2,7 @@
 
 require_relative "base"
 
-module Brutus
+module Mutineer
   module Mutators
     # Mutates true/false AND nil literals — "boolean_literal" is the spec's name
     # for the family (§4), so nil is in-scope by design even though it is not

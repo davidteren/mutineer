@@ -2,7 +2,7 @@
 
 require_relative "result"
 
-module Brutus
+module Mutineer
   # Fixed-size fork pool (KTD1/KTD2). `run` forks up to `size` children at once;
   # each child runs the block on one work item, marshals its Result to a private
   # pipe, and exits. The parent reaps any finished child with Process.wait2(-1),

@@ -2,7 +2,7 @@
 
 require_relative "base"
 
-module Brutus
+module Mutineer
   module Mutators
     # Literal-fuzzing operator (Tier 2, OFF by default). Integers emit up to
     # three mutations (0, 1, n+1) with no-op guards for 0 and 1; strings collapse

@@ -4,14 +4,14 @@ require_relative "../test_helper"
 
 class BooleanLiteralTest < Minitest::Test
   def subject_for(source)
-    def_node = Brutus::Parser.parse_string(source).value.statements.body.first
-    Brutus::Subject.new(file: "snippet.rb", namespace: [], name: def_node.name,
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    Mutineer::Subject.new(file: "snippet.rb", namespace: [], name: def_node.name,
                         singleton: false, def_node: def_node)
   end
 
   def run_mutator(body)
     source = "def m\n  #{body}\nend\n"
-    [Brutus::Mutators::BooleanLiteral.new.mutations_for(subject_for(source), source), source]
+    [Mutineer::Mutators::BooleanLiteral.new.mutations_for(subject_for(source), source), source]
   end
 
   def assert_single(body, original, replacement)

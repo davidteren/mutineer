@@ -2,7 +2,7 @@
 
 require_relative "base"
 
-module Brutus
+module Mutineer
   module Mutators
     # Return-value-nil operator (Tier 2, OFF by default). Two rules:
     #   1. an explicit `return <expr>` -> `return nil`, unless the value is
