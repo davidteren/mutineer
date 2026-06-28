@@ -17,7 +17,10 @@ module Brutus
   class MinitestIntegration
     # ponytail: tested via runner_test.rb (U6), not in isolation — a direct
     # unit test would require forking and duplicate isolation_test's coverage.
-    def self.run(test_file)
+    #
+    # `test_files` is one path or an Array of paths (M3 coverage selection passes
+    # the covering subset); each is loaded before the single Minitest.run.
+    def self.run(test_files)
       # Neutralise autorun so a test file's `require "minitest/autorun"`
       # registers no at_exit hook.
       def Minitest.autorun; end # rubocop:disable Lint/NestedMethodDefinition
@@ -26,7 +29,7 @@ module Brutus
       # private copy — the parent is unaffected) so only the target test runs.
       Minitest::Runnable.reset
 
-      load test_file
+      Array(test_files).each { |f| load f }
 
       # Silence the child's test output; the parent only cares about pass/fail.
       orig = $stdout

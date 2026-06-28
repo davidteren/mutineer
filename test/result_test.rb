@@ -33,10 +33,18 @@ class ResultTest < Minitest::Test
     assert_nil r.details
   end
 
+  def test_no_coverage
+    r = Brutus::Result.no_coverage
+    assert_predicate r, :no_coverage?
+    refute_predicate r, :killed?
+    refute_predicate r, :survived?
+    assert_nil r.details
+  end
+
   def test_each_factory_has_a_distinct_status
     statuses = [
       Brutus::Result.killed, Brutus::Result.survived, Brutus::Result.error,
-      Brutus::Result.timeout, Brutus::Result.skipped
+      Brutus::Result.timeout, Brutus::Result.skipped, Brutus::Result.no_coverage
     ].map(&:status)
     assert_equal statuses, statuses.uniq
   end
