@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Brutus — Mutation testing for Ruby, Prism + stdlib only</title>
-<meta name="description" content="Brutus is a clean-room mutation-testing tool for Ruby. It mutates your source one change at a time, runs your Minitest suite against each mutant, and reports the gaps your tests fail to catch. Zero runtime dependencies.">
+<title>Mutineer — Mutation testing for Ruby, Prism + stdlib only</title>
+<meta name="description" content="Mutineer is a clean-room mutation-testing tool for Ruby. It mutates your source one change at a time, runs your Minitest suite against each mutant, and reports the gaps your tests fail to catch. Zero runtime dependencies.">
 <meta name="color-scheme" content="dark light">
-<meta property="og:title" content="Brutus — Mutation testing for Ruby">
+<meta property="og:title" content="Mutineer — Mutation testing for Ruby">
 <meta property="og:description" content="Mutate your source, run your tests, find the gaps your suite doesn't catch. Prism + stdlib only, zero runtime dependencies.">
 <meta property="og:type" content="website">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e23b3b'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EB%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e23b3b'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
 <style>
   :root {
     --bg: #0e0f12;
@@ -219,13 +219,13 @@
 
 <header class="site">
   <div class="wrap nav">
-    <span class="brand"><span class="mark" aria-hidden="true">B</span> Brutus</span>
+    <span class="brand"><span class="mark" aria-hidden="true">M</span> Mutineer</span>
     <nav aria-label="Primary">
       <a href="#how" class="hide-sm">How it works</a>
       <a href="#features" class="hide-sm">Features</a>
       <a href="#operators" class="hide-sm">Operators</a>
       <a href="#install">Install</a>
-      <a href="https://github.com/davidteren/brutus" rel="noopener">GitHub</a>
+      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub</a>
       <button class="toggle" id="theme" aria-label="Toggle dark mode" aria-pressed="true" title="Toggle theme">◐</button>
     </nav>
   </div>
@@ -238,10 +238,10 @@
     <div class="wrap">
       <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Clean-room · Prism + stdlib · Ruby ≥ 3.4</span>
       <h1>Your tests pass.<br><span class="grad">But do they test?</span></h1>
-      <p class="lede">Brutus mutates your source one change at a time, runs your Minitest suite against each mutant, and reports the ones your tests <em>failed to catch</em> — the gaps where coverage is a green lie.</p>
+      <p class="lede">Mutineer mutates your source one change at a time, runs your Minitest suite against each mutant, and reports the ones your tests <em>failed to catch</em> — the gaps where coverage is a green lie.</p>
       <div class="cta">
         <a class="btn btn-primary" href="#install">Get started →</a>
-        <a class="btn btn-ghost" href="https://github.com/davidteren/brutus" rel="noopener">★ View on GitHub</a>
+        <a class="btn btn-ghost" href="https://github.com/davidteren/mutineer" rel="noopener">★ View on GitHub</a>
       </div>
       <div class="badges">
         <span class="badge"><b>0</b> runtime dependencies</span>
@@ -250,14 +250,14 @@
         <span class="badge"><b>JSON</b> + human output</span>
       </div>
 
-      <div class="term" role="img" aria-label="Terminal showing brutus run output with a mutation score of 92.3 percent and one surviving mutant">
+      <div class="term" role="img" aria-label="Terminal showing mutineer run output with a mutation score of 92.3 percent and one surviving mutant">
         <div class="term-bar">
           <span class="lamp r" aria-hidden="true"></span><span class="lamp y" aria-hidden="true"></span><span class="lamp g" aria-hidden="true"></span>
-          <span class="ttl">brutus — mutation results</span>
+          <span class="ttl">mutineer — mutation results</span>
         </div>
-<pre><span class="p">$</span> brutus run lib/calculator.rb <span class="dim">--test</span> test/calculator_test.rb
+<pre><span class="p">$</span> mutineer run lib/calculator.rb <span class="dim">--test</span> test/calculator_test.rb
 
-Brutus — Mutation Results
+Mutineer — Mutation Results
 =========================
 
   total      <span class="dim">26</span>
@@ -285,12 +285,12 @@ Calculator#discount  <span class="dim">lib/calculator.rb:14  (comparison)</span>
       <div class="sec-head">
         <div class="kicker">How it works</div>
         <h2>Mutate. Run. Report.</h2>
-        <p>A mutant that your suite still passes is a test that isn't testing anything. Brutus finds them by breaking your code on purpose.</p>
+        <p>A mutant that your suite still passes is a test that isn't testing anything. Mutineer finds them by breaking your code on purpose.</p>
       </div>
       <div class="steps">
         <div class="step">
           <h3>Mutate</h3>
-          <p>Brutus parses your source with Prism and applies one change per mutant — flip a <code>&lt;</code> to <code>&lt;=</code>, swap <code>&amp;&amp;</code> for <code>||</code>, delete a statement. Each mutant is re-parsed to confirm it's still valid Ruby.</p>
+          <p>Mutineer parses your source with Prism and applies one change per mutant — flip a <code>&lt;</code> to <code>&lt;=</code>, swap <code>&amp;&amp;</code> for <code>||</code>, delete a statement. Each mutant is re-parsed to confirm it's still valid Ruby.</p>
         </div>
         <div class="step">
           <h3>Run</h3>
@@ -308,7 +308,7 @@ Calculator#discount  <span class="dim">lib/calculator.rb:14  (comparison)</span>
   <section id="features">
     <div class="wrap">
       <div class="sec-head">
-        <div class="kicker">Why Brutus</div>
+        <div class="kicker">Why Mutineer</div>
         <h2>Built lean, on purpose.</h2>
         <p>No agent, no boot hooks, no monkey-patching your test framework. Just Ruby's own parser and standard library.</p>
       </div>
@@ -329,7 +329,7 @@ Calculator#discount  <span class="dim">lib/calculator.rb:14  (comparison)</span>
       <div class="sec-head">
         <div class="kicker">Operators</div>
         <h2>Nine ways to break your code.</h2>
-        <p>Five run by default. Three Tier-2 operators are off until you ask for them with <code>--operators</code> or <code>.brutus.yml</code> — they're noisier, but they catch deeper gaps.</p>
+        <p>Five run by default. Three Tier-2 operators are off until you ask for them with <code>--operators</code> or <code>.mutineer.yml</code> — they're noisier, but they catch deeper gaps.</p>
       </div>
       <div class="table-wrap">
         <table>
@@ -349,7 +349,7 @@ Calculator#discount  <span class="dim">lib/calculator.rb:14  (comparison)</span>
           </tbody>
         </table>
       </div>
-      <p class="note">Run <code>brutus --list-operators</code> to see the live set for your installed version.</p>
+      <p class="note">Run <code>mutineer --list-operators</code> to see the live set for your installed version.</p>
     </div>
   </section>
 
@@ -359,26 +359,26 @@ Calculator#discount  <span class="dim">lib/calculator.rb:14  (comparison)</span>
       <div class="sec-head">
         <div class="kicker">Get started</div>
         <h2>Install &amp; run.</h2>
-        <p>Ruby ≥ 3.4 is the only requirement. Point Brutus at your source and the tests that cover it.</p>
+        <p>Ruby ≥ 3.4 is the only requirement. Point Mutineer at your source and the tests that cover it.</p>
       </div>
       <div class="two-col">
         <div>
           <p class="sub">Install (placeholder — not yet published)</p>
-          <div class="codeblock"><button class="copy" data-copy="gem install brutus">Copy</button><span class="p">$</span> gem install brutus</div>
+          <div class="codeblock"><button class="copy" data-copy="gem install mutineer">Copy</button><span class="p">$</span> gem install mutineer</div>
 
           <p class="sub" style="margin-top:1.4rem">Run against a file and its test</p>
-          <div class="codeblock"><button class="copy" data-copy="brutus run lib/foo.rb --test test/foo_test.rb --threshold 90">$ brutus run lib/foo.rb \
+          <div class="codeblock"><button class="copy" data-copy="mutineer run lib/foo.rb --test test/foo_test.rb --threshold 90">$ mutineer run lib/foo.rb \
   --test test/foo_test.rb \
-  --threshold 90</button><span class="p">$</span> brutus run lib/foo.rb \
+  --threshold 90</button><span class="p">$</span> mutineer run lib/foo.rb \
   <span class="c">--test</span> test/foo_test.rb \
   <span class="c">--threshold</span> 90</div>
         </div>
         <div>
           <p class="sub">Preview mutations without running tests</p>
-          <div class="codeblock"><button class="copy" data-copy="brutus run --dry-run lib/foo.rb">$ brutus run --dry-run lib/foo.rb</button><span class="p">$</span> brutus run <span class="c">--dry-run</span> lib/foo.rb</div>
+          <div class="codeblock"><button class="copy" data-copy="mutineer run --dry-run lib/foo.rb">$ mutineer run --dry-run lib/foo.rb</button><span class="p">$</span> mutineer run <span class="c">--dry-run</span> lib/foo.rb</div>
 
-          <p class="sub" style="margin-top:1.4rem">Configure once in <code>.brutus.yml</code></p>
-          <div class="codeblock"><span class="c"># .brutus.yml</span>
+          <p class="sub" style="margin-top:1.4rem">Configure once in <code>.mutineer.yml</code></p>
+          <div class="codeblock"><span class="c"># .mutineer.yml</span>
 operators:
   - comparison
   - arithmetic
@@ -388,7 +388,7 @@ jobs: 8
 format: json</div>
         </div>
       </div>
-      <p class="note">Key flags: <code>--operators</code>, <code>--threshold</code>, <code>--only</code>, <code>--jobs</code>, <code>--format human|json</code>, <code>--output FILE</code>, <code>--dry-run</code>. Typed flags override <code>.brutus.yml</code>.</p>
+      <p class="note">Key flags: <code>--operators</code>, <code>--threshold</code>, <code>--only</code>, <code>--jobs</code>, <code>--format human|json</code>, <code>--output FILE</code>, <code>--dry-run</code>. Typed flags override <code>.mutineer.yml</code>.</p>
     </div>
   </section>
 
@@ -397,12 +397,12 @@ format: json</div>
 <footer>
   <div class="wrap foot">
     <div>
-      <strong>Brutus</strong> — clean-room mutation testing for Ruby.
+      <strong>Mutineer</strong> — clean-room mutation testing for Ruby.
       <div class="note">MIT licensed · Prism + stdlib only · © David Teren</div>
     </div>
     <nav aria-label="Footer">
-      <a href="https://github.com/davidteren/brutus" rel="noopener">GitHub</a>
-      <a href="https://github.com/davidteren/brutus/blob/main/LICENSE" rel="noopener">License</a>
+      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub</a>
+      <a href="https://github.com/davidteren/mutineer/blob/main/LICENSE" rel="noopener">License</a>
       <a href="#main">Top ↑</a>
     </nav>
   </div>
@@ -413,7 +413,7 @@ format: json</div>
   (function () {
     var root = document.documentElement, btn = document.getElementById('theme');
     var saved = null;
-    try { saved = localStorage.getItem('brutus-theme'); } catch (e) {}
+    try { saved = localStorage.getItem('mutineer-theme'); } catch (e) {}
     if (saved) {
       root.setAttribute('data-theme', saved);
     } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
@@ -424,7 +424,7 @@ format: json</div>
     btn.addEventListener('click', function () {
       var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
       root.setAttribute('data-theme', next);
-      try { localStorage.setItem('brutus-theme', next); } catch (e) {}
+      try { localStorage.setItem('mutineer-theme', next); } catch (e) {}
       sync();
     });
   })();

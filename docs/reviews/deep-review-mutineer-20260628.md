@@ -1,4 +1,4 @@
-# Deep review — Brutus gem (pre-publish gate)
+# Deep review — Mutineer gem (pre-publish gate)
 
 **Target:** full gem, branch `fix/dogfood-bugs` · **Date:** 2026-06-28
 **Lenses:** correctness/security · convention/API/publish-readiness · test-quality (3 parallel reviewers)
@@ -39,22 +39,22 @@ not be offered as a public option (or default-block it).
 ### 🟠 C3 — Mutant tempfile leaks into the user's source tree on timeout (correctness H3)
 `isolation.rb:66-72`. **Introduced by the Bug-1 fix this branch** (tempfile now in the source dir so
 `require_relative` resolves). On timeout the child is SIGKILL'd mid-block → the `Tempfile.create` `ensure`
-never runs → `brutus_mutantXXXX.rb` orphaned inside `lib/`, where it matches source globs / Zeitwerk / the
+never runs → `mutineer_mutantXXXX.rb` orphaned inside `lib/`, where it matches source globs / Zeitwerk / the
 next run. `ensure` is fundamentally unreliable against SIGKILL.
-**Fix:** parent-side sweep of `brutus_mutant*.rb` per source dir at start/teardown, OR write to a temp dir
+**Fix:** parent-side sweep of `mutineer_mutant*.rb` per source dir at start/teardown, OR write to a temp dir
 and prepend it to `$LOAD_PATH` so `require_relative` still resolves without polluting `lib/`.
 
-### 🟠 C4 — `bin/brutus` not shipped → installed CLI is broken (convention H1) — PUBLISH BLOCKER
-`brutus.gemspec:16` `spec.files = Dir.glob("lib/**/*.rb") + ["README.md","brutus.gemspec"]` never matches
-`bin/brutus`, yet `spec.executables = ["brutus"]`. After `gem install`, the binstub points at a file not in
-the gem → `brutus` fails to run.
+### 🟠 C4 — `bin/mutineer` not shipped → installed CLI is broken (convention H1) — PUBLISH BLOCKER
+`mutineer.gemspec:16` `spec.files = Dir.glob("lib/**/*.rb") + ["README.md","mutineer.gemspec"]` never matches
+`bin/mutineer`, yet `spec.executables = ["mutineer"]`. After `gem install`, the binstub points at a file not in
+the gem → `mutineer` fails to run.
 **Fix:** `+ Dir.glob("bin/*")` (and `LICENSE`) in `spec.files`.
 
 ### 🟠 C5 — README describes a different, unbuilt gem (convention H2) — PUBLISH BLOCKER
-`README.md:14,26` still say "M0 skeleton only — no mutation logic yet" and `brutus run <path>`. Real usage
-is `brutus run <source...> --test <test...>`; none of the real flags/exit-codes/config/operators are
+`README.md:14,26` still say "M0 skeleton only — no mutation logic yet" and `mutineer run <path>`. Real usage
+is `mutineer run <source...> --test <test...>`; none of the real flags/exit-codes/config/operators are
 documented. A stranger concludes the tool does nothing.
-**Fix:** rewrite from `cli.rb` BANNER + exit-code taxonomy + `.brutus.yml` keys + operator list.
+**Fix:** rewrite from `cli.rb` BANNER + exit-code taxonomy + `.mutineer.yml` keys + operator list.
 
 ### 🟠 C6 — No LICENSE file (convention H3) — PUBLISH BLOCKER
 `gemspec:12` declares MIT but no `LICENSE` exists. MIT requires the text be distributed.
@@ -94,7 +94,7 @@ Doc (`cli.rb:17-21`) says usage errors = 2. CI can't tell "mistyped flag" from "
 - 🟠 **R7 — sources outside `project_root` silently `no_coverage`** (`coverage_map.rb:114-118`). `../lib/foo.rb`
   / symlinked root stays absolute → coverage dropped, no warning. **Fix:** realpath + warn.
 - 🟡 **R8 — `Config.from_file` calls `exit 1` from the lib layer** (`config.rb:84`). A data class killing the
-  host process can't be embedded/tested. **Fix:** raise a typed `Brutus::` error; CLI maps to exit 2.
+  host process can't be embedded/tested. **Fix:** raise a typed `Mutineer::` error; CLI maps to exit 2.
 
 ## Convention / publish (single-lens)
 - 🟡 gemspec missing `homepage`/`metadata`(`source_code_uri`,`rubygems_mfa_required`)/`email` → `gem build`
@@ -106,7 +106,7 @@ Doc (`cli.rb:17-21`) says usage errors = 2. CI can't tell "mistyped flag" from "
 - 🟠 `statement_removal` (a DEFAULT op) and Tier-2 ops never run end-to-end (all fixtures single-statement;
   `statement_removal.rb:18` needs ≥2). 7b parity tested only on single-statement defs → C2 invisible.
 - 🟠 No multibyte/UTF-8 source test (→ C1 invisible). 🟠 CLI happy-path/`--dry-run`/`--format json`/
-  `--strategy 7b` never driven through `bin/brutus`. 🟡 signal-death decode, coverage non-JSON/Hash-format/
+  `--strategy 7b` never driven through `bin/mutineer`. 🟡 signal-death decode, coverage non-JSON/Hash-format/
   cache-hit-with-failures, worker EAGAIN, syntax-error source file all untested. 🟢 `test_parallel_is_faster_
   than_serial` wall-clock assertion is flaky on CI.
 

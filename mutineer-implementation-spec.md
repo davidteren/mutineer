@@ -1,6 +1,6 @@
-> → plan: [`docs/plans/INDEX-brutus.md`](docs/plans/INDEX-brutus.md) — 6 validated, dependency-ordered milestone plans (M0–M5). Open decisions (§13) resolved in [`docs/plans/_DECISIONS.md`](docs/plans/_DECISIONS.md).
+> → plan: [`docs/plans/INDEX-mutineer.md`](docs/plans/INDEX-mutineer.md) — 6 validated, dependency-ordered milestone plans (M0–M5). Open decisions (§13) resolved in [`docs/plans/_DECISIONS.md`](docs/plans/_DECISIONS.md).
 
-# Brutus — Implementation Spec
+# Mutineer — Implementation Spec
 
 > A lightweight, AST-based mutation-testing gem for Ruby / Minitest.
 > Built from scratch, MIT-licensed, no dependency on (and no code copied from) the commercial `mutant` gem.
@@ -75,7 +75,7 @@ Two distinct phases at runtime:
 - **Test framework integration:** Minitest (the only target for v1).
 - **Stdlib used:** `coverage`, `tempfile`, `optparse`, `set`, `json` (for the coverage cache), and `Process.fork`.
 - **Platform:** Linux and macOS (fork-based). Windows is out of scope for v1.
-- **Dev dependencies:** `rake`, `minitest` (Brutus tests itself with Minitest).
+- **Dev dependencies:** `rake`, `minitest` (Mutineer tests itself with Minitest).
 
 ---
 
@@ -163,7 +163,7 @@ Naive mutation testing runs the whole suite per mutant — unusably slow. We avo
 **Building the map (Phase A):**
 - For each test file, run it in a subprocess with `Coverage.start(lines: true)`, then read `Coverage.result`.
 - Record the set of `(source_file, line)` pairs that executed.
-- Invert to `coverage_map[(file, line)] => [test_files...]`. Persist as JSON in a cache dir (e.g. `.brutus/coverage.json`), keyed by a digest of the test + source files so it auto-invalidates.
+- Invert to `coverage_map[(file, line)] => [test_files...]`. Persist as JSON in a cache dir (e.g. `.mutineer/coverage.json`), keyed by a digest of the test + source files so it auto-invalidates.
 
 **Using the map (Phase B):**
 - For a mutation on `(file, line)`, look up the covering test files.
@@ -215,27 +215,27 @@ Keep the human output scannable — the survivor list *is* the product.
 
 ## 11. Milestones (build in this order; each is verifiable)
 
-- **M0 — Skeleton.** Gem layout (Section 12), `version.rb`, `bin/brutus`, CLI stub parsing options with `optparse`. `brutus --version` works.
-- **M1 — Parse & mutate (no execution).** Prism parsing, subject discovery, the **arithmetic** operator. `brutus run --dry-run fixtures/calculator.rb` prints candidate mutations as diffs. Verify counts/locations against the fixture by hand.
+- **M0 — Skeleton.** Gem layout (Section 12), `version.rb`, `bin/mutineer`, CLI stub parsing options with `optparse`. `mutineer --version` works.
+- **M1 — Parse & mutate (no execution).** Prism parsing, subject discovery, the **arithmetic** operator. `mutineer run --dry-run fixtures/calculator.rb` prints candidate mutations as diffs. Verify counts/locations against the fixture by hand.
 - **M2 — End-to-end, one mutant.** Textual application + **fork isolation** + whole-file reload (7a) + Minitest run over one hardcoded test file. Prove a single arithmetic mutation on the calculator fixture is **killed** by a strong test and **survives** against a weak test.
 - **M3 — Coverage map + selection.** Phase A coverage map, persisted + invalidated by digest; Phase B selects covering test files. Verify uncovered code is flagged **no-coverage**.
 - **M4 — Full Tier 1 + reporting + CI.** All Tier-1 operators, result aggregation, the Reporter (score + survivor diffs), `--threshold` exit codes, `--operators` toggle. Run against the full fixture set and confirm the *expected* survivors (Section 12) appear and the *expected* kills don't.
-- **M5 — Polish.** Parallel worker pool (`--jobs`), config file (`.brutus.yml`), Tier-2 operators, surgical method redefinition (7b), `--format json`.
+- **M5 — Polish.** Parallel worker pool (`--jobs`), config file (`.mutineer.yml`), Tier-2 operators, surgical method redefinition (7b), `--format json`.
 
 ---
 
 ## 12. Project structure & self-testing
 
 ```
-brutus/
-  brutus.gemspec
+mutineer/
+  mutineer.gemspec
   Gemfile
   Rakefile
   README.md
-  bin/brutus
+  bin/mutineer
   lib/
-    brutus.rb
-    brutus/
+    mutineer.rb
+    mutineer/
       version.rb
       cli.rb
       config.rb
@@ -268,10 +268,10 @@ brutus/
     mutators/                    # unit tests per operator
     runner_test.rb
     coverage_map_test.rb
-    integration_test.rb          # run Brutus on fixtures, assert survivors
+    integration_test.rb          # run Mutineer on fixtures, assert survivors
 ```
 
-**Self-testing approach:** the fixtures are the spec for correctness. Write integration tests that run Brutus against each fixture and assert the *exact* set of surviving mutants. For example, `pricing.rb` uses `total >= 100` for a discount; `pricing_test.rb` only tests `total = 150` and `total = 50` (never the `100` boundary), so Brutus **must** report the `>=`→`>` mutation as a survivor. If it doesn't, selection or execution is broken. Dogfood: Brutus should eventually run on its own `lib/`.
+**Self-testing approach:** the fixtures are the spec for correctness. Write integration tests that run Mutineer against each fixture and assert the *exact* set of surviving mutants. For example, `pricing.rb` uses `total >= 100` for a discount; `pricing_test.rb` only tests `total = 150` and `total = 50` (never the `100` boundary), so Mutineer **must** report the `>=`→`>` mutation as a survivor. If it doesn't, selection or execution is broken. Dogfood: Mutineer should eventually run on its own `lib/`.
 
 ---
 
@@ -279,8 +279,8 @@ brutus/
 
 1. **Minimum Ruby version** — 3.2 (needs the `prism` gem) or 3.4+ (Prism bundled, simpler)?
 2. **Default operator set** — ship Tier 1 only on first release, or include statement-removal from day one?
-3. **Config file format** — `.brutus.yml` acceptable, or prefer a Ruby DSL config?
-4. **Gem name** — `brutus` is the working namespace; confirm it's free on RubyGems (or pick the rename; it touches only `module Brutus` and the gemspec).
+3. **Config file format** — `.mutineer.yml` acceptable, or prefer a Ruby DSL config?
+4. **Gem name** — `mutineer` is the working namespace; confirm it's free on RubyGems (or pick the rename; it touches only `module Mutineer` and the gemspec).
 5. **CI behaviour** — should `--since <git-ref>` (mutate only changed lines) be in scope soon? It's the highest-value "fast path" feature after the MVP, but it's not in v1.
 
 ---
@@ -294,4 +294,4 @@ brutus/
 - Rails-specific parallel-worker database isolation.
 - Incremental/`--since` mode (noted as near-term future work, not v1).
 - DSL / metaprogramming mutation (`attr_accessor`, class-level macros).
-- Distributed/remote execution or any network calls. Brutus runs entirely on the local machine.
+- Distributed/remote execution or any network calls. Mutineer runs entirely on the local machine.
