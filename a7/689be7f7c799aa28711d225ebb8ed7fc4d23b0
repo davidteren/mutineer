@@ -1,0 +1,47 @@
+CHANGELOG.md
+  s_0214cb1e158c48::t_6810bbb8fe7a86 17-19
+README.md
+  s_0214cb1e158c48::t_188953651741c1 47
+test/parallel_strategy_test.rb
+  s_0214cb1e158c48::t_4d5517c63ef850 11
+  s_0214cb1e158c48::t_93d811e44015d2 33-35
+  s_0214cb1e158c48::t_172ff6d48b5f59 55-57,59,63
+lib/mutineer/runner.rb
+  s_0214cb1e158c48::t_789b706b7f540e 87
+  s_0214cb1e158c48::t_10f245549829b1 102
+lib/mutineer/config.rb
+  s_0214cb1e158c48::t_3d54c0e2b96e63 16
+  s_0214cb1e158c48::t_9653665a567b5f 39
+docs/plans/01-m0-skeleton.md
+  s_0214cb1e158c48::t_b43b4d5e11ccff 1-362
+docs/plans/02-m1-parse-mutate.md
+  s_0214cb1e158c48::t_870ae1292b9c69 1-473
+docs/plans/03-m2-end-to-end-one-mutant.md
+  s_0214cb1e158c48::t_2d2f90d19ff89c 1-492
+docs/plans/04-m3-coverage-map.md
+  s_0214cb1e158c48::t_7c5f5ae3aba534 1-409
+docs/plans/05-m4-full-tier1-reporting-ci.md
+  s_0214cb1e158c48::t_cfbb27b5d6cf52 1-909
+docs/plans/06-m5-polish.md
+  s_0214cb1e158c48::t_3699b907ae4f8b 1-617
+docs/plans/INDEX-mutineer.md
+  s_0214cb1e158c48::t_35214385f381c9 1-78
+docs/plans/_DECISIONS.md
+  s_0214cb1e158c48::t_d71e156b5bfe23 1-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "a7689be7f7c799aa28711d225ebb8ed7fc4d23b0",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
