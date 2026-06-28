@@ -14,8 +14,9 @@ All notable changes to this project are documented here. The format is based on
   condition-negation (Tier 2, opt-in via `--operators`).
 - Coverage-guided test selection with a digest-keyed, auto-invalidating cache.
 - Fork-isolated, parallel execution (`--jobs`) with per-mutant timeouts.
-- Two application strategies: `7a` whole-file reload (default) and `7b` surgical
-  redefinition, verified to agree on namespaced multi-statement methods.
+- Two application strategies: `reload` (whole-file, default) and `redefine`
+  (surgical), verified to agree on namespaced multi-statement methods. (`7a`/`7b`
+  accepted as deprecated aliases.)
 - `run`, `--dry-run`, `--threshold`, `--only`, `--operators`, `--strategy`,
   `--format human|json`, `--output`, `--list-operators`.
 - `.mutineer.yml` configuration (CLI > config > default precedence).

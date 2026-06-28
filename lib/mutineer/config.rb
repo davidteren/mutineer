@@ -13,7 +13,7 @@ module Mutineer
   # `threshold` 0.0 means the CI gate is off (spec §10).
   #
   # M5 adds: jobs (parallel workers), format (human|json), output (report file),
-  # strategy (7a|7b), require_paths (extra files to load). Config-file loading and
+  # strategy (reload|redefine), require_paths (extra files to load). Config loading and
   # the CLI > file > default precedence merge live here (KTD3/KTD4).
   Config = Struct.new(
     :sources, :tests, :operators, :threshold, :only, :dry_run,
@@ -36,7 +36,7 @@ module Mutineer
       self.load_paths    ||= ["lib"]
       self.jobs          ||= Etc.nprocessors
       self.format        ||= "human"
-      self.strategy      ||= "7a"
+      self.strategy      ||= "reload"
       self.require_paths ||= []
     end
 

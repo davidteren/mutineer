@@ -84,7 +84,7 @@ module Mutineer
       end
     end
 
-    def self.run(mutation, source_file:, coverage_map:, subject: nil, strategy: "7a",
+    def self.run(mutation, source_file:, coverage_map:, subject: nil, strategy: "reload",
                  timeout: Isolation::DEFAULT_TIMEOUT)
       source  = File.read(source_file)
       mutated = mutation.apply(source)
@@ -99,7 +99,7 @@ module Mutineer
       abs_tests = test_files.map { |t| File.expand_path(t, coverage_map.project_root) }
 
       Isolation.run(timeout: timeout) do
-        if strategy == "7b"
+        if strategy == "redefine"
           Isolation.apply_surgical(mutation, subject, source)
         else
           Isolation.apply_whole_file(mutated, source_file)

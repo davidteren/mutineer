@@ -8,7 +8,7 @@ require "tmpdir"
 class ParallelStrategyTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
-  def run_mutineer(strategy: "7a", jobs: nil)
+  def run_mutineer(strategy: "reload", jobs: nil)
     config = Mutineer::Config.new(
       sources: ["test/fixtures/calculator.rb"],
       tests: ["test/fixtures/calculator_weak_test.rb"],
@@ -30,9 +30,9 @@ class ParallelStrategyTest < Minitest::Test
     assert_equal survivor_keys(serial), survivor_keys(parallel)
   end
 
-  def test_strategy_7b_matches_7a
-    a = run_mutineer(strategy: "7a", jobs: 1)
-    b = run_mutineer(strategy: "7b", jobs: 1)
+  def test_strategy_redefine_matches_reload
+    a = run_mutineer(strategy: "reload", jobs: 1)
+    b = run_mutineer(strategy: "redefine", jobs: 1)
     assert_equal a.mutation_score, b.mutation_score
     assert_equal survivor_keys(a), survivor_keys(b)
   end
@@ -52,15 +52,15 @@ class ParallelStrategyTest < Minitest::Test
   # (`base * RATE` -> `/`) references an UNQUALIFIED enclosing-namespace constant,
   # which the old 7b turned into a NameError (a different verdict). It also proves
   # statement_removal generates a mutation here (the body has >=2 statements).
-  def test_namespaced_multistatement_7a_equals_7b
-    a = run_namespaced(strategy: "7a")
-    b = run_namespaced(strategy: "7b")
+  def test_namespaced_multistatement_redefine_equals_reload
+    a = run_namespaced(strategy: "reload")
+    b = run_namespaced(strategy: "redefine")
 
-    assert_equal survivor_keys(a), survivor_keys(b), "7a and 7b survivor sets must match"
+    assert_equal survivor_keys(a), survivor_keys(b), "reload and redefine survivor sets must match"
     assert_equal a.killed_count, b.killed_count
     assert_equal a.errored_count, b.errored_count
     assert_equal [["total", "/"]], survivor_keys(a), "the RATE-referencing no-op mutation survives"
-    assert_equal 0, a.errored_count, "no spurious NameError under 7b (constant resolves)"
+    assert_equal 0, a.errored_count, "no spurious NameError under redefine (constant resolves)"
 
     removals = a.results.count { |r| r.mutation&.operator == :statement_removal }
     assert_operator removals, :>=, 1, "statement_removal must run on the multi-statement body"

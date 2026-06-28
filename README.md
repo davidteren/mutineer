@@ -44,7 +44,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT (default: 0 = off) |
 | `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
 | `--jobs N` | Parallel worker count (default: processor count) |
-| `--strategy 7a\|7b` | Mutation application: `7a` whole-file reload (default), `7b` surgical redefinition |
+| `--strategy NAME` | Mutation application: `reload` whole-file (default) or `redefine` surgical (`7a`/`7b` accepted as deprecated aliases) |
 | `--format human\|json` | Report format (default: human) |
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--dry-run` | List candidate mutations without executing |
