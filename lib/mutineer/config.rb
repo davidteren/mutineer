@@ -24,12 +24,12 @@ module Mutineer
     :sources, :tests, :operators, :threshold, :only, :dry_run,
     :cache_dir, :project_root, :load_paths,
     :jobs, :format, :output, :strategy, :require_paths,
-    :boot, :rails, :since,
+    :boot, :rails, :since, :framework,
     keyword_init: true
   ) do
     CONFIG_FILE = ".mutineer.yml"
     # Keys accepted in .mutineer.yml (R7). `require` maps to the :require_paths field.
-    KNOWN_KEYS = %w[operators jobs threshold only require boot rails since].freeze
+    KNOWN_KEYS = %w[operators jobs threshold only require boot rails since framework].freeze
 
     def initialize(**kwargs)
       super
@@ -109,7 +109,20 @@ module Mutineer
         config.boot ||= "config/environment"
         config.strategy = "redefine" unless explicit.include?(:strategy)
       end
+
+      # Auto-detect the framework only when neither CLI nor config file set it
+      # (explicit value, from either source, is already on config.framework and
+      # always wins). Default minitest unless the test files clearly look RSpec.
+      config.framework ||= detect_framework(config.tests)
       config
+    end
+
+    # Pick rspec when a MAJORITY of the given test files end with _spec.rb;
+    # otherwise minitest. Empty/ambiguous -> minitest (the safe default).
+    def self.detect_framework(tests)
+      tests = Array(tests)
+      specs = tests.count { |t| t.to_s.end_with?("_spec.rb") }
+      specs > tests.length / 2.0 ? "rspec" : "minitest"
     end
 
     def self.field_for(known_key)
@@ -123,6 +136,7 @@ module Mutineer
       when "threshold" then value.to_f
       when "require"   then Array(value).map(&:to_s)
       when "boot"      then value.to_s
+      when "framework" then value.to_s
       when "rails"     then value == true || value.to_s == "true"
       else value
       end

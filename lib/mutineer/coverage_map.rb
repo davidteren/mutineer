@@ -7,6 +7,7 @@ require "fileutils"
 require "rbconfig"
 require "coverage"
 require_relative "minitest_integration"
+require_relative "test_runners"
 
 module Mutineer
   # Maps `(source_file, line) -> [test_files]` so each mutant runs only against
@@ -23,7 +24,8 @@ module Mutineer
 
     def initialize(source_paths:, test_paths:, cache_dir: ".mutineer",
                    load_paths: ["lib"], project_root: Dir.pwd,
-                   capture_timeout: DEFAULT_CAPTURE_TIMEOUT, boot_path: nil)
+                   capture_timeout: DEFAULT_CAPTURE_TIMEOUT, boot_path: nil,
+                   framework: "minitest")
       @source_paths = Array(source_paths)
       @test_paths   = Array(test_paths)
       @cache_dir    = cache_dir
@@ -31,6 +33,7 @@ module Mutineer
       @project_root = project_root
       @capture_timeout = capture_timeout
       @boot_path    = boot_path
+      @framework    = framework || "minitest"
       @map          = {}
       @failed_test_files = []
       @phase_a_ran  = false
@@ -123,7 +126,7 @@ module Mutineer
           begin
             Runner.send(:reconnect_active_record) if rails
             Coverage.result(clear: true, stop: false) # discard pre-test delta
-            MinitestIntegration.run([abs_test])
+            TestRunners.for(@framework).run([abs_test])
             # lines:true yields {file => {lines: [...]}}; reduce to the counts
             # array record() expects, keeping only our source files.
             Coverage.result(stop: false)
@@ -188,6 +191,10 @@ module Mutineer
     end
 
     def subprocess_script(test_path)
+      @framework == "rspec" ? rspec_subprocess_script(test_path) : minitest_subprocess_script(test_path)
+    end
+
+    def minitest_subprocess_script(test_path)
       <<~RUBY
         require "coverage"
         require "json"
@@ -201,6 +208,35 @@ module Mutineer
         _orig = $stdout
         $stdout = StringIO.new
         Minitest.run([])
+        $stdout = _orig
+        puts Coverage.result.to_json
+      RUBY
+    end
+
+    # Same coverage-JSON contract as the minitest path, but driven by RSpec:
+    # require rspec/core lazily, load the sources under Coverage, then run the
+    # one spec via RSpec::Core::Runner with output silenced so only the JSON
+    # reaches stdout. A missing rspec makes `require` raise -> subprocess exits
+    # non-zero -> capture() records a skipped (incomplete-map) test, with a hint.
+    def rspec_subprocess_script(test_path)
+      <<~RUBY
+        require "coverage"
+        require "json"
+        require "stringio"
+        begin
+          require "rspec/core"
+        rescue LoadError
+          warn "[mutineer] framework 'rspec' requested but rspec is not available in the project"
+          exit 3
+        end
+        RSpec::Core::Runner.disable_autorun!
+        Coverage.start(lines: true)
+        $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
+        #{abs_source_paths.inspect}.each { |f| load f }
+        _orig = $stdout
+        _sink = StringIO.new
+        $stdout = _sink
+        RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
         $stdout = _orig
         puts Coverage.result.to_json
       RUBY
@@ -234,6 +270,7 @@ module Mutineer
       digest_group(d, "test", @test_paths)
       digest_group(d, "boot", [boot_digest_path]) if @boot_path
       @load_paths.sort.each { |lp| d.update("loadpath\0#{lp}\0") }
+      d.update("framework\0#{@framework}\0")
       d.hexdigest
     end
 

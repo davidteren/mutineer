@@ -37,6 +37,7 @@ module Mutineer
         --since REF          Only mutate lines changed since git REF (e.g. origin/main)
         --jobs N             Parallel worker count (default: processor count)
         --strategy NAME      reload (whole-file) or redefine (surgical); default: reload
+        --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then
                              fork per mutant (Rails apps; requires --test)
         --rails              Sugar for --boot config/environment --strategy redefine
@@ -80,6 +81,7 @@ module Mutineer
         o.on("--threshold FLOAT") { |v| opts[:threshold] = v.to_f; explicit << :threshold }
         o.on("--jobs N") { |v| opts[:jobs] = v; explicit << :jobs }
         o.on("--strategy STRAT") { |v| opts[:strategy] = v; explicit << :strategy }
+        o.on("--framework NAME") { |v| opts[:framework] = v; explicit << :framework }
         o.on("--boot FILE") { |v| opts[:boot] = v; explicit << :boot }
         o.on("--rails") { opts[:rails] = true }
         o.on("--format FORMAT") { |v| opts[:format] = v }
@@ -184,6 +186,11 @@ module Mutineer
       config.strategy = STRATEGY_ALIASES.fetch(config.strategy, config.strategy)
       unless %w[reload redefine].include?(config.strategy)
         warn %(mutineer: unknown strategy "#{config.strategy}". Expected: reload, redefine)
+        exit 2
+      end
+
+      unless %w[minitest rspec].include?(config.framework)
+        warn %(mutineer: unknown framework "#{config.framework}". Expected: minitest, rspec)
         exit 2
       end
 

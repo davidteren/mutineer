@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "minitest"
 require "stringio"
 
 module Mutineer
@@ -21,6 +20,17 @@ module Mutineer
     # `test_files` is one path or an Array of paths (M3 coverage selection passes
     # the covering subset); each is loaded before the single Minitest.run.
     def self.run(test_files)
+      # minitest is required LAZILY (never at load time) so Mutineer keeps zero
+      # runtime gem deps and loads fine in an rspec-only project; a missing
+      # minitest raises a clear Mutineer error rather than a LoadError backtrace.
+      begin
+        require "minitest"
+      rescue LoadError
+        raise Mutineer::FrameworkUnavailable,
+              "minitest is not available — add minitest to the project under test, " \
+              "or use --framework rspec"
+      end
+
       # Neutralise autorun so a test file's `require "minitest/autorun"`
       # registers no at_exit hook.
       def Minitest.autorun; end # rubocop:disable Lint/NestedMethodDefinition

@@ -57,6 +57,12 @@ class CliTest < Minitest::Test
     assert_includes err, %(unknown strategy "bogus")
   end
 
+  def test_unknown_framework_exits_two
+    _, err, status = mutineer("run", "x.rb", "--framework", "junit")
+    assert_equal 2, status.exitstatus
+    assert_includes err, %(unknown framework "junit")
+  end
+
   def test_unwritable_output_exits_two
     _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--output", "/no-such-dir/out.json")
     assert_equal 2, status.exitstatus

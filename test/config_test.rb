@@ -90,6 +90,40 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  # --- framework: explicit value, config file, and auto-detect ---
+
+  def test_from_file_accepts_framework
+    with_config("framework: rspec\n") do |path|
+      out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty out
+      assert_empty err
+      assert_equal({ framework: "rspec" }, @hash)
+      cfg = Config.resolve({}, @hash, Set.new)
+      assert_equal "rspec", cfg.framework
+    end
+  end
+
+  def test_resolve_auto_detects_rspec_from_spec_test_names
+    cfg = Config.resolve({ tests: ["foo_spec.rb", "bar_spec.rb"] }, {}, Set.new)
+    assert_equal "rspec", cfg.framework
+  end
+
+  def test_resolve_defaults_minitest_for_test_names
+    cfg = Config.resolve({ tests: ["foo_test.rb", "bar_test.rb"] }, {}, Set.new)
+    assert_equal "minitest", cfg.framework
+  end
+
+  def test_resolve_defaults_minitest_when_ambiguous_or_empty
+    assert_equal "minitest", Config.resolve({}, {}, Set.new).framework
+    # tie (1 spec, 1 test) is not a majority -> minitest
+    assert_equal "minitest", Config.resolve({ tests: ["a_spec.rb", "b_test.rb"] }, {}, Set.new).framework
+  end
+
+  def test_explicit_framework_wins_over_autodetect
+    cfg = Config.resolve({ framework: "minitest", tests: ["a_spec.rb", "b_spec.rb"] }, {}, Set[:framework])
+    assert_equal "minitest", cfg.framework
+  end
+
   # R8: the lib layer raises a typed error rather than calling exit (which would
   # kill an embedding host). The CLI maps it to exit 2.
   def test_from_file_malformed_yaml_raises_config_error

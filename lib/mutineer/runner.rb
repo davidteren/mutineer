@@ -5,6 +5,7 @@ require_relative "project"
 require_relative "result"
 require_relative "isolation"
 require_relative "minitest_integration"
+require_relative "test_runners"
 require_relative "coverage_map"
 require_relative "changed_lines"
 require_relative "mutator_registry"
@@ -63,14 +64,14 @@ module Mutineer
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: config.cache_dir, project_root: config.project_root,
-          load_paths: config.load_paths,
+          load_paths: config.load_paths, framework: config.framework,
           boot_path: File.expand_path(config.boot, config.project_root)
         ).build_via_fork(rails: config.rails)
       else
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: config.cache_dir, project_root: config.project_root,
-          load_paths: config.load_paths
+          load_paths: config.load_paths, framework: config.framework
         ).build_or_load
       end
 
@@ -99,9 +100,10 @@ module Mutineer
       strategy = config.strategy
       results =
         begin
+          framework = config.framework
           bare = WorkerPool.new(config.jobs).run(jobs) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
-                subject: subject, strategy: strategy, rails: config.rails)
+                subject: subject, strategy: strategy, rails: config.rails, framework: framework)
           end
           # The bare Results carry only status (Subjects hold live AST nodes that
           # do not marshal); reattach subject+mutation in the parent, in order.
@@ -159,7 +161,7 @@ module Mutineer
     end
 
     def self.run(mutation, source_file:, coverage_map: nil, subject: nil, strategy: "reload",
-                 timeout: Isolation::DEFAULT_TIMEOUT, rails: false)
+                 timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest")
       source  = File.read(source_file)
       mutated = mutation.apply(source)
 
@@ -184,7 +186,7 @@ module Mutineer
         else
           Isolation.apply_whole_file(mutated, source_file)
         end
-        MinitestIntegration.run(abs_tests)
+        TestRunners.for(framework).run(abs_tests)
       end
     end
 
