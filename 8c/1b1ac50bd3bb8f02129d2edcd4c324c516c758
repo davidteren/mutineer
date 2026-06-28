@@ -1,0 +1,40 @@
+test/fixtures/boot/widget_unrelated_failing_test.rb
+  s_0214cb1e158c48::t_c54bafff25854e 1-12
+lib/mutineer/runner.rb
+  s_0214cb1e158c48::t_cf6561415bae5d 101
+  s_0214cb1e158c48::t_bead6d4bdbd6e6 41-44,56-57,59-67
+  s_0214cb1e158c48::t_4eedbb379dc565 143,150-155,157
+  s_0214cb1e158c48::t_b5a1823bad6e1e 45
+test/boot_mode_test.rb
+  s_0214cb1e158c48::t_740d325084ad68 6-9,11-13,16,18,20,26,34-39,50-75
+lib/mutineer/coverage_map.rb
+  s_0214cb1e158c48::t_15a3e9713f0a9b 26,33
+  s_0214cb1e158c48::t_b48e3bfbc839c7 55,62,66-69,78,96-126,132-153,244
+  s_0214cb1e158c48::t_58757b43e49cfd 235,240-243
+  s_0214cb1e158c48::t_680d4a33d1307f 8-9
+  s_0214cb1e158c48::t_d4c314dad3adcf 39-40,43-54
+  s_0214cb1e158c48::t_098f731a84ba3a 127-131
+  s_0214cb1e158c48::t_f07e04599ad038 59-61
+  s_0214cb1e158c48::t_ade054ce71dc6e 63-65
+  s_0214cb1e158c48::t_1ba3a16da3d8bf 154
+  s_0214cb1e158c48::t_b7d1d48b4f1936 245
+  s_0214cb1e158c48::t_2ffafb0bd9c855 57-58
+test/fixtures/boot/widget.rb
+  s_0214cb1e158c48::t_326dd9870bfe08 12-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "8c1b1ac50bd3bb8f02129d2edcd4c324c516c758",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
