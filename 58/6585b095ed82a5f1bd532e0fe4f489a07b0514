@@ -1,0 +1,78 @@
+test/fixtures/pricing.rb
+  s_0214cb1e158c48::t_ce958a89804cf4 1-11
+lib/brutus/mutators/comparison.rb
+  s_0214cb1e158c48::t_1bc54401fb4ef7 3-4,7-33
+lib/brutus/runner.rb
+  s_0214cb1e158c48::t_16cc853b451f09 5,9-10
+  s_0214cb1e158c48::t_529f393ef7287c 23-55
+test/fixtures/calculator_weak_test.rb
+  s_0214cb1e158c48::t_efe1bef9ea1d9a 6-8,11-31
+test/mutators/boolean_connector_test.rb
+  s_0214cb1e158c48::t_1256d628f8c5fd 1-53
+test/mutators/boolean_literal_test.rb
+  s_0214cb1e158c48::t_c98638778b2faa 1-44
+lib/brutus/mutators/boolean_connector.rb
+  s_0214cb1e158c48::t_6389bbb18df2fb 3-4,7-39
+test/mutators/statement_removal_test.rb
+  s_0214cb1e158c48::t_e7aa22b38a86be 1-49
+test/mutators/comparison_test.rb
+  s_0214cb1e158c48::t_bda692b787c868 1-43
+test/mutator_registry_test.rb
+  s_0214cb1e158c48::t_c1b24be1778f43 1-36
+test/reporter_test.rb
+  s_0214cb1e158c48::t_f7349c670cc79c 4,7-99,101-106,108-115
+  s_0214cb1e158c48::t_a1574603931e95 100,107
+lib/brutus/cli.rb
+  s_0214cb1e158c48::t_aaf63a693f7543 5,8-10,16-20,26-34,42,53-57,62,64,74-75,78,82-89,92-105,108-112,114-117,120-132,137-140
+lib/brutus/reporter.rb
+  s_0214cb1e158c48::t_e71eec2b75e2ef 3-4,6-9,11-12,14-106
+lib/brutus/mutators/boolean_literal.rb
+  s_0214cb1e158c48::t_082b0a008ba307 3-4,7-40
+lib/brutus/config.rb
+  s_0214cb1e158c48::t_04b4a7c7e3b2ff 4-21
+lib/brutus.rb
+  s_0214cb1e158c48::t_3f09475d45e376 4,10,15-23
+lib/brutus/mutators/statement_removal.rb
+  s_0214cb1e158c48::t_35cef35527574c 3-4,7-31
+test/integration_test.rb
+  s_0214cb1e158c48::t_79bc10fc3770bb 1-88
+test/fixtures/pricing_test.rb
+  s_0214cb1e158c48::t_177ea5be8cbca6 1-17
+test/coverage_map_test.rb
+  s_0214cb1e158c48::t_f6188a42f951d1 125
+  s_0214cb1e158c48::t_edeb46893aa0d6 14-16
+  s_0214cb1e158c48::t_851443a671ecf4 40
+lib/brutus/result.rb
+  s_0214cb1e158c48::t_9c19ef383b20b5 16-26,35-75
+  s_51ac392e7118b0::t_4d872a5c4095eb 76
+test/fixtures/calculator_add_only_test.rb
+  s_0214cb1e158c48::t_37ed245b1ffd53 1-13
+test/fixtures/calculator_strong_test.rb
+  s_0214cb1e158c48::t_106324828c5fb0 6-7,10,14,18,22-30
+lib/brutus/mutator_registry.rb
+  s_0214cb1e158c48::t_c7aab1450f5b10 3-8,10-13,15-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "586585b095ed82a5f1bd532e0fe4f489a07b0514",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_51ac392e7118b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5bbd3892-8cb3-451c-8afb-94e845d3ac73",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
