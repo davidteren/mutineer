@@ -1,7 +1,7 @@
 # Mutineer
 
 A clean-room mutation-testing tool for Ruby. Mutineer mutates your source one
-change at a time, runs your Minitest suite against each mutant, and reports the
+change at a time, runs your test suite (Minitest or RSpec) against each mutant, and reports the
 ones your tests failed to catch — the gaps where your suite isn't actually
 testing anything.
 
@@ -45,6 +45,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--operators LIST` | Comma-separated operator names (default: the Tier-1 set) |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT (default: 0 = off) |
 | `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
+| `--framework NAME` | `minitest` (default) or `rspec`; auto-detected as rspec when most `--test` files end in `_spec.rb` |
 | `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`) — ideal for PR CI |
 | `--jobs N` | Parallel worker count (default: processor count) |
 | `--strategy NAME` | Mutation application: `reload` whole-file (default) or `redefine` surgical (`7a`/`7b` accepted as deprecated aliases) |

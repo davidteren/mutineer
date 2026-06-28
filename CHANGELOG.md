@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-06-28
+
+### Added
+- **RSpec support** (#6) — `--framework rspec` (or auto-detected when most
+  `--test` files end in `_spec.rb`) runs RSpec suites instead of Minitest, via a
+  pluggable test-runner abstraction. Both frameworks are loaded lazily, so
+  Mutineer keeps zero runtime gem dependencies and works in an rspec-only
+  project; coverage selection works for both. `.mutineer.yml` accepts `framework:`.
+
+### Fixed
+- **Redefine strategy keeps compact `class A::B` as a single nesting wrapper**
+  (#5) — avoids a constant-resolution disagreement with the reload strategy.
+
 ## [0.5.0] - 2026-06-28
 
 ### Fixed
@@ -64,6 +77,7 @@ All notable changes to this project are documented here. The format is based on
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.6.0]: https://github.com/davidteren/mutineer/releases/tag/v0.6.0
 [0.5.0]: https://github.com/davidteren/mutineer/releases/tag/v0.5.0
 [0.4.0]: https://github.com/davidteren/mutineer/releases/tag/v0.4.0
 [0.3.0]: https://github.com/davidteren/mutineer/releases/tag/v0.3.0
