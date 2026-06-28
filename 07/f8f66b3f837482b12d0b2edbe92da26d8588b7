@@ -1,0 +1,81 @@
+lib/brutus/coverage_map.rb
+  s_0214cb1e158c48::t_74e67cb58c825c 149-152,154-183
+  s_0214cb1e158c48::t_2e54cc33325d91 82-97,100
+  s_0214cb1e158c48::t_53e37571c67cb0 39
+  s_0214cb1e158c48::t_3b4e9f255672a9 18-19,23-24,30
+lib/brutus/reporter.rb
+  s_0214cb1e158c48::t_a4fae153c09b76 122-128,130-131
+  s_0214cb1e158c48::t_a20f1c5aa645d4 79-82
+  s_0214cb1e158c48::t_fc4fa10d154b99 143
+test/json_reporter_test.rb
+  s_0214cb1e158c48::t_2c765e172c75ef 64-65,67,71,73
+test/fixtures/namespaced_test.rb
+  s_0214cb1e158c48::t_0cf3db3619c5f8 1-14
+lib/brutus/cli.rb
+  s_0214cb1e158c48::t_acbab621bbd8b4 135-144,150-151,161,167,172,176-188,197
+  s_0214cb1e158c48::t_10da61742cbfba 94-103
+  s_0214cb1e158c48::t_04447d8303932e 228-229
+lib/brutus/mutators/literal_mutation.rb
+  s_0214cb1e158c48::t_b7cb5a4c2a3a88 23
+lib/brutus/worker_pool.rb
+  s_0214cb1e158c48::t_c04b766d7ad173 77-79,83-86,88-95,98-109
+  s_0214cb1e158c48::t_88bb2d7bdb0ba2 43-60
+test/config_test.rb
+  s_0214cb1e158c48::t_4dd066268775f4 65-67,69
+lib/brutus/runner.rb
+  s_0214cb1e158c48::t_e2ac0baf2423cf 95
+  s_0214cb1e158c48::t_76b4cb3f9d3f2b 54-60,62-74,79-84
+  s_0214cb1e158c48::t_e5a5ace6ead1fe 85-86
+test/cli_test.rb
+  s_0214cb1e158c48::t_56ca060a5a4399 25-27,29,33,35,39,41,45,47,50-56
+  s_a526102195a0a2::t_fd0b11b4681196 57
+lib/brutus/config.rb
+  s_0214cb1e158c48::t_6a744e027552c4 65-66
+  s_0214cb1e158c48::t_44636b0170a787 87
+  s_0214cb1e158c48::t_737f40a5215777 8-11
+lib/brutus/mutators/condition_negation.rb
+  s_0214cb1e158c48::t_8d432c33e0e197 30
+test/isolation_test.rb
+  s_0214cb1e158c48::t_1410a06349b840 34-40
+test/fixtures/namespaced.rb
+  s_0214cb1e158c48::t_ebd5ed6c689f58 1-6,8-16
+  s_0214cb1e158c48::t_8e9c8e773626f0 7
+lib/brutus/mutation.rb
+  s_0214cb1e158c48::t_3d0ade11b971d0 9-11,13
+test/mutation_test.rb
+  s_0214cb1e158c48::t_08a95292385014 31-49
+lib/brutus/isolation.rb
+  s_0214cb1e158c48::t_c073ea19b7ddaf 93-94,97-117,119-137,140-146,148
+  s_0214cb1e158c48::t_4fd74a048b7190 46-54,56-62
+test/parallel_strategy_test.rb
+  s_0214cb1e158c48::t_4c21dbf5b986a6 87-112
+  s_0214cb1e158c48::t_9e73f168d28b41 40-68
+test/worker_pool_test.rb
+  s_0214cb1e158c48::t_2e9a1c40d267f2 44-48,50-58,65-72,74-83
+LICENSE
+  s_0214cb1e158c48::t_ac0339305ad6fa 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "07f8f66b3f837482b12d0b2edbe92da26d8588b7",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_a526102195a0a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aafbb10f-22c1-4c10-99ee-920c290685ff",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
