@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require "tempfile"
 require_relative "result"
+require_relative "parser"
 
 module Brutus
   # Fork-based isolation for running one mutant. The block runs in a child
@@ -51,6 +53,40 @@ module Brutus
       _, status = Process.wait2(pid)
       monitor.kill
       decode(status, timed_out: timed_out)
+    end
+
+    # Strategy 7a (default): write the whole mutated file and `load` it, which
+    # reopens its classes and redefines every method in place. Re-runs file-level
+    # side effects. Child-only — mutates the loaded program.
+    def self.apply_whole_file(mutated)
+      Tempfile.create(["brutus_mutant", ".rb"]) do |f|
+        f.write(mutated)
+        f.flush
+        load f.path
+      end
+    end
+
+    # Strategy 7b: extract just the enclosing DefNode, apply the mutation to that
+    # snippet, resolve the owner via the namespace path, and class_eval the one
+    # method (KTD6). No file-level side effects re-run. Child-only.
+    #
+    # ponytail: a single owner.class_eval handles BOTH instance and singleton
+    # methods — the extracted snippet keeps its own `def self.x` for singletons,
+    # so class_eval (self == owner) redefines it correctly. Routing singletons
+    # through singleton_class.class_eval (R17) would double-wrap and define on the
+    # wrong class.
+    def self.apply_surgical(mutation, subject, source)
+      loc = subject.def_node.location
+      def_start = loc.start_offset
+      snippet = source[def_start...loc.end_offset]
+      rel_s = mutation.start_offset - def_start
+      rel_e = mutation.end_offset - def_start
+      mutated = snippet[0...rel_s] + mutation.replacement + snippet[rel_e..]
+      return if Parser.parse_string(mutated).errors.any? # parent guard already filters
+
+      owner = subject.namespace.empty? ? Object : Object.const_get(subject.namespace.join("::"))
+      def_line = source[0...def_start].count("\n") + 1
+      owner.class_eval(mutated, subject.file, def_line)
     end
 
     def self.decode(status, timed_out:)

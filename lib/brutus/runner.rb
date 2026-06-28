@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "tempfile"
 require_relative "parser"
 require_relative "project"
 require_relative "result"
@@ -8,6 +7,7 @@ require_relative "isolation"
 require_relative "minitest_integration"
 require_relative "coverage_map"
 require_relative "mutator_registry"
+require_relative "worker_pool"
 
 module Brutus
   # Orchestrates one mutation end-to-end: apply it textually, validate the
@@ -31,6 +31,7 @@ module Brutus
     def self.execute(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
       config.sources.each { |f| require File.expand_path(f, config.project_root) }
+      config.require_paths.each { |f| require File.expand_path(f, config.project_root) }
 
       coverage_map = CoverageMap.new(
         source_paths: config.sources, test_paths: config.tests,
@@ -38,22 +39,33 @@ module Brutus
         load_paths: config.load_paths
       ).build_or_load
 
+      # Collect every (subject, mutation) up front so the pool can fan them out.
       source_map = {}
-      results = []
+      jobs = []
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file))
         operator_classes.each do |klass|
           klass.new.mutations_for(subject, source).each do |mutation|
-            result = run(mutation, source_file: subject.file, coverage_map: coverage_map)
-            results << result.with(subject: subject, mutation: mutation)
+            jobs << [subject, mutation]
           end
         end
       end
 
+      strategy = config.strategy
+      bare = WorkerPool.new(config.jobs).run(jobs) do |subject, mutation|
+        run(mutation, source_file: subject.file, coverage_map: coverage_map,
+            subject: subject, strategy: strategy)
+      end
+
+      # The bare Results carry only status (Subjects hold live AST nodes that do
+      # not marshal); reattach subject+mutation in the parent, in input order.
+      results = bare.each_with_index.map { |r, i| r.with(subject: jobs[i][0], mutation: jobs[i][1]) }
+
       [AggregateResult.new(results), source_map]
     end
 
-    def self.run(mutation, source_file:, coverage_map:, timeout: Isolation::DEFAULT_TIMEOUT)
+    def self.run(mutation, source_file:, coverage_map:, subject: nil, strategy: "7a",
+                 timeout: Isolation::DEFAULT_TIMEOUT)
       source  = File.read(source_file)
       mutated = mutation.apply(source)
 
@@ -67,10 +79,10 @@ module Brutus
       abs_tests = test_files.map { |t| File.expand_path(t, coverage_map.project_root) }
 
       Isolation.run(timeout: timeout) do
-        Tempfile.create(["brutus_mutant", ".rb"]) do |f|
-          f.write(mutated)
-          f.flush
-          load f.path # 7a: reopens the class(es), redefining methods in place
+        if strategy == "7b"
+          Isolation.apply_surgical(mutation, subject, source)
+        else
+          Isolation.apply_whole_file(mutated)
         end
         MinitestIntegration.run(abs_tests)
       end

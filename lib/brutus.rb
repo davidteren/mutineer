@@ -16,11 +16,14 @@ require_relative "brutus/mutators/comparison"
 require_relative "brutus/mutators/boolean_connector"
 require_relative "brutus/mutators/boolean_literal"
 require_relative "brutus/mutators/statement_removal"
+require_relative "brutus/mutators/return_nil"
+require_relative "brutus/mutators/literal_mutation"
+require_relative "brutus/mutators/condition_negation"
 require_relative "brutus/mutator_registry"
+require_relative "brutus/worker_pool"
 require_relative "brutus/runner"
 require_relative "brutus/reporter"
 require_relative "brutus/cli"
-# require_relative "brutus/mutators/return_nil"  # M5
 
 module Brutus
 end

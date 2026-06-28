@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+require "stringio"
 require_relative "mutation"
 
 module Brutus
@@ -16,7 +18,29 @@ module Brutus
       @source_map = source_map
     end
 
-    def report(out: $stdout, err: $stderr, threshold: 0.0)
+    # Single entry point (R20/R21). Branches on `format` ("human" | "json") and
+    # routes the rendered report to `output` (a file, with a stderr confirmation)
+    # or to `out`. Diagnostics always go to `err`.
+    def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil)
+      rendered =
+        if format == "json"
+          json_report
+        else
+          sio = StringIO.new
+          human_report(sio, err, threshold)
+          sio.string
+        end
+
+      if output
+        abs = File.expand_path(output)
+        File.write(abs, rendered)
+        err.puts "Report written to #{abs}"
+      else
+        out.print rendered
+      end
+    end
+
+    def human_report(out, err, threshold)
       if @agg.total.zero?
         err.puts "No mutations generated — verify target files contain in-scope " \
                  "operators and are reached by the suite."
@@ -45,6 +69,59 @@ module Brutus
     end
 
     private
+
+    # Canonical machine-readable schema (KTD7). survivors/no_coverage are sorted
+    # by (file, line, operator) so output is byte-stable regardless of --jobs
+    # worker finish order (R22).
+    def json_report
+      killed = @agg.killed_count
+      survived = @agg.survived_count
+      denom = killed + survived
+      score = denom.zero? ? 0.0 : (killed.to_f / denom * 100).round(2)
+
+      doc = {
+        schema_version: "1.0",
+        summary: {
+          total: @agg.total, killed: killed, survived: survived,
+          no_coverage: @agg.no_coverage_count,
+          skipped_invalid: @agg.skipped_invalid_count,
+          errored: @agg.errored_count, timeout: @agg.timeout_count,
+          score: score
+        },
+        survivors: @agg.surviving_mutants.map { |r| survivor_json(r) }
+                       .sort_by { |h| [h[:file], h[:line], h[:operator]] },
+        no_coverage: @agg.results.select(&:no_coverage?).map { |r| no_coverage_json(r) }
+                         .sort_by { |h| [h[:file], h[:line]] }
+      }
+      "#{JSON.generate(doc)}\n"
+    end
+
+    def survivor_json(result)
+      m = result.mutation
+      file = result.subject.file
+      source = @source_map[file] || File.read(file)
+      idx = source[0...m.start_offset].count("\n")
+      original = source.lines[idx].chomp
+      mutated = m.apply(source).lines[idx].chomp
+      {
+        subject: result.subject.qualified_name,
+        file: file,
+        line: idx + 1,
+        operator: m.operator.to_s,
+        diff: "--- a/#{file}\n+++ b/#{file}\n@@ -#{idx + 1} +#{idx + 1} @@\n-#{original}\n+#{mutated}\n"
+      }
+    end
+
+    def no_coverage_json(result)
+      m = result.mutation
+      file = result.subject.file
+      source = @source_map[file] || File.read(file)
+      {
+        subject: result.subject.qualified_name,
+        file: file,
+        line: source[0...m.start_offset].count("\n") + 1
+      }
+    end
 
     def summary(out)
       out.puts "Summary"
