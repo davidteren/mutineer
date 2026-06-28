@@ -3,6 +3,21 @@
 require_relative "test_helper"
 
 class WorkerPoolTest < Minitest::Test
+  # #4 regression: a result larger than the OS pipe buffer (~64KB) used to
+  # deadlock — the child blocked writing before it could exit, so it was never
+  # reaped and the parent never read. Timeout-guarded so a regression fails
+  # loudly instead of hanging the suite.
+  def test_large_result_does_not_deadlock
+    require "timeout"
+    big = "x" * 500_000 # ~500KB, well over the pipe buffer
+    results = Timeout.timeout(30) do
+      Mutineer::WorkerPool.new(2).run([[1], [2]]) do |_|
+        Mutineer::Result.skipped(big)
+      end
+    end
+    assert_equal [big.bytesize, big.bytesize], results.map { |r| r.details.bytesize }
+  end
+
   def test_returns_one_result_per_item_in_input_order
     items = (0...10).map { |i| [i] }
     results = Mutineer::WorkerPool.new(3).run(items) do |i|
@@ -72,14 +87,10 @@ class WorkerPoolTest < Minitest::Test
   end
 
   # R6: a partial/garbage Marshal stream from a dead worker degrades to an error
-  # Result instead of crashing the whole pool.
+  # Result instead of crashing the whole pool; an empty stream too.
   def test_partial_marshal_stream_becomes_error
     pool = Mutineer::WorkerPool.new(1)
-    rd, wr = IO.pipe
-    wr.write("\x04\x08not-a-valid-marshal-payload")
-    wr.close
-    results = [nil]
-    pool.send(:collect, results, { 999 => [0, rd] }, 999)
-    assert_predicate results[0], :error?
+    assert_predicate pool.send(:decode, "\x04\x08not-a-valid-marshal-payload"), :error?
+    assert_predicate pool.send(:decode, ""), :error?
   end
 end
