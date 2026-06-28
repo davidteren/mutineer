@@ -1,0 +1,65 @@
+test/mutators/return_nil_test.rb
+  s_0214cb1e158c48::t_66547de9435749 1-53
+test/mutators/literal_mutation_test.rb
+  s_0214cb1e158c48::t_55fcf069c44a51 1-45
+lib/brutus/config.rb
+  s_0214cb1e158c48::t_75cb8aeeb2ddaf 3-6,11-14,18,21-24,27-122
+test/worker_pool_test.rb
+  s_0214cb1e158c48::t_23a0c743fcb335 1-46,48-56,58-62
+  s_0214cb1e158c48::t_cdeedd0cd9f36a 47,57
+lib/brutus.rb
+  s_0214cb1e158c48::t_c56db85f042b76 19-21,23
+test/cli_test.rb
+  s_0214cb1e158c48::t_a2517ba28b212d 1-48
+lib/brutus/cli.rb
+  s_0214cb1e158c48::t_610c3aa94e57f5 32,35-38,42-44,47-49,51-54,65-74,84-88,94-97,108-115,121
+  s_0214cb1e158c48::t_ffc3e052493ad4 4
+  s_0214cb1e158c48::t_acc68b6380425d 179-180
+  s_0214cb1e158c48::t_262a744cd8b093 133-170
+test/parallel_strategy_test.rb
+  s_0214cb1e158c48::t_d171b8d5703c31 1-65,67-73,75-84
+  s_0214cb1e158c48::t_665e6d81275a04 74
+  s_0214cb1e158c48::t_5d667aec89628a 66
+lib/brutus/mutators/condition_negation.rb
+  s_0214cb1e158c48::t_9c09bb7e376618 1-40
+lib/brutus/isolation.rb
+  s_0214cb1e158c48::t_6b91622ee07939 3,5
+  s_0214cb1e158c48::t_8feb78964e7096 58-91
+test/config_test.rb
+  s_0214cb1e158c48::t_6eff3225c5e420 1-105
+lib/brutus/mutators/literal_mutation.rb
+  s_0214cb1e158c48::t_153784039c8b3b 1-40
+lib/brutus/reporter.rb
+  s_0214cb1e158c48::t_9e95c9faeb3973 3-4
+  s_0214cb1e158c48::t_92b73188c6d738 21-43
+  s_0214cb1e158c48::t_5155f199d50618 73-125
+lib/brutus/mutator_registry.rb
+  s_0214cb1e158c48::t_0391c209ff63f5 8-10,14-18,21-42,50-52
+lib/brutus/runner.rb
+  s_0214cb1e158c48::t_c87edab77d1bae 10
+  s_0214cb1e158c48::t_b5e894db306229 34,42,44,49,54-63,67-68,82-85
+lib/brutus/mutators/return_nil.rb
+  s_0214cb1e158c48::t_46869317de4cf7 3-4,7-60
+test/mutators/condition_negation_test.rb
+  s_0214cb1e158c48::t_a513e29b57b8e0 1-45
+lib/brutus/worker_pool.rb
+  s_0214cb1e158c48::t_4ef3de6c3429bd 1-76
+test/json_reporter_test.rb
+  s_0214cb1e158c48::t_8cdaa742045a8e 1-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "60283dc4511043a3b9979b5d6b9cbbc640d4446a",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
