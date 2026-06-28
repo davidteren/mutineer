@@ -1,0 +1,77 @@
+README.md
+  s_0214cb1e158c48::t_b039c352fb02bf 1-31
+Rakefile
+  s_0214cb1e158c48::t_84fab407f01d57 1-11
+lib/brutus/mutators/comparison.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-9
+lib/brutus/mutators/return_nil.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-9
+lib/brutus/subject.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-7
+lib/brutus/mutators/arithmetic.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-9
+lib/brutus/project.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-7
+lib/brutus/mutation.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-7
+lib/brutus/config.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-7
+lib/brutus/cli.rb
+  s_0214cb1e158c48::t_321e62950f85a7 1-62
+lib/brutus.rb
+  s_0214cb1e158c48::t_9b25060a262302 1-28
+lib/brutus/parser.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-7
+lib/brutus/isolation.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-7
+brutus.gemspec
+  s_0214cb1e158c48::t_4bb07d8b2369a1 1-24
+lib/brutus/mutators/boolean_connector.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-9
+lib/brutus/mutators/boolean_literal.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-9
+Gemfile
+  s_0214cb1e158c48::t_0ddda2f0ff36e6 1-5
+test/brutus_test.rb
+  s_0214cb1e158c48::t_8a1b6146a2c085 1-10
+lib/brutus/mutators/statement_removal.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-9
+lib/brutus/minitest_integration.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-7
+lib/brutus/runner.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-7
+lib/brutus/result.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-7
+lib/brutus/version.rb
+  s_0214cb1e158c48::t_34b6276c10b4a4 1-5
+lib/brutus/mutator_registry.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-7
+bin/brutus
+  s_0214cb1e158c48::t_f6f6348a8951a4 1-6
+lib/brutus/coverage_map.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-7
+lib/brutus/reporter.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-7
+test/test_helper.rb
+  s_0214cb1e158c48::t_e5c56763707bde 1-6
+lib/brutus/mutators/base.rb
+  s_0214cb1e158c48::t_9aaa79e705a52e 1-9
+.gitignore
+  s_0214cb1e158c48::t_f54726bcdcf4c6 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "84c1d2d8b391fcd65e4139fe151243f156c54fc4",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
