@@ -71,6 +71,24 @@ class CliTest < Minitest::Test
     refute_includes err, "(Errno::ENOENT)"
   end
 
+  # Boot mode does no coverage selection, so it requires at least one --test file.
+  def test_boot_without_test_exits_two
+    src = File.join(FIXTURES, "boot", "widget.rb")
+    app = File.join(FIXTURES, "boot", "app_boot.rb")
+    _, err, status = mutineer("run", src, "--boot", app)
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--boot/--rails requires at least one --test file"
+  end
+
+  # --rails defaults boot to config/environment; with no --test the same usage
+  # error fires first (deterministic, needs no real Rails app or DB).
+  def test_rails_alone_demands_test_first
+    src = File.join(FIXTURES, "boot", "widget.rb")
+    _, err, status = mutineer("run", src, "--rails")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--boot/--rails requires at least one --test file"
+  end
+
   # --- happy paths driven through bin/mutineer -----------------------------
 
   def test_successful_run_exits_zero

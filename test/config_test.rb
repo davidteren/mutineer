@@ -62,6 +62,21 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  # Boot mode keys are accepted (not warned/ignored) and resolve onto the Config.
+  def test_from_file_accepts_boot_and_rails
+    with_config("boot: config/environment\nrails: true\n") do |path|
+      out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty out
+      assert_empty err
+      assert_equal({ boot: "config/environment", rails: true }, @hash)
+
+      cfg = Config.resolve({}, @hash, Set.new)
+      assert_equal "config/environment", cfg.boot
+      assert_equal true, cfg.rails
+      assert_equal "redefine", cfg.strategy # --rails sugar, no explicit --strategy
+    end
+  end
+
   # R8: the lib layer raises a typed error rather than calling exit (which would
   # kill an embedding host). The CLI maps it to exit 2.
   def test_from_file_malformed_yaml_raises_config_error

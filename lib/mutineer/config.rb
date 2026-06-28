@@ -15,15 +15,21 @@ module Mutineer
   # M5 adds: jobs (parallel workers), format (human|json), output (report file),
   # strategy (reload|redefine), require_paths (extra files to load). Config loading and
   # the CLI > file > default precedence merge live here (KTD3/KTD4).
+  #
+  # Boot mode adds: boot (a file to require ONCE in the parent so the app env —
+  # e.g. Rails — is booted before forking; sources are then NOT manually required)
+  # and rails (sugar: defaults boot to config/environment and strategy to redefine,
+  # and reconnects ActiveRecord per fork).
   Config = Struct.new(
     :sources, :tests, :operators, :threshold, :only, :dry_run,
     :cache_dir, :project_root, :load_paths,
     :jobs, :format, :output, :strategy, :require_paths,
+    :boot, :rails,
     keyword_init: true
   ) do
     CONFIG_FILE = ".mutineer.yml"
     # Keys accepted in .mutineer.yml (R7). `require` maps to the :require_paths field.
-    KNOWN_KEYS = %w[operators jobs threshold only require].freeze
+    KNOWN_KEYS = %w[operators jobs threshold only require boot rails].freeze
 
     def initialize(**kwargs)
       super
@@ -38,6 +44,7 @@ module Mutineer
       self.format        ||= "human"
       self.strategy      ||= "reload"
       self.require_paths ||= []
+      self.rails         = false if rails.nil?
     end
 
     # Walk from `start` toward `home`, returning the first .mutineer.yml path found
@@ -93,7 +100,16 @@ module Mutineer
     def self.resolve(cli_opts, file_hash, explicit)
       merged = cli_opts.dup
       file_hash.each { |k, v| merged[k] = v unless explicit.include?(k) }
-      new(**merged)
+      config = new(**merged)
+
+      # --rails sugar: boot config/environment and prefer the surgical (redefine)
+      # strategy, which avoids writing tempfiles into the app tree and Zeitwerk
+      # reload hazards. An explicit --strategy always wins.
+      if config.rails
+        config.boot ||= "config/environment"
+        config.strategy = "redefine" unless explicit.include?(:strategy)
+      end
+      config
     end
 
     def self.field_for(known_key)
@@ -106,6 +122,8 @@ module Mutineer
       when "jobs"      then value.to_i
       when "threshold" then value.to_f
       when "require"   then Array(value).map(&:to_s)
+      when "boot"      then value.to_s
+      when "rails"     then value == true || value.to_s == "true"
       else value
       end
     end

@@ -34,6 +34,9 @@ module Mutineer
         --only NAME          Restrict to one fully-qualified subject
         --jobs N             Parallel worker count (default: processor count)
         --strategy NAME      reload (whole-file) or redefine (surgical); default: reload
+        --boot FILE          Require FILE once in the parent to boot the app env, then
+                             fork per mutant (Rails apps; requires --test, no coverage)
+        --rails              Sugar for --boot config/environment --strategy redefine
         --format human|json  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
@@ -72,7 +75,9 @@ module Mutineer
         o.on("--operators LIST") { |v| opts[:operators] = v.split(",").map(&:strip); explicit << :operators }
         o.on("--threshold FLOAT") { |v| opts[:threshold] = v.to_f; explicit << :threshold }
         o.on("--jobs N") { |v| opts[:jobs] = v; explicit << :jobs }
-        o.on("--strategy STRAT") { |v| opts[:strategy] = v }
+        o.on("--strategy STRAT") { |v| opts[:strategy] = v; explicit << :strategy }
+        o.on("--boot FILE") { |v| opts[:boot] = v; explicit << :boot }
+        o.on("--rails") { opts[:rails] = true }
         o.on("--format FORMAT") { |v| opts[:format] = v }
         o.on("--output FILE") { |v| opts[:output] = v }
       end
@@ -175,6 +180,13 @@ module Mutineer
       config.strategy = STRATEGY_ALIASES.fetch(config.strategy, config.strategy)
       unless %w[reload redefine].include?(config.strategy)
         warn %(mutineer: unknown strategy "#{config.strategy}". Expected: reload, redefine)
+        exit 2
+      end
+
+      # Boot mode does no coverage selection — every mutant runs the given tests —
+      # so at least one --test file is mandatory (there is nothing to select from).
+      if config.boot && config.tests.empty?
+        warn "mutineer: --boot/--rails requires at least one --test file"
         exit 2
       end
 

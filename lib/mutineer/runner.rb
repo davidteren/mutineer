@@ -30,14 +30,38 @@ module Mutineer
     # source is a no-op and does not clobber the mutated `load` (spec §7).
     def self.execute(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
-      config.sources.each { |f| require File.expand_path(f, config.project_root) }
+
+      # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
+      # in the parent and inherited by every fork. Do NOT manually require the
+      # sources — under Zeitwerk a manual require of an autoloadable file raises;
+      # the booted env autoloads them, and subject discovery is a static Prism
+      # parse that needs nothing loaded. Standalone mode requires the sources as
+      # before so their classes exist for the children to inherit.
+      if config.boot
+        require File.expand_path(config.boot, config.project_root)
+      else
+        config.sources.each { |f| require File.expand_path(f, config.project_root) }
+      end
       config.require_paths.each { |f| require File.expand_path(f, config.project_root) }
 
-      coverage_map = CoverageMap.new(
-        source_paths: config.sources, test_paths: config.tests,
-        cache_dir: config.cache_dir, project_root: config.project_root,
-        load_paths: config.load_paths
-      ).build_or_load
+      # Boot mode skips coverage selection entirely: every mutant runs the given
+      # --test files (precomputed absolute here, used directly by Runner.run).
+      if config.boot
+        coverage_map = nil
+        boot_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
+        # Rails/Minitest test files do `require "test_helper"`, which needs the
+        # test root on $LOAD_PATH (`bin/rails test` adds it). Prepend each test
+        # file's helper root here in the parent so loading them in the fork
+        # children resolves. Inherited by every fork.
+        test_load_roots(boot_tests).each { |d| $LOAD_PATH.unshift(d) unless $LOAD_PATH.include?(d) }
+      else
+        coverage_map = CoverageMap.new(
+          source_paths: config.sources, test_paths: config.tests,
+          cache_dir: config.cache_dir, project_root: config.project_root,
+          load_paths: config.load_paths
+        ).build_or_load
+        boot_tests = nil
+      end
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
       source_map = {}
@@ -64,7 +88,8 @@ module Mutineer
         begin
           bare = WorkerPool.new(config.jobs).run(jobs) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
-                subject: subject, strategy: strategy)
+                subject: subject, strategy: strategy,
+                test_files: boot_tests, rails: config.rails)
           end
           # The bare Results carry only status (Subjects hold live AST nodes that
           # do not marshal); reattach subject+mutation in the parent, in order.
@@ -76,6 +101,27 @@ module Mutineer
       [AggregateResult.new(results), source_map]
     end
 
+    # For each test file, the directory to add to $LOAD_PATH so its
+    # `require "test_helper"` (or spec_helper) resolves: the nearest ancestor
+    # holding that helper, plus the file's own dir as a fallback.
+    def self.test_load_roots(test_files)
+      test_files.flat_map do |f|
+        dir = File.dirname(f)
+        root = nil
+        loop do
+          if File.exist?(File.join(dir, "test_helper.rb")) || File.exist?(File.join(dir, "spec_helper.rb"))
+            root = dir
+            break
+          end
+          parent = File.dirname(dir)
+          break if parent == dir
+
+          dir = parent
+        end
+        [root, File.dirname(f)].compact
+      end.uniq
+    end
+
     def self.sweep_orphans(dirs)
       dirs.each do |dir|
         Dir.glob(File.join(dir, "mutineer_mutant*.rb")).each do |f|
@@ -84,21 +130,30 @@ module Mutineer
       end
     end
 
-    def self.run(mutation, source_file:, coverage_map:, subject: nil, strategy: "reload",
-                 timeout: Isolation::DEFAULT_TIMEOUT)
+    def self.run(mutation, source_file:, coverage_map: nil, subject: nil, strategy: "reload",
+                 timeout: Isolation::DEFAULT_TIMEOUT, test_files: nil, rails: false)
       source  = File.read(source_file)
       mutated = mutation.apply(source)
 
       # Validity rule: a mutant that doesn't re-parse is skipped before forking.
       return Result.skipped if Parser.parse_string(mutated).errors.any?
 
-      line       = source.byteslice(0, mutation.start_offset).count("\n") + 1
-      test_files = coverage_map.tests_for(source_file, line)
-      return Result.no_coverage if test_files.empty?
+      # Boot mode passes its tests directly (already absolute); standalone mode
+      # selects covering tests from the map and is :no_coverage when none cover it.
+      if test_files
+        abs_tests = test_files
+      else
+        line   = source.byteslice(0, mutation.start_offset).count("\n") + 1
+        chosen = coverage_map.tests_for(source_file, line)
+        return Result.no_coverage if chosen.empty?
 
-      abs_tests = test_files.map { |t| File.expand_path(t, coverage_map.project_root) }
+        abs_tests = chosen.map { |t| File.expand_path(t, coverage_map.project_root) }
+      end
 
       Isolation.run(timeout: timeout) do
+        # Forking inherits the parent's live DB connection; sharing one socket
+        # across processes corrupts it. Drop it so AR reconnects per child.
+        reconnect_active_record if rails
         if strategy == "redefine"
           Isolation.apply_surgical(mutation, subject, source)
         else
@@ -107,5 +162,14 @@ module Mutineer
         MinitestIntegration.run(abs_tests)
       end
     end
+
+    def self.reconnect_active_record
+      return unless defined?(ActiveRecord::Base)
+
+      ActiveRecord::Base.connection_handler.clear_all_connections!
+    rescue StandardError
+      nil
+    end
+    private_class_method :reconnect_active_record
   end
 end
