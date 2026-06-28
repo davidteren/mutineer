@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-06-28
+
+### Added
+- **`--since <git-ref>`** (#2) — mutate only the lines changed since a git ref
+  (e.g. `--since origin/main`), so CI on a pull request mutation-tests just the
+  new/changed code. Composes with coverage selection; `--dry-run --since`
+  narrows the preview too. Unknown ref / not-a-git-repo exits 2.
+
 ## [0.3.0] - 2026-06-28
 
 ### Added
@@ -46,6 +54,7 @@ All notable changes to this project are documented here. The format is based on
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.4.0]: https://github.com/davidteren/mutineer/releases/tag/v0.4.0
 [0.3.0]: https://github.com/davidteren/mutineer/releases/tag/v0.3.0
 [0.2.0]: https://github.com/davidteren/mutineer/releases/tag/v0.2.0
 [0.1.0]: https://github.com/davidteren/mutineer/releases/tag/v0.1.0
