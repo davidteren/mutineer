@@ -71,15 +71,17 @@ Available but off by default (Tier 2, enable via `--operators`): `return_nil`,
 Mutineer reads an optional `.mutineer.yml` from the project root (nearest one,
 walking up). CLI flags override config; config overrides defaults.
 
+Sources are positional CLI arguments and test files come from `--test`; the
+config file accepts these keys: `operators`, `threshold`, `jobs`, `only`, and
+`require` (extra files to load before mutating).
+
 ```yaml
 # .mutineer.yml
-sources:
-  - lib
-tests:
-  - test
 operators: [arithmetic, comparison, boolean_connector, boolean_literal, statement_removal]
 threshold: 90
 jobs: 4
+require:
+  - config/environment
 ```
 
 Coverage results are cached in `.mutineer/coverage.json` (digest-keyed; rebuilt

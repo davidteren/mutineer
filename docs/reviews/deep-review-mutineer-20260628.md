@@ -130,3 +130,32 @@ cubic `/run-review` `/scan`, majestic rails review (N/A — plain Ruby gem, no R
 4. **C4/C5/C6** packaging: ship `bin/`, rewrite README, add LICENSE.
 5. **C7/C8** exit-code consistency + JSON nil score (cheap, high least-astonishment value).
 R1–R8 are reliability hardening — strongly recommended, not all strict blockers.
+
+---
+
+# Re-review (2026-06-28, post-hardening, branch main)
+
+Two lenses re-ran after the hardening pass + rename: fix-verification/regression, and publish-readiness.
+
+## Fix verification — all 16 FIXED
+C1–C8 and R1–R8 are each confirmed fixed in code with a backing test (verified, not just claimed);
+full suite **183 runs / 0 failures**. No regressions. New-code scrutiny found only LOW, effectively
+unreachable edge cases:
+- **7b compact `class A::B` nesting** expands to `module A; class B` (nesting `[A::B, A]`) vs 7a's `[A::B]`.
+  Only diverges for code that references an outer-only constant unqualified — which already `NameError`s under
+  normal `require`, i.e. already-broken code. Noted, not fixed.
+- Benign ≤5ms poll-window race (conservative: mis-classifies as timeout, never false-survived).
+- Pre-existing (not from this pass): >64KB worker pipe payload could block; `class << self` singletons not
+  discovered. Both LOW, unrelated to the findings.
+
+## Publish-readiness — GO
+Packaging blockers C4/C5/C6 resolved (gem builds, ships bin+LICENSE+README+CHANGELOG, installed binary runs).
+Should-fixes applied post-re-review: README `.mutineer.yml` example corrected to the real `KNOWN_KEYS`
+(removed unsupported `sources:`/`tests:`, documented `require:`); removed unused `require "set"`; dropped
+redundant `VERSION.freeze`; bounded dev deps (`~>`); CHANGELOG `[0.1.0]` section; removed duplicate
+`homepage_uri` → **gem build is now warning-free**.
+
+Deferred (your call, non-blocking): `--strategy 7a|7b` still exposes internal spec-section numbers as the
+public flag value — rename to semantic names (e.g. `reload|redefine`) before 1.0 if desired.
+
+**Verdict: GO for `gem push mutineer`.**

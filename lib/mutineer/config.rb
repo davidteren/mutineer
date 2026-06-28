@@ -2,7 +2,6 @@
 
 require "etc"
 require "yaml"
-require "set"
 
 module Mutineer
   # Raised by the config layer instead of calling exit/abort — a data class must
