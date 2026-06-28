@@ -1,0 +1,36 @@
+lib/brutus/reporter.rb
+  s_0214cb1e158c48::t_c1c3cff3d050f6 103-105,109,111,115-129
+  s_0214cb1e158c48::t_bc7212e6af0cd3 181,183,185-186
+  s_20cb4c3543dafb::t_affe7ab3c17c05 130-131
+lib/brutus/runner.rb
+  s_0214cb1e158c48::t_655997e758e505 85
+lib/brutus/isolation.rb
+  s_0214cb1e158c48::t_024d0cf415fde6 61-67
+test/reporter_test.rb
+  s_0214cb1e158c48::t_f567820cdcbcbf 84-86
+  s_0214cb1e158c48::t_913f6c54e1373f 90-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "17934ff3f5e0136757ea35d4a033209cfdfc16f8",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_20cb4c3543dafb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8dc0936d-0b93-470d-8473-31d9e8e3fed9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
