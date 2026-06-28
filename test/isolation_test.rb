@@ -38,6 +38,23 @@ class IsolationTest < Minitest::Test
     assert_predicate result, :error?
   end
 
+  # #5: a compact namespace element "A::B" stays ONE wrapper `class A::B`
+  # (nesting [A::B]) — not split into `module A; class B` (nesting [A::B, A]),
+  # which would resolve an A-only constant under redefine but not reload.
+  def test_nesting_keywords_keeps_compact_path_as_single_wrapper
+    Object.const_set(:CmpKW, Module.new) unless Object.const_defined?(:CmpKW)
+    CmpKW.const_set(:Leaf, Class.new) unless CmpKW.const_defined?(:Leaf)
+    assert_equal [["class", "CmpKW::Leaf"]], Mutineer::Isolation.nesting_keywords(["CmpKW::Leaf"])
+  end
+
+  def test_nesting_keywords_mixed_simple_and_compact
+    Object.const_set(:OuterNS, Module.new) unless Object.const_defined?(:OuterNS)
+    OuterNS.const_set(:Mid, Module.new) unless OuterNS.const_defined?(:Mid)
+    OuterNS::Mid.const_set(:Deep, Class.new) unless OuterNS::Mid.const_defined?(:Deep)
+    assert_equal [["module", "OuterNS"], ["class", "Mid::Deep"]],
+                 Mutineer::Isolation.nesting_keywords(["OuterNS", "Mid::Deep"])
+  end
+
   def test_no_zombies_left_behind
     Mutineer::Isolation.run { 0 }
     # If the child were not reaped, waitpid(-1) would return it; ECHILD means

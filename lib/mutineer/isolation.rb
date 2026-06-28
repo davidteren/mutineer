@@ -126,13 +126,19 @@ module Mutineer
       target.send(vis, subject.name) if vis && vis != :public
     end
 
-    # Resolve each segment of the namespace to its live Module and pick the
-    # correct keyword (reopening a class with `module` — or vice versa — raises
+    # Resolve each namespace ELEMENT to its live Module and pick the correct
+    # keyword (reopening a class with `module` — or vice versa — raises
     # TypeError), so the textual wrapper matches the real definitions.
+    #
+    # #5: a compact element like "Foo::Bar" stays a SINGLE wrapper `class Foo::Bar`
+    # (nesting [Foo::Bar]), matching how a whole-file load (reload) sees it.
+    # Splitting it into `module Foo; class Bar` gave nesting [Foo::Bar, Foo], so an
+    # unqualified constant defined only in Foo would resolve under redefine but not
+    # reload — a strategy disagreement.
     def self.nesting_keywords(namespace)
       mod = Object
-      namespace.flat_map { |n| n.split("::") }.map do |name|
-        mod = mod.const_get(name)
+      namespace.map do |name|
+        mod = mod.const_get(name) # const_get resolves a compact "Foo::Bar" too
         [mod.is_a?(Class) ? "class" : "module", name]
       end
     end
