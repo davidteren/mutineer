@@ -28,6 +28,7 @@ module Mutineer
         @file = file
         @namespace_stack = []
         @subjects = []
+        @singleton_depth = 0
         super()
       end
 
@@ -43,12 +44,25 @@ module Mutineer
         @namespace_stack.pop
       end
 
+      # Methods inside `class << self` are class methods of the enclosing
+      # namespace, but their def nodes have no receiver — track the singleton
+      # context so they're recorded as singleton (so redefine targets the
+      # singleton_class, not instances). `class << some_other_obj` can't be
+      # represented against the namespace, so its defs are skipped (not recursed).
+      def visit_singleton_class_node(node)
+        return unless node.expression.is_a?(Prism::SelfNode)
+
+        @singleton_depth += 1
+        super
+        @singleton_depth -= 1
+      end
+
       def visit_def_node(node)
         @subjects << Subject.new(
           file: @file,
           namespace: @namespace_stack.dup,
           name: node.name,
-          singleton: !node.receiver.nil?,
+          singleton: !node.receiver.nil? || @singleton_depth.positive?,
           def_node: node
         )
         super

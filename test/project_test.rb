@@ -34,6 +34,22 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def test_discover_singleton_class_block_methods_are_singleton
+    with_source("class Calc\n  class << self\n    def foo; end\n    def bar; end\n  end\nend\n") do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %i[foo bar], subjects.map(&:name)
+      assert(subjects.all? { |s| s.singleton && s.namespace == ["Calc"] })
+    end
+  end
+
+  def test_discover_skips_singleton_class_of_other_object
+    # `class << other` can't be represented against the namespace -> not emitted.
+    with_source("class Calc\n  other = Object.new\n  class << other\n    def skipme; end\n  end\n  def keep; end\nend\n") do |path|
+      names = Mutineer::Project.discover([path]).map(&:name)
+      assert_equal %i[keep], names
+    end
+  end
+
   def test_discover_nested_classes
     with_source("class Outer\n  class Inner\n    def m; end\n  end\nend\n") do |path|
       s = Mutineer::Project.discover([path]).first
