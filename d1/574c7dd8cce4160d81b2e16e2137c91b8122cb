@@ -1,0 +1,75 @@
+test/fixtures/rspec/calculator.rb
+  s_0214cb1e158c48::t_84dadff91824d8 1-12
+test/fixtures/rspec/calculator_strong_spec.rb
+  s_0214cb1e158c48::t_c6e428a898e5ed 1-15
+lib/mutineer.rb
+  s_0214cb1e158c48::t_894809aa7a3c2c 14
+test/fixtures/failing_minitest_test.rb
+  s_0214cb1e158c48::t_5a02b8af878f1c 1-11
+test/config_test.rb
+  s_0214cb1e158c48::t_3f6b4f647b7d07 93-126
+test/fixtures/rspec/calculator_weak_spec.rb
+  s_0214cb1e158c48::t_16be9bab126d78 1-16
+lib/mutineer/test_runners/minitest.rb
+  s_0214cb1e158c48::t_e249c2337a552c 1-15
+lib/mutineer/test_runners.rb
+  s_0214cb1e158c48::t_f160e5d2798c41 1-19
+lib/mutineer/coverage_map.rb
+  s_0214cb1e158c48::t_d36ffaf171c267 10
+  s_0214cb1e158c48::t_0b5efd9cec53a5 194-197,216-239,243
+  s_0214cb1e158c48::t_dd7c9340d70ccc 27-28,36
+  s_0214cb1e158c48::t_d3058e64f143b7 129
+  s_0214cb1e158c48::t_00f29fa36561c8 273
+  s_0214cb1e158c48::t_51643b4b18f614 240-242
+  s_0214cb1e158c48::t_a2f88cb06ac789 244
+test/fixtures/rspec/failing_spec.rb
+  s_0214cb1e158c48::t_82bece383a8310 1-7
+test/test_runners/minitest_test.rb
+  s_0214cb1e158c48::t_43eca743a0dea7 1-26
+test/test_runners/rspec_test.rb
+  s_0214cb1e158c48::t_95d75bb208372e 1-63
+test/fixtures/rspec/passing_spec.rb
+  s_0214cb1e158c48::t_7885473904b51f 1-7
+lib/mutineer/runner.rb
+  s_0214cb1e158c48::t_c540408dc77979 189
+  s_0214cb1e158c48::t_bc370449b288a1 8
+  s_0214cb1e158c48::t_78f92f08e7fe56 67,74
+  s_0214cb1e158c48::t_7ae30f8b0a2e1a 103,106
+  s_0214cb1e158c48::t_197a5105b3f0f6 164
+lib/mutineer/config.rb
+  s_0214cb1e158c48::t_b9a139baa088b4 139
+  s_0214cb1e158c48::t_fcbc0e640bbffa 27
+  s_0214cb1e158c48::t_c8f222d474a40f 112-116,120-125
+  s_0214cb1e158c48::t_8e093361cc3ecd 32
+  s_0214cb1e158c48::t_f5e977da16b2df 126-127
+test/cli_test.rb
+  s_0214cb1e158c48::t_e1f3432be0ba4f 60-65
+lib/mutineer/test_runners/rspec.rb
+  s_0214cb1e158c48::t_c603ab56999d79 1-60
+Gemfile
+  s_0214cb1e158c48::t_62f263255bdc2b 6-12
+lib/mutineer/cli.rb
+  s_0214cb1e158c48::t_a9acf835b71191 192-196
+  s_0214cb1e158c48::t_ff54b9ec27c503 84
+  s_0214cb1e158c48::t_3f214cc9edeb5a 40
+test/rspec_integration_test.rb
+  s_0214cb1e158c48::t_395a26e017f9b6 1-36
+lib/mutineer/minitest_integration.rb
+  s_0214cb1e158c48::t_44b6d7469496d4 23-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "d1574c7dd8cce4160d81b2e16e2137c91b8122cb",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
