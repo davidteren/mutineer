@@ -1,0 +1,39 @@
+lib/brutus/runner.rb
+  s_0214cb1e158c48::t_11163377359752 11-13,15-18,20,27-32,39
+lib/brutus/result.rb
+  s_0214cb1e158c48::t_e3097ec7c86a89 4-10,14-15,22,24-29
+lib/brutus/minitest_integration.rb
+  s_0214cb1e158c48::t_c84f6d47d9b64a 20-23,32
+lib/brutus.rb
+  s_0214cb1e158c48::t_51f77be16e0716 13,18
+test/coverage_map_test.rb
+  s_0214cb1e158c48::t_a4654cc7cfea6c 1-132
+lib/brutus/coverage_map.rb
+  s_0214cb1e158c48::t_64be1c39438a70 3-8,10-16,18-168
+lib/brutus/reporter.rb
+  s_0214cb1e158c48::t_0d8066d0c72dc3 4-9,11-25
+test/result_test.rb
+  s_0214cb1e158c48::t_cf11c056e29a35 36-43,47
+test/reporter_test.rb
+  s_0214cb1e158c48::t_57768441d7cbb8 1-21
+.gitignore
+  s_0214cb1e158c48::t_47eba080ac7b95 4
+test/runner_test.rb
+  s_0214cb1e158c48::t_3897244f7c8aef 4,11,25-33,35,40,47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "fc68635fdc905758f6780a32020724fdb1a2e975",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
