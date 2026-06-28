@@ -1,0 +1,46 @@
+lib/brutus/mutation.rb
+  s_0214cb1e158c48::t_8dae396a20a59e 3-4,6-17
+lib/brutus/mutators/base.rb
+  s_0214cb1e158c48::t_d5d35db2da73b5 3-5,8-20
+lib/brutus/subject.rb
+  s_0214cb1e158c48::t_73facba0011197 4-17
+test/mutators/arithmetic_test.rb
+  s_0214cb1e158c48::t_9b0403f0cce7f1 1-67
+lib/brutus/project.rb
+  s_0214cb1e158c48::t_fe98c639da1b3c 3-6,8-9,11-67
+lib/brutus/cli.rb
+  s_0214cb1e158c48::t_7565e15cb66052 5-7,22,30,41-42,60,66-109
+  s_0214cb1e158c48::t_c49bce77adce1c 110
+test/parser_test.rb
+  s_0214cb1e158c48::t_584390e737b72b 1-28
+test/mutation_test.rb
+  s_0214cb1e158c48::t_a5801c86a8c668 1-35
+lib/brutus/mutators/arithmetic.rb
+  s_0214cb1e158c48::t_93a250a4268906 3-4,7-26
+lib/brutus/parser.rb
+  s_0214cb1e158c48::t_ab06c28d5fed54 3-4,6-12,14-24
+test/project_test.rb
+  s_0214cb1e158c48::t_855e74f479e992 1-73
+test/fixtures/calculator.rb
+  s_0214cb1e158c48::t_2036121dee4cd4 1-27
+lib/brutus.rb
+  s_0214cb1e158c48::t_fe66938d87d244 8-11,19-20
+test/subject_test.rb
+  s_0214cb1e158c48::t_6e4302f1a97da0 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "5b37e8087d0e31da3b419b7cff7ba0abe649709c",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
