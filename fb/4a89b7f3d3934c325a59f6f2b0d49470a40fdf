@@ -1,0 +1,22 @@
+test/worker_pool_test.rb
+  s_0214cb1e158c48::t_ecc1043a67aa92 90,93-94
+  s_0214cb1e158c48::t_020f9cc41b330d 6-20
+lib/mutineer/worker_pool.rb
+  s_0214cb1e158c48::t_0c82a611dbff55 73,77-83,88-93,95-102,107-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "fb4a89b7f3d3934c325a59f6f2b0d49470a40fdf",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
