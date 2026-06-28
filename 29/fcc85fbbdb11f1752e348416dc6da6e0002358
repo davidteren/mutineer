@@ -1,0 +1,46 @@
+test/fixtures/boot/widget_weak_test.rb
+  s_0214cb1e158c48::t_e5b3932a816c08 1-17
+test/config_test.rb
+  s_0214cb1e158c48::t_65768827273b18 65-79
+test/cli_test.rb
+  s_0214cb1e158c48::t_885249caf0c233 74-91
+test/fixtures/boot/widget.rb
+  s_0214cb1e158c48::t_cdd87522405f0d 1-12
+lib/mutineer/config.rb
+  s_0214cb1e158c48::t_87ed66c7cf3558 18-22,27,32
+  s_0214cb1e158c48::t_319dae6b38ddeb 47
+  s_0214cb1e158c48::t_871d8fd6399e99 125-126
+  s_0214cb1e158c48::t_ac655665fcd0fc 103-112
+lib/mutineer/cli.rb
+  s_0214cb1e158c48::t_67e5e752e47cbd 78-80
+  s_0214cb1e158c48::t_87f960922b7ba8 37-39
+  s_0214cb1e158c48::t_e6d5db92a49bb5 186-192
+test/fixtures/boot/widget_strong_test.rb
+  s_0214cb1e158c48::t_6b0fcbc9ed94fe 1-16
+lib/mutineer/runner.rb
+  s_0214cb1e158c48::t_00cd851e96ba7b 52-56
+  s_0214cb1e158c48::t_dc8c43ee8cb570 104-124
+  s_0214cb1e158c48::t_2ce3d99cbdf64b 91-92
+  s_0214cb1e158c48::t_2aef7bbafea425 133-134,141-148,150-151,154-156,165-173
+  s_0214cb1e158c48::t_9b6775c0135569 33-44,47-51,57-64
+test/fixtures/boot/app_boot.rb
+  s_0214cb1e158c48::t_2d316d5fe8ac4d 1-7
+test/boot_mode_test.rb
+  s_0214cb1e158c48::t_0a66a756a7fd34 1-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "29fcc85fbbdb11f1752e348416dc6da6e0002358",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
