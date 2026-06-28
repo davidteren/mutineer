@@ -27,7 +27,7 @@ module Brutus
         return unless predicate
 
         loc = predicate.location
-        original = @source[loc.start_offset...loc.end_offset]
+        original = @source.byteslice(loc.start_offset...loc.end_offset)
         @mutations << Mutation.new(
           start_offset: loc.start_offset,
           end_offset: loc.end_offset,

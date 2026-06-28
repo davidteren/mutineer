@@ -5,6 +5,10 @@ require "yaml"
 require "set"
 
 module Brutus
+  # Raised by the config layer instead of calling exit/abort — a data class must
+  # never kill the host process (R8). The CLI rescues this and maps it to exit 2.
+  class ConfigError < StandardError; end
+
   # Plain run configuration, populated by the CLI (or directly by the
   # integration test). `operators` nil means "all default operators";
   # `threshold` 0.0 means the CI gate is off (spec §10).
@@ -58,8 +62,8 @@ module Brutus
 
     # Parse a .brutus.yml into a symbol-keyed hash of recognized keys. Unknown
     # keys / unknown operator names emit a one-line stderr warning and are ignored
-    # (R7). A YAML syntax error prints a clean message and exits 1 (R7a) — never a
-    # silent fallback to defaults.
+    # (R7). A YAML syntax error raises ConfigError (R7a/R8) — never a silent
+    # fallback to defaults, and never an exit from the lib layer.
     def self.from_file(path)
       raw = YAML.safe_load(File.read(path)) || {}
       name = File.basename(path)
@@ -80,8 +84,7 @@ module Brutus
       end
       out
     rescue Psych::SyntaxError => e
-      warn "brutus: #{File.basename(path)} parse error: #{e.message}"
-      exit 1
+      raise ConfigError, "#{File.basename(path)} parse error: #{e.message}"
     end
 
     # Apply precedence (KTD3): start from the CLI-provided values, then fill in a

@@ -62,11 +62,11 @@ class ConfigTest < Minitest::Test
     end
   end
 
-  def test_from_file_malformed_yaml_exits_one
+  # R8: the lib layer raises a typed error rather than calling exit (which would
+  # kill an embedding host). The CLI maps it to exit 2.
+  def test_from_file_malformed_yaml_raises_config_error
     with_config("operators: [\n") do |path|
-      capture_io do
-        assert_raises(SystemExit) { Config.from_file(path) }
-      end
+      assert_raises(Brutus::ConfigError) { Config.from_file(path) }
     end
   end
 

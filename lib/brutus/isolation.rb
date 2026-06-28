@@ -25,7 +25,6 @@ module Brutus
     # exit code) or any explicit `exit` is honoured; an unhandled exception
     # becomes exit 2 with the cause written to STDERR.
     def self.run(timeout: DEFAULT_TIMEOUT)
-      timed_out = false
       pid = fork do
         code = 0
         begin
@@ -44,15 +43,23 @@ module Brutus
         exit!(code)
       end
 
-      monitor = Thread.new do
-        sleep timeout
-        timed_out = true
-        Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
-      end
+      # Single-threaded deadline poll (R2): we are the ONLY caller of waitpid on
+      # this pid, so we never reap-then-kill. We SIGKILL only after WNOHANG shows
+      # the child is still alive past the deadline — so the kill can never hit a
+      # reaped/recycled pid. Timeout is a parent-side fact (deadline reached), not
+      # status.signaled? (which is true for ANY signal death, e.g. SIGSEGV).
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+      loop do
+        reaped, status = Process.waitpid2(pid, Process::WNOHANG)
+        return decode(status) if reaped
 
-      _, status = Process.wait2(pid)
-      monitor.kill
-      decode(status, timed_out: timed_out)
+        if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+          Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
+          Process.waitpid(pid) rescue nil # rubocop:disable Style/RescueModifier
+          return Result.timeout
+        end
+        sleep 0.005
+      end
     end
 
     # Strategy 7a (default): write the whole mutated file and `load` it, which
@@ -83,20 +90,62 @@ module Brutus
     def self.apply_surgical(mutation, subject, source)
       loc = subject.def_node.location
       def_start = loc.start_offset
-      snippet = source[def_start...loc.end_offset]
+      # Byte slicing (C1): Prism offsets are byte offsets.
+      snippet = source.byteslice(def_start...loc.end_offset)
       rel_s = mutation.start_offset - def_start
       rel_e = mutation.end_offset - def_start
-      mutated = snippet[0...rel_s] + mutation.replacement + snippet[rel_e..]
-      return if Parser.parse_string(mutated).errors.any? # parent guard already filters
+      mutated_def = snippet.byteslice(0...rel_s) + mutation.replacement + snippet.byteslice(rel_e..)
 
-      owner = subject.namespace.empty? ? Object : Object.const_get(subject.namespace.join("::"))
-      def_line = source[0...def_start].count("\n") + 1
-      owner.class_eval(mutated, subject.file, def_line)
+      # Rebuild the FULL namespace nesting textually so unqualified enclosing-
+      # namespace constants resolve exactly as a whole-file `load` (7a) would.
+      # class_eval(string) would collapse Module.nesting to [owner] and raise
+      # NameError on such constants (C2 scope-collapse).
+      keywords = nesting_keywords(subject.namespace)
+      prefix   = keywords.map { |kw, name| "#{kw} #{name}" }.join("\n")
+      prefix  += "\n" unless prefix.empty?
+      wrapped  = "#{prefix}#{mutated_def}#{"\nend" * keywords.size}"
+
+      # A snippet that fails to reparse must NOT silently fall through to running
+      # the ORIGINAL method (C2 false-survived). Raise -> the fork block aborts
+      # before any test runs -> Result.error, never a bogus `survived`.
+      raise "surgical snippet failed to reparse" if Parser.parse_string(wrapped).errors.any?
+
+      # Preserve original visibility — class/module bodies define methods public,
+      # but 7a's `load` would re-apply the file's private/protected (C2).
+      owner  = subject.namespace.empty? ? Object : Object.const_get(subject.namespace.join("::"))
+      target = subject.singleton ? owner.singleton_class : owner
+      vis    = method_visibility(target, subject.name)
+
+      # Byte-correct line number; eval at top level so the textual class/module
+      # wrappers rebuild Module.nesting. Offset the lineno by the wrapper prefix
+      # so the def lands on its real source line.
+      def_line = source.byteslice(0, def_start).count("\n") + 1
+      eval_line = [def_line - prefix.count("\n"), 1].max
+      eval(wrapped, TOPLEVEL_BINDING, subject.file, eval_line) # rubocop:disable Security/Eval
+
+      target.send(vis, subject.name) if vis && vis != :public
     end
 
-    def self.decode(status, timed_out:)
-      return Result.timeout if timed_out
+    # Resolve each segment of the namespace to its live Module and pick the
+    # correct keyword (reopening a class with `module` — or vice versa — raises
+    # TypeError), so the textual wrapper matches the real definitions.
+    def self.nesting_keywords(namespace)
+      mod = Object
+      namespace.flat_map { |n| n.split("::") }.map do |name|
+        mod = mod.const_get(name)
+        [mod.is_a?(Class) ? "class" : "module", name]
+      end
+    end
 
+    def self.method_visibility(mod, name)
+      return :private   if mod.private_method_defined?(name)
+      return :protected if mod.protected_method_defined?(name)
+      return :public    if mod.public_method_defined?(name)
+
+      nil
+    end
+
+    def self.decode(status)
       case status.exitstatus
       when 0 then Result.survived
       when 1 then Result.killed

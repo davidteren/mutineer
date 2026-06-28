@@ -20,7 +20,7 @@ module Brutus
 
       def visit_string_node(node)
         loc = node.location
-        token = @source[loc.start_offset...loc.end_offset]
+        token = @source.byteslice(loc.start_offset...loc.end_offset)
         emit(loc, '""') unless token == '""' || token == "''" || node.unescaped.empty?
         super
       end

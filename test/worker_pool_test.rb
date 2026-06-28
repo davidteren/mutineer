@@ -41,22 +41,45 @@ class WorkerPoolTest < Minitest::Test
     end
   end
 
-  def test_parallel_is_faster_than_serial
+  # L1: replaces the flaky wall-clock `parallel < 4*sleep` assertion. Each worker
+  # records its CLOCK_MONOTONIC start/finish (system-wide, comparable across
+  # processes); with size 4 and 4 jobs the intervals MUST overlap. A serial run
+  # would have zero overlap, so this is deterministic, not timing-threshold luck.
+  def test_workers_run_concurrently
     items = Array.new(4) { [0.2] }
-    block = ->(s) { sleep s; Brutus::Result.killed }
-    parallel = elapsed { Brutus::WorkerPool.new(4).run(items, &block) }
-    assert_operator parallel, :<, (4 * 0.2), "4 jobs should overlap, not run serially"
+    results = Brutus::WorkerPool.new(4).run(items) do |s|
+      a = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      sleep s
+      b = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      Brutus::Result.skipped("#{a} #{b}")
+    end
+    intervals = results.map { |r| r.details.split.map(&:to_f) }
+    overlap = intervals.combination(2).any? { |(a1, a2), (b1, b2)| a1 < b2 && b1 < a2 }
+    assert overlap, "expected at least two workers to run concurrently"
   end
 
   def test_empty_items_returns_empty
     assert_empty Brutus::WorkerPool.new(2).run([]) { Brutus::Result.killed }
   end
 
-  private
+  # R6: a fork failure with nothing running cannot make progress -> re-raise
+  # (rather than spin forever). Singleton `fork` shadows Kernel#fork in the pool.
+  def test_eagain_with_nothing_running_reraises
+    pool = Brutus::WorkerPool.new(1)
+    def pool.fork(*) = raise Errno::EAGAIN
 
-  def elapsed
-    t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    yield
-    Process.clock_gettime(Process::CLOCK_MONOTONIC) - t
+    assert_raises(Errno::EAGAIN) { pool.run([[1]]) { Brutus::Result.killed } }
+  end
+
+  # R6: a partial/garbage Marshal stream from a dead worker degrades to an error
+  # Result instead of crashing the whole pool.
+  def test_partial_marshal_stream_becomes_error
+    pool = Brutus::WorkerPool.new(1)
+    rd, wr = IO.pipe
+    wr.write("\x04\x08not-a-valid-marshal-payload")
+    wr.close
+    results = [nil]
+    pool.send(:collect, results, { 999 => [0, rd] }, 999)
+    assert_predicate results[0], :error?
   end
 end

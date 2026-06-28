@@ -61,15 +61,16 @@ class JsonReporterTest < Minitest::Test
     assert_equal 100.0, doc["summary"]["score"]
   end
 
-  def test_zero_mutations_score_is_zero_not_raise
+  # C8: empty denominator emits null (not 0.0), matching the nil-vs-0.0 discipline.
+  def test_zero_mutations_score_is_null_not_raise
     doc = render([])
-    assert_equal 0.0, doc["summary"]["score"]
+    assert_nil doc["summary"]["score"]
     assert_equal 0, doc["summary"]["total"]
   end
 
-  def test_all_errored_score_is_zero_not_raise
+  def test_all_errored_score_is_null_not_raise
     doc = render([Brutus::Result.error, Brutus::Result.timeout])
-    assert_equal 0.0, doc["summary"]["score"]
+    assert_nil doc["summary"]["score"]
     assert_equal 2, doc["summary"]["total"]
     assert_operator doc["summary"]["errored"] + doc["summary"]["timeout"], :==, 2
   end

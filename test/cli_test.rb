@@ -22,27 +22,37 @@ class CliTest < Minitest::Test
     assert_match(/condition_negation\s+tier 2\s+disabled/, out)
   end
 
-  def test_jobs_zero_exits_one
+  # C7: every flag/usage failure exits 2 (usage), distinct from exit 1 (tests too
+  # weak) and exit 0 (success).
+  def test_jobs_zero_exits_two
     _, err, status = brutus("run", "x.rb", "--jobs", "0")
-    assert_equal 1, status.exitstatus
+    assert_equal 2, status.exitstatus
     assert_includes err, "--jobs requires a positive integer"
   end
 
-  def test_unknown_format_exits_one
+  def test_unknown_format_exits_two
     _, err, status = brutus("run", "x.rb", "--format", "csv")
-    assert_equal 1, status.exitstatus
+    assert_equal 2, status.exitstatus
     assert_includes err, %(unknown format "csv")
   end
 
-  def test_unknown_strategy_exits_one
+  def test_unknown_strategy_exits_two
     _, err, status = brutus("run", "x.rb", "--strategy", "bogus")
-    assert_equal 1, status.exitstatus
+    assert_equal 2, status.exitstatus
     assert_includes err, %(unknown strategy "bogus")
   end
 
-  def test_unwritable_output_exits_one
+  def test_unwritable_output_exits_two
     _, err, status = brutus("run", "x.rb", "--test", "t.rb", "--output", "/no-such-dir/out.json")
-    assert_equal 1, status.exitstatus
+    assert_equal 2, status.exitstatus
     assert_includes err, "cannot write to"
+  end
+
+  # R5: a missing source/test path is a clean usage error, not an ENOENT backtrace.
+  def test_missing_source_path_exits_two
+    _, err, status = brutus("run", "no_such_source.rb", "--test", "no_such_test.rb")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "no such file"
+    refute_includes err, "(Errno::ENOENT)"
   end
 end

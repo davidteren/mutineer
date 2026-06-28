@@ -40,10 +40,24 @@ module Brutus
         begin
           pid = fork do
             rd.close
-            payload = yield(*items[idx])
-            wr.write(Marshal.dump(payload))
-            wr.close
-            exit!(0)
+            # R1: the child must ALWAYS hard-exit. If yield raises, marshal an
+            # error Result and exit! in `ensure` — otherwise the child unwinds
+            # normally and our Minitest at_exit autorun re-runs the parent suite
+            # inside the worker, losing the real error.
+            payload =
+              begin
+                yield(*items[idx])
+              rescue Exception => e # rubocop:disable Lint/RescueException
+                Result.error("worker crashed: #{e.class}: #{e.message}")
+              end
+            begin
+              wr.write(Marshal.dump(payload))
+            rescue StandardError # rubocop:disable Lint/SuppressedException
+              # pipe gone; parent will record "no result"
+            ensure
+              wr.close
+              exit!(0)
+            end
           end
         rescue Errno::EAGAIN
           # Process table is full. Put the item back and reap before retrying;
@@ -60,17 +74,39 @@ module Brutus
       end
     end
 
+    # R6: reap exactly one of OUR children. wait2(-1) would reap (steal) any of
+    # the host process's children — fatal when the pool runs under a forking test
+    # suite. Poll our known pids with WNOHANG instead.
     def reap(results, running)
       return if running.empty?
 
-      pid, = Process.wait2(-1)
-      slot = running.delete(pid)
-      return unless slot # a child not started by us
+      loop do
+        running.each_key do |pid|
+          reaped, = Process.waitpid2(pid, Process::WNOHANG)
+          next unless reaped
 
-      idx, rd = slot
+          return collect(results, running, pid)
+        end
+        sleep 0.005
+      end
+    end
+
+    def collect(results, running, pid)
+      idx, rd = running.delete(pid)
       data = rd.read
       rd.close
-      results[idx] = data.empty? ? Result.error("worker produced no result") : Marshal.load(data)
+      results[idx] =
+        if data.empty?
+          Result.error("worker produced no result")
+        else
+          # R6: a partial/garbage Marshal stream (dead worker) must not crash the
+          # pool — degrade to an error Result.
+          begin
+            Marshal.load(data)
+          rescue StandardError => e
+            Result.error("worker result unreadable: #{e.class}: #{e.message}")
+          end
+        end
     end
   end
 end

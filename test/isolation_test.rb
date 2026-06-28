@@ -31,6 +31,13 @@ class IsolationTest < Minitest::Test
     assert_predicate result, :timeout?
   end
 
+  # Signal death (SIGSEGV/SIGKILL from the child itself, not our timeout) decodes
+  # to error, NOT timeout — timeout is a parent-side deadline fact, not signaled?.
+  def test_signal_death_is_error_not_timeout
+    result = Brutus::Isolation.run { Process.kill("KILL", Process.pid) }
+    assert_predicate result, :error?
+  end
+
   def test_no_zombies_left_behind
     Brutus::Isolation.run { 0 }
     # If the child were not reaped, waitpid(-1) would return it; ECHILD means

@@ -76,8 +76,10 @@ module Brutus
     def json_report
       killed = @agg.killed_count
       survived = @agg.survived_count
-      denom = killed + survived
-      score = denom.zero? ? 0.0 : (killed.to_f / denom * 100).round(2)
+      # C8: null (not 0.0) on an empty denominator, matching the nil-vs-0.0
+      # discipline in AggregateResult; and the SAME rounding as the human report
+      # (one run must not yield two scores by --format).
+      score = @agg.mutation_score
 
       doc = {
         schema_version: "1.0",
@@ -117,14 +119,16 @@ module Brutus
     # mutation's 1-based start line, the full original line-block it touches, the
     # spliced mutated block, and a single-line token label for the header.
     def diff_for(m, source)
-      line_begin = m.start_offset.zero? ? 0 : (source.rindex("\n", m.start_offset - 1) || -1) + 1
-      line_end   = source.index("\n", m.end_offset) || source.length
-      before = source[line_begin...m.start_offset]
-      after  = source[m.end_offset...line_end]
-      original_block = source[line_begin...line_end]
+      # Byte math (C1): Prism offsets are byte offsets; byteindex/byterindex/
+      # byteslice keep line splicing correct for multibyte sources.
+      line_begin = m.start_offset.zero? ? 0 : (source.byterindex("\n", m.start_offset - 1) || -1) + 1
+      line_end   = source.byteindex("\n", m.end_offset) || source.bytesize
+      before = source.byteslice(line_begin...m.start_offset)
+      after  = source.byteslice(m.end_offset...line_end)
+      original_block = source.byteslice(line_begin...line_end)
       mutated_block  = "#{before}#{m.replacement}#{after}"
-      start_line  = source[0...m.start_offset].count("\n") + 1
-      token       = source[m.start_offset...m.end_offset].gsub(/\s+/, " ").strip
+      start_line  = source.byteslice(0, m.start_offset).count("\n") + 1
+      token       = source.byteslice(m.start_offset...m.end_offset).gsub(/\s+/, " ").strip
       token       = "#{token[0, 47]}..." if token.length > 50
       [start_line, original_block, mutated_block, token]
     end
@@ -136,7 +140,7 @@ module Brutus
       {
         subject: result.subject.qualified_name,
         file: file,
-        line: source[0...m.start_offset].count("\n") + 1
+        line: source.byteslice(0, m.start_offset).count("\n") + 1
       }
     end
 

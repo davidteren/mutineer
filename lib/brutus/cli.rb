@@ -91,9 +91,16 @@ module Brutus
         exit 0
       end
 
-      file_path = Config.find_file
-      file_hash = file_path ? Config.from_file(file_path) : {}
-      config = Config.resolve(opts, file_hash, explicit)
+      begin
+        file_path = Config.find_file
+        file_hash = file_path ? Config.from_file(file_path) : {}
+        config = Config.resolve(opts, file_hash, explicit)
+      rescue Brutus::ConfigError => e
+        # R8: the lib layer raises instead of killing the host; the CLI maps a
+        # config (usage) error to exit 2.
+        warn "brutus: #{e.message}"
+        exit 2
+      end
 
       case argv.first
       when "run"
@@ -125,14 +132,23 @@ module Brutus
       # Unknown --operators value surfaces here; no backtrace reaches the user.
       warn "brutus: #{e.message}"
       exit 2
+    rescue SystemCallError => e
+      # R5: a missing/unreadable path reaches here as Errno::ENOENT etc. — a plain
+      # message and usage exit, never a raw backtrace.
+      warn "brutus: #{e.message}"
+      exit 2
+    rescue SyntaxError => e
+      # A syntactically invalid source file surfaces when `require`d; report it
+      # cleanly rather than dumping a backtrace.
+      warn "brutus: cannot load source: #{e.message}"
+      exit 1
     rescue Brutus::ParseError => e
       warn "brutus: error reading: #{e.message}"
       exit 1
     end
 
-    # New-flag validation (R24–R26, R7a is handled in Config.from_file). All emit
-    # a plain-language message and exit 1; the legacy threshold-range check keeps
-    # its exit-2 usage code.
+    # Flag validation: every flag/usage failure exits 2 (C7), consistent with the
+    # taxonomy above — CI can tell "mistyped flag" from "tests too weak."
     def self.validate!(config)
       unless (0.0..100.0).cover?(config.threshold)
         warn "brutus: --threshold must be between 0 and 100"
@@ -142,21 +158,34 @@ module Brutus
       jobs = Integer(config.jobs.to_s, exception: false)
       if jobs.nil? || jobs < 1
         warn "brutus: --jobs requires a positive integer (got: #{config.jobs})"
-        exit 1
+        exit 2
       end
       config.jobs = jobs
 
       unless %w[human json].include?(config.format)
         warn %(brutus: unknown format "#{config.format}". Expected: human, json)
-        exit 1
+        exit 2
       end
 
       unless %w[7a 7b].include?(config.strategy)
         warn %(brutus: unknown strategy "#{config.strategy}". Expected: 7a, 7b)
-        exit 1
+        exit 2
       end
 
       preflight_output!(config.output) if config.output
+      validate_paths!(config)
+    end
+
+    # R5: validate path existence up front so a typo is a clean usage error (exit
+    # 2), not an Errno::ENOENT backtrace from deep in the run. Flag checks run
+    # first so a bad flag still reports the flag, not the missing file.
+    def self.validate_paths!(config)
+      missing = (config.sources + config.tests)
+                .reject { |p| File.exist?(File.expand_path(p, config.project_root)) }
+      return if missing.empty?
+
+      warn "brutus: no such file: #{missing.join(', ')}"
+      exit 2
     end
 
     def self.preflight_output!(path)
@@ -165,7 +194,7 @@ module Brutus
 
       reason = File.directory?(dir) ? "directory is not writable" : "no such directory"
       warn "brutus: cannot write to #{path}: #{reason}"
-      exit 1
+      exit 2
     end
 
     def self.execute(config)
@@ -196,8 +225,8 @@ module Brutus
               next
             end
             per_operator[mutation.operator] += 1
-            original = source[mutation.start_offset...mutation.end_offset]
-            line = source[0...mutation.start_offset].count("\n") + 1
+            original = source.byteslice(mutation.start_offset...mutation.end_offset)
+            line = source.byteslice(0, mutation.start_offset).count("\n") + 1
             puts "[#{mutation.operator}] #{subject.qualified_name}  " \
                  "#{subject.file}:#{line}  `#{original}` -> `#{mutation.replacement}`"
           end

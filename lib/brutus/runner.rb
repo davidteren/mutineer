@@ -51,17 +51,37 @@ module Brutus
         end
       end
 
-      strategy = config.strategy
-      bare = WorkerPool.new(config.jobs).run(jobs) do |subject, mutation|
-        run(mutation, source_file: subject.file, coverage_map: coverage_map,
-            subject: subject, strategy: strategy)
-      end
+      # C3: 7a writes brutus_mutant*.rb into each source dir (so require_relative
+      # resolves). A SIGKILL'd child skips the tempfile's ensure-unlink, orphaning
+      # it. `ensure` is unreliable vs SIGKILL, so the PARENT sweeps each source dir
+      # before and after the run — orphans are impossible after a normal run.
+      source_dirs = config.sources
+                          .map { |f| File.dirname(File.expand_path(f, config.project_root)) }.uniq
+      sweep_orphans(source_dirs)
 
-      # The bare Results carry only status (Subjects hold live AST nodes that do
-      # not marshal); reattach subject+mutation in the parent, in input order.
-      results = bare.each_with_index.map { |r, i| r.with(subject: jobs[i][0], mutation: jobs[i][1]) }
+      strategy = config.strategy
+      results =
+        begin
+          bare = WorkerPool.new(config.jobs).run(jobs) do |subject, mutation|
+            run(mutation, source_file: subject.file, coverage_map: coverage_map,
+                subject: subject, strategy: strategy)
+          end
+          # The bare Results carry only status (Subjects hold live AST nodes that
+          # do not marshal); reattach subject+mutation in the parent, in order.
+          bare.each_with_index.map { |r, i| r.with(subject: jobs[i][0], mutation: jobs[i][1]) }
+        ensure
+          sweep_orphans(source_dirs)
+        end
 
       [AggregateResult.new(results), source_map]
+    end
+
+    def self.sweep_orphans(dirs)
+      dirs.each do |dir|
+        Dir.glob(File.join(dir, "brutus_mutant*.rb")).each do |f|
+          File.unlink(f) rescue nil # rubocop:disable Style/RescueModifier
+        end
+      end
     end
 
     def self.run(mutation, source_file:, coverage_map:, subject: nil, strategy: "7a",
@@ -72,7 +92,7 @@ module Brutus
       # Validity rule: a mutant that doesn't re-parse is skipped before forking.
       return Result.skipped if Parser.parse_string(mutated).errors.any?
 
-      line       = source[0...mutation.start_offset].count("\n") + 1
+      line       = source.byteslice(0, mutation.start_offset).count("\n") + 1
       test_files = coverage_map.tests_for(source_file, line)
       return Result.no_coverage if test_files.empty?
 
