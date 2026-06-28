@@ -1,0 +1,148 @@
+lib/mutineer/mutators/condition_negation.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-40
+lib/mutineer/mutators/boolean_connector.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-42
+test/config_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 7,15,33,69,100
+lib/mutineer/mutators/literal_mutation.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-40
+docs/index.html
+  s_89855e157328b6::t_b2acef84b28544 1-444
+lib/mutineer/mutator_registry.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-54
+lib/mutineer/mutation.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-21
+test/mutators/literal_mutation_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 7-8,13,42
+mutineer.gemspec
+  s_0214cb1e158c48::t_9cbc2f73768ab2 3-30
+lib/mutineer/cli.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-243
+lib/mutineer/config.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-128
+test/subject_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 7,11,17,23,29
+test/result_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 7-8,12,16,22,26,30,37,46-47
+lib/mutineer/runner.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-111
+test/mutators/boolean_connector_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 7-8,14
+lib/mutineer/coverage_map.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-222
+lib/mutineer/isolation.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-157
+lib/mutineer/result.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-77
+test/mutator_registry_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 6,11,16,20,24,28,34
+test/mutators/statement_removal_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 7-8,13
+test/isolation_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 7,11,15,19,25,30,37,42
+test/runner_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 21,28,30,35,40,46
+lib/mutineer/worker_pool.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-112
+test/mutation_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 8,14,21,27,37,45,51
+lib/mutineer/mutators/base.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-23
+test/worker_pool_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 8-9,17,23-24,26,33,36,50,54,62,68,71,77
+test/project_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 18,23,32,39,46,53,59,65,70
+lib/mutineer/version.rb
+  s_0214cb1e158c48::t_d553197092a7c6 3-4
+lib/mutineer/subject.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-19
+test/mutators/return_nil_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 7-8,13
+test/parser_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 9,16-17,22,26
+test/fixtures/pricing_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 8
+test/reporter_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 11-12,15,17,20,31-32,37-39,45,51,55,59-60,65,96-97,101,103,106,120,127-128,135,143
+test/tempfile_leak_test.rb
+  s_0214cb1e158c48::t_b419718101a6a2 1-7,9-19,22-24,28-30,32-33,35-36,38,41-42
+  s_0214cb1e158c48::t_d553197092a7c6 8,20-21,25-27,31,34,37,39-40
+CHANGELOG.md
+  s_0214cb1e158c48::t_6d4923efd6adcf 1-24
+lib/mutineer/mutators/comparison.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-36
+test/parallel_strategy_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 11-12,15,18,26-27,34-35,41,44,47,95-96,99,101,122-123,126,128
+test/mutators/boolean_literal_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 7-8,14
+lib/mutineer/minitest_integration.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-43
+Rakefile
+  s_0214cb1e158c48::t_d553197092a7c6 8
+bin/mutineer
+  s_0214cb1e158c48::t_d553197092a7c6 1-6
+test/coverage_map_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 18-19,62,74-75,88,101,113,120,126,132,153,155,176-177,186-187,200,210
+  s_0214cb1e158c48::t_e154c565ed86bd 135-152,154,156-175,178-185,188-199,201-209,211-219
+lib/mutineer/project.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-69
+test/integration_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 6,13-14,16,18,29,46,56,81
+lib/mutineer/reporter.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-204
+README.md
+  s_0214cb1e158c48::t_4f5ded3ff30556 1,3,10-11,16-22,28-82,85-87,90
+lib/mutineer/mutators/arithmetic.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-29
+lib/mutineer/parser.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-26
+test/mutators/comparison_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 7-8,14
+test/mutators/arithmetic_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 8-9,15,62-63,65
+lib/mutineer/mutators/return_nil.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-63
+test/mutators/condition_negation_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 7-8,13
+lib/mutineer.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-29
+lib/mutineer/mutators/boolean_literal.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-43
+test/json_reporter_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 14,19-20,25,30,36,58,72,79-80,91
+test/cli_test.rb
+  s_0214cb1e158c48::t_d553197092a7c6 9,32,43,49,55,61,68
+  s_0214cb1e158c48::t_3322ae76980a91 5-6,12-14,16-28
+  s_0214cb1e158c48::t_139423fa772e61 73-128
+  s_0214cb1e158c48::t_ab77f1f96be463 7
+test/test_helper.rb
+  s_0214cb1e158c48::t_d553197092a7c6 6
+lib/mutineer/mutators/statement_removal.rb
+  s_0214cb1e158c48::t_d553197092a7c6 1-34
+test/mutineer_test.rb
+  s_0214cb1e158c48::t_4e012e446e0203 5,7-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "0267311b17c87bdcba76c4d70e74dde4c8257478",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_89855e157328b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e90a1157-fb08-4207-8bdf-39caaed8cd24",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
