@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.2] - 2026-06-29
+
+### Fixed
+- **`--rails` defaults `RAILS_ENV` to `test`** (#7) — an unset `RAILS_ENV` booted
+  development, where the suite isn't loaded, so every mutant was falsely reported
+  `no_coverage` (score N/A, exit 0). An explicit `RAILS_ENV` is respected.
+- **`--rails` defaults to `--jobs 1`** (#12) — parallel mutant forks share one
+  database and deadlock on transactional fixtures; explicit `--jobs N` opts back
+  into parallelism.
+
+### Added
+- **Tier-2 operator discoverability** (#14) — the human-format run summary now
+  lists the available opt-in tier-2 operators and how to enable them.
+
 ## [0.6.1] - 2026-06-29
 
 ### Changed
@@ -86,6 +100,7 @@ All notable changes to this project are documented here. The format is based on
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.6.2]: https://github.com/davidteren/mutineer/releases/tag/v0.6.2
 [0.6.1]: https://github.com/davidteren/mutineer/releases/tag/v0.6.1
 [0.6.0]: https://github.com/davidteren/mutineer/releases/tag/v0.6.0
 [0.5.0]: https://github.com/davidteren/mutineer/releases/tag/v0.5.0
