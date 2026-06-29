@@ -257,7 +257,25 @@ module Mutineer
       reporter = Reporter.new(aggregate, source_map)
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output)
+
+      # #14: nudge toward the opt-in tier-2 operators (human report only — never
+      # pollute JSON output).
+      if config.format != "json" && (hint = tier2_hint(config.operators))
+        puts hint
+      end
+
       exit reporter.exit_code(threshold: config.threshold)
+    end
+
+    # The tier-2 operators not in the active set, as a one-line hint (or nil when
+    # they're all already enabled). `active` nil means the default (Tier-1) set.
+    def self.tier2_hint(active)
+      active ||= MutatorRegistry::DEFAULT_NAMES
+      unused = MutatorRegistry::TIER2_NAMES - active
+      return if unused.empty?
+
+      "#{unused.size} tier-2 operators available (#{unused.join(', ')}) — " \
+        "enable with --operators <list>."
     end
 
     def self.dry_run(config)

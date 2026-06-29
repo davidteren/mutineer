@@ -160,4 +160,16 @@ class CliTest < Minitest::Test
       refute_includes err, "cli.rb:", "no internal backtrace should leak"
     end
   end
+
+  # #14: tier-2 operators are surfaced when they're not in the active set.
+  def test_tier2_hint_lists_unused_tier2_operators
+    hint = Mutineer::CLI.tier2_hint(nil) # nil => default (Tier-1) set
+    Mutineer::MutatorRegistry::TIER2_NAMES.each { |op| assert_includes hint, op }
+    assert_includes hint, "--operators"
+  end
+
+  def test_tier2_hint_nil_when_all_enabled
+    all = Mutineer::MutatorRegistry::DEFAULT_NAMES + Mutineer::MutatorRegistry::TIER2_NAMES
+    assert_nil Mutineer::CLI.tier2_hint(all)
+  end
 end
