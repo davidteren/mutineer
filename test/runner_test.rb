@@ -79,7 +79,37 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # #7: --rails with an unset RAILS_ENV defaults to "test"; explicit is respected.
+  def test_ensure_rails_env_defaults_to_test_when_unset
+    with_rails_env(nil) do
+      Mutineer::Runner.ensure_rails_env(Mutineer::Config.new(rails: true))
+      assert_equal "test", ENV.fetch("RAILS_ENV")
+    end
+  end
+
+  def test_ensure_rails_env_respects_explicit_value
+    with_rails_env("staging") do
+      Mutineer::Runner.ensure_rails_env(Mutineer::Config.new(rails: true))
+      assert_equal "staging", ENV.fetch("RAILS_ENV")
+    end
+  end
+
+  def test_ensure_rails_env_noop_without_rails
+    with_rails_env(nil) do
+      Mutineer::Runner.ensure_rails_env(Mutineer::Config.new(rails: false))
+      assert_nil ENV["RAILS_ENV"]
+    end
+  end
+
   private
+
+  def with_rails_env(value)
+    orig = ENV["RAILS_ENV"]
+    value.nil? ? ENV.delete("RAILS_ENV") : (ENV["RAILS_ENV"] = value)
+    yield
+  ensure
+    orig.nil? ? ENV.delete("RAILS_ENV") : (ENV["RAILS_ENV"] = orig)
+  end
 
   def line_of(mutation, source)
     source.byteslice(0, mutation.start_offset).count("\n") + 1

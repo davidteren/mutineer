@@ -40,6 +40,11 @@ module Mutineer
       # parse that needs nothing loaded. Standalone mode requires the sources as
       # before so their classes exist for the children to inherit.
       if config.boot
+        # #7: under --rails an unset RAILS_ENV boots development, where the test
+        # suite isn't loaded — coverage comes back empty and EVERY mutant is
+        # falsely reported no_coverage (score N/A, exit 0). Default it to test.
+        ensure_rails_env(config)
+
         # Coverage instruments only files loaded AFTER it starts. Start it BEFORE
         # the boot require so the entire app loaded during boot is instrumented;
         # forked children then measure each test's coverage delta against it.
@@ -150,6 +155,17 @@ module Mutineer
         end
         [root, File.dirname(f)].compact
       end.uniq
+    end
+
+    # #7: when --rails is on and RAILS_ENV is unset, default it to "test" (and
+    # say so) before the app boots — otherwise it boots development and nothing
+    # is measured. An explicitly-set RAILS_ENV is always respected.
+    def self.ensure_rails_env(config)
+      return unless config.rails
+      return unless ENV["RAILS_ENV"].nil? || ENV["RAILS_ENV"].empty?
+
+      ENV["RAILS_ENV"] = "test"
+      warn "[mutineer] RAILS_ENV was unset; defaulting to 'test' for --rails."
     end
 
     def self.sweep_orphans(dirs)
