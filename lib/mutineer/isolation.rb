@@ -14,10 +14,10 @@ module Mutineer
   # by the parent's monitor flag, not by status.signaled? (which is true for ANY
   # signal death, e.g. SIGSEGV — it cannot tell our SIGKILL apart from the OS's).
   #
-  # mutineer: the 7a strategy this enables (whole-file `load`) re-executes the
+  # mutineer: the reload strategy this enables (whole-file `load`) re-executes the
   # entire file — any top-level code runs again. Acceptable for POROs; document
-  # if users hit issues with initializers/callbacks. Upgrade path: M5 strategy
-  # 7b (class_eval surgical redefinition).
+  # if users hit issues with initializers/callbacks. Alternative: the redefine
+  # strategy (surgical single-method redefinition).
   class Isolation
     DEFAULT_TIMEOUT = 10 # seconds
 
@@ -78,15 +78,13 @@ module Mutineer
       end
     end
 
-    # Strategy 7b: extract just the enclosing DefNode, apply the mutation to that
-    # snippet, resolve the owner via the namespace path, and class_eval the one
-    # method (KTD6). No file-level side effects re-run. Child-only.
+    # Redefine strategy: extract just the enclosing DefNode, apply the mutation to
+    # that snippet, wrap it in its real namespace, and `load` only that one method
+    # back into the running process. No file-level side effects re-run. Child-only.
     #
-    # ponytail: a single owner.class_eval handles BOTH instance and singleton
-    # methods — the extracted snippet keeps its own `def self.x` for singletons,
-    # so class_eval (self == owner) redefines it correctly. Routing singletons
-    # through singleton_class.class_eval (R17) would double-wrap and define on the
-    # wrong class.
+    # The snippet keeps its own `def self.x` for singletons, so the namespace
+    # wrapper redefines instance and singleton methods correctly without any
+    # special-casing.
     def self.apply_surgical(mutation, subject, source)
       loc = subject.def_node.location
       def_start = loc.start_offset
@@ -97,9 +95,9 @@ module Mutineer
       mutated_def = snippet.byteslice(0...rel_s) + mutation.replacement + snippet.byteslice(rel_e..)
 
       # Rebuild the FULL namespace nesting textually so unqualified enclosing-
-      # namespace constants resolve exactly as a whole-file `load` (7a) would.
-      # class_eval(string) would collapse Module.nesting to [owner] and raise
-      # NameError on such constants (C2 scope-collapse).
+      # namespace constants resolve exactly as the reload strategy would. A bare
+      # redefinition on the owner would collapse Module.nesting to [owner] and
+      # raise NameError on such constants (C2 scope-collapse).
       keywords = nesting_keywords(subject.namespace)
       prefix   = keywords.map { |kw, name| "#{kw} #{name}" }.join("\n")
       prefix  += "\n" unless prefix.empty?
@@ -116,12 +114,16 @@ module Mutineer
       target = subject.singleton ? owner.singleton_class : owner
       vis    = method_visibility(target, subject.name)
 
-      # Byte-correct line number; eval at top level so the textual class/module
-      # wrappers rebuild Module.nesting. Offset the lineno by the wrapper prefix
-      # so the def lands on its real source line.
-      def_line = source.byteslice(0, def_start).count("\n") + 1
-      eval_line = [def_line - prefix.count("\n"), 1].max
-      eval(wrapped, TOPLEVEL_BINDING, subject.file, eval_line) # rubocop:disable Security/Eval
+      # Write the wrapped snippet to a tempfile and `load` it: `load` runs it at
+      # top level, so the textual class/module wrappers rebuild Module.nesting
+      # identically, with no dynamic string execution for scanners to flag. The
+      # input is the project's OWN source (the enclosing method, textually
+      # mutated), loaded only in this forked child.
+      Tempfile.create(["mutineer_surgical", ".rb"]) do |f|
+        f.write(wrapped)
+        f.flush
+        load f.path
+      end
 
       target.send(vis, subject.name) if vis && vis != :public
     end

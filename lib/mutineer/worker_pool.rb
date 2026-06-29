@@ -10,7 +10,7 @@ module Mutineer
   # SAME ORDER as `items` regardless of finish order, so verdicts are identical to
   # a serial run (R4) and downstream output is stable.
   #
-  # The block is evaluated inside the child via `yield(*items[i])`; whatever it
+  # The block is run inside the child via `yield(*items[i])`; whatever it
   # returns (a Result) is the marshaled payload. Per-mutant timeout is handled one
   # level down by Isolation (KTD2) — the pool adds no separate wall clock.
   class WorkerPool

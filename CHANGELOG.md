@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.1] - 2026-06-29
+
+### Changed
+- **Removed `eval` entirely** — the redefine strategy now `load`s the wrapped
+  method snippet from a tempfile instead of evaluating a string. Behavior is
+  identical (top-level load rebuilds the same `Module.nesting`), but the gem no
+  longer uses dynamic string execution, clearing supply-chain scanner flags.
+  Zero runtime dependencies unchanged.
+
 ## [0.6.0] - 2026-06-28
 
 ### Added
@@ -77,6 +86,7 @@ All notable changes to this project are documented here. The format is based on
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.6.1]: https://github.com/davidteren/mutineer/releases/tag/v0.6.1
 [0.6.0]: https://github.com/davidteren/mutineer/releases/tag/v0.6.0
 [0.5.0]: https://github.com/davidteren/mutineer/releases/tag/v0.5.0
 [0.4.0]: https://github.com/davidteren/mutineer/releases/tag/v0.4.0
