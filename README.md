@@ -1,6 +1,6 @@
 # Mutineer
 
-[![Socket Badge](https://badge.socket.dev/rubygems/package/mutineer/0.6.1?platform=ruby)](https://badge.socket.dev/rubygems/package/mutineer/0.6.1?platform=ruby)
+[![Socket Badge](https://badge.socket.dev/rubygems/package/mutineer/0.6.1?platform=ruby)](https://socket.dev/rubygems/package/mutineer/overview/0.6.1?platform=ruby)
 
 A clean-room mutation-testing tool for Ruby. Mutineer mutates your source one
 change at a time, runs your test suite (Minitest or RSpec) against each mutant, and reports the
