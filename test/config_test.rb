@@ -103,6 +103,18 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  # #12: --rails defaults to serial (one DB, parallel forks deadlock); explicit wins.
+  def test_resolve_rails_defaults_jobs_to_one
+    assert_equal 1, Config.resolve({ rails: true }, {}, Set.new).jobs
+  end
+
+  def test_resolve_rails_respects_explicit_jobs
+    # jobs is normalized to an Integer later in CLI.validate!; resolve keeps it as
+    # given. The point: --rails does NOT clobber an explicit --jobs.
+    cfg = Config.resolve({ rails: true, jobs: "4" }, {}, Set[:jobs])
+    assert_equal "4", cfg.jobs
+  end
+
   def test_resolve_auto_detects_rspec_from_spec_test_names
     cfg = Config.resolve({ tests: ["foo_spec.rb", "bar_spec.rb"] }, {}, Set.new)
     assert_equal "rspec", cfg.framework
