@@ -70,7 +70,8 @@ module Mutineer
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: config.cache_dir, project_root: config.project_root,
           load_paths: config.load_paths, framework: config.framework,
-          boot_path: File.expand_path(config.boot, config.project_root)
+          boot_path: File.expand_path(config.boot, config.project_root),
+          verbose: config.verbose
         ).build_via_fork(rails: config.rails)
       else
         coverage_map = CoverageMap.new(
@@ -209,10 +210,28 @@ module Mutineer
     def self.reconnect_active_record
       return unless defined?(ActiveRecord::Base)
 
-      ActiveRecord::Base.connection_handler.clear_all_connections!
+      base = ActiveRecord::Base
+      # #8: clearing connections here drops an open transactional-fixture
+      # transaction, so the test loses its fixture rows and fails. Skip the clear
+      # when a transaction is open; otherwise clear (v0.2 per-fork write-safety).
+      return if fixture_transaction_open?(base)
+
+      base.connection_handler.clear_all_connections!
     rescue StandardError
       nil
     end
     private_class_method :reconnect_active_record
+
+    # Pure, injectable predicate: true when a transactional-fixture transaction is
+    # already open on the connection. Keys off open_transactions (KTD-2) so it is
+    # correct whenever the transaction exists, regardless of when it opened. Any
+    # probe error degrades safe to false -> caller clears (existing behaviour).
+    def self.fixture_transaction_open?(base)
+      pool = base.connection_pool
+      pool.active_connection? && base.connection.open_transactions.positive?
+    rescue StandardError
+      false
+    end
+    private_class_method :fixture_transaction_open?
   end
 end

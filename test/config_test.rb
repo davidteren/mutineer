@@ -103,6 +103,26 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  # #8: --verbose is a plain boolean field, parsed from YAML and defaulting false.
+  def test_from_file_accepts_verbose
+    with_config("verbose: true\n") do |path|
+      out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty out
+      assert_empty err
+      assert_equal({ verbose: true }, @hash)
+      assert_equal true, Config.resolve({}, @hash, Set.new).verbose
+    end
+  end
+
+  def test_verbose_defaults_to_false
+    assert_equal false, Config.new.verbose
+    assert_equal false, Config.resolve({}, {}, Set.new).verbose
+  end
+
+  def test_resolve_verbose_from_cli
+    assert_equal true, Config.resolve({ verbose: true }, {}, Set.new).verbose
+  end
+
   # #12: --rails defaults to serial (one DB, parallel forks deadlock); explicit wins.
   def test_resolve_rails_defaults_jobs_to_one
     assert_equal 1, Config.resolve({ rails: true }, {}, Set.new).jobs

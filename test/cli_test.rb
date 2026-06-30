@@ -161,6 +161,25 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #8: --verbose is documented and both it and its --debug alias are accepted
+  # flags (not "invalid option") — a clean run still exits 0.
+  def test_help_documents_verbose
+    out, _, status = mutineer("--help")
+    assert_equal 0, status.exitstatus
+    assert_includes out, "--verbose"
+  end
+
+  def test_verbose_and_debug_are_accepted_flags
+    with_project do |proj|
+      %w[--verbose --debug].each do |flag|
+        _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  flag, chdir: proj)
+        assert_equal 0, status.exitstatus, "#{flag} should be accepted"
+        refute_includes err, "invalid option"
+      end
+    end
+  end
+
   # #14: tier-2 operators are surfaced when they're not in the active set.
   def test_tier2_hint_lists_unused_tier2_operators
     hint = Mutineer::CLI.tier2_hint(nil) # nil => default (Tier-1) set

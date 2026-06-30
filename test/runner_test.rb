@@ -101,6 +101,38 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # #8: reconnect decision predicate — proven WITHOUT Rails via injected doubles.
+  # A plain object exposing connection_pool (active_connection?) and connection
+  # (open_transactions) stands in for ActiveRecord::Base.
+  Pool = Struct.new(:active)        { def active_connection? = active }
+  Conn = Struct.new(:open_txns)     { def open_transactions = open_txns }
+  Base = Struct.new(:connection_pool, :connection)
+
+  def fto?(base) = Mutineer::Runner.send(:fixture_transaction_open?, base)
+
+  # open_transactions == 1, active -> true (reconnect skips the clear, preserving
+  # the fixture transaction so write-heavy tests keep their fixture rows).
+  def test_fixture_transaction_open_when_active_and_in_transaction
+    assert fto?(Base.new(Pool.new(true), Conn.new(1)))
+  end
+
+  # open_transactions == 0, active -> false (clear runs; v0.2 write-safety intact).
+  def test_fixture_transaction_not_open_when_no_transaction
+    refute fto?(Base.new(Pool.new(true), Conn.new(0)))
+  end
+
+  # no active connection -> false (nothing to preserve; clear).
+  def test_fixture_transaction_not_open_when_no_active_connection
+    refute fto?(Base.new(Pool.new(false), Conn.new(1)))
+  end
+
+  # probe raises -> false (safe default = clear, existing behaviour).
+  def test_fixture_transaction_open_safe_defaults_to_false_on_error
+    boom = Object.new
+    def boom.connection_pool = raise("no pool")
+    refute fto?(boom)
+  end
+
   private
 
   def with_rails_env(value)

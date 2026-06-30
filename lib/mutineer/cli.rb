@@ -44,6 +44,7 @@ module Mutineer
         --format human|json  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
+        --verbose            Surface the real error when a fork capture fails (alias: --debug)
 
       Options:
         --list-operators  List available operators (default vs optional) and exit
@@ -84,6 +85,8 @@ module Mutineer
         o.on("--framework NAME") { |v| opts[:framework] = v; explicit << :framework }
         o.on("--boot FILE") { |v| opts[:boot] = v; explicit << :boot }
         o.on("--rails") { opts[:rails] = true }
+        o.on("--verbose") { opts[:verbose] = true }
+        o.on("--debug") { opts[:verbose] = true } # alias of --verbose
         o.on("--format FORMAT") { |v| opts[:format] = v }
         o.on("--output FILE") { |v| opts[:output] = v }
       end

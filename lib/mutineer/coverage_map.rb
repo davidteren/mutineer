@@ -25,7 +25,7 @@ module Mutineer
     def initialize(source_paths:, test_paths:, cache_dir: ".mutineer",
                    load_paths: ["lib"], project_root: Dir.pwd,
                    capture_timeout: DEFAULT_CAPTURE_TIMEOUT, boot_path: nil,
-                   framework: "minitest")
+                   framework: "minitest", verbose: false)
       @source_paths = Array(source_paths)
       @test_paths   = Array(test_paths)
       @cache_dir    = cache_dir
@@ -34,6 +34,7 @@ module Mutineer
       @capture_timeout = capture_timeout
       @boot_path    = boot_path
       @framework    = framework || "minitest"
+      @verbose      = verbose
       @map          = {}
       @failed_test_files = []
       @phase_a_ran  = false
@@ -108,10 +109,16 @@ module Mutineer
       abs_sources = abs_source_paths
 
       @test_paths.each do |test_path|
-        coverage = fork_capture(absolute(test_path), abs_sources, rails)
-        next fail_test(test_path, "fork capture produced no result") unless coverage
-
-        record(coverage, test_path)
+        # Tri-state payload (KTD-1): Hash = coverage, String = error diagnostic
+        # from the child, nil = pipe gone / empty.
+        # ponytail/#9: this String diagnostic is what #9 turns into an :uncapturable status.
+        case (coverage = fork_capture(absolute(test_path), abs_sources, rails))
+        when Hash   then record(coverage, test_path)
+        when String
+          fail_test(test_path, @verbose ? "fork capture failed: #{coverage}" :
+            "fork capture produced no result (re-run with --verbose for the error)")
+        else fail_test(test_path, "fork capture produced no result")
+        end
       end
     end
 
@@ -132,8 +139,10 @@ module Mutineer
             Coverage.result(stop: false)
                     .select { |f, _| abs_sources.include?(f) }
                     .transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
-          rescue Exception # rubocop:disable Lint/RescueException
-            nil
+          rescue Exception => e # rubocop:disable Lint/RescueException
+            # KTD-1: stringify (an arbitrary Exception may not marshal); the parent
+            # surfaces this under --verbose. A String marshals safely over the pipe.
+            "#{e.class}: #{e.message}#{e.backtrace&.first ? " @ #{e.backtrace.first}" : ''}"
           end
         begin
           wr.write(Marshal.dump(payload))

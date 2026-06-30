@@ -13,7 +13,7 @@ Every acceptance check is verifiable WITHOUT a Rails app (simulated forks / cann
 
 ## Worklist (dependency-ordered, build in order)
 
-- [ ] **#8 — Fork fixture-txn + surface swallowed error** → [`issue-08-fork-fixture-txn.md`](issue-08-fork-fixture-txn.md)
+- [x] **#8 — Fork fixture-txn + surface swallowed error** → [`issue-08-fork-fixture-txn.md`](issue-08-fork-fixture-txn.md) · done · branch:feat/issue-8-fork-fixture-txn
   Stop `fork_capture` swallowing the child error (diagnostic under `--verbose`); guard `reconnect_active_record`
   to skip `clear_all_connections!` when a fixture transaction is open (`open_transactions.positive?`).
   _Gate:_ real diagnostic surfaces under `--verbose` (suppressed without); reconnect-decision unit test.

@@ -56,6 +56,50 @@ class CoverageMapTest < Minitest::Test
     assert_includes map.failed_test_files.map { |f| File.basename(f) }, "broken_test.rb"
   end
 
+  # --- #8: fork-capture diagnostic (R1/KTD-1) ------------------------------
+
+  # A test file whose top-level `raise` makes the forked child blow up while
+  # loading it — exercising fork_capture's `rescue Exception` String path.
+  def raising_test
+    f = File.join(Dir.mktmpdir, "raising_test.rb")
+    File.write(f, %(raise "boom from child"\n))
+    f
+  end
+
+  def fork_map(test_path, verbose:)
+    Mutineer::CoverageMap.new(
+      source_paths: [CALC], test_paths: [test_path],
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, verbose: verbose
+    )
+  end
+
+  def test_fork_capture_returns_string_diagnostic_for_raising_child
+    Coverage.start(lines: true) unless Coverage.running?
+    map = fork_map(raising_test, verbose: true)
+    payload = map.send(:fork_capture, raising_test, [CALC], false)
+    assert_kind_of String, payload
+    assert_match(/RuntimeError: boom from child/, payload)
+  end
+
+  def test_build_via_fork_surfaces_real_error_under_verbose
+    Coverage.start(lines: true) unless Coverage.running?
+    rt = raising_test
+    map = fork_map(rt, verbose: true)
+    _, err = capture_subprocess_io { map.build_via_fork(rails: false) }
+    assert_match(/boom from child/, err)
+    assert_includes map.failed_test_files.map { |f| File.basename(f) }, "raising_test.rb"
+  end
+
+  def test_build_via_fork_suppresses_error_without_verbose
+    Coverage.start(lines: true) unless Coverage.running?
+    rt = raising_test
+    map = fork_map(rt, verbose: false)
+    _, err = capture_subprocess_io { map.build_via_fork(rails: false) }
+    assert_match(/re-run with --verbose/, err)
+    refute_match(/boom from child/, err)
+    assert_includes map.failed_test_files.map { |f| File.basename(f) }, "raising_test.rb"
+  end
+
   # --- Cache: digest, load/save, invalidation ------------------------------
 
   def test_cache_written_and_reused_without_rerunning_phase_a
