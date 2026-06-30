@@ -4,14 +4,14 @@ require_relative "base"
 
 module Mutineer
   module Mutators
-    # Statement-removal operator: replace each non-final method statement with
-    # "nil". Tests whether the suite detects a missing side effect. The final
-    # expression is always skipped — replacing the return value with nil is the
-    # M5 return-nil operator's distinct concern (KTD-1). A body with < 2
-    # statements has no non-final statement, so it generates nothing.
+    # Statement-removal mutator.
     #
-    # Clean-room: from the spec's operator description, not the mutant gem.
+    # Replaces each non-final method statement with `nil`.
     class StatementRemoval < Base
+      # Visits statement nodes and emits removals.
+      #
+      # @param node [Prism::StatementsNode] statement list to inspect.
+      # @return [void]
       def visit_statements_node(node)
         stmts = node.body
         return if stmts.length < 2
@@ -25,9 +25,6 @@ module Mutineer
             operator: :statement_removal
           )
         end
-        # ponytail: no super — recursing into a nested StatementsNode would
-        # re-emit removals already covered at the top level and double-count.
-        # Each subject's body is visited once.
       end
     end
   end

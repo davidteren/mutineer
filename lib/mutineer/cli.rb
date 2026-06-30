@@ -24,6 +24,7 @@ module Mutineer
   #   2  usage / flag error (unknown subcommand, invalid flag, unknown operator,
   #      out-of-range threshold)
   class CLI
+    # Command-line usage banner.
     BANNER = <<~USAGE
       Usage: mutineer [options] <command> [args]
 
@@ -63,6 +64,10 @@ module Mutineer
     # Deprecated internal strategy names, mapped to their canonical equivalents.
     STRATEGY_ALIASES = { "7a" => "reload", "7b" => "redefine" }.freeze
 
+    # Parses arguments, executes the command, and exits.
+    #
+    # @param argv [Array<String>] raw command-line arguments.
+    # @return [void]
     def self.start(argv)
       opts = {}            # symbol => value, the CLI-provided Config fields
       explicit = Set.new   # precedence keys the user typed (KTD3)
@@ -140,6 +145,9 @@ module Mutineer
       end
     end
 
+    # Lists available operators.
+    #
+    # @return [void]
     def self.list_operators
       MutatorRegistry::ALL.each_key do |name|
         state = MutatorRegistry.default?(name) ? "default" : "disabled"
@@ -148,6 +156,11 @@ module Mutineer
       end
     end
 
+    # Runs the requested command after validation.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @param explicit [Set<Symbol>] explicit CLI fields.
+    # @return [void]
     def self.run(config, explicit = Set.new)
       if config.sources.empty?
         warn "mutineer: run requires at least one source file"
@@ -177,6 +190,12 @@ module Mutineer
 
     # Flag validation: every flag/usage failure exits 2 (C7), consistent with the
     # taxonomy above — CI can tell "mistyped flag" from "tests too weak."
+    # Validates the run configuration.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @param explicit [Set<Symbol>] explicit CLI fields.
+    # @return [void]
     def self.validate!(config, explicit = Set.new)
       unless (0.0..100.0).cover?(config.threshold)
         warn "mutineer: --threshold must be between 0 and 100"
@@ -231,6 +250,11 @@ module Mutineer
 
     # --since needs a real git repo and a resolvable ref; either failure is a
     # usage error (exit 2) so CI sees "bad invocation," not "tests too weak."
+    # Validates the --since ref.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
     def self.validate_since!(config)
       _out, _err, status = Open3.capture3(
         "git", "-C", config.project_root, "rev-parse", "--verify", "--quiet",
@@ -252,6 +276,11 @@ module Mutineer
     # R5: validate path existence up front so a typo is a clean usage error (exit
     # 2), not an Errno::ENOENT backtrace from deep in the run. Flag checks run
     # first so a bad flag still reports the flag, not the missing file.
+    # Validates source and test paths.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
     def self.validate_paths!(config)
       missing = (config.sources + config.tests)
                 .reject { |p| File.exist?(File.expand_path(p, config.project_root)) }
@@ -268,6 +297,12 @@ module Mutineer
     # the dedicated --boot/--rails-requires-test check reports it; otherwise exit 2
     # with a usage message. The framework is re-detected from the inferred set
     # unless it was set explicitly (a spec-only project loads/reports as rspec).
+    # Auto-pairs sources and tests when --test is absent.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @param explicit [Set<Symbol>] explicit CLI fields.
+    # @return [void]
     def self.autopair!(config, explicit)
       return unless config.tests.empty?
 
@@ -293,6 +328,11 @@ module Mutineer
     # mirroring --output/--since preflight, so CI sees "bad invocation," not a
     # backtrace mid-run. Validating up front = attempting the load (it raises
     # ConfigError/SystemCallError; the actual diff reloads in execute).
+    # Preflights a baseline file.
+    #
+    # @api private
+    # @param path [String] baseline file path.
+    # @return [void]
     def self.preflight_baseline!(path)
       Baseline.load(path)
     rescue Mutineer::ConfigError, SystemCallError => e
@@ -300,6 +340,11 @@ module Mutineer
       exit 2
     end
 
+    # Preflights an output path.
+    #
+    # @api private
+    # @param path [String] output file path.
+    # @return [void]
     def self.preflight_output!(path)
       dir = File.dirname(File.expand_path(path))
       return if File.directory?(dir) && File.writable?(dir)
@@ -309,6 +354,10 @@ module Mutineer
       exit 2
     end
 
+    # Executes the run command.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
     def self.execute(config)
       if config.tests.empty?
         warn "mutineer: run requires at least one --test file (or use --dry-run)"
@@ -340,6 +389,10 @@ module Mutineer
 
     # The tier-2 operators not in the active set, as a one-line hint (or nil when
     # they're all already enabled). `active` nil means the default (Tier-1) set.
+    # Builds a Tier-2 operator hint.
+    #
+    # @param active [Array<String>, nil] active operator names.
+    # @return [String, nil] hint text or nil.
     def self.tier2_hint(active)
       active ||= MutatorRegistry::DEFAULT_NAMES
       unused = MutatorRegistry::TIER2_NAMES - active
@@ -349,6 +402,10 @@ module Mutineer
         "enable with --operators <list>."
     end
 
+    # Runs dry-run mode.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
     def self.dry_run(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
       sources = {}

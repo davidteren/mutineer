@@ -4,18 +4,23 @@ require_relative "base"
 
 module Mutineer
   module Mutators
-    # Condition-negation operator (Tier 2, OFF by default). Wraps an if/unless/
-    # ternary condition in `!( ... )` textually. Ruby ternaries parse as IfNode in
-    # Prism, so visit_if_node covers them too (R12). The standard validity re-parse
-    # downstream discards any wrap that fails to round-trip (R14).
+    # Condition-negation mutator.
     #
-    # Clean-room: from the spec's operator description, not the mutant gem.
+    # Wraps if/unless predicates in `!( ... )` textually.
     class ConditionNegation < Base
+      # Visits if nodes.
+      #
+      # @param node [Prism::IfNode] node to inspect.
+      # @return [void]
       def visit_if_node(node)
         wrap(node.predicate)
         super
       end
 
+      # Visits unless nodes.
+      #
+      # @param node [Prism::UnlessNode] node to inspect.
+      # @return [void]
       def visit_unless_node(node)
         wrap(node.predicate)
         super
@@ -23,6 +28,10 @@ module Mutineer
 
       private
 
+      # Wraps a predicate in negation.
+      #
+      # @param predicate [Prism::Node, nil] predicate node.
+      # @return [void]
       def wrap(predicate)
         return unless predicate
 

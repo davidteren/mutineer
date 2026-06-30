@@ -41,6 +41,12 @@ module Mutineer
       end
     end
 
+    # Renders the human report.
+    #
+    # @param out [IO] output stream.
+    # @param err [IO] error stream.
+    # @param threshold [Float] score threshold.
+    # @return [void]
     def human_report(out, err, threshold)
       if @agg.total.zero?
         err.puts "No mutations generated — verify target files contain in-scope " \
@@ -75,6 +81,11 @@ module Mutineer
     # Canonical machine-readable schema (KTD7). survivors/no_coverage are sorted
     # by (file, line, operator) so output is byte-stable regardless of --jobs
     # worker finish order (R22).
+    # Renders the JSON report.
+    #
+    # @api private
+    # @param baseline [Mutineer::Baseline::Delta, nil] baseline delta.
+    # @return [String] JSON text.
     def json_report(baseline = nil)
       killed = @agg.killed_count
       survived = @agg.survived_count
@@ -135,6 +146,12 @@ module Mutineer
       }
     end
 
+    # Builds per-source JSON.
+    #
+    # @api private
+    # @param file [String] source file path.
+    # @param agg [Mutineer::AggregateResult] source aggregate.
+    # @return [Hash] per-source JSON object.
     def per_source_json(file, agg)
       {
         file: file, total: agg.total,
@@ -143,6 +160,11 @@ module Mutineer
       }
     end
 
+    # Builds survivor JSON.
+    #
+    # @api private
+    # @param result [Mutineer::Result] survivor result.
+    # @return [Hash] survivor JSON object.
     def survivor_json(result)
       m = result.mutation
       file = result.subject.file
@@ -198,6 +220,11 @@ module Mutineer
       [start_line, original_block, mutated_block, token]
     end
 
+    # Builds no-coverage JSON.
+    #
+    # @api private
+    # @param result [Mutineer::Result] result object.
+    # @return [Hash] no-coverage JSON object.
     def no_coverage_json(result)
       m = result.mutation
       file = result.subject.file
@@ -209,6 +236,10 @@ module Mutineer
       }
     end
 
+    # Writes the summary block.
+    #
+    # @param out [IO] output stream.
+    # @return [void]
     def summary(out)
       out.puts "Summary"
       out.puts "-------"
@@ -222,6 +253,11 @@ module Mutineer
       out.puts format("Ignored:      %-6d  (equivalent, suppressed)", @agg.ignored_count)
     end
 
+    # Writes the score line.
+    #
+    # @param out [IO] output stream.
+    # @param err [IO] error stream.
+    # @return [void]
     def score_line(out, err)
       score = @agg.mutation_score
       excluded = "#{@agg.no_coverage_count} no-coverage, #{@agg.uncapturable_count} uncapturable, " \
@@ -239,6 +275,10 @@ module Mutineer
     # #11: one line per source after the global summary, so a multi-source run
     # shows which file is weak. Omitted for a single-source run — the global
     # summary already says everything (ponytail: no redundant one-line block).
+    # Writes the per-source breakdown.
+    #
+    # @param out [IO] output stream.
+    # @return [void]
     def per_source(out)
       sources = @agg.by_source
       return if sources.size <= 1
@@ -274,6 +314,10 @@ module Mutineer
       out.puts(delta.regressed ? "REGRESSION vs baseline" : "OK: no regression vs baseline")
     end
 
+    # Writes the survivors block.
+    #
+    # @param out [IO] output stream.
+    # @return [void]
     def survivors(out)
       mutants = @agg.surviving_mutants
       return if mutants.empty?
@@ -288,6 +332,12 @@ module Mutineer
       end
     end
 
+    # Writes one survivor entry.
+    #
+    # @param out [IO] output stream.
+    # @param file [String] source file path.
+    # @param result [Mutineer::Result] survivor result.
+    # @return [void]
     def survivor(out, file, result)
       m = result.mutation
       source = @source_map[file] || File.read(file)
@@ -299,6 +349,11 @@ module Mutineer
       mutated_block.each_line  { |l| out.puts "  + #{l.chomp}" }
     end
 
+    # Writes the final verdict line.
+    #
+    # @param out [IO] output stream.
+    # @param threshold [Float] score threshold.
+    # @return [void]
     def verdict(out, threshold)
       score = @agg.mutation_score
       return if score.nil?

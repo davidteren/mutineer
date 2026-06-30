@@ -4,12 +4,14 @@ require_relative "base"
 
 module Mutineer
   module Mutators
-    # Literal-fuzzing operator (Tier 2, OFF by default). Integers emit up to
-    # three mutations (0, 1, n+1) with no-op guards for 0 and 1; strings collapse
-    # to "" unless already empty. One mutation per emitted candidate (R11).
+    # Literal mutation mutator.
     #
-    # Clean-room: from the spec's operator description, not the mutant gem.
+    # Mutates integers and strings with the Tier-2 literal rules.
     class LiteralMutation < Base
+      # Visits integer literals.
+      #
+      # @param node [Prism::IntegerNode] node to inspect.
+      # @return [void]
       def visit_integer_node(node)
         n = node.value
         emit(node.location, "0") unless n.zero?
@@ -18,6 +20,10 @@ module Mutineer
         super
       end
 
+      # Visits string literals.
+      #
+      # @param node [Prism::StringNode] node to inspect.
+      # @return [void]
       def visit_string_node(node)
         loc = node.location
         token = @source.byteslice(loc.start_offset...loc.end_offset)
@@ -27,6 +33,11 @@ module Mutineer
 
       private
 
+      # Emits a literal mutation.
+      #
+      # @param loc [Prism::Location] source location.
+      # @param replacement [String] replacement literal.
+      # @return [void]
       def emit(loc, replacement)
         @mutations << Mutation.new(
           start_offset: loc.start_offset,

@@ -32,6 +32,9 @@ module Mutineer
     # The parent process `require`s each source file so its classes exist; forked
     # children inherit them, so a covering test file's own require_relative of the
     # source is a no-op and does not clobber the mutated `load` (spec §7).
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Array(Mutineer::AggregateResult, Hash<String, String>)] aggregate and source map.
     def self.execute(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
 
@@ -215,6 +218,11 @@ module Mutineer
       warn "[mutineer] RAILS_ENV was unset; defaulting to 'test' for --rails."
     end
 
+    # Removes stale mutant tempfiles from the given directories.
+    #
+    # @api private
+    # @param dirs [Array<String>] directories to sweep.
+    # @return [void]
     def self.sweep_orphans(dirs)
       dirs.each do |dir|
         Dir.glob(File.join(dir, "mutineer_mutant*.rb")).each do |f|
@@ -223,6 +231,17 @@ module Mutineer
       end
     end
 
+    # Runs a single mutation through isolation.
+    #
+    # @param mutation [Mutineer::Mutation] mutation to run.
+    # @param source_file [String] source file path.
+    # @param coverage_map [Mutineer::CoverageMap, nil] coverage map.
+    # @param subject [Mutineer::Subject, nil] subject for surgical strategy.
+    # @param strategy [String] mutation strategy.
+    # @param timeout [Integer] child timeout in seconds.
+    # @param rails [Boolean] whether Rails reconnect handling is enabled.
+    # @param framework [String] test framework name.
+    # @return [Mutineer::Result] mutant result.
     def self.run(mutation, source_file:, coverage_map: nil, subject: nil, strategy: "reload",
                  timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest")
       source  = File.read(source_file)
@@ -257,6 +276,10 @@ module Mutineer
       end
     end
 
+    # Reconnects ActiveRecord in a forked child when available.
+    #
+    # @api private
+    # @return [void]
     def self.reconnect_active_record
       return unless defined?(ActiveRecord::Base)
 

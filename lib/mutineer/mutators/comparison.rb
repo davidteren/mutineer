@@ -4,23 +4,22 @@ require_relative "base"
 
 module Mutineer
   module Mutators
-    # Comparison / boundary operator: <->-<=, >->-=>, ==->!=, etc. The single
-    # highest-value Tier-1 family (spec §4) — exposes off-by-one and boundary
-    # gaps line coverage never catches. Rewrites the operator token
-    # (CallNode#message_loc), one mutation per occurrence.
+    # Comparison and boundary mutator.
     #
-    # Clean-room: implemented from the spec's operator table and public
-    # mutation-testing literature, not the mutant gem.
+    # Rewrites comparison operators one occurrence at a time.
     class Comparison < Base
+      # Token replacements for comparison operators.
       REPLACEMENTS = {
         :< => "<=", :<= => "<", :> => ">=", :>= => ">", :== => "!=", :!= => "=="
       }.freeze
 
+      # Visits call nodes and emits comparison mutations.
+      #
+      # @param node [Prism::CallNode] call node to inspect.
+      # @return [void]
       def visit_call_node(node)
         replacement = REPLACEMENTS[node.name]
         loc = node.message_loc
-        # receiver guard: reject any unary call accidentally named like an
-        # operator; binary comparisons always have a receiver.
         if replacement && loc && node.receiver
           @mutations << Mutation.new(
             start_offset: loc.start_offset,

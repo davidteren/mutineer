@@ -32,4 +32,5 @@ Gem::Specification.new do |spec|
   # No runtime dependencies — Prism is bundled with Ruby >= 3.4.
   spec.add_development_dependency "minitest", "~> 5.0"
   spec.add_development_dependency "rake", "~> 13.0"
+  spec.add_development_dependency "yard", "~> 0.9"
 end

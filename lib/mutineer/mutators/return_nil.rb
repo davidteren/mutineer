@@ -4,15 +4,15 @@ require_relative "base"
 
 module Mutineer
   module Mutators
-    # Return-value-nil operator (Tier 2, OFF by default). Two rules:
-    #   1. an explicit `return <expr>` -> `return nil`, unless the value is
-    #      already nil (no-op guard).
-    #   2. a method body whose final expression is neither a ReturnNode nor a
-    #      NilNode -> that expression becomes `nil`.
-    # Nested defs are their own subjects, so we never descend into them (R10).
+    # Return-nil mutator.
     #
-    # Clean-room: from the spec's operator description, not the mutant gem.
+    # Replaces explicit return values and final expressions with nil.
     class ReturnNil < Base
+      # Collects return-nil mutations for a subject.
+      #
+      # @param subject [Mutineer::Subject] subject to inspect.
+      # @param source [String] full source text.
+      # @return [Array<Mutineer::Mutation>] collected mutations.
       def mutations_for(subject, source)
         @source = source
         @mutations = []
@@ -24,6 +24,10 @@ module Mutineer
         @mutations
       end
 
+      # Visits return nodes.
+      #
+      # @param node [Prism::ReturnNode] node to inspect.
+      # @return [void]
       def visit_return_node(node)
         args = node.arguments
         if args
@@ -37,10 +41,17 @@ module Mutineer
 
       # Nested method definitions are discovered as their own subjects; do not
       # recurse into them (prevents double-counting their statements).
+      #
+      # @param node [Prism::DefNode] nested definition node.
+      # @return [void]
       def visit_def_node(node); end
 
       private
 
+      # Mutates a method's final expression to nil when eligible.
+      #
+      # @param body [Prism::Node] method body node.
+      # @return [void]
       def final_expression_nil(body)
         return unless body.is_a?(Prism::StatementsNode)
 
@@ -50,6 +61,10 @@ module Mutineer
         emit(last.location)
       end
 
+      # Emits a return-nil mutation.
+      #
+      # @param loc [Prism::Location] source location.
+      # @return [void]
       def emit(loc)
         @mutations << Mutation.new(
           start_offset: loc.start_offset,

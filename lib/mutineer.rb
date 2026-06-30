@@ -29,5 +29,6 @@ require_relative "mutineer/reporter"
 require_relative "mutineer/baseline"
 require_relative "mutineer/cli"
 
+# Mutineer is the top-level namespace for the mutation-testing library.
 module Mutineer
 end

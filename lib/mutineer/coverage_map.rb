@@ -117,6 +117,9 @@ module Mutineer
       self
     end
 
+    # Runs standalone Phase A coverage capture.
+    #
+    # @api private
     def run_phase_a
       @phase_a_ran = true
       @map = {}
@@ -225,6 +228,12 @@ module Mutineer
       fail_test(test_path, "invalid coverage output: #{e.message}")
     end
 
+    # Records a failed coverage capture.
+    #
+    # @api private
+    # @param test_path [String] test file path.
+    # @param reason [String] failure reason.
+    # @return [void]
     def fail_test(test_path, reason)
       rel = relativize(test_path)
       @failed_test_files << rel
@@ -232,10 +241,20 @@ module Mutineer
       nil
     end
 
+    # Builds the framework-specific subprocess script.
+    #
+    # @api private
+    # @param test_path [String] test file path.
+    # @return [String] Ruby script text.
     def subprocess_script(test_path)
       @framework == "rspec" ? rspec_subprocess_script(test_path) : minitest_subprocess_script(test_path)
     end
 
+    # Builds the minitest subprocess script.
+    #
+    # @api private
+    # @param test_path [String] test file path.
+    # @return [String] Ruby script text.
     def minitest_subprocess_script(test_path)
       <<~RUBY
         require "coverage"
@@ -322,6 +341,13 @@ module Mutineer
       File.exist?(absolute(@boot_path)) ? @boot_path : "#{@boot_path}.rb"
     end
 
+    # Groups a digest with its role and paths.
+    #
+    # @api private
+    # @param digest [String] digest string.
+    # @param role [String] digest role.
+    # @param paths [Array<String>] paths in the digest group.
+    # @return [Array(String, String, Array<String>)] grouped digest data.
     def digest_group(digest, role, paths)
       paths.sort.each do |p|
         content = File.read(absolute(p))
@@ -347,8 +373,16 @@ module Mutineer
       end
     end
 
+    # Returns the cache path.
+    #
+    # @api private
+    # @return [String] cache file path.
     def cache_path = File.join(@cache_dir, "coverage.json")
 
+    # Reads the coverage cache.
+    #
+    # @api private
+    # @return [Hash, nil] cached payload.
     def read_cache
       return nil unless File.exist?(cache_path)
 
@@ -357,6 +391,10 @@ module Mutineer
       nil # corrupt cache — rebuild from scratch
     end
 
+    # Saves the coverage cache.
+    #
+    # @api private
+    # @return [void]
     def save
       FileUtils.mkdir_p(@cache_dir)
       data = { "digest" => @digest, "failed_test_files" => @failed_test_files, "map" => @map }
@@ -365,20 +403,41 @@ module Mutineer
       File.rename(tmp, cache_path) # atomic swap
     end
 
+    # Warns when coverage capture was incomplete.
+    #
+    # @api private
+    # @return [void]
     def warn_incomplete
       warn "[mutineer] cached coverage map may be incomplete; these test files " \
            "failed to contribute: #{@failed_test_files.join(', ')}"
     end
 
+    # Returns absolute source paths.
+    #
+    # @return [Array<String>] absolute source paths.
     def abs_source_paths = @source_paths.map { |p| absolute(p) }
+
+    # Returns absolute load paths.
+    #
+    # @return [Array<String>] absolute load paths.
     def abs_load_paths   = @load_paths.map { |p| absolute(p) }
 
+    # Relativizes a path against the project root.
+    #
+    # @api private
+    # @param path [String] path to relativize.
+    # @return [String] relative path.
     def relativize(path)
       return path unless path.start_with?("/")
 
       path.delete_prefix("#{@project_root}/")
     end
 
+    # Expands a path relative to the project root.
+    #
+    # @api private
+    # @param path [String] path to expand.
+    # @return [String] absolute path.
     def absolute(path)
       File.absolute_path?(path) ? path : File.expand_path(path, @project_root)
     end

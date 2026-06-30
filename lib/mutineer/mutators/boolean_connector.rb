@@ -4,20 +4,26 @@ require_relative "base"
 
 module Mutineer
   module Mutators
-    # Boolean connector operator: && <-> ||, and <-> or. Replacement is derived
-    # from the actual source token (operator_loc.slice) so symbolic and keyword
-    # forms each map to their own form — never crossing && to `or`, which would
-    # change precedence and surprise the reader (KTD-2).
+    # Boolean connector mutator.
     #
-    # Clean-room: from the spec's operator table, not the mutant gem.
+    # Replaces symbolic and keyword connectors with their opposite form.
     class BooleanConnector < Base
+      # Token replacements for boolean connectors.
       REPLACEMENTS = { "&&" => "||", "||" => "&&", "and" => "or", "or" => "and" }.freeze
 
+      # Visits `and` nodes.
+      #
+      # @param node [Prism::AndNode] node to inspect.
+      # @return [void]
       def visit_and_node(node)
         emit(node)
         super
       end
 
+      # Visits `or` nodes.
+      #
+      # @param node [Prism::OrNode] node to inspect.
+      # @return [void]
       def visit_or_node(node)
         emit(node)
         super
@@ -25,6 +31,10 @@ module Mutineer
 
       private
 
+      # Emits a connector mutation when the token is replaceable.
+      #
+      # @param node [Prism::Node] connector node.
+      # @return [void]
       def emit(node)
         loc = node.operator_loc
         replacement = REPLACEMENTS[loc.slice]

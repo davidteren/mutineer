@@ -4,18 +4,24 @@ module Mutineer
   # Source -> test pairing by path convention (#11). Pure stdlib path logic:
   # no Rails, no class loading, no process. Two jobs:
   #   * expand_sources — a directory argument becomes its sorted **/*.rb files.
-  #   * infer_test     — a source's test file by convention (app/ and lib/ sources
-  #                      map to test/.../_test.rb or spec/.../_spec.rb), preserving
-  #                      namespaced subdirectories. First EXISTING candidate wins.
+  #   * infer_test     — a source's test file by convention (app/ and lib/
+  #                     sources map to test/.../_test.rb or spec/.../_spec.rb),
+  #                     preserving namespaced subdirectories. First EXISTING
+  #                     candidate wins.
   #
-  # Independently unit-testable: every method is pure in/out over the filesystem,
-  # so the pairing contract is exercised with plain fixtures, no Rails, no fork.
+  # Independently unit-testable: every method is pure in/out over the
+  # filesystem, so the pairing contract is exercised with plain fixtures, no
+  # Rails, no fork.
   module Pairing
     module_function
 
     # Expand each positional source: a directory -> its sorted **/*.rb files
-    # (relative to project_root); a file (or glob, or anything non-directory) ->
-    # itself. Flattened, deduped, order-stable.
+    # (relative to project_root); a file (or glob, or anything non-directory)
+    # -> itself. Flattened, deduped, order-stable.
+    #
+    # @param args [Array<String>] source paths or directories.
+    # @param project_root [String] repository root for relative expansion.
+    # @return [Array<String>] flattened, deduped source file list.
     def expand_sources(args, project_root:)
       root = File.expand_path(project_root)
       Array(args).flat_map do |arg|
@@ -30,8 +36,13 @@ module Mutineer
 
     # The first EXISTING candidate test path for a source (relative to
     # project_root), or nil. `prefer` is the resolved framework ("minitest" |
-    # "rspec"): its candidates are tried first, the other framework's as fallback,
-    # so a minitest default still finds a spec and vice-versa.
+    # "rspec"): its candidates are tried first, the other framework's as
+    # fallback, so a minitest default still finds a spec and vice-versa.
+    #
+    # @param source_rel [String] relative source path.
+    # @param project_root [String] repository root for existence checks.
+    # @param prefer [String] preferred framework name.
+    # @return [String, nil] existing test path or nil.
     def infer_test(source_rel, project_root:, prefer: "minitest")
       base, lib = logical_path(source_rel)
       candidates(base, lib, prefer).find do |rel|
@@ -39,10 +50,13 @@ module Mutineer
       end
     end
 
-    # Strip the source root to a logical path (no ".rb") and flag lib/ sources.
-    # app/foo/bar.rb and lib/foo/bar.rb both -> "foo/bar"; anything else -> the
-    # path minus ".rb" (still attempted). Namespaced subdirs are preserved
-    # verbatim — structural, never constant resolution.
+    # Strip the source root to a logical path (no ".rb") and flag lib/
+    # sources. app/foo/bar.rb and lib/foo/bar.rb both -> "foo/bar"; anything
+    # else -> the path minus ".rb" (still attempted). Namespaced subdirs are
+    # preserved verbatim — structural, never constant resolution.
+    #
+    # @param source_rel [String] relative source path.
+    # @return [Array(String, Boolean)] logical base path and whether it came from lib/.
     def logical_path(source_rel)
       no_ext = source_rel.sub(/\.rb\z/, "")
       if no_ext.start_with?("app/")
@@ -56,6 +70,11 @@ module Mutineer
 
     # Ordered candidate test paths. lib/ sources also get test/lib/... and
     # spec/lib/... (Rails apps put lib tests under either layout).
+    #
+    # @param base [String] logical source path without extension.
+    # @param lib [Boolean] whether the source originated from lib/.
+    # @param prefer [String] preferred framework name.
+    # @return [Array<String>] candidate test paths in preferred order.
     def candidates(base, lib, prefer)
       minitest = ["test/#{base}_test.rb"]
       minitest << "test/lib/#{base}_test.rb" if lib
