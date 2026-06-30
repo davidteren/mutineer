@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-06-30
+
+### Added
+- **`--fail-fast`** (#21) — stop at the first surviving mutant; in-flight workers
+  drain, the rest are skipped. Fast red signal for PR gates.
+- **`--format html`** (#23) — a single self-contained HTML report (inline CSS, no
+  external assets) with the score, per-source table, and a card per survivor
+  (subject, file:line, operator, stable id, diff).
+- **String, regex, and collection-method operators** (#24, Tier-2, opt-in via
+  `--operators`): `string_literal`, `regex`, `collection_method`
+  (`map`↔`each`, `all?`↔`any?`, `first`↔`last`, `min`↔`max`, `select`↔`reject`).
+
+### Changed
+- **`--dry-run` now honors suppression** (#22) — inline `# mutineer:disable-line`
+  and `.mutineer.yml` `ignore:` entries are omitted from the preview and counted
+  as "ignored (suppressed)", matching a real run.
+
 ## [0.8.0] - 2026-06-30
 
 ### Fixed
@@ -158,6 +175,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.9.0]: https://github.com/davidteren/mutineer/releases/tag/v0.9.0
 [0.8.0]: https://github.com/davidteren/mutineer/releases/tag/v0.8.0
 [0.7.1]: https://github.com/davidteren/mutineer/releases/tag/v0.7.1
 [0.7.0]: https://github.com/davidteren/mutineer/releases/tag/v0.7.0

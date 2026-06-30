@@ -56,9 +56,10 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--jobs N` | Parallel worker count (default: processor count; `1` under `--rails`) |
 | `--verbose` | Surface the real error when a fork capture fails (alias `--debug`) |
 | `--strategy NAME` | Mutation application: `reload` whole-file (default) or `redefine` surgical (`7a`/`7b` accepted as deprecated aliases) |
-| `--format human\|json` | Report format (default: human) |
+| `--format human\|json\|html` | Report format (default: human; `html` is a self-contained file) |
 | `--output FILE` | Write the report to FILE instead of stdout |
-| `--dry-run` | List candidate mutations without executing |
+| `--dry-run` | List candidate mutations without executing (honors suppression) |
+| `--fail-fast` | Stop at the first surviving mutant |
 | `--list-operators` | List available operators (default vs optional) and exit |
 | `--version`, `--help` | Print version / usage and exit |
 
@@ -75,7 +76,8 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 Run `mutineer --list-operators` to see them. Default (Tier 1): `arithmetic`,
 `comparison`, `boolean_connector`, `boolean_literal`, `statement_removal`.
 Available but off by default (Tier 2, enable via `--operators`): `return_nil`,
-`literal_mutation`, `condition_negation`.
+`literal_mutation`, `condition_negation`, `string_literal`, `regex`,
+`collection_method`.
 
 ## Rails apps
 
