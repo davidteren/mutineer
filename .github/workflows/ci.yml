@@ -27,6 +27,18 @@ jobs:
       - name: Build gem
         run: gem build mutineer.gemspec
 
+  docs:
+    name: yard strict (ruby 3.4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - name: Enforce 100% YARD documentation
+        run: bundle exec rake yard:strict
+
   rails-integration:
     name: rails dogfood (ruby 3.4)
     runs-on: ubuntu-latest

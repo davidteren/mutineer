@@ -4,24 +4,32 @@ require_relative "base"
 
 module Mutineer
   module Mutators
-    # Mutates true/false AND nil literals — "boolean_literal" is the spec's name
-    # for the family (§4), so nil is in-scope by design even though it is not
-    # strictly a boolean. true<->false, and nil->true (nil->true catches more
-    # return-value gaps than nil->false). Rewrites the whole node location;
-    # these nodes have no sub-token location.
+    # Boolean literal mutator.
     #
-    # Clean-room: from the spec's operator table, not the mutant gem.
+    # Mutates true/false and nil literals in the boolean_literal family.
     class BooleanLiteral < Base
+      # Visits true literals.
+      #
+      # @param node [Prism::TrueNode] node to inspect.
+      # @return [void]
       def visit_true_node(node)
         emit(node, "false")
         super
       end
 
+      # Visits false literals.
+      #
+      # @param node [Prism::FalseNode] node to inspect.
+      # @return [void]
       def visit_false_node(node)
         emit(node, "true")
         super
       end
 
+      # Visits nil literals.
+      #
+      # @param node [Prism::NilNode] node to inspect.
+      # @return [void]
       def visit_nil_node(node)
         emit(node, "true")
         super
@@ -29,6 +37,11 @@ module Mutineer
 
       private
 
+      # Emits a boolean-literal mutation.
+      #
+      # @param node [Prism::Node] literal node.
+      # @param replacement [String] replacement token.
+      # @return [void]
       def emit(node, replacement)
         loc = node.location
         @mutations << Mutation.new(

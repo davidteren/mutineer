@@ -4,11 +4,12 @@ require_relative "../minitest_integration"
 
 module Mutineer
   module TestRunners
-    # Uniform wrapper over the existing MinitestIntegration impl so the runner
-    # selection (TestRunners.for) has one method shape across frameworks.
-    # MinitestIntegration stays the implementation — all its behaviour (autorun
-    # neutralisation, Runnable.reset, load, Minitest.run -> 0/1) is preserved.
+    # Thin wrapper around the shared Minitest integration runner.
     module Minitest
+      # Runs the given Minitest files.
+      #
+      # @param test_files [String, Array<String>] one file or many files.
+      # @return [Integer] 0 on success, 1 on failure.
       def self.run(test_files) = MinitestIntegration.run(test_files)
     end
   end

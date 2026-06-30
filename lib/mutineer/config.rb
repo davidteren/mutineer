@@ -28,6 +28,7 @@ module Mutineer
     :baseline, :baseline_epsilon,
     keyword_init: true
   ) do
+    # Config file name.
     CONFIG_FILE = ".mutineer.yml"
     # Keys accepted in .mutineer.yml (R7). `require` maps to the :require_paths field.
     KNOWN_KEYS = %w[operators jobs threshold only require boot rails since framework verbose ignore baseline].freeze
@@ -128,16 +129,30 @@ module Mutineer
 
     # Pick rspec when a MAJORITY of the given test files end with _spec.rb;
     # otherwise minitest. Empty/ambiguous -> minitest (the safe default).
+    # Detects the test framework from the file list.
+    #
+    # @param tests [Array<String>] test file paths.
+    # @return [String] `"rspec"` or `"minitest"`.
     def self.detect_framework(tests)
       tests = Array(tests)
       specs = tests.count { |t| t.to_s.end_with?("_spec.rb") }
       specs > tests.length / 2.0 ? "rspec" : "minitest"
     end
 
+    # Maps a config key to its Struct field.
+    #
+    # @param known_key [String] config key.
+    # @return [Symbol] struct field name.
     def self.field_for(known_key)
       known_key == "require" ? :require_paths : known_key.to_sym
     end
 
+    # Coerces a config value to its target type.
+    #
+    # @param known_key [String] config key.
+    # @param value [Object] raw YAML value.
+    # @param file_name [String] config file name for warnings.
+    # @return [Object] coerced value.
     def self.coerce(known_key, value, file_name)
       case known_key
       when "operators" then filter_operators(Array(value).map(&:to_s), file_name)
@@ -157,6 +172,12 @@ module Mutineer
     # Drop (with a warning) operator names the registry doesn't know (R7).
     # Referenced lazily so config.rb carries no load-order dependency on the
     # registry; by the time a config is parsed at runtime, it is loaded.
+    # Filters out unknown operator names.
+    #
+    # @api private
+    # @param names [Array<String>] operator names.
+    # @param file_name [String] config file name for warnings.
+    # @return [Array<String>] known operator names.
     def self.filter_operators(names, file_name)
       known = MutatorRegistry::ALL.keys
       names.select do |n|

@@ -4,13 +4,19 @@ require_relative "base"
 
 module Mutineer
   module Mutators
-    # Arithmetic operator: +<->-, *<->/, %->*, **->*. One mutation per
-    # occurrence, rewriting the operator token (CallNode#message_loc).
+    # Arithmetic operator mutator.
+    #
+    # One mutation per occurrence, rewriting the operator token.
     class Arithmetic < Base
+      # Token replacements for arithmetic operators.
       REPLACEMENTS = {
         :+ => "-", :- => "+", :* => "/", :/ => "*", :% => "*", :** => "*"
       }.freeze
 
+      # Visits call nodes and emits arithmetic mutations.
+      #
+      # @param node [Prism::CallNode] call node to inspect.
+      # @return [void]
       def visit_call_node(node)
         replacement = REPLACEMENTS[node.name]
         loc = node.message_loc

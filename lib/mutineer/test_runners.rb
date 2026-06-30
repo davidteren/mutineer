@@ -4,9 +4,16 @@ require_relative "test_runners/minitest"
 require_relative "test_runners/rspec"
 
 module Mutineer
-  # Picks the test-framework runner. Each runner responds to `.run(files) -> 0/1`
-  # (0 = all passed, 1 = any failure) and is called only inside a forked child.
+  # Picks the test-framework runner.
+  #
+  # Each runner responds to `.run(files) -> 0/1` (0 = all passed, 1 = any
+  # failure) and is called only inside a forked child.
   module TestRunners
+    # Returns the runner module for a framework name.
+    #
+    # @param framework [String, nil] framework name or nil.
+    # @return [Module] `Mutineer::TestRunners::Minitest` or `::RSpec`.
+    # @raise [Mutineer::ConfigError] when the framework is unknown.
     def self.for(framework)
       case framework
       when "rspec" then RSpec

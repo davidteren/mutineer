@@ -8,31 +8,21 @@ module Mutineer
   class FrameworkUnavailable < StandardError; end
 
   module TestRunners
-    # Child-process-only RSpec runner, mirroring MinitestIntegration's contract:
-    # run the given spec files and return 0 (all passed) / 1 (any failure).
+    # Child-process-only RSpec runner.
     #
-    # rspec-core is required LAZILY here, never at load time, so Mutineer keeps
-    # zero runtime gem deps; a missing rspec raises a clear Mutineer error.
-    #
-    # No `rescue` around the run itself: Isolation.run's fork block is the single
-    # exception boundary (any exception there -> exit 2), keeping the 0/1 contract.
+    # Mirrors MinitestIntegration's contract: run the given spec files and
+    # return 0 (all passed) or 1 (any failure).
     module RSpec
-      # `spec_files` is one path or an Array of paths (coverage selection passes
-      # the covering subset). All are loaded+run in a single RSpec invocation.
+      # Runs the given RSpec files.
+      #
+      # @param spec_files [String, Array<String>] one file or many files.
+      # @return [Integer] 0 on success, 1 on failure.
       def self.run(spec_files)
         require_rspec!
 
-        # rspec/autorun (if a spec_helper required it) installs an at_exit run;
-        # neutralise it like Minitest.autorun so it never double-fires.
         ::RSpec::Core::Runner.disable_autorun!
-
-        # Drop any RSpec world/configuration inherited across runs in one process
-        # (e.g. successive forks of a booted parent) so examples never accumulate.
         ::RSpec.reset
 
-        # Silence RSpec's formatter output (and any stray puts/deprecations) so it
-        # never pollutes Mutineer's report streams. The formatter writes to the
-        # passed IO; $stdout/$stderr are redirected to catch everything else.
         sink = StringIO.new
         orig_out = $stdout
         orig_err = $stderr
@@ -48,6 +38,9 @@ module Mutineer
         status.zero? ? 0 : 1
       end
 
+      # Requires rspec-core from the project under test.
+      #
+      # @api private
       def self.require_rspec!
         require "rspec/core"
       rescue LoadError

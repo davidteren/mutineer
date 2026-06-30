@@ -2,3 +2,5 @@ Gemfile.lock
 *.gem
 .bundle/
 .mutineer/
+.yardoc/
+doc/

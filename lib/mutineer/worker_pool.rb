@@ -3,21 +3,30 @@
 require_relative "result"
 
 module Mutineer
-  # Fixed-size fork pool (KTD1/KTD2). `run` forks up to `size` children at once;
-  # each child runs the block on one work item, marshals its Result to a private
-  # pipe, and exits. The parent reaps any finished child with Process.wait2(-1),
-  # opening exactly one slot per reap, then refills. Results are returned in the
-  # SAME ORDER as `items` regardless of finish order, so verdicts are identical to
-  # a serial run (R4) and downstream output is stable.
+  # Fixed-size fork pool (KTD1/KTD2). `run` forks up to `size` children at
+  # once; each child runs the block on one work item, marshals its Result to a
+  # private pipe, and exits. The parent reaps any finished child with
+  # Process.wait2(-1), opening exactly one slot per reap, then refills.
+  # Results are returned in the SAME ORDER as `items` regardless of finish
+  # order, so verdicts are identical to a serial run (R4) and downstream output
+  # is stable.
   #
   # The block is run inside the child via `yield(*items[i])`; whatever it
-  # returns (a Result) is the marshaled payload. Per-mutant timeout is handled one
-  # level down by Isolation (KTD2) — the pool adds no separate wall clock.
+  # returns (a Result) is the marshaled payload. Per-mutant timeout is handled
+  # one level down by Isolation (KTD2) — the pool adds no separate wall clock.
   class WorkerPool
+    # Builds a pool.
+    #
+    # @param size [Integer] desired pool size.
     def initialize(size)
       @size = [size.to_i, 1].max
     end
 
+    # Runs the work items through the pool.
+    #
+    # @param items [Array<Array>] work items.
+    # @yieldparam item [Array] one work item.
+    # @return [Array<Mutineer::Result>] results in input order.
     def run(items)
       results = Array.new(items.size)
       queue   = (0...items.size).to_a
@@ -33,6 +42,10 @@ module Mutineer
 
     private
 
+    # R1: the child must ALWAYS hard-exit. If yield raises, marshal an error
+    # Result and exit! in `ensure` — otherwise the child unwinds normally and
+    # our Minitest at_exit autorun re-runs the parent suite inside the worker,
+    # losing the real error.
     def fill(items, queue, running)
       while running.size < @size && !queue.empty?
         idx = queue.shift
@@ -40,10 +53,6 @@ module Mutineer
         begin
           pid = fork do
             rd.close
-            # R1: the child must ALWAYS hard-exit. If yield raises, marshal an
-            # error Result and exit! in `ensure` — otherwise the child unwinds
-            # normally and our Minitest at_exit autorun re-runs the parent suite
-            # inside the worker, losing the real error.
             payload =
               begin
                 yield(*items[idx])
@@ -74,13 +83,13 @@ module Mutineer
       end
     end
 
-    # Drain pipes with IO.select and reap a child only on EOF (#4). The old code
-    # reaped first and read after — but a child whose payload exceeds the OS pipe
-    # buffer (~64KB) blocks on `write` before it can exit, so it was never reaped
-    # and the pool deadlocked. Reading concurrently keeps the pipe drained so the
-    # child can finish and exit; EOF means it closed its write end (done writing).
-    # We waitpid only OUR known pids (R6: never wait2(-1), which would steal the
-    # host suite's children).
+    # Drain pipes with IO.select and reap a child only on EOF (#4). The old
+    # code reaped first and read after — but a child whose payload exceeds the
+    # OS pipe buffer (~64KB) blocks on `write` before it can exit, so it was
+    # never reaped and the pool deadlocked. Reading concurrently keeps the
+    # pipe drained so the child can finish and exit; EOF means it closed its
+    # write end (done writing). We waitpid only OUR known pids (R6: never
+    # wait2(-1), which would steal the host suite's children).
     def reap(results, running)
       return if running.empty?
 
@@ -104,11 +113,13 @@ module Mutineer
       end
     end
 
+    # R6: a partial/garbage Marshal stream (dead worker) must not crash the
+    # pool — degrade to an error Result.
+    # @param data [String] marshaled payload.
+    # @return [Mutineer::Result] decoded result or error result.
     def decode(data)
       return Result.error("worker produced no result") if data.empty?
 
-      # R6: a partial/garbage Marshal stream (dead worker) must not crash the
-      # pool — degrade to an error Result.
       Marshal.load(data)
     rescue StandardError => e
       Result.error("worker result unreadable: #{e.class}: #{e.message}")
