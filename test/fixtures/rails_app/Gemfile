@@ -1,0 +1,17 @@
+# frozen_string_literal: true
+
+# Isolated bundle for the Rails dogfooding fixture app. This is DELIBERATELY
+# separate from the gem's own Gemfile: Mutineer itself has zero runtime
+# dependencies, and Rails must never leak into the gem's bundle. Only the
+# dedicated CI job (and a developer opting in) installs this.
+source "https://rubygems.org"
+
+# Full Rails so `--rails` boots a real `config/environment` and the run exercises
+# the genuine Zeitwerk + ActiveRecord + transactional-fixtures code paths that
+# Mutineer's boot mode and per-fork DB reconnect target.
+gem "rails", "~> 7.1"
+gem "sqlite3", "~> 1.7"
+
+# Mutineer under test, from this checkout (../../.. is the gem root). require:
+# false mirrors the documented install; the CLI is invoked via `bundle exec`.
+gem "mutineer", path: "../../..", require: false

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Dogfood Mutineer against the bundled minimal Rails app. Asserts the three
+# contracts the gem's own (Rails-free) suite cannot: that --rails boots a real
+# config/environment + Zeitwerk + ActiveRecord with transactional fixtures, and
+# that the strong/weak/baseline gates return the documented exit codes.
+#
+# Run from anywhere; it cd's to the app. Requires `bundle install` to have run in
+# this directory first (the CI job and the README do that).
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+export RAILS_ENV=test
+
+SRC=app/models/order.rb
+STRONG=test/models/order_test.rb
+WEAK=test/models/order_weak_test.rb
+BASELINE="$(mktemp)"
+
+expect_exit() { # expect_exit <wanted> <label> -- <command...>
+  local want=$1 label=$2; shift 3
+  local code=0
+  "$@" >/tmp/dogfood.out 2>&1 || code=$?
+  if [ "$code" -ne "$want" ]; then
+    echo "FAIL: $label — expected exit $want, got $code"
+    cat /tmp/dogfood.out
+    exit 1
+  fi
+  echo "ok: $label (exit $code)"
+}
+
+echo "== strong suite kills every mutant (exit 0) =="
+expect_exit 0 "strong --rails --threshold 100" -- \
+  bundle exec mutineer run "$SRC" --test "$STRONG" --rails --threshold 100
+
+echo "== weak suite leaves survivors, threshold gate fails (exit 1) =="
+expect_exit 1 "weak --rails --threshold 90" -- \
+  bundle exec mutineer run "$SRC" --test "$WEAK" --rails --threshold 90
+
+echo "== record a baseline from the strong suite =="
+bundle exec mutineer run "$SRC" --test "$STRONG" --rails --format json --output "$BASELINE"
+
+echo "== weak suite regresses against the strong baseline (exit 1) =="
+expect_exit 1 "weak --baseline (strong)" -- \
+  bundle exec mutineer run "$SRC" --test "$WEAK" --rails --baseline "$BASELINE"
+
+echo "== strong suite does NOT regress against its own baseline (exit 0) =="
+expect_exit 0 "strong --baseline (strong)" -- \
+  bundle exec mutineer run "$SRC" --test "$STRONG" --rails --baseline "$BASELINE"
+
+echo "All Rails dogfood checks passed."

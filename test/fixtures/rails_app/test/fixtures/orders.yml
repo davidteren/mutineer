@@ -1,0 +1,26 @@
+# Transactional fixtures — loaded once, each test wrapped in a rolled-back
+# transaction. Their presence exercises Mutineer's fixture-transaction handling.
+small:        # subtotal 2000
+  quantity: 2
+  unit_price_cents: 1000
+  rush: false
+
+bulk:         # subtotal 50000 -> bulk discount
+  quantity: 50
+  unit_price_cents: 1000
+  rush: false
+
+rush_small:   # subtotal 2000 + rush surcharge
+  quantity: 2
+  unit_price_cents: 1000
+  rush: true
+
+edge:         # subtotal exactly 10000 -> pins the > vs >= boundary
+  quantity: 10
+  unit_price_cents: 1000
+  rush: false
+
+bulk_rush:    # subtotal 50000, rush -> pins the && connector
+  quantity: 50
+  unit_price_cents: 1000
+  rush: true
