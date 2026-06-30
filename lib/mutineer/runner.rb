@@ -127,13 +127,17 @@ module Mutineer
       results =
         begin
           framework = config.framework
-          bare = WorkerPool.new(config.jobs).run(jobs) do |subject, mutation|
+          # #21: --fail-fast stops scheduling new mutants after the first survivor;
+          # in-flight workers drain, unscheduled jobs stay nil (dropped below).
+          stop_when = config.fail_fast ? ->(r) { r.survived? } : nil
+          bare = WorkerPool.new(config.jobs).run(jobs, stop_when: stop_when) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
                 subject: subject, strategy: strategy, rails: config.rails, framework: framework)
           end
           # The bare Results carry only status (Subjects hold live AST nodes that
           # do not marshal); reattach subject+mutation+id in the parent, in order.
-          bare.each_with_index.map { |r, i| r.with(subject: jobs[i][0], mutation: jobs[i][1], id: jobs[i][2]) }
+          # filter_map drops nils for jobs --fail-fast left unscheduled.
+          bare.each_with_index.filter_map { |r, i| r&.with(subject: jobs[i][0], mutation: jobs[i][1], id: jobs[i][2]) }
         ensure
           sweep_orphans(source_dirs)
         end

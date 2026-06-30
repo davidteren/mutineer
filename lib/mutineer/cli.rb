@@ -50,6 +50,7 @@ module Mutineer
         --format human|json  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
+        --fail-fast          Stop at the first surviving mutant
         --verbose            Surface the real error when a fork capture fails (alias: --debug)
 
       Options:
@@ -85,6 +86,7 @@ module Mutineer
         end
         o.on("--list-operators") { show_operators = true }
         o.on("--dry-run") { opts[:dry_run] = true }
+        o.on("--fail-fast") { opts[:fail_fast] = true }
         o.on("--only NAME") { |v| opts[:only] = v; explicit << :only }
         o.on("--since REF") { |v| opts[:since] = v; explicit << :since }
         o.on("--test FILE") { |v| (opts[:tests] ||= []) << v }
@@ -411,6 +413,8 @@ module Mutineer
       sources = {}
       per_operator = Hash.new(0)
       skipped = 0
+      ignored = 0
+      ignore_set = config.ignore.to_set
 
       # --since narrows the preview to changed lines too, so `--dry-run --since`
       # shows exactly what a real `--since` run would mutate.
@@ -421,29 +425,36 @@ module Mutineer
 
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (sources[subject.file] ||= Parser.parse_file(subject.file).source.source)
-        operator_classes.each do |klass|
-          klass.new.mutations_for(subject, source).each do |mutation|
-            unless mutation.valid?(source)
-              skipped += 1
-              next
-            end
-            if changed
-              line = source.byteslice(0, mutation.start_offset).count("\n") + 1
-              next unless changed[File.expand_path(subject.file, config.project_root)]&.include?(line)
-            end
-            per_operator[mutation.operator] += 1
-            original = source.byteslice(mutation.start_offset...mutation.end_offset)
-            line = source.byteslice(0, mutation.start_offset).count("\n") + 1
-            puts "[#{mutation.operator}] #{subject.qualified_name}  " \
-                 "#{subject.file}:#{line}  `#{original}` -> `#{mutation.replacement}`"
+        # #22: honor suppression so the preview matches what a real run mutates.
+        # Mirror execute's per-subject shape (ids need the full mutation list).
+        disabled = Runner.suppress_map(source)
+        mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
+        ids = MutantId.for_subject(subject, source, mutations)
+        mutations.each_with_index do |mutation, i|
+          unless mutation.valid?(source)
+            skipped += 1
+            next
           end
+          line = source.byteslice(0, mutation.start_offset).count("\n") + 1
+          next if changed && !changed[File.expand_path(subject.file, config.project_root)]&.include?(line)
+
+          if Runner.suppressed?(mutation.operator, line, ids[i], disabled, ignore_set)
+            ignored += 1
+            next
+          end
+
+          per_operator[mutation.operator] += 1
+          original = source.byteslice(mutation.start_offset...mutation.end_offset)
+          puts "[#{mutation.operator}] #{subject.qualified_name}  " \
+               "#{subject.file}:#{line}  `#{original}` -> `#{mutation.replacement}`"
         end
       end
 
       total = per_operator.values.sum
       breakdown = per_operator.map { |op, n| "#{op}: #{n}" }.join(", ")
       summary = breakdown.empty? ? "" : "#{breakdown} — "
-      puts "#{summary}#{total} mutations (dry run, not executed); #{skipped} skipped (invalid)"
+      puts "#{summary}#{total} mutations (dry run, not executed); " \
+           "#{skipped} skipped (invalid); #{ignored} ignored (suppressed)"
       exit 0
     end
   end

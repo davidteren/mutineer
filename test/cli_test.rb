@@ -180,6 +180,16 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #22: --dry-run honors suppression — a `# mutineer:disable-line` mutation is
+  # omitted from the listing and counted as "ignored (suppressed)".
+  def test_dry_run_honors_suppression
+    out, _, status = mutineer("run", File.join(FIXTURES, "equivalent.rb"), "--dry-run", chdir: ROOT)
+    assert_equal 0, status.exitstatus
+    assert_match(/ignored \(suppressed\)/, out)
+    refute_match(/Equivalent#add/, out, "the disable-line'd add mutation must not be listed")
+    assert_match(/Equivalent#double/, out, "the non-suppressed mutation is still listed")
+  end
+
   # #14: tier-2 operators are surfaced when they're not in the active set.
   def test_tier2_hint_lists_unused_tier2_operators
     hint = Mutineer::CLI.tier2_hint(nil) # nil => default (Tier-1) set

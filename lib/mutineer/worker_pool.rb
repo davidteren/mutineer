@@ -25,16 +25,25 @@ module Mutineer
     # Runs the work items through the pool.
     #
     # @param items [Array<Array>] work items.
+    # @param stop_when [Proc, nil] called with each collected Result; when it
+    #   returns truthy, no further items are scheduled and the run drains and
+    #   returns early (#21 --fail-fast). Unscheduled slots stay nil.
     # @yieldparam item [Array] one work item.
-    # @return [Array<Mutineer::Result>] results in input order.
-    def run(items)
-      results = Array.new(items.size)
-      queue   = (0...items.size).to_a
-      running = {} # pid => [index, read_io]
+    # @return [Array<Mutineer::Result>] results in input order (nil for any item
+    #   left unscheduled by an early stop).
+    def run(items, stop_when: nil)
+      results  = Array.new(items.size)
+      queue    = (0...items.size).to_a
+      running  = {} # pid => [index, read_io, buffer]
+      stopping = false
 
       until queue.empty? && running.empty?
-        fill(items, queue, running) { |*args| yield(*args) }
-        reap(results, running)
+        fill(items, queue, running) { |*args| yield(*args) } unless stopping
+        result = reap(results, running)
+        if !stopping && stop_when && result && stop_when.call(result)
+          stopping = true
+          queue.clear # schedule no more; let in-flight workers drain
+        end
       end
 
       results
@@ -107,8 +116,8 @@ module Mutineer
             rd.close
             Process.waitpid(pid) # reap the now-finished child (no zombie)
             running.delete(pid)
-            results[idx] = decode(buf)
-            return
+            # Return the collected Result so the caller's stop_when (#21) can see it.
+            return results[idx] = decode(buf)
           end
           buf << chunk
         end

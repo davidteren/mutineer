@@ -18,6 +18,23 @@ class WorkerPoolTest < Minitest::Test
     assert_equal [big.bytesize, big.bytesize], results.map { |r| r.details.bytesize }
   end
 
+  # #21: stop_when halts scheduling after the first matching result; later items
+  # are left unscheduled (nil). jobs=1 makes the order deterministic.
+  def test_stop_when_halts_after_match
+    items = (0...10).map { |i| [i] }
+    results = Mutineer::WorkerPool.new(1).run(items, stop_when: ->(r) { r.survived? }) do |i|
+      i == 2 ? Mutineer::Result.survived : Mutineer::Result.killed
+    end
+    assert_predicate results[2], :survived?
+    assert(results[5..].all?(&:nil?), "items after the first survivor should be unscheduled (nil)")
+  end
+
+  def test_no_stop_when_runs_everything
+    items = (0...5).map { |i| [i] }
+    results = Mutineer::WorkerPool.new(2).run(items) { |_| Mutineer::Result.survived }
+    assert_equal 5, results.compact.size, "without stop_when every item runs"
+  end
+
   def test_returns_one_result_per_item_in_input_order
     items = (0...10).map { |i| [i] }
     results = Mutineer::WorkerPool.new(3).run(items) do |i|
