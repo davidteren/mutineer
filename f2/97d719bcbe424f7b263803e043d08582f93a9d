@@ -1,0 +1,43 @@
+test/fixtures/singleton/module_func.rb
+  s_0214cb1e158c48::t_f1bf56f227a306 1-9
+test/fixtures/singleton/def_self_test.rb
+  s_0214cb1e158c48::t_f1bf56f227a306 1-11
+test/fixtures/singleton/class_self.rb
+  s_0214cb1e158c48::t_f1bf56f227a306 1-9
+lib/mutineer/project.rb
+  s_0214cb1e158c48::t_84e24a08c673b6 64-65,67
+  s_0214cb1e158c48::t_17467a1608d190 131
+  s_0214cb1e158c48::t_51b7ad7c8c1258 4
+  s_0214cb1e158c48::t_4a70e13f738975 22
+  s_0214cb1e158c48::t_1e8a8af761c80b 41-42,46-55
+  s_0214cb1e158c48::t_250c4114909ddb 77-78,80,84-103
+  s_0214cb1e158c48::t_9ffe12fc165f94 56-57,104-105
+lib/mutineer/isolation.rb
+  s_0214cb1e158c48::t_a89b5c7715440a 122-136
+test/fixtures/singleton/module_func_test.rb
+  s_0214cb1e158c48::t_f1bf56f227a306 1-11
+test/singleton_redefine_test.rb
+  s_0214cb1e158c48::t_bf349725a43839 1-43
+test/project_test.rb
+  s_0214cb1e158c48::t_9fcbd4b777e76e 45-71
+test/fixtures/singleton/def_self.rb
+  s_0214cb1e158c48::t_f1bf56f227a306 1-7
+test/fixtures/singleton/class_self_test.rb
+  s_0214cb1e158c48::t_f1bf56f227a306 1-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.4",
+  "base_commit_sha": "f297d719bcbe424f7b263803e043d08582f93a9d",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
