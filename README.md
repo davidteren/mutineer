@@ -1,5 +1,7 @@
 # Mutineer
 
+[![Gem Version](https://img.shields.io/gem/v/mutineer?logo=rubygems&color=e23b3b)](https://rubygems.org/gems/mutineer)
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Mutineer%20Ruby-2da44e?logo=githubactions&logoColor=white)](https://github.com/marketplace/actions/mutineer-ruby)
 [![Socket Badge](https://badge.socket.dev/rubygems/package/mutineer/0.7.0?platform=ruby)](https://socket.dev/rubygems/package/mutineer/overview/0.7.0?platform=ruby)
 
 A clean-room mutation-testing tool for Ruby. Mutineer mutates your source one
