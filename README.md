@@ -1,6 +1,6 @@
 # Mutineer
 
-[![Socket Badge](https://badge.socket.dev/rubygems/package/mutineer/0.6.2?platform=ruby)](https://socket.dev/rubygems/package/mutineer/overview/0.6.2?platform=ruby)
+[![Socket Badge](https://badge.socket.dev/rubygems/package/mutineer/0.7.0?platform=ruby)](https://socket.dev/rubygems/package/mutineer/overview/0.7.0?platform=ruby)
 
 A clean-room mutation-testing tool for Ruby. Mutineer mutates your source one
 change at a time, runs your test suite (Minitest or RSpec) against each mutant, and reports the
@@ -49,7 +49,10 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
 | `--framework NAME` | `minitest` (default) or `rspec`; auto-detected as rspec when most `--test` files end in `_spec.rb` |
 | `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`) — ideal for PR CI |
-| `--jobs N` | Parallel worker count (default: processor count) |
+| `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (see [CI](#ci-gating)) |
+| `--baseline-epsilon FLOAT` | Score-drop tolerance for `--baseline` (default: 0) |
+| `--jobs N` | Parallel worker count (default: processor count; `1` under `--rails`) |
+| `--verbose` | Surface the real error when a fork capture fails (alias `--debug`) |
 | `--strategy NAME` | Mutation application: `reload` whole-file (default) or `redefine` surgical (`7a`/`7b` accepted as deprecated aliases) |
 | `--format human\|json` | Report format (default: human) |
 | `--output FILE` | Write the report to FILE instead of stdout |
@@ -95,6 +98,31 @@ Add Mutineer to your Gemfile's test group:
 ```ruby
 gem "mutineer", group: :test, require: false
 ```
+
+## Suppressing equivalent mutants
+
+Some mutants are equivalent (behaviour-identical) and survive forever — keeping a
+file off 100%. Suppress them so the score and `--threshold` gate stay meaningful:
+
+- **Inline:** `some_line # mutineer:disable-line` (or scope it: `# mutineer:disable-line comparison`).
+- **Config:** a `.mutineer.yml` `ignore:` list of stable mutant ids. Each survivor's
+  `id` is printed in the JSON report, so copy it straight into `ignore:`.
+
+Suppressed mutants are excluded from the score (so 100% becomes reachable).
+
+## CI gating
+
+Store a JSON run as a baseline, then fail the build only when a PR makes things
+worse:
+
+```sh
+mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
+```
+
+`--baseline` reports which survivors are new (by stable id) and any score drop. It
+combines with `--threshold` (the worse of the two sets the exit code). Pass a
+directory (or several sources) to audit a whole layer in one boot — tests are
+auto-paired by convention and the report breaks down per source.
 
 ## Configuration
 

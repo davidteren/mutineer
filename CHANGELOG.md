@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-06-30
+
+Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
+
+### Added
+- **Equivalent-mutant suppression** (#10) — inline `# mutineer:disable-line [ops]`
+  and a `.mutineer.yml` `ignore:` list keyed on a stable, offset-free mutant id;
+  suppressed mutants are excluded from the score (100% reachable). The stable id
+  (and readable token) is emitted per survivor in JSON.
+- **Source→test auto-pairing + multi-source runs** (#11) — pass a directory or
+  several sources with `--test` omitted; tests are inferred by convention
+  (`app/`,`lib/` → `test/…_test.rb` / `spec/…_spec.rb`) and run under one boot,
+  with per-source results (human + JSON `per_source`).
+- **`--baseline <file.json>` CI gating** (#13) — diff against a prior run by stable
+  id; exit 1 on new survivors or a score drop (with `--baseline-epsilon`), naming
+  what regressed. Combines with `--threshold` via max exit code.
+- **`--verbose`/`--debug`** (#8) — surface the real error when a fork capture fails.
+- **`:uncapturable` status** (#9) — distinct from `no_coverage`; reported separately
+  ("tests failed to run" vs "genuinely uncovered"). Both excluded from the score.
+
+### Fixed
+- **Fork capture no longer drops fixture transactions** (#8) — `reconnect` skips
+  `clear_all_connections!` when a fixture transaction is open, and stops swallowing
+  the child error; write-heavy Rails tests are mutation-testable again.
+
+### Changed
+- JSON `schema_version` → `1.1` (additive: survivor `id`/`token`, `ignored`,
+  `uncapturable`, `per_source`).
+
 ## [0.6.2] - 2026-06-29
 
 ### Fixed
@@ -100,6 +129,7 @@ All notable changes to this project are documented here. The format is based on
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.7.0]: https://github.com/davidteren/mutineer/releases/tag/v0.7.0
 [0.6.2]: https://github.com/davidteren/mutineer/releases/tag/v0.6.2
 [0.6.1]: https://github.com/davidteren/mutineer/releases/tag/v0.6.1
 [0.6.0]: https://github.com/davidteren/mutineer/releases/tag/v0.6.0
