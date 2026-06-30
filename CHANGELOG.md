@@ -14,12 +14,14 @@ All notable changes to this project are documented here. The format is based on
   are now discovered as singletons, and the redefine strategy re-opens
   `class << self` so the mutation lands on the called method. (Scores for
   singleton-heavy files will rise to their true values.)
-- **Fork-capture failures are diagnosable** (#19, part 1) — capture/worker pipes
-  are `binmode` (a binary Marshal payload could otherwise be lost to an encoding
-  error and swallowed), and a child that dies without writing now reports how it
-  died (exit status / signal) instead of a silent "produced no result". `--verbose`
-  always surfaces a real reason now. (The residual write-heavy capture failure
-  on some real Rails suites remains under investigation — now diagnosable.)
+- **Write-heavy Rails tests are capturable again** (#19) — capture/worker pipes
+  are `binmode`: a binary Marshal payload over a text-mode pipe could raise an
+  encoding error the child then swallowed → empty pipe → false `:uncapturable`.
+  That was the root cause of the residual write-heavy failures too. A child that
+  dies without writing now also reports how it died (exit status / signal), and
+  `--verbose` always surfaces a real reason. Verified on a real Rails app: all 6
+  previously-uncapturable interactors (incl. caxlsx + Google-client) now capture
+  with real scores, 0 uncapturable.
 
 ## [0.7.1] - 2026-06-30
 
