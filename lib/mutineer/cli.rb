@@ -7,6 +7,7 @@ require_relative "version"
 require_relative "config"
 require_relative "parser"
 require_relative "project"
+require_relative "pairing"
 require_relative "changed_lines"
 require_relative "runner"
 require_relative "reporter"
@@ -121,8 +122,10 @@ module Mutineer
 
       case argv.first
       when "run"
-        config.sources = argv[1..]
-        run(config)
+        # #11: a directory source expands to its **/*.rb files; literal files pass
+        # through. Test inference (when --test is omitted) happens in validate!.
+        config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
+        run(config, explicit)
       else
         warn "mutineer: unknown command '#{argv.first}'"
         exit 2
@@ -137,12 +140,12 @@ module Mutineer
       end
     end
 
-    def self.run(config)
+    def self.run(config, explicit = Set.new)
       if config.sources.empty?
         warn "mutineer: run requires at least one source file"
         exit 2
       end
-      validate!(config)
+      validate!(config, explicit)
 
       config.dry_run ? dry_run(config) : execute(config)
     rescue ArgumentError => e
@@ -166,7 +169,7 @@ module Mutineer
 
     # Flag validation: every flag/usage failure exits 2 (C7), consistent with the
     # taxonomy above — CI can tell "mistyped flag" from "tests too weak."
-    def self.validate!(config)
+    def self.validate!(config, explicit = Set.new)
       unless (0.0..100.0).cover?(config.threshold)
         warn "mutineer: --threshold must be between 0 and 100"
         exit 2
@@ -197,6 +200,16 @@ module Mutineer
         exit 2
       end
 
+      validate_since!(config) if config.since
+      preflight_output!(config.output) if config.output
+
+      # #11: when --test is omitted, infer each source's test by convention so the
+      # boot-once/fork-per-test core (which pairs empirically by coverage) gets a
+      # populated config.tests. Runs after every flag/usage check above so a
+      # mistyped flag still reports the flag; skipped under --dry-run (no tests
+      # needed). validate_paths! then sees the inferred (real) tests.
+      autopair!(config, explicit) unless config.dry_run
+
       # Boot mode does no coverage selection — every mutant runs the given tests —
       # so at least one --test file is mandatory (there is nothing to select from).
       if config.boot && config.tests.empty?
@@ -204,8 +217,6 @@ module Mutineer
         exit 2
       end
 
-      validate_since!(config) if config.since
-      preflight_output!(config.output) if config.output
       validate_paths!(config)
     end
 
@@ -238,6 +249,34 @@ module Mutineer
       return if missing.empty?
 
       warn "mutineer: no such file: #{missing.join(', ')}"
+      exit 2
+    end
+
+    # #11: auto-pair sources to tests by path convention when no --test was given
+    # (explicit --test wins — R5). Each source with an inferred test on disk joins
+    # the run; a source with none is dropped with a one-line stderr warning (R3)
+    # and the run continues with the rest. If every source is dropped: in boot mode
+    # the dedicated --boot/--rails-requires-test check reports it; otherwise exit 2
+    # with a usage message. The framework is re-detected from the inferred set
+    # unless it was set explicitly (a spec-only project loads/reports as rspec).
+    def self.autopair!(config, explicit)
+      return unless config.tests.empty?
+
+      paired = config.sources.filter_map do |s|
+        t = Pairing.infer_test(s, project_root: config.project_root, prefer: config.framework)
+        [s, t] if t
+      end
+      (config.sources - paired.map(&:first)).each do |s|
+        warn "[mutineer] no test found by convention for #{s}; skipping"
+      end
+      config.sources = paired.map(&:first)
+      config.tests   = paired.map(&:last).uniq
+      config.framework = Config.detect_framework(config.tests) unless explicit.include?(:framework)
+
+      return unless config.sources.empty?
+      return if config.boot # let the --boot/--rails-requires-test check report it
+
+      warn "mutineer: no test files found by convention; pass --test or add tests"
       exit 2
     end
 

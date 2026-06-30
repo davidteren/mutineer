@@ -151,6 +151,28 @@ class ReporterTest < Minitest::Test
     assert_includes err.string, "threshold check is skipped"
   end
 
+  # #11: a multi-source run shows a per-source line per file (sorted by path).
+  def test_per_source_block_for_multiple_sources
+    other = Mutineer::Subject.new(file: "other.rb", namespace: ["O"], name: :m,
+                                  singleton: false, def_node: nil)
+    out = StringIO.new
+    Mutineer::Reporter.new(
+      aggregate([survivor_result, Mutineer::Result.killed.with(subject: other)]),
+      { FILE => SRC, "other.rb" => SRC }
+    ).report(out: out, err: StringIO.new)
+    s = out.string
+    assert_includes s, "Per-source"
+    assert_includes s, "other.rb  100.0%  (1 killed / 0 survived / 0 no-cov)"
+    assert_includes s, "#{FILE}  0.0%  (0 killed / 1 survived / 0 no-cov)"
+  end
+
+  # A single-source run omits the redundant per-source block.
+  def test_per_source_block_omitted_for_single_source
+    out = StringIO.new
+    reporter([survivor_result]).report(out: out, err: StringIO.new)
+    refute_includes out.string, "Per-source"
+  end
+
   def test_verdict_line_passed
     out = StringIO.new
     r = reporter([Mutineer::Result.killed, Mutineer::Result.killed,

@@ -71,6 +71,36 @@ class ResultTest < Minitest::Test
     assert_equal 7, agg.total
   end
 
+  # #11: by_source splits a mixed-file result list into per-file AggregateResults
+  # with correct per-file scores, reusing the same count/score methods.
+  def test_by_source_groups_into_per_file_aggregates
+    a = subject("a.rb")
+    b = subject("b.rb")
+    results = [
+      Mutineer::Result.killed.with(subject: a),
+      Mutineer::Result.survived.with(subject: a),
+      Mutineer::Result.killed.with(subject: b),
+      Mutineer::Result.killed.with(subject: b)
+    ]
+    by_source = Mutineer::AggregateResult.new(results).by_source
+
+    assert_equal ["a.rb", "b.rb"], by_source.keys.sort
+    assert_equal 50.0, by_source["a.rb"].mutation_score
+    assert_equal 100.0, by_source["b.rb"].mutation_score
+    assert_instance_of Mutineer::AggregateResult, by_source["a.rb"]
+  end
+
+  # Bare results (no subject — only built in unit tests) are skipped so file keys
+  # stay sortable strings.
+  def test_by_source_skips_subjectless_results
+    by_source = Mutineer::AggregateResult.new([Mutineer::Result.killed]).by_source
+    assert_empty by_source
+  end
+
+  def subject(file)
+    Mutineer::Subject.new(file: file, namespace: ["X"], name: :m, singleton: false, def_node: nil)
+  end
+
   def test_each_factory_has_a_distinct_status
     statuses = [
       Mutineer::Result.killed, Mutineer::Result.survived, Mutineer::Result.error,

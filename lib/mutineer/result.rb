@@ -87,6 +87,17 @@ module Mutineer
 
     def surviving_mutants = @results.select(&:survived?)
 
+    # #11: split into { source_file => AggregateResult } so the Reporter (per-source
+    # breakdown) and #13 (per-source roll-up / baseline diff) share one shape with
+    # all the score/count methods. After Runner.execute every result carries a
+    # subject, so the grouping is total; bare results (no subject, only in unit
+    # tests) are skipped so file keys stay sortable strings.
+    def by_source
+      @results.select { |r| r.subject }
+              .group_by { |r| r.subject.file }
+              .transform_values { |rs| AggregateResult.new(rs) }
+    end
+
     private
 
     def count(status) = (@by_status[status] || []).size

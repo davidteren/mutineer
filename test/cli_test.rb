@@ -191,4 +191,65 @@ class CliTest < Minitest::Test
     all = Mutineer::MutatorRegistry::DEFAULT_NAMES + Mutineer::MutatorRegistry::TIER2_NAMES
     assert_nil Mutineer::CLI.tier2_hint(all)
   end
+
+  # --- #11 auto-pairing (driven through bin/mutineer) ----------------------
+
+  # Copy the conventional autopair fixture tree (lib/ + test/) into a temp dir.
+  def with_autopair_project
+    Dir.mktmpdir("mutineer-autopair") do |proj|
+      FileUtils.cp_r(File.join(FIXTURES, "autopair", "."), proj)
+      yield proj
+    end
+  end
+
+  # R1/R2/R7: a directory source expands and each file is paired to its test by
+  # convention; the combined JSON carries a per_source entry per source.
+  def test_directory_autopair_produces_per_source
+    with_autopair_project do |proj|
+      out, _, status = mutineer("run", "lib", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus
+      doc = JSON.parse(out)
+      assert_equal "1.1", doc["schema_version"]
+      per = doc["per_source"].sort_by { |h| h["file"] }
+      assert_equal ["lib/calc.rb", "lib/greeter.rb"], per.map { |h| h["file"] }
+      assert_equal 100.0, per.find { |h| h["file"] == "lib/greeter.rb" }["score"]
+      assert_operator per.find { |h| h["file"] == "lib/calc.rb" }["score"], :<, 100.0
+    end
+  end
+
+  # R3: a source with no inferred test warns on stderr and is skipped; the run
+  # continues on the rest (not exit 2).
+  def test_orphan_source_warns_and_is_skipped
+    with_autopair_project do |proj|
+      File.write(File.join(proj, "lib", "orphan.rb"), "class Orphan; def z(a); a + 1; end; end\n")
+      out, err, status = mutineer("run", "lib", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus
+      assert_includes err, "[mutineer] no test found by convention for lib/orphan.rb; skipping"
+      files = JSON.parse(out)["per_source"].map { |h| h["file"] }
+      refute_includes files, "lib/orphan.rb"
+    end
+  end
+
+  # R3: when EVERY source lacks a test, it's a usage error (exit 2), not a crash.
+  def test_all_sources_unpaired_exits_two
+    Dir.mktmpdir("mutineer-notests") do |proj|
+      FileUtils.mkdir_p(File.join(proj, "lib"))
+      File.write(File.join(proj, "lib", "a.rb"), "class A; def z(a); a + 1; end; end\n")
+      _, err, status = mutineer("run", "lib", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "no test files found by convention"
+    end
+  end
+
+  # R5: an explicit --test disables inference entirely — only the named source runs.
+  def test_explicit_test_overrides_autopairing
+    with_autopair_project do |proj|
+      out, err, status = mutineer("run", "lib/calc.rb", "--test", "test/calc_test.rb",
+                                  "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus
+      refute_includes err, "no test found by convention"
+      files = JSON.parse(out)["per_source"].map { |h| h["file"] }
+      assert_equal ["lib/calc.rb"], files
+    end
+  end
 end

@@ -53,6 +53,7 @@ module Mutineer
       summary(out)
       out.puts
       score_line(out, err)
+      per_source(out)
 
       survivors(out)
       verdict(out, threshold) if threshold && threshold.positive?
@@ -103,9 +104,21 @@ module Mutineer
         # id so the user can audit what is silenced (and copy ids for survivors
         # they want to add). Excluded from the score; never in `survivors`.
         ignored: @agg.results.select(&:ignored?).map { |r| ignored_json(r) }
-                     .sort_by { |h| [h[:file], h[:line], h[:operator]] }
+                     .sort_by { |h| [h[:file], h[:line], h[:operator]] },
+        # #11: per-source breakdown (additive; #13 consumes it). Sorted by file so
+        # output is byte-stable. Reuses AggregateResult via by_source.
+        per_source: @agg.by_source.map { |file, agg| per_source_json(file, agg) }
+                        .sort_by { |h| h[:file] }
       }
       "#{JSON.generate(doc)}\n"
+    end
+
+    def per_source_json(file, agg)
+      {
+        file: file, total: agg.total,
+        killed: agg.killed_count, survived: agg.survived_count,
+        no_coverage: agg.no_coverage_count, score: agg.mutation_score
+      }
     end
 
     def survivor_json(result)
@@ -198,6 +211,24 @@ module Mutineer
         err.puts "[mutineer] no covered mutations; mutation score is N/A and the threshold check is skipped."
       else
         out.puts "Mutation score: #{score}%  (killed / (killed + survived); #{excluded})"
+      end
+    end
+
+    # #11: one line per source after the global summary, so a multi-source run
+    # shows which file is weak. Omitted for a single-source run — the global
+    # summary already says everything (ponytail: no redundant one-line block).
+    def per_source(out)
+      sources = @agg.by_source
+      return if sources.size <= 1
+
+      out.puts
+      out.puts "Per-source"
+      out.puts "----------"
+      sources.sort.each do |file, agg|
+        score = agg.mutation_score
+        out.puts format("%s  %s  (%d killed / %d survived / %d no-cov)",
+                        file, score.nil? ? "N/A" : "#{score}%",
+                        agg.killed_count, agg.survived_count, agg.no_coverage_count)
       end
     end
 

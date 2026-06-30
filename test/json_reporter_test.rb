@@ -97,6 +97,23 @@ class JsonReporterTest < Minitest::Test
     assert_equal [], doc["no_coverage"] # not conflated with no_coverage
   end
 
+  # #11: additive per_source array, sorted by file, with per-file counts + score.
+  def test_per_source_array_sorted_with_scores
+    other = Mutineer::Subject.new(file: "z.rb", namespace: ["Z"], name: :m,
+                                  singleton: false, def_node: nil)
+    results = [
+      Mutineer::Result.killed.with(subject: subject), # pricing.rb
+      survivor,                                        # pricing.rb survivor
+      Mutineer::Result.killed.with(subject: other)    # z.rb
+    ]
+    per = render(results)["per_source"]
+    assert_equal [FILE, "z.rb"], per.map { |h| h["file"] }
+    pricing = per.find { |h| h["file"] == FILE }
+    assert_equal 2, pricing["total"]
+    assert_equal 50.0, pricing["score"]
+    assert_equal 100.0, per.find { |h| h["file"] == "z.rb" }["score"]
+  end
+
   def test_output_to_file_keeps_stdout_clean
     Dir.mktmpdir do |dir|
       path = File.join(dir, "r.json")

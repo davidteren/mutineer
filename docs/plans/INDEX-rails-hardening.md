@@ -33,7 +33,7 @@ Every acceptance check is verifiable WITHOUT a Rails app (simulated forks / cann
   _Gate:_ inline-disabled line → ignored; config-ignored id excluded; all-ignored → 100%; JSON shows the id.
   Depends on: — · Blocks: #13
 
-- [ ] **#11 — auto-pairing + multi-pair one-boot** → [`issue-11-autopair-multipair.md`](issue-11-autopair-multipair.md)
+- [x] **#11 — auto-pairing + multi-pair one-boot** → [`issue-11-autopair-multipair.md`](issue-11-autopair-multipair.md) · done · branch:feat/issue-11-autopair-multipair
   `lib/mutineer/pairing.rb`: directory→`**/*.rb` + `app/`,`lib/` → `test/…_test.rb`/`spec/…_spec.rb`
   convention (skip+warn on no match); `--test` overrides; per-source reporting via `AggregateResult#by_source`
   (+ JSON `per_source`, schema 1.1). Core fork model already boots once — front-door wiring only.
