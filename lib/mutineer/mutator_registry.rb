@@ -8,6 +8,9 @@ require_relative "mutators/statement_removal"
 require_relative "mutators/return_nil"
 require_relative "mutators/literal_mutation"
 require_relative "mutators/condition_negation"
+require_relative "mutators/string_literal"
+require_relative "mutators/regex_literal"
+require_relative "mutators/collection_method"
 
 module Mutineer
   # Maps operator names to operator classes.
@@ -28,13 +31,16 @@ module Mutineer
       "statement_removal"  => Mutators::StatementRemoval,
       "return_nil"         => Mutators::ReturnNil,
       "literal_mutation"   => Mutators::LiteralMutation,
-      "condition_negation" => Mutators::ConditionNegation
+      "condition_negation" => Mutators::ConditionNegation,
+      "string_literal"     => Mutators::StringLiteral,
+      "regex"              => Mutators::RegexLiteral,
+      "collection_method"  => Mutators::CollectionMethod
     }.freeze
 
     # The default Tier-1 operator set.
     DEFAULT_NAMES = %w[arithmetic comparison boolean_connector boolean_literal statement_removal].freeze
     # Tier-2 operators that remain opt-in.
-    TIER2_NAMES   = %w[return_nil literal_mutation condition_negation].freeze
+    TIER2_NAMES   = %w[return_nil literal_mutation condition_negation string_literal regex collection_method].freeze
 
     # Short human-readable descriptions for each operator.
     DESCRIPTIONS = {
@@ -45,7 +51,10 @@ module Mutineer
       "statement_removal"  => "replace a non-final statement with nil",
       "return_nil"         => "replace a return / final expression with nil",
       "literal_mutation"   => "integer -> 0, 1, n+1; string -> empty",
-      "condition_negation" => "wrap if/unless/ternary condition in !( ... )"
+      "condition_negation" => "wrap if/unless/ternary condition in !( ... )",
+      "string_literal"     => "non-empty string -> \"\", empty string -> \"mutineer\"",
+      "regex"              => "drop leading ^ / trailing $, swap + <-> *",
+      "collection_method"  => "map<->each, all?<->any?, first<->last, min<->max, select<->reject"
     }.freeze
 
     # Resolves operator names to classes.

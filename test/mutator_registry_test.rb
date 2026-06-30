@@ -33,4 +33,17 @@ class MutatorRegistryTest < Minitest::Test
     assert_equal %w[arithmetic comparison boolean_connector boolean_literal statement_removal],
                  Mutineer::MutatorRegistry::DEFAULT_NAMES
   end
+
+  def test_new_tier2_operators_present_and_resolvable
+    assert_equal [M::StringLiteral, M::RegexLiteral, M::CollectionMethod],
+                 Mutineer::MutatorRegistry.resolve(%w[string_literal regex collection_method])
+  end
+
+  def test_new_operators_are_tier2_and_not_default
+    %w[string_literal regex collection_method].each do |name|
+      assert_equal 2, Mutineer::MutatorRegistry.tier(name), "#{name} should be tier 2"
+      refute Mutineer::MutatorRegistry.default?(name), "#{name} should not be default"
+      assert Mutineer::MutatorRegistry::DESCRIPTIONS.key?(name), "#{name} needs a description"
+    end
+  end
 end
