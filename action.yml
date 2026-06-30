@@ -1,4 +1,4 @@
-name: Mutiny Already
+name: Mutineer Ruby
 description: >-
   Mutation-test your Ruby suite in CI; fail the build on new surviving mutants
   or a mutation-score drop versus a baseline.
