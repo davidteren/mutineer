@@ -1,0 +1,29 @@
+docs/plans/INDEX-rails-hardening.md
+  s_0214cb1e158c48::t_d27c062f2f5c61 1-64
+docs/plans/issue-08-fork-fixture-txn.md
+  s_0214cb1e158c48::t_bc9176f33da06e 1-142
+docs/plans/issue-09-uncapturable-status.md
+  s_0214cb1e158c48::t_da72aac091b51b 1-302
+docs/plans/issue-10-equivalent-mutant-suppression.md
+  s_0214cb1e158c48::t_c0a56d09aef53f 1-160
+docs/plans/issue-11-autopair-multipair.md
+  s_0214cb1e158c48::t_434d429007469c 1-199
+docs/plans/issue-13-baseline-ci-gating.md
+  s_0214cb1e158c48::t_2ef2947c62f983 1-164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.4",
+  "base_commit_sha": "d0fefef99785717a3f91eeb41f8a1e084acb4277",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
