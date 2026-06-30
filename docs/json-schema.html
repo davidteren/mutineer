@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mutineer JSON report — schema reference</title>
+<meta name="description" content="The machine-readable contract for `mutineer run --format json`: versioning rules and a field-by-field reference for summary, survivors, baseline, and exit codes.">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e23b3b'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/mutineer.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="index.html"><span class="mark" aria-hidden="true">M</span> Mutineer</a>
+    <nav aria-label="Primary">
+      <a href="index.html#how" class="hide-sm">How it works</a>
+      <a href="index.html#agents">AI &amp; CI</a>
+      <a href="agentic-coding.html" class="hide-sm">Agent &amp; CI</a>
+      <a href="json-schema.html" class="current">JSON schema</a>
+      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub</a>
+      <button class="toggle" id="theme" aria-label="Toggle dark mode" aria-pressed="true" title="Toggle theme">◐</button>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <div class="doc-layout">
+    <aside class="doc-side">
+      <div class="toc-title">On this page</div>
+      <ul>
+        <li><a href="#versioning">Versioning contract</a></li>
+        <li><a href="#shape">Top-level shape</a></li>
+        <li><a href="#summary">summary</a></li>
+        <li><a href="#survivors">survivors[]</a></li>
+        <li><a href="#other-statuses">no_coverage / uncapturable</a></li>
+        <li><a href="#ignored">ignored[]</a></li>
+        <li><a href="#per-source">per_source[]</a></li>
+        <li><a href="#baseline">baseline</a></li>
+        <li><a href="#exit-codes">Exit codes</a></li>
+      </ul>
+      <div class="doc-nav-pages">
+        <a href="agentic-coding.html">Agent &amp; CI</a>
+        <a href="json-schema.html" class="current">JSON schema</a>
+      </div>
+    </aside>
+
+    <article class="prose">
+      <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Reference · schema_version 1.1</span>
+      <h1>JSON report schema reference</h1>
+      <p class="doc-lede"><code>mutineer run --format json</code> emits a single JSON object (one line, newline-terminated) describing the whole run. It is the <strong>machine-readable contract</strong> for tooling — CI gates, dashboards, and AI coding agents.</p>
+      <p>Output is deterministic: arrays are sorted by <code>(file, line, operator)</code> regardless of <code>--jobs</code> worker finish order, so two runs of the same inputs produce byte-identical output.</p>
+
+      <h2 id="versioning">Versioning contract</h2>
+      <p>The top-level <code>schema_version</code> (a string, e.g. <code>"1.1"</code>) follows these rules:</p>
+      <ul>
+        <li><strong>Additive changes</strong> (new keys on existing objects, new top-level keys) bump the <strong>minor</strong> version (<code>1.0</code> → <code>1.1</code>). Existing keys keep their meaning. Consumers MUST ignore unknown keys.</li>
+        <li><strong>Breaking changes</strong> (renaming/removing a key, changing a value's type or meaning) bump the <strong>major</strong> version (<code>1.x</code> → <code>2.0</code>).</li>
+      </ul>
+      <div class="callout"><span class="ico" aria-hidden="true">!</span><p>A consumer should accept any <code>1.x</code> document and read only the keys it knows.</p></div>
+
+      <h2 id="shape">Top-level shape</h2>
+      <pre><code>{
+  <span class="p">"schema_version"</span>: <span class="k">"1.1"</span>,
+  <span class="p">"summary"</span>:      { <span class="c">/* run totals, see below */</span> },
+  <span class="p">"survivors"</span>:    [ <span class="c">/* mutants the suite failed to catch — the actionable gaps */</span> ],
+  <span class="p">"no_coverage"</span>:  [ <span class="c">/* mutants on lines no test exercises */</span> ],
+  <span class="p">"uncapturable"</span>: [ <span class="c">/* mutants whose would-be test errored during coverage capture */</span> ],
+  <span class="p">"ignored"</span>:      [ <span class="c">/* mutants the user suppressed (equivalent mutants) */</span> ],
+  <span class="p">"per_source"</span>:   [ <span class="c">/* per-file roll-up */</span> ],
+  <span class="p">"baseline"</span>:     { <span class="c">/* present ONLY with --baseline: the delta vs a prior run */</span> }
+}</code></pre>
+
+      <h2 id="summary"><code>summary</code> (object)</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Key</th><th scope="col">Type</th><th scope="col">Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="op">total</td><td class="rule">int</td><td>Total mutants generated (every status, before exclusions).</td></tr>
+            <tr><td class="op">killed</td><td class="rule">int</td><td>Mutants a test caught (suite went red).</td></tr>
+            <tr><td class="op">survived</td><td class="rule">int</td><td>Mutants no test caught. <strong>These are the actionable test gaps.</strong></td></tr>
+            <tr><td class="op">no_coverage</td><td class="rule">int</td><td>Mutants on a line no test exercises (excluded from score).</td></tr>
+            <tr><td class="op">uncapturable</td><td class="rule">int</td><td>Mutants whose covering test errored during capture — a broken harness, not a gap (excluded).</td></tr>
+            <tr><td class="op">skipped_invalid</td><td class="rule">int</td><td>Mutants that didn't re-parse and were never run (excluded).</td></tr>
+            <tr><td class="op">errored</td><td class="rule">int</td><td>Mutants whose run raised (excluded).</td></tr>
+            <tr><td class="op">timeout</td><td class="rule">int</td><td>Mutants whose run exceeded the per-mutant timeout (excluded).</td></tr>
+            <tr><td class="op">ignored</td><td class="rule">int</td><td>Mutants suppressed via <code>#&nbsp;mutineer:disable-line</code> or <code>.mutineer.yml</code> <code>ignore:</code> (excluded).</td></tr>
+            <tr><td class="op">score</td><td class="rule">float | null</td><td><code>killed / (killed + survived) * 100</code>, rounded. <strong><code>null</code></strong> when the denominator is empty (no covered mutants) — never <code>0.0</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="survivors"><code>survivors[]</code> (array of object)</h2>
+      <p>Each surviving mutant — the records an agent or reviewer acts on:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Key</th><th scope="col">Type</th><th scope="col">Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="op">subject</td><td class="rule">string</td><td>Fully-qualified subject, e.g. <code>Calculator#add</code>.</td></tr>
+            <tr><td class="op">file</td><td class="rule">string</td><td>Source file path (as passed to the run).</td></tr>
+            <tr><td class="op">line</td><td class="rule">int</td><td>1-based line of the mutation.</td></tr>
+            <tr><td class="op">operator</td><td class="rule">string</td><td>Operator name, e.g. <code>arithmetic</code>, <code>comparison</code>.</td></tr>
+            <tr><td class="op">id</td><td class="rule">string</td><td><strong>Stable, offset-free id</strong> (12 hex chars). Survives edits elsewhere in the file. Paste into <code>.mutineer.yml</code> <code>ignore:</code>, or diff between runs (this is what <code>--baseline</code> matches on).</td></tr>
+            <tr><td class="op">token</td><td class="rule">string</td><td>The exact code being mutated (whitespace-collapsed), e.g. <code>a + b</code>.</td></tr>
+            <tr><td class="op">diff</td><td class="rule">string</td><td>A unified diff (<code>@@ -line +line @@</code> with <code>-original</code> / <code>+mutant</code>). Ready to hand to an agent as "write a test that fails under this change."</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="other-statuses"><code>no_coverage[]</code> and <code>uncapturable[]</code> (array of object)</h2>
+      <p>Both use the lean shape <code>{ subject, file, line }</code>. <code>no_coverage</code> is a genuine coverage gap; <code>uncapturable</code> means the test that should cover the line errored while capturing coverage (fix the harness, not the test).</p>
+
+      <h2 id="ignored"><code>ignored[]</code> (array of object)</h2>
+      <p>Suppressed (equivalent) mutants, so you can audit what's silenced: <code>{ subject, file, line, operator, token, id }</code>.</p>
+
+      <h2 id="per-source"><code>per_source[]</code> (array of object)</h2>
+      <p>Per-file roll-up: <code>{ file, total, killed, survived, no_coverage, score }</code> (<code>score</code> is <code>float | null</code> as above).</p>
+
+      <h2 id="baseline"><code>baseline</code> (object, only with <code>--baseline</code>)</h2>
+      <p>The delta versus the prior <code>--format json</code> report, matched by stable <code>id</code>:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Key</th><th scope="col">Type</th><th scope="col">Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="op">regressed</td><td class="rule">bool</td><td>True if there are new survivors OR a score drop. <strong>Drives exit 1.</strong></td></tr>
+            <tr><td class="op">score_before</td><td class="rule">float | null</td><td>Baseline score.</td></tr>
+            <tr><td class="op">score_after</td><td class="rule">float | null</td><td>This run's score.</td></tr>
+            <tr><td class="op">score_dropped</td><td class="rule">bool</td><td>True if <code>score_after &lt; score_before - epsilon</code>.</td></tr>
+            <tr><td class="op">new_survivors[]</td><td class="rule">array</td><td>Survivors present now but absent in the baseline: <code>{ subject, file, line, operator, token, id }</code>.</td></tr>
+            <tr><td class="op">fixed_survivors[]</td><td class="rule">array</td><td>Baseline survivors no longer present: <code>{ subject, file, line, operator, id }</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="exit-codes">Exit codes</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Code</th><th scope="col">Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="op">0</td><td>Score ≥ threshold (or no gate) <strong>and</strong> no baseline regression.</td></tr>
+            <tr><td class="op">1</td><td>Score below <code>--threshold</code>, OR a <code>--baseline</code> regression, OR a runtime error.</td></tr>
+            <tr><td class="op">2</td><td>Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline).</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>--threshold</code> and <code>--baseline</code> are independent gates OR'd together (the worse code wins); usage errors (2) always win. This lets a pipeline distinguish "tests too weak" (1) from "you invoked me wrong" (2).</p>
+
+      <div class="callout"><span class="ico" aria-hidden="true">→</span><p>See the <a href="agentic-coding.html">agent &amp; CI recipes</a> for how to consume this in a loop or a PR gate.</p></div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div>
+      <strong>Mutineer</strong> — clean-room mutation testing for Ruby.
+      <div class="note">MIT licensed · Prism + stdlib only · © David Teren</div>
+    </div>
+    <nav aria-label="Footer">
+      <a href="index.html">Home</a>
+      <a href="agentic-coding.html">Agent &amp; CI recipes</a>
+      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub</a>
+      <a href="#main">Top ↑</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="assets/mutineer.js"></script>
+</body>
+</html>
