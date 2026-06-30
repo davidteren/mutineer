@@ -2,6 +2,7 @@
 
 require "json"
 require "stringio"
+require "cgi"
 require_relative "mutation"
 
 module Mutineer
@@ -25,6 +26,8 @@ module Mutineer
       rendered =
         if format == "json"
           json_report(baseline)
+        elsif format == "html"
+          html_report
         else
           sio = StringIO.new
           human_report(sio, err, threshold)
@@ -127,6 +130,117 @@ module Mutineer
       doc[:baseline] = baseline_json(baseline) if baseline
       "#{JSON.generate(doc)}\n"
     end
+
+    # #23: one self-contained HTML file (inline CSS, no external assets) — the
+    # overall score + summary counts, a per-source table, and every surviving
+    # mutant with its stable id and diff. All source/diff/identifier text is
+    # HTML-escaped (CGI.escapeHTML) so a `<`/`>` in source can never break the
+    # markup. Reuses survivor_json/per_source_json so one run yields one set of
+    # facts regardless of --format.
+    def html_report
+      score = @agg.mutation_score
+      survivors = @agg.surviving_mutants.map { |r| survivor_json(r) }
+                      .sort_by { |h| [h[:file], h[:line], h[:operator]] }
+      per_source = @agg.by_source.map { |file, agg| per_source_json(file, agg) }
+                       .sort_by { |h| h[:file] }
+
+      <<~HTML
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Mutineer Mutation Report</title>
+        <style>
+          body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+                 margin: 2rem; color: #1b1b1b; background: #fafafa; }
+          h1 { margin: 0 0 .25rem; }
+          .score { font-size: 2.5rem; font-weight: 700; }
+          .counts { color: #444; margin: .5rem 0 1.5rem; }
+          .counts span { display: inline-block; margin-right: 1rem; white-space: nowrap; }
+          table { border-collapse: collapse; width: 100%; margin-bottom: 2rem; background: #fff; }
+          th, td { border: 1px solid #ddd; padding: .4rem .6rem; text-align: left; }
+          th { background: #f0f0f0; }
+          td.num { text-align: right; font-variant-numeric: tabular-nums; }
+          .survivor { background: #fff; border: 1px solid #ddd; border-radius: 4px;
+                      padding: .75rem 1rem; margin-bottom: 1rem; }
+          .survivor h3 { margin: 0 0 .25rem; font-size: 1rem; }
+          .meta { color: #555; font-size: .85rem; margin-bottom: .5rem; }
+          .id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+          pre.diff { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                     background: #f6f8fa; padding: .5rem .75rem; overflow-x: auto;
+                     margin: 0; border-radius: 4px; }
+          .diff .add { color: #116329; }
+          .diff .del { color: #82071e; }
+        </style>
+        </head>
+        <body>
+        <h1>Mutineer — Mutation Report</h1>
+        <div class="score">Score: #{score.nil? ? 'N/A' : "#{score}%"}</div>
+        #{summary_html}
+        #{per_source_html(per_source)}
+        #{survivors_html(survivors)}
+        </body>
+        </html>
+      HTML
+    end
+
+    # The summary counts block for the HTML header.
+    def summary_html
+      counts = {
+        "total" => @agg.total, "killed" => @agg.killed_count,
+        "survived" => @agg.survived_count, "no_coverage" => @agg.no_coverage_count,
+        "uncapturable" => @agg.uncapturable_count, "ignored" => @agg.ignored_count,
+        "skipped" => @agg.skipped_invalid_count,
+        "errored" => @agg.errored_count + @agg.timeout_count
+      }
+      spans = counts.map { |k, v| "<span><strong>#{v}</strong> #{esc(k)}</span>" }.join("\n  ")
+      "<div class=\"counts\">\n  #{spans}\n</div>"
+    end
+
+    # The per-source breakdown table.
+    def per_source_html(per_source)
+      return "" if per_source.empty?
+
+      rows = per_source.map do |h|
+        score = h[:score].nil? ? "N/A" : "#{h[:score]}%"
+        "<tr><td>#{esc(h[:file])}</td><td class=\"num\">#{score}</td>" \
+          "<td class=\"num\">#{h[:killed]}</td><td class=\"num\">#{h[:survived]}</td>" \
+          "<td class=\"num\">#{h[:no_coverage]}</td></tr>"
+      end.join("\n  ")
+      <<~HTML.chomp
+        <h2>Per-source</h2>
+        <table>
+        <tr><th>File</th><th>Score</th><th>Killed</th><th>Survived</th><th>No coverage</th></tr>
+          #{rows}
+        </table>
+      HTML
+    end
+
+    # The surviving-mutants list, each with subject, location, operator, stable
+    # id, and a colorized diff. All text is HTML-escaped.
+    def survivors_html(survivors)
+      return "<h2>Surviving Mutants</h2>\n<p>None — every covered mutant was killed.</p>" if survivors.empty?
+
+      cards = survivors.map do |s|
+        diff_lines = s[:diff].each_line.map do |line|
+          cls = line.start_with?("+") ? "add" : (line.start_with?("-") ? "del" : nil)
+          text = esc(line.chomp)
+          cls ? "<span class=\"#{cls}\">#{text}</span>" : text
+        end.join("\n")
+        <<~CARD.chomp
+          <div class="survivor">
+          <h3>#{esc(s[:subject])}</h3>
+          <div class="meta">#{esc(s[:file])}:#{s[:line]} &middot; #{esc(s[:operator])} &middot; <span class="id">#{esc(s[:id])}</span></div>
+          <pre class="diff">#{diff_lines}</pre>
+          </div>
+        CARD
+      end.join("\n")
+      "<h2>Surviving Mutants</h2>\n#{cards}"
+    end
+
+    # HTML-escapes any text destined for the document (stdlib CGI).
+    def esc(text) = CGI.escapeHTML(text.to_s)
 
     # #13: the same delta facts the human report prints, for dashboards. new_survivors
     # reuse the ignored_json shape (subject/file/line/operator/token/id) and sort

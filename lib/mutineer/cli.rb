@@ -47,7 +47,7 @@ module Mutineer
         --boot FILE          Require FILE once in the parent to boot the app env, then
                              fork per mutant (Rails apps; requires --test)
         --rails              Sugar for --boot config/environment --strategy redefine
-        --format human|json  Report format (default: human)
+        --format human|json|html  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
         --fail-fast          Stop at the first surviving mutant
@@ -211,8 +211,8 @@ module Mutineer
       end
       config.jobs = jobs
 
-      unless %w[human json].include?(config.format)
-        warn %(mutineer: unknown format "#{config.format}". Expected: human, json)
+      unless %w[human json html].include?(config.format)
+        warn %(mutineer: unknown format "#{config.format}". Expected: human, json, html)
         exit 2
       end
 
@@ -379,7 +379,7 @@ module Mutineer
 
       # #14: nudge toward the opt-in tier-2 operators (human report only — never
       # pollute JSON output).
-      if config.format != "json" && (hint = tier2_hint(config.operators))
+      if !%w[json html].include?(config.format) && (hint = tier2_hint(config.operators))
         puts hint
       end
 
