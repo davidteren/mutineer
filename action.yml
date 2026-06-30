@@ -1,0 +1,149 @@
+name: Mutineer
+description: >-
+  Run Mutineer mutation testing in CI and gate a pull request on test quality —
+  fail on new surviving mutants or a mutation-score drop versus a baseline.
+author: David Teren
+branding:
+  icon: git-merge
+  color: red
+
+inputs:
+  sources:
+    description: >-
+      Space-separated source files or directories to mutate (positional args to
+      `mutineer run`). A directory is expanded to its **/*.rb files.
+    required: true
+  test:
+    description: >-
+      Space-separated test files covering the sources. Optional — when omitted,
+      Mutineer auto-pairs each source to its test by convention.
+    required: false
+    default: ""
+  since:
+    description: >-
+      Mutate only lines changed since this git ref (e.g. `origin/main`). Ideal
+      for PR CI — grades just the diff. Requires a non-shallow checkout.
+    required: false
+    default: ""
+  threshold:
+    description: "Fail (exit 1) when the mutation score is below this value (0 = off)."
+    required: false
+    default: ""
+  baseline:
+    description: >-
+      Path to a prior `--format json` report. Fail (exit 1) on NEW survivors or
+      a score drop versus this baseline.
+    required: false
+    default: ""
+  baseline-epsilon:
+    description: "Score-drop tolerance for `baseline` (default: 0 = any drop fails)."
+    required: false
+    default: ""
+  operators:
+    description: "Comma-separated operator names (default: the Tier-1 set)."
+    required: false
+    default: ""
+  framework:
+    description: "minitest or rspec (default: auto-detected from test file names)."
+    required: false
+    default: ""
+  strategy:
+    description: "reload (whole-file) or redefine (surgical)."
+    required: false
+    default: ""
+  jobs:
+    description: "Parallel worker count (default: processor count)."
+    required: false
+    default: ""
+  rails:
+    description: "Set to 'true' to boot config/environment once (Rails apps)."
+    required: false
+    default: "false"
+  format:
+    description: "Report format: human or json (default: json so the report is machine-readable)."
+    required: false
+    default: "json"
+  output:
+    description: "Write the report to this file instead of stdout."
+    required: false
+    default: ""
+  extra-args:
+    description: "Any additional raw flags appended verbatim to the mutineer invocation."
+    required: false
+    default: ""
+  working-directory:
+    description: "Directory to run Mutineer in (the project root)."
+    required: false
+    default: "."
+  use-bundler:
+    description: >-
+      Run via `bundle exec mutineer` (true) instead of a standalone
+      `gem install mutineer` (false). Use true when mutineer is in the
+      project's Gemfile (required for --rails, which boots the app's bundle).
+    required: false
+    default: "false"
+  version:
+    description: "Gem version to install when use-bundler is false (default: latest)."
+    required: false
+    default: ""
+
+outputs:
+  exit-code:
+    description: "The exit code returned by mutineer (0 pass, 1 below-threshold/regressed, 2 usage)."
+    value: ${{ steps.run.outputs.exit-code }}
+  report:
+    description: "Path to the written report file, when the `output` input is set."
+    value: ${{ steps.run.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install mutineer
+      if: ${{ inputs.use-bundler != 'true' }}
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.version }}" ]; then
+          gem install mutineer -v "${{ inputs.version }}" --no-document
+        else
+          gem install mutineer --no-document
+        fi
+
+    - name: Run mutineer
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -o pipefail
+        args=(run)
+        for s in ${{ inputs.sources }}; do args+=("$s"); done
+        for t in ${{ inputs.test }}; do args+=(--test "$t"); done
+        [ -n "${{ inputs.since }}" ]            && args+=(--since "${{ inputs.since }}")
+        [ -n "${{ inputs.threshold }}" ]        && args+=(--threshold "${{ inputs.threshold }}")
+        [ -n "${{ inputs.baseline }}" ]         && args+=(--baseline "${{ inputs.baseline }}")
+        [ -n "${{ inputs.baseline-epsilon }}" ] && args+=(--baseline-epsilon "${{ inputs.baseline-epsilon }}")
+        [ -n "${{ inputs.operators }}" ]        && args+=(--operators "${{ inputs.operators }}")
+        [ -n "${{ inputs.framework }}" ]        && args+=(--framework "${{ inputs.framework }}")
+        [ -n "${{ inputs.strategy }}" ]         && args+=(--strategy "${{ inputs.strategy }}")
+        [ -n "${{ inputs.jobs }}" ]             && args+=(--jobs "${{ inputs.jobs }}")
+        [ "${{ inputs.rails }}" = "true" ]      && args+=(--rails)
+        [ -n "${{ inputs.format }}" ]           && args+=(--format "${{ inputs.format }}")
+        [ -n "${{ inputs.output }}" ]           && args+=(--output "${{ inputs.output }}")
+        # shellcheck disable=SC2206
+        [ -n "${{ inputs.extra-args }}" ]       && args+=(${{ inputs.extra-args }})
+
+        if [ "${{ inputs.use-bundler }}" = "true" ]; then
+          runner=(bundle exec mutineer)
+        else
+          runner=(mutineer)
+        fi
+
+        echo "::group::mutineer ${args[*]}"
+        set +e
+        "${runner[@]}" "${args[@]}"
+        code=$?
+        set -e
+        echo "::endgroup::"
+
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        [ -n "${{ inputs.output }}" ] && echo "report=${{ inputs.output }}" >> "$GITHUB_OUTPUT"
+        exit $code

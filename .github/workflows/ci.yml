@@ -26,3 +26,19 @@ jobs:
         run: bundle exec rake test
       - name: Build gem
         run: gem build mutineer.gemspec
+
+  rails-integration:
+    name: rails dogfood (ruby 3.4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          # The Rails fixture app has its OWN isolated bundle (Rails must never
+          # touch the gem's zero-dep bundle), so cache against that Gemfile.
+          bundler-cache: true
+          working-directory: test/fixtures/rails_app
+      - name: Dogfood mutineer against a real minimal Rails app
+        working-directory: test/fixtures/rails_app
+        run: bin/dogfood

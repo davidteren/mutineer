@@ -124,6 +124,33 @@ combines with `--threshold` (the worse of the two sets the exit code). Pass a
 directory (or several sources) to audit a whole layer in one boot — tests are
 auto-paired by convention and the report breaks down per source.
 
+### GitHub Action
+
+This repo ships a composite action (`action.yml`) that wraps the CLI for CI:
+
+```yaml
+- uses: actions/checkout@v4
+  with: { fetch-depth: 0 }        # --since needs full history
+- uses: ruby/setup-ruby@v1
+  with: { ruby-version: "3.4", bundler-cache: true }
+- uses: davidteren/mutineer@main
+  with:
+    sources: app/
+    since: origin/${{ github.base_ref }}
+    baseline: .mutineer/baseline.json
+    threshold: "90"
+```
+
+## For AI agents & pipelines
+
+Mutineer is built for programmatic use — versioned JSON, stable mutant ids,
+structured exit codes, and diff-scoped runs. See:
+
+- **[docs/agentic-coding.md](docs/agentic-coding.md)** — the agent inner-loop and
+  CI-gate recipes (and how to avoid infinite loops on equivalent mutants).
+- **[docs/json-schema.md](docs/json-schema.md)** — the `--format json` schema
+  reference and its versioning contract.
+
 ## Configuration
 
 Mutineer reads an optional `.mutineer.yml` from the project root (nearest one,

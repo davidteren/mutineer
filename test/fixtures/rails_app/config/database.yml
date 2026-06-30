@@ -1,0 +1,7 @@
+# A file-backed SQLite DB (not :memory:) so the connection survives the fork
+# Mutineer does per mutant — exactly the fork-safety path --rails reconnects.
+test:
+  adapter: sqlite3
+  database: storage/test.sqlite3
+  pool: 5
+  timeout: 5000
