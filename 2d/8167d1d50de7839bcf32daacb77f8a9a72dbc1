@@ -1,0 +1,56 @@
+lib/mutineer/result.rb
+  s_0214cb1e158c48::t_e35534452dae48 90-100
+test/cli_test.rb
+  s_0214cb1e158c48::t_5c72000ec51460 194-254
+lib/mutineer/cli.rb
+  s_0214cb1e158c48::t_768111db7d745d 172
+  s_0214cb1e158c48::t_983e9fa8321dc8 206-207,211-212
+  s_0214cb1e158c48::t_2457d01315d9f2 125-128
+  s_0214cb1e158c48::t_06a89faaa39063 203-205,208-210
+  s_0214cb1e158c48::t_a471cf037fc2f3 255-282
+  s_0214cb1e158c48::t_03a910c53ddf5d 143,148
+  s_0214cb1e158c48::t_2e200d09b2d9d2 10
+test/pairing_test.rb
+  s_0214cb1e158c48::t_756f49cc081500 1-91
+test/result_test.rb
+  s_0214cb1e158c48::t_7b23eb700139dd 74-103
+test/fixtures/autopair/test/greeter_test.rb
+  s_0214cb1e158c48::t_18b2a0c228ab5d 1-11
+test/json_reporter_test.rb
+  s_0214cb1e158c48::t_d5c691b58b0a3b 100-116
+docs/plans/INDEX-rails-hardening.md
+  s_0214cb1e158c48::t_c1d93db5fa3118 36
+lib/mutineer/reporter.rb
+  s_0214cb1e158c48::t_fb24b7910d96bf 107-111,116-121
+  s_0214cb1e158c48::t_4c6c91b0513773 56
+  s_0214cb1e158c48::t_f69e2760282715 122,217-234
+  s_0214cb1e158c48::t_ea96e3571e86fd 123
+lib/mutineer.rb
+  s_0214cb1e158c48::t_c3615d96cf50c1 9
+test/fixtures/autopair/test/calc_test.rb
+  s_0214cb1e158c48::t_1ad6829c94af4b 1-12
+lib/mutineer/pairing.rb
+  s_0214cb1e158c48::t_c3e641e223c72c 1-67
+test/reporter_test.rb
+  s_0214cb1e158c48::t_12e0d27c890ff8 154-175
+test/fixtures/autopair/lib/greeter.rb
+  s_0214cb1e158c48::t_fecf9707f032e5 1-7
+test/fixtures/autopair/lib/calc.rb
+  s_0214cb1e158c48::t_8289c85725d767 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.4",
+  "base_commit_sha": "2d8167d1d50de7839bcf32daacb77f8a9a72dbc1",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
