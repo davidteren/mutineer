@@ -1,7 +1,7 @@
-name: Mutineer
+name: Mutiny Already
 description: >-
-  Run Mutineer mutation testing in CI and gate a pull request on test quality —
-  fail on new surviving mutants or a mutation-score drop versus a baseline.
+  Mutation-test your Ruby suite in CI; fail the build on new surviving mutants
+  or a mutation-score drop versus a baseline.
 author: David Teren
 branding:
   icon: git-merge
