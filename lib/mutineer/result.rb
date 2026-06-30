@@ -12,6 +12,10 @@ module Mutineer
   #                  so coverage was lost. Excluded from the denominator exactly
   #                  like no_coverage, but reported separately: it signals a broken
   #                  harness (a test that failed to run), not a genuine coverage gap.
+  #   ignored      — a known-equivalent mutant the user suppressed (#10), via an
+  #                  inline `# mutineer:disable-line` comment or a `.mutineer.yml`
+  #                  `ignore:` id. A pre-fork classification (never run); excluded
+  #                  from the denominator so a strong file can reach 100%.
   #
   # `error` and `skipped` are deliberately distinct: skipped is a pre-fork
   # validity failure (counted separately by the reporter), error is a runtime
@@ -19,17 +23,19 @@ module Mutineer
   # `uncapturable` are pre-fork selection results (M3/#9): both excluded from the
   # score denominator.
   #
-  # `subject` and `mutation` are nil when the Result is built by Isolation/Runner
-  # (which only know the outcome); the orchestrator attaches them afterwards via
-  # `result.with(subject:, mutation:)` so the Reporter can render survivor diffs.
-  Result = Data.define(:status, :details, :subject, :mutation) do
-    def self.killed               = new(status: :killed, details: nil, subject: nil, mutation: nil)
-    def self.survived             = new(status: :survived, details: nil, subject: nil, mutation: nil)
-    def self.error(details = nil) = new(status: :error, details: details, subject: nil, mutation: nil)
-    def self.timeout              = new(status: :timeout, details: nil, subject: nil, mutation: nil)
-    def self.skipped(details = nil) = new(status: :skipped, details: details, subject: nil, mutation: nil)
-    def self.no_coverage          = new(status: :no_coverage, details: nil, subject: nil, mutation: nil)
-    def self.uncapturable         = new(status: :uncapturable, details: nil, subject: nil, mutation: nil)
+  # `subject`, `mutation`, and `id` are nil when the Result is built by Isolation/
+  # Runner (which only know the outcome); the orchestrator attaches them afterwards
+  # via `result.with(subject:, mutation:, id:)` so the Reporter can render survivor
+  # diffs and emit the stable id. `id` is the content-based MutantId (#10).
+  Result = Data.define(:status, :details, :subject, :mutation, :id) do
+    def self.killed               = new(status: :killed, details: nil, subject: nil, mutation: nil, id: nil)
+    def self.survived             = new(status: :survived, details: nil, subject: nil, mutation: nil, id: nil)
+    def self.error(details = nil) = new(status: :error, details: details, subject: nil, mutation: nil, id: nil)
+    def self.timeout              = new(status: :timeout, details: nil, subject: nil, mutation: nil, id: nil)
+    def self.skipped(details = nil) = new(status: :skipped, details: details, subject: nil, mutation: nil, id: nil)
+    def self.no_coverage          = new(status: :no_coverage, details: nil, subject: nil, mutation: nil, id: nil)
+    def self.uncapturable         = new(status: :uncapturable, details: nil, subject: nil, mutation: nil, id: nil)
+    def self.ignored              = new(status: :ignored, details: nil, subject: nil, mutation: nil, id: nil)
 
     def killed?       = status == :killed
     def survived?     = status == :survived
@@ -38,12 +44,14 @@ module Mutineer
     def skipped?      = status == :skipped
     def no_coverage?  = status == :no_coverage
     def uncapturable? = status == :uncapturable
+    def ignored?      = status == :ignored
   end
 
   # Aggregates a flat list of Results into counts, the mutation score, and the
   # surviving-mutant list. The score denominator is killed + survived ONLY
-  # (KTD-4): no-coverage, uncapturable, skipped (invalid), errored, and timeout
-  # are each excluded and surfaced separately. An empty denominator yields a nil score
+  # (KTD-4): no-coverage, uncapturable, skipped (invalid), errored, timeout, and
+  # ignored (#10 equivalent-mutant suppression) are each excluded and surfaced
+  # separately — so suppressing every survivor reaches 100%. An empty denominator yields a nil score
   # (rendered "N/A"), never 0.0 — distinguishing "no testable mutants" from
   # "0% killed".
   class AggregateResult
@@ -61,6 +69,7 @@ module Mutineer
     def skipped_invalid_count = count(:skipped)
     def errored_count         = count(:error)
     def timeout_count         = count(:timeout)
+    def ignored_count         = count(:ignored)
 
     # Every generated, classified mutation. NOT the score denominator.
     def total = @results.size

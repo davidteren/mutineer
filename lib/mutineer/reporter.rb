@@ -82,22 +82,28 @@ module Mutineer
       score = @agg.mutation_score
 
       doc = {
-        schema_version: "1.0",
+        schema_version: "1.1",
         summary: {
           total: @agg.total, killed: killed, survived: survived,
           no_coverage: @agg.no_coverage_count,
           uncapturable: @agg.uncapturable_count,
           skipped_invalid: @agg.skipped_invalid_count,
           errored: @agg.errored_count, timeout: @agg.timeout_count,
+          ignored: @agg.ignored_count,
           score: score
         },
         survivors: @agg.surviving_mutants.map { |r| survivor_json(r) }
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },
         no_coverage: @agg.results.select(&:no_coverage?).map { |r| no_coverage_json(r) }
                          .sort_by { |h| [h[:file], h[:line]] },
-        # #9: same shape as no_coverage; additive key, schema_version stays "1.0".
+        # #9: same shape as no_coverage; additive key.
         uncapturable: @agg.results.select(&:uncapturable?).map { |r| no_coverage_json(r) }
-                          .sort_by { |h| [h[:file], h[:line]] }
+                          .sort_by { |h| [h[:file], h[:line]] },
+        # #10: equivalent mutants the user suppressed — emitted with their stable
+        # id so the user can audit what is silenced (and copy ids for survivors
+        # they want to add). Excluded from the score; never in `survivors`.
+        ignored: @agg.results.select(&:ignored?).map { |r| ignored_json(r) }
+                     .sort_by { |h| [h[:file], h[:line], h[:operator]] }
       }
       "#{JSON.generate(doc)}\n"
     end
@@ -106,7 +112,7 @@ module Mutineer
       m = result.mutation
       file = result.subject.file
       source = @source_map[file] || File.read(file)
-      start_line, original_block, mutated_block, = diff_for(m, source)
+      start_line, original_block, mutated_block, token = diff_for(m, source)
       minus = original_block.each_line.map { |l| "-#{l.chomp}" }.join("\n")
       plus  = mutated_block.each_line.map { |l| "+#{l.chomp}" }.join("\n")
       {
@@ -114,7 +120,27 @@ module Mutineer
         file: file,
         line: start_line,
         operator: m.operator.to_s,
+        # #10: the stable, copy-pasteable id (next to the human-readable token) so a
+        # user can paste it straight into .mutineer.yml `ignore:`.
+        id: result.id,
+        token: token,
         diff: "--- a/#{file}\n+++ b/#{file}\n@@ -#{start_line} +#{start_line} @@\n#{minus}\n#{plus}\n"
+      }
+    end
+
+    # An entry under the JSON `ignored:` key — what the user already suppressed.
+    def ignored_json(result)
+      m = result.mutation
+      file = result.subject.file
+      source = @source_map[file] || File.read(file)
+      start_line, _orig, _mut, token = diff_for(m, source)
+      {
+        subject: result.subject.qualified_name,
+        file: file,
+        line: start_line,
+        operator: m.operator.to_s,
+        token: token,
+        id: result.id
       }
     end
 
@@ -157,13 +183,16 @@ module Mutineer
                       @agg.errored_count + @agg.timeout_count)
       # #9: a broken harness, not a coverage gap — report it distinctly from No coverage.
       out.puts format("Uncapturable: %-6d  (tests failed to run)", @agg.uncapturable_count)
+      # #10: equivalent mutants the user suppressed; excluded from the denominator.
+      out.puts format("Ignored:      %-6d  (equivalent, suppressed)", @agg.ignored_count)
     end
 
     def score_line(out, err)
       score = @agg.mutation_score
       excluded = "#{@agg.no_coverage_count} no-coverage, #{@agg.uncapturable_count} uncapturable, " \
                  "#{@agg.skipped_invalid_count} skipped, " \
-                 "#{@agg.errored_count + @agg.timeout_count} errored excluded"
+                 "#{@agg.errored_count + @agg.timeout_count} errored, " \
+                 "#{@agg.ignored_count} ignored excluded"
       if score.nil?
         out.puts "Mutation score: N/A  (no covered mutants)"
         err.puts "[mutineer] no covered mutations; mutation score is N/A and the threshold check is skipped."

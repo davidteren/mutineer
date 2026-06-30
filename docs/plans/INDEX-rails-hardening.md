@@ -26,7 +26,7 @@ Every acceptance check is verifiable WITHOUT a Rails app (simulated forks / cann
   report them separately; M4 score oracle unchanged.
   Depends on: #8 · Blocks: —
 
-- [ ] **#10 — equivalent-mutant suppression + stable id** → [`issue-10-equivalent-mutant-suppression.md`](issue-10-equivalent-mutant-suppression.md)
+- [x] **#10 — equivalent-mutant suppression + stable id** → [`issue-10-equivalent-mutant-suppression.md`](issue-10-equivalent-mutant-suppression.md) · done · branch:feat/issue-10-equivalent-mutant-suppression
   Content-based stable mutant id (SHA256[0,12] of qualified_name+operator+normalized_token+occurrence);
   inline `# mutineer:disable-line [ops]` + `.mutineer.yml` `ignore:`; new `:ignored` status excluded from
   denominator; stable id emitted in JSON.

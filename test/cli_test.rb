@@ -138,7 +138,7 @@ class CliTest < Minitest::Test
                               "--format", "json", "--output", "report.json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(File.read(File.join(proj, "report.json")))
-      assert_equal "1.0", doc["schema_version"]
+      assert_equal "1.1", doc["schema_version"]
       assert_equal 100.0, doc["summary"]["score"]
     end
   end

@@ -10,6 +10,8 @@ require_relative "coverage_map"
 require_relative "changed_lines"
 require_relative "mutator_registry"
 require_relative "worker_pool"
+require_relative "mutant_id"
+require "set"
 
 module Mutineer
   # Orchestrates one mutation end-to-end: apply it textually, validate the
@@ -82,13 +84,28 @@ module Mutineer
       end
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
+      # #10: a mutant the user marked known-equivalent (inline disable-line comment
+      # or .mutineer.yml ignore id) is classified :ignored here and NEVER forked —
+      # it is removed from the killed+survived denominator so a strong file reaches
+      # 100%. The stable id is computed per subject (occurrence needs the full list)
+      # and carried on every job so the parent can reattach it after the run.
       source_map = {}
+      disabled_map = {}
+      ignore_set = config.ignore.to_set
       jobs = []
+      ignored_results = []
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file))
-        operator_classes.each do |klass|
-          klass.new.mutations_for(subject, source).each do |mutation|
-            jobs << [subject, mutation]
+        disabled = (disabled_map[subject.file] ||= suppress_map(source))
+        mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
+        ids = MutantId.for_subject(subject, source, mutations)
+        mutations.each_with_index do |mutation, i|
+          id = ids[i]
+          line = source.byteslice(0, mutation.start_offset).count("\n") + 1
+          if suppressed?(mutation.operator, line, id, disabled, ignore_set)
+            ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id)
+          else
+            jobs << [subject, mutation, id]
           end
         end
       end
@@ -112,13 +129,42 @@ module Mutineer
                 subject: subject, strategy: strategy, rails: config.rails, framework: framework)
           end
           # The bare Results carry only status (Subjects hold live AST nodes that
-          # do not marshal); reattach subject+mutation in the parent, in order.
-          bare.each_with_index.map { |r, i| r.with(subject: jobs[i][0], mutation: jobs[i][1]) }
+          # do not marshal); reattach subject+mutation+id in the parent, in order.
+          bare.each_with_index.map { |r, i| r.with(subject: jobs[i][0], mutation: jobs[i][1], id: jobs[i][2]) }
         ensure
           sweep_orphans(source_dirs)
         end
 
-      [AggregateResult.new(results), source_map]
+      [AggregateResult.new(results + ignored_results), source_map]
+    end
+
+    # Scan a source once into { line_number => :all | Set[operator_syms] } from
+    # inline `# mutineer:disable-line [ops]` markers (RuboCop semantics: the marker
+    # sits on the same physical line as the code it silences). A bare marker
+    # disables every operator on that line; `disable-line a, b` only the listed
+    # operators. Block-form disable/enable ranges are intentionally not supported.
+    def self.suppress_map(source)
+      map = {}
+      source.each_line.with_index(1) do |text, line|
+        next unless (m = text.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
+
+        ops = m[1]
+        map[line] = ops ? ops.split(",").map { |o| o.strip.to_sym }.reject(&:empty?).to_set : :all
+      end
+      map
+    end
+
+    # True when this mutant is suppressed: its line bears a disable-line marker
+    # (bare, or scoped to its operator), OR its stable id is in the config ignore
+    # list. Checked at job-build time so a suppressed mutant is never forked.
+    def self.suppressed?(operator, line, id, disabled, ignore_set)
+      return true if ignore_set.include?(id)
+
+      case (entry = disabled[line])
+      when :all then true
+      when Set  then entry.include?(operator)
+      else false
+      end
     end
 
     # --since: keep only jobs whose mutation lands on a line changed since the git

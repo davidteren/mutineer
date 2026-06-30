@@ -50,11 +50,32 @@ class ResultTest < Minitest::Test
     assert_nil r.details
   end
 
+  # #10: a suppressed equivalent mutant — a pre-fork classification like
+  # no_coverage, excluded from the score denominator.
+  def test_ignored
+    r = Mutineer::Result.ignored
+    assert_predicate r, :ignored?
+    refute_predicate r, :survived?
+    refute_predicate r, :killed?
+    assert_nil r.id
+  end
+
+  # #10: ignored is excluded from killed+survived, so suppressing every survivor
+  # reaches 100% (killed=5, survived=0, ignored=2 -> 100.0).
+  def test_ignored_excluded_from_denominator_reaches_100
+    results = Array.new(5) { Mutineer::Result.killed } + Array.new(2) { Mutineer::Result.ignored }
+    agg = Mutineer::AggregateResult.new(results)
+    assert_equal 5, agg.covered_count
+    assert_equal 2, agg.ignored_count
+    assert_equal 100.0, agg.mutation_score
+    assert_equal 7, agg.total
+  end
+
   def test_each_factory_has_a_distinct_status
     statuses = [
       Mutineer::Result.killed, Mutineer::Result.survived, Mutineer::Result.error,
       Mutineer::Result.timeout, Mutineer::Result.skipped, Mutineer::Result.no_coverage,
-      Mutineer::Result.uncapturable
+      Mutineer::Result.uncapturable, Mutineer::Result.ignored
     ].map(&:status)
     assert_equal statuses, statuses.uniq
   end

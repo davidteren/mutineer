@@ -90,6 +90,23 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  # #10: an ignore: list of stable mutant ids is parsed (not warned/ignored) and
+  # coerced to strings, resolving onto the Config.
+  def test_from_file_accepts_ignore_list
+    with_config("ignore:\n  - a1b2c3d4e5f6\n  - 0011223344ff\n") do |path|
+      out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty out
+      assert_empty err
+      assert_equal({ ignore: %w[a1b2c3d4e5f6 0011223344ff] }, @hash)
+      assert_equal %w[a1b2c3d4e5f6 0011223344ff], Config.resolve({}, @hash, Set.new).ignore
+    end
+  end
+
+  def test_ignore_defaults_to_empty_array
+    assert_equal [], Config.new.ignore
+    assert_equal [], Config.resolve({}, {}, Set.new).ignore
+  end
+
   # --- framework: explicit value, config file, and auto-detect ---
 
   def test_from_file_accepts_framework
