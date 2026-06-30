@@ -19,7 +19,7 @@ Every acceptance check is verifiable WITHOUT a Rails app (simulated forks / cann
   _Gate:_ real diagnostic surfaces under `--verbose` (suppressed without); reconnect-decision unit test.
   Depends on: — · Blocks: #9
 
-- [ ] **#9 — uncapturable status (vs no_coverage)** → [`issue-09-uncapturable-status.md`](issue-09-uncapturable-status.md)
+- [x] **#9 — uncapturable status (vs no_coverage)** → [`issue-09-uncapturable-status.md`](issue-09-uncapturable-status.md) · done · branch:feat/issue-9-uncapturable-status
   7th Result status `:uncapturable`, excluded from score denominator like no_coverage but counted/reported
   separately; sourced from #8's failed-capture signal; reporter + JSON split the two.
   _Gate:_ a mutant whose covering test errored in capture is `uncapturable` not `no_coverage`; summary + JSON

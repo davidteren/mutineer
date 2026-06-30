@@ -45,6 +45,20 @@ class ReporterTest < Minitest::Test
     assert_nil aggregate([Mutineer::Result.no_coverage]).mutation_score
   end
 
+  # #9: uncapturable is counted but excluded from the denominator, exactly like
+  # no_coverage — adding it must not move the score.
+  def test_score_excludes_uncapturable
+    agg = aggregate([Mutineer::Result.killed, Mutineer::Result.survived,
+                     Mutineer::Result.uncapturable, Mutineer::Result.no_coverage])
+    assert_equal 50.0, agg.mutation_score
+    assert_equal 1, agg.uncapturable_count
+    assert_equal 4, agg.total
+  end
+
+  def test_all_uncapturable_score_nil
+    assert_nil aggregate([Mutineer::Result.uncapturable]).mutation_score
+  end
+
   # --- exit_code ---
 
   def test_exit_code_threshold_off
@@ -112,6 +126,21 @@ class ReporterTest < Minitest::Test
     assert_includes s, "-         y)"   # second original line shown too
     assert_includes s, "+     nil"      # spliced replacement
     refute_match(/lonil|nilx|eminil/, s) # no fragment mashing
+  end
+
+  # #9: the human report distinguishes uncapturable (broken harness) from
+  # no_coverage (genuine gap), in both the summary block and the score breakdown.
+  def test_uncapturable_reported_separately_from_no_coverage
+    out = StringIO.new
+    reporter([Mutineer::Result.killed, survivor_result,
+              Mutineer::Result.uncapturable, Mutineer::Result.no_coverage])
+      .report(out: out, err: StringIO.new)
+    s = out.string
+    assert_includes s, "Uncapturable: 1"
+    assert_includes s, "tests failed to run"
+    assert_includes s, "No coverage:   1"
+    assert_includes s, "1 uncapturable"      # listed as excluded in the score line
+    assert_includes s, "Mutation score: 50.0%"
   end
 
   def test_na_score_warns_on_stderr

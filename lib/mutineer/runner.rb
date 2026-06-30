@@ -190,7 +190,11 @@ module Mutineer
       # covering test files run in the child.
       line   = source.byteslice(0, mutation.start_offset).count("\n") + 1
       chosen = coverage_map.tests_for(source_file, line)
-      return Result.no_coverage if chosen.empty?
+      # #9: distinguish a genuine coverage gap from a line whose would-be test
+      # errored during capture (coverage lost) — the latter is :uncapturable.
+      if chosen.empty?
+        return coverage_map.uncapturable_source?(source_file) ? Result.uncapturable : Result.no_coverage
+      end
 
       abs_tests = chosen.map { |t| File.expand_path(t, coverage_map.project_root) }
 

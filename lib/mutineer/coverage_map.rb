@@ -6,6 +6,7 @@ require "digest"
 require "fileutils"
 require "rbconfig"
 require "coverage"
+require "set"
 require_relative "minitest_integration"
 require_relative "test_runners"
 
@@ -65,7 +66,39 @@ module Mutineer
       @map["#{relativize(file)}:#{line}"] || []
     end
 
+    # #9: is this source file's empty coverage the result of an *errored* capture
+    # rather than a genuine coverage gap? True iff (KTD-2) some capture failed this
+    # run AND this file got zero coverage from any successful capture AND a failed
+    # test file maps to it by the standard _test/_spec naming convention. Derived
+    # purely from already-persisted state (@map keys + @failed_test_files); no rerun,
+    # no new cached field, no digest change.
+    #
+    # ponytail: file-level, convention-based attribution. A line covered only by a
+    # failed test in an otherwise-covered file stays no_coverage (condition 2), and
+    # a source with no naming-convention test match is never tainted. Upgrade path:
+    # persist per-file coverage per successful run and diff against the failed set,
+    # or record test->source targets explicitly. Not needed for the #8/#9 cases.
+    def uncapturable_source?(file)
+      return false if @failed_test_files.empty?
+
+      rel = relativize(absolute(file))
+      return false if covered_source_files.include?(rel)
+
+      failed_test_targets.include?(File.basename(rel, ".rb"))
+    end
+
     private
+
+    # Source rel-paths that received coverage from any successful capture.
+    def covered_source_files
+      @map.keys.map { |k| k.rpartition(":").first }.to_set
+    end
+
+    # Basenames of failed test files with a trailing _test/_spec (and .rb) stripped,
+    # i.e. the source basenames they would have covered by convention.
+    def failed_test_targets
+      @failed_test_files.map { |t| File.basename(t, ".rb").sub(/_(test|spec)\z/, "") }.to_set
+    end
 
     # Shared cache dance for both build paths: hit the digest-keyed cache, else
     # yield to populate @map and persist it.

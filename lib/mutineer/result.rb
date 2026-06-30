@@ -1,18 +1,23 @@
 # frozen_string_literal: true
 
 module Mutineer
-  # Immutable outcome of running one mutant. Six distinct states:
-  #   killed      — a test failed/errored, so the mutation was caught.
-  #   survived    — every test passed, so the mutation went undetected.
-  #   error       — the child crashed (unhandled exception): exit status 2.
-  #   timeout     — the parent SIGKILLed a child that overran its wall clock.
-  #   skipped     — the mutated source failed to re-parse (invalid); no fork.
-  #   no_coverage — no test exercises the mutated line; not run, not scored.
+  # Immutable outcome of running one mutant. Seven distinct states:
+  #   killed       — a test failed/errored, so the mutation was caught.
+  #   survived     — every test passed, so the mutation went undetected.
+  #   error        — the child crashed (unhandled exception): exit status 2.
+  #   timeout      — the parent SIGKILLed a child that overran its wall clock.
+  #   skipped      — the mutated source failed to re-parse (invalid); no fork.
+  #   no_coverage  — no test exercises the mutated line; not run, not scored.
+  #   uncapturable — the line's would-be covering test errored during capture (#9),
+  #                  so coverage was lost. Excluded from the denominator exactly
+  #                  like no_coverage, but reported separately: it signals a broken
+  #                  harness (a test that failed to run), not a genuine coverage gap.
   #
   # `error` and `skipped` are deliberately distinct: skipped is a pre-fork
   # validity failure (counted separately by the reporter), error is a runtime
-  # crash. Never conflate them via `details` string parsing. `no_coverage` is a
-  # pre-fork selection result (M3): excluded from the score denominator.
+  # crash. Never conflate them via `details` string parsing. `no_coverage` and
+  # `uncapturable` are pre-fork selection results (M3/#9): both excluded from the
+  # score denominator.
   #
   # `subject` and `mutation` are nil when the Result is built by Isolation/Runner
   # (which only know the outcome); the orchestrator attaches them afterwards via
@@ -24,19 +29,21 @@ module Mutineer
     def self.timeout              = new(status: :timeout, details: nil, subject: nil, mutation: nil)
     def self.skipped(details = nil) = new(status: :skipped, details: details, subject: nil, mutation: nil)
     def self.no_coverage          = new(status: :no_coverage, details: nil, subject: nil, mutation: nil)
+    def self.uncapturable         = new(status: :uncapturable, details: nil, subject: nil, mutation: nil)
 
-    def killed?      = status == :killed
-    def survived?    = status == :survived
-    def error?       = status == :error
-    def timeout?     = status == :timeout
-    def skipped?     = status == :skipped
-    def no_coverage? = status == :no_coverage
+    def killed?       = status == :killed
+    def survived?     = status == :survived
+    def error?        = status == :error
+    def timeout?      = status == :timeout
+    def skipped?      = status == :skipped
+    def no_coverage?  = status == :no_coverage
+    def uncapturable? = status == :uncapturable
   end
 
   # Aggregates a flat list of Results into counts, the mutation score, and the
   # surviving-mutant list. The score denominator is killed + survived ONLY
-  # (KTD-4): no-coverage, skipped (invalid), errored, and timeout are each
-  # excluded and surfaced separately. An empty denominator yields a nil score
+  # (KTD-4): no-coverage, uncapturable, skipped (invalid), errored, and timeout
+  # are each excluded and surfaced separately. An empty denominator yields a nil score
   # (rendered "N/A"), never 0.0 — distinguishing "no testable mutants" from
   # "0% killed".
   class AggregateResult
@@ -50,6 +57,7 @@ module Mutineer
     def killed_count          = count(:killed)
     def survived_count        = count(:survived)
     def no_coverage_count     = count(:no_coverage)
+    def uncapturable_count    = count(:uncapturable)
     def skipped_invalid_count = count(:skipped)
     def errored_count         = count(:error)
     def timeout_count         = count(:timeout)

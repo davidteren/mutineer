@@ -83,6 +83,20 @@ class JsonReporterTest < Minitest::Test
     assert_equal %w[comparison literal_mutation], ops
   end
 
+  # #9: additive uncapturable count + list, distinct from no_coverage; score unaffected.
+  def test_uncapturable_summary_count_and_list
+    unc = Mutineer::Result.uncapturable.with(subject: subject,
+                                             mutation: mutation_at("100", "0", :literal_mutation))
+    doc = render([Mutineer::Result.killed, survivor, unc])
+    assert_equal 1, doc["summary"]["uncapturable"]
+    assert_equal 50.0, doc["summary"]["score"] # killed+survived only; uncapturable excluded
+    entry = doc["uncapturable"].first
+    assert_equal "Pricing#total", entry["subject"]
+    assert_equal FILE, entry["file"]
+    assert_equal 3, entry["line"]
+    assert_equal [], doc["no_coverage"] # not conflated with no_coverage
+  end
+
   def test_output_to_file_keeps_stdout_clean
     Dir.mktmpdir do |dir|
       path = File.join(dir, "r.json")

@@ -100,6 +100,38 @@ class CoverageMapTest < Minitest::Test
     assert_includes map.failed_test_files.map { |f| File.basename(f) }, "raising_test.rb"
   end
 
+  # --- #9: uncapturable taint rule (errored capture vs genuine gap) --------
+
+  # The ONLY test for calculator.rb is broken, so the source gets zero coverage
+  # AND its _test sibling lands in failed_test_files -> the file is tainted.
+  def broken_calculator_test
+    f = File.join(Dir.mktmpdir, "calculator_test.rb") # basename maps to calculator.rb
+    File.write(f, "require 'does/not/exist'\n")
+    f
+  end
+
+  def test_uncapturable_source_true_when_only_covering_test_errored
+    map = nil
+    capture_subprocess_io { map = build([broken_calculator_test]) }
+    assert map.uncapturable_source?(CALC),
+           "errored capture for the only test should taint the source"
+  end
+
+  def test_uncapturable_source_false_for_genuine_no_coverage
+    map = build([ADD_ONLY_TEST]) # no failures; #modulo simply untested
+    refute map.uncapturable_source?(CALC),
+           "no failed captures -> genuine no_coverage, not uncapturable"
+  end
+
+  # End-to-end via Runner: a mutant on a zero-coverage line of a tainted source
+  # is :uncapturable, not :no_coverage.
+  def test_runner_returns_uncapturable_for_tainted_source
+    map = nil
+    capture_subprocess_io { map = build([broken_calculator_test]) }
+    result = Mutineer::Runner.run(plus_mutation, source_file: CALC, coverage_map: map)
+    assert_predicate result, :uncapturable?, "got #{result.status} (#{result.details})"
+  end
+
   # --- Cache: digest, load/save, invalidation ------------------------------
 
   def test_cache_written_and_reused_without_rerunning_phase_a

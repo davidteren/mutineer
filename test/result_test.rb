@@ -41,10 +41,20 @@ class ResultTest < Minitest::Test
     assert_nil r.details
   end
 
+  def test_uncapturable
+    r = Mutineer::Result.uncapturable
+    assert_predicate r, :uncapturable?
+    refute_predicate r, :no_coverage?
+    refute_predicate r, :killed?
+    refute_predicate r, :survived?
+    assert_nil r.details
+  end
+
   def test_each_factory_has_a_distinct_status
     statuses = [
       Mutineer::Result.killed, Mutineer::Result.survived, Mutineer::Result.error,
-      Mutineer::Result.timeout, Mutineer::Result.skipped, Mutineer::Result.no_coverage
+      Mutineer::Result.timeout, Mutineer::Result.skipped, Mutineer::Result.no_coverage,
+      Mutineer::Result.uncapturable
     ].map(&:status)
     assert_equal statuses, statuses.uniq
   end
