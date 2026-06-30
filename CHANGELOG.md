@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-06-30
+
+### Fixed
+- **Singleton methods are now mutated** (#20) — `class << self` and
+  `module_function` methods were discovered but applied to the instance scope, so
+  the mutant never ran on the singleton the caller dispatches to; every such
+  mutant falsely survived and the file read a false 0%. `module_function` methods
+  are now discovered as singletons, and the redefine strategy re-opens
+  `class << self` so the mutation lands on the called method. (Scores for
+  singleton-heavy files will rise to their true values.)
+- **Fork-capture failures are diagnosable** (#19, part 1) — capture/worker pipes
+  are `binmode` (a binary Marshal payload could otherwise be lost to an encoding
+  error and swallowed), and a child that dies without writing now reports how it
+  died (exit status / signal) instead of a silent "produced no result". `--verbose`
+  always surfaces a real reason now. (The residual write-heavy capture failure
+  on some real Rails suites remains under investigation — now diagnosable.)
+
 ## [0.7.1] - 2026-06-30
 
 ### Added
@@ -139,6 +156,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.8.0]: https://github.com/davidteren/mutineer/releases/tag/v0.8.0
 [0.7.1]: https://github.com/davidteren/mutineer/releases/tag/v0.7.1
 [0.7.0]: https://github.com/davidteren/mutineer/releases/tag/v0.7.0
 [0.6.2]: https://github.com/davidteren/mutineer/releases/tag/v0.6.2
