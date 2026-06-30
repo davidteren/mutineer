@@ -146,10 +146,14 @@ This repo ships a composite action (`action.yml`) that wraps the CLI for CI:
 Mutineer is built for programmatic use — versioned JSON, stable mutant ids,
 structured exit codes, and diff-scoped runs. See:
 
-- **[docs/agentic-coding.md](docs/agentic-coding.md)** — the agent inner-loop and
-  CI-gate recipes (and how to avoid infinite loops on equivalent mutants).
-- **[docs/json-schema.md](docs/json-schema.md)** — the `--format json` schema
-  reference and its versioning contract.
+- **AI agents & CI recipes** — the agent inner-loop and CI-gate recipes (and how
+  to avoid infinite loops on equivalent mutants):
+  [rendered](https://davidteren.github.io/mutineer/agentic-coding.html) ·
+  [source](docs/agentic-coding.md)
+- **JSON schema reference** — the `--format json` schema and its versioning
+  contract:
+  [rendered](https://davidteren.github.io/mutineer/json-schema.html) ·
+  [source](docs/json-schema.md)
 
 ## Configuration
 

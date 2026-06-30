@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mutineer for AI agents &amp; CI pipelines</title>
+<meta name="description" content="How to wire Mutineer into an AI coding agent's inner loop and into CI: the agent loop, --baseline PR gating, the GitHub Action, and avoiding infinite loops on equivalent mutants.">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e23b3b'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/mutineer.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="index.html"><span class="mark" aria-hidden="true">M</span> Mutineer</a>
+    <nav aria-label="Primary">
+      <a href="index.html#how" class="hide-sm">How it works</a>
+      <a href="index.html#agents">AI &amp; CI</a>
+      <a href="agentic-coding.html" class="current">Agent &amp; CI</a>
+      <a href="json-schema.html" class="hide-sm">JSON schema</a>
+      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub</a>
+      <button class="toggle" id="theme" aria-label="Toggle dark mode" aria-pressed="true" title="Toggle theme">◐</button>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <div class="doc-layout">
+    <aside class="doc-side">
+      <div class="toc-title">On this page</div>
+      <ul>
+        <li><a href="#inner-loop">The agent inner loop</a></li>
+        <li><a href="#ci-gate">CI gate</a></li>
+        <li><a href="#action">GitHub Action</a></li>
+        <li><a href="#equivalent">Avoiding infinite loops</a></li>
+        <li><a href="#exit-codes">Reading exit codes</a></li>
+      </ul>
+      <div class="doc-nav-pages">
+        <a href="agentic-coding.html" class="current">Agent &amp; CI</a>
+        <a href="json-schema.html">JSON schema</a>
+      </div>
+    </aside>
+
+    <article class="prose">
+      <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Guide</span>
+      <h1>Mutineer for AI agents &amp; CI pipelines</h1>
+      <p class="doc-lede">Line coverage tells you which code <em>ran</em> under test. It says nothing about whether your tests would <em>notice if that code broke</em> — and that gap is where AI-generated code and tests are weakest: tests that execute and pass, but assert nothing meaningful ("coverage theater").</p>
+
+      <p>Mutineer is built for programmatic use: a versioned JSON contract (<a href="json-schema.html">schema</a>), structured exit codes, diff-scoped runs (<code>--since</code>), a hard gate (<code>--threshold</code>), and delta gating (<code>--baseline</code>). This page shows how to wire it into an agent loop and into CI.</p>
+
+      <h2 id="inner-loop">The agent inner loop</h2>
+      <p>A coding agent that writes code <em>and</em> tests can use Mutineer as an objective "are these tests any good?" oracle, closing the loop with a concrete stopping condition:</p>
+      <ol>
+        <li>Agent edits code + tests on a branch.</li>
+        <li>Run Mutineer on the diff, as JSON:
+          <pre><code><span class="p">$</span> mutineer run app/ --since origin/main --format json --output .mutineer/run.json</code></pre>
+        </li>
+        <li>Parse <code>survivors[]</code>. Each entry carries a ready-made <code>diff</code> and a stable <code>id</code>. For each survivor, feed the agent a prompt like:
+          <blockquote>
+            <p>This change to <code>{subject}</code> (<code>{file}:{line}</code>) was <strong>not</strong> caught by any test:</p>
+            <pre><code><span class="s">{diff}</span></code></pre>
+            <p>Write or strengthen a test so it fails under this change.</p>
+          </blockquote>
+        </li>
+        <li>Re-run. Stop when <code>summary.survived == 0</code> (or <code>summary.score &gt;= target</code>).</li>
+      </ol>
+      <p><code>--since</code> keeps each iteration fast by mutating only the lines the agent just touched. Genuinely equivalent mutants (which can never be killed) should be suppressed so the loop terminates — see <a href="#equivalent">Avoiding infinite loops</a> below.</p>
+
+      <h2 id="ci-gate">CI gate: fail a PR only when it makes things worse</h2>
+      <p>Store a JSON run as a baseline, then gate PRs on regressions rather than an absolute bar (which lets a team adopt Mutineer on a legacy suite without fixing everything first):</p>
+      <pre><code><span class="c"># On main, refresh the baseline (e.g. nightly) and commit/cache it:</span>
+<span class="p">$</span> mutineer run app/ --format json --output .mutineer/baseline.json
+
+<span class="c"># On a PR:</span>
+<span class="p">$</span> mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json</code></pre>
+      <p><code>--baseline</code> exits <code>1</code> on any <strong>new</strong> survivor (matched by stable <code>id</code>, so it survives unrelated edits) or a <strong>score drop</strong> (<code>--baseline-epsilon</code> tolerates float jitter). Combine with <code>--threshold</code> to enforce an absolute floor too — the worse of the two gates wins.</p>
+
+      <h3 id="action">GitHub Action</h3>
+      <p>This repo ships a composite action (<code>action.yml</code>). Minimal PR gate:</p>
+      <pre><code><span class="c"># .github/workflows/mutation.yml</span>
+name: Mutation testing
+on: pull_request
+
+jobs:
+  mutineer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          <span class="c"># --since needs full history</span>
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - uses: davidteren/mutineer@main
+        with:
+          sources: app/
+          since: origin/${{ github.base_ref }}
+          baseline: .mutineer/baseline.json
+          threshold: "90"
+          output: .mutineer/pr.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutineer-report
+          path: .mutineer/pr.json</code></pre>
+      <p>For a Rails app, add <code>rails: true</code> and <code>use-bundler: true</code> (boot mode needs the app's own bundle):</p>
+      <pre><code>      - uses: davidteren/mutineer@main
+        with:
+          sources: app/models/order.rb
+          rails: true
+          use-bundler: true
+          since: origin/${{ github.base_ref }}</code></pre>
+      <p>See <code>action.yml</code> for all inputs (<code>operators</code>, <code>framework</code>, <code>strategy</code>, <code>jobs</code>, <code>extra-args</code>, …) and the <code>exit-code</code> / <code>report</code> outputs.</p>
+
+      <h2 id="equivalent">Avoiding infinite loops: equivalent mutants</h2>
+      <p>Some mutants are semantically identical to the original and can <strong>never</strong> be killed by any test. In an unattended agent loop these would never clear, so suppress them explicitly:</p>
+      <ul>
+        <li><strong>Inline:</strong> <code>#&nbsp;mutineer:disable-line [operators]</code> on the offending source line.</li>
+        <li><strong>Config:</strong> add the survivor's stable <code>id</code> (printed in the JSON report) to <code>.mutineer.yml</code>:
+          <pre><code>ignore:
+  - 9f2a1c4b7e0d   <span class="c"># Calculator#scale — equivalent under `comparison`</span></code></pre>
+        </li>
+      </ul>
+      <p>Suppressed mutants leave the score entirely (so 100% stays reachable) and appear under the JSON <code>ignored[]</code> key for auditing. An agent should treat a survivor it cannot kill after N attempts as a candidate for human review / suppression rather than looping forever.</p>
+
+      <h2 id="exit-codes">Reading exit codes in a pipeline</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Code</th><th scope="col">Pipeline action</th></tr></thead>
+          <tbody>
+            <tr><td class="op">0</td><td>Pass — score ≥ threshold and no baseline regression.</td></tr>
+            <tr><td class="op">1</td><td>Fail the check — tests are too weak (below threshold) or a regression was introduced.</td></tr>
+            <tr><td class="op">2</td><td>Fail the <em>job</em> differently — this is a misinvocation (bad flag/path), not a test-quality signal.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Branch on these directly; never scrape the human report. The JSON <code>summary</code> and <code>baseline</code> blocks carry the same facts for dashboards.</p>
+
+      <div class="callout"><span class="ico" aria-hidden="true">→</span><p>The full field-by-field contract lives in the <a href="json-schema.html">JSON schema reference</a>.</p></div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div>
+      <strong>Mutineer</strong> — clean-room mutation testing for Ruby.
+      <div class="note">MIT licensed · Prism + stdlib only · © David Teren</div>
+    </div>
+    <nav aria-label="Footer">
+      <a href="index.html">Home</a>
+      <a href="json-schema.html">JSON schema</a>
+      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub</a>
+      <a href="#main">Top ↑</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="assets/mutineer.js"></script>
+</body>
+</html>
