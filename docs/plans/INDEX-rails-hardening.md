@@ -41,7 +41,7 @@ Every acceptance check is verifiable WITHOUT a Rails app (simulated forks / cann
   test skipped+warned.
   Depends on: — · Blocks: #13
 
-- [ ] **#13 — baseline/delta CI gating + roll-up** → [`issue-13-baseline-ci-gating.md`](issue-13-baseline-ci-gating.md)
+- [x] **#13 — baseline/delta CI gating + roll-up** → [`issue-13-baseline-ci-gating.md`](issue-13-baseline-ci-gating.md) · done · branch:feat/issue-13-baseline-ci-gating
   `lib/mutineer/baseline.rb`: `--baseline <file.json>` diffs current AggregateResult by #10's stable id —
   NEW survivor / score-drop ⇒ exit 1, named; OR'd with `--threshold` via max exit code; additive JSON; per-source
   roll-up consumes #11.

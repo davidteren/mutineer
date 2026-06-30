@@ -252,4 +252,42 @@ class CliTest < Minitest::Test
       assert_equal ["lib/calc.rb"], files
     end
   end
+
+  # --- #13 baseline gating, end to end through bin/mutineer -----------------
+
+  # A bad/missing baseline path is a usage error (exit 2), like every other path.
+  def test_bad_baseline_path_exits_two
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--baseline", "/no/such.json")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "mutineer:"
+  end
+
+  # NEW survivors vs a clean (100%) baseline regress -> exit 1, named on stdout.
+  def test_baseline_new_survivors_exit_one
+    with_project do |proj|
+      _, _, s1 = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                          "--format", "json", "--output", "base.json", chdir: proj)
+      assert_equal 0, s1.exitstatus
+      out, _, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                "--baseline", "base.json", chdir: proj)
+      assert_equal 1, status.exitstatus
+      assert_includes out, "new survivors vs baseline"
+      assert_includes out, "REGRESSION vs baseline"
+    end
+  end
+
+  # Re-running the same (weak) run against its own baseline introduces nothing new
+  # -> exit 0; ids are content-based so they match across runs.
+  def test_baseline_no_regression_exits_zero
+    with_project do |proj|
+      _, _, s1 = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                          "--format", "json", "--output", "base.json", chdir: proj)
+      assert_equal 0, s1.exitstatus
+      out, _, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                "--baseline", "base.json", chdir: proj)
+      assert_equal 0, status.exitstatus
+      assert_includes out, "0 new survivors vs baseline"
+      assert_includes out, "OK: no regression vs baseline"
+    end
+  end
 end

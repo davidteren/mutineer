@@ -11,6 +11,7 @@ require_relative "pairing"
 require_relative "changed_lines"
 require_relative "runner"
 require_relative "reporter"
+require_relative "baseline"
 require_relative "mutator_registry"
 
 module Mutineer
@@ -34,6 +35,9 @@ module Mutineer
         --test FILE          Test file covering the sources (repeatable)
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
+        --baseline FILE      Fail (exit 1) on NEW survivors / score drop vs a prior
+                             --format json run (CI delta gate)
+        --baseline-epsilon FLOAT  Score-drop tolerance for --baseline (default: 0)
         --only NAME          Restrict to one fully-qualified subject
         --since REF          Only mutate lines changed since git REF (e.g. origin/main)
         --jobs N             Parallel worker count (default: processor count)
@@ -90,6 +94,10 @@ module Mutineer
         o.on("--debug") { opts[:verbose] = true } # alias of --verbose
         o.on("--format FORMAT") { |v| opts[:format] = v }
         o.on("--output FILE") { |v| opts[:output] = v }
+        # #13: --baseline is also a .mutineer.yml key, so mark it explicit when
+        # typed (CLI wins over the file). --baseline-epsilon is CLI-only.
+        o.on("--baseline FILE") { |v| opts[:baseline] = v; explicit << :baseline }
+        o.on("--baseline-epsilon FLOAT") { |v| opts[:baseline_epsilon] = v.to_f }
       end
 
       begin
@@ -202,6 +210,7 @@ module Mutineer
 
       validate_since!(config) if config.since
       preflight_output!(config.output) if config.output
+      preflight_baseline!(config.baseline) if config.baseline
 
       # #11: when --test is omitted, infer each source's test by convention so the
       # boot-once/fork-per-test core (which pairs empirically by coverage) gets a
@@ -280,6 +289,17 @@ module Mutineer
       exit 2
     end
 
+    # #13: a missing/unreadable/unparseable baseline is a usage error (exit 2),
+    # mirroring --output/--since preflight, so CI sees "bad invocation," not a
+    # backtrace mid-run. Validating up front = attempting the load (it raises
+    # ConfigError/SystemCallError; the actual diff reloads in execute).
+    def self.preflight_baseline!(path)
+      Baseline.load(path)
+    rescue Mutineer::ConfigError, SystemCallError => e
+      warn "mutineer: #{e.message}"
+      exit 2
+    end
+
     def self.preflight_output!(path)
       dir = File.dirname(File.expand_path(path))
       return if File.directory?(dir) && File.writable?(dir)
@@ -297,8 +317,14 @@ module Mutineer
 
       aggregate, source_map = Runner.execute(config)
       reporter = Reporter.new(aggregate, source_map)
+
+      # #13: diff the current run against the baseline (preflighted above) by the
+      # stable survivor id. The delta is rendered inline (human section / additive
+      # json block) and gates exit independently of --threshold.
+      delta = (Baseline.load(config.baseline).diff(aggregate, epsilon: config.baseline_epsilon) if config.baseline)
+
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
-                      format: config.format, output: config.output)
+                      format: config.format, output: config.output, baseline: delta)
 
       # #14: nudge toward the opt-in tier-2 operators (human report only — never
       # pollute JSON output).
@@ -306,7 +332,10 @@ module Mutineer
         puts hint
       end
 
-      exit reporter.exit_code(threshold: config.threshold)
+      # #13/KTD-4: --baseline and --threshold are independent gates OR'd together.
+      # `max` of two 0/1 codes is the OR; usage (2) is handled earlier and wins.
+      baseline_exit = delta&.regressed ? 1 : 0
+      exit [reporter.exit_code(threshold: config.threshold), baseline_exit].max
     end
 
     # The tier-2 operators not in the active set, as a one-line hint (or nil when

@@ -26,6 +26,7 @@ require_relative "mutineer/mutator_registry"
 require_relative "mutineer/worker_pool"
 require_relative "mutineer/runner"
 require_relative "mutineer/reporter"
+require_relative "mutineer/baseline"
 require_relative "mutineer/cli"
 
 module Mutineer

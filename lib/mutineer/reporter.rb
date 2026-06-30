@@ -21,13 +21,14 @@ module Mutineer
     # Single entry point (R20/R21). Branches on `format` ("human" | "json") and
     # routes the rendered report to `output` (a file, with a stderr confirmation)
     # or to `out`. Diagnostics always go to `err`.
-    def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil)
+    def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil, baseline: nil)
       rendered =
         if format == "json"
-          json_report
+          json_report(baseline)
         else
           sio = StringIO.new
           human_report(sio, err, threshold)
+          baseline_section(sio, baseline) if baseline
           sio.string
         end
 
@@ -74,7 +75,7 @@ module Mutineer
     # Canonical machine-readable schema (KTD7). survivors/no_coverage are sorted
     # by (file, line, operator) so output is byte-stable regardless of --jobs
     # worker finish order (R22).
-    def json_report
+    def json_report(baseline = nil)
       killed = @agg.killed_count
       survived = @agg.survived_count
       # C8: null (not 0.0) on an empty denominator, matching the nil-vs-0.0
@@ -110,7 +111,28 @@ module Mutineer
         per_source: @agg.by_source.map { |file, agg| per_source_json(file, agg) }
                         .sort_by { |h| h[:file] }
       }
+      # #13: additive baseline-delta block, present only with --baseline. Existing
+      # consumers ignore the extra key; schema_version stays 1.1.
+      doc[:baseline] = baseline_json(baseline) if baseline
       "#{JSON.generate(doc)}\n"
+    end
+
+    # #13: the same delta facts the human report prints, for dashboards. new_survivors
+    # reuse the ignored_json shape (subject/file/line/operator/token/id) and sort
+    # byte-stably so output doesn't depend on --jobs finish order.
+    def baseline_json(delta)
+      {
+        regressed: delta.regressed,
+        score_before: delta.score_before,
+        score_after: delta.score_after,
+        score_dropped: delta.score_drop,
+        new_survivors: delta.new_survivors.map { |r| ignored_json(r) }
+                            .sort_by { |h| [h[:file], h[:line], h[:operator]] },
+        fixed_survivors: delta.fixed_survivors.map do |h|
+          { subject: h["subject"], file: h["file"], line: h["line"],
+            operator: h["operator"], id: h["id"] }
+        end.sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s] }
+      }
     end
 
     def per_source_json(file, agg)
@@ -230,6 +252,26 @@ module Mutineer
                         file, score.nil? ? "N/A" : "#{score}%",
                         agg.killed_count, agg.survived_count, agg.no_coverage_count)
       end
+    end
+
+    # #13: the --baseline delta, appended after the normal report. Names every NEW
+    # survivor (subject (file:line) operator) and the score delta when it dropped,
+    # then a one-line REGRESSION/OK verdict so CI logs show which gate fired.
+    def baseline_section(out, delta)
+      out.puts
+      out.puts "Baseline comparison"
+      out.puts "-------------------"
+      out.puts "killed #{@agg.killed_count}, #{delta.new_survivors.size} new survivors vs baseline"
+      delta.new_survivors
+           .sort_by { |r| [r.subject.file, r.mutation.start_offset] }
+           .each do |r|
+        file = r.subject.file
+        source = @source_map[file] || File.read(file)
+        line, = diff_for(r.mutation, source)
+        out.puts "  + #{r.subject.qualified_name} (#{file}:#{line}) #{r.mutation.operator}"
+      end
+      out.puts "score dropped #{delta.score_before}% -> #{delta.score_after}%" if delta.score_drop
+      out.puts(delta.regressed ? "REGRESSION vs baseline" : "OK: no regression vs baseline")
     end
 
     def survivors(out)
