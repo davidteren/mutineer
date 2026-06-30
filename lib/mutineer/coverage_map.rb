@@ -163,6 +163,11 @@ module Mutineer
     # fork + Marshal-over-pipe + hard-exit! discipline as WorkerPool/Isolation.
     def fork_capture(abs_test, abs_sources, rails)
       rd, wr = IO.pipe
+      # #19: Marshal output is binary — an un-binmoded pipe can raise
+      # Encoding::UndefinedConversionError on write, which the child's rescue then
+      # swallows, losing the real error and yielding a bare "no result".
+      rd.binmode
+      wr.binmode
       pid = fork do
         rd.close
         payload =
@@ -192,12 +197,30 @@ module Mutineer
       wr.close
       data = rd.read
       rd.close
-      Process.waitpid(pid)
-      return nil if data.empty?
+      _, status = Process.waitpid2(pid)
+      # #19: an empty pipe means the child died before writing (e.g. a hard crash,
+      # OOM, or a signal from the test's own subprocess handling). Report HOW it
+      # died (exit status / signal) as a diagnostic string so --verbose has
+      # something actionable instead of a silent "no result".
+      return "child wrote no result (#{describe_status(status)})" if data.empty?
 
       Marshal.load(data)
-    rescue StandardError
-      nil
+    rescue StandardError => e
+      "parent could not read capture result: #{e.class}: #{e.message}"
+    end
+
+    # Human description of a child Process::Status for capture diagnostics.
+    #
+    # @api private
+    # @param status [Process::Status] the reaped child status.
+    # @return [String] e.g. "killed by signal 9 (SIGKILL)" or "exit status 1".
+    def describe_status(status)
+      if status.signaled?
+        sig = status.termsig
+        "killed by signal #{sig}#{Signal.signame(sig) ? " (SIG#{Signal.signame(sig)})" : ''}"
+      else
+        "exit status #{status.exitstatus.inspect}"
+      end
     end
 
     # Spawns a fresh `ruby` reading an inline script from stdin. A fork would

@@ -50,6 +50,8 @@ module Mutineer
       while running.size < @size && !queue.empty?
         idx = queue.shift
         rd, wr = IO.pipe
+        rd.binmode # #19: Marshal output is binary — keep the pipe byte-exact
+        wr.binmode
         begin
           pid = fork do
             rd.close

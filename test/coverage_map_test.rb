@@ -81,6 +81,30 @@ class CoverageMapTest < Minitest::Test
     assert_match(/RuntimeError: boom from child/, payload)
   end
 
+  # #19: a child that dies WITHOUT writing (hard crash / signal) must yield a
+  # diagnostic string naming how it died — not a bare nil/"no result".
+  def test_fork_capture_reports_child_death_when_no_output
+    Coverage.start(lines: true) unless Coverage.running?
+    killed = File.join(Dir.mktmpdir, "suicide_test.rb")
+    File.write(killed, %(Process.kill("KILL", Process.pid)\n))
+    map = fork_map(killed, verbose: true)
+    payload = map.send(:fork_capture, killed, [CALC], false)
+    assert_kind_of String, payload, "child death must produce a diagnostic, not nil"
+    assert_match(/no result/, payload)
+    assert_match(/signal 9|SIGKILL/, payload)
+  end
+
+  # #19: describe_status formats exit codes and signals for capture diagnostics.
+  def test_describe_status_formats_exit_and_signal
+    map = fork_map(raising_test, verbose: false)
+    _, exit_st = Process.waitpid2(fork { exit!(3) })
+    assert_match(/exit status 3/, map.send(:describe_status, exit_st))
+    pid = fork { sleep 5 }
+    Process.kill("KILL", pid)
+    _, sig_st = Process.waitpid2(pid)
+    assert_match(/signal 9/, map.send(:describe_status, sig_st))
+  end
+
   def test_build_via_fork_surfaces_real_error_under_verbose
     Coverage.start(lines: true) unless Coverage.running?
     rt = raising_test
