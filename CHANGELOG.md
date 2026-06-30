@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.1] - 2026-06-30
+
+### Added
+- **GitHub Action** (`action.yml`, composite) wrapping the CLI for CI — gate a PR
+  on new survivors / score drop with `sources`, `since`, `baseline`, `threshold`,
+  etc. Inputs are passed via `env` (no `${{ }}` interpolation into the run script)
+  for command-injection safety.
+- Docs site (GitHub Pages) with Open Graph / Twitter Card share image; YARD doc
+  comments across the library.
+
 ## [0.7.0] - 2026-06-30
 
 Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
@@ -129,6 +139,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.7.1]: https://github.com/davidteren/mutineer/releases/tag/v0.7.1
 [0.7.0]: https://github.com/davidteren/mutineer/releases/tag/v0.7.0
 [0.6.2]: https://github.com/davidteren/mutineer/releases/tag/v0.6.2
 [0.6.1]: https://github.com/davidteren/mutineer/releases/tag/v0.6.1
