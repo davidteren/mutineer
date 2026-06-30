@@ -1,0 +1,44 @@
+docs/plans/INDEX-rails-hardening.md
+  s_0214cb1e158c48::t_8a099cbcac0c7a 22
+test/result_test.rb
+  s_0214cb1e158c48::t_9e5601ca43aa00 44-52,56-57
+lib/mutineer/runner.rb
+  s_0214cb1e158c48::t_2e3b069737db38 193-197
+lib/mutineer/coverage_map.rb
+  s_0214cb1e158c48::t_cde4c23727d87a 9
+  s_0214cb1e158c48::t_b0d2221c3324be 69-89,92-101
+  s_0214cb1e158c48::t_6f939c10399bbb 102
+test/json_reporter_test.rb
+  s_0214cb1e158c48::t_fe0888b5a1fae0 86-99
+test/coverage_map_test.rb
+  s_0214cb1e158c48::t_47e7226def8ff0 103-134
+lib/mutineer/result.rb
+  s_0214cb1e158c48::t_a10ecd80fcc0ee 32,34-40
+  s_0214cb1e158c48::t_e75ad30652a39e 60
+  s_0214cb1e158c48::t_bcaf96a2cf24f4 4-14,18-20
+  s_0214cb1e158c48::t_c26db73e44f8a0 45-46
+test/reporter_test.rb
+  s_0214cb1e158c48::t_d46ee1dbbd909f 48-61
+  s_0214cb1e158c48::t_15af67a00ea5b5 135
+  s_0214cb1e158c48::t_402cd1bca35f6e 131-134,136-145
+lib/mutineer/reporter.rb
+  s_0214cb1e158c48::t_469529d7518b78 89,97-100
+  s_0214cb1e158c48::t_4ae6b5c48c9539 164-165
+  s_0214cb1e158c48::t_d4b41ea84d29fd 158-159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.4",
+  "base_commit_sha": "0d7f4009569595f603275951b8001654ecaee705",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
