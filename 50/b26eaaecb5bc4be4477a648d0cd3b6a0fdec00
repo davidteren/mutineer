@@ -1,0 +1,42 @@
+lib/mutineer/runner.rb
+  s_0214cb1e158c48::t_599107d6114566 73-74
+  s_0214cb1e158c48::t_6f0d35a0d791e6 213-219,224-235
+test/runner_test.rb
+  s_0214cb1e158c48::t_05c7ff3e84fce0 104-135
+lib/mutineer/coverage_map.rb
+  s_0214cb1e158c48::t_ad4dea402d255e 142-145
+  s_0214cb1e158c48::t_e498421860faad 28,37
+  s_0214cb1e158c48::t_5a02ca23fd158a 112-121
+lib/mutineer/config.rb
+  s_0214cb1e158c48::t_655fd2adfc426b 27
+  s_0214cb1e158c48::t_784ac52dfaf457 147
+  s_0214cb1e158c48::t_41ce8ec304d285 32
+  s_0214cb1e158c48::t_5f7ffbcf745a96 48
+test/config_test.rb
+  s_0214cb1e158c48::t_ab28316bc1838b 106-125
+docs/plans/INDEX-rails-hardening.md
+  s_0214cb1e158c48::t_25fe28a07da576 16
+lib/mutineer/cli.rb
+  s_0214cb1e158c48::t_080f99478cec81 47
+  s_0214cb1e158c48::t_ea17d243693842 88-89
+test/coverage_map_test.rb
+  s_0214cb1e158c48::t_ee2fff44bd75cf 59-102
+test/cli_test.rb
+  s_0214cb1e158c48::t_df140c11eeaabd 164-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.4",
+  "base_commit_sha": "50b26eaaecb5bc4be4477a648d0cd3b6a0fdec00",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
