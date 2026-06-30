@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "prism"
+require "set"
 require_relative "parser"
 require_relative "subject"
 
@@ -18,6 +19,7 @@ module Mutineer
         result = Parser.parse_file(path)
         visitor = SubjectVisitor.new(path)
         visitor.visit(result.value)
+        visitor.promote_module_functions!
         visitor.subjects
       end
       only ? subjects.select { |s| s.qualified_name == only } : subjects
@@ -36,7 +38,21 @@ module Mutineer
         @namespace_stack = []
         @subjects = []
         @singleton_depth = 0
+        @module_function_active = false # bareword `module_function` seen in this module body
+        @module_function_names = []     # names from `module_function :a, :b` / `module_function def`
         super()
+      end
+
+      # Promote `module_function :name` / `module_function def name` subjects to
+      # singleton after the full walk — the naming call may appear before or after
+      # the def, so it can't be decided at visit_def_node time (#20).
+      #
+      # @return [void]
+      def promote_module_functions!
+        return if @module_function_names.empty?
+
+        names = @module_function_names.to_set
+        @subjects.each { |s| s.singleton = true if names.include?(s.name) }
       end
 
       # Visits class nodes and tracks namespace nesting.
@@ -45,7 +61,10 @@ module Mutineer
       # @return [void]
       def visit_class_node(node)
         @namespace_stack.push(extract_constant_name(node.constant_path))
+        saved = @module_function_active
+        @module_function_active = false # module_function state does not cross a class boundary
         super
+        @module_function_active = saved
         @namespace_stack.pop
       end
 
@@ -55,8 +74,33 @@ module Mutineer
       # @return [void]
       def visit_module_node(node)
         @namespace_stack.push(extract_constant_name(node.constant_path))
+        saved = @module_function_active
+        @module_function_active = false # each module body starts without module_function active
         super
+        @module_function_active = saved
         @namespace_stack.pop
+      end
+
+      # Track `module_function` so its methods are recorded as singletons (#20) —
+      # the called form is the singleton method on the module object. Bareword
+      # `module_function` flips all SUBSEQUENT defs in this body; the argument
+      # forms (`:sym`, `def`) name methods promoted after the walk.
+      #
+      # @param node [Prism::CallNode] call node.
+      # @return [void]
+      def visit_call_node(node)
+        if node.name == :module_function && node.receiver.nil?
+          args = node.arguments&.arguments || []
+          if args.empty?
+            @module_function_active = true
+          else
+            args.each do |arg|
+              @module_function_names << arg.value.to_sym if arg.is_a?(Prism::SymbolNode)
+              @module_function_names << arg.name if arg.is_a?(Prism::DefNode)
+            end
+          end
+        end
+        super
       end
 
       # Methods inside `class << self` are class methods of the enclosing
@@ -84,7 +128,7 @@ module Mutineer
           file: @file,
           namespace: @namespace_stack.dup,
           name: node.name,
-          singleton: !node.receiver.nil? || @singleton_depth.positive?,
+          singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node
         )
         super

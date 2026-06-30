@@ -119,7 +119,21 @@ module Mutineer
       keywords = nesting_keywords(subject.namespace)
       prefix   = keywords.map { |kw, name| "#{kw} #{name}" }.join("\n")
       prefix  += "\n" unless prefix.empty?
-      wrapped  = "#{prefix}#{mutated_def}#{"\nend" * keywords.size}"
+
+      # #20: a singleton method whose def has NO `self.` receiver (the
+      # `class << self` and `module_function` forms) would, as a bare `def foo`
+      # inside `module Owner`, redefine the INSTANCE method — but the call
+      # (`Owner.foo`) dispatches to the singleton, so the mutant never runs and
+      # falsely survives. Re-open the singleton class so the redefinition lands on
+      # the same method the test calls. `def self.foo` already carries its
+      # receiver, so it is left as-is (wrapping it would mis-target).
+      inner =
+        if subject.singleton && subject.def_node.receiver.nil?
+          "class << self\n#{mutated_def}\nend"
+        else
+          mutated_def
+        end
+      wrapped = "#{prefix}#{inner}#{"\nend" * keywords.size}"
 
       # A snippet that fails to reparse must NOT silently fall through to
       # running the ORIGINAL method (C2 false-survived). Raise -> the fork

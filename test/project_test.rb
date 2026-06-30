@@ -42,6 +42,33 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def test_discover_bareword_module_function_methods_are_singleton
+    with_source("module M\n  module_function\n  def a; end\n  def b; end\nend\n") do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %i[a b], subjects.map(&:name)
+      assert(subjects.all?(&:singleton), "module_function methods should be singleton (#20)")
+    end
+  end
+
+  def test_discover_module_function_symbol_list_marks_named_methods
+    # naming call appears AFTER the defs — promotion must be order-independent.
+    with_source("module M\n  def a; end\n  def b; end\n  module_function :a\nend\n") do |path|
+      subjects = Mutineer::Project.discover([path])
+      a = subjects.find { |s| s.name == :a }
+      b = subjects.find { |s| s.name == :b }
+      assert a.singleton, "module_function :a should be singleton (#20)"
+      refute b.singleton, "b was not named by module_function"
+    end
+  end
+
+  def test_discover_module_function_does_not_leak_into_nested_class
+    with_source("module M\n  module_function\n  def a; end\n  class Inner\n    def b; end\n  end\nend\n") do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert subjects.find { |s| s.name == :a }.singleton
+      refute subjects.find { |s| s.name == :b }.singleton, "nested class method must not inherit module_function"
+    end
+  end
+
   def test_discover_skips_singleton_class_of_other_object
     # `class << other` can't be represented against the namespace -> not emitted.
     with_source("class Calc\n  other = Object.new\n  class << other\n    def skipme; end\n  end\n  def keep; end\nend\n") do |path|
