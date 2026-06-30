@@ -133,7 +133,7 @@ This repo ships a composite action (`action.yml`) that wraps the CLI for CI:
   with: { fetch-depth: 0 }        # --since needs full history
 - uses: ruby/setup-ruby@v1
   with: { ruby-version: "3.4", bundler-cache: true }
-- uses: davidteren/mutineer@main
+- uses: davidteren/mutineer@v0
   with:
     sources: app/
     since: origin/${{ github.base_ref }}
