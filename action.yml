@@ -101,9 +101,11 @@ runs:
     - name: Install mutineer
       if: ${{ inputs.use-bundler != 'true' }}
       shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
       run: |
-        if [ -n "${{ inputs.version }}" ]; then
-          gem install mutineer -v "${{ inputs.version }}" --no-document
+        if [ -n "$VERSION" ]; then
+          gem install mutineer -v "$VERSION" --no-document
         else
           gem install mutineer --no-document
         fi
@@ -112,26 +114,44 @@ runs:
       id: run
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        # Pass every input through the environment — never interpolate
+        # ${{ inputs.* }} directly into the script (command-injection safety).
+        SOURCES: ${{ inputs.sources }}
+        TESTS: ${{ inputs.test }}
+        SINCE: ${{ inputs.since }}
+        THRESHOLD: ${{ inputs.threshold }}
+        BASELINE: ${{ inputs.baseline }}
+        BASELINE_EPSILON: ${{ inputs.baseline-epsilon }}
+        OPERATORS: ${{ inputs.operators }}
+        FRAMEWORK: ${{ inputs.framework }}
+        STRATEGY: ${{ inputs.strategy }}
+        JOBS: ${{ inputs.jobs }}
+        RAILS: ${{ inputs.rails }}
+        FORMAT: ${{ inputs.format }}
+        OUTPUT: ${{ inputs.output }}
+        EXTRA_ARGS: ${{ inputs.extra-args }}
+        USE_BUNDLER: ${{ inputs.use-bundler }}
       run: |
         set -o pipefail
         args=(run)
-        for s in ${{ inputs.sources }}; do args+=("$s"); done
-        for t in ${{ inputs.test }}; do args+=(--test "$t"); done
-        [ -n "${{ inputs.since }}" ]            && args+=(--since "${{ inputs.since }}")
-        [ -n "${{ inputs.threshold }}" ]        && args+=(--threshold "${{ inputs.threshold }}")
-        [ -n "${{ inputs.baseline }}" ]         && args+=(--baseline "${{ inputs.baseline }}")
-        [ -n "${{ inputs.baseline-epsilon }}" ] && args+=(--baseline-epsilon "${{ inputs.baseline-epsilon }}")
-        [ -n "${{ inputs.operators }}" ]        && args+=(--operators "${{ inputs.operators }}")
-        [ -n "${{ inputs.framework }}" ]        && args+=(--framework "${{ inputs.framework }}")
-        [ -n "${{ inputs.strategy }}" ]         && args+=(--strategy "${{ inputs.strategy }}")
-        [ -n "${{ inputs.jobs }}" ]             && args+=(--jobs "${{ inputs.jobs }}")
-        [ "${{ inputs.rails }}" = "true" ]      && args+=(--rails)
-        [ -n "${{ inputs.format }}" ]           && args+=(--format "${{ inputs.format }}")
-        [ -n "${{ inputs.output }}" ]           && args+=(--output "${{ inputs.output }}")
+        for s in $SOURCES; do args+=("$s"); done
+        for t in $TESTS; do args+=(--test "$t"); done
+        [ -n "$SINCE" ]            && args+=(--since "$SINCE")
+        [ -n "$THRESHOLD" ]        && args+=(--threshold "$THRESHOLD")
+        [ -n "$BASELINE" ]         && args+=(--baseline "$BASELINE")
+        [ -n "$BASELINE_EPSILON" ] && args+=(--baseline-epsilon "$BASELINE_EPSILON")
+        [ -n "$OPERATORS" ]        && args+=(--operators "$OPERATORS")
+        [ -n "$FRAMEWORK" ]        && args+=(--framework "$FRAMEWORK")
+        [ -n "$STRATEGY" ]         && args+=(--strategy "$STRATEGY")
+        [ -n "$JOBS" ]             && args+=(--jobs "$JOBS")
+        [ "$RAILS" = "true" ]      && args+=(--rails)
+        [ -n "$FORMAT" ]           && args+=(--format "$FORMAT")
+        [ -n "$OUTPUT" ]           && args+=(--output "$OUTPUT")
         # shellcheck disable=SC2206
-        [ -n "${{ inputs.extra-args }}" ]       && args+=(${{ inputs.extra-args }})
+        [ -n "$EXTRA_ARGS" ]       && args+=($EXTRA_ARGS)
 
-        if [ "${{ inputs.use-bundler }}" = "true" ]; then
+        if [ "$USE_BUNDLER" = "true" ]; then
           runner=(bundle exec mutineer)
         else
           runner=(mutineer)
@@ -145,5 +165,5 @@ runs:
         echo "::endgroup::"
 
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
-        [ -n "${{ inputs.output }}" ] && echo "report=${{ inputs.output }}" >> "$GITHUB_OUTPUT"
+        [ -n "$OUTPUT" ] && echo "report=$OUTPUT" >> "$GITHUB_OUTPUT"
         exit $code
