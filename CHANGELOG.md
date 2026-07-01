@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.1] - 2026-07-01
+
+### Fixed
+- **Per-method uncapturable granularity** (#25) — the `:uncapturable` taint was
+  whole-file, so a method reachable only by a *failed* capture in an otherwise-
+  covered file was mislabeled `no_coverage`. It's now attributed per method (by
+  the method's body coverage), so only the affected method is tainted. Fully-
+  failed files are unchanged.
+
 ## [0.9.0] - 2026-06-30
 
 ### Added
@@ -175,6 +184,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.9.1]: https://github.com/davidteren/mutineer/releases/tag/v0.9.1
 [0.9.0]: https://github.com/davidteren/mutineer/releases/tag/v0.9.0
 [0.8.0]: https://github.com/davidteren/mutineer/releases/tag/v0.8.0
 [0.7.1]: https://github.com/davidteren/mutineer/releases/tag/v0.7.1
