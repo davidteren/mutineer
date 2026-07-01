@@ -128,7 +128,14 @@ module Mutineer
       end
     end
 
+    # Waits for the spawned pid, SIGKILLing its process group past the deadline.
+    # Single-waiter deadline loop (mirrors Isolation), so the kill can never hit a
+    # reaped/recycled pid.
+    #
     # @api private
+    # @param pid [Integer] the spawned child pid.
+    # @param timeout [Numeric] wall-clock deadline in seconds.
+    # @return [Array(Symbol, Integer, nil)] `[:exited, code]` or `[:timeout, nil]`.
     def self.wait_with_timeout(pid, timeout)
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
       loop do
