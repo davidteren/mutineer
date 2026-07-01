@@ -1,0 +1,21 @@
+.gitignore
+  s_cf0251db67a2f5::t_9bbfc94da85013 7-9
+docs/plans/issue-26-27-phase2-spike-findings.md
+  s_cf0251db67a2f5::t_17ebc233fda14a 1-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.6",
+  "base_commit_sha": "5dd3869fc075711e2f13d75510eb467b50aaeb2b",
+  "prompts": {},
+  "sessions": {
+    "s_cf0251db67a2f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8a5fa3b-264a-4499-9bc9-1ce2cd800bb8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
