@@ -1,0 +1,30 @@
+lib/mutineer/runner.rb
+  s_0214cb1e158c48::t_803ddd92c7791c 262,264-266,272-273
+  s_0214cb1e158c48::t_27e296d926248c 268-271
+test/fixtures/partial/partial.rb
+  s_0214cb1e158c48::t_dfa03f59ba4554 1-14
+test/fixtures/partial/partial_test.rb
+  s_0214cb1e158c48::t_dfa03f59ba4554 1-5
+test/fixtures/partial/partial_good_test.rb
+  s_0214cb1e158c48::t_dfa03f59ba4554 1-12
+lib/mutineer/coverage_map.rb
+  s_0214cb1e158c48::t_4dc2d0fe6c2ec4 90-110
+test/per_method_uncapturable_test.rb
+  s_0214cb1e158c48::t_fd81b629c6309b 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.6",
+  "base_commit_sha": "06f3989a2c0c944f308285d0b7492da5f20f4964",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
