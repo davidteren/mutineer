@@ -195,6 +195,11 @@ module Mutineer
     rescue Mutineer::ParseError => e
       warn "mutineer: error reading: #{e.message}"
       exit 1
+    rescue Mutineer::SmokeCheckError => e
+      # #27: the unmutated suite isn't green under --test-command — a broken
+      # environment, not weak tests. Runtime error (exit 1), not usage (exit 2).
+      warn "mutineer: #{e.message}"
+      exit 1
     end
 
     # Flag validation: every flag/usage failure exits 2 (C7), consistent with the
@@ -421,6 +426,16 @@ module Mutineer
 
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta)
+
+      # #27/KTD-6: warn (stderr, so it never pollutes json/html) that an external
+      # run's score is not comparable to an in-process run — it has no coverage
+      # narrowing, so uncovered mutants count as survivors, and an infra failure is
+      # scored as a kill (upper bound).
+      if config.test_command
+        warn "[mutineer] --test-command score is an upper bound, not comparable to an " \
+             "in-process run: no coverage narrowing (uncovered mutants count as survivors) " \
+             "and an infra failure is scored as a kill."
+      end
 
       # #14: nudge toward the opt-in tier-2 operators (human report only — never
       # pollute JSON output).

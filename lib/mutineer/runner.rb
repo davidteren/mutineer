@@ -11,6 +11,8 @@ require_relative "changed_lines"
 require_relative "mutator_registry"
 require_relative "worker_pool"
 require_relative "mutant_id"
+require_relative "file_swap"
+require_relative "external_backend"
 require "set"
 
 module Mutineer
@@ -37,6 +39,11 @@ module Mutineer
     # @return [Array(Mutineer::AggregateResult, Hash<String, String>)] aggregate and source map.
     def self.execute(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
+
+      # #27: the external backend runs the suite as a subprocess in the app's own
+      # runtime — it does no in-process boot/require or coverage build, so branch
+      # before any of that. The in-process path below is untouched.
+      return execute_external(config, operator_classes) if config.test_command
 
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
@@ -87,31 +94,7 @@ module Mutineer
       end
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
-      # #10: a mutant the user marked known-equivalent (inline disable-line comment
-      # or .mutineer.yml ignore id) is classified :ignored here and NEVER forked —
-      # it is removed from the killed+survived denominator so a strong file reaches
-      # 100%. The stable id is computed per subject (occurrence needs the full list)
-      # and carried on every job so the parent can reattach it after the run.
-      source_map = {}
-      disabled_map = {}
-      ignore_set = config.ignore.to_set
-      jobs = []
-      ignored_results = []
-      Project.discover(config.sources, only: config.only).each do |subject|
-        source = (source_map[subject.file] ||= File.read(subject.file))
-        disabled = (disabled_map[subject.file] ||= suppress_map(source))
-        mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
-        ids = MutantId.for_subject(subject, source, mutations)
-        mutations.each_with_index do |mutation, i|
-          id = ids[i]
-          line = source.byteslice(0, mutation.start_offset).count("\n") + 1
-          if suppressed?(mutation.operator, line, id, disabled, ignore_set)
-            ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id)
-          else
-            jobs << [subject, mutation, id]
-          end
-        end
-      end
+      jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
 
       jobs = filter_since(jobs, source_map, config) if config.since
 
@@ -143,6 +126,99 @@ module Mutineer
         end
 
       [AggregateResult.new(results + ignored_results), source_map]
+    end
+
+    # Collect every (subject, mutation, id) up front so a backend can run them.
+    # #10: a mutant the user marked known-equivalent (inline disable-line comment
+    # or .mutineer.yml ignore id) is classified :ignored here and NEVER run — it is
+    # removed from the killed+survived denominator so a strong file reaches 100%.
+    # The stable id is computed per subject (occurrence needs the full list) and
+    # carried on every job so the parent can reattach it after the run. Shared by
+    # the in-process and external (#27) backends so job selection can never drift.
+    #
+    # @return [Array(Array, Array<Result>, Hash<String,String>)] jobs, ignored, source_map.
+    def self.collect_jobs(config, operator_classes)
+      source_map = {}
+      disabled_map = {}
+      ignore_set = config.ignore.to_set
+      jobs = []
+      ignored_results = []
+      Project.discover(config.sources, only: config.only).each do |subject|
+        source = (source_map[subject.file] ||= File.read(subject.file))
+        disabled = (disabled_map[subject.file] ||= suppress_map(source))
+        mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
+        ids = MutantId.for_subject(subject, source, mutations)
+        mutations.each_with_index do |mutation, i|
+          id = ids[i]
+          line = source.byteslice(0, mutation.start_offset).count("\n") + 1
+          if suppressed?(mutation.operator, line, id, disabled, ignore_set)
+            ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id)
+          else
+            jobs << [subject, mutation, id]
+          end
+        end
+      end
+      [jobs, ignored_results, source_map]
+    end
+
+    # #27: external backend orchestration. Runs each mutant's whole-file mutation on
+    # disk (crash-safe swap) and executes the user's --test-command as a subprocess
+    # in the app's own runtime. Serial by construction (KTD-5: one shared DB, no
+    # per-worker isolation yet). No coverage narrowing — every mutant runs the full
+    # --test set (KTD-6); the score is therefore an upper bound and not comparable
+    # to an in-process run (the CLI discloses this).
+    #
+    # @param config [Mutineer::Config] run configuration (test_command set).
+    # @param operator_classes [Array<Class>] resolved operators.
+    # @return [Array(Mutineer::AggregateResult, Hash<String,String>)] aggregate and source map.
+    def self.execute_external(config, operator_classes)
+      jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
+      jobs = filter_since(jobs, source_map, config) if config.since
+
+      abs_tests   = config.tests.map { |t| File.expand_path(t, config.project_root) }
+      source_dirs = config.sources
+                          .map { |f| File.dirname(File.expand_path(f, config.project_root)) }.uniq
+
+      # Heal any file a prior hard-killed run left mutated before touching disk.
+      FileSwap.restore_orphans(source_dirs)
+
+      # Calibrate the per-mutant timeout from the clean run (a real suite far
+      # outlasts the 10s in-process fork budget), and abort if it isn't green.
+      # ponytail: 3x the clean run, floor 30s — a heuristic, widen if flaky suites
+      # need it; a real slow suite self-calibrates via the smoke elapsed.
+      smoke_elapsed = ExternalBackend.smoke_check!(config.test_command, abs_tests)
+      timeout = [smoke_elapsed * 3, 30].max.ceil
+
+      results = []
+      begin
+        jobs.each do |subject, mutation, id|
+          r = run_external(subject, mutation, config.test_command, abs_tests,
+                           timeout: timeout, verbose: config.verbose)
+          results << r.with(subject: subject, mutation: mutation, id: id)
+          break if config.fail_fast && r.survived? # #21: stop at the first survivor
+        end
+      ensure
+        FileSwap.restore_orphans(source_dirs)
+      end
+
+      [AggregateResult.new(results + ignored_results), source_map]
+    end
+
+    # Runs one mutant through the external backend: apply the whole-file mutation on
+    # disk, run the command, restore. KTD-8: an invalid (non-reparsing) mutant would
+    # fail to load and score a false `killed`, so skip it tool-side (Prism, already
+    # cheap) and never write the file — preserving the `skipped` verdict the
+    # in-process path gives at runner.rb's pre-fork check.
+    #
+    # @return [Mutineer::Result] verdict for this mutant.
+    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:)
+      source  = File.read(subject.file)
+      mutated = mutation.apply(source)
+      return Result.skipped if Parser.parse_string(mutated).errors.any?
+
+      FileSwap.with(subject.file, mutated) do
+        ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose)
+      end
     end
 
     # Scan a source once into { line_number => :all | Set[operator_syms] } from
