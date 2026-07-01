@@ -25,7 +25,8 @@ module Mutineer
     # Generous ceiling for the one-off smoke/calibration run (a cold app boot plus
     # the full suite). The per-mutant timeout is derived from how long this took.
     SMOKE_TIMEOUT = 900
-    # Poll interval for the wait loop (matches Isolation).
+    # Poll interval for the deadline wait loop. Independent of Isolation's loop —
+    # this backend waits on an external process TREE, not an in-process fork.
     POLL = 0.02
 
     # Turn a command template into an argv array (no shell → no eval, no
@@ -80,7 +81,11 @@ module Mutineer
       kind, code, output, elapsed = spawn_capture(command, files, timeout)
       return elapsed if kind == :exited && code&.zero?
 
-      reason = kind == :timeout ? "did not finish within #{timeout}s" : "exited #{code}"
+      reason =
+        if kind == :timeout then "did not finish within #{timeout}s"
+        elsif code.nil?      then "was terminated by a signal"
+        else                      "exited #{code}"
+        end
       detail = output.empty? ? "" : "\n--- last output ---\n#{tail(output)}"
       raise SmokeCheckError,
             "the test command #{reason} against the UNMUTATED source — the " \
@@ -97,11 +102,21 @@ module Mutineer
     # @api private
     def self.spawn_capture(command, files, timeout)
       argv = build_argv(command, files)
-      raise SmokeCheckError, "--test-command produced an empty command" if argv.empty?
+      # Unreachable in practice (validate_test_command! guarantees a non-empty
+      # command with %{files}); a neutral ArgumentError, not the smoke-specific
+      # SmokeCheckError, since this is not a smoke-check failure.
+      raise ArgumentError, "--test-command produced an empty command" if argv.empty?
 
       out = Tempfile.create("mutineer_ext")
       start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      pid = Process.spawn(*argv, out: out, err: %i[child out])
+      # `pgroup: true` puts the child in its OWN process group so a timeout can
+      # kill the whole tree (`bundle exec rails test` forks parallel workers;
+      # spring/bundler add more) — killing only the leader would orphan workers
+      # that keep holding the shared DB, corrupting later serial mutants. The
+      # explicit [program, argv0] form guarantees the no-shell exec path even for a
+      # degenerate single-element argv (Process.spawn(*argv) would route a lone
+      # metachar-bearing string through /bin/sh, breaking the argv-only invariant).
+      pid = Process.spawn([argv.first, argv.first], *argv[1..], out: out, err: %i[child out], pgroup: true)
       kind, code = wait_with_timeout(pid, timeout)
       elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
       out.rewind
@@ -121,7 +136,14 @@ module Mutineer
         return [:exited, status.exitstatus] if reaped
 
         if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-          Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
+          # Kill the whole process GROUP (negative pid) so forked test workers die
+          # with the leader; fall back to the leader alone if the group is already
+          # gone. The child led its group (pgroup: true at spawn).
+          begin
+            Process.kill(:KILL, -pid)
+          rescue Errno::ESRCH, Errno::EPERM
+            Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
+          end
           Process.waitpid(pid) rescue nil # rubocop:disable Style/RescueModifier
           return [:timeout, nil]
         end

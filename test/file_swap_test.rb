@@ -76,4 +76,44 @@ class FileSwapTest < Minitest::Test
       assert_empty err
     end
   end
+
+  # Concurrency guard: a backup already on disk means a second run is racing on the
+  # same file. Refuse — and do NOT touch the existing backup or the source.
+  def test_with_raises_when_backup_already_exists
+    with_file("original\n") do |_dir, path|
+      backup = path + Mutineer::FileSwap::BACKUP_SUFFIX
+      File.binwrite(backup, "someone-elses-original\n")
+      assert_raises(Mutineer::ConcurrentRunError) do
+        Mutineer::FileSwap.with(path, "mutated\n") { flunk "block must not run" }
+      end
+      # The other run's backup and our source are left untouched.
+      assert_equal "someone-elses-original\n", File.binread(backup)
+      assert_equal "original\n", File.binread(path)
+    end
+  end
+
+  # A real user file that merely ends in the suffix, with no sibling, is left alone
+  # (never used to create a file).
+  def test_restore_orphans_ignores_suffixed_file_with_no_sibling
+    Dir.mktmpdir("mutineer-swap") do |dir|
+      stray = File.join(dir, "notes#{Mutineer::FileSwap::BACKUP_SUFFIX}")
+      File.binwrite(stray, "user data\n")
+      _out, err = capture_io { Mutineer::FileSwap.restore_orphans([dir]) }
+      assert_path_exists stray
+      refute_path_exists File.join(dir, "notes")
+      assert_empty err
+    end
+  end
+
+  # A redundant backup identical to the source (crash between restore and unlink)
+  # is cleared without a false "healed" notice, so the next run sees no race.
+  def test_restore_orphans_clears_stale_identical_backup
+    with_file("original\n") do |dir, path|
+      File.binwrite(path + Mutineer::FileSwap::BACKUP_SUFFIX, "original\n")
+      _out, err = capture_io { Mutineer::FileSwap.restore_orphans([dir]) }
+      assert_empty Dir.glob(File.join(dir, "*#{Mutineer::FileSwap::BACKUP_SUFFIX}"))
+      assert_equal "original\n", File.binread(path)
+      assert_empty err
+    end
+  end
 end

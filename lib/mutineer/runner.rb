@@ -102,9 +102,8 @@ module Mutineer
       # resolves). A SIGKILL'd child skips the tempfile's ensure-unlink, orphaning
       # it. `ensure` is unreliable vs SIGKILL, so the PARENT sweeps each source dir
       # before and after the run — orphans are impossible after a normal run.
-      source_dirs = config.sources
-                          .map { |f| File.dirname(File.expand_path(f, config.project_root)) }.uniq
-      sweep_orphans(source_dirs)
+      dirs = source_dirs(config)
+      sweep_orphans(dirs)
 
       strategy = config.strategy
       results =
@@ -122,7 +121,7 @@ module Mutineer
           # filter_map drops nils for jobs --fail-fast left unscheduled.
           bare.each_with_index.filter_map { |r, i| r&.with(subject: jobs[i][0], mutation: jobs[i][1], id: jobs[i][2]) }
         ensure
-          sweep_orphans(source_dirs)
+          sweep_orphans(dirs)
         end
 
       [AggregateResult.new(results + ignored_results), source_map]
@@ -172,22 +171,25 @@ module Mutineer
     # @param operator_classes [Array<Class>] resolved operators.
     # @return [Array(Mutineer::AggregateResult, Hash<String,String>)] aggregate and source map.
     def self.execute_external(config, operator_classes)
+      abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
+      dirs      = source_dirs(config)
+
+      # Heal any file a prior hard-killed run left mutated BEFORE reading source —
+      # collect_jobs computes mutation offsets/ids from the on-disk bytes, so a
+      # still-mutated file would yield garbage offsets against the later-healed
+      # source. Heal first, then discover jobs from the clean tree.
+      FileSwap.restore_orphans(dirs)
+
       jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
       jobs = filter_since(jobs, source_map, config) if config.since
 
-      abs_tests   = config.tests.map { |t| File.expand_path(t, config.project_root) }
-      source_dirs = config.sources
-                          .map { |f| File.dirname(File.expand_path(f, config.project_root)) }.uniq
-
-      # Heal any file a prior hard-killed run left mutated before touching disk.
-      FileSwap.restore_orphans(source_dirs)
-
       # Calibrate the per-mutant timeout from the clean run (a real suite far
       # outlasts the 10s in-process fork budget), and abort if it isn't green.
-      # ponytail: 3x the clean run, floor 30s — a heuristic, widen if flaky suites
-      # need it; a real slow suite self-calibrates via the smoke elapsed.
+      # ponytail: 3x the clean run, floor 30s, ceiling 300s — a heuristic. The
+      # floor covers a fast suite; the ceiling bounds a hung mutant (infinite loop)
+      # so a handful can't stall a serial run for ~45min on a slow suite.
       smoke_elapsed = ExternalBackend.smoke_check!(config.test_command, abs_tests)
-      timeout = [smoke_elapsed * 3, 30].max.ceil
+      timeout = [[smoke_elapsed * 3, 30].max, 300].min.ceil
 
       results = []
       begin
@@ -198,7 +200,7 @@ module Mutineer
           break if config.fail_fast && r.survived? # #21: stop at the first survivor
         end
       ensure
-        FileSwap.restore_orphans(source_dirs)
+        FileSwap.restore_orphans(dirs)
       end
 
       [AggregateResult.new(results + ignored_results), source_map]
@@ -296,6 +298,17 @@ module Mutineer
 
       ENV["RAILS_ENV"] = "test"
       warn "[mutineer] RAILS_ENV was unset; defaulting to 'test' for --rails."
+    end
+
+    # The unique absolute directories holding the sources — the sweep target for
+    # both orphan mechanisms (in-process mutant tempfiles and external backup
+    # files). Shared so the path-expansion rule can't drift between the two paths.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Array<String>] unique absolute source directories.
+    def self.source_dirs(config)
+      config.sources.map { |f| File.dirname(File.expand_path(f, config.project_root)) }.uniq
     end
 
     # Removes stale mutant tempfiles from the given directories.
