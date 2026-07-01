@@ -47,6 +47,10 @@ module Mutineer
         --boot FILE          Require FILE once in the parent to boot the app env, then
                              fork per mutant (Rails apps; requires --test)
         --rails              Sugar for --boot config/environment --strategy redefine
+        --test-command CMD   Run the target suite in the app's own runtime as a
+                             subprocess (for apps on Ruby < 3.4). CMD must contain
+                             %{files} (expands to the --test paths). Env is inherited,
+                             e.g. RAILS_ENV=test mutineer run ... --test-command "..."
         --format human|json|html  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
@@ -105,6 +109,9 @@ module Mutineer
         # typed (CLI wins over the file). --baseline-epsilon is CLI-only.
         o.on("--baseline FILE") { |v| opts[:baseline] = v; explicit << :baseline }
         o.on("--baseline-epsilon FLOAT") { |v| opts[:baseline_epsilon] = v.to_f }
+        # #27: run the target suite as a subprocess in the app's OWN runtime so
+        # mutineer (Ruby >= 3.4) can mutation-test apps pinned to an older Ruby.
+        o.on("--test-command CMD") { |v| opts[:test_command] = v; explicit << :test_command }
       end
 
       begin
@@ -188,6 +195,11 @@ module Mutineer
     rescue Mutineer::ParseError => e
       warn "mutineer: error reading: #{e.message}"
       exit 1
+    rescue Mutineer::SmokeCheckError => e
+      # #27: the unmutated suite isn't green under --test-command — a broken
+      # environment, not weak tests. Runtime error (exit 1), not usage (exit 2).
+      warn "mutineer: #{e.message}"
+      exit 1
     end
 
     # Flag validation: every flag/usage failure exits 2 (C7), consistent with the
@@ -229,6 +241,8 @@ module Mutineer
         exit 2
       end
 
+      validate_test_command!(config) if config.test_command
+
       validate_since!(config) if config.since
       preflight_output!(config.output) if config.output
       preflight_baseline!(config.baseline) if config.baseline
@@ -248,6 +262,42 @@ module Mutineer
       end
 
       validate_paths!(config)
+    end
+
+    # #27: --test-command runs the target suite in the app's own runtime. Validate
+    # its shape up front (usage errors → exit 2) and force serial execution: each
+    # subprocess boots the app and opens its own fixture transaction against the
+    # same DB, so --jobs > 1 would corrupt results (the #12 fixture-contention
+    # hazard). Unlike --rails, this path has NO per-worker DB isolation to opt into,
+    # so an explicit --jobs N is forced to 1 rather than honored (KTD-5).
+    # Validates the --test-command configuration.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.validate_test_command!(config)
+      if config.test_command.strip.empty?
+        warn "mutineer: --test-command must not be empty"
+        exit 2
+      end
+      unless config.test_command.include?("%{files}")
+        warn "mutineer: --test-command must contain %{files} (where the --test paths are substituted)"
+        exit 2
+      end
+      if config.boot
+        warn "mutineer: --test-command cannot be combined with --boot/--rails " \
+             "(the external subprocess boots the app itself)"
+        exit 2
+      end
+      if config.strategy == "redefine"
+        warn "mutineer: --test-command supports only --strategy reload " \
+             "(surgical redefine needs a shared VM; the subprocess has its own)"
+        exit 2
+      end
+      return unless config.jobs > 1
+
+      warn "[mutineer] --test-command runs serially (no per-worker DB isolation yet); forcing --jobs 1."
+      config.jobs = 1
     end
 
     # --since needs a real git repo and a resolvable ref; either failure is a
@@ -376,6 +426,16 @@ module Mutineer
 
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta)
+
+      # #27/KTD-6: warn (stderr, so it never pollutes json/html) that an external
+      # run's score is not comparable to an in-process run — it has no coverage
+      # narrowing, so uncovered mutants count as survivors, and an infra failure is
+      # scored as a kill (upper bound).
+      if config.test_command
+        warn "[mutineer] --test-command score is an upper bound, not comparable to an " \
+             "in-process run: no coverage narrowing (uncovered mutants count as survivors) " \
+             "and an infra failure is scored as a kill."
+      end
 
       # #14: nudge toward the opt-in tier-2 operators (human report only — never
       # pollute JSON output).

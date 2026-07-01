@@ -11,6 +11,8 @@ require_relative "changed_lines"
 require_relative "mutator_registry"
 require_relative "worker_pool"
 require_relative "mutant_id"
+require_relative "file_swap"
+require_relative "external_backend"
 require "set"
 
 module Mutineer
@@ -37,6 +39,11 @@ module Mutineer
     # @return [Array(Mutineer::AggregateResult, Hash<String, String>)] aggregate and source map.
     def self.execute(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
+
+      # #27: the external backend runs the suite as a subprocess in the app's own
+      # runtime — it does no in-process boot/require or coverage build, so branch
+      # before any of that. The in-process path below is untouched.
+      return execute_external(config, operator_classes) if config.test_command
 
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
@@ -87,11 +94,49 @@ module Mutineer
       end
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
-      # #10: a mutant the user marked known-equivalent (inline disable-line comment
-      # or .mutineer.yml ignore id) is classified :ignored here and NEVER forked —
-      # it is removed from the killed+survived denominator so a strong file reaches
-      # 100%. The stable id is computed per subject (occurrence needs the full list)
-      # and carried on every job so the parent can reattach it after the run.
+      jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
+
+      jobs = filter_since(jobs, source_map, config) if config.since
+
+      # C3: 7a writes mutineer_mutant*.rb into each source dir (so require_relative
+      # resolves). A SIGKILL'd child skips the tempfile's ensure-unlink, orphaning
+      # it. `ensure` is unreliable vs SIGKILL, so the PARENT sweeps each source dir
+      # before and after the run — orphans are impossible after a normal run.
+      dirs = source_dirs(config)
+      sweep_orphans(dirs)
+
+      strategy = config.strategy
+      results =
+        begin
+          framework = config.framework
+          # #21: --fail-fast stops scheduling new mutants after the first survivor;
+          # in-flight workers drain, unscheduled jobs stay nil (dropped below).
+          stop_when = config.fail_fast ? ->(r) { r.survived? } : nil
+          bare = WorkerPool.new(config.jobs).run(jobs, stop_when: stop_when) do |subject, mutation|
+            run(mutation, source_file: subject.file, coverage_map: coverage_map,
+                subject: subject, strategy: strategy, rails: config.rails, framework: framework)
+          end
+          # The bare Results carry only status (Subjects hold live AST nodes that
+          # do not marshal); reattach subject+mutation+id in the parent, in order.
+          # filter_map drops nils for jobs --fail-fast left unscheduled.
+          bare.each_with_index.filter_map { |r, i| r&.with(subject: jobs[i][0], mutation: jobs[i][1], id: jobs[i][2]) }
+        ensure
+          sweep_orphans(dirs)
+        end
+
+      [AggregateResult.new(results + ignored_results), source_map]
+    end
+
+    # Collect every (subject, mutation, id) up front so a backend can run them.
+    # #10: a mutant the user marked known-equivalent (inline disable-line comment
+    # or .mutineer.yml ignore id) is classified :ignored here and NEVER run — it is
+    # removed from the killed+survived denominator so a strong file reaches 100%.
+    # The stable id is computed per subject (occurrence needs the full list) and
+    # carried on every job so the parent can reattach it after the run. Shared by
+    # the in-process and external (#27) backends so job selection can never drift.
+    #
+    # @return [Array(Array, Array<Result>, Hash<String,String>)] jobs, ignored, source_map.
+    def self.collect_jobs(config, operator_classes)
       source_map = {}
       disabled_map = {}
       ignore_set = config.ignore.to_set
@@ -112,37 +157,70 @@ module Mutineer
           end
         end
       end
+      [jobs, ignored_results, source_map]
+    end
 
+    # #27: external backend orchestration. Runs each mutant's whole-file mutation on
+    # disk (crash-safe swap) and executes the user's --test-command as a subprocess
+    # in the app's own runtime. Serial by construction (KTD-5: one shared DB, no
+    # per-worker isolation yet). No coverage narrowing — every mutant runs the full
+    # --test set (KTD-6); the score is therefore an upper bound and not comparable
+    # to an in-process run (the CLI discloses this).
+    #
+    # @param config [Mutineer::Config] run configuration (test_command set).
+    # @param operator_classes [Array<Class>] resolved operators.
+    # @return [Array(Mutineer::AggregateResult, Hash<String,String>)] aggregate and source map.
+    def self.execute_external(config, operator_classes)
+      abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
+      dirs      = source_dirs(config)
+
+      # Heal any file a prior hard-killed run left mutated BEFORE reading source —
+      # collect_jobs computes mutation offsets/ids from the on-disk bytes, so a
+      # still-mutated file would yield garbage offsets against the later-healed
+      # source. Heal first, then discover jobs from the clean tree.
+      FileSwap.restore_orphans(dirs)
+
+      jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
       jobs = filter_since(jobs, source_map, config) if config.since
 
-      # C3: 7a writes mutineer_mutant*.rb into each source dir (so require_relative
-      # resolves). A SIGKILL'd child skips the tempfile's ensure-unlink, orphaning
-      # it. `ensure` is unreliable vs SIGKILL, so the PARENT sweeps each source dir
-      # before and after the run — orphans are impossible after a normal run.
-      source_dirs = config.sources
-                          .map { |f| File.dirname(File.expand_path(f, config.project_root)) }.uniq
-      sweep_orphans(source_dirs)
+      # Calibrate the per-mutant timeout from the clean run (a real suite far
+      # outlasts the 10s in-process fork budget), and abort if it isn't green.
+      # ponytail: 3x the clean run, floor 30s, ceiling 300s — a heuristic. The
+      # floor covers a fast suite; the ceiling bounds a hung mutant (infinite loop)
+      # so a handful can't stall a serial run for ~45min on a slow suite.
+      smoke_elapsed = ExternalBackend.smoke_check!(config.test_command, abs_tests)
+      timeout = [[smoke_elapsed * 3, 30].max, 300].min.ceil
 
-      strategy = config.strategy
-      results =
-        begin
-          framework = config.framework
-          # #21: --fail-fast stops scheduling new mutants after the first survivor;
-          # in-flight workers drain, unscheduled jobs stay nil (dropped below).
-          stop_when = config.fail_fast ? ->(r) { r.survived? } : nil
-          bare = WorkerPool.new(config.jobs).run(jobs, stop_when: stop_when) do |subject, mutation|
-            run(mutation, source_file: subject.file, coverage_map: coverage_map,
-                subject: subject, strategy: strategy, rails: config.rails, framework: framework)
-          end
-          # The bare Results carry only status (Subjects hold live AST nodes that
-          # do not marshal); reattach subject+mutation+id in the parent, in order.
-          # filter_map drops nils for jobs --fail-fast left unscheduled.
-          bare.each_with_index.filter_map { |r, i| r&.with(subject: jobs[i][0], mutation: jobs[i][1], id: jobs[i][2]) }
-        ensure
-          sweep_orphans(source_dirs)
+      results = []
+      begin
+        jobs.each do |subject, mutation, id|
+          r = run_external(subject, mutation, config.test_command, abs_tests,
+                           timeout: timeout, verbose: config.verbose)
+          results << r.with(subject: subject, mutation: mutation, id: id)
+          break if config.fail_fast && r.survived? # #21: stop at the first survivor
         end
+      ensure
+        FileSwap.restore_orphans(dirs)
+      end
 
       [AggregateResult.new(results + ignored_results), source_map]
+    end
+
+    # Runs one mutant through the external backend: apply the whole-file mutation on
+    # disk, run the command, restore. KTD-8: an invalid (non-reparsing) mutant would
+    # fail to load and score a false `killed`, so skip it tool-side (Prism, already
+    # cheap) and never write the file — preserving the `skipped` verdict the
+    # in-process path gives at runner.rb's pre-fork check.
+    #
+    # @return [Mutineer::Result] verdict for this mutant.
+    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:)
+      source  = File.read(subject.file)
+      mutated = mutation.apply(source)
+      return Result.skipped if Parser.parse_string(mutated).errors.any?
+
+      FileSwap.with(subject.file, mutated) do
+        ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose)
+      end
     end
 
     # Scan a source once into { line_number => :all | Set[operator_syms] } from
@@ -220,6 +298,17 @@ module Mutineer
 
       ENV["RAILS_ENV"] = "test"
       warn "[mutineer] RAILS_ENV was unset; defaulting to 'test' for --rails."
+    end
+
+    # The unique absolute directories holding the sources — the sweep target for
+    # both orphan mechanisms (in-process mutant tempfiles and external backup
+    # files). Shared so the path-expansion rule can't drift between the two paths.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Array<String>] unique absolute source directories.
+    def self.source_dirs(config)
+      config.sources.map { |f| File.dirname(File.expand_path(f, config.project_root)) }.uniq
     end
 
     # Removes stale mutant tempfiles from the given directories.

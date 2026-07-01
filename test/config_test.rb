@@ -107,6 +107,26 @@ class ConfigTest < Minitest::Test
     assert_equal [], Config.resolve({}, {}, Set.new).ignore
   end
 
+  # #27: test_command is accepted from the config file (snake_case key) and
+  # resolves onto the Config; an explicit CLI value wins over the file.
+  def test_from_file_accepts_test_command
+    with_config("test_command: bundle exec rails test %{files}\n") do |path|
+      out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty out
+      assert_empty err
+      assert_equal({ test_command: "bundle exec rails test %{files}" }, @hash)
+      assert_equal "bundle exec rails test %{files}", Config.resolve({}, @hash, Set.new).test_command
+    end
+  end
+
+  def test_cli_test_command_overrides_file
+    with_config("test_command: from_file %{files}\n") do |path|
+      capture_io { @hash = Config.from_file(path) }
+      cfg = Config.resolve({ test_command: "from_cli %{files}" }, @hash, Set.new(%i[test_command]))
+      assert_equal "from_cli %{files}", cfg.test_command
+    end
+  end
+
   # --- framework: explicit value, config file, and auto-detect ---
 
   def test_from_file_accepts_framework
