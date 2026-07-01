@@ -259,10 +259,18 @@ module Mutineer
       # covering test files run in the child.
       line   = source.byteslice(0, mutation.start_offset).count("\n") + 1
       chosen = coverage_map.tests_for(source_file, line)
-      # #9: distinguish a genuine coverage gap from a line whose would-be test
+      # #9/#25: distinguish a genuine coverage gap from a line whose would-be test
       # errored during capture (coverage lost) — the latter is :uncapturable.
+      # #25: taint per-METHOD (the mutant's enclosing def range), not whole-file,
+      # so a covered method's uncovered line stays :no_coverage while a method
+      # reachable only by a failed capture is :uncapturable.
       if chosen.empty?
-        return coverage_map.uncapturable_source?(source_file) ? Result.uncapturable : Result.no_coverage
+        # Use the method BODY range, not the whole def: the `def`/`end` lines are
+        # "covered" at class-load even when the body never runs, which would mask
+        # an uncovered method. body_loc is the body statements' span.
+        loc = subject&.body_loc
+        range = loc ? (loc.start_line..loc.end_line) : (line..line)
+        return coverage_map.method_uncapturable?(source_file, range) ? Result.uncapturable : Result.no_coverage
       end
 
       abs_tests = chosen.map { |t| File.expand_path(t, coverage_map.project_root) }

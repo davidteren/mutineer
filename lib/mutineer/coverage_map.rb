@@ -87,6 +87,27 @@ module Mutineer
       failed_test_targets.include?(File.basename(rel, ".rb"))
     end
 
+    # #25: per-METHOD taint. A mutant on a line whose enclosing method got zero
+    # successful coverage, in a file a failed sibling test targets, is
+    # :uncapturable (the capture that would have covered it errored) — NOT a
+    # genuine gap. A method with any covered line means its uncovered lines are a
+    # real :no_coverage. A failed capture emits no coverage, so per-line intent is
+    # unknowable; method-range + successful coverage is the finest derivable signal.
+    # Fully-failed files behave exactly as uncapturable_source? did (every method
+    # range has zero coverage), so #8/#9/#19 behavior is unchanged.
+    #
+    # @param file [String] source file path.
+    # @param line_range [Range] 1-based enclosing-method line range.
+    # @return [Boolean]
+    def method_uncapturable?(file, line_range)
+      return false if @failed_test_files.empty?
+
+      rel = relativize(absolute(file))
+      return false unless failed_test_targets.include?(File.basename(rel, ".rb"))
+
+      line_range.none? { |ln| @map.key?("#{rel}:#{ln}") }
+    end
+
     private
 
     # Source rel-paths that received coverage from any successful capture.
