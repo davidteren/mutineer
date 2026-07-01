@@ -1,0 +1,24 @@
+test/external_backend_test.rb
+  s_cf0251db67a2f5::t_392828611996c7 1-3,5-13,24-64,68-73,82-90,97-99
+  s_cf0251db67a2f5::t_5a1e2676650385 14-23
+  s_cf0251db67a2f5::t_7b901be367b048 65-67,74-81,91-96
+  s_cf0251db67a2f5::t_87222f7799096f 4
+lib/mutineer/external_backend.rb
+  s_cf0251db67a2f5::t_1242f3c17d32ab 1-139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.6",
+  "base_commit_sha": "c2f92b2b7463045a9f274222d8d8aa41b2deb449",
+  "prompts": {},
+  "sessions": {
+    "s_cf0251db67a2f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8a5fa3b-264a-4499-9bc9-1ce2cd800bb8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
