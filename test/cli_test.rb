@@ -69,6 +69,33 @@ class CliTest < Minitest::Test
     assert_includes err, "cannot write to"
   end
 
+  # #27: --test-command usage errors — all exit 2 (usage), never a backtrace.
+  def test_test_command_empty_exits_two
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--test-command", "   ")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--test-command must not be empty"
+  end
+
+  def test_test_command_without_files_placeholder_exits_two
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--test-command", "bundle exec rails test")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "must contain %{files}"
+  end
+
+  def test_test_command_with_redefine_exits_two
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb",
+                              "--test-command", "rake test %{files}", "--strategy", "redefine")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "supports only --strategy reload"
+  end
+
+  def test_test_command_with_boot_exits_two
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb",
+                              "--test-command", "rake test %{files}", "--boot", "config/environment")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "cannot be combined with --boot/--rails"
+  end
+
   # R5: a missing source/test path is a clean usage error, not an ENOENT backtrace.
   def test_missing_source_path_exits_two
     _, err, status = mutineer("run", "no_such_source.rb", "--test", "no_such_test.rb")

@@ -25,13 +25,13 @@ module Mutineer
     :cache_dir, :project_root, :load_paths,
     :jobs, :format, :output, :strategy, :require_paths,
     :boot, :rails, :since, :framework, :verbose, :ignore,
-    :baseline, :baseline_epsilon, :fail_fast,
+    :baseline, :baseline_epsilon, :fail_fast, :test_command,
     keyword_init: true
   ) do
     # Config file name.
     CONFIG_FILE = ".mutineer.yml"
     # Keys accepted in .mutineer.yml (R7). `require` maps to the :require_paths field.
-    KNOWN_KEYS = %w[operators jobs threshold only require boot rails since framework verbose ignore baseline fail_fast].freeze
+    KNOWN_KEYS = %w[operators jobs threshold only require boot rails since framework verbose ignore baseline fail_fast test_command].freeze
 
     def initialize(**kwargs)
       super
@@ -166,6 +166,7 @@ module Mutineer
       when "verbose"   then value == true || value.to_s == "true"
       when "ignore"    then Array(value).map(&:to_s)
       when "baseline"  then value.to_s
+      when "test_command" then value.to_s
       else value
       end
     end
