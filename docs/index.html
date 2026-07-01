@@ -57,7 +57,7 @@
       </div>
       <div class="badges">
         <span class="badge"><b>0</b> runtime dependencies</span>
-        <span class="badge"><b>8</b> mutation operators</span>
+        <span class="badge"><b>11</b> mutation operators</span>
         <span class="badge"><b>Fork</b>-isolated execution</span>
         <span class="badge"><b>JSON</b> + human output</span>
         <span class="badge"><b>--baseline</b> CI gating</span>
@@ -111,7 +111,7 @@ Calculator#discount  <span class="dim">lib/calculator.rb:14  (comparison)</span>
         </div>
         <div class="step">
           <h3>Report</h3>
-          <p>Killed = your tests caught it. Survived = they didn't. You get a mutation score and a unified diff for every survivor, pinned to the exact line. Set a <code>--threshold</code> to fail CI.</p>
+          <p>Killed = your tests caught it. Survived = they didn't. You get a mutation score and a unified diff for every survivor, pinned to the exact line. Set a <code>--threshold</code> to fail CI, or <code>--format html</code> for a shareable report — <a href="sample-report.html">see a sample →</a>.</p>
         </div>
       </div>
     </div>
@@ -142,7 +142,7 @@ Calculator#discount  <span class="dim">lib/calculator.rb:14  (comparison)</span>
           <span class="tag">GitHub Action</span>
           <h3>One step in your workflow</h3>
           <p>A composite action wraps the CLI: point it at your sources, a baseline, and a threshold. Reads the diff, posts the report, sets the exit code.</p>
-          <p><code class="flag">uses: davidteren/mutineer@main</code></p>
+          <p><code class="flag">uses: davidteren/mutineer@v0</code></p>
         </div>
       </div>
       <div class="cta" style="margin-top:1.6rem">
@@ -176,8 +176,8 @@ Calculator#discount  <span class="dim">lib/calculator.rb:14  (comparison)</span>
     <div class="wrap">
       <div class="sec-head">
         <div class="kicker">Operators</div>
-        <h2>Eight ways to break your code.</h2>
-        <p>Five run by default. Three Tier-2 operators are off until you ask for them with <code>--operators</code> or <code>.mutineer.yml</code> — they're noisier, but they catch deeper gaps.</p>
+        <h2>Eleven ways to break your code.</h2>
+        <p>Five run by default. Six Tier-2 operators are off until you ask for them with <code>--operators</code> or <code>.mutineer.yml</code> — they're noisier, but they catch deeper gaps.</p>
       </div>
       <div class="table-wrap">
         <table>
@@ -194,6 +194,9 @@ Calculator#discount  <span class="dim">lib/calculator.rb:14  (comparison)</span>
             <tr><td class="op">return_nil</td><td class="rule">replace a return / final expression with nil</td><td><span class="pill t2">tier 2</span></td></tr>
             <tr><td class="op">literal_mutation</td><td class="rule">integer → 0, 1, n+1 ; string → empty</td><td><span class="pill t2">tier 2</span></td></tr>
             <tr><td class="op">condition_negation</td><td class="rule">wrap if/unless/ternary condition in !( … )</td><td><span class="pill t2">tier 2</span></td></tr>
+            <tr><td class="op">string_literal</td><td class="rule">non-empty string → "" ; "" → "mutineer"</td><td><span class="pill t2">tier 2</span></td></tr>
+            <tr><td class="op">regex</td><td class="rule">drop ^ / $ anchors ; + ↔ *</td><td><span class="pill t2">tier 2</span></td></tr>
+            <tr><td class="op">collection_method</td><td class="rule">map ↔ each , all? ↔ any? , first ↔ last , min ↔ max , select ↔ reject</td><td><span class="pill t2">tier 2</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -239,7 +242,7 @@ jobs: 8
 format: json</div>
         </div>
       </div>
-      <p class="note">Key flags: <code>--operators</code>, <code>--threshold</code>, <code>--baseline</code>, <code>--since</code>, <code>--rails</code>, <code>--only</code>, <code>--jobs</code>, <code>--format human|json</code>, <code>--output FILE</code>, <code>--dry-run</code>. Typed flags override <code>.mutineer.yml</code>.</p>
+      <p class="note">Key flags: <code>--operators</code>, <code>--threshold</code>, <code>--baseline</code>, <code>--since</code>, <code>--rails</code>, <code>--only</code>, <code>--jobs</code>, <code>--format human|json|html</code>, <code>--output FILE</code>, <code>--dry-run</code>, <code>--fail-fast</code>. Typed flags override <code>.mutineer.yml</code>.</p>
     </div>
   </section>
 
