@@ -1,0 +1,19 @@
+docs/plans/issue-27-ruby-lt-3.4.md
+  s_cf0251db67a2f5::t_32d220958dab6f 1-610
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.6",
+  "base_commit_sha": "96e036b95408f730c9249e1635796288a67201d8",
+  "prompts": {},
+  "sessions": {
+    "s_cf0251db67a2f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8a5fa3b-264a-4499-9bc9-1ce2cd800bb8",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
