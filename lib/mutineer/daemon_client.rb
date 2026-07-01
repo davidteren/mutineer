@@ -103,8 +103,11 @@ module Mutineer
     # @return [void]
     # @raise [Mutineer::DaemonBootError] when the daemon fails to boot.
     def spawn_daemon
+      # Plain `bundle exec ruby` — NOT `rbenv exec`, which would break CI and any
+      # non-rbenv setup. When bundler/ruby are rbenv shims, the RBENV_VERSION carried
+      # in app_env still selects the app's Ruby; otherwise the active Ruby is used.
       @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(
-        app_env, "rbenv", "exec", "bundle", "exec", "ruby",
+        app_env, "bundle", "exec", "ruby",
         "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run", chdir: @app_root
       )
       # Drain daemon stderr to the tool's stderr so child/boot errors are visible.
