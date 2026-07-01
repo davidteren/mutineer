@@ -1,0 +1,58 @@
+docs/plans/issue-26-27-phase2-daemon.md
+  s_cf0251db67a2f5::t_e61c65adf45c68 485-507
+  s_cf0251db67a2f5::t_85eafe771902b5 93-96
+  s_cf0251db67a2f5::t_8c149f6f2263d4 104-106
+  s_cf0251db67a2f5::t_54d733c719b587 100
+  s_cf0251db67a2f5::t_68c20ad73ca201 207-226
+  s_cf0251db67a2f5::t_99ea545f959f44 374-394
+  s_cf0251db67a2f5::t_3be20b3941c1b3 319-345
+  s_cf0251db67a2f5::t_fe47155d7e9710 406-436
+  s_cf0251db67a2f5::t_4b98a4981b8c31 466-469
+  s_cf0251db67a2f5::t_c7c09764bdaa8c 278-282
+  s_cf0251db67a2f5::t_419f9470332ee9 116-118
+  s_cf0251db67a2f5::t_20a3ba79c7b7a8 542-543
+  s_cf0251db67a2f5::t_72edcfa13fa9d4 140-151
+  s_cf0251db67a2f5::t_3c8bbd14fa39dc 197-205
+  s_cf0251db67a2f5::t_29ce805d846f93 291-294
+  s_cf0251db67a2f5::t_b95a9cfba6f0fa 163-180
+  s_cf0251db67a2f5::t_5ba99e88422f28 306-311
+  s_cf0251db67a2f5::t_da8ef438fd1fe1 447
+  s_cf0251db67a2f5::t_d49e45d9dd79f7 354-355
+  s_cf0251db67a2f5::t_22a67f576eeae0 90-92
+  s_cf0251db67a2f5::t_214b3bfc580aec 97-99
+  s_cf0251db67a2f5::t_b526e18b37b100 101-103
+  s_cf0251db67a2f5::t_3713f1cee2c31c 107-109,113-115
+  s_cf0251db67a2f5::t_3c4772e9f2b39e 119-121,137-139
+  s_cf0251db67a2f5::t_f77b26ebc06024 152-154,160-162
+  s_cf0251db67a2f5::t_beaba79516bbe1 181-183,194-196
+  s_cf0251db67a2f5::t_2c96476aadb419 206
+  s_cf0251db67a2f5::t_a664e42e1f7c49 227-229,275-277
+  s_cf0251db67a2f5::t_8a8bc3c157c2a0 283-285,288-290
+  s_cf0251db67a2f5::t_8d266b8c678bf1 295-297,303-305
+  s_cf0251db67a2f5::t_cfd326f97403e5 312-314,316-318
+  s_cf0251db67a2f5::t_667864cc4d341a 346-348,351-353
+  s_cf0251db67a2f5::t_161c8bbba88a4d 356-358,371-373
+  s_cf0251db67a2f5::t_4cabb7f5bbf199 395-397,403-405
+  s_cf0251db67a2f5::t_45f9ef16688616 437-439,444-446
+  s_cf0251db67a2f5::t_d1aeee77cd2002 448-450,463-465
+  s_cf0251db67a2f5::t_ae2ee55a24ef1f 470-472,482-484
+  s_cf0251db67a2f5::t_c8f41e5cfc3694 508-510,539-541
+  s_cf0251db67a2f5::t_8e294afbbec557 544-546
+  s_cf0251db67a2f5::t_e26ae33fc3f7ff 1-89,110-112,122-136,155-159,184-193,230-274,286-287,298-302,315,349-350,359-370,398-402,440-443,451-462,473-481,511-538,547-620
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.6",
+  "base_commit_sha": "7f21648657d18d0daf0210aea3dd7f4950903843",
+  "prompts": {},
+  "sessions": {
+    "s_cf0251db67a2f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8a5fa3b-264a-4499-9bc9-1ce2cd800bb8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
