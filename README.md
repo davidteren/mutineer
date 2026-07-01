@@ -56,6 +56,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--jobs N` | Parallel worker count (default: processor count; `1` under `--rails`) |
 | `--verbose` | Surface the real error when a fork capture fails (alias `--debug`) |
 | `--strategy NAME` | Mutation application: `reload` whole-file (default) or `redefine` surgical (`7a`/`7b` accepted as deprecated aliases) |
+| `--test-command CMD` | Run the suite as a subprocess in the app's own runtime (for apps on Ruby < 3.4); `CMD` must contain `%{files}`. See [Apps on Ruby < 3.4](#apps-on-ruby--34) |
 | `--format human\|json\|html` | Report format (default: human; `html` is a self-contained file) |
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--dry-run` | List candidate mutations without executing (honors suppression) |
@@ -102,6 +103,40 @@ Add Mutineer to your Gemfile's test group:
 ```ruby
 gem "mutineer", group: :test, require: false
 ```
+
+### Apps on Ruby < 3.4
+
+Mutineer's own process needs Ruby ≥ 3.4 (it parses with stdlib Prism), and the
+`--rails` path above boots your app *inside Mutineer's process* — so it can't run
+against an app pinned to an older Ruby (`ruby "3.1.6"` in the Gemfile), where the
+bundle rejects 3.4.
+
+`--test-command` decouples the two: Mutineer stays on ≥ 3.4, but your suite runs
+as a **subprocess in your app's own runtime** (whatever Ruby its bundle resolves
+to). Run Mutineer with a 3.4+ Ruby and hand it the command that runs your tests:
+
+```sh
+RAILS_ENV=test mutineer run app/models/order.rb \
+  --test test/models/order_test.rb \
+  --test-command "bundle exec rails test %{files}"
+```
+
+- **`%{files}`** is required; it expands to the `--test` paths as separate
+  arguments (a path with a space stays one argument — there is no shell).
+- **Environment** is inherited by the subprocess, so set it on the Mutineer
+  command (e.g. the leading `RAILS_ENV=test` above). Don't put `KEY=val` inside
+  `--test-command`.
+
+Tradeoffs (Phase 1) — this path is correct but not free:
+
+- **Slower:** your app re-boots for every mutant (no shared boot yet).
+- **No coverage narrowing:** every mutant runs the *full* `--test` set, so the
+  score is an **upper bound and not comparable to an in-process (`--rails`)
+  score** — uncovered mutants count as survivors, and an infrastructure failure
+  is scored as a kill. Mutineer prints this caveat on every run and aborts up
+  front (a "smoke check") if your unmutated suite isn't green.
+- **Reload strategy only** (`--strategy redefine` is rejected on this path) and
+  **serial** (`--jobs` is forced to 1 — safe parallelism is tracked in #26).
 
 ## Suppressing equivalent mutants
 
@@ -166,7 +201,9 @@ walking up). CLI flags override config; config overrides defaults.
 
 Sources are positional CLI arguments and test files come from `--test`; the
 config file accepts these keys: `operators`, `threshold`, `jobs`, `only`,
-`require` (extra files to load before mutating), and `boot`/`rails`.
+`require` (extra files to load before mutating), `boot`/`rails`, and
+`test_command` (the external-runtime suite command — see
+[Apps on Ruby < 3.4](#apps-on-ruby--34)).
 
 ```yaml
 # .mutineer.yml

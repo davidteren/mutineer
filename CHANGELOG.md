@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **`--test-command` external backend** (#27) — mutation-test apps pinned to Ruby
+  < 3.4. Mutineer stays on ≥ 3.4 but runs your suite as a subprocess in the app's
+  own runtime via `--test-command "bundle exec rails test %{files}"` (`%{files}`
+  expands to the `--test` paths; env is inherited). The mutant is applied on disk
+  with crash-safe backup/restore (self-heals a hard-killed run on next startup); a
+  smoke check aborts before scoring if the unmutated suite isn't green. This path
+  is reload-only, serial (`--jobs` forced to 1), and does no coverage narrowing —
+  so its score is an upper bound, not comparable to an in-process `--rails` score
+  (Mutineer prints this caveat). Also settable as `test_command:` in `.mutineer.yml`.
+  Safe parallelism for this path is tracked in #26.
+
 ## [0.9.1] - 2026-07-01
 
 ### Fixed
