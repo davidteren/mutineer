@@ -4,3 +4,6 @@ Gemfile.lock
 .mutineer/
 .yardoc/
 doc/
+
+# throwaway #26/#27 Phase 2 spike (not shipped)
+/spike/
