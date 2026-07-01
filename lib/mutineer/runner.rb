@@ -286,6 +286,7 @@ module Mutineer
         project_root: config.project_root,
         boot: File.expand_path(config.boot || "config/environment", config.project_root),
         load_paths: test_load_roots(abs_tests),
+        source_dirs: source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,
         rails: config.rails
       }

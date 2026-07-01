@@ -17,6 +17,7 @@ class DaemonClientTest < Minitest::Test
       project_root: APP,
       boot: File.join(APP, "config/environment"),
       load_paths: [File.join(APP, "test")],
+      source_dirs: [File.join(APP, "app/models")], # so timeout orphans get swept
       framework: "minitest",
       rails: true
     }

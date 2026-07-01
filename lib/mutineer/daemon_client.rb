@@ -55,12 +55,19 @@ module Mutineer
     # @param timeout [Numeric] per-mutant wall-clock timeout (seconds).
     # @return [String] one of survived/killed/error/timeout.
     def request(id:, payload:, tests:, timeout:)
-      send_line("id" => id, "payload" => payload, "tests" => tests, "timeout" => timeout)
-      reply = read_line
+      # A crash can surface on the WRITE (daemon died idle between requests →
+      # Errno::EPIPE) as well as the read (EOF), so guard both: either way, respawn
+      # for future mutants and score THIS one error (re-running a crash-causing
+      # mutant could loop). Never let a dead pipe abort the whole run.
+      reply =
+        begin
+          send_line("id" => id, "payload" => payload, "tests" => tests, "timeout" => timeout)
+          read_line
+        rescue Errno::EPIPE, IOError
+          nil
+        end
       return reply["verdict"] if reply && reply["id"] == id
 
-      # Daemon died (EOF) or replied out of order — respawn for future mutants and
-      # score THIS one error (re-running a crash-causing mutant could loop).
       restart!
       "error"
     end
@@ -90,12 +97,19 @@ module Mutineer
     end
 
     def spawn_daemon
-      @stdin, @stdout, stderr, @wait_thr = Open3.popen3(
+      @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(
         app_env, "rbenv", "exec", "bundle", "exec", "ruby",
         "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run", chdir: @app_root
       )
       # Drain daemon stderr to the tool's stderr so child/boot errors are visible.
-      Thread.new { IO.copy_stream(stderr, @errio) } # rubocop:disable ThreadSafety/NewThread
+      # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn; the
+      # rescue swallows the benign EBADF/IOError raised when close_io closes the pipe
+      # out from under an in-flight copy_stream.
+      @drain = Thread.new do # rubocop:disable ThreadSafety/NewThread
+        IO.copy_stream(@stderr, @errio)
+      rescue IOError, Errno::EBADF
+        nil
+      end
 
       send_line(@boot)
       ready = read_line
@@ -132,8 +146,10 @@ module Mutineer
     end
 
     def close_io
-      [@stdin, @stdout].each { |io| io&.close rescue nil } # rubocop:disable Style/RescueModifier
-      @stdin = @stdout = nil
+      @drain&.kill # stop the drain BEFORE closing its fd (avoids a copy_stream EBADF)
+      [@stdin, @stdout, @stderr].each { |io| io&.close rescue nil } # rubocop:disable Style/RescueModifier
+      @wait_thr&.join # reap the exited daemon so respawn/quit leaves no zombie
+      @stdin = @stdout = @stderr = @drain = @wait_thr = nil
     end
   end
 end

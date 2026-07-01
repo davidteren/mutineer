@@ -58,9 +58,10 @@ module Mutineer
           begin
             req = JSON.parse(line)
           rescue JSON::ParserError => e
-            # A corrupt request line must not crash the daemon — reply and read on.
-            output.puts(JSON.generate("verdict" => "error", "detail" => "protocol: #{e.message}"))
-            output.flush
+            # A corrupt line has no id to address a reply to (and the client only ever
+            # sends valid JSON, so it can't be a pending request) — log and read on
+            # rather than write an unaddressable verdict onto the channel.
+            @errio.puts("[daemon] dropped unparseable line: #{e.message}")
             next
           end
           break if req["cmd"] == "quit"
@@ -76,9 +77,14 @@ module Mutineer
       # inherited by every fork. Never requires mutineer.
       def boot!(cfg)
         @framework = cfg.fetch("framework", "minitest")
+        @source_dirs = Array(cfg["source_dirs"]).map { |d| File.expand_path(d) }
         Dir.chdir(cfg["project_root"]) if cfg["project_root"]
         ENV["RAILS_ENV"] ||= "test" if cfg["rails"]
         Array(cfg["load_paths"]).each { |d| $LOAD_PATH.unshift(File.expand_path(d)) }
+        # Clear any mutant tempfile a prior SIGKILLed timeout child orphaned in a
+        # source dir BEFORE the app boots — Zeitwerk would otherwise choke on the
+        # tempfile's non-constant name during autoload setup.
+        sweep_temps
         require File.expand_path(cfg["boot"]) if cfg["boot"]
       rescue Exception => e # rubocop:disable Lint/RescueException
         # Boot failed (bad boot path, app error) — tell the client and exit so it can
@@ -107,12 +113,30 @@ module Mutineer
             end
           exit!(code)
         end
-        { "id" => req["id"], "verdict" => wait_verdict(pid, timeout) }
+        verdict = wait_verdict(pid, timeout)
+        # A SIGKILLed timeout child skipped its Tempfile unlink — sweep the orphan so
+        # it can't outlive the run or trip Zeitwerk on a later fork.
+        sweep_temps if verdict == "timeout"
+        { "id" => req["id"], "verdict" => verdict }
       end
 
-      # Single-waiter deadline loop (mirrors Isolation/ExternalBackend, re-implemented
-      # here because Isolation pulls in Prism). SIGKILL the child's process group past
-      # the deadline; a signalled/crashed child (nil exitstatus) is `error`.
+      # Remove orphaned mutant tempfiles from the source dirs (parent-side; the
+      # SIGKILL path can't run the child's ensure). Mirrors Runner.sweep_orphans.
+      def sweep_temps
+        @source_dirs.to_a.each do |dir|
+          Dir.glob(File.join(dir, "mutineer_daemon*.rb")).each do |f|
+            File.unlink(f) rescue nil # rubocop:disable Style/RescueModifier
+          end
+        end
+      end
+
+      # Single-waiter deadline loop (mirrors Isolation.run and
+      # ExternalBackend.wait_with_timeout, re-implemented here because Isolation pulls
+      # in Prism which is forbidden app-side). NOTE: this is the 3rd copy of the
+      # waitpid2(WNOHANG)+deadline+pgroup-SIGKILL+decode discipline — a fix to the
+      # kill/reap/decode logic must be applied to all three in lockstep. SIGKILL the
+      # child's process group past the deadline; a signalled child (nil exitstatus) is
+      # `error`.
       def wait_verdict(pid, timeout)
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
         loop do
@@ -133,16 +157,17 @@ module Mutineer
         end
       end
 
-      # Write the tool-built mutated text to a tempfile and `load` it — reopening the
-      # mutated class/method in THIS child only. The file goes in the system tmpdir,
-      # NOT beside the real source: an app dir is Zeitwerk-autoloaded, and a stray
-      # `.rb` there (or an orphan left by a SIGKILLed timeout child) makes Rails choke
-      # on the tempfile's constant name. Rails models are autoloaded (no
-      # `require_relative` to resolve against neighbours), so the tmpdir is safe. Same
-      # code path for reload (whole file) and redefine (wrapped snippet) — both are
-      # ready-to-load Ruby the tool produced.
+      # Write the tool-built mutated text beside the real source and `load` it —
+      # reopening the mutated class/method in THIS child only. It goes in the source
+      # file's directory (like Isolation.apply_whole_file) so a `require_relative` in
+      # the mutated source resolves against its real neighbours — writing it to the
+      # tmpdir would LoadError on such files and score a spurious `error` that
+      # diverges from the in-process path. The Zeitwerk hazard (a stray `.rb` in an
+      # autoload dir) is handled by the boot/timeout `sweep_temps`, not by relocating
+      # the file. Same path for reload (whole file) and redefine (wrapped snippet).
       def apply_payload(payload)
-        Tempfile.create(["mutineer_daemon", ".rb"]) do |f|
+        dir = File.dirname(File.expand_path(payload.fetch("source_file")))
+        Tempfile.create(["mutineer_daemon", ".rb"], dir) do |f|
           f.write(payload.fetch("code"))
           f.flush
           load f.path
