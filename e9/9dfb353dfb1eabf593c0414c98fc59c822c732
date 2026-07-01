@@ -1,0 +1,24 @@
+lib/mutineer/daemon_client.rb
+  s_cf0251db67a2f5::t_a8dcc52e777926 106-108,110
+.github/workflows/ci.yml
+  s_cf0251db67a2f5::t_3851c6f8c74e5a 57-62
+Rakefile
+  s_cf0251db67a2f5::t_a494a5303df05a 5-8,12-14,18-24
+  s_cf0251db67a2f5::t_9fccbab6ec6cd9 25-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "e99dfb353dfb1eabf593c0414c98fc59c822c732",
+  "prompts": {},
+  "sessions": {
+    "s_cf0251db67a2f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8a5fa3b-264a-4499-9bc9-1ce2cd800bb8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
