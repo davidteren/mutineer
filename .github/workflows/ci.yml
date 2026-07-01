@@ -54,3 +54,9 @@ jobs:
       - name: Dogfood mutineer against a real minimal Rails app
         working-directory: test/fixtures/rails_app
         run: bin/dogfood
+      # The daemon integration tests run in the gem process but spawn a daemon under
+      # the fixture app's bundle (installed above), so they belong in this job.
+      - name: Install the gem's own bundle
+        run: bundle install
+      - name: Daemon integration tests (Phase 2a)
+        run: bundle exec rake test:daemon

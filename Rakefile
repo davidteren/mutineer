@@ -2,12 +2,26 @@
 
 require "rake/testtask"
 
+# Rails-dependent daemon integration tests: they spawn a daemon under the fixture
+# app's OWN bundle, so they belong with the dogfood job, never the zero-dep suite.
+DAEMON_TESTS = %w[test/daemon_client_test.rb test/runner_daemon_test.rb].freeze
+
 Rake::TestTask.new(:test) do |t|
   t.libs << "lib" << "test"
   # Fixtures include *_test.rb files that are loaded into forked children by
-  # the runner — they are not part of Mutineer's own suite.
-  t.test_files = FileList["test/**/*_test.rb"].exclude("test/fixtures/**/*")
+  # the runner — they are not part of Mutineer's own suite. The daemon tests need
+  # the Rails fixture bundle, so they run via `test:daemon` (rails-integration job).
+  t.test_files = FileList["test/**/*_test.rb"].exclude("test/fixtures/**/*", *DAEMON_TESTS)
   t.warning = false
+end
+
+namespace :test do
+  desc "Daemon integration tests (require the Rails fixture app bundle installed)"
+  Rake::TestTask.new(:daemon) do |t|
+    t.libs << "lib" << "test"
+    t.test_files = FileList[*DAEMON_TESTS]
+    t.warning = false
+  end
 end
 
 begin
