@@ -32,6 +32,7 @@ module Mutineer
   # boot failure); parent-detected timeout. Tagging an in-TEST DB error as `error`
   # (vs killed) is a Phase-2b concern (needs the after_fork adapter's re-raise).
   module DaemonServer
+    # Poll interval (seconds) for the per-fork deadline wait loop.
     POLL = 0.02
 
     class << self

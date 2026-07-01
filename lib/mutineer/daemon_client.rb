@@ -18,7 +18,9 @@ module Mutineer
   # rather than corrupting the run. Reuses the cleaned-env spawn + stderr-drain proven
   # in the spike driver and the spawn discipline of ExternalBackend.
   class DaemonClient
+    # Absolute path to the daemon entry, loaded app-side by `-r` (bypasses the bundle).
     DAEMON_PATH = File.expand_path("daemon_server.rb", __dir__)
+    # How many times to respawn a crashing daemon before aborting the run.
     MAX_RESTARTS = 3
 
     # @param boot [Hash] boot config sent to the daemon: project_root, boot,
@@ -96,6 +98,10 @@ module Mutineer
       env
     end
 
+    # Spawn the daemon under the app bundle and complete the ready handshake.
+    #
+    # @return [void]
+    # @raise [Mutineer::DaemonBootError] when the daemon fails to boot.
     def spawn_daemon
       @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(
         app_env, "rbenv", "exec", "bundle", "exec", "ruby",
@@ -132,6 +138,10 @@ module Mutineer
       spawn_daemon
     end
 
+    # Write one JSON object as a line to the daemon.
+    #
+    # @param obj [Hash] the message to encode.
+    # @return [void]
     def send_line(obj)
       @stdin.puts(JSON.generate(obj))
       @stdin.flush
@@ -145,6 +155,10 @@ module Mutineer
       nil
     end
 
+    # Close the IPC pipes, stop the stderr-drain thread, and reap the daemon so a
+    # respawn or quit leaves no leaked fd, thread, or zombie.
+    #
+    # @return [void]
     def close_io
       @drain&.kill # stop the drain BEFORE closing its fd (avoids a copy_stream EBADF)
       [@stdin, @stdout, @stderr].each { |io| io&.close rescue nil } # rubocop:disable Style/RescueModifier
