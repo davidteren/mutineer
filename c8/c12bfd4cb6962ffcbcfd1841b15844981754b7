@@ -1,0 +1,21 @@
+test/file_swap_test.rb
+  s_cf0251db67a2f5::t_3263da9ce13776 1-79
+lib/mutineer/file_swap.rb
+  s_cf0251db67a2f5::t_b941e0d5bbd4fc 1-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.6",
+  "base_commit_sha": "c8c12bfd4cb6962ffcbcfd1841b15844981754b7",
+  "prompts": {},
+  "sessions": {
+    "s_cf0251db67a2f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8a5fa3b-264a-4499-9bc9-1ce2cd800bb8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
