@@ -13,6 +13,7 @@ require_relative "worker_pool"
 require_relative "mutant_id"
 require_relative "file_swap"
 require_relative "external_backend"
+require_relative "daemon_client"
 require "set"
 
 module Mutineer
@@ -44,6 +45,11 @@ module Mutineer
       # runtime — it does no in-process boot/require or coverage build, so branch
       # before any of that. The in-process path below is untouched.
       return execute_external(config, operator_classes) if config.test_command
+
+      # #26/#27 Phase 2a: the daemon backend boots the app ONCE in a persistent
+      # subprocess under the app's bundle and forks per mutant. Tool-side we only
+      # discover jobs + build payloads (Prism), so branch before any in-process boot.
+      return execute_daemon(config, operator_classes) if config.daemon
 
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
@@ -220,6 +226,80 @@ module Mutineer
 
       FileSwap.with(subject.file, mutated) do
         ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose)
+      end
+    end
+
+    # #26/#27 Phase 2a — daemon backend orchestration (serial). Boots the app ONCE in
+    # a persistent subprocess and forks per mutant, restoring the one-boot speed the
+    # Phase 1 subprocess path gives up. Tool-side we build the ready-to-`load` payload
+    # (KTD-2/KTD-3: whole-file reload by default — the spike-proven path) and ship it;
+    # the daemon needs no Prism/mutineer. Serial in 2a (worker-DB isolation +
+    # parallelism is Phase 2b). No coverage narrowing yet (Phase 2c), so every mutant
+    # runs the full `--test` set.
+    #
+    # @return [Array(Mutineer::AggregateResult, Hash<String,String>)] aggregate and source map.
+    def self.execute_daemon(config, operator_classes)
+      jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
+      jobs = filter_since(jobs, source_map, config) if config.since
+
+      abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
+      client = DaemonClient.new(boot: daemon_boot_config(config, abs_tests),
+                                app_root: config.project_root).start
+
+      results = []
+      begin
+        jobs.each_with_index do |(subject, mutation, id), i|
+          source  = source_map[subject.file]
+          mutated = mutation.apply(source)
+          # KTD-8 (carried): skip an invalid mutant tool-side — never ship a payload
+          # that would fail to load and read as a false `killed`.
+          r =
+            if Parser.parse_string(mutated).errors.any?
+              Result.skipped
+            else
+              verdict = client.request(
+                id: i, timeout: config.daemon_timeout || DAEMON_TIMEOUT,
+                payload: { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) },
+                tests: abs_tests
+              )
+              daemon_result(verdict)
+            end
+          results << r.with(subject: subject, mutation: mutation, id: id)
+          break if config.fail_fast && r.survived? # #21: stop at the first survivor
+        end
+      ensure
+        client.quit
+      end
+
+      [AggregateResult.new(results + ignored_results), source_map]
+    end
+
+    # Default per-mutant timeout on the daemon path. Generous because 2a runs the full
+    # `--test` set per mutant (no coverage narrowing until Phase 2c).
+    DAEMON_TIMEOUT = 60
+
+    # The boot config the daemon needs to boot the app once: where to boot, the test
+    # load roots (so `require "test_helper"` resolves in every fork), framework, and
+    # whether this is Rails.
+    def self.daemon_boot_config(config, abs_tests)
+      {
+        project_root: config.project_root,
+        boot: File.expand_path(config.boot || "config/environment", config.project_root),
+        load_paths: test_load_roots(abs_tests),
+        framework: config.framework,
+        rails: config.rails
+      }
+    end
+
+    # Map a daemon verdict string to a Result. The daemon reports the four run-time
+    # states it can decide (KTD-5); pre-fork states (skipped/no_coverage/…) are
+    # resolved tool-side before a request is ever sent.
+    def self.daemon_result(verdict)
+      case verdict
+      when "survived" then Result.survived
+      when "killed"   then Result.killed
+      when "timeout"  then Result.timeout
+      else Result.error("daemon verdict: #{verdict}")
       end
     end
 

@@ -26,6 +26,7 @@ module Mutineer
     :jobs, :format, :output, :strategy, :require_paths,
     :boot, :rails, :since, :framework, :verbose, :ignore,
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
+    :daemon, :daemon_timeout,
     keyword_init: true
   ) do
     # Config file name.
@@ -51,6 +52,7 @@ module Mutineer
       self.ignore        ||= []
       self.baseline_epsilon ||= 0.0
       self.fail_fast     = false if fail_fast.nil?
+      self.daemon        = false if daemon.nil?
     end
 
     # Walk from `start` toward `home`, returning the first .mutineer.yml path found
