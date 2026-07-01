@@ -1,0 +1,19 @@
+.gitignore
+  s_cf0251db67a2f5::t_9bbfc94da85013 7-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.6",
+  "base_commit_sha": "42b130d34e2f9bacb6d2678dece5e1cb96591eb5",
+  "prompts": {},
+  "sessions": {
+    "s_cf0251db67a2f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8a5fa3b-264a-4499-9bc9-1ce2cd800bb8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
