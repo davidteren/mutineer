@@ -226,11 +226,11 @@ structured exit codes, and diff-scoped runs. See:
 - **AI agents & CI recipes** — the agent inner-loop and CI-gate recipes (and how
   to avoid infinite loops on equivalent mutants):
   [rendered](https://davidteren.github.io/mutineer/agentic-coding.html) ·
-  [source](docs/agentic-coding.md)
+  [source](agentic-coding.md)
 - **JSON schema reference** — the `--format json` schema and its versioning
   contract:
   [rendered](https://davidteren.github.io/mutineer/json-schema.html) ·
-  [source](docs/json-schema.md)
+  [source](json-schema.md)
 
 ## Configuration
 
@@ -257,7 +257,7 @@ automatically when sources change). Add `.mutineer/` to your `.gitignore`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](https://github.com/davidteren/mutineer/blob/main/LICENSE).
 
 ---
 

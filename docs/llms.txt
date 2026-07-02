@@ -1,4 +1,4 @@
-    # Mutineer
+# Mutineer
 
 > Clean-room mutation testing for Ruby. Mutineer mutates your source one change at a
 > time, runs your test suite (Minitest or RSpec) against each mutant, and reports the
