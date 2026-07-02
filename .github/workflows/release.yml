@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601 # v1 — pinned: privileged (id-token) job
         with:
           ruby-version: "3.4"
           bundler-cache: true
@@ -40,8 +40,8 @@ jobs:
       # Exchanges the workflow's OIDC token for short-lived RubyGems credentials.
       # Requires a one-time Trusted Publisher entry on rubygems.org for this repo
       # + workflow (see the release runbook). No secret, no OTP.
-      - name: Configure RubyGems Trusted Publishing
-        uses: rubygems/configure-trusted-publisher@v1
+      - name: Configure RubyGems Trusted Publishing (OIDC)
+        uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
 
       - name: Build & push gem
         run: |

@@ -1,0 +1,8 @@
+version: 2
+updates:
+  # Keep SHA-pinned GitHub Actions current (release.yml runs with id-token: write,
+  # so pins must be immutable — Dependabot bumps them instead of humans chasing tags).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
