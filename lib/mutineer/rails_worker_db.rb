@@ -58,16 +58,38 @@ module Mutineer
     def self.worker_db_config(worker)
       hash    = ActiveRecord::Base.connection_db_config.configuration_hash
       adapter = hash[:adapter].to_s
+      # U10 seam: the config-SHAPING below (per_worker_config) is already
+      # adapter-general — it derives correct SQLite *and* Postgres worker-DB names.
+      # What's gated is runtime PROVISIONING: SQLite files are created on connect,
+      # but Postgres needs an explicit `CREATE DATABASE` per worker (U10). Until that
+      # lands, refuse non-SQLite loudly rather than route to a database that doesn't
+      # exist. To finish U10: implement provision() for PG and drop this guard.
       unless adapter.start_with?("sqlite")
         raise NotImplementedError,
-              "worker-DB isolation currently supports SQLite only (got adapter #{adapter.inspect}); " \
-              "Postgres per-worker provisioning is U10 (#26/#35)."
+              "worker-DB isolation currently provisions SQLite only (got adapter #{adapter.inspect}); " \
+              "Postgres per-worker provisioning is U10 (#26/#35) — use a SQLite test DB, or drop --jobs."
       end
 
+      per_worker_config(hash, worker)
+    end
+
+    # Pure config-shaping (no AR): given a connection config hash, return the
+    # per-worker variant with its database swapped to the worker's own name.
+    # Adapter-general — SQLite (`storage/test.sqlite3` → `storage/test-<w>.sqlite3`)
+    # and Postgres (`myapp_test` → `myapp_test-<w>`, Rails `parallelize` naming) both
+    # fall out of {worker_database_path}. Extracted + unit-tested so the Postgres
+    # SHAPE is proven ready for U10 without a live database.
+    #
+    # @param config_hash [Hash] a connection config hash (symbol or string keys).
+    # @param worker [Integer] the worker slot index.
+    # @return [Hash] the per-worker config (symbol keys), database swapped.
+    # @raise [NotImplementedError] for an in-memory or empty database (no per-worker split).
+    def self.per_worker_config(config_hash, worker)
+      hash     = config_hash.transform_keys(&:to_sym)
       database = hash[:database].to_s
       if database.empty? || database == ":memory:"
         raise NotImplementedError,
-              "worker-DB isolation needs a file-backed database (got #{database.inspect})."
+              "worker-DB isolation needs a file/name-backed database (got #{database.inspect})."
       end
 
       hash.merge(database: worker_database_path(database, worker))
