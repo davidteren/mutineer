@@ -241,37 +241,110 @@ module Mutineer
     def self.execute_daemon(config, operator_classes)
       jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
       jobs = filter_since(jobs, source_map, config) if config.since
-
       abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
+
+      # #26/U6: worker count = resolved --jobs, capped at the job count (no idle
+      # daemons). >1 → N concurrent daemon handles, each on its OWN worker DB (V6:
+      # N-handles, the spike-proven shape). 1 → the serial single-daemon path.
+      worker_count = [config.jobs || 1, 1].max
+      worker_count = [worker_count, jobs.size].min if jobs.size.positive?
+
+      results =
+        if worker_count > 1
+          run_daemon_parallel(jobs, worker_count, config, abs_tests, source_map)
+        else
+          run_daemon_serial(jobs, config, abs_tests, source_map)
+        end
+
+      [AggregateResult.new(results + ignored_results), source_map]
+    end
+
+    # Serial daemon path: one daemon (worker 0), one mutant at a time. Honors
+    # --fail-fast (#21: stop at the first survivor).
+    #
+    # @return [Array<Mutineer::Result>] results in input order.
+    def self.run_daemon_serial(jobs, config, abs_tests, source_map)
       client = DaemonClient.new(boot: daemon_boot_config(config, abs_tests),
                                 app_root: config.project_root).start
-
       results = []
       begin
-        jobs.each_with_index do |(subject, mutation, id), i|
-          source  = source_map[subject.file]
-          mutated = mutation.apply(source)
-          # KTD-8 (carried): skip an invalid mutant tool-side — never ship a payload
-          # that would fail to load and read as a false `killed`.
-          r =
-            if Parser.parse_string(mutated).errors.any?
-              Result.skipped
-            else
-              verdict = client.request(
-                id: i, timeout: config.daemon_timeout || DAEMON_TIMEOUT,
-                payload: { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) },
-                tests: abs_tests
-              )
-              daemon_result(verdict)
-            end
-          results << r.with(subject: subject, mutation: mutation, id: id)
-          break if config.fail_fast && r.survived? # #21: stop at the first survivor
+        jobs.each_with_index do |job, i|
+          r = daemon_job_result(job, i, client, 0, config, abs_tests, source_map)
+          results << r
+          break if config.fail_fast && r.survived?
         end
       ensure
         client.quit
       end
+      results
+    end
 
-      [AggregateResult.new(results + ignored_results), source_map]
+    # Parallel daemon path (#26/U6): N daemon handles, each pinned to its own worker
+    # slot (→ its own DB, so concurrent workers can't clobber each other's fixtures).
+    # A shared queue of job indices feeds N tool-side threads; each thread blocks on
+    # IPC (GVL released), so the N daemons run genuinely concurrently. Results are
+    # placed by input index and compacted, so the verdict SET is identical to serial
+    # regardless of finish order (R7). --fail-fast flips a shared stop flag; in-flight
+    # workers drain, unscheduled jobs are left out (like the serial early break).
+    #
+    # @return [Array<Mutineer::Result>] completed results in input order.
+    def self.run_daemon_parallel(jobs, worker_count, config, abs_tests, source_map)
+      results    = Array.new(jobs.size)
+      queue      = Queue.new
+      jobs.each_index { |i| queue << i }
+      stop       = false
+      stop_mutex = Mutex.new
+
+      clients = Array.new(worker_count) do
+        DaemonClient.new(boot: daemon_boot_config(config, abs_tests),
+                         app_root: config.project_root).start
+      end
+
+      clients.each_with_index.map do |client, worker|
+        Thread.new do
+          until stop_mutex.synchronize { stop }
+            i = begin
+              queue.pop(true) # non-blocking; ThreadError when drained
+            rescue ThreadError
+              break
+            end
+            r = daemon_job_result(jobs[i], i, client, worker, config, abs_tests, source_map)
+            results[i] = r
+            stop_mutex.synchronize { stop = true } if config.fail_fast && r.survived?
+          end
+        ensure
+          client.quit
+        end
+      end.each(&:join)
+
+      results.compact
+    end
+
+    # Build the payload for one job, run it on the given daemon/worker, and attach
+    # the subject/mutation/id — the shared body of both daemon paths.
+    #
+    # @param job [Array(Mutineer::Subject, Mutineer::Mutation, String)] the work item.
+    # @param req_id [Integer] request id (echoed back for IPC ordering safety).
+    # @param client [Mutineer::DaemonClient] the daemon handle to run on.
+    # @param worker [Integer] the worker slot (→ worker DB) this daemon routes to.
+    # @return [Mutineer::Result] the decorated result.
+    def self.daemon_job_result(job, req_id, client, worker, config, abs_tests, source_map)
+      subject, mutation, id = job
+      mutated = mutation.apply(source_map[subject.file])
+      # KTD-8 (carried): skip an invalid mutant tool-side — never ship a payload that
+      # would fail to load and read as a false `killed`.
+      r =
+        if Parser.parse_string(mutated).errors.any?
+          Result.skipped
+        else
+          verdict = client.request(
+            id: req_id, worker: worker, timeout: config.daemon_timeout || DAEMON_TIMEOUT,
+            payload: { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) },
+            tests: abs_tests
+          )
+          daemon_result(verdict)
+        end
+      r.with(subject: subject, mutation: mutation, id: id)
     end
 
     # Default per-mutant timeout on the daemon path. Generous because 2a runs the full
