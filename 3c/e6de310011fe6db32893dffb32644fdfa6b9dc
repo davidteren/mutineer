@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_3c9f4ab57c61c3::t_6897bc3a8df312 9-23
+README.md
+  s_3c9f4ab57c61c3::t_a2fdb4714babb3 167-168
+  s_3c9f4ab57c61c3::t_f5ca488100197d 108-134
+  s_3c9f4ab57c61c3::t_8a4c36c4be8ec7 60
+test/rails_dogfood_daemon_test.rb
+  s_3c9f4ab57c61c3::t_29cb217c057b06 1-43
+Rakefile
+  s_3c9f4ab57c61c3::t_52da1b9e7a0029 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "3ce6de310011fe6db32893dffb32644fdfa6b9dc",
+  "prompts": {},
+  "sessions": {
+    "s_3c9f4ab57c61c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "099db18b-2f70-411c-b88b-2bb2d5f3fb47",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
