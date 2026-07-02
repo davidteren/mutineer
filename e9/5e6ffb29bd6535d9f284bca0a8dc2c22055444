@@ -1,0 +1,29 @@
+lib/mutineer/config.rb
+  s_3c9f4ab57c61c3::t_63bd0d579b680d 28-29
+  s_3c9f4ab57c61c3::t_db129696038e28 37
+  s_3c9f4ab57c61c3::t_12ca16d7339f7d 170
+test/cli_daemon_test.rb
+  s_3c9f4ab57c61c3::t_1dbbe876d6b9bb 48
+  s_3c9f4ab57c61c3::t_4a1f8bf98adb19 1-47,49-53
+lib/mutineer/cli.rb
+  s_3c9f4ab57c61c3::t_761cce23f5eb4e 54-56
+  s_3c9f4ab57c61c3::t_fb5eb396017685 118-120
+  s_3c9f4ab57c61c3::t_405b90e70e9f3f 310-333
+  s_3c9f4ab57c61c3::t_5695802926bddb 251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "e95e6ffb29bd6535d9f284bca0a8dc2c22055444",
+  "prompts": {},
+  "sessions": {
+    "s_3c9f4ab57c61c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "099db18b-2f70-411c-b88b-2bb2d5f3fb47",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
