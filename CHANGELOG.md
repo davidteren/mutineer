@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-02
+
 ### Added
 - **`--daemon` backend — fast, parallel-safe Rails mutation testing** (#26/#27
   Phase 2). Boots the app **once** in a persistent daemon and forks per mutant
