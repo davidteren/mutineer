@@ -468,6 +468,15 @@ module Mutineer
              "and an infra failure is scored as a kill."
       end
 
+      # #26/U8: same disclosure as --test-command above — the daemon backend has no
+      # coverage narrowing yet (Phase 2c), so this score is a lower bound (uncovered
+      # mutants count as survivors) and not comparable to an in-process run.
+      if config.daemon
+        warn "[mutineer] --daemon score is a lower bound, not comparable to an " \
+             "in-process run: no coverage narrowing yet (uncovered mutants count as " \
+             "survivors)."
+      end
+
       # #14: nudge toward the opt-in tier-2 operators (human report only — never
       # pollute JSON output).
       if !%w[json html].include?(config.format) && (hint = tier2_hint(config.operators))
