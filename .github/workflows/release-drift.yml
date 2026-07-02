@@ -19,7 +19,7 @@ jobs:
     name: nag if a release is overdue
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # need full history + tags for git describe/log
       - uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601 # v1
