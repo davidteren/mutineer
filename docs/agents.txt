@@ -1,0 +1,16 @@
+# agents.txt — access policy for AI agents on the Mutineer docs site.
+# https://davidteren.github.io/mutineer/
+
+User-agent: *
+Allow: /
+Disallow: /plans/
+Disallow: /reviews/
+
+# This is a static documentation site for the Mutineer Ruby gem.
+# There are no authenticated actions, forms, or paid endpoints.
+# Read freely; rate limits are not enforced.
+
+Policy: read-only
+Contact: https://github.com/davidteren/mutineer/issues
+Sitemap: https://davidteren.github.io/mutineer/sitemap.xml
+Llms: https://davidteren.github.io/mutineer/llms.txt

@@ -1,0 +1,7 @@
+# Security policy for the Mutineer project.
+Contact: https://github.com/davidteren/mutineer/security/advisories/new
+Contact: mailto:dteren@gmail.com
+Expires: 2027-07-02T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://davidteren.github.io/mutineer/.well-known/security.txt
+Policy: https://github.com/davidteren/mutineer/security/policy

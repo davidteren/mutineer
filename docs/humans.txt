@@ -1,0 +1,12 @@
+/* TEAM */
+  Author: David Teren
+  Site: https://davidteren.github.io/mutineer/
+  GitHub: https://github.com/davidteren
+
+/* PROJECT */
+  Name: Mutineer
+  Description: Clean-room mutation testing for Ruby — Prism + stdlib only, zero runtime dependencies.
+  Repository: https://github.com/davidteren/mutineer
+  Package: https://rubygems.org/gems/mutineer
+  License: MIT
+  Language: Ruby (>= 3.4)

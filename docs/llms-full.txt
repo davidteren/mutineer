@@ -1,0 +1,495 @@
+# Mutineer — full documentation
+
+> Concatenated from README, the AI-agents/CI guide, and the JSON report schema.
+> Source: https://github.com/davidteren/mutineer
+
+---
+
+# README
+
+# Mutineer
+
+[![Gem Version](https://img.shields.io/gem/v/mutineer?logo=rubygems&color=e23b3b)](https://rubygems.org/gems/mutineer)
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Mutineer%20Ruby-2da44e?logo=githubactions&logoColor=white)](https://github.com/marketplace/actions/mutineer-ruby)
+[![Socket](https://img.shields.io/badge/Socket-security%20report-0a66c2?logo=socket&logoColor=white)](https://socket.dev/rubygems/package/mutineer)
+
+A clean-room mutation-testing tool for Ruby. Mutineer mutates your source one
+change at a time, runs your test suite (Minitest or RSpec) against each mutant, and reports the
+ones your tests failed to catch — the gaps where your suite isn't actually
+testing anything.
+
+- **Prism + stdlib only** — zero runtime dependencies (Ruby ≥ 3.4).
+- **One mutation per mutant**, validity-checked by re-parsing.
+- **Fork-isolated**, parallel execution (Linux + macOS).
+- **Coverage-guided** — each mutant runs only the test files that cover its line.
+
+📖 **[mutineer.github.io →](https://davidteren.github.io/mutineer/)** — overview, operators, and usage.
+
+## Install
+
+```sh
+gem install mutineer
+```
+
+Or in a Gemfile:
+
+```ruby
+gem "mutineer", group: :test
+```
+
+## Usage
+
+```sh
+mutineer run <source...> --test <test...> [options]
+```
+
+Mutate `lib/calculator.rb`, checking it against its test, and fail CI if the
+mutation score drops below 90%:
+
+```sh
+mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
+```
+
+### Options
+
+| Flag | Meaning |
+|------|---------|
+| `--test FILE` | Test file covering the sources (repeatable) |
+| `--operators LIST` | Comma-separated operator names (default: the Tier-1 set) |
+| `--threshold FLOAT` | Exit 1 when the score is below FLOAT (default: 0 = off) |
+| `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
+| `--framework NAME` | `minitest` (default) or `rspec`; auto-detected as rspec when most `--test` files end in `_spec.rb` |
+| `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`) — ideal for PR CI |
+| `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (see [CI](#ci-gating)) |
+| `--baseline-epsilon FLOAT` | Score-drop tolerance for `--baseline` (default: 0) |
+| `--jobs N` | Parallel worker count (default: processor count; `1` under `--rails`) |
+| `--verbose` | Surface the real error when a fork capture fails (alias `--debug`) |
+| `--strategy NAME` | Mutation application: `reload` whole-file (default) or `redefine` surgical (`7a`/`7b` accepted as deprecated aliases) |
+| `--test-command CMD` | Run the suite as a subprocess in the app's own runtime (for apps on Ruby < 3.4); `CMD` must contain `%{files}`. See [Apps on Ruby < 3.4](#apps-on-ruby--34) |
+| `--daemon` | Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so `--jobs N` is safe under Rails (needs `--rails`/`--boot`; not with `--test-command`). See [the daemon backend](#faster-parallel-safe-rails-the---daemon-backend) |
+| `--format human\|json\|html` | Report format (default: human; `html` is a self-contained file) |
+| `--output FILE` | Write the report to FILE instead of stdout |
+| `--dry-run` | List candidate mutations without executing (honors suppression) |
+| `--fail-fast` | Stop at the first surviving mutant |
+| `--list-operators` | List available operators (default vs optional) and exit |
+| `--version`, `--help` | Print version / usage and exit |
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Score ≥ threshold (or no threshold set) |
+| `1` | Survivors below threshold, or a runtime error |
+| `2` | Usage / invalid-flag error |
+
+### Operators
+
+Run `mutineer --list-operators` to see them. Default (Tier 1): `arithmetic`,
+`comparison`, `boolean_connector`, `boolean_literal`, `statement_removal`.
+Available but off by default (Tier 2, enable via `--operators`): `return_nil`,
+`literal_mutation`, `condition_negation`, `string_literal`, `regex`,
+`collection_method`.
+
+## Rails apps
+
+Rails code needs its environment booted before the suite runs, so point Mutineer
+at your app with `--rails` and run it inside the project's bundle:
+
+```sh
+RAILS_ENV=test bundle exec mutineer run \
+  app/models/order.rb --test test/models/order_test.rb --rails
+```
+
+`--rails` boots `config/environment` once in the parent process (every mutant
+then forks and inherits it), defaults `--strategy` to `redefine` (surgical — it
+avoids reloading files into the app tree), and reconnects ActiveRecord in each
+fork so the database connection is fork-safe. Use `--boot FILE` to boot a
+different entry point. Boot mode requires at least one `--test` file and is
+coverage-guided — each mutant runs only the test files that exercise its line
+(coverage is captured by forking the booted app, then cached).
+
+Add Mutineer to your Gemfile's test group:
+
+```ruby
+gem "mutineer", group: :test, require: false
+```
+
+### Faster, parallel-safe Rails (the `--daemon` backend)
+
+`--rails` boots your app once but runs mutants **serially** — parallel `--jobs`
+under Rails is unsafe, because every worker shares one test database and clobbers
+the others' fixtures. `--daemon` fixes both: it boots the app once in a persistent
+helper and forks per mutant, and gives **each parallel worker its own database**,
+so `--jobs N` is safe and its verdicts are proven identical to a serial run.
+
+```sh
+RAILS_ENV=test bundle exec mutineer run \
+  app/models/order.rb --test test/models/order_test.rb \
+  --rails --daemon --jobs 4
+```
+
+- **One boot, forked per mutant** — restores the shared-boot speed.
+- **Coverage-guided** — each mutant runs only its covering tests (like `--rails`);
+  a mutant on an uncovered line is `no_coverage`, so the score stays comparable to
+  the in-process `--rails` score.
+- **Safe `--jobs N`** — each worker routes to its own copy of the test database, so
+  parallel verdicts equal serial (no fixture cross-talk).
+- **One backend at a time** — `--daemon` can't be combined with `--test-command`
+  (choose one), and it needs an app to boot (`--rails` or `--boot`).
+
+Status: **SQLite** today (hermetic, CI-proven). **Postgres** per-worker
+provisioning is in progress (#34/#35); until it lands, use `--daemon` with a
+SQLite test database, or drop `--jobs` to run serially on other adapters.
+
+### Apps on Ruby < 3.4
+
+Mutineer's own process needs Ruby ≥ 3.4 (it parses with stdlib Prism), and the
+`--rails` path above boots your app *inside Mutineer's process* — so it can't run
+against an app pinned to an older Ruby (`ruby "3.1.6"` in the Gemfile), where the
+bundle rejects 3.4.
+
+`--test-command` decouples the two: Mutineer stays on ≥ 3.4, but your suite runs
+as a **subprocess in your app's own runtime** (whatever Ruby its bundle resolves
+to). Run Mutineer with a 3.4+ Ruby and hand it the command that runs your tests:
+
+```sh
+RAILS_ENV=test mutineer run app/models/order.rb \
+  --test test/models/order_test.rb \
+  --test-command "bundle exec rails test %{files}"
+```
+
+- **`%{files}`** is required; it expands to the `--test` paths as separate
+  arguments (a path with a space stays one argument — there is no shell).
+- **Environment** is inherited by the subprocess, so set it on the Mutineer
+  command (e.g. the leading `RAILS_ENV=test` above). Don't put `KEY=val` inside
+  `--test-command`.
+
+Tradeoffs (Phase 1) — this path is correct but not free:
+
+- **Slower:** your app re-boots for every mutant (no shared boot yet).
+- **No coverage narrowing:** every mutant runs the *full* `--test` set, so the
+  score is an **upper bound and not comparable to an in-process (`--rails`)
+  score** — uncovered mutants count as survivors, and an infrastructure failure
+  is scored as a kill. Mutineer prints this caveat on every run and aborts up
+  front (a "smoke check") if your unmutated suite isn't green.
+- **Reload strategy only** (`--strategy redefine` is rejected on this path) and
+  **serial** (`--jobs` is forced to 1). For apps on Ruby ≥ 3.4, `--daemon` gives
+  safe parallelism instead (see [the daemon backend](#faster-parallel-safe-rails-the---daemon-backend)).
+
+## Suppressing equivalent mutants
+
+Some mutants are equivalent (behaviour-identical) and survive forever — keeping a
+file off 100%. Suppress them so the score and `--threshold` gate stay meaningful:
+
+- **Inline:** `some_line # mutineer:disable-line` (or scope it: `# mutineer:disable-line comparison`).
+- **Config:** a `.mutineer.yml` `ignore:` list of stable mutant ids. Each survivor's
+  `id` is printed in the JSON report, so copy it straight into `ignore:`.
+
+Suppressed mutants are excluded from the score (so 100% becomes reachable).
+
+## CI gating
+
+Store a JSON run as a baseline, then fail the build only when a PR makes things
+worse:
+
+```sh
+mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
+```
+
+`--baseline` reports which survivors are new (by stable id) and any score drop. It
+combines with `--threshold` (the worse of the two sets the exit code). Pass a
+directory (or several sources) to audit a whole layer in one boot — tests are
+auto-paired by convention and the report breaks down per source.
+
+### GitHub Action
+
+This repo ships a composite action (`action.yml`) that wraps the CLI for CI:
+
+```yaml
+- uses: actions/checkout@v4
+  with: { fetch-depth: 0 }        # --since needs full history
+- uses: ruby/setup-ruby@v1
+  with: { ruby-version: "3.4", bundler-cache: true }
+- uses: davidteren/mutineer@v0
+  with:
+    sources: app/
+    since: origin/${{ github.base_ref }}
+    baseline: .mutineer/baseline.json
+    threshold: "90"
+```
+
+## For AI agents & pipelines
+
+Mutineer is built for programmatic use — versioned JSON, stable mutant ids,
+structured exit codes, and diff-scoped runs. See:
+
+- **AI agents & CI recipes** — the agent inner-loop and CI-gate recipes (and how
+  to avoid infinite loops on equivalent mutants):
+  [rendered](https://davidteren.github.io/mutineer/agentic-coding.html) ·
+  [source](docs/agentic-coding.md)
+- **JSON schema reference** — the `--format json` schema and its versioning
+  contract:
+  [rendered](https://davidteren.github.io/mutineer/json-schema.html) ·
+  [source](docs/json-schema.md)
+
+## Configuration
+
+Mutineer reads an optional `.mutineer.yml` from the project root (nearest one,
+walking up). CLI flags override config; config overrides defaults.
+
+Sources are positional CLI arguments and test files come from `--test`; the
+config file accepts these keys: `operators`, `threshold`, `jobs`, `only`,
+`require` (extra files to load before mutating), `boot`/`rails`, and
+`test_command` (the external-runtime suite command — see
+[Apps on Ruby < 3.4](#apps-on-ruby--34)).
+
+```yaml
+# .mutineer.yml
+operators: [arithmetic, comparison, boolean_connector, boolean_literal, statement_removal]
+threshold: 90
+jobs: 4
+require:
+  - config/environment
+```
+
+Coverage results are cached in `.mutineer/coverage.json` (digest-keyed; rebuilt
+automatically when sources change). Add `.mutineer/` to your `.gitignore`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+---
+
+# Mutineer for AI agents & CI pipelines
+
+Line coverage tells you which code *ran* under test. It says nothing about whether your tests would
+*notice if that code broke*. Mutation testing closes exactly that gap — and that gap is where
+AI-generated code and AI-generated tests are weakest: tests that execute and pass, but assert nothing
+meaningful ("coverage theater").
+
+Mutineer is built for programmatic use: a **versioned JSON contract**
+([schema](./json-schema.md)), **structured exit codes**, **diff-scoped runs** (`--since`), a **hard gate**
+(`--threshold`), and **delta gating** (`--baseline`). This page shows how to wire it into an agent loop
+and into CI.
+
+## The agent inner loop
+
+A coding agent that writes code *and* tests can use Mutineer as an objective "are these tests any good?"
+oracle, closing the loop with a concrete stopping condition:
+
+1. Agent edits code + tests on a branch.
+2. Run Mutineer on the diff, as JSON:
+
+   ```sh
+   mutineer run app/ --since origin/main --format json --output .mutineer/run.json
+   ```
+
+3. Parse `survivors[]`. Each entry carries a ready-made `diff` and a stable `id`. For each survivor, feed
+   the agent a prompt like:
+
+   > This change to `{subject}` (`{file}:{line}`) was **not** caught by any test:
+   > ```diff
+   > {diff}
+   > ```
+   > Write or strengthen a test so it fails under this change.
+
+4. Re-run. Stop when `summary.survived == 0` (or `summary.score >= target`).
+
+`--since` keeps each iteration fast by mutating only the lines the agent just touched. Genuinely
+equivalent mutants (which can never be killed) should be suppressed so the loop terminates — see
+**Avoiding infinite loops** below.
+
+## CI gate: fail a PR only when it makes things worse
+
+Store a JSON run as a baseline, then gate PRs on regressions rather than an absolute bar (which lets a
+team adopt Mutineer on a legacy suite without fixing everything first):
+
+```sh
+# On main, refresh the baseline (e.g. nightly) and commit/cache it:
+mutineer run app/ --format json --output .mutineer/baseline.json
+
+# On a PR:
+mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json
+```
+
+`--baseline` exits `1` on any **new** survivor (matched by stable `id`, so it survives unrelated edits) or
+a **score drop** (`--baseline-epsilon` tolerates float jitter). Combine with `--threshold` to enforce an
+absolute floor too — the worse of the two gates wins.
+
+### GitHub Action
+
+This repo ships a composite action (`action.yml`). Minimal PR gate:
+
+```yaml
+# .github/workflows/mutation.yml
+name: Mutation testing
+on: pull_request
+
+jobs:
+  mutineer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # --since needs full history
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - uses: davidteren/mutineer@main
+        with:
+          sources: app/
+          since: origin/${{ github.base_ref }}
+          baseline: .mutineer/baseline.json
+          threshold: "90"
+          output: .mutineer/pr.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutineer-report
+          path: .mutineer/pr.json
+```
+
+For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the app's own bundle):
+
+```yaml
+      - uses: davidteren/mutineer@main
+        with:
+          sources: app/models/order.rb
+          rails: true
+          use-bundler: true
+          since: origin/${{ github.base_ref }}
+```
+
+See `action.yml` for all inputs (`operators`, `framework`, `strategy`, `jobs`, `extra-args`, …) and the
+`exit-code` / `report` outputs.
+
+## Avoiding infinite loops: equivalent mutants
+
+Some mutants are semantically identical to the original and can **never** be killed by any test. In an
+unattended agent loop these would never clear, so suppress them explicitly:
+
+- **Inline:** `# mutineer:disable-line [operators]` on the offending source line.
+- **Config:** add the survivor's stable `id` (printed in the JSON report) to `.mutineer.yml`:
+
+  ```yaml
+  ignore:
+    - 9f2a1c4b7e0d   # Calculator#scale — equivalent under `comparison`
+  ```
+
+Suppressed mutants leave the score entirely (so 100% stays reachable) and appear under the JSON `ignored[]`
+key for auditing. An agent should treat a survivor it cannot kill after N attempts as a candidate for
+human review / suppression rather than looping forever.
+
+## Reading exit codes in a pipeline
+
+| Code | Pipeline action |
+|------|-----------------|
+| `0` | Pass — score ≥ threshold and no baseline regression. |
+| `1` | Fail the check — tests are too weak (below threshold) or a regression was introduced. |
+| `2` | Fail the *job* differently — this is a misinvocation (bad flag/path), not a test-quality signal. |
+
+Branch on these directly; never scrape the human report. The JSON `summary` and `baseline` blocks carry
+the same facts for dashboards.
+
+---
+
+# Mutineer JSON report — schema reference
+
+`mutineer run --format json` emits a single JSON object (one line, newline-terminated) describing the
+whole run. It is the **machine-readable contract** for tooling — CI gates, dashboards, and AI coding
+agents. Output is deterministic: arrays are sorted by `(file, line, operator)` regardless of `--jobs`
+worker finish order, so two runs of the same inputs produce byte-identical output.
+
+## Versioning contract
+
+The top-level `schema_version` (a string, e.g. `"1.1"`) follows these rules:
+
+- **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
+  (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
+- **Breaking changes** (renaming/removing a key, changing a value's type or meaning) bump the **major**
+  version (`1.x` → `2.0`).
+
+A consumer should accept any `1.x` document and read only the keys it knows.
+
+## Top-level shape
+
+```jsonc
+{
+  "schema_version": "1.1",
+  "summary":      { /* run totals, see below */ },
+  "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
+  "no_coverage":  [ /* mutants on lines no test exercises */ ],
+  "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
+  "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
+  "per_source":   [ /* per-file roll-up */ ],
+  "baseline":     { /* present ONLY with --baseline: the delta vs a prior run */ }
+}
+```
+
+### `summary` (object)
+
+| Key | Type | Meaning |
+|-----|------|---------|
+| `total` | int | Total mutants generated (every status, before exclusions). |
+| `killed` | int | Mutants a test caught (suite went red). |
+| `survived` | int | Mutants no test caught. **These are the actionable test gaps.** |
+| `no_coverage` | int | Mutants on a line no test exercises (excluded from score). |
+| `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
+| `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). |
+| `errored` | int | Mutants whose run raised (excluded). |
+| `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
+| `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). |
+| `score` | float \| null | `killed / (killed + survived) * 100`, rounded. **`null`** when the denominator is empty (no covered mutants) — never `0.0`. |
+
+### `survivors[]` (array of object)
+
+Each surviving mutant — the records an agent or reviewer acts on:
+
+| Key | Type | Meaning |
+|-----|------|---------|
+| `subject` | string | Fully-qualified subject, e.g. `Calculator#add`. |
+| `file` | string | Source file path (as passed to the run). |
+| `line` | int | 1-based line of the mutation. |
+| `operator` | string | Operator name, e.g. `arithmetic`, `comparison`. |
+| `id` | string | **Stable, offset-free id** (12 hex chars). Survives edits elsewhere in the file. Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
+| `token` | string | The exact code being mutated (whitespace-collapsed), e.g. `a + b`. |
+| `diff` | string | A unified diff (`@@ -line +line @@` with `-original` / `+mutant`). Ready to hand to an agent as "write a test that fails under this change." |
+
+### `no_coverage[]` and `uncapturable[]` (array of object)
+
+Both use the lean shape `{ subject, file, line }`. `no_coverage` is a genuine coverage gap; `uncapturable`
+means the test that should cover the line errored while capturing coverage (fix the harness, not the test).
+
+### `ignored[]` (array of object)
+
+Suppressed (equivalent) mutants, so you can audit what's silenced: `{ subject, file, line, operator, token, id }`.
+
+### `per_source[]` (array of object)
+
+Per-file roll-up: `{ file, total, killed, survived, no_coverage, score }` (`score` is `float | null` as above).
+
+### `baseline` (object, only with `--baseline`)
+
+The delta versus the prior `--format json` report, matched by stable `id`:
+
+| Key | Type | Meaning |
+|-----|------|---------|
+| `regressed` | bool | True if there are new survivors OR a score drop. **Drives exit 1.** |
+| `score_before` | float \| null | Baseline score. |
+| `score_after` | float \| null | This run's score. |
+| `score_dropped` | bool | True if `score_after < score_before - epsilon`. |
+| `new_survivors[]` | array | Survivors present now but absent in the baseline: `{ subject, file, line, operator, token, id }`. |
+| `fixed_survivors[]` | array | Baseline survivors no longer present: `{ subject, file, line, operator, id }`. |
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
+| `1` | Score below `--threshold`, OR a `--baseline` regression, OR a runtime error. |
+| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+
+`--threshold` and `--baseline` are independent gates OR'd together (the worse code wins); usage errors (2)
+always win. This lets a pipeline distinguish "tests too weak" (1) from "you invoked me wrong" (2).
