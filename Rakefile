@@ -8,6 +8,7 @@ DAEMON_TESTS = %w[
   test/daemon_client_test.rb
   test/runner_daemon_test.rb
   test/daemon_worker_db_test.rb
+  test/runner_daemon_parallel_test.rb
 ].freeze
 
 Rake::TestTask.new(:test) do |t|
