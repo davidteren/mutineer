@@ -1,0 +1,21 @@
+test/rails_worker_db_test.rb
+  s_3c9f4ab57c61c3::t_3372bcd3d47cee 29-49
+lib/mutineer/rails_worker_db.rb
+  s_3c9f4ab57c61c3::t_ebdf1ef00eaffd 61-66,69-70,73-88,92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "91e338495ab782fa9e22c1790650f1932ae66ed7",
+  "prompts": {},
+  "sessions": {
+    "s_3c9f4ab57c61c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "099db18b-2f70-411c-b88b-2bb2d5f3fb47",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
