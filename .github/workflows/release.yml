@@ -1,0 +1,60 @@
+name: Release
+
+# Publish is tag-driven: bump Mutineer::VERSION, date the CHANGELOG section, then
+#   git tag vX.Y.Z && git push origin vX.Y.Z
+# This workflow then tests, publishes the gem to RubyGems via Trusted Publishing
+# (OIDC — no API key, no OTP), and cuts the GitHub release from the CHANGELOG.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # create the GitHub release
+  id-token: write   # OIDC token for RubyGems Trusted Publishing
+
+jobs:
+  release:
+    name: publish gem + github release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      # A mistyped tag must never publish the wrong version.
+      - name: Guard — tag must match Mutineer::VERSION
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          ver="$(ruby -r ./lib/mutineer/version -e 'print Mutineer::VERSION')"
+          if [ "$tag" != "$ver" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match Mutineer::VERSION ($ver). Aborting release."
+            exit 1
+          fi
+
+      - name: Tests
+        run: bundle exec rake test
+
+      # Exchanges the workflow's OIDC token for short-lived RubyGems credentials.
+      # Requires a one-time Trusted Publisher entry on rubygems.org for this repo
+      # + workflow (see the release runbook). No secret, no OTP.
+      - name: Configure RubyGems Trusted Publishing
+        uses: rubygems/configure-trusted-publisher@v1
+
+      - name: Build & push gem
+        run: |
+          set -euo pipefail
+          gem build mutineer.gemspec
+          gem push mutineer-*.gem
+
+      - name: GitHub release from CHANGELOG
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ver="${GITHUB_REF_NAME#v}"
+          awk -v ver="$ver" '$0 ~ "^## \\["ver"\\]"{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then printf 'Release %s\n' "$GITHUB_REF_NAME" > notes.md; fi
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
