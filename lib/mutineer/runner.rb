@@ -246,7 +246,12 @@ module Mutineer
       # #26/U6: worker count = resolved --jobs, capped at the job count (no idle
       # daemons). >1 → N concurrent daemon handles, each on its OWN worker DB (V6:
       # N-handles, the spike-proven shape). 1 → the serial single-daemon path.
+      # --fail-fast forces serial: parallel's stop flag fires on the first survivor
+      # by WALL-CLOCK, not input index, so the verdict set would diverge from serial
+      # (a different, non-deterministic survivor set/score) — the "identical to
+      # --jobs 1" guarantee below only holds when fail-fast can't race.
       worker_count = [config.jobs || 1, 1].max
+      worker_count = 1 if config.fail_fast
       worker_count = [worker_count, jobs.size].min if jobs.size.positive?
 
       results =
@@ -284,8 +289,11 @@ module Mutineer
     # A shared queue of job indices feeds N tool-side threads; each thread blocks on
     # IPC (GVL released), so the N daemons run genuinely concurrently. Results are
     # placed by input index and compacted, so the verdict SET is identical to serial
-    # regardless of finish order (R7). --fail-fast flips a shared stop flag; in-flight
-    # workers drain, unscheduled jobs are left out (like the serial early break).
+    # regardless of finish order (R7). `execute_daemon` never calls this with
+    # `config.fail_fast` set (forced to the serial path instead) — a wall-clock stop
+    # here, unlike serial's input-index break, would make the survivor set and score
+    # non-deterministic. The stop-flag machinery below stays as a defensive no-op for
+    # any direct caller that bypasses that guard.
     #
     # @return [Array<Mutineer::Result>] completed results in input order.
     def self.run_daemon_parallel(jobs, worker_count, config, abs_tests, source_map)

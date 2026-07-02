@@ -12,13 +12,13 @@ require "mutineer/runner"
 class RunnerDaemonParallelTest < Minitest::Test
   APP = File.expand_path("fixtures/rails_app", __dir__)
 
-  def config_for(test_file, jobs)
+  def config_for(test_file, jobs, fail_fast: false)
     Mutineer::Config.new(
       sources: [File.join(APP, "app/models/order.rb")],
       tests: [File.join(APP, "test/models/#{test_file}")],
       project_root: APP, boot: "config/environment",
       rails: true, daemon: true, strategy: "reload",
-      framework: "minitest", jobs: jobs
+      framework: "minitest", jobs: jobs, fail_fast: fail_fast
     )
   end
 
@@ -51,5 +51,15 @@ class RunnerDaemonParallelTest < Minitest::Test
     refute_empty parallel.surviving_mutants, "weak suite should still leave survivors under --jobs 2"
     assert_operator parallel.mutation_score, :<, 100.0
     assert_operator serial.killed_count, :>, 0
+  end
+
+  # The identity above only holds because --fail-fast forces the serial path even
+  # under --jobs 2 (a wall-clock stop in the parallel path would make the survivor
+  # set/score non-deterministic). Proves the guard, not just its absence of crashing.
+  def test_fail_fast_jobs2_equals_fail_fast_jobs1
+    serial,   = Mutineer::Runner.execute(config_for("order_weak_test.rb", 1, fail_fast: true))
+    parallel, = Mutineer::Runner.execute(config_for("order_weak_test.rb", 2, fail_fast: true))
+    assert_equal identity(serial), identity(parallel),
+                 "--fail-fast --jobs 2 must equal --fail-fast --jobs 1 (guarded to serial)"
   end
 end
