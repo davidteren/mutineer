@@ -55,15 +55,17 @@ module Mutineer
     # @param payload [Hash] {"code" => mutated ruby, "source_file" => path}.
     # @param tests [Array<String>] covering test file paths.
     # @param timeout [Numeric] per-mutant wall-clock timeout (seconds).
+    # @param worker [Integer] worker slot; the daemon routes the fork to
+    #   `<db>-<worker>` (#26 isolation). Defaults to 0 (serial in U5).
     # @return [String] one of survived/killed/error/timeout.
-    def request(id:, payload:, tests:, timeout:)
+    def request(id:, payload:, tests:, timeout:, worker: 0)
       # A crash can surface on the WRITE (daemon died idle between requests →
       # Errno::EPIPE) as well as the read (EOF), so guard both: either way, respawn
       # for future mutants and score THIS one error (re-running a crash-causing
       # mutant could loop). Never let a dead pipe abort the whole run.
       reply =
         begin
-          send_line("id" => id, "payload" => payload, "tests" => tests, "timeout" => timeout)
+          send_line("id" => id, "worker" => worker, "payload" => payload, "tests" => tests, "timeout" => timeout)
           read_line
         rescue Errno::EPIPE, IOError
           nil
