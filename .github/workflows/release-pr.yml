@@ -27,7 +27,7 @@ jobs:
     name: open a release PR if one is due
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history + tags for git describe/log
       - uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601 # v1
@@ -62,6 +62,12 @@ jobs:
           # Idempotent: don't duplicate an already-open release PR for this version.
           if [ -n "$(gh pr list --state open --head "$branch" --json number --jq '.[0].number // empty')" ]; then
             echo "Release PR for $branch is already open."; exit 0
+          fi
+
+          # A stale branch from a PREVIOUSLY CLOSED release PR would make `git push` below
+          # fail. Detect it and stop with an actionable message rather than erroring.
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Stale release branch $branch exists (from a closed PR?). Delete it to re-open: git push origin --delete $branch"; exit 0
           fi
 
           # If VERSION is already this value, the bump merged and only the tag is missing.
