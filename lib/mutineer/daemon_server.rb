@@ -20,17 +20,23 @@ module Mutineer
   #
   # Protocol (one JSON object per line, both directions):
   #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment",
-  #               "load_paths":["test"],"framework":"minitest","rails":true}
+  #               "load_paths":["test"],"framework":"minitest","rails":true,"schema":"db/schema.rb"}
   #   ready out: {"ready":true,"ruby":"3.3.6"}   (or {"ready":false,"error":"..."} then exit)
-  #   run  in  : {"id":N,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
+  #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
   #               "tests":["test/models/order_test.rb"],"timeout":30}
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
   #   quit in  : {"cmd":"quit"}
   #
+  # Worker isolation (#26/U5): when the app is Rails, each fork is routed to its own
+  # database `<db>-<worker>` via {RailsWorkerDb} BEFORE any test loads, so concurrent
+  # workers can't clobber each other's transactional fixtures. `worker` defaults to 0
+  # (serial). SQLite this pass; Postgres provisioning is U10.
+  #
   # Verdict mapping (KTD-5, Phase-2a honest limit): child exit 0=survived (suite
-  # passed), 1=killed (suite failed), 2=error (child raised AROUND the test — load or
-  # boot failure); parent-detected timeout. Tagging an in-TEST DB error as `error`
-  # (vs killed) is a Phase-2b concern (needs the after_fork adapter's re-raise).
+  # passed), 1=killed (suite failed), 2=error (child raised AROUND the test — load,
+  # boot, or worker-DB routing failure); parent-detected timeout. Tagging an in-TEST DB
+  # error (one fired inside a test body, vs at routing time) as `error` rather than
+  # `killed` is a U6 concern — only observable under the concurrent gate.
   module DaemonServer
     # Poll interval (seconds) for the per-fork deadline wait loop.
     POLL = 0.02
@@ -87,6 +93,7 @@ module Mutineer
         # tempfile's non-constant name during autoload setup.
         sweep_temps
         require File.expand_path(cfg["boot"]) if cfg["boot"]
+        setup_worker_db(cfg) if cfg["rails"]
       rescue Exception => e # rubocop:disable Lint/RescueException
         # Boot failed (bad boot path, app error) — tell the client and exit so it can
         # surface a clean error rather than hang on the handshake.
@@ -95,9 +102,25 @@ module Mutineer
         exit!(1)
       end
 
+      # Load the per-worker DB adapter app-side (sibling gem file, by relative path so
+      # it bypasses the app bundle — like this daemon itself). No-op unless the app has
+      # ActiveRecord. Records the adapter + schema path so each fork can route to its
+      # own database (#26 isolation, U5). SQLite-only this pass; a non-SQLite config
+      # raises in the fork and reads as `error`, never a mis-routed verdict.
+      def setup_worker_db(cfg)
+        require_relative "rails_worker_db"
+        @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
+        schema = cfg["schema"] && File.expand_path(cfg["schema"])
+        @schema_path = schema if schema && File.exist?(schema)
+      rescue LoadError => e
+        @errio.puts("[daemon] worker-DB routing unavailable: #{e.message}")
+        @worker_db = nil
+      end
+
       # Fork a child to run one mutant in isolation; decode its exit into a verdict.
       def run_mutant(req)
         timeout = req.fetch("timeout", 30)
+        worker  = req.fetch("worker", 0)
         pid = fork do
           # New process group so a per-fork timeout can SIGKILL the whole subtree
           # (carries the Phase-1 pgroup discipline), and silence the child's stdout so
@@ -106,6 +129,10 @@ module Mutineer
           $stdout.reopen(File::NULL, "w")
           code =
             begin
+              # Route THIS fork at its own worker database before any test loads, so
+              # concurrent workers can't clobber each other's fixtures (#26). A routing
+              # failure raises here and is scored `error` below, never a false verdict.
+              @worker_db&.after_fork(worker, @schema_path)
               apply_payload(req["payload"])
               run_tests(Array(req["tests"]))
             rescue Exception => e # rubocop:disable Lint/RescueException

@@ -288,8 +288,23 @@ module Mutineer
         load_paths: test_load_roots(abs_tests),
         source_dirs: source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,
-        rails: config.rails
+        rails: config.rails,
+        # #26/U5: schema for per-worker DB isolation. Sent when present; the daemon
+        # skips worker-DB schema loading if the path is absent (e.g. structure.sql apps).
+        schema: daemon_schema_path(config)
       }
+    end
+
+    # Absolute path to the app's `db/schema.rb` if it exists, else nil. Used by the
+    # daemon to schema-load each fork's isolated worker database (#26/U5). Only
+    # `schema.rb` is supported this pass; `structure.sql` apps get nil and fall back to
+    # whatever the worker DB already holds (Postgres provisioning is U10).
+    #
+    # @param config [Mutineer::Config] the run config.
+    # @return [String, nil] absolute schema path or nil.
+    def self.daemon_schema_path(config)
+      path = File.expand_path("db/schema.rb", config.project_root)
+      File.exist?(path) ? path : nil
     end
 
     # Map a daemon verdict string to a Result. The daemon reports the four run-time
