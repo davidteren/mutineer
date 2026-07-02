@@ -4,7 +4,14 @@ require "rake/testtask"
 
 # Rails-dependent daemon integration tests: they spawn a daemon under the fixture
 # app's OWN bundle, so they belong with the dogfood job, never the zero-dep suite.
-DAEMON_TESTS = %w[test/daemon_client_test.rb test/runner_daemon_test.rb].freeze
+DAEMON_TESTS = %w[
+  test/daemon_client_test.rb
+  test/runner_daemon_test.rb
+  test/daemon_worker_db_test.rb
+  test/runner_daemon_parallel_test.rb
+  test/daemon_coverage_test.rb
+  test/rails_dogfood_daemon_test.rb
+].freeze
 
 Rake::TestTask.new(:test) do |t|
   t.libs << "lib" << "test"

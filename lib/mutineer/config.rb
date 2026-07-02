@@ -25,9 +25,8 @@ module Mutineer
     :cache_dir, :project_root, :load_paths,
     :jobs, :format, :output, :strategy, :require_paths,
     :boot, :rails, :since, :framework, :verbose, :ignore,
-    # :daemon / :daemon_timeout are NOT user-facing yet — no CLI flag or KNOWN_KEYS
-    # entry until the Phase 2c `--daemon` unit lands (which adds the flag + a `to_i`
-    # coerce + KNOWN_KEYS). For now they're set programmatically (tests/Runner).
+    # :daemon is user-facing as of U8 (--daemon flag + KNOWN_KEYS + boolean coerce).
+    # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
     :daemon, :daemon_timeout,
     keyword_init: true
@@ -35,7 +34,7 @@ module Mutineer
     # Config file name.
     CONFIG_FILE = ".mutineer.yml"
     # Keys accepted in .mutineer.yml (R7). `require` maps to the :require_paths field.
-    KNOWN_KEYS = %w[operators jobs threshold only require boot rails since framework verbose ignore baseline fail_fast test_command].freeze
+    KNOWN_KEYS = %w[operators jobs threshold only require boot rails since framework verbose ignore baseline fail_fast test_command daemon].freeze
 
     def initialize(**kwargs)
       super
@@ -168,6 +167,7 @@ module Mutineer
       when "boot"      then value.to_s
       when "framework" then value.to_s
       when "rails"     then value == true || value.to_s == "true"
+      when "daemon"    then value == true || value.to_s == "true"
       when "verbose"   then value == true || value.to_s == "true"
       when "ignore"    then Array(value).map(&:to_s)
       when "baseline"  then value.to_s

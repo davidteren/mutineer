@@ -57,6 +57,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--verbose` | Surface the real error when a fork capture fails (alias `--debug`) |
 | `--strategy NAME` | Mutation application: `reload` whole-file (default) or `redefine` surgical (`7a`/`7b` accepted as deprecated aliases) |
 | `--test-command CMD` | Run the suite as a subprocess in the app's own runtime (for apps on Ruby < 3.4); `CMD` must contain `%{files}`. See [Apps on Ruby < 3.4](#apps-on-ruby--34) |
+| `--daemon` | Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so `--jobs N` is safe under Rails (needs `--rails`/`--boot`; not with `--test-command`). See [the daemon backend](#faster-parallel-safe-rails-the---daemon-backend) |
 | `--format human\|json\|html` | Report format (default: human; `html` is a self-contained file) |
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--dry-run` | List candidate mutations without executing (honors suppression) |
@@ -104,6 +105,33 @@ Add Mutineer to your Gemfile's test group:
 gem "mutineer", group: :test, require: false
 ```
 
+### Faster, parallel-safe Rails (the `--daemon` backend)
+
+`--rails` boots your app once but runs mutants **serially** — parallel `--jobs`
+under Rails is unsafe, because every worker shares one test database and clobbers
+the others' fixtures. `--daemon` fixes both: it boots the app once in a persistent
+helper and forks per mutant, and gives **each parallel worker its own database**,
+so `--jobs N` is safe and its verdicts are proven identical to a serial run.
+
+```sh
+RAILS_ENV=test bundle exec mutineer run \
+  app/models/order.rb --test test/models/order_test.rb \
+  --rails --daemon --jobs 4
+```
+
+- **One boot, forked per mutant** — restores the shared-boot speed.
+- **Coverage-guided** — each mutant runs only its covering tests (like `--rails`);
+  a mutant on an uncovered line is `no_coverage`, so the score stays comparable to
+  the in-process `--rails` score.
+- **Safe `--jobs N`** — each worker routes to its own copy of the test database, so
+  parallel verdicts equal serial (no fixture cross-talk).
+- **One backend at a time** — `--daemon` can't be combined with `--test-command`
+  (choose one), and it needs an app to boot (`--rails` or `--boot`).
+
+Status: **SQLite** today (hermetic, CI-proven). **Postgres** per-worker
+provisioning is in progress (#34/#35); until it lands, use `--daemon` with a
+SQLite test database, or drop `--jobs` to run serially on other adapters.
+
 ### Apps on Ruby < 3.4
 
 Mutineer's own process needs Ruby ≥ 3.4 (it parses with stdlib Prism), and the
@@ -136,7 +164,8 @@ Tradeoffs (Phase 1) — this path is correct but not free:
   is scored as a kill. Mutineer prints this caveat on every run and aborts up
   front (a "smoke check") if your unmutated suite isn't green.
 - **Reload strategy only** (`--strategy redefine` is rejected on this path) and
-  **serial** (`--jobs` is forced to 1 — safe parallelism is tracked in #26).
+  **serial** (`--jobs` is forced to 1). For apps on Ruby ≥ 3.4, `--daemon` gives
+  safe parallelism instead (see [the daemon backend](#faster-parallel-safe-rails-the---daemon-backend)).
 
 ## Suppressing equivalent mutants
 

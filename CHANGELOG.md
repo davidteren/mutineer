@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-02
+
+### Added
+- **`--daemon` backend — fast, parallel-safe Rails mutation testing** (#26/#27
+  Phase 2). Boots the app **once** in a persistent daemon and forks per mutant
+  (restoring shared-boot speed), and gives **each parallel worker its own
+  database** so `--jobs N` is safe under Rails for the first time — parallel
+  verdicts are proven identical to serial (no fixture cross-talk). Coverage
+  narrowing is restored on this path (each mutant runs only its covering tests;
+  a mutant on an uncovered line is `no_coverage`), so the daemon score is
+  comparable to the in-process `--rails` score. Opt in with `--rails --daemon`
+  (also `daemon: true` in `.mutineer.yml`); `--daemon` can't be combined with
+  `--test-command`. **SQLite** today (hermetic, CI-proven); **Postgres**
+  per-worker provisioning is in progress (#34/#35). The gem core stays Prism +
+  stdlib, zero runtime dependencies — worker-DB routing uses the app's own
+  ActiveRecord.
+
 ## [0.10.0] - 2026-07-02
 
 ### Added
@@ -200,6 +217,8 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.11.0]: https://github.com/davidteren/mutineer/releases/tag/v0.11.0
+[0.10.0]: https://github.com/davidteren/mutineer/releases/tag/v0.10.0
 [0.9.1]: https://github.com/davidteren/mutineer/releases/tag/v0.9.1
 [0.9.0]: https://github.com/davidteren/mutineer/releases/tag/v0.9.0
 [0.8.0]: https://github.com/davidteren/mutineer/releases/tag/v0.8.0
