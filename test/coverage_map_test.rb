@@ -76,7 +76,7 @@ class CoverageMapTest < Minitest::Test
   def test_fork_capture_returns_string_diagnostic_for_raising_child
     Coverage.start(lines: true) unless Coverage.running?
     map = fork_map(raising_test, verbose: true)
-    payload = map.send(:fork_capture, raising_test, [CALC], false)
+    payload = map.send(:fork_capture, raising_test, [CALC], nil)
     assert_kind_of String, payload
     assert_match(/RuntimeError: boom from child/, payload)
   end
@@ -88,7 +88,7 @@ class CoverageMapTest < Minitest::Test
     killed = File.join(Dir.mktmpdir, "suicide_test.rb")
     File.write(killed, %(Process.kill("KILL", Process.pid)\n))
     map = fork_map(killed, verbose: true)
-    payload = map.send(:fork_capture, killed, [CALC], false)
+    payload = map.send(:fork_capture, killed, [CALC], nil)
     assert_kind_of String, payload, "child death must produce a diagnostic, not nil"
     assert_match(/no result/, payload)
     assert_match(/signal 9|SIGKILL/, payload)
@@ -109,7 +109,7 @@ class CoverageMapTest < Minitest::Test
     Coverage.start(lines: true) unless Coverage.running?
     rt = raising_test
     map = fork_map(rt, verbose: true)
-    _, err = capture_subprocess_io { map.build_via_fork(rails: false) }
+    _, err = capture_subprocess_io { map.build_via_fork(after_fork: nil) }
     assert_match(/boom from child/, err)
     assert_includes map.failed_test_files.map { |f| File.basename(f) }, "raising_test.rb"
   end
@@ -118,7 +118,7 @@ class CoverageMapTest < Minitest::Test
     Coverage.start(lines: true) unless Coverage.running?
     rt = raising_test
     map = fork_map(rt, verbose: false)
-    _, err = capture_subprocess_io { map.build_via_fork(rails: false) }
+    _, err = capture_subprocess_io { map.build_via_fork(after_fork: nil) }
     assert_match(/re-run with --verbose/, err)
     refute_match(/boom from child/, err)
     assert_includes map.failed_test_files.map { |f| File.basename(f) }, "raising_test.rb"

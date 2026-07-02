@@ -76,6 +76,19 @@ module Mutineer
       "error"
     end
 
+    # #26/U7: ask the daemon to build the coverage map app-side and return it.
+    # One-shot control message (no id). Returns `{"map"=>..., "failed_test_files"=>...}`
+    # (possibly with an `"error"`), or nil if the daemon vanished — the caller then
+    # falls back to running the full test set (no narrowing) rather than mis-scoring.
+    #
+    # @return [Hash, nil] the coverage payload, or nil on a dead pipe.
+    def coverage
+      send_line("cmd" => "coverage")
+      read_line
+    rescue Errno::EPIPE, IOError
+      nil
+    end
+
     # Graceful shutdown; leaves no orphaned daemon/child.
     #
     # @return [void]

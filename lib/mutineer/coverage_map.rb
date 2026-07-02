@@ -21,7 +21,24 @@ module Mutineer
   class CoverageMap
     DEFAULT_CAPTURE_TIMEOUT = 120 # seconds, per coverage subprocess (R3)
 
-    attr_reader :project_root, :failed_test_files, :phase_a_ran
+    attr_reader :project_root, :failed_test_files, :phase_a_ran, :map
+
+    # Build a QUERY-ONLY map from data captured elsewhere (the daemon builds the map
+    # app-side and ships `map` + `failed_test_files` over IPC; the tool reconstructs it
+    # here for per-mutant selection). Skips the capture machinery entirely — only the
+    # three fields #tests_for / #method_uncapturable? read are set (U7).
+    #
+    # @param map [Hash] the "file:line" => [test_files] map.
+    # @param failed_test_files [Array<String>] test files whose capture failed.
+    # @param project_root [String] project root (for path relativization).
+    # @return [Mutineer::CoverageMap] a query-only map.
+    def self.from_data(map:, failed_test_files:, project_root:)
+      instance = allocate
+      instance.instance_variable_set(:@map, map || {})
+      instance.instance_variable_set(:@failed_test_files, failed_test_files || [])
+      instance.instance_variable_set(:@project_root, project_root)
+      instance
+    end
 
     def initialize(source_paths:, test_paths:, cache_dir: ".mutineer",
                    load_paths: ["lib"], project_root: Dir.pwd,
@@ -54,9 +71,9 @@ module Mutineer
     # the booted parent instead. Inverts into the same map #tests_for reads, and
     # reuses the digest cache (the digest mixes in the boot file so a boot cache
     # never collides with a standalone one).
-    def build_via_fork(rails: false)
+    def build_via_fork(after_fork: nil)
       warn_external_sources
-      cached_or { run_phase_a_via_fork(rails: rails) }
+      cached_or { run_phase_a_via_fork(after_fork: after_fork) }
     end
 
     # Phase B lookup: the test files that cover `file:line`, or [] when none do.
@@ -159,7 +176,7 @@ module Mutineer
     # per-source coverage counts. record() inverts them exactly as the subprocess
     # path does. ponytail: serial fork (one test at a time) — boot apps fork
     # cheaply via COW and per-test isolation matters more than throughput here.
-    def run_phase_a_via_fork(rails:)
+    def run_phase_a_via_fork(after_fork:)
       @phase_a_ran = true
       @map = {}
       @failed_test_files = []
@@ -169,7 +186,7 @@ module Mutineer
         # Tri-state payload (KTD-1): Hash = coverage, String = error diagnostic
         # from the child, nil = pipe gone / empty.
         # ponytail/#9: this String diagnostic is what #9 turns into an :uncapturable status.
-        case (coverage = fork_capture(absolute(test_path), abs_sources, rails))
+        case (coverage = fork_capture(absolute(test_path), abs_sources, after_fork))
         when Hash   then record(coverage, test_path)
         when String
           fail_test(test_path, @verbose ? "fork capture failed: #{coverage}" :
@@ -182,7 +199,7 @@ module Mutineer
     # Fork the booted parent, run one test under the inherited Coverage, and
     # return its per-source counts hash (or nil on failure). Reuses the same
     # fork + Marshal-over-pipe + hard-exit! discipline as WorkerPool/Isolation.
-    def fork_capture(abs_test, abs_sources, rails)
+    def fork_capture(abs_test, abs_sources, after_fork)
       rd, wr = IO.pipe
       # #19: Marshal output is binary — an un-binmoded pipe can raise
       # Encoding::UndefinedConversionError on write, which the child's rescue then
@@ -193,7 +210,10 @@ module Mutineer
         rd.close
         payload =
           begin
-            Runner.send(:reconnect_active_record) if rails
+            # Fork-safety hook: the in-process path reconnects AR; the daemon routes
+            # to its worker DB. Nil (non-Rails) = no-op. Injected so this file needs
+            # neither Runner (Prism) nor Rails.
+            after_fork&.call
             Coverage.result(clear: true, stop: false) # discard pre-test delta
             TestRunners.for(@framework).run([abs_test])
             # lines:true yields {file => {lines: [...]}}; reduce to the counts
