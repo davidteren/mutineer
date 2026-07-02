@@ -1,0 +1,23 @@
+test/runner_daemon_parallel_test.rb
+  s_c0ab033cb97eeb::t_0081345913327b 15,21
+  s_c0ab033cb97eeb::t_15bb5194eaea27 55-64
+lib/mutineer/runner.rb
+  s_c0ab033cb97eeb::t_4e592577846ec8 292-296
+  s_c0ab033cb97eeb::t_8ea9471d649170 249-252,254
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "40f2fa2b4c02bc5908e5f16b455860315d7e7ad3",
+  "prompts": {},
+  "sessions": {
+    "s_c0ab033cb97eeb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f2c05d7-f1fb-4902-b5db-1bc0616d9743",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
