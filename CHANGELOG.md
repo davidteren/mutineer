@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-02
+
 ### Added
 - **`--test-command` external backend** (#27) — mutation-test apps pinned to Ruby
   < 3.4. Mutineer stays on ≥ 3.4 but runs your suite as a subprocess in the app's
