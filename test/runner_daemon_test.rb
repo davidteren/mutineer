@@ -3,6 +3,7 @@
 require_relative "test_helper"
 require "mutineer/config"
 require "mutineer/runner"
+require "mutineer/cli"
 
 # #26/#27 Phase 2a (U4): Runner.execute_daemon drives the persistent daemon serially
 # against the bundled fixture app and produces the SAME verdicts the in-process
@@ -41,5 +42,15 @@ class RunnerDaemonTest < Minitest::Test
     refute_empty aggregate.surviving_mutants, "weak suite should leave survivors"
     assert_operator aggregate.mutation_score, :<, 100.0
     assert_operator aggregate.killed_count, :>, 0, "weak suite still kills some"
+  end
+
+  # #26/U8: the daemon backend has no coverage narrowing yet, so its score is not
+  # comparable to an in-process run — the CLI must disclose that on every --daemon
+  # run, symmetric to the --test-command "upper bound" disclosure (cli.rb:465).
+  def test_cli_discloses_lower_bound_on_daemon_run
+    _out, err = capture_io do
+      assert_raises(SystemExit) { Mutineer::CLI.execute(config_for("order_test.rb")) }
+    end
+    assert_match(/--daemon score is a lower bound/, err)
   end
 end

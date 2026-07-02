@@ -51,6 +51,9 @@ module Mutineer
                              subprocess (for apps on Ruby < 3.4). CMD must contain
                              %{files} (expands to the --test paths). Env is inherited,
                              e.g. RAILS_ENV=test mutineer run ... --test-command "..."
+        --daemon             Boot the app ONCE in a persistent daemon and fork per
+                             mutant, with per-worker DB isolation so --jobs N is safe
+                             under Rails (needs --rails/--boot; not with --test-command)
         --format human|json|html  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
@@ -112,6 +115,9 @@ module Mutineer
         # #27: run the target suite as a subprocess in the app's OWN runtime so
         # mutineer (Ruby >= 3.4) can mutation-test apps pinned to an older Ruby.
         o.on("--test-command CMD") { |v| opts[:test_command] = v; explicit << :test_command }
+        # #26/#27 Phase 2: boot the app ONCE in a persistent daemon and fork per
+        # mutant, with per-worker DB isolation so --jobs N is safe under Rails.
+        o.on("--daemon") { opts[:daemon] = true; explicit << :daemon }
       end
 
       begin
@@ -242,6 +248,7 @@ module Mutineer
       end
 
       validate_test_command!(config) if config.test_command
+      validate_daemon!(config, explicit) if config.daemon
 
       validate_since!(config) if config.since
       preflight_output!(config.output) if config.output
@@ -298,6 +305,30 @@ module Mutineer
 
       warn "[mutineer] --test-command runs serially (no per-worker DB isolation yet); forcing --jobs 1."
       config.jobs = 1
+    end
+
+    # #26/#27 Phase 2 (U8): --daemon selects the persistent-daemon backend (boot once,
+    # fork per mutant, per-worker DB isolation). Two usage errors, both exit 2 (KTD-10):
+    # it cannot be combined with --test-command (choose ONE backend — never silently
+    # pick one), and it requires an app to boot (--rails or --boot). Under Rails,
+    # Config.resolve already keeps --jobs serial unless the user explicitly asks for
+    # parallelism, and each worker gets its own SQLite database on demand — so there is
+    # no "missing worker DB" precondition to check here for SQLite. Postgres worker-DB
+    # provisioning + its missing-DB error (KTD-9) arrives with the Postgres adapter (U10).
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @param explicit [Set<Symbol>] explicit CLI fields.
+    # @return [void]
+    def self.validate_daemon!(config, _explicit = Set.new)
+      if config.test_command
+        warn "mutineer: choose one backend — --daemon and --test-command cannot be combined"
+        exit 2
+      end
+      return if config.rails || config.boot
+
+      warn "mutineer: --daemon needs an app to boot; add --rails (or --boot FILE)"
+      exit 2
     end
 
     # --since needs a real git repo and a resolvable ref; either failure is a
@@ -435,6 +466,15 @@ module Mutineer
         warn "[mutineer] --test-command score is an upper bound, not comparable to an " \
              "in-process run: no coverage narrowing (uncovered mutants count as survivors) " \
              "and an infra failure is scored as a kill."
+      end
+
+      # #26/U8: same disclosure as --test-command above — the daemon backend has no
+      # coverage narrowing yet (Phase 2c), so this score is a lower bound (uncovered
+      # mutants count as survivors) and not comparable to an in-process run.
+      if config.daemon
+        warn "[mutineer] --daemon score is a lower bound, not comparable to an " \
+             "in-process run: no coverage narrowing yet (uncovered mutants count as " \
+             "survivors)."
       end
 
       # #14: nudge toward the opt-in tier-2 operators (human report only — never
