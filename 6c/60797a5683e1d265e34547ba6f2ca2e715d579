@@ -1,0 +1,34 @@
+lib/mutineer/daemon_client.rb
+  s_3c9f4ab57c61c3::t_6c260e2e8e20f5 58-59,61,68
+test/rails_worker_db_test.rb
+  s_3c9f4ab57c61c3::t_8f7382b4446d60 1-29
+lib/mutineer/daemon_server.rb
+  s_3c9f4ab57c61c3::t_5799d158e09642 105-119,123,132-135
+  s_3c9f4ab57c61c3::t_e453a686769b94 23,25,30-34,36-39
+  s_3c9f4ab57c61c3::t_29186d4bb84a63 96
+lib/mutineer/runner.rb
+  s_3c9f4ab57c61c3::t_543ae30ca226e9 291-294,298-307
+  s_3c9f4ab57c61c3::t_3012ef9accd700 308-309
+Rakefile
+  s_3c9f4ab57c61c3::t_675a62f219a83a 7-11
+test/daemon_worker_db_test.rb
+  s_3c9f4ab57c61c3::t_6eebe382101342 1-59
+lib/mutineer/rails_worker_db.rb
+  s_3c9f4ab57c61c3::t_71ae7656d7b0a6 1-139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "6c60797a5683e1d265e34547ba6f2ca2e715d579",
+  "prompts": {},
+  "sessions": {
+    "s_3c9f4ab57c61c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "099db18b-2f70-411c-b88b-2bb2d5f3fb47",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
