@@ -73,6 +73,14 @@ module Mutineer
           end
           break if req["cmd"] == "quit"
 
+          # #26/U7: build the coverage map app-side and ship it to the tool, which
+          # then selects covering tests per mutant. One-shot control message.
+          if req["cmd"] == "coverage"
+            output.puts(JSON.generate(build_coverage_map))
+            output.flush
+            next
+          end
+
           output.puts(JSON.generate(run_mutant(req)))
           output.flush
         end
@@ -83,11 +91,18 @@ module Mutineer
       # BOOT ONCE. chdir + require the app's boot file so the whole app is loaded and
       # inherited by every fork. Never requires mutineer.
       def boot!(cfg)
+        @cfg = cfg
         @framework = cfg.fetch("framework", "minitest")
         @source_dirs = Array(cfg["source_dirs"]).map { |d| File.expand_path(d) }
         Dir.chdir(cfg["project_root"]) if cfg["project_root"]
         ENV["RAILS_ENV"] ||= "test" if cfg["rails"]
         Array(cfg["load_paths"]).each { |d| $LOAD_PATH.unshift(File.expand_path(d)) }
+        # #26/U7: start Coverage BEFORE the app loads, so booted source lines are
+        # instrumented — the map build (build_via_fork) forks this booted parent.
+        if cfg["coverage"]
+          require "coverage"
+          Coverage.start(lines: true)
+        end
         # Clear any mutant tempfile a prior SIGKILLed timeout child orphaned in a
         # source dir BEFORE the app boots — Zeitwerk would otherwise choke on the
         # tempfile's non-constant name during autoload setup.
@@ -115,6 +130,35 @@ module Mutineer
       rescue LoadError => e
         @errio.puts("[daemon] worker-DB routing unavailable: #{e.message}")
         @worker_db = nil
+      end
+
+      # #26/U7: build the coverage map app-side (Coverage was started at boot) and
+      # return it as `{map, failed_test_files}` for the tool to select covering tests.
+      # Capture forks route to worker 0's DB (isolated, serial). On any failure return
+      # an empty map + an error string — the tool then falls back to the full test set
+      # rather than mis-scoring everything as no_coverage.
+      def build_coverage_map
+        require_relative "coverage_map"
+        root = @cfg["project_root"] || Dir.pwd
+        cmap = CoverageMap.new(
+          source_paths: Array(@cfg["sources"]), test_paths: Array(@cfg["tests"]),
+          load_paths: Array(@cfg["load_paths"]), project_root: root,
+          boot_path: @cfg["boot"], framework: @framework, cache_dir: File.join(root, ".mutineer")
+        ).build_via_fork(after_fork: coverage_after_fork)
+        { "map" => cmap.map, "failed_test_files" => cmap.failed_test_files }
+      rescue Exception => e # rubocop:disable Lint/RescueException
+        @errio.puts("[daemon] coverage build failed: #{e.class}: #{e.message}")
+        { "map" => {}, "failed_test_files" => [], "error" => "#{e.class}: #{e.message}" }
+      end
+
+      # Fork-safety hook for coverage capture: route each capture fork to worker 0's
+      # isolated DB (captures run serially, so one worker is enough). Nil when the app
+      # has no worker-DB adapter (non-Rails) — capture then runs as before.
+      def coverage_after_fork
+        return nil unless @worker_db
+
+        schema = @schema_path
+        -> { @worker_db.after_fork(0, schema) }
       end
 
       # Fork a child to run one mutant in isolation; decode its exit into a verdict.

@@ -90,7 +90,7 @@ module Mutineer
           load_paths: config.load_paths, framework: config.framework,
           boot_path: File.expand_path(config.boot, config.project_root),
           verbose: config.verbose
-        ).build_via_fork(rails: config.rails)
+        ).build_via_fork(after_fork: (config.rails ? -> { reconnect_active_record } : nil))
       else
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
@@ -243,6 +243,12 @@ module Mutineer
       jobs = filter_since(jobs, source_map, config) if config.since
       abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
 
+      # #26/U7: build the coverage map once (app-side, via a short-lived daemon) so
+      # each mutant runs ONLY its covering tests and a mutant on an uncovered line is
+      # no_coverage. nil when the build fails — the runners fall back to the full
+      # --test set (no narrowing) rather than mis-scoring everything as no_coverage.
+      coverage_map = daemon_coverage_map(config, abs_tests)
+
       # #26/U6: worker count = resolved --jobs, capped at the job count (no idle
       # daemons). >1 → N concurrent daemon handles, each on its OWN worker DB (V6:
       # N-handles, the spike-proven shape). 1 → the serial single-daemon path.
@@ -251,25 +257,59 @@ module Mutineer
 
       results =
         if worker_count > 1
-          run_daemon_parallel(jobs, worker_count, config, abs_tests, source_map)
+          run_daemon_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map)
         else
-          run_daemon_serial(jobs, config, abs_tests, source_map)
+          run_daemon_serial(jobs, config, abs_tests, coverage_map, source_map)
         end
 
       [AggregateResult.new(results + ignored_results), source_map]
+    end
+
+    # #26/U7: build the coverage map via a short-lived daemon (boots the app once,
+    # captures per-test coverage app-side, ships the map back). Returns a query-only
+    # CoverageMap, or nil when the build fails / returns empty — callers then run the
+    # full --test set (no narrowing) rather than mis-scoring. The dedicated daemon
+    # costs one extra boot; correctness over that boot (ponytail — the map is reused
+    # for every mutant).
+    #
+    # @param config [Mutineer::Config] the run config.
+    # @param abs_tests [Array<String>] absolute --test paths.
+    # @return [Mutineer::CoverageMap, nil]
+    #
+    # ponytail: the coverage-build IPC read is unbounded (no wall-clock) — a --test
+    # file that infinite-loops during capture wedges this call, mirroring the existing
+    # in-process build_via_fork limitation. A capture timeout is a follow-up. When the
+    # map comes back empty (all captures failed), this returns nil and the run falls
+    # back to the FULL --test set per mutant — so on a total capture failure the daemon
+    # score is an upper bound (more testing), diverging from the in-process no_coverage
+    # scoring for that degenerate case only; a normal (nonempty) map scores identically.
+    def self.daemon_coverage_map(config, abs_tests)
+      client = DaemonClient.new(boot: daemon_boot_config(config, abs_tests, coverage: true),
+                                app_root: config.project_root).start
+      data = begin
+        client.coverage
+      ensure
+        client.quit
+      end
+      return nil unless data && !(data["map"] || {}).empty?
+
+      CoverageMap.from_data(map: data["map"], failed_test_files: data["failed_test_files"] || [],
+                            project_root: config.project_root)
+    rescue DaemonBootError
+      nil
     end
 
     # Serial daemon path: one daemon (worker 0), one mutant at a time. Honors
     # --fail-fast (#21: stop at the first survivor).
     #
     # @return [Array<Mutineer::Result>] results in input order.
-    def self.run_daemon_serial(jobs, config, abs_tests, source_map)
+    def self.run_daemon_serial(jobs, config, abs_tests, coverage_map, source_map)
       client = DaemonClient.new(boot: daemon_boot_config(config, abs_tests),
                                 app_root: config.project_root).start
       results = []
       begin
         jobs.each_with_index do |job, i|
-          r = daemon_job_result(job, i, client, 0, config, abs_tests, source_map)
+          r = daemon_job_result(job, i, client, 0, config, coverage_map, abs_tests, source_map)
           results << r
           break if config.fail_fast && r.survived?
         end
@@ -288,7 +328,7 @@ module Mutineer
     # workers drain, unscheduled jobs are left out (like the serial early break).
     #
     # @return [Array<Mutineer::Result>] completed results in input order.
-    def self.run_daemon_parallel(jobs, worker_count, config, abs_tests, source_map)
+    def self.run_daemon_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map)
       results    = Array.new(jobs.size)
       queue      = Queue.new
       jobs.each_index { |i| queue << i }
@@ -308,7 +348,7 @@ module Mutineer
             rescue ThreadError
               break
             end
-            r = daemon_job_result(jobs[i], i, client, worker, config, abs_tests, source_map)
+            r = daemon_job_result(jobs[i], i, client, worker, config, coverage_map, abs_tests, source_map)
             results[i] = r
             stop_mutex.synchronize { stop = true } if config.fail_fast && r.survived?
           end
@@ -328,23 +368,61 @@ module Mutineer
     # @param client [Mutineer::DaemonClient] the daemon handle to run on.
     # @param worker [Integer] the worker slot (→ worker DB) this daemon routes to.
     # @return [Mutineer::Result] the decorated result.
-    def self.daemon_job_result(job, req_id, client, worker, config, abs_tests, source_map)
+    def self.daemon_job_result(job, req_id, client, worker, config, coverage_map, abs_tests, source_map)
       subject, mutation, id = job
-      mutated = mutation.apply(source_map[subject.file])
+      source  = source_map[subject.file]
+      mutated = mutation.apply(source)
       # KTD-8 (carried): skip an invalid mutant tool-side — never ship a payload that
       # would fail to load and read as a false `killed`.
+      # #26/U7: narrow to covering tests (shared with the in-process path via
+      # coverage_selection, so scores match). :verdict = no_coverage/uncapturable, no
+      # fork. No map (build failed) → run the full --test set (fallback, not narrowed).
+      sel = coverage_map && coverage_selection(subject.file, mutation, subject, source, coverage_map)
       r =
         if Parser.parse_string(mutated).errors.any?
           Result.skipped
+        elsif sel && sel[0] == :verdict
+          sel[1]
         else
           verdict = client.request(
             id: req_id, worker: worker, timeout: config.daemon_timeout || DAEMON_TIMEOUT,
             payload: { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) },
-            tests: abs_tests
+            tests: sel ? sel[1] : abs_tests
           )
           daemon_result(verdict)
         end
       r.with(subject: subject, mutation: mutation, id: id)
+    end
+
+    # Coverage-based test selection, shared by the in-process ({run}) and daemon
+    # paths so both narrow identically (score parity, U7/V5). Returns
+    # `[:run, abs_test_paths]` when some test covers the mutant's line, or
+    # `[:verdict, Result]` (no_coverage / uncapturable) when none do.
+    #
+    # #9/#25: an empty selection is `:uncapturable` (not `:no_coverage`) when the
+    # mutant's enclosing method body got coverage from no *successful* capture but a
+    # sibling test failed to capture — the coverage was lost, not absent. Both are
+    # excluded from the score denominator, so this distinction is reporting-only and
+    # never changes the daemon-vs-in-process score.
+    #
+    # @param source_file [String] the mutated source file path.
+    # @param mutation [Mutineer::Mutation] the mutation (for its line offset).
+    # @param subject [Mutineer::Subject, nil] the subject (for its method body range).
+    # @param source [String] the original source text.
+    # @param coverage_map [Mutineer::CoverageMap] the built/loaded coverage map.
+    # @return [Array(Symbol, Object)] `[:run, Array<String>]` or `[:verdict, Result]`.
+    def self.coverage_selection(source_file, mutation, subject, source, coverage_map)
+      line   = source.byteslice(0, mutation.start_offset).count("\n") + 1
+      chosen = coverage_map.tests_for(source_file, line)
+      if chosen.empty?
+        # Method BODY range, not the whole def: the def/end lines are "covered" at
+        # class-load even when the body never runs (body_loc is the statements' span).
+        loc   = subject&.body_loc
+        range = loc ? (loc.start_line..loc.end_line) : (line..line)
+        return [:verdict, coverage_map.method_uncapturable?(source_file, range) ? Result.uncapturable : Result.no_coverage]
+      end
+
+      [:run, chosen.map { |t| File.expand_path(t, coverage_map.project_root) }]
     end
 
     # Default per-mutant timeout on the daemon path. Generous because 2a runs the full
@@ -354,7 +432,7 @@ module Mutineer
     # The boot config the daemon needs to boot the app once: where to boot, the test
     # load roots (so `require "test_helper"` resolves in every fork), framework, and
     # whether this is Rails.
-    def self.daemon_boot_config(config, abs_tests)
+    def self.daemon_boot_config(config, abs_tests, coverage: false)
       {
         project_root: config.project_root,
         boot: File.expand_path(config.boot || "config/environment", config.project_root),
@@ -364,7 +442,14 @@ module Mutineer
         rails: config.rails,
         # #26/U5: schema for per-worker DB isolation. Sent when present; the daemon
         # skips worker-DB schema loading if the path is absent (e.g. structure.sql apps).
-        schema: daemon_schema_path(config)
+        schema: daemon_schema_path(config),
+        # #26/U7: coverage narrowing. Only the short-lived map-building daemon starts
+        # Coverage (before boot); worker daemons boot with it OFF (no wasted
+        # instrumentation/memory across every mutant fork). `sources`/`tests` are the
+        # map-build inputs.
+        coverage: coverage,
+        sources: config.sources.map { |s| File.expand_path(s, config.project_root) },
+        tests: abs_tests
       }
     end
 
@@ -514,24 +599,12 @@ module Mutineer
 
       # Coverage selection (both standalone and boot mode): a mutation on a line
       # no test exercises is :no_coverage (no fork); otherwise exactly the
-      # covering test files run in the child.
-      line   = source.byteslice(0, mutation.start_offset).count("\n") + 1
-      chosen = coverage_map.tests_for(source_file, line)
-      # #9/#25: distinguish a genuine coverage gap from a line whose would-be test
-      # errored during capture (coverage lost) — the latter is :uncapturable.
-      # #25: taint per-METHOD (the mutant's enclosing def range), not whole-file,
-      # so a covered method's uncovered line stays :no_coverage while a method
-      # reachable only by a failed capture is :uncapturable.
-      if chosen.empty?
-        # Use the method BODY range, not the whole def: the `def`/`end` lines are
-        # "covered" at class-load even when the body never runs, which would mask
-        # an uncovered method. body_loc is the body statements' span.
-        loc = subject&.body_loc
-        range = loc ? (loc.start_line..loc.end_line) : (line..line)
-        return coverage_map.method_uncapturable?(source_file, range) ? Result.uncapturable : Result.no_coverage
-      end
+      # covering test files run in the child. Shared with the daemon path so both
+      # narrow identically (score parity, U7/V5).
+      kind, payload = coverage_selection(source_file, mutation, subject, source, coverage_map)
+      return payload if kind == :verdict
 
-      abs_tests = chosen.map { |t| File.expand_path(t, coverage_map.project_root) }
+      abs_tests = payload
 
       Isolation.run(timeout: timeout) do
         # Forking inherits the parent's live DB connection; sharing one socket
