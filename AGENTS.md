@@ -50,9 +50,11 @@ Semver: **new feature → minor bump, fix → patch.**
 
 Safety nets:
 - The **tag must equal `Mutineer::VERSION`** or the release aborts.
-- `.github/workflows/release-drift.yml` opens/refreshes a `release-overdue` issue
-  when `feat:`/`fix:` commits sit on `main` past the latest tag — so a merge without
-  a release can't slip by.
+- `.github/workflows/release-pr.yml` **auto-opens a release PR** (bumps `version.rb`,
+  dates the CHANGELOG + adds its reference-link def) when `feat:`/`fix:` commits sit on
+  `main` past the latest tag — so a merge without a release can't slip by. Review + merge
+  it, then push the `vX.Y.Z` tag. (To get CI on that auto-PR, add a `RELEASE_PR_TOKEN`
+  PAT secret — a PR opened by the default `GITHUB_TOKEN` doesn't trigger other workflows.)
 
 **One-time setup (required for the publish to work):** register a Trusted Publisher
 on <https://rubygems.org/gems/mutineer> → owner `davidteren`, repo `mutineer`,

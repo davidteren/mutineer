@@ -1,0 +1,100 @@
+name: Release PR
+
+# When shippable work (feat:/fix: commits) lands on main past the latest tag, open
+# (or leave open) a release PR that bumps Mutineer::VERSION and dates the CHANGELOG
+# (including the reference-link def that's easy to forget). You review + merge, then
+# push the vX.Y.Z tag — release.yml tests and publishes. Replaces the old nag-only
+# release-drift workflow: the PR is the actionable nag.
+#
+# Note: a PR opened with the default GITHUB_TOKEN does NOT trigger other workflows
+# (GitHub's recursion guard), so CI won't auto-run on it. To get CI on the release
+# PR, add a PAT as the `RELEASE_PR_TOKEN` secret (repo + workflow scope); the job
+# uses it when present and falls back to GITHUB_TOKEN otherwise. Either way, merging
+# to main and tagging still run release.yml.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 8 * * 1" # Monday 08:00 UTC — weekly backstop
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-pr:
+    name: open a release PR if one is due
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags for git describe/log
+      - uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601 # v1
+        with:
+          ruby-version: "3.4"
+
+      - name: Compute next version and open the release PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+
+          latest_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          [ -z "$latest_tag" ] && { echo "No tags yet — nothing to base a release on."; exit 0; }
+
+          # Classify shippable commits since the last tag (subjects are DATA, never eval'd).
+          log="$(git log --pretty='%s' "${latest_tag}..HEAD" || true)"
+          feats="$(printf '%s\n' "$log" | grep -Ec '^feat(\(|!|:)' || true)"
+          fixes="$(printf '%s\n' "$log" | grep -Ec '^fix(\(|!|:)'  || true)"
+          if [ "$feats" -eq 0 ] && [ "$fixes" -eq 0 ]; then
+            echo "No feat:/fix: commits since ${latest_tag} — nothing to release."; exit 0
+          fi
+
+          # Semver from the tag: any feature -> minor bump, else patch. (Major is manual.)
+          base="${latest_tag#v}"
+          IFS='.' read -r maj min pat <<< "$base"
+          if [ "$feats" -gt 0 ]; then min=$((min + 1)); pat=0; else pat=$((pat + 1)); fi
+          next="${maj}.${min}.${pat}"
+          branch="release/v${next}"
+          echo "latest_tag=$latest_tag  feats=$feats  fixes=$fixes  ->  v$next"
+
+          # Idempotent: don't duplicate an already-open release PR for this version.
+          if [ -n "$(gh pr list --state open --head "$branch" --json number --jq '.[0].number // empty')" ]; then
+            echo "Release PR for $branch is already open."; exit 0
+          fi
+
+          # If VERSION is already this value, the bump merged and only the tag is missing.
+          cur="$(ruby -r ./lib/mutineer/version -e 'print Mutineer::VERSION')"
+          if [ "$cur" = "$next" ]; then
+            echo "VERSION is already $next (bump merged, awaiting tag). Push it: git tag v$next && git push origin v$next"; exit 0
+          fi
+
+          date="$(date -u +%Y-%m-%d)"
+          url="https://github.com/${GITHUB_REPOSITORY}"
+
+          # 1) bump the version constant (perl, not sed -i — portable across GNU/BSD)
+          perl -pi -e "s/VERSION = \"[0-9]+\\.[0-9]+\\.[0-9]+\"/VERSION = \"${next}\"/" lib/mutineer/version.rb
+
+          # 2) date the [Unreleased] block (first match only)
+          perl -0pi -e "s/## \\[Unreleased\\]/## [Unreleased]\n\n## [${next}] - ${date}/" CHANGELOG.md
+
+          # 3) add the reference-link def before the first existing version link (else append)
+          awk -v line="[${next}]: ${url}/releases/tag/v${next}" '
+            !done && /^\[[0-9]/ { print line; done = 1 }
+            { print }
+            END { if (!done) print line }
+          ' CHANGELOG.md > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+
+          # 4) branch, commit, push, open the PR
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -aqm "release: v${next}"
+          git push -u origin "$branch"
+
+          notes="$(git log --pretty='- %h %s' "${latest_tag}..HEAD" | grep -E ' (feat|fix)(\(|!|:)' || true)"
+          bump="$([ "$feats" -gt 0 ] && echo minor || echo patch)"
+          body="$(printf '## What / Why / How\n\n**What.** Cut release **v%s**.\n\n**Why.** feat:/fix: commits have landed on `main` since `%s` (auto-detected). This bumps the version + dates the CHANGELOG so a tag can publish — closing the release-drift gap automatically.\n\n**How.** Review, merge, then `git tag v%s && git push origin v%s` — release.yml tests and publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_Auto-opened by `release-pr.yml`. Close to decline; it re-opens on the next qualifying push._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes")"
+
+          gh pr create --base main --head "$branch" --title "release: v${next}" --body "$body"
