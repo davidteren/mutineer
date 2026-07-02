@@ -1,0 +1,21 @@
+CLAUDE.md
+  s_87df6f2ed35342::t_083ee55dcbc2eb 1-3
+AGENTS.md
+  s_87df6f2ed35342::t_b2488b8cd5ac3c 1-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "0a7e766f5c591aa1807a3d42b21199438a07fb3d",
+  "prompts": {},
+  "sessions": {
+    "s_87df6f2ed35342": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "612ba408-0132-4c5a-8fd0-05fadb34168d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
