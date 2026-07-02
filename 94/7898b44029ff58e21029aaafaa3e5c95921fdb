@@ -1,0 +1,19 @@
+CHANGELOG.md
+  s_3c9f4ab57c61c3::t_3f34a7b19fc244 220-221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "947898b44029ff58e21029aaafaa3e5c95921fdb",
+  "prompts": {},
+  "sessions": {
+    "s_3c9f4ab57c61c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "099db18b-2f70-411c-b88b-2bb2d5f3fb47",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
