@@ -1,0 +1,24 @@
+.github/workflows/release.yml
+  s_87df6f2ed35342::t_893aac6e2f719e 21
+  s_87df6f2ed35342::t_9c51e81f8761b3 43-44
+.github/dependabot.yml
+  s_87df6f2ed35342::t_498efebf4ed5ab 1-8
+.github/workflows/release-drift.yml
+  s_87df6f2ed35342::t_fa8e05d7ff0c91 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "3e6658f64c6ceb9c5aec3022fa2dcfe44d989616",
+  "prompts": {},
+  "sessions": {
+    "s_87df6f2ed35342": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "612ba408-0132-4c5a-8fd0-05fadb34168d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
