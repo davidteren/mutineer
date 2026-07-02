@@ -1,0 +1,36 @@
+# Mutineer
+
+> Clean-room mutation testing for Ruby. Mutineer mutates your source one change at a
+> time, runs your test suite (Minitest or RSpec) against each mutant, and reports the
+> mutants your tests failed to catch — the gaps where green coverage is a lie. Prism +
+> stdlib only, zero runtime dependencies (Ruby ≥ 3.4), with a versioned JSON contract
+> built for CI gates and AI coding agents.
+
+Line coverage tells you which code *ran* under test; it says nothing about whether your
+tests would *notice if that code broke*. Mutation testing closes that gap — exactly where
+AI-generated code and tests are weakest (tests that execute and pass but assert nothing).
+
+Key facts:
+- **Zero runtime dependencies** — Prism + stdlib only. No `eval`, no monkey-patching.
+- **One mutation per mutant**, validity-checked by re-parsing; 11 mutation operators.
+- **Fork-isolated, parallel** execution (Linux + macOS); coverage-guided per-line test selection.
+- **Programmatic**: versioned JSON contract, structured exit codes (0 pass / 1 weak-tests / 2 misinvocation), `--since` diff-scoped runs, `--threshold` hard gate, `--baseline` delta gating.
+- **Rails**: `--daemon` boots the app once and forks per mutant with per-worker DB isolation so `--jobs N` is parallel-safe.
+- Distributed as a RubyGem and a GitHub Action (composite `action.yml`).
+
+## Docs
+
+- [Overview, operators, and usage](https://davidteren.github.io/mutineer/): what Mutineer is, the mutation operators, install, and CLI flags.
+- [For AI agents & CI](https://davidteren.github.io/mutineer/agentic-coding.html): the agent inner loop, CI regression gating, the GitHub Action, and equivalent-mutant suppression.
+- [JSON report schema](https://davidteren.github.io/mutineer/json-schema.html): the versioned JSON contract — `summary`, `survivors[]`, `ignored[]`, and `baseline` blocks.
+- [Sample HTML report](https://davidteren.github.io/mutineer/sample-report.html): example of the self-contained HTML output.
+
+## Source & packages
+
+- [GitHub repository](https://github.com/davidteren/mutineer): source, issues, `AGENTS.md`, and `CHANGELOG.md`.
+- [RubyGems package](https://rubygems.org/gems/mutineer): `gem install mutineer`.
+- [GitHub Marketplace action](https://github.com/marketplace/actions/mutineer-ruby): drop-in PR mutation gate.
+
+## Optional
+
+- [Full docs as one file](https://davidteren.github.io/mutineer/llms-full.txt): README + agent/CI guide + JSON schema concatenated for LLM ingestion.
