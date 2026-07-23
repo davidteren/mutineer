@@ -50,6 +50,26 @@ class CliDaemonTest < Minitest::Test
     assert_includes err, "supports only --framework minitest"
   end
 
+  # Framework re-detect after autopair: auto-inferred *_spec.rb tests must not
+  # bypass the daemon RSpec guard when the user never passed --framework.
+  def test_daemon_rejects_auto_detected_rspec_after_autopair
+    require "fileutils"
+    Dir.mktmpdir("mutineer-rspec-auto") do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      FileUtils.mkdir_p(File.join(dir, "spec"))
+      File.write(File.join(dir, "lib", "widget.rb"), "class Widget; def x; 1; end; end\n")
+      File.write(File.join(dir, "spec", "widget_spec.rb"),
+                 "RSpec.describe(Widget) { it('x') { expect(1).to eq(1) } }\n")
+      _, err, status = Open3.capture3(
+        RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", BIN,
+        "run", "lib/widget.rb", "--daemon", "--boot", "lib/widget.rb",
+        chdir: dir
+      )
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "supports only --framework minitest"
+    end
+  end
+
   def test_daemon_forces_reload_when_redefine_requested
     _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--daemon", "--rails",
                               "--strategy", "redefine")
