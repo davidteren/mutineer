@@ -69,12 +69,21 @@ module Mutineer
       verdict(out, threshold) if threshold && threshold.positive?
     end
 
-    # 0 pass / 1 below threshold. Usage errors (exit 2) are the CLI's job.
+    # 0 pass / 1 below threshold or untestable-with-errors. Usage errors (exit 2)
+    # are the CLI's job. When the score is nil (nothing killed or survived), pure
+    # no_coverage / all-ignored / empty still skip the gate; if any mutant was
+    # errored, timed out, or uncapturable, fail the gate so a broken harness
+    # cannot green CI under --threshold.
     def exit_code(threshold:)
       return 0 if threshold.nil? || threshold <= 0
 
       score = @agg.mutation_score
-      return 0 if score.nil? # no testable mutants — gate skipped (warning already emitted)
+      if score.nil?
+        broken = @agg.errored_count + @agg.timeout_count + @agg.uncapturable_count
+        return 1 if @agg.total.positive? && broken.positive?
+
+        return 0 # pure no_coverage / ignored / empty — gate skipped
+      end
 
       score >= threshold ? 0 : 1
     end

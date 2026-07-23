@@ -45,6 +45,12 @@ class CliTest < Minitest::Test
     assert_includes err, "--jobs requires a positive integer"
   end
 
+  def test_non_numeric_threshold_exits_two
+    _, err, status = mutineer("run", "x.rb", "--threshold", "abc")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--threshold requires a number"
+  end
+
   def test_unknown_format_exits_two
     _, err, status = mutineer("run", "x.rb", "--format", "csv")
     assert_equal 2, status.exitstatus

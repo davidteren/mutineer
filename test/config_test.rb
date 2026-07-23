@@ -54,6 +54,13 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  def test_from_file_rejects_non_numeric_threshold
+    with_config("threshold: abc\n") do |path|
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_match(/threshold must be a number/, err.message)
+    end
+  end
+
   def test_from_file_warns_on_unknown_operator_and_drops_it
     with_config("operators: [arithmetic, bogus]\n") do |path|
       _, err = capture_io { @hash = Config.from_file(path) }

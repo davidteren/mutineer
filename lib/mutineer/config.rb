@@ -162,7 +162,13 @@ module Mutineer
       case known_key
       when "operators" then filter_operators(Array(value).map(&:to_s), file_name)
       when "jobs"      then value.to_i
-      when "threshold" then value.to_f
+      when "threshold"
+        f = Float(value, exception: false)
+        if f.nil?
+          raise ConfigError, "#{file_name}: threshold must be a number between 0 and 100 " \
+                             "(got: #{value.inspect})"
+        end
+        f
       when "require"   then Array(value).map(&:to_s)
       when "boot"      then value.to_s
       when "framework" then value.to_s
