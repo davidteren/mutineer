@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-07-23
+
 ### Fixed
 - **`--daemon` score disclosure** — stop claiming “no coverage narrowing / lower
   bound” on every run (narrowing already ships). Warn only when the coverage map
@@ -222,6 +224,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.11.1]: https://github.com/davidteren/mutineer/releases/tag/v0.11.1
 [0.11.0]: https://github.com/davidteren/mutineer/releases/tag/v0.11.0
 [0.10.0]: https://github.com/davidteren/mutineer/releases/tag/v0.10.0
 [0.9.1]: https://github.com/davidteren/mutineer/releases/tag/v0.9.1
