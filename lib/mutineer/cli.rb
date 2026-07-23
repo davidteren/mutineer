@@ -93,7 +93,7 @@ module Mutineer
         end
         o.on("--list-operators") { show_operators = true }
         o.on("--dry-run") { opts[:dry_run] = true }
-        o.on("--fail-fast") { opts[:fail_fast] = true }
+        o.on("--fail-fast") { opts[:fail_fast] = true; explicit << :fail_fast }
         o.on("--only NAME") { |v| opts[:only] = v; explicit << :only }
         o.on("--since REF") { |v| opts[:since] = v; explicit << :since }
         o.on("--test FILE") { |v| (opts[:tests] ||= []) << v }
