@@ -256,21 +256,21 @@ module Mutineer
       end
 
       validate_test_command!(config) if config.test_command
-      validate_daemon!(config, explicit) if config.daemon
 
       validate_since!(config) if config.since
       preflight_output!(config.output) if config.output
       preflight_baseline!(config.baseline) if config.baseline
 
-      # #11: when --test is omitted, infer each source's test by convention so the
-      # boot-once/fork-per-test core (which pairs empirically by coverage) gets a
-      # populated config.tests. Runs after every flag/usage check above so a
-      # mistyped flag still reports the flag; skipped under --dry-run (no tests
-      # needed). validate_paths! then sees the inferred (real) tests.
+      # When --test is omitted, infer each source's test by convention. Autopair
+      # also re-detects framework from inferred tests when --framework was not set.
       autopair!(config, explicit) unless config.dry_run
 
-      # Boot mode does no coverage selection — every mutant runs the given tests —
-      # so at least one --test file is mandatory (there is nothing to select from).
+      # Daemon validation runs AFTER autopair so auto-inferred *_spec.rb tests
+      # cannot bypass the RSpec rejection (framework would still be minitest if we
+      # validated before discovery).
+      validate_daemon!(config) if config.daemon
+
+      # Boot mode needs at least one --test file (nothing to select from otherwise).
       if config.boot && config.tests.empty?
         warn "mutineer: --boot/--rails requires at least one --test file"
         exit 2
@@ -315,28 +315,34 @@ module Mutineer
       config.jobs = 1
     end
 
-    # #26/#27 Phase 2 (U8): --daemon selects the persistent-daemon backend (boot once,
-    # fork per mutant, per-worker DB isolation). Two usage errors, both exit 2 (KTD-10):
-    # it cannot be combined with --test-command (choose ONE backend — never silently
-    # pick one), and it requires an app to boot (--rails or --boot). Under Rails,
-    # Config.resolve already keeps --jobs serial unless the user explicitly asks for
-    # parallelism, and each worker gets its own SQLite database on demand — so there is
-    # no "missing worker DB" precondition to check here for SQLite. Postgres worker-DB
-    # provisioning + its missing-DB error (KTD-9) arrives with the Postgres adapter (U10).
+    # --daemon selects the persistent-daemon backend (boot once, fork per mutant,
+    # per-worker DB isolation on SQLite). Usage errors exit 2: cannot combine with
+    # --test-command; requires --rails or --boot; minitest only; reload strategy only
+    # (redefine needs a shared VM surgical path the daemon does not ship).
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
-    # @param explicit [Set<Symbol>] explicit CLI fields.
     # @return [void]
-    def self.validate_daemon!(config, _explicit = Set.new)
+    def self.validate_daemon!(config)
       if config.test_command
         warn "mutineer: choose one backend — --daemon and --test-command cannot be combined"
         exit 2
       end
-      return if config.rails || config.boot
+      unless config.rails || config.boot
+        warn "mutineer: --daemon needs an app to boot; add --rails (or --boot FILE)"
+        exit 2
+      end
+      if config.framework == "rspec"
+        warn "mutineer: --daemon supports only --framework minitest " \
+             "(rspec is not implemented on the daemon path yet)"
+        exit 2
+      end
+      return if config.strategy == "reload"
 
-      warn "mutineer: --daemon needs an app to boot; add --rails (or --boot FILE)"
-      exit 2
+      # --rails defaults strategy to redefine; daemon always whole-file loads.
+      warn "[mutineer] --daemon uses --strategy reload " \
+           "(redefine is not supported on the daemon path); forcing reload."
+      config.strategy = "reload"
     end
 
     # --since needs a real git repo and a resolvable ref; either failure is a

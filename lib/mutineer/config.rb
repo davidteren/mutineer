@@ -113,16 +113,13 @@ module Mutineer
       config = new(**merged)
 
       # --rails sugar: boot config/environment and prefer the surgical (redefine)
-      # strategy, which avoids writing tempfiles into the app tree and Zeitwerk
-      # reload hazards. An explicit --strategy always wins.
+      # strategy for the in-process path (avoids app-tree tempfiles / Zeitwerk
+      # hazards). An explicit --strategy always wins. In-process --rails shares
+      # one test database — force serial unless --daemon (per-worker SQLite DBs).
       if config.rails
         config.boot ||= "config/environment"
         config.strategy = "redefine" unless explicit.include?(:strategy)
-        # #12: parallel mutant forks share one database; transactional-fixture
-        # setup/teardown across processes contends and deadlocks. Default to
-        # serial under --rails; an explicit --jobs N opts back into parallelism
-        # (with the per-worker DB-isolation that implies).
-        config.jobs = 1 unless explicit.include?(:jobs)
+        config.jobs = 1 unless config.daemon
       end
 
       # Auto-detect the framework only when neither CLI nor config file set it
