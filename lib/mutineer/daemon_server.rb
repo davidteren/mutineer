@@ -127,6 +127,8 @@ module Mutineer
         @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
         schema = cfg["schema"] && File.expand_path(cfg["schema"])
         @schema_path = schema if schema && File.exist?(schema)
+        # Schema is loaded once per worker slot on first use (not every mutant fork).
+        @schema_ready = {}
       rescue LoadError => e
         @errio.puts("[daemon] worker-DB routing unavailable: #{e.message}")
         @worker_db = nil
@@ -165,18 +167,18 @@ module Mutineer
       def run_mutant(req)
         timeout = req.fetch("timeout", 30)
         worker  = req.fetch("worker", 0)
+        # Load schema until the first killed/survived fork for this worker slot.
+        schema_for_fork = (@worker_db && @schema_path && !@schema_ready[worker]) ? @schema_path : nil
         pid = fork do
-          # New process group so a per-fork timeout can SIGKILL the whole subtree
-          # (carries the Phase-1 pgroup discipline), and silence the child's stdout so
-          # test-framework output can never corrupt the IPC pipe (KTD-6).
+          # New process group so a per-fork timeout can SIGKILL the whole subtree,
+          # and silence the child's stdout so test output never corrupts the IPC pipe.
           Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
           $stdout.reopen(File::NULL, "w")
           code =
             begin
-              # Route THIS fork at its own worker database before any test loads, so
-              # concurrent workers can't clobber each other's fixtures (#26). A routing
-              # failure raises here and is scored `error` below, never a false verdict.
-              @worker_db&.after_fork(worker, @schema_path)
+              # Route THIS fork at its own worker database before any test loads.
+              # A routing failure raises here and is scored `error`, never a false verdict.
+              @worker_db&.after_fork(worker, schema_for_fork)
               apply_payload(req["payload"])
               run_tests(Array(req["tests"]))
             rescue Exception => e # rubocop:disable Lint/RescueException
@@ -186,6 +188,10 @@ module Mutineer
           exit!(code)
         end
         verdict = wait_verdict(pid, timeout)
+        # Mark ready only when the child finished cleanly after schema load
+        # (killed/survived). Timeout can interrupt mid-load_schema; error is a
+        # routing failure — both leave the slot unready so the next fork reloads.
+        @schema_ready[worker] = true if schema_for_fork && %w[killed survived].include?(verdict)
         # A SIGKILLed timeout child skipped its Tempfile unlink — sweep the orphan so
         # it can't outlive the run or trip Zeitwerk on a later fork.
         sweep_temps if verdict == "timeout"
@@ -222,7 +228,14 @@ module Mutineer
             rescue Errno::ESRCH, Errno::EPERM
               Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
             end
-            Process.waitpid(pid) rescue nil # rubocop:disable Style/RescueModifier
+            begin
+              _reaped, status = Process.waitpid2(pid)
+              if status && status.exited? && !status.signaled?
+                return { 0 => "survived", 1 => "killed" }.fetch(status.exitstatus, "error")
+              end
+            rescue Errno::ECHILD
+              # already reaped
+            end
             return "timeout"
           end
           sleep POLL

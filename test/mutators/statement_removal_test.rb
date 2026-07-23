@@ -46,4 +46,22 @@ class StatementRemovalTest < Minitest::Test
     mutations, = run_mutator("def f(x) = x + 1\n")
     assert_empty mutations
   end
+
+  def test_nested_if_body_statements_are_candidates
+    src = <<~RUBY
+      def f(x)
+        a = 1
+        if x
+          b = 2
+          c = 3
+          c
+        end
+        a
+      end
+    RUBY
+    mutations, source = run_mutator(src)
+    removed = mutations.map { |m| source[m.start_offset...m.end_offset] }
+    assert_includes removed, "b = 2"
+    assert_includes removed, "a = 1"
+  end
 end

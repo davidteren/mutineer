@@ -112,14 +112,21 @@ module Mutineer
       file_hash.each { |k, v| merged[k] = v unless explicit.include?(k) }
       config = new(**merged)
 
-      # --rails sugar: boot config/environment and prefer the surgical (redefine)
-      # strategy for the in-process path (avoids app-tree tempfiles / Zeitwerk
-      # hazards). An explicit --strategy always wins. In-process --rails shares
-      # one test database — force serial unless --daemon (per-worker SQLite DBs).
+      # --rails sugar: boot config/environment. Prefer redefine only for the
+      # in-process path (daemon is whole-file reload only). In-process --rails
+      # shares one test database — force serial unless --daemon.
       if config.rails
         config.boot ||= "config/environment"
-        config.strategy = "redefine" unless explicit.include?(:strategy)
-        config.jobs = 1 unless config.daemon
+        unless config.daemon || explicit.include?(:strategy)
+          config.strategy = "redefine"
+        end
+        unless config.daemon
+          if config.jobs.to_i > 1
+            warn "[mutineer] --rails without --daemon runs serially (shared test DB); " \
+                 "forcing --jobs 1. Use --daemon for safe --jobs N."
+          end
+          config.jobs = 1
+        end
       end
 
       # Auto-detect the framework only when neither CLI nor config file set it
@@ -172,6 +179,7 @@ module Mutineer
       when "rails"     then value == true || value.to_s == "true"
       when "daemon"    then value == true || value.to_s == "true"
       when "verbose"   then value == true || value.to_s == "true"
+      when "fail_fast" then value == true || value.to_s == "true"
       when "ignore"    then Array(value).map(&:to_s)
       when "baseline"  then value.to_s
       when "test_command" then value.to_s
