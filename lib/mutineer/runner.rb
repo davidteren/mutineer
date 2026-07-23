@@ -229,13 +229,12 @@ module Mutineer
       end
     end
 
-    # #26/#27 Phase 2a — daemon backend orchestration (serial). Boots the app ONCE in
-    # a persistent subprocess and forks per mutant, restoring the one-boot speed the
-    # Phase 1 subprocess path gives up. Tool-side we build the ready-to-`load` payload
-    # (KTD-2/KTD-3: whole-file reload by default — the spike-proven path) and ship it;
-    # the daemon needs no Prism/mutineer. Serial in 2a (worker-DB isolation +
-    # parallelism is Phase 2b). No coverage narrowing yet (Phase 2c), so every mutant
-    # runs the full `--test` set.
+    # Daemon backend: boot the app once in a persistent subprocess and fork per
+    # mutant. Tool-side we build the ready-to-`load` payload (whole-file reload by
+    # default) and ship it; the daemon needs no Prism/mutineer. Coverage is built
+    # once via a short-lived daemon so each mutant runs only its covering tests.
+    # When jobs > 1, each worker uses its own database (SQLite). Fail-fast forces
+    # serial so the survivor set matches jobs 1.
     #
     # @return [Array(Mutineer::AggregateResult, Hash<String,String>)] aggregate and source map.
     def self.execute_daemon(config, operator_classes)
@@ -243,10 +242,9 @@ module Mutineer
       jobs = filter_since(jobs, source_map, config) if config.since
       abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
 
-      # #26/U7: build the coverage map once (app-side, via a short-lived daemon) so
-      # each mutant runs ONLY its covering tests and a mutant on an uncovered line is
-      # no_coverage. nil when the build fails — the runners fall back to the full
-      # --test set (no narrowing) rather than mis-scoring everything as no_coverage.
+      # Build the coverage map once (app-side). nil when the build fails — runners
+      # fall back to the full --test set (and emit a stderr warning) rather than
+      # mis-scoring everything as no_coverage.
       coverage_map = daemon_coverage_map(config, abs_tests)
 
       # #26/U6: worker count = resolved --jobs, capped at the job count (no idle
@@ -270,24 +268,16 @@ module Mutineer
       [AggregateResult.new(results + ignored_results), source_map]
     end
 
-    # #26/U7: build the coverage map via a short-lived daemon (boots the app once,
-    # captures per-test coverage app-side, ships the map back). Returns a query-only
+    # Build the coverage map via a short-lived daemon (boots the app once, captures
+    # per-test coverage app-side, ships the map back). Returns a query-only
     # CoverageMap, or nil when the build fails / returns empty — callers then run the
-    # full --test set (no narrowing) rather than mis-scoring. The dedicated daemon
-    # costs one extra boot; correctness over that boot (ponytail — the map is reused
-    # for every mutant).
+    # full --test set. Coverage-build IPC has no wall-clock (same limitation as
+    # in-process build_via_fork). A normal nonempty map scores like in-process;
+    # nil falls back to the full suite (more testing, not comparable).
     #
     # @param config [Mutineer::Config] the run config.
     # @param abs_tests [Array<String>] absolute --test paths.
     # @return [Mutineer::CoverageMap, nil]
-    #
-    # ponytail: the coverage-build IPC read is unbounded (no wall-clock) — a --test
-    # file that infinite-loops during capture wedges this call, mirroring the existing
-    # in-process build_via_fork limitation. A capture timeout is a follow-up. When the
-    # map comes back empty (all captures failed), this returns nil and the run falls
-    # back to the FULL --test set per mutant — so on a total capture failure the daemon
-    # score is an upper bound (more testing), diverging from the in-process no_coverage
-    # scoring for that degenerate case only; a normal (nonempty) map scores identically.
     def self.daemon_coverage_map(config, abs_tests)
       client = DaemonClient.new(boot: daemon_boot_config(config, abs_tests, coverage: true),
                                 app_root: config.project_root).start
@@ -296,13 +286,27 @@ module Mutineer
       ensure
         client.quit
       end
-      return nil unless data && !(data["map"] || {}).empty?
+      unless data && !(data["map"] || {}).empty?
+        warn_daemon_coverage_fallback
+        return nil
+      end
 
       CoverageMap.from_data(map: data["map"], failed_test_files: data["failed_test_files"] || [],
                             project_root: config.project_root)
     rescue DaemonBootError
+      warn_daemon_coverage_fallback
       nil
     end
+
+    # Stderr note when daemon coverage is unavailable (full --test set per mutant).
+    #
+    # @api private
+    # @return [void]
+    def self.warn_daemon_coverage_fallback
+      warn "[mutineer] daemon coverage map unavailable; running every mutant against " \
+           "the full --test set (score not comparable to an in-process run)."
+    end
+    private_class_method :warn_daemon_coverage_fallback
 
     # Serial daemon path: one daemon (worker 0), one mutant at a time. Honors
     # --fail-fast (#21: stop at the first survivor).
@@ -433,8 +437,9 @@ module Mutineer
       [:run, chosen.map { |t| File.expand_path(t, coverage_map.project_root) }]
     end
 
-    # Default per-mutant timeout on the daemon path. Generous because 2a runs the full
-    # `--test` set per mutant (no coverage narrowing until Phase 2c).
+    # Default per-mutant timeout on the daemon path (seconds). Coverage narrowing
+    # usually keeps each job short; this still covers a slow suite or full-suite
+    # fallback when the coverage map is unavailable.
     DAEMON_TIMEOUT = 60
 
     # The boot config the daemon needs to boot the app once: where to boot, the test
