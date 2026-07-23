@@ -69,12 +69,21 @@ module Mutineer
       verdict(out, threshold) if threshold && threshold.positive?
     end
 
-    # 0 pass / 1 below threshold. Usage errors (exit 2) are the CLI's job.
+    # 0 pass / 1 below threshold or untestable-with-errors. Usage errors (exit 2)
+    # are the CLI's job. When the score is nil (nothing killed or survived), pure
+    # no_coverage / all-ignored / empty still skip the gate; if any mutant was
+    # errored, timed out, or uncapturable, fail the gate so a broken harness
+    # cannot green CI under --threshold.
     def exit_code(threshold:)
       return 0 if threshold.nil? || threshold <= 0
 
       score = @agg.mutation_score
-      return 0 if score.nil? # no testable mutants — gate skipped (warning already emitted)
+      if score.nil?
+        broken = @agg.errored_count + @agg.timeout_count + @agg.uncapturable_count
+        return 1 if @agg.total.positive? && broken.positive?
+
+        return 0 # pure no_coverage / ignored / empty — gate skipped
+      end
 
       score >= threshold ? 0 : 1
     end
@@ -380,10 +389,36 @@ module Mutineer
                  "#{@agg.ignored_count} ignored excluded"
       if score.nil?
         out.puts "Mutation score: N/A  (no covered mutants)"
-        err.puts "[mutineer] no covered mutations; mutation score is N/A and the threshold check is skipped."
+        if broken_nil_score?
+          err.puts "[mutineer] no covered mutations (#{broken_nil_score_detail}); " \
+                   "threshold gate fails under a positive --threshold (broken harness)."
+        else
+          err.puts "[mutineer] no covered mutations; mutation score is N/A and the threshold check is skipped."
+        end
       else
         out.puts "Mutation score: #{score}%  (killed / (killed + survived); #{excluded})"
       end
+    end
+
+    # True when nil score is due to errors/timeouts/uncapturable (gate must fail).
+    #
+    # @api private
+    # @return [Boolean]
+    def broken_nil_score?
+      @agg.total.positive? &&
+        (@agg.errored_count + @agg.timeout_count + @agg.uncapturable_count).positive?
+    end
+
+    # Human-readable counts for a broken nil-score run.
+    #
+    # @api private
+    # @return [String]
+    def broken_nil_score_detail
+      parts = []
+      parts << "#{@agg.errored_count} errored" if @agg.errored_count.positive?
+      parts << "#{@agg.timeout_count} timeout" if @agg.timeout_count.positive?
+      parts << "#{@agg.uncapturable_count} uncapturable" if @agg.uncapturable_count.positive?
+      parts.join(", ")
     end
 
     # #11: one line per source after the global summary, so a multi-source run
@@ -470,7 +505,13 @@ module Mutineer
     # @return [void]
     def verdict(out, threshold)
       score = @agg.mutation_score
-      return if score.nil?
+      if score.nil?
+        if broken_nil_score?
+          out.puts "FAILED: no covered mutants (#{broken_nil_score_detail}); " \
+                   "threshold #{threshold}% cannot pass with a broken harness"
+        end
+        return
+      end
 
       if score >= threshold
         out.puts "PASSED: #{score}% >= threshold #{threshold}%"

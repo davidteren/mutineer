@@ -98,7 +98,15 @@ module Mutineer
         o.on("--since REF") { |v| opts[:since] = v; explicit << :since }
         o.on("--test FILE") { |v| (opts[:tests] ||= []) << v }
         o.on("--operators LIST") { |v| opts[:operators] = v.split(",").map(&:strip); explicit << :operators }
-        o.on("--threshold FLOAT") { |v| opts[:threshold] = v.to_f; explicit << :threshold }
+        o.on("--threshold FLOAT") do |v|
+          f = Float(v, exception: false)
+          if f.nil?
+            warn "mutineer: --threshold requires a number between 0 and 100 (got: #{v.inspect})"
+            exit 2
+          end
+          opts[:threshold] = f
+          explicit << :threshold
+        end
         o.on("--jobs N") { |v| opts[:jobs] = v; explicit << :jobs }
         o.on("--strategy STRAT") { |v| opts[:strategy] = v; explicit << :strategy }
         o.on("--framework NAME") { |v| opts[:framework] = v; explicit << :framework }
