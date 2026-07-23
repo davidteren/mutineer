@@ -222,7 +222,14 @@ module Mutineer
             rescue Errno::ESRCH, Errno::EPERM
               Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
             end
-            Process.waitpid(pid) rescue nil # rubocop:disable Style/RescueModifier
+            begin
+              _reaped, status = Process.waitpid2(pid)
+              if status && status.exited? && !status.signaled?
+                return { 0 => "survived", 1 => "killed" }.fetch(status.exitstatus, "error")
+              end
+            rescue Errno::ECHILD
+              # already reaped
+            end
             return "timeout"
           end
           sleep POLL

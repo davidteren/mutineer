@@ -19,6 +19,9 @@ All notable changes to this project are documented here. The format is based on
   `--strategy reload` with a clear warning when redefine was requested (daemon
   whole-file only) (#50). **In-process `--rails` always serial** unless
   `--daemon` (only daemon has per-worker DB isolation) (#55).
+- **Isolation timeout** — kill the child process group and honor a clean exit
+  that races the deadline (not always timeout) (#52). **External backend** —
+  signal death is `error`, not `killed` (#53).
 
 ## [0.11.0] - 2026-07-02
 

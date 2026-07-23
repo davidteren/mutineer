@@ -31,6 +31,9 @@ module Mutineer
     # @return [Mutineer::Result] result from the child process.
     def self.run(timeout: DEFAULT_TIMEOUT)
       pid = fork do
+        # Own process group so a timeout kill can reap grandchildren (match
+        # daemon/external backends). Best-effort: if setpgid fails, kill the pid.
+        Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
         code = 0
         begin
           result = yield
@@ -48,20 +51,27 @@ module Mutineer
         exit!(code)
       end
 
-      # Single-threaded deadline poll (R2): we are the ONLY caller of waitpid
-      # on this pid, so we never reap-then-kill. We SIGKILL only after WNOHANG
-      # shows the child is still alive past the deadline — so the kill can
-      # never hit a reaped/recycled pid. Timeout is a parent-side fact
-      # (deadline reached), not status.signaled? (which is true for ANY signal
-      # death, e.g. SIGSEGV).
+      # Single-threaded deadline poll: we are the ONLY caller of waitpid on this
+      # pid, so we never reap-then-kill. SIGKILL the process group only after
+      # WNOHANG shows the child is still alive past the deadline.
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
       loop do
         reaped, status = Process.waitpid2(pid, Process::WNOHANG)
         return decode(status) if reaped
 
         if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-          Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
-          Process.waitpid(pid) rescue nil # rubocop:disable Style/RescueModifier
+          begin
+            Process.kill(:KILL, -pid)
+          rescue Errno::ESRCH, Errno::EPERM
+            Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
+          end
+          begin
+            _reaped, status = Process.waitpid2(pid)
+            # Child may have finished cleanly between WNOHANG and kill; honor it.
+            return decode(status) if status && status.exited? && !status.signaled?
+          rescue Errno::ECHILD
+            # already reaped
+          end
           return Result.timeout
         end
         sleep 0.005
