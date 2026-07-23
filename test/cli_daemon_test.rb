@@ -43,6 +43,22 @@ class CliDaemonTest < Minitest::Test
     refute_equal 0, status.exitstatus
   end
 
+  def test_daemon_with_rspec_is_a_usage_error
+    _, err, status = mutineer("run", "x.rb", "--test", "t_spec.rb", "--daemon", "--rails",
+                              "--framework", "rspec")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "supports only --framework minitest"
+  end
+
+  def test_daemon_forces_reload_when_redefine_requested
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--daemon", "--rails",
+                              "--strategy", "redefine")
+    assert_includes err, "forcing reload"
+    refute_includes err, "supports only --framework"
+    # Still fails later (no real app in tmpdir), not as a strategy usage hard-exit.
+    refute_equal 0, status.exitstatus
+  end
+
   # --daemon is settable in .mutineer.yml (KNOWN_KEYS) with boolean coercion.
   def test_daemon_is_a_known_config_key_with_boolean_coercion
     assert_includes Mutineer::KNOWN_KEYS, "daemon"

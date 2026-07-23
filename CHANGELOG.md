@@ -15,6 +15,10 @@ All notable changes to this project are documented here. The format is based on
   instead of silently green; pure no_coverage / all-ignored still skips the gate
   (#49). Non-numeric `--threshold` / YAML `threshold` is a usage error (exit 2),
   not a silent gate-off (#51).
+- **`--daemon` contracts** — reject `--framework rspec` (exit 2); force
+  `--strategy reload` with a clear warning when redefine was requested (daemon
+  whole-file only) (#50). **In-process `--rails` always serial** unless
+  `--daemon` (only daemon has per-worker DB isolation) (#55).
 
 ## [0.11.0] - 2026-07-02
 
