@@ -33,6 +33,36 @@ bundle exec rake yard:strict                    # 100% documented — see below
 
 `yard:strict` · `test` (×2 OS) · `rails dogfood` + daemon integration · socket/gitguardian.
 
+## PR review gate (before any merge — never skip)
+
+Applies to **every** open PR (including stacks). Do not merge and do not
+suggest merge until this is done on the current head.
+
+### Before opening a new PR
+
+Run `/dt-pre-pr-gate` on the exact PR-head commit:
+
+1. `/ce-code-review` — fix findings  
+2. `/ie-review` — fix findings  
+3. `/cubic-loop` (local) — fix findings  
+
+Then `gh pr create`. A gate run is stale after any later commit; re-run.
+
+### After the PR is open
+
+1. **Re-review the PR** with the same three lenses (CE, IE, cubic PR/local
+   mode). Fix real findings; commit and push.
+2. **Address every review comment/thread** (cubic, bots, humans):
+   - Fix or document why not
+   - **Reply inline on every thread** (fix + commit SHA, or rationale)
+   - Never resolve silently
+3. **CI green** on the head SHA
+4. Readiness skills only after 1–3: `check-pr-comments`,
+   `dt-address-PR-for-readiness`. Human merges.
+
+**Stacked PRs:** gate each PR from the bottom of the stack up. After fixing
+a lower PR, restack dependents and re-gate them.
+
 ## Releasing (tag-driven — CI publishes, no manual `gem push`)
 
 Semver: **new feature → minor bump, fix → patch.**

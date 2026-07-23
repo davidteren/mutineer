@@ -48,6 +48,13 @@ class ExternalBackendTest < Minitest::Test
     assert_predicate result, :killed?
   end
 
+  def test_signal_death_is_error_not_killed
+    # Self-SIGKILL: exitstatus is nil; must not inflate kill rate.
+    result = Backend.run("#{RUBY} -e 'Process.kill(:KILL, Process.pid)' %{files}", ["x"], timeout: 30)
+    assert_predicate result, :error?
+    refute_predicate result, :killed?
+  end
+
   def test_timeout_is_timeout_and_fast
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     _out, err = capture_io do

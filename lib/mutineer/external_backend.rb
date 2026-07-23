@@ -62,6 +62,12 @@ module Mutineer
         Result.timeout
       else # :exited
         return Result.survived if code&.zero?
+        # Signal death (nil exitstatus) is infrastructure, not a suite assertion
+        # failure — match Isolation/daemon (error), do not inflate kill rate.
+        if code.nil?
+          warn output if verbose && !output.empty?
+          return Result.error("test-command terminated by signal")
+        end
 
         warn output if verbose && !output.empty?
         Result.killed
@@ -151,7 +157,13 @@ module Mutineer
           rescue Errno::ESRCH, Errno::EPERM
             Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
           end
-          Process.waitpid(pid) rescue nil # rubocop:disable Style/RescueModifier
+          begin
+            _reaped, status = Process.waitpid2(pid)
+            # Finished cleanly between poll and kill — honor real exit code.
+            return [:exited, status.exitstatus] if status && status.exited? && !status.signaled?
+          rescue Errno::ECHILD
+            # already reaped
+          end
           return [:timeout, nil]
         end
         sleep POLL

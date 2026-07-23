@@ -93,7 +93,7 @@ module Mutineer
         end
         o.on("--list-operators") { show_operators = true }
         o.on("--dry-run") { opts[:dry_run] = true }
-        o.on("--fail-fast") { opts[:fail_fast] = true }
+        o.on("--fail-fast") { opts[:fail_fast] = true; explicit << :fail_fast }
         o.on("--only NAME") { |v| opts[:only] = v; explicit << :only }
         o.on("--since REF") { |v| opts[:since] = v; explicit << :since }
         o.on("--test FILE") { |v| (opts[:tests] ||= []) << v }
@@ -510,50 +510,37 @@ module Mutineer
         "enable with --operators <list>."
     end
 
-    # Runs dry-run mode.
+    # Runs dry-run mode. Reuses Runner.collect_jobs (+ filter_since) so the
+    # candidate list cannot drift from a real run's job selection.
     #
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.dry_run(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
-      sources = {}
+      jobs, ignored_results, source_map = Runner.collect_jobs(config, operator_classes)
+      # Narrow jobs and ignored the same way so the summary matches the printed list.
+      if config.since
+        jobs = Runner.filter_since(jobs, source_map, config)
+        ignored_jobs = ignored_results.map { |r| [r.subject, r.mutation, r.id] }
+        ignored = Runner.filter_since(ignored_jobs, source_map, config).size
+      else
+        ignored = ignored_results.size
+      end
+
       per_operator = Hash.new(0)
       skipped = 0
-      ignored = 0
-      ignore_set = config.ignore.to_set
-
-      # --since narrows the preview to changed lines too, so `--dry-run --since`
-      # shows exactly what a real `--since` run would mutate.
-      changed = if config.since
-                  ChangedLines.for(ref: config.since, files: config.sources,
-                                   project_root: config.project_root)
-                end
-
-      Project.discover(config.sources, only: config.only).each do |subject|
-        source = (sources[subject.file] ||= Parser.parse_file(subject.file).source.source)
-        # #22: honor suppression so the preview matches what a real run mutates.
-        # Mirror execute's per-subject shape (ids need the full mutation list).
-        disabled = Runner.suppress_map(source)
-        mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
-        ids = MutantId.for_subject(subject, source, mutations)
-        mutations.each_with_index do |mutation, i|
-          unless mutation.valid?(source)
-            skipped += 1
-            next
-          end
-          line = source.byteslice(0, mutation.start_offset).count("\n") + 1
-          next if changed && !changed[File.expand_path(subject.file, config.project_root)]&.include?(line)
-
-          if Runner.suppressed?(mutation.operator, line, ids[i], disabled, ignore_set)
-            ignored += 1
-            next
-          end
-
-          per_operator[mutation.operator] += 1
-          original = source.byteslice(mutation.start_offset...mutation.end_offset)
-          puts "[#{mutation.operator}] #{subject.qualified_name}  " \
-               "#{subject.file}:#{line}  `#{original}` -> `#{mutation.replacement}`"
+      jobs.each do |subject, mutation, _id|
+        source = source_map[subject.file]
+        unless mutation.valid?(source)
+          skipped += 1
+          next
         end
+
+        line = source.byteslice(0, mutation.start_offset).count("\n") + 1
+        per_operator[mutation.operator] += 1
+        original = source.byteslice(mutation.start_offset...mutation.end_offset)
+        puts "[#{mutation.operator}] #{subject.qualified_name}  " \
+             "#{subject.file}:#{line}  `#{original}` -> `#{mutation.replacement}`"
       end
 
       total = per_operator.values.sum
