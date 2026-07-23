@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "minitest/mock"
 require "mutineer/config"
 require "mutineer/runner"
 require "mutineer/cli"
@@ -44,13 +45,26 @@ class RunnerDaemonTest < Minitest::Test
     assert_operator aggregate.killed_count, :>, 0, "weak suite still kills some"
   end
 
-  # #26/U8: the daemon backend has no coverage narrowing yet, so its score is not
-  # comparable to an in-process run — the CLI must disclose that on every --daemon
-  # run, symmetric to the --test-command "upper bound" disclosure (cli.rb:465).
-  def test_cli_discloses_lower_bound_on_daemon_run
+  # Successful daemon coverage narrowing: no stale "lower bound / no narrowing"
+  # caveat. Fallback-only warnings live on Runner.daemon_coverage_map (nil map).
+  def test_cli_does_not_claim_stale_daemon_lower_bound_when_map_ok
     _out, err = capture_io do
       assert_raises(SystemExit) { Mutineer::CLI.execute(config_for("order_test.rb")) }
     end
-    assert_match(/--daemon score is a lower bound/, err)
+    refute_match(/--daemon score is a lower bound/, err)
+    refute_match(/no coverage narrowing yet/, err)
+    refute_match(/daemon coverage map unavailable/, err)
+  end
+
+  def test_daemon_coverage_map_warns_when_unavailable
+    cfg = config_for("order_test.rb")
+    Mutineer::DaemonClient.stub(:new, ->(*) { raise Mutineer::DaemonBootError, "boom" }) do
+      _out, err = capture_io do
+        map = Mutineer::Runner.daemon_coverage_map(cfg, cfg.tests.map { |t| File.expand_path(t, cfg.project_root) })
+        assert_nil map
+      end
+      assert_match(/daemon coverage map unavailable/, err)
+      assert_match(/DaemonBootError/, err)
+    end
   end
 end

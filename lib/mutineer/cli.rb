@@ -458,26 +458,18 @@ module Mutineer
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta)
 
-      # #27/KTD-6: warn (stderr, so it never pollutes json/html) that an external
-      # run's score is not comparable to an in-process run — it has no coverage
-      # narrowing, so uncovered mutants count as survivors, and an infra failure is
-      # scored as a kill (upper bound).
+      # Warn (stderr, so it never pollutes json/html) that an external run's score
+      # is not comparable to an in-process run: no coverage narrowing (uncovered
+      # mutants count as survivors), and an infra failure is scored as a kill
+      # (upper bound). Daemon coverage fallback warnings are emitted from the runner
+      # only when the map is unavailable — not on every --daemon run.
       if config.test_command
         warn "[mutineer] --test-command score is an upper bound, not comparable to an " \
              "in-process run: no coverage narrowing (uncovered mutants count as survivors) " \
              "and an infra failure is scored as a kill."
       end
 
-      # #26/U8: same disclosure as --test-command above — the daemon backend has no
-      # coverage narrowing yet (Phase 2c), so this score is a lower bound (uncovered
-      # mutants count as survivors) and not comparable to an in-process run.
-      if config.daemon
-        warn "[mutineer] --daemon score is a lower bound, not comparable to an " \
-             "in-process run: no coverage narrowing yet (uncovered mutants count as " \
-             "survivors)."
-      end
-
-      # #14: nudge toward the opt-in tier-2 operators (human report only — never
+      # Nudge toward the opt-in tier-2 operators (human report only — never
       # pollute JSON output).
       if !%w[json html].include?(config.format) && (hint = tier2_hint(config.operators))
         puts hint

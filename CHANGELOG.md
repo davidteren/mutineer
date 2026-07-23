@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **`--daemon` score disclosure** — stop claiming “no coverage narrowing / lower
+  bound” on every run (narrowing already ships). Warn only when the coverage map
+  is unavailable and the run falls back to the full `--test` set (#48).
+
 ## [0.11.0] - 2026-07-02
 
 ### Added
