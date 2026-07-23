@@ -172,6 +172,7 @@ module Mutineer
       when "rails"     then value == true || value.to_s == "true"
       when "daemon"    then value == true || value.to_s == "true"
       when "verbose"   then value == true || value.to_s == "true"
+      when "fail_fast" then value == true || value.to_s == "true"
       when "ignore"    then Array(value).map(&:to_s)
       when "baseline"  then value.to_s
       when "test_command" then value.to_s
