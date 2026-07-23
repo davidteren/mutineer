@@ -167,6 +167,17 @@ class ReporterTest < Minitest::Test
     assert_includes err.string, "threshold check is skipped"
   end
 
+  def test_na_score_broken_harness_fails_gate_with_clear_message
+    out = StringIO.new
+    err = StringIO.new
+    reporter([Mutineer::Result.error("boom"), Mutineer::Result.timeout])
+      .report(out: out, err: err, threshold: 80.0)
+    assert_includes out.string, "Mutation score: N/A"
+    assert_includes err.string, "threshold gate fails"
+    assert_includes out.string, "FAILED: no covered mutants"
+    refute_includes err.string, "threshold check is skipped"
+  end
+
   # #11: a multi-source run shows a per-source line per file (sorted by path).
   def test_per_source_block_for_multiple_sources
     other = Mutineer::Subject.new(file: "other.rb", namespace: ["O"], name: :m,
