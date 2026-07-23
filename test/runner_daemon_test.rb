@@ -64,6 +64,7 @@ class RunnerDaemonTest < Minitest::Test
         assert_nil map
       end
       assert_match(/daemon coverage map unavailable/, err)
+      assert_match(/DaemonBootError/, err)
     end
   end
 end

@@ -287,24 +287,26 @@ module Mutineer
         client.quit
       end
       unless data && !(data["map"] || {}).empty?
-        warn_daemon_coverage_fallback
+        reason = data.is_a?(Hash) && data["error"] ? data["error"] : "empty map"
+        warn_daemon_coverage_fallback(reason)
         return nil
       end
 
       CoverageMap.from_data(map: data["map"], failed_test_files: data["failed_test_files"] || [],
                             project_root: config.project_root)
-    rescue DaemonBootError
-      warn_daemon_coverage_fallback
+    rescue DaemonBootError => e
+      warn_daemon_coverage_fallback("#{e.class}: #{e.message}")
       nil
     end
 
     # Stderr note when daemon coverage is unavailable (full --test set per mutant).
     #
     # @api private
+    # @param reason [String] short cause (boot error message, empty map, …).
     # @return [void]
-    def self.warn_daemon_coverage_fallback
-      warn "[mutineer] daemon coverage map unavailable; running every mutant against " \
-           "the full --test set (score not comparable to an in-process run)."
+    def self.warn_daemon_coverage_fallback(reason = "unknown")
+      warn "[mutineer] daemon coverage map unavailable (#{reason}); running every " \
+           "mutant against the full --test set (score not comparable to an in-process run)."
     end
     private_class_method :warn_daemon_coverage_fallback
 
