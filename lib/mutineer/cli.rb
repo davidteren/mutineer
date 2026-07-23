@@ -518,7 +518,14 @@ module Mutineer
     def self.dry_run(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
       jobs, ignored_results, source_map = Runner.collect_jobs(config, operator_classes)
-      jobs = Runner.filter_since(jobs, source_map, config) if config.since
+      # Narrow jobs and ignored the same way so the summary matches the printed list.
+      if config.since
+        jobs = Runner.filter_since(jobs, source_map, config)
+        ignored_jobs = ignored_results.map { |r| [r.subject, r.mutation, r.id] }
+        ignored = Runner.filter_since(ignored_jobs, source_map, config).size
+      else
+        ignored = ignored_results.size
+      end
 
       per_operator = Hash.new(0)
       skipped = 0
@@ -537,7 +544,6 @@ module Mutineer
       end
 
       total = per_operator.values.sum
-      ignored = ignored_results.size
       breakdown = per_operator.map { |op, n| "#{op}: #{n}" }.join(", ")
       summary = breakdown.empty? ? "" : "#{breakdown} — "
       puts "#{summary}#{total} mutations (dry run, not executed); " \

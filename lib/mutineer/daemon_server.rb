@@ -167,13 +167,10 @@ module Mutineer
       def run_mutant(req)
         timeout = req.fetch("timeout", 30)
         worker  = req.fetch("worker", 0)
-        # Load schema only on the first mutant for this worker slot; later forks
-        # reconnect only (fixtures repopulate via transactions).
-        schema_for_fork = nil
-        if @worker_db && @schema_path && !@schema_ready[worker]
-          schema_for_fork = @schema_path
-          @schema_ready[worker] = true
-        end
+        # Load schema only until the first successful load for this worker slot.
+        # Mark ready only after a non-error verdict so a timed-out first fork
+        # cannot leave later forks on a schema-less DB.
+        schema_for_fork = (@worker_db && @schema_path && !@schema_ready[worker]) ? @schema_path : nil
         pid = fork do
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
           # and silence the child's stdout so test output never corrupts the IPC pipe.
@@ -193,6 +190,10 @@ module Mutineer
           exit!(code)
         end
         verdict = wait_verdict(pid, timeout)
+        # Schema load runs before mutant apply; a killed/survived/timeout after that
+        # still means the DB has schema. Only pure "error" (routing/boot failure)
+        # leaves the slot unready for a retry with schema again.
+        @schema_ready[worker] = true if schema_for_fork && verdict != "error"
         # A SIGKILLed timeout child skipped its Tempfile unlink — sweep the orphan so
         # it can't outlive the run or trip Zeitwerk on a later fork.
         sweep_temps if verdict == "timeout"
