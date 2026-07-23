@@ -112,13 +112,15 @@ module Mutineer
       sweep_orphans(dirs)
 
       strategy = config.strategy
+      # Fail-fast must be serial: a parallel stop_when fires on the first survivor
+      # by wall-clock, not input order, so the survivor set would diverge from
+      # --jobs 1 (daemon already forces serial for the same reason).
+      jobs_n = config.fail_fast ? 1 : config.jobs
       results =
         begin
           framework = config.framework
-          # #21: --fail-fast stops scheduling new mutants after the first survivor;
-          # in-flight workers drain, unscheduled jobs stay nil (dropped below).
           stop_when = config.fail_fast ? ->(r) { r.survived? } : nil
-          bare = WorkerPool.new(config.jobs).run(jobs, stop_when: stop_when) do |subject, mutation|
+          bare = WorkerPool.new(jobs_n).run(jobs, stop_when: stop_when) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
                 subject: subject, strategy: strategy, rails: config.rails, framework: framework)
           end

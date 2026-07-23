@@ -22,6 +22,8 @@ All notable changes to this project are documented here. The format is based on
 - **Isolation timeout** — kill the child process group and honor a clean exit
   that races the deadline (not always timeout) (#52). **External backend** —
   signal death is `error`, not `killed` (#53).
+- **`--fail-fast` is serial** on the in-process path (matches daemon) so the
+  survivor set is deterministic under any `--jobs` (#54).
 
 ## [0.11.0] - 2026-07-02
 
