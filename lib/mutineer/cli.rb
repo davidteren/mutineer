@@ -256,21 +256,21 @@ module Mutineer
       end
 
       validate_test_command!(config) if config.test_command
-      validate_daemon!(config, explicit) if config.daemon
 
       validate_since!(config) if config.since
       preflight_output!(config.output) if config.output
       preflight_baseline!(config.baseline) if config.baseline
 
-      # #11: when --test is omitted, infer each source's test by convention so the
-      # boot-once/fork-per-test core (which pairs empirically by coverage) gets a
-      # populated config.tests. Runs after every flag/usage check above so a
-      # mistyped flag still reports the flag; skipped under --dry-run (no tests
-      # needed). validate_paths! then sees the inferred (real) tests.
+      # When --test is omitted, infer each source's test by convention. Autopair
+      # also re-detects framework from inferred tests when --framework was not set.
       autopair!(config, explicit) unless config.dry_run
 
-      # Boot mode does no coverage selection — every mutant runs the given tests —
-      # so at least one --test file is mandatory (there is nothing to select from).
+      # Daemon validation runs AFTER autopair so auto-inferred *_spec.rb tests
+      # cannot bypass the RSpec rejection (framework would still be minitest if we
+      # validated before discovery).
+      validate_daemon!(config) if config.daemon
+
+      # Boot mode needs at least one --test file (nothing to select from otherwise).
       if config.boot && config.tests.empty?
         warn "mutineer: --boot/--rails requires at least one --test file"
         exit 2
@@ -322,9 +322,8 @@ module Mutineer
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
-    # @param _explicit [Set<Symbol>] unused; kept for call-site compatibility.
     # @return [void]
-    def self.validate_daemon!(config, _explicit = Set.new)
+    def self.validate_daemon!(config)
       if config.test_command
         warn "mutineer: choose one backend — --daemon and --test-command cannot be combined"
         exit 2
