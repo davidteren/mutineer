@@ -14,17 +14,19 @@ module Mutineer
       # @return [void]
       def visit_statements_node(node)
         stmts = node.body
-        return if stmts.length < 2
-
-        stmts[0...-1].each do |stmt|
-          loc = stmt.location
-          @mutations << Mutation.new(
-            start_offset: loc.start_offset,
-            end_offset: loc.end_offset,
-            replacement: "nil",
-            operator: :statement_removal
-          )
+        if stmts.length >= 2
+          stmts[0...-1].each do |stmt|
+            loc = stmt.location
+            @mutations << Mutation.new(
+              start_offset: loc.start_offset,
+              end_offset: loc.end_offset,
+              replacement: "nil",
+              operator: :statement_removal
+            )
+          end
         end
+        # Nested statement lists (if/begin/while bodies) are separate StatementsNodes.
+        super
       end
     end
   end

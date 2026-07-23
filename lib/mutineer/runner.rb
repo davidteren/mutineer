@@ -332,24 +332,16 @@ module Mutineer
       results
     end
 
-    # Parallel daemon path (#26/U6): N daemon handles, each pinned to its own worker
-    # slot (→ its own DB, so concurrent workers can't clobber each other's fixtures).
-    # A shared queue of job indices feeds N tool-side threads; each thread blocks on
-    # IPC (GVL released), so the N daemons run genuinely concurrently. Results are
-    # placed by input index and compacted, so the verdict SET is identical to serial
-    # regardless of finish order (R7). `execute_daemon` never calls this with
-    # `config.fail_fast` set (forced to the serial path instead) — a wall-clock stop
-    # here, unlike serial's input-index break, would make the survivor set and score
-    # non-deterministic. The stop-flag machinery below stays as a defensive no-op for
-    # any direct caller that bypasses that guard.
+    # Parallel daemon path: N daemon handles, each pinned to its own worker slot
+    # (own DB). A shared queue of job indices feeds N tool-side threads; results
+    # are placed by input index so the verdict set matches serial. Callers must
+    # not pass fail_fast here (execute_daemon forces serial for fail-fast).
     #
     # @return [Array<Mutineer::Result>] completed results in input order.
     def self.run_daemon_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map)
-      results    = Array.new(jobs.size)
-      queue      = Queue.new
+      results = Array.new(jobs.size)
+      queue   = Queue.new
       jobs.each_index { |i| queue << i }
-      stop       = false
-      stop_mutex = Mutex.new
 
       clients = Array.new(worker_count) do
         DaemonClient.new(boot: daemon_boot_config(config, abs_tests),
@@ -358,15 +350,13 @@ module Mutineer
 
       clients.each_with_index.map do |client, worker|
         Thread.new do
-          until stop_mutex.synchronize { stop }
+          loop do
             i = begin
-              queue.pop(true) # non-blocking; ThreadError when drained
+              queue.pop(true)
             rescue ThreadError
               break
             end
-            r = daemon_job_result(jobs[i], i, client, worker, config, coverage_map, abs_tests, source_map)
-            results[i] = r
-            stop_mutex.synchronize { stop = true } if config.fail_fast && r.survived?
+            results[i] = daemon_job_result(jobs[i], i, client, worker, config, coverage_map, abs_tests, source_map)
           end
         ensure
           client.quit

@@ -127,6 +127,8 @@ module Mutineer
         @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
         schema = cfg["schema"] && File.expand_path(cfg["schema"])
         @schema_path = schema if schema && File.exist?(schema)
+        # Schema is loaded once per worker slot on first use (not every mutant fork).
+        @schema_ready = {}
       rescue LoadError => e
         @errio.puts("[daemon] worker-DB routing unavailable: #{e.message}")
         @worker_db = nil
@@ -165,18 +167,23 @@ module Mutineer
       def run_mutant(req)
         timeout = req.fetch("timeout", 30)
         worker  = req.fetch("worker", 0)
+        # Load schema only on the first mutant for this worker slot; later forks
+        # reconnect only (fixtures repopulate via transactions).
+        schema_for_fork = nil
+        if @worker_db && @schema_path && !@schema_ready[worker]
+          schema_for_fork = @schema_path
+          @schema_ready[worker] = true
+        end
         pid = fork do
-          # New process group so a per-fork timeout can SIGKILL the whole subtree
-          # (carries the Phase-1 pgroup discipline), and silence the child's stdout so
-          # test-framework output can never corrupt the IPC pipe (KTD-6).
+          # New process group so a per-fork timeout can SIGKILL the whole subtree,
+          # and silence the child's stdout so test output never corrupts the IPC pipe.
           Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
           $stdout.reopen(File::NULL, "w")
           code =
             begin
-              # Route THIS fork at its own worker database before any test loads, so
-              # concurrent workers can't clobber each other's fixtures (#26). A routing
-              # failure raises here and is scored `error` below, never a false verdict.
-              @worker_db&.after_fork(worker, @schema_path)
+              # Route THIS fork at its own worker database before any test loads.
+              # A routing failure raises here and is scored `error`, never a false verdict.
+              @worker_db&.after_fork(worker, schema_for_fork)
               apply_payload(req["payload"])
               run_tests(Array(req["tests"]))
             rescue Exception => e # rubocop:disable Lint/RescueException
