@@ -10,6 +10,11 @@ All notable changes to this project are documented here. The format is based on
 - **`--daemon` score disclosure** — stop claiming “no coverage narrowing / lower
   bound” on every run (narrowing already ships). Warn only when the coverage map
   is unavailable and the run falls back to the full `--test` set (#48).
+- **`--threshold` CI fidelity** — exit 1 when a positive threshold is set but the
+  run produced only errors/timeouts/uncapturable (nil score with a broken harness)
+  instead of silently green; pure no_coverage / all-ignored still skips the gate
+  (#49). Non-numeric `--threshold` / YAML `threshold` is a usage error (exit 2),
+  not a silent gate-off (#51).
 
 ## [0.11.0] - 2026-07-02
 

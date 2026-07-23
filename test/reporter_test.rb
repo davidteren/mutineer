@@ -75,8 +75,24 @@ class ReporterTest < Minitest::Test
     assert_equal 0, r.exit_code(threshold: 80.0) # 80.0 >= 80.0
   end
 
-  def test_exit_code_nil_score_skips_gate
+  def test_exit_code_nil_score_pure_no_coverage_skips_gate
     assert_equal 0, reporter([Mutineer::Result.no_coverage]).exit_code(threshold: 80.0)
+  end
+
+  def test_exit_code_nil_score_all_ignored_skips_gate
+    assert_equal 0, reporter([Mutineer::Result.ignored]).exit_code(threshold: 80.0)
+  end
+
+  def test_exit_code_nil_score_with_errors_fails_gate
+    assert_equal 1, reporter([Mutineer::Result.error("boom")]).exit_code(threshold: 80.0)
+  end
+
+  def test_exit_code_nil_score_with_timeouts_fails_gate
+    assert_equal 1, reporter([Mutineer::Result.timeout]).exit_code(threshold: 80.0)
+  end
+
+  def test_exit_code_nil_score_with_uncapturable_fails_gate
+    assert_equal 1, reporter([Mutineer::Result.uncapturable]).exit_code(threshold: 80.0)
   end
 
   # --- rendering / streams ---
