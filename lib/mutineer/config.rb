@@ -112,17 +112,21 @@ module Mutineer
       file_hash.each { |k, v| merged[k] = v unless explicit.include?(k) }
       config = new(**merged)
 
-      # --rails sugar: boot config/environment and prefer the surgical (redefine)
-      # strategy, which avoids writing tempfiles into the app tree and Zeitwerk
-      # reload hazards. An explicit --strategy always wins.
+      # --rails sugar: boot config/environment. Prefer redefine only for the
+      # in-process path (daemon is whole-file reload only). In-process --rails
+      # shares one test database — force serial unless --daemon.
       if config.rails
         config.boot ||= "config/environment"
-        config.strategy = "redefine" unless explicit.include?(:strategy)
-        # #12: parallel mutant forks share one database; transactional-fixture
-        # setup/teardown across processes contends and deadlocks. Default to
-        # serial under --rails; an explicit --jobs N opts back into parallelism
-        # (with the per-worker DB-isolation that implies).
-        config.jobs = 1 unless explicit.include?(:jobs)
+        unless config.daemon || explicit.include?(:strategy)
+          config.strategy = "redefine"
+        end
+        unless config.daemon
+          if config.jobs.to_i > 1
+            warn "[mutineer] --rails without --daemon runs serially (shared test DB); " \
+                 "forcing --jobs 1. Use --daemon for safe --jobs N."
+          end
+          config.jobs = 1
+        end
       end
 
       # Auto-detect the framework only when neither CLI nor config file set it
@@ -162,13 +166,20 @@ module Mutineer
       case known_key
       when "operators" then filter_operators(Array(value).map(&:to_s), file_name)
       when "jobs"      then value.to_i
-      when "threshold" then value.to_f
+      when "threshold"
+        f = Float(value, exception: false)
+        if f.nil?
+          raise ConfigError, "#{file_name}: threshold must be a number between 0 and 100 " \
+                             "(got: #{value.inspect})"
+        end
+        f
       when "require"   then Array(value).map(&:to_s)
       when "boot"      then value.to_s
       when "framework" then value.to_s
       when "rails"     then value == true || value.to_s == "true"
       when "daemon"    then value == true || value.to_s == "true"
       when "verbose"   then value == true || value.to_s == "true"
+      when "fail_fast" then value == true || value.to_s == "true"
       when "ignore"    then Array(value).map(&:to_s)
       when "baseline"  then value.to_s
       when "test_command" then value.to_s

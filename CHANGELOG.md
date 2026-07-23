@@ -12,6 +12,26 @@ All notable changes to this project are documented here. The format is based on
 - **`--daemon` score disclosure** — stop claiming “no coverage narrowing / lower
   bound” on every run (narrowing already ships). Warn only when the coverage map
   is unavailable and the run falls back to the full `--test` set (#48).
+- **`--threshold` CI fidelity** — exit 1 when a positive threshold is set but the
+  run produced only errors/timeouts/uncapturable (nil score with a broken harness)
+  instead of silently green; pure no_coverage / all-ignored still skips the gate
+  (#49). Non-numeric `--threshold` / YAML `threshold` is a usage error (exit 2),
+  not a silent gate-off (#51).
+- **`--daemon` contracts** — reject `--framework rspec` (exit 2); force
+  `--strategy reload` with a clear warning when redefine was requested (daemon
+  whole-file only) (#50). **In-process `--rails` always serial** unless
+  `--daemon` (only daemon has per-worker DB isolation) (#55).
+- **Isolation timeout** — kill the child process group and honor a clean exit
+  that races the deadline (not always timeout) (#52). **External backend** —
+  signal death is `error`, not `killed` (#53).
+- **`--fail-fast` is serial** on the in-process path (matches daemon) so the
+  survivor set is deterministic under any `--jobs` (#54).
+- **Dry-run uses `collect_jobs`** so candidates match a real run (#59).
+- **Daemon schema load once per worker** (not every mutant fork) (#56).
+- **Nested `statement_removal`** visits inner statement lists (#62).
+- Dead seams: remove unused `RailsWorkerDb.provision`, simplify parallel daemon
+  fail-fast branch, drop unused `validate_daemon!` arg (#60).
+- Archive historical implementation spec under `docs/archive/` (#61).
 
 ## [0.11.0] - 2026-07-02
 

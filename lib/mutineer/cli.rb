@@ -93,12 +93,20 @@ module Mutineer
         end
         o.on("--list-operators") { show_operators = true }
         o.on("--dry-run") { opts[:dry_run] = true }
-        o.on("--fail-fast") { opts[:fail_fast] = true }
+        o.on("--fail-fast") { opts[:fail_fast] = true; explicit << :fail_fast }
         o.on("--only NAME") { |v| opts[:only] = v; explicit << :only }
         o.on("--since REF") { |v| opts[:since] = v; explicit << :since }
         o.on("--test FILE") { |v| (opts[:tests] ||= []) << v }
         o.on("--operators LIST") { |v| opts[:operators] = v.split(",").map(&:strip); explicit << :operators }
-        o.on("--threshold FLOAT") { |v| opts[:threshold] = v.to_f; explicit << :threshold }
+        o.on("--threshold FLOAT") do |v|
+          f = Float(v, exception: false)
+          if f.nil?
+            warn "mutineer: --threshold requires a number between 0 and 100 (got: #{v.inspect})"
+            exit 2
+          end
+          opts[:threshold] = f
+          explicit << :threshold
+        end
         o.on("--jobs N") { |v| opts[:jobs] = v; explicit << :jobs }
         o.on("--strategy STRAT") { |v| opts[:strategy] = v; explicit << :strategy }
         o.on("--framework NAME") { |v| opts[:framework] = v; explicit << :framework }
@@ -248,21 +256,21 @@ module Mutineer
       end
 
       validate_test_command!(config) if config.test_command
-      validate_daemon!(config, explicit) if config.daemon
 
       validate_since!(config) if config.since
       preflight_output!(config.output) if config.output
       preflight_baseline!(config.baseline) if config.baseline
 
-      # #11: when --test is omitted, infer each source's test by convention so the
-      # boot-once/fork-per-test core (which pairs empirically by coverage) gets a
-      # populated config.tests. Runs after every flag/usage check above so a
-      # mistyped flag still reports the flag; skipped under --dry-run (no tests
-      # needed). validate_paths! then sees the inferred (real) tests.
+      # When --test is omitted, infer each source's test by convention. Autopair
+      # also re-detects framework from inferred tests when --framework was not set.
       autopair!(config, explicit) unless config.dry_run
 
-      # Boot mode does no coverage selection — every mutant runs the given tests —
-      # so at least one --test file is mandatory (there is nothing to select from).
+      # Daemon validation runs AFTER autopair so auto-inferred *_spec.rb tests
+      # cannot bypass the RSpec rejection (framework would still be minitest if we
+      # validated before discovery).
+      validate_daemon!(config) if config.daemon
+
+      # Boot mode needs at least one --test file (nothing to select from otherwise).
       if config.boot && config.tests.empty?
         warn "mutineer: --boot/--rails requires at least one --test file"
         exit 2
@@ -307,28 +315,34 @@ module Mutineer
       config.jobs = 1
     end
 
-    # #26/#27 Phase 2 (U8): --daemon selects the persistent-daemon backend (boot once,
-    # fork per mutant, per-worker DB isolation). Two usage errors, both exit 2 (KTD-10):
-    # it cannot be combined with --test-command (choose ONE backend — never silently
-    # pick one), and it requires an app to boot (--rails or --boot). Under Rails,
-    # Config.resolve already keeps --jobs serial unless the user explicitly asks for
-    # parallelism, and each worker gets its own SQLite database on demand — so there is
-    # no "missing worker DB" precondition to check here for SQLite. Postgres worker-DB
-    # provisioning + its missing-DB error (KTD-9) arrives with the Postgres adapter (U10).
+    # --daemon selects the persistent-daemon backend (boot once, fork per mutant,
+    # per-worker DB isolation on SQLite). Usage errors exit 2: cannot combine with
+    # --test-command; requires --rails or --boot; minitest only; reload strategy only
+    # (redefine needs a shared VM surgical path the daemon does not ship).
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
-    # @param explicit [Set<Symbol>] explicit CLI fields.
     # @return [void]
-    def self.validate_daemon!(config, _explicit = Set.new)
+    def self.validate_daemon!(config)
       if config.test_command
         warn "mutineer: choose one backend — --daemon and --test-command cannot be combined"
         exit 2
       end
-      return if config.rails || config.boot
+      unless config.rails || config.boot
+        warn "mutineer: --daemon needs an app to boot; add --rails (or --boot FILE)"
+        exit 2
+      end
+      if config.framework == "rspec"
+        warn "mutineer: --daemon supports only --framework minitest " \
+             "(rspec is not implemented on the daemon path yet)"
+        exit 2
+      end
+      return if config.strategy == "reload"
 
-      warn "mutineer: --daemon needs an app to boot; add --rails (or --boot FILE)"
-      exit 2
+      # --rails defaults strategy to redefine; daemon always whole-file loads.
+      warn "[mutineer] --daemon uses --strategy reload " \
+           "(redefine is not supported on the daemon path); forcing reload."
+      config.strategy = "reload"
     end
 
     # --since needs a real git repo and a resolvable ref; either failure is a
@@ -496,50 +510,37 @@ module Mutineer
         "enable with --operators <list>."
     end
 
-    # Runs dry-run mode.
+    # Runs dry-run mode. Reuses Runner.collect_jobs (+ filter_since) so the
+    # candidate list cannot drift from a real run's job selection.
     #
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.dry_run(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
-      sources = {}
+      jobs, ignored_results, source_map = Runner.collect_jobs(config, operator_classes)
+      # Narrow jobs and ignored the same way so the summary matches the printed list.
+      if config.since
+        jobs = Runner.filter_since(jobs, source_map, config)
+        ignored_jobs = ignored_results.map { |r| [r.subject, r.mutation, r.id] }
+        ignored = Runner.filter_since(ignored_jobs, source_map, config).size
+      else
+        ignored = ignored_results.size
+      end
+
       per_operator = Hash.new(0)
       skipped = 0
-      ignored = 0
-      ignore_set = config.ignore.to_set
-
-      # --since narrows the preview to changed lines too, so `--dry-run --since`
-      # shows exactly what a real `--since` run would mutate.
-      changed = if config.since
-                  ChangedLines.for(ref: config.since, files: config.sources,
-                                   project_root: config.project_root)
-                end
-
-      Project.discover(config.sources, only: config.only).each do |subject|
-        source = (sources[subject.file] ||= Parser.parse_file(subject.file).source.source)
-        # #22: honor suppression so the preview matches what a real run mutates.
-        # Mirror execute's per-subject shape (ids need the full mutation list).
-        disabled = Runner.suppress_map(source)
-        mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
-        ids = MutantId.for_subject(subject, source, mutations)
-        mutations.each_with_index do |mutation, i|
-          unless mutation.valid?(source)
-            skipped += 1
-            next
-          end
-          line = source.byteslice(0, mutation.start_offset).count("\n") + 1
-          next if changed && !changed[File.expand_path(subject.file, config.project_root)]&.include?(line)
-
-          if Runner.suppressed?(mutation.operator, line, ids[i], disabled, ignore_set)
-            ignored += 1
-            next
-          end
-
-          per_operator[mutation.operator] += 1
-          original = source.byteslice(mutation.start_offset...mutation.end_offset)
-          puts "[#{mutation.operator}] #{subject.qualified_name}  " \
-               "#{subject.file}:#{line}  `#{original}` -> `#{mutation.replacement}`"
+      jobs.each do |subject, mutation, _id|
+        source = source_map[subject.file]
+        unless mutation.valid?(source)
+          skipped += 1
+          next
         end
+
+        line = source.byteslice(0, mutation.start_offset).count("\n") + 1
+        per_operator[mutation.operator] += 1
+        original = source.byteslice(mutation.start_offset...mutation.end_offset)
+        puts "[#{mutation.operator}] #{subject.qualified_name}  " \
+             "#{subject.file}:#{line}  `#{original}` -> `#{mutation.replacement}`"
       end
 
       total = per_operator.values.sum

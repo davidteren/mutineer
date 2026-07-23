@@ -17,10 +17,9 @@ module Mutineer
   # fixtures then repopulate that isolated database per test.
   #
   # Scope: this pass ships the **SQLite** adapter (per-worker file, hermetic,
-  # spike-proven). Postgres per-worker provisioning (`CREATE DATABASE <db>-<worker>` —
-  # the measured corruption case) extends {worker_db_config}/{provision} at the marked
-  # seam in U10; until then a non-SQLite config raises a clear NotImplementedError
-  # rather than silently mis-routing.
+  # spike-proven). Postgres per-worker DBs (`CREATE DATABASE <db>-<worker>`) are not
+  # implemented yet; a non-SQLite config raises a clear NotImplementedError rather
+  # than silently mis-routing.
   #
   # Honest limit (KTD-5): routing failures surface as `error` via {verify_connection!}.
   # Re-raising an AR error that fires *inside a test body* past Minitest (so an in-test
@@ -63,7 +62,7 @@ module Mutineer
       # What's gated is runtime PROVISIONING: SQLite files are created on connect,
       # but Postgres needs an explicit `CREATE DATABASE` per worker (U10). Until that
       # lands, refuse non-SQLite loudly rather than route to a database that doesn't
-      # exist. To finish U10: implement provision() for PG and drop this guard.
+      # exist until Postgres worker creation is implemented.
       unless adapter.start_with?("sqlite")
         raise NotImplementedError,
               "worker-DB isolation currently provisions SQLite only (got adapter #{adapter.inspect}); " \
@@ -112,31 +111,8 @@ module Mutineer
       verify_connection!
     end
 
-    # Explicit, parent-side provisioning: create + schema-load every worker database
-    # up front, then restore the app's default connection. This is the EXPLICIT
-    # provisioning entry point (V2 — never silent auto-create mid-audit) and the seam
-    # U10 extends for Postgres (`CREATE DATABASE` per worker). For SQLite the files are
-    # created on connect and the schema load makes them ready; idempotent to re-run.
-    #
-    # @param worker_count [Integer] number of worker databases to provision.
-    # @param schema_path [String, nil] absolute path to `db/schema.rb`, or nil to skip.
-    # @return [void]
-    def self.provision(worker_count, schema_path)
-      return unless available?
-
-      original = ActiveRecord::Base.connection_db_config
-      (0...worker_count).each do |worker|
-        ActiveRecord::Base.establish_connection(worker_db_config(worker))
-        load_schema(schema_path) if schema_path
-      end
-    ensure
-      ActiveRecord::Base.establish_connection(original) if original
-    end
-
-    # Load a Rails `schema.rb` into the current connection with its output silenced,
-    # so a parent-side {provision} call can never spill schema chatter onto the daemon
-    # IPC pipe. (In a fork the child's stdout is already `File::NULL`; this guards the
-    # parent path too.)
+    # Load a Rails `schema.rb` into the current connection with output silenced
+    # (fork child stdout is already File::NULL; this is belt-and-braces).
     #
     # @param schema_path [String] absolute path to `db/schema.rb`.
     # @return [void]
