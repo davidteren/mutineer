@@ -151,11 +151,41 @@ RAILS_ENV=test mutineer run app/models/order.rb \
 
 - **`%{files}`** is required; it expands to the `--test` paths as separate
   arguments (a path with a space stays one argument — there is no shell).
-- **Environment** is inherited by the subprocess, so set it on the Mutineer
-  command (e.g. the leading `RAILS_ENV=test` above). Don't put `KEY=val` inside
-  `--test-command`.
+- **Environment:** suite-relevant vars (e.g. `RAILS_ENV`) set on the Mutineer
+  command are inherited. Bundler/gem injection from Mutineer's Ruby is scrubbed,
+  and version-manager **version bins** (e.g. `~/.rbenv/versions/3.4.x/bin`) are
+  removed from `PATH` so shims / `.ruby-version` can select the app's Ruby.
+  Don't put `KEY=val` prefixes *inside* `--test-command` (no shell; that would
+  be treated as the program name).
 
-Tradeoffs (Phase 1) — this path is correct but not free:
+#### Under a version manager (rbenv / asdf / chruby)
+
+If the smoke check still reports a **Ruby version mismatch** (suite ran under
+Mutineer's 3.4.x but the Gemfile wants e.g. 3.1.6), wrap the suite so it always
+re-selects the app's Ruby. Example rbenv wrapper (`bin/mutineer-test` in the app):
+
+```sh
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+unset GEM_HOME GEM_PATH RUBYLIB RUBYOPT BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION
+export RBENV_VERSION="$(cat .ruby-version 2>/dev/null || true)"
+export RAILS_ENV="${RAILS_ENV:-test}"
+export PATH="${HOME}/.rbenv/shims:${PATH}"
+exec bundle exec rails test "$@"
+```
+
+```sh
+# Mutineer on 3.4+; suite on the app's Ruby via the wrapper
+mutineer run app/models/order.rb \
+  --test test/models/order_test.rb \
+  --test-command "bin/mutineer-test %{files}"
+```
+
+Mutineer also surfaces a targeted smoke-check message when Bundler prints
+`RubyVersionMismatch`, instead of only blaming DB/migrations.
+
+Tradeoffs — this path is correct but not free:
 
 - **Slower:** your app re-boots for every mutant (no shared boot yet).
 - **No coverage narrowing:** every mutant runs the *full* `--test` set, so the

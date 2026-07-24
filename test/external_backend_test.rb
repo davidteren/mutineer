@@ -66,7 +66,8 @@ class ExternalBackendTest < Minitest::Test
     assert_match(/exceeded 1s/, err)
   end
 
-  # Env is inherited by the subprocess — no KEY=val parsing on our side.
+  # Non-bundler env is still inherited (RAILS_ENV-style vars set on the Mutineer
+  # command). Bundler/gem injection is scrubbed separately (#32).
   def test_env_is_inherited
     ENV["MUTINEER_ENV_PROBE"] = "1"
     with_script(%(exit(ENV["MUTINEER_ENV_PROBE"] == "1" ? 0 : 1))) do |path|
@@ -74,6 +75,33 @@ class ExternalBackendTest < Minitest::Test
     end
   ensure
     ENV.delete("MUTINEER_ENV_PROBE")
+  end
+
+  def test_child_env_strips_gem_and_bundler_injection
+    ENV["GEM_HOME"] = "/tmp/mutineer-fake-gems"
+    ENV["BUNDLE_GEMFILE"] = "/tmp/MutineerGemfile"
+    ENV["RBENV_VERSION"] = "3.4.9"
+    env = Backend.child_env
+    assert_nil env["GEM_HOME"]
+    assert_nil env["BUNDLE_GEMFILE"]
+    assert_nil env["RBENV_VERSION"]
+  ensure
+    ENV.delete("GEM_HOME")
+    ENV.delete("BUNDLE_GEMFILE")
+    ENV.delete("RBENV_VERSION")
+  end
+
+  def test_child_env_scrubs_rbenv_version_bin_from_path
+    version_bin = File.expand_path("~/.rbenv/versions/3.4.9/bin")
+    original_path = ENV["PATH"]
+    ENV["PATH"] = "#{version_bin}:/usr/bin:/bin"
+    ENV["RBENV_VERSION"] = "3.4.9"
+    env = Backend.child_env
+    refute_includes env["PATH"].split(File::PATH_SEPARATOR), version_bin
+    assert_includes env["PATH"], "/usr/bin"
+  ensure
+    ENV["PATH"] = original_path if original_path
+    ENV.delete("RBENV_VERSION")
   end
 
   # --verbose surfaces the child's captured output; default run stays quiet on a kill.
@@ -101,6 +129,21 @@ class ExternalBackendTest < Minitest::Test
       end
       assert_match(/environment looks broken/, err.message)
       assert_match(/db down/, err.message)
+    end
+  end
+
+  def test_smoke_check_ruby_version_mismatch_gives_targeted_hint
+    msg = "Bundler::RubyVersionMismatch: Your Ruby version is 3.4.9, " \
+          "but your Gemfile specified 3.1.6"
+    with_script(%(STDERR.puts #{msg.inspect}\nexit 1\n)) do |path|
+      err = assert_raises(Mutineer::SmokeCheckError) do
+        Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
+      end
+      assert_match(/Ruby version mismatch/, err.message)
+      assert_match(/3\.4\.9/, err.message)
+      assert_match(/3\.1\.6/, err.message)
+      assert_match(/version manager/, err.message)
+      refute_match(/check DB, RAILS_ENV/, err.message)
     end
   end
 end
