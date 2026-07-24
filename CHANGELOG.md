@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **Comment diet on orchestration files** — present-tense YARD contracts; drop
+  ticket/phase/KTD history tags from runner, CLI, daemon pair, coverage map,
+  reporter, result, and related modules. Safety and score invariants kept (#57).
+
 ## [0.11.2] - 2026-07-24
 
 ### Fixed

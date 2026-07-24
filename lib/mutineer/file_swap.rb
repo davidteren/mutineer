@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 module Mutineer
-  # Raised when a source file's backup already exists as FileSwap.with begins —
-  # a second mutineer run is racing on the same file (the backup path is shared
+  # Raised when a source file's backup already exists as FileSwap.with begins.
+  # A second mutineer run is racing on the same file (the backup path is shared
   # and unlocked). Aborting beats silently leaving the tree mutated.
   class ConcurrentRunError < StandardError
     def initialize(backup)
@@ -11,11 +11,11 @@ module Mutineer
     end
   end
 
-  # #27 (U2): apply one whole-file mutant to the REAL source path for the external
+  # Apply one whole-file mutant to the REAL source path for the external
   # (`--test-command`) backend, and guarantee the original is restored on every
-  # exit path. A separate `bundle exec` subprocess has its own VM and cannot see an
-  # in-process `load`, so the mutant must live on disk while its suite runs — which
-  # makes leaving the file mutated the one genuinely dangerous failure mode.
+  # exit path. A separate `bundle exec` subprocess has its own VM and cannot see
+  # an in-process `load`, so the mutant must live on disk while its suite runs,
+  # which makes leaving the file mutated the one genuinely dangerous failure mode.
   #
   # Defense in depth, mirroring the tempfile-orphan discipline
   # (`Runner.sweep_orphans`, `isolation.rb` tempfiles):
@@ -39,12 +39,13 @@ module Mutineer
     # @return [Object] the block's return value.
     def self.with(source_file, mutated)
       backup = source_file + BACKUP_SUFFIX
-      # A backup already on disk means either a prior hard-killed run (restore_orphans
-      # should have healed it at startup) or a SECOND mutineer run racing us on the
-      # same file. The backup path is shared and unlocked, so proceeding would let
-      # us capture the other run's mutant AS the "original" and permanently mutate
-      # the tree. Refuse loudly rather than silently corrupt — and do it BEFORE
-      # `created` is set, so the ensure below never touches a backup we don't own.
+      # A backup already on disk means either a prior hard-killed run
+      # (restore_orphans should have healed it at startup) or a SECOND mutineer
+      # run racing us on the same file. The backup path is shared and unlocked, so
+      # proceeding would let us capture the other run's mutant AS the "original"
+      # and permanently mutate the tree. Refuse loudly rather than silently
+      # corrupt, and do it BEFORE `created` is set, so the ensure below never
+      # touches a backup we don't own.
       raise ConcurrentRunError, backup if File.exist?(backup)
 
       original = File.binread(source_file)
@@ -74,11 +75,11 @@ module Mutineer
           backup_bytes = File.binread(backup)
           if !File.exist?(source_file)
             # A real user file that merely ends in our suffix, with no sibling to
-            # restore — leave it untouched (never create a file from it).
+            # restore. Leave it untouched (never create a file from it).
             next
           elsif File.binread(source_file) == backup_bytes
-            # Redundant backup (e.g. a crash between restore and unlink): nothing to
-            # heal, just clear the orphan so the next run doesn't see a false race.
+            # Redundant backup (e.g. a crash between restore and unlink): nothing
+            # to heal, just clear the orphan so the next run does not see a false race.
             File.unlink(backup)
           else
             File.binwrite(source_file, backup_bytes)

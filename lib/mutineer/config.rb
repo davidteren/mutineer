@@ -4,20 +4,20 @@ require "etc"
 require "yaml"
 
 module Mutineer
-  # Raised by the config layer instead of calling exit/abort — a data class must
-  # never kill the host process (R8). The CLI rescues this and maps it to exit 2.
+  # Raised by the config layer instead of calling exit/abort. A data class must
+  # never kill the host process. The CLI rescues this and maps it to exit 2.
   class ConfigError < StandardError; end
 
   # Plain run configuration, populated by the CLI (or directly by the
   # integration test). `operators` nil means "all default operators";
   # `threshold` 0.0 means the CI gate is off (spec §10).
   #
-  # M5 adds: jobs (parallel workers), format (human|json), output (report file),
-  # strategy (reload|redefine), require_paths (extra files to load). Config loading and
-  # the CLI > file > default precedence merge live here (KTD3/KTD4).
+  # Also holds: jobs (parallel workers), format (human|json), output (report
+  # file), strategy (reload|redefine), require_paths (extra files to load).
+  # Config loading and the CLI > file > default precedence merge live here.
   #
-  # Boot mode adds: boot (a file to require ONCE in the parent so the app env —
-  # e.g. Rails — is booted before forking; sources are then NOT manually required)
+  # Boot mode adds: boot (a file to require ONCE in the parent so the app env,
+  # e.g. Rails, is booted before forking; sources are then NOT manually required)
   # and rails (sugar: defaults boot to config/environment and strategy to redefine,
   # and reconnects ActiveRecord per fork).
   Config = Struct.new(
@@ -25,7 +25,7 @@ module Mutineer
     :cache_dir, :project_root, :load_paths,
     :jobs, :format, :output, :strategy, :require_paths,
     :boot, :rails, :since, :framework, :verbose, :ignore,
-    # :daemon is user-facing as of U8 (--daemon flag + KNOWN_KEYS + boolean coerce).
+    # :daemon is user-facing (--daemon flag + KNOWN_KEYS + boolean coerce).
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
     :daemon, :daemon_timeout,
@@ -33,7 +33,7 @@ module Mutineer
   ) do
     # Config file name.
     CONFIG_FILE = ".mutineer.yml"
-    # Keys accepted in .mutineer.yml (R7). `require` maps to the :require_paths field.
+    # Keys accepted in .mutineer.yml. `require` maps to the :require_paths field.
     KNOWN_KEYS = %w[operators jobs threshold only require boot rails since framework verbose ignore baseline fail_fast test_command daemon].freeze
 
     def initialize(**kwargs)
@@ -59,8 +59,8 @@ module Mutineer
 
     # Walk from `start` toward `home`, returning the first .mutineer.yml path found
     # or nil. Checks `home` itself, then stops; if `start` is above `home`
-    # (e.g. /tmp), the walk continues to the filesystem root (KTD4). Pure
-    # discovery — reads no file content.
+    # (e.g. /tmp), the walk continues to the filesystem root. Pure discovery;
+    # reads no file content.
     def self.find_file(start = Dir.pwd, home = File.expand_path("~"))
       dir = File.expand_path(start)
       loop do
@@ -77,9 +77,9 @@ module Mutineer
     end
 
     # Parse a .mutineer.yml into a symbol-keyed hash of recognized keys. Unknown
-    # keys / unknown operator names emit a one-line stderr warning and are ignored
-    # (R7). A YAML syntax error raises ConfigError (R7a/R8) — never a silent
-    # fallback to defaults, and never an exit from the lib layer.
+    # keys / unknown operator names emit a one-line stderr warning and are ignored.
+    # A YAML syntax error raises ConfigError: never a silent fallback to defaults,
+    # and never an exit from the lib layer.
     def self.from_file(path)
       raw = YAML.safe_load(File.read(path)) || {}
       name = File.basename(path)
@@ -103,7 +103,7 @@ module Mutineer
       raise ConfigError, "#{File.basename(path)} parse error: #{e.message}"
     end
 
-    # Apply precedence (KTD3): start from the CLI-provided values, then fill in a
+    # Apply precedence: start from the CLI-provided values, then fill in a
     # config-file value only for keys the user did NOT type on the command line.
     # `explicit` is a Set of field symbols the CLI saw with a value; a Set (not
     # nil-sentinels) is used because some valid values are zero/false.
@@ -114,7 +114,7 @@ module Mutineer
 
       # --rails sugar: boot config/environment. Prefer redefine only for the
       # in-process path (daemon is whole-file reload only). In-process --rails
-      # shares one test database — force serial unless --daemon.
+      # shares one test database, so force serial unless --daemon.
       if config.rails
         config.boot ||= "config/environment"
         unless config.daemon || explicit.include?(:strategy)
@@ -138,7 +138,6 @@ module Mutineer
 
     # Pick rspec when a MAJORITY of the given test files end with _spec.rb;
     # otherwise minitest. Empty/ambiguous -> minitest (the safe default).
-    # Detects the test framework from the file list.
     #
     # @param tests [Array<String>] test file paths.
     # @return [String] `"rspec"` or `"minitest"`.
@@ -187,10 +186,9 @@ module Mutineer
       end
     end
 
-    # Drop (with a warning) operator names the registry doesn't know (R7).
+    # Drop (with a warning) operator names the registry does not know.
     # Referenced lazily so config.rb carries no load-order dependency on the
     # registry; by the time a config is parsed at runtime, it is loaded.
-    # Filters out unknown operator names.
     #
     # @api private
     # @param names [Array<String>] operator names.

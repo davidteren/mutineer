@@ -4,29 +4,27 @@ require "json"
 require_relative "config" # for Mutineer::ConfigError
 
 module Mutineer
-  # #13: CI baseline/delta gating. A baseline is literally a prior
-  # `mutineer run --format json` document (KTD-1) — no bespoke format to
-  # version.
-  # We diff the current run against it by the #10 stable survivor id (KTD-2):
-  # a NEW survivor (id present now, absent in the baseline) OR a score drop is
-  # a regression the CLI turns into exit 1. Pure data — stdlib `json` only, no
-  # fork, no Rails — so it's testable in isolation from a canned JSON + a hand-
-  # built AggregateResult.
+  # CI baseline/delta gating. A baseline is a prior
+  # `mutineer run --format json` document (no bespoke format to version).
+  # Diff the current run against it by the stable survivor id: a NEW survivor
+  # (id present now, absent in the baseline) OR a score drop is a regression the
+  # CLI turns into exit 1. Pure data, stdlib `json` only, no fork, no Rails, so
+  # it is testable in isolation from a canned JSON + a hand-built AggregateResult.
   class Baseline
     # The verdict of diffing a current run against the baseline.
-    #   new_survivors   — current Result objects whose stable id is absent from
+    #   new_survivors   - current Result objects whose stable id is absent from
     #                     the baseline (the regressions to name).
-    #   fixed_survivors — baseline survivor hashes absent from the current run
+    #   fixed_survivors - baseline survivor hashes absent from the current run
     #                     (informational, never gates).
-    #   score_drop      — current score < baseline score - epsilon. nil on
+    #   score_drop      - current score < baseline score - epsilon. nil on
     #                     either side skips the check (see #diff).
-    #   regressed       — any new survivors OR a score drop.
+    #   regressed       - any new survivors OR a score drop.
     Delta = Data.define(:new_survivors, :fixed_survivors,
                         :score_before, :score_after, :score_drop, :regressed)
 
-    # Load a prior --format json run. Raises ConfigError (NOT exit — R8: a data
-    # class must never kill the host) on a missing/unreadable file, unparseable
-    # JSON, or a doc that isn't a baseline shape, so the CLI maps it to exit 2
+    # Load a prior --format json run. Raises ConfigError (NOT exit: a data class
+    # must never kill the host) on a missing/unreadable file, unparseable JSON,
+    # or a doc that is not a baseline shape, so the CLI maps it to exit 2
     # (usage) like every other bad-path flag.
     #
     # @param path [String] baseline JSON file path.
@@ -72,7 +70,7 @@ module Mutineer
 
       current_score = aggregate.mutation_score
       # nil-score discipline (mirrors Reporter#exit_code): a score absent on
-      # either side can't be compared — skip the drop check, keep the new-
+      # either side cannot be compared. Skip the drop check, keep the new-
       # survivor check.
       score_drop = !@score.nil? && !current_score.nil? &&
                    current_score < @score - epsilon

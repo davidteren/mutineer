@@ -12,21 +12,22 @@ require_relative "test_runners"
 
 module Mutineer
   # Maps `(source_file, line) -> [test_files]` so each mutant runs only against
-  # the tests that actually exercise its line. Built once (Phase A), then queried
-  # per mutant (Phase B via #tests_for). Persisted to .mutineer/coverage.json with
-  # a content-based digest that rebuilds the map whenever any tracked file changes.
+  # the tests that actually exercise its line. Built once, then queried per
+  # mutant via #tests_for. Persisted to .mutineer/coverage.json with a
+  # content-based digest that rebuilds the map whenever any tracked file changes.
   #
-  # Keys are "file:line" strings (relative to project_root) everywhere — in
-  # memory and on disk — so load/save needs no key transformation (KTD4).
+  # Keys are "file:line" strings (relative to project_root) everywhere, in
+  # memory and on disk, so load/save needs no key transformation.
   class CoverageMap
-    DEFAULT_CAPTURE_TIMEOUT = 120 # seconds, per coverage subprocess (R3)
+    DEFAULT_CAPTURE_TIMEOUT = 120 # seconds, per coverage subprocess
 
     attr_reader :project_root, :failed_test_files, :phase_a_ran, :map
 
-    # Build a QUERY-ONLY map from data captured elsewhere (the daemon builds the map
-    # app-side and ships `map` + `failed_test_files` over IPC; the tool reconstructs it
-    # here for per-mutant selection). Skips the capture machinery entirely — only the
-    # three fields #tests_for / #method_uncapturable? read are set (U7).
+    # Build a QUERY-ONLY map from data captured elsewhere (the daemon builds the
+    # map app-side and ships `map` + `failed_test_files` over IPC; the tool
+    # reconstructs it here for per-mutant selection). Skips the capture machinery
+    # entirely: only the three fields #tests_for / #method_uncapturable? read are
+    # set.
     #
     # @param map [Hash] the "file:line" => [test_files] map.
     # @param failed_test_files [Array<String>] test files whose capture failed.
@@ -58,14 +59,14 @@ module Mutineer
       @phase_a_ran  = false
     end
 
-    # Phase A entry point (standalone): load the cached map when the content
-    # digest matches, otherwise rebuild from subprocesses and overwrite the cache.
+    # Standalone entry: load the cached map when the content digest matches,
+    # otherwise rebuild from subprocesses and overwrite the cache.
     def build_or_load
       warn_external_sources
       cached_or { run_phase_a }
     end
 
-    # Boot-mode Phase A: Coverage is already running in the parent (started before
+    # Boot-mode build: Coverage is already running in the parent (started before
     # the app booted, so booted source lines are instrumented). A clean `ruby`
     # subprocess has no booted env, so per-test coverage is captured by FORKING
     # the booted parent instead. Inverts into the same map #tests_for reads, and
@@ -76,25 +77,25 @@ module Mutineer
       cached_or { run_phase_a_via_fork(after_fork: after_fork) }
     end
 
-    # Phase B lookup: the test files that cover `file:line`, or [] when none do.
-    # ponytail: per-file granularity; upgrade to per-method when throughput
-    # warrants (requires Minitest method isolation + finer Coverage tracking).
+    # Lookup: the test files that cover `file:line`, or [] when none do.
+    # Per-file granularity; upgrade to per-method when throughput warrants
+    # (requires Minitest method isolation + finer Coverage tracking).
     def tests_for(file, line)
       @map["#{relativize(file)}:#{line}"] || []
     end
 
-    # #9: is this source file's empty coverage the result of an *errored* capture
-    # rather than a genuine coverage gap? True iff (KTD-2) some capture failed this
-    # run AND this file got zero coverage from any successful capture AND a failed
+    # Is this source file's empty coverage the result of an *errored* capture
+    # rather than a genuine coverage gap? True iff some capture failed this run
+    # AND this file got zero coverage from any successful capture AND a failed
     # test file maps to it by the standard _test/_spec naming convention. Derived
-    # purely from already-persisted state (@map keys + @failed_test_files); no rerun,
-    # no new cached field, no digest change.
+    # purely from already-persisted state (@map keys + @failed_test_files); no
+    # rerun, no new cached field, no digest change.
     #
-    # ponytail: file-level, convention-based attribution. A line covered only by a
-    # failed test in an otherwise-covered file stays no_coverage (condition 2), and
-    # a source with no naming-convention test match is never tainted. Upgrade path:
-    # persist per-file coverage per successful run and diff against the failed set,
-    # or record test->source targets explicitly. Not needed for the #8/#9 cases.
+    # File-level, convention-based attribution. A line covered only by a failed
+    # test in an otherwise-covered file stays no_coverage (condition 2), and a
+    # source with no naming-convention test match is never tainted. Upgrade path:
+    # persist per-file coverage per successful run and diff against the failed
+    # set, or record test->source targets explicitly.
     def uncapturable_source?(file)
       return false if @failed_test_files.empty?
 
@@ -104,14 +105,14 @@ module Mutineer
       failed_test_targets.include?(File.basename(rel, ".rb"))
     end
 
-    # #25: per-METHOD taint. A mutant on a line whose enclosing method got zero
+    # Per-method taint. A mutant on a line whose enclosing method got zero
     # successful coverage, in a file a failed sibling test targets, is
-    # :uncapturable (the capture that would have covered it errored) — NOT a
+    # :uncapturable (the capture that would have covered it errored), NOT a
     # genuine gap. A method with any covered line means its uncovered lines are a
     # real :no_coverage. A failed capture emits no coverage, so per-line intent is
-    # unknowable; method-range + successful coverage is the finest derivable signal.
-    # Fully-failed files behave exactly as uncapturable_source? did (every method
-    # range has zero coverage), so #8/#9/#19 behavior is unchanged.
+    # unknowable; method-range + successful coverage is the finest derivable
+    # signal. Fully-failed files behave exactly as uncapturable_source? did
+    # (every method range has zero coverage).
     #
     # @param file [String] source file path.
     # @param line_range [Range] 1-based enclosing-method line range.
@@ -155,7 +156,7 @@ module Mutineer
       self
     end
 
-    # Runs standalone Phase A coverage capture.
+    # Runs standalone coverage capture.
     #
     # @api private
     def run_phase_a
@@ -171,11 +172,11 @@ module Mutineer
       end
     end
 
-    # Boot-mode Phase A. For each test file, fork the booted parent; the child
+    # Boot-mode capture. For each test file, fork the booted parent; the child
     # resets its Coverage delta, runs that ONE test, and marshals back the raw
     # per-source coverage counts. record() inverts them exactly as the subprocess
-    # path does. ponytail: serial fork (one test at a time) — boot apps fork
-    # cheaply via COW and per-test isolation matters more than throughput here.
+    # path does. Serial fork (one test at a time): boot apps fork cheaply via COW
+    # and per-test isolation matters more than throughput here.
     def run_phase_a_via_fork(after_fork:)
       @phase_a_ran = true
       @map = {}
@@ -183,9 +184,9 @@ module Mutineer
       abs_sources = abs_source_paths
 
       @test_paths.each do |test_path|
-        # Tri-state payload (KTD-1): Hash = coverage, String = error diagnostic
-        # from the child, nil = pipe gone / empty.
-        # ponytail/#9: this String diagnostic is what #9 turns into an :uncapturable status.
+        # Tri-state payload: Hash = coverage, String = error diagnostic from the
+        # child, nil = pipe gone / empty. The String diagnostic is what becomes
+        # an :uncapturable status.
         case (coverage = fork_capture(absolute(test_path), abs_sources, after_fork))
         when Hash   then record(coverage, test_path)
         when String
@@ -201,7 +202,7 @@ module Mutineer
     # fork + Marshal-over-pipe + hard-exit! discipline as WorkerPool/Isolation.
     def fork_capture(abs_test, abs_sources, after_fork)
       rd, wr = IO.pipe
-      # #19: Marshal output is binary — an un-binmoded pipe can raise
+      # Marshal output is binary: an un-binmoded pipe can raise
       # Encoding::UndefinedConversionError on write, which the child's rescue then
       # swallows, losing the real error and yielding a bare "no result".
       rd.binmode
@@ -210,9 +211,9 @@ module Mutineer
         rd.close
         payload =
           begin
-            # Fork-safety hook: the in-process path reconnects AR; the daemon routes
-            # to its worker DB. Nil (non-Rails) = no-op. Injected so this file needs
-            # neither Runner (Prism) nor Rails.
+            # Fork-safety hook: the in-process path reconnects AR; the daemon
+            # routes to its worker DB. Nil (non-Rails) = no-op. Injected so this
+            # file needs neither Runner (Prism) nor Rails.
             after_fork&.call
             Coverage.result(clear: true, stop: false) # discard pre-test delta
             TestRunners.for(@framework).run([abs_test])
@@ -222,7 +223,7 @@ module Mutineer
                     .select { |f, _| abs_sources.include?(f) }
                     .transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
           rescue Exception => e # rubocop:disable Lint/RescueException
-            # KTD-1: stringify (an arbitrary Exception may not marshal); the parent
+            # Stringify (an arbitrary Exception may not marshal); the parent
             # surfaces this under --verbose. A String marshals safely over the pipe.
             "#{e.class}: #{e.message}#{e.backtrace&.first ? " @ #{e.backtrace.first}" : ''}"
           end
@@ -239,7 +240,7 @@ module Mutineer
       data = rd.read
       rd.close
       _, status = Process.waitpid2(pid)
-      # #19: an empty pipe means the child died before writing (e.g. a hard crash,
+      # An empty pipe means the child died before writing (e.g. a hard crash,
       # OOM, or a signal from the test's own subprocess handling). Report HOW it
       # died (exit status / signal) as a diagnostic string so --verbose has
       # something actionable instead of a silent "no result".
@@ -266,8 +267,8 @@ module Mutineer
 
     # Spawns a fresh `ruby` reading an inline script from stdin. A fork would
     # miss already-loaded app lines, so Coverage must start in a clean process
-    # before any source is loaded (KTD1/KTD2). Returns the parsed Coverage.result
-    # hash, or nil when the subprocess failed (logged + skipped per R6).
+    # before any source is loaded. Returns the parsed Coverage.result hash, or
+    # nil when the subprocess failed (logged + skipped).
     def capture(test_path)
       out = +""
       status = nil
@@ -275,8 +276,8 @@ module Mutineer
         stdin.write(subprocess_script(test_path))
         stdin.close
         reader = Thread.new { out << stdout.read }
-        # R3: bound the subprocess with a wall clock — a hanging test file must
-        # not wedge the whole run before any per-mutant timeout.
+        # Bound the subprocess with a wall clock: a hanging test file must not
+        # wedge the whole run before any per-mutant timeout.
         unless wait_thr.join(@capture_timeout)
           Process.kill(:KILL, wait_thr.pid) rescue nil # rubocop:disable Style/RescueModifier
           reader.kill
@@ -374,7 +375,7 @@ module Mutineer
       rel_test = relativize(test_path)
       coverage.each do |abs_file, data|
         rel = relativize(abs_file)
-        next if rel.start_with?("/") # outside project_root — not our source
+        next if rel.start_with?("/") # outside project_root: not our source
 
         counts = data.is_a?(Array) ? data : data["lines"]
         counts.each_with_index do |count, idx|
@@ -385,7 +386,7 @@ module Mutineer
       end
     end
 
-    # R4: digest each file's ROLE + relative path + content length + content, plus
+    # Digest each file's ROLE + relative path + content length + content, plus
     # the load_paths. Without role/path/length delimiters the digest collides
     # (("ab","c") == ("a","bc")) and is blind to source/test role swaps, silently
     # accepting a stale cached map.
@@ -426,7 +427,7 @@ module Mutineer
       end
     end
 
-    # R7: a configured source that resolves outside project_root would silently be
+    # A configured source that resolves outside project_root would silently be
     # dropped (its coverage relativizes to an absolute path). Warn instead.
     def warn_external_sources
       @source_paths.each do |p|
@@ -452,7 +453,7 @@ module Mutineer
 
       JSON.parse(File.read(cache_path))
     rescue JSON::ParserError
-      nil # corrupt cache — rebuild from scratch
+      nil # corrupt cache: rebuild from scratch
     end
 
     # Saves the coverage cache.

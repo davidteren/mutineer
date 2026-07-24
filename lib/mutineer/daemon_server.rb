@@ -4,19 +4,20 @@ require "json"
 require "tempfile"
 
 module Mutineer
-  # #26/#27 Phase 2a — the app-side daemon (persistent worker).
+  # App-side daemon (persistent worker).
   #
   # Runs UNDER THE APP'S OWN BUNDLE/RUBY (the tool's DaemonClient spawns it via
   # `bundle exec ruby`). It boots the app ONCE, then serves per-mutant test-run
-  # requests over stdin/stdout as newline-delimited JSON. For each request it FORKS
-  # a child that loads the mutated source text the tool sent, runs the covering
-  # tests, and exits with a status the parent decodes into a verdict.
+  # requests over stdin/stdout as newline-delimited JSON. For each request it
+  # FORKS a child that loads the mutated source text the tool sent, runs the
+  # covering tests, and exits with a status the parent decodes into a verdict.
   #
-  # HARD CONSTRAINT (KTD-2/R4): this file must be loadable WITHOUT Prism or the rest
-  # of mutineer — the app's Ruby may be < 3.4 (no stdlib Prism) and its bundle has no
-  # mutineer. So it requires ONLY stdlib + the app's own boot file; it re-implements
-  # the fork/timeout/decode loop rather than requiring `isolation.rb` (which pulls in
-  # Prism). All parsing/mutation happened tool-side; the daemon only `load`s text.
+  # HARD CONSTRAINT: this file must be loadable WITHOUT Prism or the rest of
+  # mutineer. The app's Ruby may be < 3.4 (no stdlib Prism) and its bundle has no
+  # mutineer. So it requires ONLY stdlib + the app's own boot file; it
+  # re-implements the fork/timeout/decode loop rather than requiring
+  # `isolation.rb` (which pulls in Prism). All parsing/mutation happened
+  # tool-side; the daemon only `load`s text.
   #
   # Protocol (one JSON object per line, both directions):
   #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment",
@@ -27,16 +28,18 @@ module Mutineer
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
   #   quit in  : {"cmd":"quit"}
   #
-  # Worker isolation (#26/U5): when the app is Rails, each fork is routed to its own
-  # database `<db>-<worker>` via {RailsWorkerDb} BEFORE any test loads, so concurrent
-  # workers can't clobber each other's transactional fixtures. `worker` defaults to 0
-  # (serial). SQLite this pass; Postgres provisioning is U10.
+  # Worker isolation: when the app is Rails, each fork is routed to its own
+  # database `<db>-<worker>` via {RailsWorkerDb} BEFORE any test loads, so
+  # concurrent workers cannot clobber each other's transactional fixtures.
+  # `worker` defaults to 0 (serial). SQLite this pass; Postgres provisioning is
+  # not yet implemented.
   #
-  # Verdict mapping (KTD-5, Phase-2a honest limit): child exit 0=survived (suite
-  # passed), 1=killed (suite failed), 2=error (child raised AROUND the test — load,
-  # boot, or worker-DB routing failure); parent-detected timeout. Tagging an in-TEST DB
-  # error (one fired inside a test body, vs at routing time) as `error` rather than
-  # `killed` is a U6 concern — only observable under the concurrent gate.
+  # Verdict mapping: child exit 0=survived (suite passed), 1=killed (suite
+  # failed), 2=error (child raised AROUND the test: load, boot, or worker-DB
+  # routing failure); parent-detected timeout. Tagging an in-test DB error (one
+  # fired inside a test body, vs at routing time) as `error` rather than
+  # `killed` is only observable under the concurrent gate and is not yet
+  # implemented.
   module DaemonServer
     # Poll interval (seconds) for the per-fork deadline wait loop.
     POLL = 0.02
@@ -65,16 +68,16 @@ module Mutineer
           begin
             req = JSON.parse(line)
           rescue JSON::ParserError => e
-            # A corrupt line has no id to address a reply to (and the client only ever
-            # sends valid JSON, so it can't be a pending request) — log and read on
-            # rather than write an unaddressable verdict onto the channel.
+            # A corrupt line has no id to address a reply to (and the client only
+            # ever sends valid JSON, so it cannot be a pending request). Log and
+            # read on rather than write an unaddressable verdict onto the channel.
             @errio.puts("[daemon] dropped unparseable line: #{e.message}")
             next
           end
           break if req["cmd"] == "quit"
 
-          # #26/U7: build the coverage map app-side and ship it to the tool, which
-          # then selects covering tests per mutant. One-shot control message.
+          # Build the coverage map app-side and ship it to the tool, which then
+          # selects covering tests per mutant. One-shot control message.
           if req["cmd"] == "coverage"
             output.puts(JSON.generate(build_coverage_map))
             output.flush
@@ -88,8 +91,8 @@ module Mutineer
 
       private
 
-      # BOOT ONCE. chdir + require the app's boot file so the whole app is loaded and
-      # inherited by every fork. Never requires mutineer.
+      # BOOT ONCE. chdir + require the app's boot file so the whole app is loaded
+      # and inherited by every fork. Never requires mutineer.
       def boot!(cfg)
         @cfg = cfg
         @framework = cfg.fetch("framework", "minitest")
@@ -97,30 +100,30 @@ module Mutineer
         Dir.chdir(cfg["project_root"]) if cfg["project_root"]
         ENV["RAILS_ENV"] ||= "test" if cfg["rails"]
         Array(cfg["load_paths"]).each { |d| $LOAD_PATH.unshift(File.expand_path(d)) }
-        # #26/U7: start Coverage BEFORE the app loads, so booted source lines are
-        # instrumented — the map build (build_via_fork) forks this booted parent.
+        # Start Coverage BEFORE the app loads, so booted source lines are
+        # instrumented. The map build (build_via_fork) forks this booted parent.
         if cfg["coverage"]
           require "coverage"
           Coverage.start(lines: true)
         end
         # Clear any mutant tempfile a prior SIGKILLed timeout child orphaned in a
-        # source dir BEFORE the app boots — Zeitwerk would otherwise choke on the
+        # source dir BEFORE the app boots. Zeitwerk would otherwise choke on the
         # tempfile's non-constant name during autoload setup.
         sweep_temps
         require File.expand_path(cfg["boot"]) if cfg["boot"]
         setup_worker_db(cfg) if cfg["rails"]
       rescue Exception => e # rubocop:disable Lint/RescueException
-        # Boot failed (bad boot path, app error) — tell the client and exit so it can
-        # surface a clean error rather than hang on the handshake.
+        # Boot failed (bad boot path, app error). Tell the client and exit so it
+        # can surface a clean error rather than hang on the handshake.
         @output.puts(JSON.generate("ready" => false, "error" => "#{e.class}: #{e.message}"))
         @output.flush
         exit!(1)
       end
 
-      # Load the per-worker DB adapter app-side (sibling gem file, by relative path so
-      # it bypasses the app bundle — like this daemon itself). No-op unless the app has
-      # ActiveRecord. Records the adapter + schema path so each fork can route to its
-      # own database (#26 isolation, U5). SQLite-only this pass; a non-SQLite config
+      # Load the per-worker DB adapter app-side (sibling gem file, by relative path
+      # so it bypasses the app bundle, like this daemon itself). No-op unless the
+      # app has ActiveRecord. Records the adapter + schema path so each fork can
+      # route to its own database. SQLite-only this pass; a non-SQLite config
       # raises in the fork and reads as `error`, never a mis-routed verdict.
       def setup_worker_db(cfg)
         require_relative "rails_worker_db"
@@ -134,11 +137,11 @@ module Mutineer
         @worker_db = nil
       end
 
-      # #26/U7: build the coverage map app-side (Coverage was started at boot) and
-      # return it as `{map, failed_test_files}` for the tool to select covering tests.
-      # Capture forks route to worker 0's DB (isolated, serial). On any failure return
-      # an empty map + an error string — the tool then falls back to the full test set
-      # rather than mis-scoring everything as no_coverage.
+      # Build the coverage map app-side (Coverage was started at boot) and return
+      # it as `{map, failed_test_files}` for the tool to select covering tests.
+      # Capture forks route to worker 0's DB (isolated, serial). On any failure
+      # return an empty map + an error string. The tool then falls back to the
+      # full test set rather than mis-scoring everything as no_coverage.
       def build_coverage_map
         require_relative "coverage_map"
         root = @cfg["project_root"] || Dir.pwd
@@ -153,9 +156,9 @@ module Mutineer
         { "map" => {}, "failed_test_files" => [], "error" => "#{e.class}: #{e.message}" }
       end
 
-      # Fork-safety hook for coverage capture: route each capture fork to worker 0's
-      # isolated DB (captures run serially, so one worker is enough). Nil when the app
-      # has no worker-DB adapter (non-Rails) — capture then runs as before.
+      # Fork-safety hook for coverage capture: route each capture fork to worker
+      # 0's isolated DB (captures run serially, so one worker is enough). Nil when
+      # the app has no worker-DB adapter (non-Rails). Capture then runs as before.
       def coverage_after_fork
         return nil unless @worker_db
 
@@ -190,16 +193,16 @@ module Mutineer
         verdict = wait_verdict(pid, timeout)
         # Mark ready only when the child finished cleanly after schema load
         # (killed/survived). Timeout can interrupt mid-load_schema; error is a
-        # routing failure — both leave the slot unready so the next fork reloads.
+        # routing failure. Both leave the slot unready so the next fork reloads.
         @schema_ready[worker] = true if schema_for_fork && %w[killed survived].include?(verdict)
-        # A SIGKILLed timeout child skipped its Tempfile unlink — sweep the orphan so
-        # it can't outlive the run or trip Zeitwerk on a later fork.
+        # A SIGKILLed timeout child skipped its Tempfile unlink. Sweep the orphan
+        # so it cannot outlive the run or trip Zeitwerk on a later fork.
         sweep_temps if verdict == "timeout"
         { "id" => req["id"], "verdict" => verdict }
       end
 
       # Remove orphaned mutant tempfiles from the source dirs (parent-side; the
-      # SIGKILL path can't run the child's ensure). Mirrors Runner.sweep_orphans.
+      # SIGKILL path cannot run the child's ensure). Mirrors Runner.sweep_orphans.
       def sweep_temps
         @source_dirs.to_a.each do |dir|
           Dir.glob(File.join(dir, "mutineer_daemon*.rb")).each do |f|
@@ -209,12 +212,12 @@ module Mutineer
       end
 
       # Single-waiter deadline loop (mirrors Isolation.run and
-      # ExternalBackend.wait_with_timeout, re-implemented here because Isolation pulls
-      # in Prism which is forbidden app-side). NOTE: this is the 3rd copy of the
-      # waitpid2(WNOHANG)+deadline+pgroup-SIGKILL+decode discipline — a fix to the
-      # kill/reap/decode logic must be applied to all three in lockstep. SIGKILL the
-      # child's process group past the deadline; a signalled child (nil exitstatus) is
-      # `error`.
+      # ExternalBackend.wait_with_timeout, re-implemented here because Isolation
+      # pulls in Prism which is forbidden app-side). NOTE: this is the 3rd copy of
+      # the waitpid2(WNOHANG)+deadline+pgroup-SIGKILL+decode discipline. A fix to
+      # the kill/reap/decode logic must be applied to all three in lockstep.
+      # SIGKILL the child's process group past the deadline; a signalled child
+      # (nil exitstatus) is `error`.
       def wait_verdict(pid, timeout)
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
         loop do
@@ -242,14 +245,15 @@ module Mutineer
         end
       end
 
-      # Write the tool-built mutated text beside the real source and `load` it —
-      # reopening the mutated class/method in THIS child only. It goes in the source
-      # file's directory (like Isolation.apply_whole_file) so a `require_relative` in
-      # the mutated source resolves against its real neighbours — writing it to the
-      # tmpdir would LoadError on such files and score a spurious `error` that
-      # diverges from the in-process path. The Zeitwerk hazard (a stray `.rb` in an
-      # autoload dir) is handled by the boot/timeout `sweep_temps`, not by relocating
-      # the file. Same path for reload (whole file) and redefine (wrapped snippet).
+      # Write the tool-built mutated text beside the real source and `load` it,
+      # reopening the mutated class/method in THIS child only. It goes in the
+      # source file's directory (like Isolation.apply_whole_file) so a
+      # `require_relative` in the mutated source resolves against its real
+      # neighbours. Writing it to the tmpdir would LoadError on such files and
+      # score a spurious `error` that diverges from the in-process path. The
+      # Zeitwerk hazard (a stray `.rb` in an autoload dir) is handled by the
+      # boot/timeout `sweep_temps`, not by relocating the file. Same path for
+      # reload (whole file) and redefine (wrapped snippet).
       def apply_payload(payload)
         dir = File.dirname(File.expand_path(payload.fetch("source_file")))
         Tempfile.create(["mutineer_daemon", ".rb"], dir) do |f|
@@ -260,7 +264,7 @@ module Mutineer
       end
 
       # Load the covering test files and run them; 0 = all passed (survived),
-      # 1 = a failure/error (killed). Minitest only in 2a (rspec is a later unit).
+      # 1 = a failure/error (killed). Minitest only; rspec is not yet on this path.
       def run_tests(tests)
         raise "unsupported framework #{@framework.inspect}" unless @framework == "minitest"
 

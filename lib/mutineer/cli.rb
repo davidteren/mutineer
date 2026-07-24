@@ -18,7 +18,7 @@ module Mutineer
   # Command-line entry point. `start` is the single public method called by
   # bin/mutineer; it parses argv, acts, and exits with a pinned code.
   #
-  # Exit codes (taxonomy consistent across M1–M5):
+  # Exit codes:
   #   0  success / requested output (--version, --help, score >= threshold)
   #   1  survivors below threshold, or a runtime error
   #   2  usage / flag error (unknown subcommand, invalid flag, unknown operator,
@@ -78,7 +78,7 @@ module Mutineer
     # @return [void]
     def self.start(argv)
       opts = {}            # symbol => value, the CLI-provided Config fields
-      explicit = Set.new   # precedence keys the user typed (KTD3)
+      explicit = Set.new   # precedence keys the user typed
       show_operators = false
 
       parser = OptionParser.new do |o|
@@ -116,15 +116,15 @@ module Mutineer
         o.on("--debug") { opts[:verbose] = true } # alias of --verbose
         o.on("--format FORMAT") { |v| opts[:format] = v }
         o.on("--output FILE") { |v| opts[:output] = v }
-        # #13: --baseline is also a .mutineer.yml key, so mark it explicit when
-        # typed (CLI wins over the file). --baseline-epsilon is CLI-only.
+        # --baseline is also a .mutineer.yml key, so mark it explicit when typed
+        # (CLI wins over the file). --baseline-epsilon is CLI-only.
         o.on("--baseline FILE") { |v| opts[:baseline] = v; explicit << :baseline }
         o.on("--baseline-epsilon FLOAT") { |v| opts[:baseline_epsilon] = v.to_f }
-        # #27: run the target suite as a subprocess in the app's OWN runtime so
+        # Run the target suite as a subprocess in the app's OWN runtime so
         # mutineer (Ruby >= 3.4) can mutation-test apps pinned to an older Ruby.
         o.on("--test-command CMD") { |v| opts[:test_command] = v; explicit << :test_command }
-        # #26/#27 Phase 2: boot the app ONCE in a persistent daemon and fork per
-        # mutant, with per-worker DB isolation so --jobs N is safe under Rails.
+        # Boot the app ONCE in a persistent daemon and fork per mutant, with
+        # per-worker DB isolation so --jobs N is safe under Rails.
         o.on("--daemon") { opts[:daemon] = true; explicit << :daemon }
       end
 
@@ -150,7 +150,7 @@ module Mutineer
         file_hash = file_path ? Config.from_file(file_path) : {}
         config = Config.resolve(opts, file_hash, explicit)
       rescue Mutineer::ConfigError => e
-        # R8: the lib layer raises instead of killing the host; the CLI maps a
+        # The lib layer raises instead of killing the host; the CLI maps a
         # config (usage) error to exit 2.
         warn "mutineer: #{e.message}"
         exit 2
@@ -158,7 +158,7 @@ module Mutineer
 
       case argv.first
       when "run"
-        # #11: a directory source expands to its **/*.rb files; literal files pass
+        # A directory source expands to its **/*.rb files; literal files pass
         # through. Test inference (when --test is omitted) happens in validate!.
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
         run(config, explicit)
@@ -197,7 +197,7 @@ module Mutineer
       warn "mutineer: #{e.message}"
       exit 2
     rescue SystemCallError => e
-      # R5: a missing/unreadable path reaches here as Errno::ENOENT etc. — a plain
+      # A missing/unreadable path reaches here as Errno::ENOENT etc. A plain
       # message and usage exit, never a raw backtrace.
       warn "mutineer: #{e.message}"
       exit 2
@@ -210,15 +210,14 @@ module Mutineer
       warn "mutineer: error reading: #{e.message}"
       exit 1
     rescue Mutineer::SmokeCheckError => e
-      # #27: the unmutated suite isn't green under --test-command — a broken
+      # The unmutated suite is not green under --test-command: a broken
       # environment, not weak tests. Runtime error (exit 1), not usage (exit 2).
       warn "mutineer: #{e.message}"
       exit 1
     end
 
-    # Flag validation: every flag/usage failure exits 2 (C7), consistent with the
-    # taxonomy above — CI can tell "mistyped flag" from "tests too weak."
-    # Validates the run configuration.
+    # Flag validation: every flag/usage failure exits 2, consistent with the
+    # taxonomy above. CI can tell "mistyped flag" from "tests too weak."
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -279,13 +278,12 @@ module Mutineer
       validate_paths!(config)
     end
 
-    # #27: --test-command runs the target suite in the app's own runtime. Validate
-    # its shape up front (usage errors → exit 2) and force serial execution: each
+    # --test-command runs the target suite in the app's own runtime. Validate its
+    # shape up front (usage errors → exit 2) and force serial execution: each
     # subprocess boots the app and opens its own fixture transaction against the
-    # same DB, so --jobs > 1 would corrupt results (the #12 fixture-contention
-    # hazard). Unlike --rails, this path has NO per-worker DB isolation to opt into,
-    # so an explicit --jobs N is forced to 1 rather than honored (KTD-5).
-    # Validates the --test-command configuration.
+    # same DB, so --jobs > 1 would corrupt results (fixture-contention hazard).
+    # Unlike --rails, this path has NO per-worker DB isolation to opt into, so an
+    # explicit --jobs N is forced to 1 rather than honored.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -347,7 +345,6 @@ module Mutineer
 
     # --since needs a real git repo and a resolvable ref; either failure is a
     # usage error (exit 2) so CI sees "bad invocation," not "tests too weak."
-    # Validates the --since ref.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -370,10 +367,9 @@ module Mutineer
       exit 2
     end
 
-    # R5: validate path existence up front so a typo is a clean usage error (exit
-    # 2), not an Errno::ENOENT backtrace from deep in the run. Flag checks run
-    # first so a bad flag still reports the flag, not the missing file.
-    # Validates source and test paths.
+    # Validate path existence up front so a typo is a clean usage error (exit 2),
+    # not an Errno::ENOENT backtrace from deep in the run. Flag checks run first
+    # so a bad flag still reports the flag, not the missing file.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -387,14 +383,13 @@ module Mutineer
       exit 2
     end
 
-    # #11: auto-pair sources to tests by path convention when no --test was given
-    # (explicit --test wins — R5). Each source with an inferred test on disk joins
-    # the run; a source with none is dropped with a one-line stderr warning (R3)
-    # and the run continues with the rest. If every source is dropped: in boot mode
-    # the dedicated --boot/--rails-requires-test check reports it; otherwise exit 2
+    # Auto-pair sources to tests by path convention when no --test was given
+    # (explicit --test wins). Each source with an inferred test on disk joins the
+    # run; a source with none is dropped with a one-line stderr warning and the
+    # run continues with the rest. If every source is dropped: in boot mode the
+    # dedicated --boot/--rails-requires-test check reports it; otherwise exit 2
     # with a usage message. The framework is re-detected from the inferred set
     # unless it was set explicitly (a spec-only project loads/reports as rspec).
-    # Auto-pairs sources and tests when --test is absent.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -421,11 +416,10 @@ module Mutineer
       exit 2
     end
 
-    # #13: a missing/unreadable/unparseable baseline is a usage error (exit 2),
+    # A missing/unreadable/unparseable baseline is a usage error (exit 2),
     # mirroring --output/--since preflight, so CI sees "bad invocation," not a
     # backtrace mid-run. Validating up front = attempting the load (it raises
     # ConfigError/SystemCallError; the actual diff reloads in execute).
-    # Preflights a baseline file.
     #
     # @api private
     # @param path [String] baseline file path.
@@ -464,7 +458,7 @@ module Mutineer
       aggregate, source_map = Runner.execute(config)
       reporter = Reporter.new(aggregate, source_map)
 
-      # #13: diff the current run against the baseline (preflighted above) by the
+      # Diff the current run against the baseline (preflighted above) by the
       # stable survivor id. The delta is rendered inline (human section / additive
       # json block) and gates exit independently of --threshold.
       delta = (Baseline.load(config.baseline).diff(aggregate, epsilon: config.baseline_epsilon) if config.baseline)
@@ -476,28 +470,27 @@ module Mutineer
       # is not comparable to an in-process run: no coverage narrowing (uncovered
       # mutants count as survivors), and an infra failure is scored as a kill
       # (upper bound). Daemon coverage fallback warnings are emitted from the runner
-      # only when the map is unavailable — not on every --daemon run.
+      # only when the map is unavailable, not on every --daemon run.
       if config.test_command
         warn "[mutineer] --test-command score is an upper bound, not comparable to an " \
              "in-process run: no coverage narrowing (uncovered mutants count as survivors) " \
              "and an infra failure is scored as a kill."
       end
 
-      # Nudge toward the opt-in tier-2 operators (human report only — never
+      # Nudge toward the opt-in tier-2 operators (human report only: never
       # pollute JSON output).
       if !%w[json html].include?(config.format) && (hint = tier2_hint(config.operators))
         puts hint
       end
 
-      # #13/KTD-4: --baseline and --threshold are independent gates OR'd together.
+      # --baseline and --threshold are independent gates OR'd together.
       # `max` of two 0/1 codes is the OR; usage (2) is handled earlier and wins.
       baseline_exit = delta&.regressed ? 1 : 0
       exit [reporter.exit_code(threshold: config.threshold), baseline_exit].max
     end
 
     # The tier-2 operators not in the active set, as a one-line hint (or nil when
-    # they're all already enabled). `active` nil means the default (Tier-1) set.
-    # Builds a Tier-2 operator hint.
+    # they are all already enabled). `active` nil means the default (Tier-1) set.
     #
     # @param active [Array<String>, nil] active operator names.
     # @return [String, nil] hint text or nil.
