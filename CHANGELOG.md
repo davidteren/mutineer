@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-07-24
+
 ### Fixed
 - **`--test-command` under version managers** — scrub Mutineer's rbenv/asdf
   version bins and bundler/gem env from the child so the suite can resolve the
@@ -251,6 +253,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.11.2]: https://github.com/davidteren/mutineer/releases/tag/v0.11.2
 [0.11.1]: https://github.com/davidteren/mutineer/releases/tag/v0.11.1
 [0.11.0]: https://github.com/davidteren/mutineer/releases/tag/v0.11.0
 [0.10.0]: https://github.com/davidteren/mutineer/releases/tag/v0.10.0
