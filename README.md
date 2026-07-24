@@ -151,18 +151,23 @@ RAILS_ENV=test mutineer run app/models/order.rb \
 
 - **`%{files}`** is required; it expands to the `--test` paths as separate
   arguments (a path with a space stays one argument — there is no shell).
-- **Environment:** suite-relevant vars (e.g. `RAILS_ENV`) set on the Mutineer
-  command are inherited. Bundler/gem injection from Mutineer's Ruby is scrubbed,
-  and version-manager **version bins** (e.g. `~/.rbenv/versions/3.4.x/bin`) are
-  removed from `PATH` so shims / `.ruby-version` can select the app's Ruby.
-  Don't put `KEY=val` prefixes *inside* `--test-command` (no shell; that would
-  be treated as the program name).
+- **Environment:** vars like `RAILS_ENV` / `DATABASE_URL` set on the Mutineer
+  command are inherited. Mutineer **unsets** `BUNDLE_*`, `GEM_*`, `RUBY*`,
+  `RBENV_VERSION`, `ASDF_RUBY_VERSION`, and `RBENV_DIR` in the child (so
+  Mutineer's own Ruby cannot pin the suite), and drops version-manager
+  **version bins** (e.g. `~/.rbenv/versions/3.4.x/bin`) from `PATH`, then
+  prepends rbenv/asdf shims when a pin was scrubbed. Do not rely on
+  `RBENV_VERSION=…` on the Mutineer command for the suite; use `.ruby-version`
+  or a wrapper. Don't put `KEY=val` prefixes *inside* `--test-command` (no shell;
+  that would be treated as the program name).
 
 #### Under a version manager (rbenv / asdf / chruby)
 
-If the smoke check still reports a **Ruby version mismatch** (suite ran under
-Mutineer's 3.4.x but the Gemfile wants e.g. 3.1.6), wrap the suite so it always
-re-selects the app's Ruby. Example rbenv wrapper (`bin/mutineer-test` in the app):
+Automatic scrub targets **rbenv** and **asdf** (shims + version bins). **chruby**
+has no shims: Mutineer still strips `…/rubies/…/bin` so it cannot leave Mutineer's
+Ruby pinned, but you need a wrapper that sources chruby and selects the app
+version. If the smoke check still reports a **Ruby version mismatch**, wrap the
+suite. Example rbenv wrapper (`bin/mutineer-test` in the app):
 
 ```sh
 #!/usr/bin/env bash

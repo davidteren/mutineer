@@ -77,31 +77,59 @@ class ExternalBackendTest < Minitest::Test
     ENV.delete("MUTINEER_ENV_PROBE")
   end
 
+  # child_env must pass nil (not omit keys) so Process.spawn unsets them.
   def test_child_env_strips_gem_and_bundler_injection
+    prior = {
+      "GEM_HOME" => ENV["GEM_HOME"],
+      "BUNDLE_GEMFILE" => ENV["BUNDLE_GEMFILE"],
+      "RBENV_VERSION" => ENV["RBENV_VERSION"]
+    }
     ENV["GEM_HOME"] = "/tmp/mutineer-fake-gems"
     ENV["BUNDLE_GEMFILE"] = "/tmp/MutineerGemfile"
     ENV["RBENV_VERSION"] = "3.4.9"
     env = Backend.child_env
+    assert env.key?("GEM_HOME")
     assert_nil env["GEM_HOME"]
     assert_nil env["BUNDLE_GEMFILE"]
     assert_nil env["RBENV_VERSION"]
   ensure
-    ENV.delete("GEM_HOME")
-    ENV.delete("BUNDLE_GEMFILE")
-    ENV.delete("RBENV_VERSION")
+    prior.each { |k, v| v.nil? ? ENV.delete(k) : ENV[k] = v }
   end
 
+  # Concrete version bins (optional trailing slash) leave PATH so shims can win.
   def test_child_env_scrubs_rbenv_version_bin_from_path
     version_bin = File.expand_path("~/.rbenv/versions/3.4.9/bin")
-    original_path = ENV["PATH"]
-    ENV["PATH"] = "#{version_bin}:/usr/bin:/bin"
+    prior_path = ENV["PATH"]
+    prior_rbenv = ENV["RBENV_VERSION"]
+    ENV["PATH"] = "#{version_bin}:#{version_bin}/:/usr/bin:/bin"
     ENV["RBENV_VERSION"] = "3.4.9"
     env = Backend.child_env
-    refute_includes env["PATH"].split(File::PATH_SEPARATOR), version_bin
+    parts = env["PATH"].split(File::PATH_SEPARATOR)
+    refute_includes parts, version_bin
+    refute_includes parts, "#{version_bin}/"
     assert_includes env["PATH"], "/usr/bin"
   ensure
-    ENV["PATH"] = original_path if original_path
-    ENV.delete("RBENV_VERSION")
+    ENV["PATH"] = prior_path if prior_path
+    prior_rbenv.nil? ? ENV.delete("RBENV_VERSION") : ENV["RBENV_VERSION"] = prior_rbenv
+  end
+
+  # Spawn merges env; nil must clear a leaked RBENV_VERSION in the child.
+  def test_spawn_unsets_rbenv_version_via_nil
+    prior = ENV["RBENV_VERSION"]
+    ENV["RBENV_VERSION"] = "3.4.9"
+    out = Tempfile.create("mutineer_env")
+    pid = Process.spawn(Backend.child_env, RUBY, "-e",
+                        "print ENV['RBENV_VERSION'].inspect",
+                        out: out, err: out)
+    Process.wait(pid)
+    out.rewind
+    assert_equal "nil", out.read.strip
+  ensure
+    prior.nil? ? ENV.delete("RBENV_VERSION") : ENV["RBENV_VERSION"] = prior
+    if out
+      out.close
+      File.unlink(out.path) rescue nil # rubocop:disable Style/RescueModifier
+    end
   end
 
   # --verbose surfaces the child's captured output; default run stays quiet on a kill.
@@ -127,7 +155,7 @@ class ExternalBackendTest < Minitest::Test
       err = assert_raises(Mutineer::SmokeCheckError) do
         Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
       end
-      assert_match(/environment looks broken/, err.message)
+      assert_match(/unmutated suite is not green/, err.message)
       assert_match(/db down/, err.message)
     end
   end

@@ -34,15 +34,22 @@ module Mutineer
     POLL = 0.02
 
     # PATH entries that pin a concrete Ruby under a version manager (ahead of
-    # shims). Matched as full path components so normal bins are left alone.
+    # shims). Optional trailing slash; normal bins are left alone.
     VERSION_BIN_PATH = %r{
       (?:
         /\.rbenv/versions/[^/]+/bin
         |/\.asdf/installs/ruby/[^/]+/bin
         |/\.rubies/[^/]+/bin
         |/rubies/[^/]+/bin
-      )\z
+      )/?\z
     }x
+
+    # Env keys Process.spawn must unset (nil value) so Mutineer's Ruby/bundler
+    # context does not leak. Spawn merges env onto the parent; omitting a key
+    # does NOT clear it.
+    CLEAR_ENV_KEYS = %w[
+      BUNDLER_VERSION RBENV_VERSION ASDF_RUBY_VERSION RBENV_DIR
+    ].freeze
 
     # Turn a command template into an argv array (no shell → no eval, no
     # injection). The `%{files}` token expands IN PLACE to N separate argv
@@ -56,23 +63,43 @@ module Mutineer
       Shellwords.split(command).flat_map { |tok| tok == "%{files}" ? files : [tok] }
     end
 
-    # Environment for the test-command child. Strips Mutineer/bundler injection and
-    # version-manager PATH pins so the app's Ruby (via shims + `.ruby-version`) can
-    # win. Keeps other vars (e.g. `RAILS_ENV`, `DATABASE_URL`) so setting them on
-    # the Mutineer command still reaches the suite.
+    # Environment delta for the test-command child. Process.spawn merges this
+    # onto the parent env: set a key to +nil+ to unset it. Scrubs Mutineer/bundler
+    # injection and version-manager PATH pins so shims / `.ruby-version` can win.
+    # Keeps other vars (e.g. `RAILS_ENV`) so setting them on the Mutineer command
+    # still reaches the suite.
     #
     # @api private
-    # @return [Hash{String => String}] env for Process.spawn.
+    # @return [Hash{String => String, nil}] env for Process.spawn.
     def self.child_env
-      env = ENV.to_h.reject do |k, _|
-        k.start_with?("BUNDLE_", "RUBY", "GEM_") ||
-          %w[BUNDLER_VERSION RBENV_VERSION ASDF_RUBY_VERSION RBENV_DIR].include?(k)
+      env = {}
+      cleared_pin = false
+      ENV.each_key do |k|
+        next unless clear_env_key?(k)
+
+        env[k] = nil
+        cleared_pin = true
       end
-      path = env["PATH"].to_s.split(File::PATH_SEPARATOR)
-      path.reject! { |p| p.match?(VERSION_BIN_PATH) }
-      shims = version_manager_shim_dirs
-      env["PATH"] = (shims + path).uniq.join(File::PATH_SEPARATOR)
+      path = ENV["PATH"].to_s.split(File::PATH_SEPARATOR)
+      kept = path.reject { |p| p.match?(VERSION_BIN_PATH) }
+      scrubbed_bin = kept.size != path.size
+      # Only reorder PATH when we scrubbed a pin; otherwise leave the user's PATH alone.
+      path = if cleared_pin || scrubbed_bin
+               (version_manager_shim_dirs + kept).uniq
+             else
+               kept
+             end
+      env["PATH"] = path.join(File::PATH_SEPARATOR)
       env
+    end
+
+    # True when the key must be unset in the child (bundler/gem/version-manager).
+    #
+    # @api private
+    # @param key [String] environment variable name.
+    # @return [Boolean]
+    def self.clear_env_key?(key)
+      key.start_with?("BUNDLE_", "RUBY", "GEM_") || CLEAR_ENV_KEYS.include?(key)
     end
 
     # Existing shim directories for rbenv / asdf (chruby uses PATH without shims).
@@ -152,7 +179,8 @@ module Mutineer
     # @api private
     # @return [String]
     def self.generic_env_hint
-      "the environment looks broken (check DB, RAILS_ENV, migrations), not the tests weak"
+      "the unmutated suite is not green (failing tests, or a broken environment: " \
+        "DB, RAILS_ENV, migrations) — fix that before scoring"
     end
 
     # Targeted hint when Bundler reports a RubyVersionMismatch (common under
@@ -170,8 +198,10 @@ module Mutineer
       parts = +"Detected a Ruby version mismatch"
       parts << ": the test command ran under #{ran}" if ran
       parts << " but the app expects #{want}" if want
-      parts << ". Under a version manager (rbenv/asdf/chruby), Mutineer's Ruby can sit " \
-               "ahead on PATH — wrap the command so it re-selects the app's Ruby " \
+      parts << ". Mutineer already scrubbed version-manager bins and RBENV_VERSION/" \
+               "ASDF_RUBY_VERSION from the child env; the suite still picked the wrong " \
+               "Ruby. Use a wrapper that re-selects the app Ruby and ensure " \
+               ".ruby-version / .tool-versions is present " \
                "(see README: Apps on Ruby < 3.4 → Under a version manager)"
       parts
     end
