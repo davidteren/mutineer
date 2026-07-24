@@ -7,7 +7,7 @@ require_relative "mutation"
 
 module Mutineer
   # Renders an AggregateResult: the summary block, mutation score, and per-file
-  # survivor diffs. Stream discipline (R14): the report goes to `out` (stdout),
+  # survivor diffs. Stream discipline: the report goes to `out` (stdout),
   # diagnostics/warnings go to `err` (stderr), so `mutineer ... > report.txt`
   # captures only the report.
   #
@@ -19,7 +19,7 @@ module Mutineer
       @source_map = source_map
     end
 
-    # Single entry point (R20/R21). Branches on `format` ("human" | "json") and
+    # Single entry point. Branches on `format` ("human" | "json" | "html") and
     # routes the rendered report to `output` (a file, with a stderr confirmation)
     # or to `out`. Diagnostics always go to `err`.
     def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil, baseline: nil)
@@ -90,10 +90,9 @@ module Mutineer
 
     private
 
-    # Canonical machine-readable schema (KTD7). survivors/no_coverage are sorted
-    # by (file, line, operator) so output is byte-stable regardless of --jobs
-    # worker finish order (R22).
-    # Renders the JSON report.
+    # Canonical machine-readable schema. survivors/no_coverage are sorted by
+    # (file, line, operator) so output is byte-stable regardless of --jobs
+    # worker finish order.
     #
     # @api private
     # @param baseline [Mutineer::Baseline::Delta, nil] baseline delta.
@@ -101,7 +100,7 @@ module Mutineer
     def json_report(baseline = nil)
       killed = @agg.killed_count
       survived = @agg.survived_count
-      # C8: null (not 0.0) on an empty denominator, matching the nil-vs-0.0
+      # null (not 0.0) on an empty denominator, matching the nil-vs-0.0
       # discipline in AggregateResult; and the SAME rounding as the human report
       # (one run must not yield two scores by --format).
       score = @agg.mutation_score
@@ -121,31 +120,31 @@ module Mutineer
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },
         no_coverage: @agg.results.select(&:no_coverage?).map { |r| no_coverage_json(r) }
                          .sort_by { |h| [h[:file], h[:line]] },
-        # #9: same shape as no_coverage; additive key.
+        # Same shape as no_coverage; additive key.
         uncapturable: @agg.results.select(&:uncapturable?).map { |r| no_coverage_json(r) }
                           .sort_by { |h| [h[:file], h[:line]] },
-        # #10: equivalent mutants the user suppressed — emitted with their stable
-        # id so the user can audit what is silenced (and copy ids for survivors
-        # they want to add). Excluded from the score; never in `survivors`.
+        # Equivalent mutants the user suppressed: emitted with their stable id so
+        # the user can audit what is silenced (and copy ids for survivors they
+        # want to add). Excluded from the score; never in `survivors`.
         ignored: @agg.results.select(&:ignored?).map { |r| ignored_json(r) }
                      .sort_by { |h| [h[:file], h[:line], h[:operator]] },
-        # #11: per-source breakdown (additive; #13 consumes it). Sorted by file so
+        # Per-source breakdown (additive; baseline consumes it). Sorted by file so
         # output is byte-stable. Reuses AggregateResult via by_source.
         per_source: @agg.by_source.map { |file, agg| per_source_json(file, agg) }
                         .sort_by { |h| h[:file] }
       }
-      # #13: additive baseline-delta block, present only with --baseline. Existing
+      # Additive baseline-delta block, present only with --baseline. Existing
       # consumers ignore the extra key; schema_version stays 1.1.
       doc[:baseline] = baseline_json(baseline) if baseline
       "#{JSON.generate(doc)}\n"
     end
 
-    # #23: one self-contained HTML file (inline CSS, no external assets) — the
-    # overall score + summary counts, a per-source table, and every surviving
-    # mutant with its stable id and diff. All source/diff/identifier text is
-    # HTML-escaped (CGI.escapeHTML) so a `<`/`>` in source can never break the
-    # markup. Reuses survivor_json/per_source_json so one run yields one set of
-    # facts regardless of --format.
+    # One self-contained HTML file (inline CSS, no external assets): the overall
+    # score + summary counts, a per-source table, and every surviving mutant with
+    # its stable id and diff. All source/diff/identifier text is HTML-escaped
+    # (CGI.escapeHTML) so a `<`/`>` in source can never break the markup. Reuses
+    # survivor_json/per_source_json so one run yields one set of facts regardless
+    # of --format.
     def html_report
       score = @agg.mutation_score
       survivors = @agg.surviving_mutants.map { |r| survivor_json(r) }
@@ -251,9 +250,9 @@ module Mutineer
     # HTML-escapes any text destined for the document (stdlib CGI).
     def esc(text) = CGI.escapeHTML(text.to_s)
 
-    # #13: the same delta facts the human report prints, for dashboards. new_survivors
+    # The same delta facts the human report prints, for dashboards. new_survivors
     # reuse the ignored_json shape (subject/file/line/operator/token/id) and sort
-    # byte-stably so output doesn't depend on --jobs finish order.
+    # byte-stably so output does not depend on --jobs finish order.
     def baseline_json(delta)
       {
         regressed: delta.regressed,
@@ -300,7 +299,7 @@ module Mutineer
         file: file,
         line: start_line,
         operator: m.operator.to_s,
-        # #10: the stable, copy-pasteable id (next to the human-readable token) so a
+        # The stable, copy-pasteable id (next to the human-readable token) so a
         # user can paste it straight into .mutineer.yml `ignore:`.
         id: result.id,
         token: token,
@@ -308,7 +307,7 @@ module Mutineer
       }
     end
 
-    # An entry under the JSON `ignored:` key — what the user already suppressed.
+    # An entry under the JSON `ignored:` key: what the user already suppressed.
     def ignored_json(result)
       m = result.mutation
       file = result.subject.file
@@ -329,7 +328,7 @@ module Mutineer
     # mutation's 1-based start line, the full original line-block it touches, the
     # spliced mutated block, and a single-line token label for the header.
     def diff_for(m, source)
-      # Byte math (C1): Prism offsets are byte offsets; byteindex/byterindex/
+      # Byte math: Prism offsets are byte offsets; byteindex/byterindex/
       # byteslice keep line splicing correct for multibyte sources.
       line_begin = m.start_offset.zero? ? 0 : (source.byterindex("\n", m.start_offset - 1) || -1) + 1
       line_end   = source.byteindex("\n", m.end_offset) || source.bytesize
@@ -370,9 +369,9 @@ module Mutineer
       out.puts format("Survived:     %-6d  No coverage:   %d", @agg.survived_count, @agg.no_coverage_count)
       out.puts format("Skipped:      %-6d  Errored:       %d", @agg.skipped_invalid_count,
                       @agg.errored_count + @agg.timeout_count)
-      # #9: a broken harness, not a coverage gap — report it distinctly from No coverage.
+      # A broken harness, not a coverage gap: report it distinctly from No coverage.
       out.puts format("Uncapturable: %-6d  (tests failed to run)", @agg.uncapturable_count)
-      # #10: equivalent mutants the user suppressed; excluded from the denominator.
+      # Equivalent mutants the user suppressed; excluded from the denominator.
       out.puts format("Ignored:      %-6d  (equivalent, suppressed)", @agg.ignored_count)
     end
 
@@ -421,10 +420,9 @@ module Mutineer
       parts.join(", ")
     end
 
-    # #11: one line per source after the global summary, so a multi-source run
-    # shows which file is weak. Omitted for a single-source run — the global
-    # summary already says everything (ponytail: no redundant one-line block).
-    # Writes the per-source breakdown.
+    # One line per source after the global summary, so a multi-source run shows
+    # which file is weak. Omitted for a single-source run: the global summary
+    # already says everything (no redundant one-line block).
     #
     # @param out [IO] output stream.
     # @return [void]
@@ -443,7 +441,7 @@ module Mutineer
       end
     end
 
-    # #13: the --baseline delta, appended after the normal report. Names every NEW
+    # The --baseline delta, appended after the normal report. Names every NEW
     # survivor (subject (file:line) operator) and the score delta when it dropped,
     # then a one-line REGRESSION/OK verdict so CI logs show which gate fired.
     def baseline_section(out, delta)
