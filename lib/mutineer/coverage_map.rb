@@ -19,7 +19,8 @@ module Mutineer
   # Keys are "file:line" strings (relative to project_root) everywhere, in
   # memory and on disk, so load/save needs no key transformation.
   class CoverageMap
-    DEFAULT_CAPTURE_TIMEOUT = 120 # seconds, per coverage subprocess
+    # Seconds per coverage subprocess before the parent kills it.
+    DEFAULT_CAPTURE_TIMEOUT = 120
 
     attr_reader :project_root, :failed_test_files, :phase_a_ran, :map
 
