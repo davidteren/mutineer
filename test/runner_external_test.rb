@@ -68,7 +68,7 @@ class RunnerExternalTest < Minitest::Test
       out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
                                   "--test-command", "#{RUBY} -e exit(1) %{files}", chdir: proj)
       assert_equal 1, status.exitstatus
-      assert_match(/environment looks broken/, err)
+      assert_match(/unmutated suite is not green/, err)
       refute_match(/mutation score/i, out)
     end
   end

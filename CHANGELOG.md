@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **`--test-command` under version managers** — scrub Mutineer's rbenv/asdf
+  version bins and bundler/gem env from the child so the suite can resolve the
+  app's Ruby via shims / `.ruby-version`. Smoke check prints a targeted hint on
+  `Bundler::RubyVersionMismatch` instead of only blaming DB/migrations. Docs
+  cover a wrapper recipe for stubborn setups (#32).
+
 ## [0.11.1] - 2026-07-23
 
 ### Fixed

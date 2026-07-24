@@ -49,8 +49,8 @@ module Mutineer
         --rails              Sugar for --boot config/environment --strategy redefine
         --test-command CMD   Run the target suite in the app's own runtime as a
                              subprocess (for apps on Ruby < 3.4). CMD must contain
-                             %{files} (expands to the --test paths). Env is inherited,
-                             e.g. RAILS_ENV=test mutineer run ... --test-command "..."
+                             %{files}. Scrubs Mutineer Ruby PATH pins; set RAILS_ENV
+                             on the mutineer command (not as KEY=val inside CMD)
         --daemon             Boot the app ONCE in a persistent daemon and fork per
                              mutant, with per-worker DB isolation so --jobs N is safe
                              under Rails (needs --rails/--boot; not with --test-command)
