@@ -1,0 +1,19 @@
+AGENTS.md
+  s_e77b5ea5e09d36::t_76f3a06967238e 43,61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "064a09fbbfd8bbb9774864093923cb08031a746c",
+  "prompts": {},
+  "sessions": {
+    "s_e77b5ea5e09d36": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85f291ab-c0a0-4250-b180-b072cc4d2d80",
+        "model": "claude-opus-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
