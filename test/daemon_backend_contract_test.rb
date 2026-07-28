@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "English"
+require "minitest/mock"
 require "tmpdir"
 require "mutineer/config"
 require "mutineer/daemon_backend"
@@ -32,12 +33,16 @@ class DaemonBackendContractTest < Minitest::Test
   # a stale symbol left in the list) must fail here, not only when something privatises.
   def test_shared_list_matches_runner_calls_in_daemon_backend_source
     src = File.read(File.expand_path("../lib/mutineer/daemon_backend.rb", __dir__))
-    # Text scan, not a call graph: strip whole-line AND trailing comments first, or
-    # prose mentioning `Runner.foo` (this file is comment-heavy) reads as a call and
-    # fails a test about method visibility. `#{` is interpolation, not a comment.
+    # Text scan, not a call graph. Two ways it misreads Ruby, both closed here:
+    # prose mentioning `Runner.foo` (this file is comment-heavy) would count as a
+    # call, and a wrapped `Runner\n  .foo` call would not. `#{` is interpolation,
+    # not a comment. A string literal containing the text still fools it.
     called = src.lines
                 .map { |l| l.sub(/#(?!\{).*/, "") }
-                .flat_map { |l| l.scan(/Runner\.(\w+)/).flatten }
+                .join
+                .gsub(/\n\s*\./, ".")
+                .scan(/Runner\.(\w+)/)
+                .flatten
                 .uniq
                 .map(&:to_sym)
                 .sort
@@ -131,8 +136,14 @@ class DaemonBackendContractTest < Minitest::Test
         assert_equal 2, results.size, "#{path}: every input job must keep a slot"
         assert_predicate results[0], :error?
         assert_match(/daemon worker crashed/, results[0].details)
+        # subject and mutation, not just id: the reporter needs all three to place
+        # an errored mutant in its file and line, and dropping them still passes an
+        # id-only assertion.
         assert_equal "id-0", results[0].id
+        assert_equal jobs[0][0], results[0].subject
+        assert_equal jobs[0][1], results[0].mutation
         assert_predicate results[1], :killed?
+        assert_equal jobs[1][0], results[1].subject
       end
     end
   end
