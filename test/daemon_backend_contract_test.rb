@@ -25,17 +25,16 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
-  # runner.rb and daemon_backend.rb require each other. The cycle is safe only while
-  # neither file names the other's constants at load time, and every other entry point
-  # loads runner.rb first, so nothing else exercises this order. Spawn a child to prove
-  # the promise instead of asserting it in a comment.
-  def test_daemon_backend_loads_standalone_without_runner_first
-    script = 'require "mutineer/daemon_backend"; ' \
-             'print [Mutineer::DaemonBackend::DEFAULT_TIMEOUT, Mutineer::Runner.name].inspect'
-    out = IO.popen([RbConfig.ruby, "-I#{File.expand_path("../lib", __dir__)}", "-e", script], err: %i[child out], &:read)
+  # daemon_backend.rb calls Runner but must never require it: runner.rb requires
+  # daemon_backend, so the reverse edge makes Ruby print "circular require considered
+  # harmful" into the process of anyone who loads Mutineer with warnings on. Both Rake
+  # tasks set warning = false, so only a child process with -w can see a regression here.
+  def test_loading_the_gem_emits_no_circular_require_warning
+    out = IO.popen([RbConfig.ruby, "-w", "-I#{File.expand_path("../lib", __dir__)}",
+                    "-e", 'require "mutineer"'], err: %i[child out], &:read)
 
-    assert_equal '[60, "Mutineer::Runner"]', out.strip,
-                 "requiring mutineer/daemon_backend first must still define both modules"
+    refute_match(/circular require/, out,
+                 "a require cycle between runner.rb and daemon_backend.rb warns on every -w load")
   end
 
   # Exercises the shared helpers for real rather than by respond_to? alone:
