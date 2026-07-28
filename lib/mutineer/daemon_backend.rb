@@ -154,6 +154,10 @@ module Mutineer
 
       clients.each_with_index.map do |client, worker|
         Thread.new do
+          # The abort below is re-raised by join and reported once there; without
+          # this Ruby also dumps the thread's backtrace, which the serial path never
+          # does. Same fault, same output, whatever --jobs is set to.
+          Thread.current.report_on_exception = false
           loop do
             i = begin
               queue.pop(true)
@@ -185,9 +189,11 @@ module Mutineer
     # Error model, in one place because both paths call this: a crash while running
     # ONE mutant is that mutant's `error` verdict and the run continues, matching
     # {WorkerPool} and the daemon's own in-band crash reply. {DaemonBootError} is
-    # different — it is DaemonClient's signal that the daemon is gone for good after
-    # MAX_RESTARTS — so it propagates and ends the run. Scoring the remaining mutants
-    # against a dead daemon would print a score built on a fraction of the work.
+    # different — DaemonClient raises it when the daemon is gone for good (a failed
+    # boot handshake, a spawn the OS refused, or MAX_RESTARTS crashes) — so it
+    # propagates and ends the run. Scoring the remaining mutants against a dead
+    # daemon would print a score built on a fraction of the work. Anyone adding a
+    # second fatal error class must re-raise it alongside {DaemonBootError} below.
     #
     # @param job [Array(Mutineer::Subject, Mutineer::Mutation, String)] the work item.
     # @param req_id [Integer] request id (echoed back for IPC ordering safety).
@@ -213,19 +219,24 @@ module Mutineer
         elsif sel && sel[0] == :verdict
           sel[1]
         else
-          verdict = client.request(
-            id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,
-            payload: { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) },
-            tests: sel ? sel[1] : abs_tests
-          )
-          result_for(verdict)
+          # Only the daemon call is guarded. A fault in the tool-side work above
+          # (apply, the Prism parse, coverage selection) is deterministic — it would
+          # hit every mutant — so it must stay fatal instead of becoming N error
+          # verdicts and an empty denominator.
+          begin
+            verdict = client.request(
+              id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,
+              payload: { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) },
+              tests: sel ? sel[1] : abs_tests
+            )
+            result_for(verdict)
+          rescue DaemonBootError
+            raise
+          rescue StandardError => e
+            Result.error("daemon worker crashed: #{e.class}: #{e.message}")
+          end
         end
       r.with(subject: subject, mutation: mutation, id: id)
-    rescue DaemonBootError
-      raise
-    rescue StandardError => e
-      Result.error("daemon worker crashed: #{e.class}: #{e.message}")
-        .with(subject: subject, mutation: mutation, id: id)
     end
 
     # The boot config the daemon needs to boot the app once: where to boot, the test

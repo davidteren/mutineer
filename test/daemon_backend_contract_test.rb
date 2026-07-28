@@ -129,22 +129,95 @@ class DaemonBackendContractTest < Minitest::Test
       def client.quit = nil
       def client.request(**) = raise(Mutineer::DaemonBootError, "daemon crashed 3 times; aborting the run")
 
-      # The parallel path lets the abort escape a worker thread, and Ruby prints that
-      # trace by default. It is expected here, so keep it out of the suite's output.
-      reporting = Thread.report_on_exception
-      Thread.report_on_exception = false
-      begin
-        %i[run_serial run_parallel].each do |path|
-          args = path == :run_serial ? [jobs, config, [], nil, source_map] : [jobs, 2, config, [], nil, source_map]
-          assert_raises(Mutineer::DaemonBootError, "#{path} must not score a run the daemon abandoned") do
-            Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
-              Mutineer::DaemonBackend.send(path, *args)
-            end
+      %i[run_serial run_parallel].each do |path|
+        args = path == :run_serial ? [jobs, config, [], nil, source_map] : [jobs, 2, config, [], nil, source_map]
+        assert_raises(Mutineer::DaemonBootError, "#{path} must not score a run the daemon abandoned") do
+          Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+            Mutineer::DaemonBackend.send(path, *args)
           end
         end
-      ensure
-        Thread.report_on_exception = reporting
       end
+    end
+  end
+
+  # A fault in the tool-side work (apply, the Prism parse, coverage selection) is
+  # deterministic: it hits every mutant. Turning it into N error verdicts would empty
+  # the denominator and blame the daemon, so it must stay fatal.
+  def test_a_tool_side_fault_still_ends_the_run
+    with_jobs do |jobs, config, _source_map|
+      client = Object.new
+      def client.start = self
+      def client.quit = nil
+      def client.request(**) = "killed"
+
+      # An empty source_map makes mutation.apply fail on nil, before the daemon call.
+      assert_raises(StandardError) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+          Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, {})
+        end
+      end
+    end
+  end
+
+  # DaemonBootError is not the only way a client dies: close_io nils the pipes before
+  # a respawn, so a client whose respawn failed would otherwise fail per-mutant
+  # forever and let the run score every remaining mutant against nothing.
+  def test_a_client_whose_pipes_are_gone_reports_itself_dead
+    client = Mutineer::DaemonClient.allocate
+    client.instance_variable_set(:@stdin, nil)
+
+    error = assert_raises(Mutineer::DaemonBootError) do
+      client.request(id: 0, payload: {}, tests: [], timeout: 1)
+    end
+    assert_match(/not running/, error.message)
+  end
+
+  # queue.clear is the only parallel-specific logic here, and deleting it left the
+  # suite green: join re-raises either way. Pin the sibling stop with more jobs than
+  # workers, so a healthy worker cannot quietly finish the whole queue.
+  def test_a_dead_daemon_stops_the_other_workers
+    with_jobs do |jobs, config, source_map| # rubocop:disable Lint/UnusedBlockArgument
+      subject, mutation, = jobs.first
+      many = Array.new(12) { |i| [subject, mutation, "id-#{i}"] }
+      map = { subject.file => SOURCE }
+
+      # A latch rather than a sleep: the healthy worker holds inside its first request
+      # until the dying one has aborted, so what it does next is decided by whether
+      # the queue was drained, not by timing.
+      gate = Queue.new
+
+      dying = Object.new
+      dying.instance_variable_set(:@gate, gate)
+      def dying.start = self
+      def dying.quit = nil
+      def dying.request(**)
+        @gate << :aborted
+        raise(Mutineer::DaemonBootError, "daemon crashed 3 times; aborting the run")
+      end
+
+      healthy = Object.new
+      healthy.instance_variable_set(:@seen, [])
+      healthy.instance_variable_set(:@gate, gate)
+      def healthy.start = self
+      def healthy.quit = nil
+      def healthy.seen = @seen
+      def healthy.request(id:, **)
+        @seen << id
+        @gate.pop      # wait for the abort
+        @gate << :done # never block a later call
+        "killed"
+      end
+
+      queue = [dying, healthy]
+      assert_raises(Mutineer::DaemonBootError) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { queue.shift }) do
+          Mutineer::DaemonBackend.send(:run_parallel, many, 2, config, [], nil, map)
+        end
+      end
+
+      assert_operator healthy.seen.size, :<=, 2,
+                      "the healthy worker kept draining the queue after the daemon gave up " \
+                      "(#{healthy.seen.size} of #{many.size} jobs)"
     end
   end
 end

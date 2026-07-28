@@ -4,8 +4,11 @@ require "json"
 require "open3"
 
 module Mutineer
-  # Raised when the daemon cannot be booted (bad boot path, app error, or it dies
-  # on the handshake). The CLI maps it to a runtime error.
+  # Raised when the daemon cannot be booted or is gone for good: a bad boot path, an
+  # app error, a failed handshake, a spawn the OS refused, or MAX_RESTARTS crashes.
+  # It means "stop the run" — a backend that scored the remaining mutants against a
+  # dead daemon would report a score covering a fraction of the work. The CLI maps it
+  # to a runtime error (exit 1).
   class DaemonBootError < StandardError; end
 
   # Tool-side handle for the app-side daemon.
@@ -60,6 +63,12 @@ module Mutineer
     #   `<db>-<worker>` for isolation. Defaults to 0 (serial).
     # @return [String] one of survived/killed/error/timeout.
     def request(id:, payload:, tests:, timeout:, worker: 0)
+      # close_io nils the pipes, so a client whose respawn never completed would
+      # otherwise fail per-mutant forever (NoMethodError on nil) and let the backend
+      # score every remaining mutant against nothing. Deadness is a property of the
+      # client, not of whichever exception happened to escape.
+      raise DaemonBootError, "daemon is not running" if @stdin.nil?
+
       # A crash can surface on the WRITE (daemon died idle between requests →
       # Errno::EPIPE) as well as the read (EOF), so guard both: either way, respawn
       # for future mutants and score THIS one error (re-running a crash-causing
@@ -124,10 +133,18 @@ module Mutineer
       # non-rbenv setup. When bundler/ruby are rbenv shims, the RBENV_VERSION
       # carried in app_env still selects the app's Ruby; otherwise the active
       # Ruby is used.
-      @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(
-        app_env, "bundle", "exec", "ruby",
-        "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run", chdir: @app_root
-      )
+      # A spawn the OS refuses (EMFILE/ENOMEM under --jobs N, ENOENT when `bundle`
+      # does not resolve) is terminal, not one mutant's problem: close_io has already
+      # nilled the pipes, so the client cannot recover. Raise the class that ends the
+      # run rather than a SystemCallError the backend would score per-mutant.
+      begin
+        @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(
+          app_env, "bundle", "exec", "ruby",
+          "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run", chdir: @app_root
+        )
+      rescue SystemCallError => e
+        raise DaemonBootError, "daemon could not be spawned: #{e.class}: #{e.message}"
+      end
       # Drain daemon stderr to the tool's stderr so child/boot errors are visible.
       # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn;
       # the rescue swallows the benign EBADF/IOError raised when close_io closes
