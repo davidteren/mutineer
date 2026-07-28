@@ -1,0 +1,21 @@
+test/daemon_backend_contract_test.rb
+  s_c3b50974b4fe07::t_503aac7c46f157 36-39,42-45
+  s_c3b50974b4fe07::t_338a2ad1993530 139-141,143-144,146
+  s_c3b50974b4fe07::t_244947dd5d6a1c 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3ce7191cfd7b8aff2283419d9ccfd23a17705092",
+  "prompts": {},
+  "sessions": {
+    "s_c3b50974b4fe07": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b0704a9-36ec-4a11-9287-5d697e7789d6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
