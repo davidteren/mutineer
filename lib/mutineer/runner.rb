@@ -341,10 +341,10 @@ module Mutineer
     end
 
     # The unique absolute directories holding the sources. Sweep target for both
-    # orphan mechanisms (in-process mutant tempfiles and external backup files).
-    # Shared so the path-expansion rule cannot drift between the two paths.
+    # orphan mechanisms (in-process mutant tempfiles and external backup files),
+    # and shipped to the daemon via {DaemonBackend.boot_config} so it can sweep too.
+    # Shared so the path-expansion rule cannot drift between the paths.
     #
-    # @api private
     # @param config [Mutineer::Config] run configuration.
     # @return [Array<String>] unique absolute source directories.
     def self.source_dirs(config)
