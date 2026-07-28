@@ -18,6 +18,8 @@ class DaemonBackendContractTest < Minitest::Test
   # The Runner methods DaemonBackend calls across the module boundary.
   SHARED = %i[collect_jobs filter_since coverage_selection test_load_roots source_dirs].freeze
 
+  # Cheapest possible tripwire: privatising or renaming any of the five breaks the
+  # daemon path at runtime, and nothing else in the zero-dep suite would notice.
   def test_runner_publicly_answers_every_shared_invariant
     SHARED.each do |m|
       assert_respond_to Mutineer::Runner, m,
