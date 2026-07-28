@@ -4,6 +4,10 @@ require_relative "parser"
 require_relative "result"
 require_relative "coverage_map"
 require_relative "daemon_client"
+# Runner owns the shared invariants this backend calls (job collection, --since,
+# coverage selection, path helpers). runner.rb requires this file in turn; the
+# cycle is safe because neither file names the other's constants at load time.
+require_relative "runner"
 
 module Mutineer
   # Daemon execution backend. Boots the app ONCE in a persistent subprocess under
