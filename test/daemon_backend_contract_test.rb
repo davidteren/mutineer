@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "English"
 require "tmpdir"
 require "mutineer/config"
 require "mutineer/daemon_backend"
@@ -31,12 +32,16 @@ class DaemonBackendContractTest < Minitest::Test
   # tasks set warning = false, so only a child process with -w can see a regression here.
   def test_loading_the_gem_emits_no_circular_require_warning
     lib = File.expand_path("../lib", __dir__)
-    # Report which daemon_backend.rb actually got loaded. A silent load failure prints
-    # no warning either, and an installed mutineer gem would satisfy the require from
-    # somewhere else entirely — both would leave the refute below passing vacuously.
+    # Report which daemon_backend.rb actually got loaded. Three ways this could pass
+    # while proving nothing, all closed below: a silent load failure prints no warning
+    # either; an installed mutineer gem would satisfy the require from somewhere else;
+    # and stderr is merged here, so a backtrace naming this file would satisfy a path
+    # check on its own. Hence the exit status AND the path.
     script = 'require "mutineer"; print $LOADED_FEATURES.grep(/daemon_backend/).first.to_s'
     out = IO.popen([RbConfig.ruby, "-w", "-I#{lib}", "-e", script], err: %i[child out], &:read)
+    status = $CHILD_STATUS
 
+    assert_predicate status, :success?, "the child failed to load Mutineer, so this proved nothing:\n#{out}"
     assert_includes out, File.join(lib, "mutineer/daemon_backend.rb"),
                     "the child did not load this working tree, so this proved nothing"
     refute_match(/circular require/, out,
