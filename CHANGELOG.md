@@ -9,9 +9,10 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 - **Daemon orchestration split out of `Runner`** — the persistent-daemon backend
   (job fan-out, worker DBs, coverage-map build, boot config, verdict mapping) now
-  lives in `Mutineer::DaemonBackend`, mirroring `ExternalBackend`. `Runner` keeps
-  job collection, coverage selection and the single in-process mutant run, and
-  drops from 662 to 439 lines. No CLI or behaviour change (#58).
+  lives in `Mutineer::DaemonBackend`. `Runner` keeps job collection, coverage
+  selection and the single in-process mutant run, and drops from 662 to 439 lines.
+  The external backend's orchestration stays on `Runner` for now, so the two
+  backends are not yet symmetrical. No CLI or behaviour change (#58).
 - **Comment diet on orchestration files** — present-tense YARD contracts; drop
   ticket/phase/KTD history tags from runner, CLI, daemon pair, coverage map,
   reporter, result, and related modules. Safety and score invariants kept (#57).

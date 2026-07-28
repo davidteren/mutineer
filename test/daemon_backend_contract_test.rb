@@ -25,6 +25,19 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # runner.rb and daemon_backend.rb require each other. The cycle is safe only while
+  # neither file names the other's constants at load time, and every other entry point
+  # loads runner.rb first, so nothing else exercises this order. Spawn a child to prove
+  # the promise instead of asserting it in a comment.
+  def test_daemon_backend_loads_standalone_without_runner_first
+    script = 'require "mutineer/daemon_backend"; ' \
+             'print [Mutineer::DaemonBackend::DEFAULT_TIMEOUT, Mutineer::Runner.name].inspect'
+    out = IO.popen([RbConfig.ruby, "-I#{File.expand_path("../lib", __dir__)}", "-e", script], err: %i[child out], &:read)
+
+    assert_equal '[60, "Mutineer::Runner"]', out.strip,
+                 "requiring mutineer/daemon_backend first must still define both modules"
+  end
+
   # Exercises the shared helpers for real rather than by respond_to? alone:
   # boot_config routes through Runner.test_load_roots and Runner.source_dirs.
   def test_boot_config_resolves_load_roots_and_source_dirs

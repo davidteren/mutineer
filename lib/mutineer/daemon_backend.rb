@@ -21,11 +21,18 @@ module Mutineer
   # Job collection, `--since` filtering and coverage selection stay on {Runner} and
   # are called from here, so the daemon path can never drift from the in-process
   # path on which mutants run or which tests narrow a mutant (score parity).
+  #
+  # That call-back is the one way this module is NOT shaped like {ExternalBackend}:
+  # that one is a leaf {Runner} calls into, while this one owns its orchestration and
+  # reaches back for the shared job vocabulary. The dependency runs backend -> shared
+  # machinery, never backend -> backend, and {Runner} keeps the external orchestration.
   module DaemonBackend
-    # Default per-mutant timeout on the daemon path (seconds). Coverage narrowing
-    # usually keeps each job short; this still covers a slow suite or full-suite
-    # fallback when the coverage map is unavailable.
-    TIMEOUT = 60
+    # Default per-mutant timeout on the daemon path (seconds), overridden by
+    # config.daemon_timeout. Coverage narrowing usually keeps each job short; this
+    # still covers a slow suite or full-suite fallback when the map is unavailable.
+    # Named like its in-process counterpart {Isolation::DEFAULT_TIMEOUT}, not like
+    # {ExternalBackend::SMOKE_TIMEOUT}, which bounds a different thing.
+    DEFAULT_TIMEOUT = 60
 
     # Full daemon run: collect jobs, build the coverage map once, then execute
     # serially or across N worker daemons. Fail-fast forces serial so the survivor
@@ -187,7 +194,7 @@ module Mutineer
           sel[1]
         else
           verdict = client.request(
-            id: req_id, worker: worker, timeout: config.daemon_timeout || TIMEOUT,
+            id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,
             payload: { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) },
             tests: sel ? sel[1] : abs_tests
           )
@@ -251,5 +258,10 @@ module Mutineer
       else Result.error("daemon verdict: #{verdict}")
       end
     end
+
+    # The module's contract is {execute} (the backend entry point) plus the two the
+    # suite drives directly, {build_coverage_map} and {boot_config}. Everything else
+    # is daemon-pipeline internals with no caller outside this file.
+    private_class_method :run_serial, :run_parallel, :job_result, :schema_path, :result_for
   end
 end
