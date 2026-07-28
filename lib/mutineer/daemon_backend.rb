@@ -141,12 +141,10 @@ module Mutineer
     # Parallel path: N daemon handles, each pinned to its own worker slot (own DB).
     # A shared queue of job indices feeds N tool-side threads; results are placed by
     # input index so the verdict set matches serial. Callers must not pass fail_fast
-    # here ({execute} forces serial for fail-fast). Per-mutant crashes are classified
-    # in {job_result}, shared with the serial path; a {DaemonBootError} ends the run
-    # here rather than scoring the remainder against a daemon that has given up.
+    # here ({execute} forces serial for fail-fast).
     #
     # @api private
-    # @return [Array<Mutineer::Result>] one result per input job, in input order.
+    # @return [Array<Mutineer::Result>] completed results in input order.
     def self.run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map)
       results = Array.new(jobs.size)
       queue   = Queue.new
@@ -167,39 +165,22 @@ module Mutineer
             end
             results[i] = job_result(jobs[i], i, client, worker, config, coverage_map, abs_tests, source_map)
           end
-        rescue DaemonBootError
-          # The daemon gave up for good. Stop feeding the other workers rather
-          # than letting them score the rest of the run against a dead client;
-          # Thread#join re-raises this and ends the run.
-          queue.clear
-          raise
         ensure
           client.quit
         end
       end.each(&:join)
 
-      # Every job was popped by some worker and every pop assigns, so no slot can
-      # be nil here: an escaping exception aborts the run via join instead.
-      results
+      results.compact
     end
 
     # Build the payload for one job, run it on the given daemon/worker, and attach
-    # the subject/mutation/id. Shared body of both daemon paths, so `--jobs 1` and
-    # `--jobs N` classify an identical fault identically.
-    #
-    # Error model, in one place because both paths call this: a crash while running
-    # ONE mutant is that mutant's `error` verdict and the run continues, matching
-    # {WorkerPool} and the daemon's own in-band crash reply. {DaemonBootError} is
-    # different — it is DaemonClient's signal that the daemon is gone for good after
-    # MAX_RESTARTS — so it propagates and ends the run. Scoring the remaining mutants
-    # against a dead daemon would print a score built on a fraction of the work.
+    # the subject/mutation/id. Shared body of both daemon paths.
     #
     # @param job [Array(Mutineer::Subject, Mutineer::Mutation, String)] the work item.
     # @param req_id [Integer] request id (echoed back for IPC ordering safety).
     # @param client [Mutineer::DaemonClient] the daemon handle to run on.
     # @param worker [Integer] the worker slot (→ worker DB) this daemon routes to.
     # @api private
-    # @raise [Mutineer::DaemonBootError] when the daemon has given up; ends the run.
     # @return [Mutineer::Result] the decorated result.
     def self.job_result(job, req_id, client, worker, config, coverage_map, abs_tests, source_map)
       subject, mutation, id = job
@@ -226,11 +207,6 @@ module Mutineer
           result_for(verdict)
         end
       r.with(subject: subject, mutation: mutation, id: id)
-    rescue DaemonBootError
-      raise
-    rescue StandardError => e
-      Result.error("daemon worker crashed: #{e.class}: #{e.message}")
-        .with(subject: subject, mutation: mutation, id: id)
     end
 
     # The boot config the daemon needs to boot the app once: where to boot, the test

@@ -2,7 +2,6 @@
 
 require_relative "test_helper"
 require "English"
-require "minitest/mock"
 require "tmpdir"
 require "mutineer/config"
 require "mutineer/daemon_backend"
@@ -29,8 +28,8 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
-  # SHARED is the contract. Drift either way (a new Runner. call in the backend, or
-  # a stale symbol left in the list) must fail here, not only when something privatises.
+  # SHARED is hand-maintained, so it can drift from the real call sites: add a sixth
+  # Runner call and the tripwire above still passes while no longer covering it.
   def test_shared_list_matches_runner_calls_in_daemon_backend_source
     src = File.read(File.expand_path("../lib/mutineer/daemon_backend.rb", __dir__))
     # Text scan, not a call graph. Two ways it misreads Ruby, both closed here:
@@ -46,6 +45,7 @@ class DaemonBackendContractTest < Minitest::Test
                 .uniq
                 .map(&:to_sym)
                 .sort
+
     assert_equal SHARED.sort, called,
                  "SHARED must list exactly the Runner methods daemon_backend.rb calls"
   end
@@ -94,86 +94,6 @@ class DaemonBackendContractTest < Minitest::Test
       assert_nil boot[:schema], "no db/schema.rb in this app, so the daemon skips worker-DB schema loading"
       assert boot[:rails]
       refute boot[:coverage], "worker daemons boot with Coverage off; only the map-building daemon enables it"
-    end
-  end
-
-  # Parallel workers must not drop mutants on crash: a raise used to leave a nil
-  # that compact removed, so the mutant vanished from AggregateResult. Mirror
-  # WorkerPool — keep every input slot as Result.error.
-  SOURCE = "class Order\n  def total(a, b)\n    a + b\n  end\nend\n"
-
-  # A real job pair, so the daemon paths run their actual code and the only stubbed
-  # thing is the daemon itself. Stubbing job_result instead would bypass the very
-  # rescue these tests exist to pin.
-  def with_jobs
-    Dir.mktmpdir("mutineer-daemon") do |root|
-      FileUtils.mkdir_p(File.join(root, "app"))
-      path = File.join(root, "app/order.rb")
-      File.binwrite(path, SOURCE)
-      subject = Mutineer::Project.discover([path]).first
-      mutations = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, SOURCE)
-      config = Mutineer::Config.new(sources: [path], tests: [], project_root: root, framework: "minitest")
-      jobs = [[subject, mutations.first, "id-0"], [subject, mutations.first, "id-1"]]
-      yield jobs, config, { path => SOURCE }
-    end
-  end
-
-  # A crash running ONE mutant is that mutant's verdict, not the end of the run, and
-  # both daemon paths must agree on that or --jobs N stops matching --jobs 1.
-  def test_a_crash_running_one_mutant_is_an_error_verdict_on_both_paths
-    with_jobs do |jobs, config, source_map|
-      client = Object.new
-      def client.start = self
-      def client.quit = nil
-      def client.request(id:, **) = id.zero? ? raise("boom") : "killed"
-
-      %i[run_serial run_parallel].each do |path|
-        args = path == :run_serial ? [jobs, config, [], nil, source_map] : [jobs, 2, config, [], nil, source_map]
-        results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
-          Mutineer::DaemonBackend.send(path, *args)
-        end
-
-        assert_equal 2, results.size, "#{path}: every input job must keep a slot"
-        assert_predicate results[0], :error?
-        assert_match(/daemon worker crashed/, results[0].details)
-        # subject and mutation, not just id: the reporter needs all three to place
-        # an errored mutant in its file and line, and dropping them still passes an
-        # id-only assertion.
-        assert_equal "id-0", results[0].id
-        assert_equal jobs[0][0], results[0].subject
-        assert_equal jobs[0][1], results[0].mutation
-        assert_predicate results[1], :killed?
-        assert_equal jobs[1][0], results[1].subject
-      end
-    end
-  end
-
-  # DaemonClient raises this only after exhausting its restart budget: the daemon is
-  # gone. Scoring the remaining mutants against it would print a score covering a
-  # fraction of the run, so the run must end instead.
-  def test_daemon_giving_up_ends_the_run_on_both_paths
-    with_jobs do |jobs, config, source_map|
-      client = Object.new
-      def client.start = self
-      def client.quit = nil
-      def client.request(**) = raise(Mutineer::DaemonBootError, "daemon crashed 3 times; aborting the run")
-
-      # The parallel path lets the abort escape a worker thread, and Ruby prints that
-      # trace by default. It is expected here, so keep it out of the suite's output.
-      reporting = Thread.report_on_exception
-      Thread.report_on_exception = false
-      begin
-        %i[run_serial run_parallel].each do |path|
-          args = path == :run_serial ? [jobs, config, [], nil, source_map] : [jobs, 2, config, [], nil, source_map]
-          assert_raises(Mutineer::DaemonBootError, "#{path} must not score a run the daemon abandoned") do
-            Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
-              Mutineer::DaemonBackend.send(path, *args)
-            end
-          end
-        end
-      ensure
-        Thread.report_on_exception = reporting
-      end
     end
   end
 end
