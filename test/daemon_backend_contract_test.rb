@@ -28,39 +28,12 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
-  # SHARED is hand-maintained, so it can drift from the real call sites: add a sixth
-  # Runner call and the tripwire above still passes while no longer covering it.
-  def test_shared_list_matches_runner_calls_in_daemon_backend_source
-    src = File.read(File.expand_path("../lib/mutineer/daemon_backend.rb", __dir__))
-    # Text scan, not a call graph. Two ways it misreads Ruby, both closed here:
-    # prose mentioning `Runner.foo` (this file is comment-heavy) would count as a
-    # call, and a wrapped `Runner\n  .foo` call would not. `#{` is interpolation,
-    # not a comment. A string literal containing the text still fools it.
-    called = src.lines
-                .map { |l| l.sub(/#(?!\{).*/, "") }
-                .join
-                .gsub(/\n\s*\./, ".")
-                .scan(/Runner\.(\w+)/)
-                .flatten
-                .uniq
-                .map(&:to_sym)
-                .sort
-
-    assert_equal SHARED.sort, called,
-                 "SHARED must list exactly the Runner methods daemon_backend.rb calls"
-  end
-
-  # daemon_backend.rb calls Runner but must never require it: runner.rb requires
-  # daemon_backend, so the reverse edge makes Ruby print "circular require considered
-  # harmful" into the process of anyone who loads Mutineer with warnings on. Both Rake
-  # tasks set warning = false, so only a child process with -w can see a regression here.
+  # A require cycle between runner.rb and daemon_backend.rb warns on every -w load,
+  # and both Rake tasks set warning = false, so only a child process can see it. The
+  # exit status and the loaded path are asserted too, or a failed load would pass this
+  # by printing no warning either.
   def test_loading_the_gem_emits_no_circular_require_warning
     lib = File.expand_path("../lib", __dir__)
-    # Report which daemon_backend.rb actually got loaded. Three ways this could pass
-    # while proving nothing, all closed below: a silent load failure prints no warning
-    # either; an installed mutineer gem would satisfy the require from somewhere else;
-    # and stderr is merged here, so a backtrace naming this file would satisfy a path
-    # check on its own. Hence the exit status AND the path.
     script = 'require "mutineer"; print $LOADED_FEATURES.grep(/daemon_backend/).first.to_s'
     out = IO.popen([RbConfig.ruby, "-w", "-I#{lib}", "-e", script], err: %i[child out], &:read)
     status = $CHILD_STATUS

@@ -4,13 +4,10 @@ require_relative "parser"
 require_relative "result"
 require_relative "coverage_map"
 require_relative "daemon_client"
-# Deliberately NOT require_relative "runner", even though this module calls it:
-# runner.rb requires this file, so declaring the reverse edge makes Ruby print
-# "circular require considered harmful" out of a shipped library on every -w load.
-# Runner is always loaded first in practice (lib/mutineer.rb and cli.rb both require
-# it, and requiring it loads this file). Require this file on its own and Runner is
-# undefined, so {DaemonBackend.execute} raises NameError on its first line. Breaking
-# the dependency for real means lifting the shared job vocabulary out of Runner (#75).
+# No require_relative "runner" on purpose: runner.rb requires this file, and the
+# reverse edge makes Ruby warn "circular require considered harmful" on every -w
+# load. Runner is loaded first on every real path; requiring this file alone leaves
+# it undefined. Rationale and the real fix: #75.
 
 module Mutineer
   # Daemon execution backend. Boots the app ONCE in a persistent subprocess under
@@ -25,10 +22,8 @@ module Mutineer
   # are called from here, so the daemon path can never drift from the in-process
   # path on which mutants run or which tests narrow a mutant (score parity).
   #
-  # That call-back is the one way this module is NOT shaped like {ExternalBackend}:
-  # that one is a leaf {Runner} calls into, while this one owns its orchestration and
-  # reaches back for the shared job vocabulary. The dependency runs backend -> shared
-  # machinery, never backend -> backend, and {Runner} keeps the external orchestration.
+  # Unlike {ExternalBackend}, which is a leaf {Runner} calls into, this module owns
+  # its orchestration and calls back for that shared vocabulary.
   module DaemonBackend
     # Default per-mutant timeout on the daemon path (seconds), overridden by
     # config.daemon_timeout. Coverage narrowing usually keeps each job short; this
