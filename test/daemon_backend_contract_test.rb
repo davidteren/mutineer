@@ -89,14 +89,15 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
-  # A crash running ONE mutant is that mutant's verdict, not the end of the run, and
-  # both daemon paths must agree on that or --jobs N stops matching --jobs 1.
+  # A daemon that dies on ONE mutant is DaemonClient's business: it respawns and
+  # answers "error" for that mutant. The run must carry on, identically on both
+  # paths, or --jobs N stops matching --jobs 1.
   def test_a_crash_running_one_mutant_is_an_error_verdict_on_both_paths
     with_jobs do |jobs, config, source_map|
       client = Object.new
       def client.start = self
       def client.quit = nil
-      def client.request(id:, **) = id.zero? ? raise("boom") : "killed"
+      def client.request(id:, **) = id.zero? ? "error" : "killed"
 
       %i[run_serial run_parallel].each do |path|
         args = path == :run_serial ? [jobs, config, [], nil, source_map] : [jobs, 2, config, [], nil, source_map]
@@ -106,7 +107,7 @@ class DaemonBackendContractTest < Minitest::Test
 
         assert_equal 2, results.size, "#{path}: every input job must keep a slot"
         assert_predicate results[0], :error?
-        assert_match(/daemon worker crashed/, results[0].details)
+        assert_match(/daemon verdict: error/, results[0].details)
         # subject and mutation, not just id: the reporter needs all three to place
         # an errored mutant at its file and line, and dropping them still passes an
         # id-only assertion.

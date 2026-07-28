@@ -187,13 +187,12 @@ module Mutineer
     # `--jobs N` classify an identical fault identically.
     #
     # Error model, in one place because both paths call this: a crash while running
-    # ONE mutant is that mutant's `error` verdict and the run continues, matching
-    # {WorkerPool} and the daemon's own in-band crash reply. {DaemonBootError} is
-    # different — DaemonClient raises it when the daemon is gone for good (a failed
-    # boot handshake, a spawn the OS refused, or MAX_RESTARTS crashes) — so it
-    # propagates and ends the run. Scoring the remaining mutants against a dead
-    # daemon would print a score built on a fraction of the work. Anyone adding a
-    # second fatal error class must re-raise it alongside {DaemonBootError} below.
+    # ONE mutant is already {DaemonClient}'s business: it rescues the dead pipe,
+    # respawns, and answers `"error"` for that mutant, so the run continues. Nothing
+    # is caught here on purpose — an exception reaching this far is either
+    # {DaemonBootError} (the daemon is gone for good, so the run must end rather than
+    # score the rest against it) or a defect, and absorbing a defect into one more
+    # errored mutant is how a broken run comes to look like a weak test suite.
     #
     # @param job [Array(Mutineer::Subject, Mutineer::Mutation, String)] the work item.
     # @param req_id [Integer] request id (echoed back for IPC ordering safety).
@@ -219,22 +218,12 @@ module Mutineer
         elsif sel && sel[0] == :verdict
           sel[1]
         else
-          # Only the daemon call is guarded. A fault in the tool-side work above
-          # (apply, the Prism parse, coverage selection) is deterministic — it would
-          # hit every mutant — so it must stay fatal instead of becoming N error
-          # verdicts and an empty denominator.
-          begin
-            verdict = client.request(
-              id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,
-              payload: { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) },
-              tests: sel ? sel[1] : abs_tests
-            )
-            result_for(verdict)
-          rescue DaemonBootError
-            raise
-          rescue StandardError => e
-            Result.error("daemon worker crashed: #{e.class}: #{e.message}")
-          end
+          verdict = client.request(
+            id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,
+            payload: { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) },
+            tests: sel ? sel[1] : abs_tests
+          )
+          result_for(verdict)
         end
       r.with(subject: subject, mutation: mutation, id: id)
     end

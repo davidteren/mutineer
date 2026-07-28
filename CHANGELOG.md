@@ -6,21 +6,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **A dead daemon ends the run instead of scoring the rest against it** — a
+  daemon that dies while running one mutant was already handled: `DaemonClient`
+  respawns and answers `error` for that mutant. But a daemon that could not come
+  back was not. `restart!` closes the pipes before respawning, so if the respawn
+  failed at the OS level (`EMFILE` or `ENOMEM` under `--jobs N`, `ENOENT` when
+  `bundle` does not resolve) the client was left permanently dead while raising
+  errors that read as ordinary per-mutant failures. Every remaining mutant scored
+  `error` against nothing, and Mutineer printed a mutation score built on the
+  fraction of mutants that ran before the daemon died. `DaemonClient` now raises
+  `DaemonBootError` whenever it is gone for good — a refused spawn, a failed boot
+  handshake on respawn, closed pipes, or `MAX_RESTARTS` crashes — and the CLI
+  reports it as a message and exit 1 rather than a backtrace. Under `--jobs N`
+  the remaining queue is dropped so sibling workers stop too. Errored mutants
+  still cannot fail the `--threshold` gate once any mutant is scored (#78).
+
 ### Changed
-- **A daemon crash while running one mutant no longer ends the whole run** — it
-  used to propagate and abort with a backtrace, on both `--jobs 1` and
-  `--jobs N`. That mutant is now scored `:error` and the run continues, matching
-  `WorkerPool` and the daemon's own in-band crash reply. Errors stay outside the
-  score denominator. A daemon that is gone for good still ends the run, because
-  scoring the remaining mutants against it would report a score covering a
-  fraction of the work: `DaemonClient` raises `DaemonBootError` after
-  `MAX_RESTARTS` crashes, when a respawned daemon fails its boot handshake, when
-  the OS refuses the spawn, and when its pipes have been closed. The CLI reports
-  that as a message and exit 1 rather than a backtrace. Both daemon paths share
-  one classification, so `--jobs N` still matches `--jobs 1`. Only the daemon
-  call is guarded: a fault in the tool-side work stays fatal rather than becoming
-  an error verdict on every mutant. Errored mutants cannot yet fail the
-  `--threshold` gate once any mutant is scored (#78).
 - **Daemon orchestration split out of `Runner`** — the persistent-daemon backend
   (job fan-out, worker DBs, coverage-map build, boot config, verdict mapping) now
   lives in `Mutineer::DaemonBackend`. `Runner` keeps job collection, coverage
