@@ -8,8 +8,9 @@ require_relative "daemon_client"
 # runner.rb requires this file, so declaring the reverse edge makes Ruby print
 # "circular require considered harmful" out of a shipped library on every -w load.
 # Runner is always loaded first in practice (lib/mutineer.rb and cli.rb both require
-# it, and requiring it loads this file). Breaking the dependency for real means
-# lifting the shared job vocabulary out of Runner — tracked separately.
+# it, and requiring it loads this file). Require this file on its own and Runner is
+# undefined, so {DaemonBackend.execute} raises NameError on its first line. Breaking
+# the dependency for real means lifting the shared job vocabulary out of Runner (#75).
 
 module Mutineer
   # Daemon execution backend. Boots the app ONCE in a persistent subprocess under
@@ -119,6 +120,7 @@ module Mutineer
     # Serial path: one daemon (worker 0), one mutant at a time. Honors --fail-fast
     # (stop at the first survivor).
     #
+    # @api private
     # @return [Array<Mutineer::Result>] results in input order.
     def self.run_serial(jobs, config, abs_tests, coverage_map, source_map)
       client = DaemonClient.new(boot: boot_config(config, abs_tests),
@@ -141,6 +143,7 @@ module Mutineer
     # input index so the verdict set matches serial. Callers must not pass fail_fast
     # here ({execute} forces serial for fail-fast).
     #
+    # @api private
     # @return [Array<Mutineer::Result>] completed results in input order.
     def self.run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map)
       results = Array.new(jobs.size)
@@ -177,6 +180,7 @@ module Mutineer
     # @param req_id [Integer] request id (echoed back for IPC ordering safety).
     # @param client [Mutineer::DaemonClient] the daemon handle to run on.
     # @param worker [Integer] the worker slot (→ worker DB) this daemon routes to.
+    # @api private
     # @return [Mutineer::Result] the decorated result.
     def self.job_result(job, req_id, client, worker, config, coverage_map, abs_tests, source_map)
       subject, mutation, id = job
@@ -240,6 +244,7 @@ module Mutineer
     # whatever the worker DB already holds.
     #
     # @param config [Mutineer::Config] the run config.
+    # @api private
     # @return [String, nil] absolute schema path or nil.
     def self.schema_path(config)
       path = File.expand_path("db/schema.rb", config.project_root)
@@ -251,6 +256,7 @@ module Mutineer
     # resolved tool-side before a request is ever sent.
     #
     # @param verdict [String] the daemon's verdict word.
+    # @api private
     # @return [Mutineer::Result] the matching result.
     def self.result_for(verdict)
       case verdict
@@ -262,8 +268,9 @@ module Mutineer
     end
 
     # The module's contract is {execute} (the backend entry point) plus the two the
-    # suite drives directly, {build_coverage_map} and {boot_config}. Everything else
-    # is daemon-pipeline internals with no caller outside this file.
+    # tests drive directly: {boot_config} from the zero-dep suite and
+    # {build_coverage_map} from the daemon suite. Everything else is daemon-pipeline
+    # internals with no caller outside this file.
     private_class_method :run_serial, :run_parallel, :job_result, :schema_path, :result_for
   end
 end

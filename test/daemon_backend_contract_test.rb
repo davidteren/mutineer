@@ -30,9 +30,15 @@ class DaemonBackendContractTest < Minitest::Test
   # harmful" into the process of anyone who loads Mutineer with warnings on. Both Rake
   # tasks set warning = false, so only a child process with -w can see a regression here.
   def test_loading_the_gem_emits_no_circular_require_warning
-    out = IO.popen([RbConfig.ruby, "-w", "-I#{File.expand_path("../lib", __dir__)}",
-                    "-e", 'require "mutineer"'], err: %i[child out], &:read)
+    lib = File.expand_path("../lib", __dir__)
+    # Report which daemon_backend.rb actually got loaded. A silent load failure prints
+    # no warning either, and an installed mutineer gem would satisfy the require from
+    # somewhere else entirely — both would leave the refute below passing vacuously.
+    script = 'require "mutineer"; print $LOADED_FEATURES.grep(/daemon_backend/).first.to_s'
+    out = IO.popen([RbConfig.ruby, "-w", "-I#{lib}", "-e", script], err: %i[child out], &:read)
 
+    assert_includes out, File.join(lib, "mutineer/daemon_backend.rb"),
+                    "the child did not load this working tree, so this proved nothing"
     refute_match(/circular require/, out,
                  "a require cycle between runner.rb and daemon_backend.rb warns on every -w load")
   end
