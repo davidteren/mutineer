@@ -6,24 +6,28 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Fixed
-- **Daemon parallel worker crash keeps the mutant** — a raise inside a parallel
-  daemon worker used to leave a nil slot that `compact` dropped, so the mutant
-  vanished from the aggregate (not even `:error`). The worker now records
-  `Result.error` and every input slot is retained, matching `WorkerPool`.
-
 ### Changed
 - **Daemon orchestration split out of `Runner`** — the persistent-daemon backend
   (job fan-out, worker DBs, coverage-map build, boot config, verdict mapping) now
   lives in `Mutineer::DaemonBackend`. `Runner` keeps job collection, coverage
   selection and the single in-process mutant run, and drops from 662 to 439 lines.
   The external backend's orchestration stays on `Runner` for now, so the two
-  backends are not yet symmetrical. No CLI or behaviour change (#58).
-  Internal-only removals: `Runner.execute_daemon`, `Runner.daemon_coverage_map`
-  and `Runner::DAEMON_TIMEOUT` no longer exist. They were never documented —
-  the supported programmatic contract is the JSON report, the stable mutant ids
-  and the exit codes — so only code calling `Runner` internals directly is
-  affected.
+  backends are not yet symmetrical. The move itself changes no CLI flag, no
+  output and no verdict (#58); the one behaviour change on this branch is the
+  daemon crash handling below. Internal-only removals:
+  `Runner.execute_daemon`, `Runner.daemon_coverage_map` and
+  `Runner::DAEMON_TIMEOUT` no longer exist. They were never documented — the
+  supported programmatic contract is the JSON report, the stable mutant ids and
+  the exit codes — so only code calling `Runner` internals directly is affected.
+- **A daemon crash while running one mutant no longer ends the whole run** — it
+  used to propagate and abort with a backtrace, on both `--jobs 1` and
+  `--jobs N`. That mutant is now scored `:error` and the run continues, matching
+  `WorkerPool` and the daemon's own in-band crash reply. Errors stay outside the
+  score denominator. A daemon that exhausts its restart budget still ends the
+  run: `DaemonClient` raises after `MAX_RESTARTS`, and scoring the remaining
+  mutants against a dead daemon would report a score covering a fraction of the
+  work. Both daemon paths share one classification, so `--jobs N` still matches
+  `--jobs 1`.
 - **Comment diet on orchestration files** — present-tense YARD contracts; drop
   ticket/phase/KTD history tags from runner, CLI, daemon pair, coverage map,
   reporter, result, and related modules. Safety and score invariants kept (#57).

@@ -32,8 +32,11 @@ class DaemonBackendContractTest < Minitest::Test
   # a stale symbol left in the list) must fail here, not only when something privatises.
   def test_shared_list_matches_runner_calls_in_daemon_backend_source
     src = File.read(File.expand_path("../lib/mutineer/daemon_backend.rb", __dir__))
+    # Text scan, not a call graph: strip whole-line AND trailing comments first, or
+    # prose mentioning `Runner.foo` (this file is comment-heavy) reads as a call and
+    # fails a test about method visibility. `#{` is interpolation, not a comment.
     called = src.lines
-                .reject { |l| l.lstrip.start_with?("#") }
+                .map { |l| l.sub(/#(?!\{).*/, "") }
                 .flat_map { |l| l.scan(/Runner\.(\w+)/).flatten }
                 .uniq
                 .map(&:to_sym)
@@ -92,49 +95,74 @@ class DaemonBackendContractTest < Minitest::Test
   # Parallel workers must not drop mutants on crash: a raise used to leave a nil
   # that compact removed, so the mutant vanished from AggregateResult. Mirror
   # WorkerPool — keep every input slot as Result.error.
-  def test_run_parallel_records_error_when_job_result_raises
-    Dir.mktmpdir("mutineer-parallel") do |root|
+  SOURCE = "class Order\n  def total(a, b)\n    a + b\n  end\nend\n"
+
+  # A real job pair, so the daemon paths run their actual code and the only stubbed
+  # thing is the daemon itself. Stubbing job_result instead would bypass the very
+  # rescue these tests exist to pin.
+  def with_jobs
+    Dir.mktmpdir("mutineer-daemon") do |root|
       FileUtils.mkdir_p(File.join(root, "app"))
-      FileUtils.mkdir_p(File.join(root, "test"))
-      source = File.join(root, "app/order.rb")
-      test   = File.join(root, "test/order_test.rb")
-      File.binwrite(source, "class Order; end\n")
-      File.binwrite(test, "\n")
-      File.binwrite(File.join(root, "test/test_helper.rb"), "\n")
+      path = File.join(root, "app/order.rb")
+      File.binwrite(path, SOURCE)
+      subject = Mutineer::Project.discover([path]).first
+      mutations = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, SOURCE)
+      config = Mutineer::Config.new(sources: [path], tests: [], project_root: root, framework: "minitest")
+      jobs = [[subject, mutations.first, "id-0"], [subject, mutations.first, "id-1"]]
+      yield jobs, config, { path => SOURCE }
+    end
+  end
 
-      config = Mutineer::Config.new(sources: [source], tests: [test], project_root: root,
-                                    framework: "minitest")
-      subject = Object.new
-      mutation = Object.new
-      jobs = [
-        [subject, mutation, "id-0"],
-        [subject, mutation, "id-1"]
-      ]
-
+  # A crash running ONE mutant is that mutant's verdict, not the end of the run, and
+  # both daemon paths must agree on that or --jobs N stops matching --jobs 1.
+  def test_a_crash_running_one_mutant_is_an_error_verdict_on_both_paths
+    with_jobs do |jobs, config, source_map|
       client = Object.new
       def client.start = self
       def client.quit = nil
+      def client.request(id:, **) = id.zero? ? raise("boom") : "killed"
 
-      job_result = lambda do |_job, i, *_rest|
-        raise "boom" if i.zero?
-
-        Mutineer::Result.killed.with(subject: subject, mutation: mutation, id: "id-1")
-      end
-
-      results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
-        Mutineer::DaemonBackend.stub(:job_result, job_result) do
-          Mutineer::DaemonBackend.send(
-            :run_parallel, jobs, 2, config, [test], nil, { source => "class Order; end\n" }
-          )
+      %i[run_serial run_parallel].each do |path|
+        args = path == :run_serial ? [jobs, config, [], nil, source_map] : [jobs, 2, config, [], nil, source_map]
+        results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+          Mutineer::DaemonBackend.send(path, *args)
         end
-      end
 
-      assert_equal 2, results.size, "every input job must keep a slot"
-      assert_predicate results[0], :error?
-      assert_match(/daemon worker crashed/, results[0].details)
-      assert_equal "id-0", results[0].id
-      assert_predicate results[1], :killed?
-      assert_equal "id-1", results[1].id
+        assert_equal 2, results.size, "#{path}: every input job must keep a slot"
+        assert_predicate results[0], :error?
+        assert_match(/daemon worker crashed/, results[0].details)
+        assert_equal "id-0", results[0].id
+        assert_predicate results[1], :killed?
+      end
+    end
+  end
+
+  # DaemonClient raises this only after exhausting its restart budget: the daemon is
+  # gone. Scoring the remaining mutants against it would print a score covering a
+  # fraction of the run, so the run must end instead.
+  def test_daemon_giving_up_ends_the_run_on_both_paths
+    with_jobs do |jobs, config, source_map|
+      client = Object.new
+      def client.start = self
+      def client.quit = nil
+      def client.request(**) = raise(Mutineer::DaemonBootError, "daemon crashed 3 times; aborting the run")
+
+      # The parallel path lets the abort escape a worker thread, and Ruby prints that
+      # trace by default. It is expected here, so keep it out of the suite's output.
+      reporting = Thread.report_on_exception
+      Thread.report_on_exception = false
+      begin
+        %i[run_serial run_parallel].each do |path|
+          args = path == :run_serial ? [jobs, config, [], nil, source_map] : [jobs, 2, config, [], nil, source_map]
+          assert_raises(Mutineer::DaemonBootError, "#{path} must not score a run the daemon abandoned") do
+            Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+              Mutineer::DaemonBackend.send(path, *args)
+            end
+          end
+        end
+      ensure
+        Thread.report_on_exception = reporting
+      end
     end
   end
 end
