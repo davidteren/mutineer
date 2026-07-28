@@ -7,6 +7,16 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Changed
+- **A daemon crash while running one mutant no longer ends the whole run** — it
+  used to propagate and abort with a backtrace, on both `--jobs 1` and
+  `--jobs N`. That mutant is now scored `:error` and the run continues, matching
+  `WorkerPool` and the daemon's own in-band crash reply. Errors stay outside the
+  score denominator. A daemon that exhausts its restart budget still ends the
+  run: `DaemonClient` raises after `MAX_RESTARTS`, and scoring the remaining
+  mutants against a dead daemon would report a score covering a fraction of the
+  work. Both daemon paths share one classification, so `--jobs N` still matches
+  `--jobs 1`. Errored mutants cannot yet fail the `--threshold` gate once any
+  mutant is scored (#78).
 - **Daemon orchestration split out of `Runner`** — the persistent-daemon backend
   (job fan-out, worker DBs, coverage-map build, boot config, verdict mapping) now
   lives in `Mutineer::DaemonBackend`. `Runner` keeps job collection, coverage
