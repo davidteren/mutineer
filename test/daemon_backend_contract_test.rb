@@ -71,6 +71,8 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # Mutatable fixture for the daemon-path tests: one arithmetic operator, so the
+  # Arithmetic mutator yields a real Mutation to send through job_result.
   SOURCE = "class Order\n  def total(a, b)\n    a + b\n  end\nend\n"
 
   # A real job pair, so the daemon paths run their actual code and the only stubbed
@@ -171,6 +173,21 @@ class DaemonBackendContractTest < Minitest::Test
       client.request(id: 0, payload: {}, tests: [], timeout: 1)
     end
     assert_match(/not running/, error.message)
+  end
+
+  # A daemon that dies before accepting the boot payload makes the write raise
+  # Errno::EPIPE. Left as a SystemCallError it reaches the CLI as a usage error
+  # (exit 2), which would tell CI the flags were wrong rather than the daemon died.
+  def test_a_daemon_that_dies_before_the_handshake_is_a_boot_error
+    client = Mutineer::DaemonClient.allocate
+    client.instance_variable_set(:@boot, {})
+    client.instance_variable_set(:@app_root, Dir.pwd)
+    client.instance_variable_set(:@errio, StringIO.new)
+    def client.app_env = {}
+    def client.send_line(_obj) = raise(Errno::EPIPE)
+
+    error = assert_raises(Mutineer::DaemonBootError) { client.send(:spawn_daemon) }
+    assert_match(/could not be started/, error.message)
   end
 
   # queue.clear is the only parallel-specific logic here, and deleting it left the

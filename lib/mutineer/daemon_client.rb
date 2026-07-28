@@ -133,30 +133,34 @@ module Mutineer
       # non-rbenv setup. When bundler/ruby are rbenv shims, the RBENV_VERSION
       # carried in app_env still selects the app's Ruby; otherwise the active
       # Ruby is used.
-      # A spawn the OS refuses (EMFILE/ENOMEM under --jobs N, ENOENT when `bundle`
-      # does not resolve) is terminal, not one mutant's problem: close_io has already
-      # nilled the pipes, so the client cannot recover. Raise the class that ends the
-      # run rather than a SystemCallError the backend would score per-mutant.
-      begin
-        @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(
-          app_env, "bundle", "exec", "ruby",
-          "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run", chdir: @app_root
-        )
-      rescue SystemCallError => e
-        raise DaemonBootError, "daemon could not be spawned: #{e.class}: #{e.message}"
-      end
-      # Drain daemon stderr to the tool's stderr so child/boot errors are visible.
-      # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn;
-      # the rescue swallows the benign EBADF/IOError raised when close_io closes
-      # the pipe out from under an in-flight copy_stream.
-      @drain = Thread.new do # rubocop:disable ThreadSafety/NewThread
-        IO.copy_stream(@stderr, @errio)
-      rescue IOError, Errno::EBADF
-        nil
-      end
+      # Everything up to the handshake is terminal, not one mutant's problem: a spawn
+      # the OS refuses (EMFILE/ENOMEM under --jobs N, ENOENT when `bundle` does not
+      # resolve) and a daemon that dies before accepting the boot payload (EPIPE on
+      # the write) both leave a client that cannot recover. Raise the class that ends
+      # the run — a SystemCallError would reach the CLI as a usage error (exit 2).
+      ready =
+        begin
+          @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(
+            app_env, "bundle", "exec", "ruby",
+            "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run", chdir: @app_root
+          )
+          # Drain daemon stderr to the tool's stderr so child/boot errors are visible.
+          # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn;
+          # the rescue swallows the benign EBADF/IOError raised when close_io closes
+          # the pipe out from under an in-flight copy_stream.
+          @drain = Thread.new do # rubocop:disable ThreadSafety/NewThread
+            IO.copy_stream(@stderr, @errio)
+          rescue IOError, Errno::EBADF
+            nil
+          end
 
-      send_line(@boot)
-      ready = read_line
+          send_line(@boot)
+          read_line
+        rescue SystemCallError, IOError => e
+          close_io
+          raise DaemonBootError, "daemon could not be started: #{e.class}: #{e.message}"
+        end
+
       unless ready && ready["ready"]
         detail = ready && ready["error"] ? ready["error"] : "daemon exited before the handshake"
         close_io

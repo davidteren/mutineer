@@ -147,9 +147,17 @@ module Mutineer
       queue   = Queue.new
       jobs.each_index { |i| queue << i }
 
-      clients = Array.new(worker_count) do
-        DaemonClient.new(boot: boot_config(config, abs_tests),
-                         app_root: config.project_root).start
+      # Built one at a time so a refused spawn part-way (EMFILE under a high --jobs)
+      # can still quit the daemons already up. Array.new would lose every reference.
+      clients = []
+      begin
+        worker_count.times do
+          clients << DaemonClient.new(boot: boot_config(config, abs_tests),
+                                      app_root: config.project_root).start
+        end
+      rescue StandardError
+        clients.each(&:quit)
+        raise
       end
 
       clients.each_with_index.map do |client, worker|
@@ -187,12 +195,9 @@ module Mutineer
     # `--jobs N` classify an identical fault identically.
     #
     # Error model, in one place because both paths call this: a crash while running
-    # ONE mutant is already {DaemonClient}'s business: it rescues the dead pipe,
-    # respawns, and answers `"error"` for that mutant, so the run continues. Nothing
-    # is caught here on purpose — an exception reaching this far is either
-    # {DaemonBootError} (the daemon is gone for good, so the run must end rather than
-    # score the rest against it) or a defect, and absorbing a defect into one more
-    # errored mutant is how a broken run comes to look like a weak test suite.
+    # ONE mutant is {DaemonClient}'s business: it respawns and answers `"error"`.
+    # Nothing is caught here on purpose — anything reaching this far is either
+    # {DaemonBootError}, which must end the run, or a defect, which must stay visible.
     #
     # @param job [Array(Mutineer::Subject, Mutineer::Mutation, String)] the work item.
     # @param req_id [Integer] request id (echoed back for IPC ordering safety).
