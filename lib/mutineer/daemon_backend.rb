@@ -141,10 +141,12 @@ module Mutineer
     # Parallel path: N daemon handles, each pinned to its own worker slot (own DB).
     # A shared queue of job indices feeds N tool-side threads; results are placed by
     # input index so the verdict set matches serial. Callers must not pass fail_fast
-    # here ({execute} forces serial for fail-fast).
+    # here ({execute} forces serial for fail-fast). A raise inside a worker is
+    # recorded as {Result.error} for that slot (same shape as {WorkerPool}): never
+    # drop the mutant via compact, or the score silently under-counts.
     #
     # @api private
-    # @return [Array<Mutineer::Result>] completed results in input order.
+    # @return [Array<Mutineer::Result>] one result per input job, in input order.
     def self.run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map)
       results = Array.new(jobs.size)
       queue   = Queue.new
@@ -163,14 +165,29 @@ module Mutineer
             rescue ThreadError
               break
             end
-            results[i] = job_result(jobs[i], i, client, worker, config, coverage_map, abs_tests, source_map)
+            subject, mutation, id = jobs[i]
+            results[i] =
+              begin
+                job_result(jobs[i], i, client, worker, config, coverage_map, abs_tests, source_map)
+              rescue StandardError => e
+                Result.error("daemon worker crashed: #{e.class}: #{e.message}")
+                  .with(subject: subject, mutation: mutation, id: id)
+              end
           end
         ensure
           client.quit
         end
       end.each(&:join)
 
-      results.compact
+      # Every input slot must stay a Result. A thread that dies before writing
+      # still leaves a hole; map those rather than compacting them away.
+      results.each_with_index.map do |r, i|
+        next r if r
+
+        subject, mutation, id = jobs[i]
+        Result.error("daemon worker produced no result")
+          .with(subject: subject, mutation: mutation, id: id)
+      end
     end
 
     # Build the payload for one job, run it on the given daemon/worker, and attach

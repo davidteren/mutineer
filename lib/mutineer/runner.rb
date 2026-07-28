@@ -142,7 +142,7 @@ module Mutineer
     # removed from the killed+survived denominator so a strong file reaches 100%.
     # The stable id is computed per subject (occurrence needs the full list) and
     # carried on every job so the parent can reattach it after the run. Shared by
-    # the in-process and external backends so job selection can never drift.
+    # the in-process, external, and daemon backends so job selection can never drift.
     #
     # @return [Array(Array, Array<Result>, Hash<String,String>)] jobs, ignored, source_map.
     def self.collect_jobs(config, operator_classes)

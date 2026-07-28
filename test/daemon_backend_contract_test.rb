@@ -28,6 +28,20 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # SHARED is the contract. Drift either way (a new Runner. call in the backend, or
+  # a stale symbol left in the list) must fail here, not only when something privatises.
+  def test_shared_list_matches_runner_calls_in_daemon_backend_source
+    src = File.read(File.expand_path("../lib/mutineer/daemon_backend.rb", __dir__))
+    called = src.lines
+                .reject { |l| l.lstrip.start_with?("#") }
+                .flat_map { |l| l.scan(/Runner\.(\w+)/).flatten }
+                .uniq
+                .map(&:to_sym)
+                .sort
+    assert_equal SHARED.sort, called,
+                 "SHARED must list exactly the Runner methods daemon_backend.rb calls"
+  end
+
   # daemon_backend.rb calls Runner but must never require it: runner.rb requires
   # daemon_backend, so the reverse edge makes Ruby print "circular require considered
   # harmful" into the process of anyone who loads Mutineer with warnings on. Both Rake
@@ -72,6 +86,55 @@ class DaemonBackendContractTest < Minitest::Test
       assert_nil boot[:schema], "no db/schema.rb in this app, so the daemon skips worker-DB schema loading"
       assert boot[:rails]
       refute boot[:coverage], "worker daemons boot with Coverage off; only the map-building daemon enables it"
+    end
+  end
+
+  # Parallel workers must not drop mutants on crash: a raise used to leave a nil
+  # that compact removed, so the mutant vanished from AggregateResult. Mirror
+  # WorkerPool — keep every input slot as Result.error.
+  def test_run_parallel_records_error_when_job_result_raises
+    Dir.mktmpdir("mutineer-parallel") do |root|
+      FileUtils.mkdir_p(File.join(root, "app"))
+      FileUtils.mkdir_p(File.join(root, "test"))
+      source = File.join(root, "app/order.rb")
+      test   = File.join(root, "test/order_test.rb")
+      File.binwrite(source, "class Order; end\n")
+      File.binwrite(test, "\n")
+      File.binwrite(File.join(root, "test/test_helper.rb"), "\n")
+
+      config = Mutineer::Config.new(sources: [source], tests: [test], project_root: root,
+                                    framework: "minitest")
+      subject = Object.new
+      mutation = Object.new
+      jobs = [
+        [subject, mutation, "id-0"],
+        [subject, mutation, "id-1"]
+      ]
+
+      client = Object.new
+      def client.start = self
+      def client.quit = nil
+
+      job_result = lambda do |_job, i, *_rest|
+        raise "boom" if i.zero?
+
+        Mutineer::Result.killed.with(subject: subject, mutation: mutation, id: "id-1")
+      end
+
+      results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+        Mutineer::DaemonBackend.stub(:job_result, job_result) do
+          Mutineer::DaemonBackend.send(
+            :run_parallel, jobs, 2, config, [test], nil, { source => "class Order; end\n" }
+          )
+        end
+      end
+
+      assert_equal 2, results.size, "every input job must keep a slot"
+      assert_predicate results[0], :error?
+      assert_match(/daemon worker crashed/, results[0].details)
+      assert_equal "id-0", results[0].id
+      assert_predicate results[1], :killed?
+      assert_equal "id-1", results[1].id
     end
   end
 end

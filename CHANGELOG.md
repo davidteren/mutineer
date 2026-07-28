@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **Daemon parallel worker crash keeps the mutant** — a raise inside a parallel
+  daemon worker used to leave a nil slot that `compact` dropped, so the mutant
+  vanished from the aggregate (not even `:error`). The worker now records
+  `Result.error` and every input slot is retained, matching `WorkerPool`.
+
 ### Changed
 - **Daemon orchestration split out of `Runner`** — the persistent-daemon backend
   (job fan-out, worker DBs, coverage-map build, boot config, verdict mapping) now
