@@ -6,7 +6,7 @@ require "mutineer/config"
 require "mutineer/runner"
 require "mutineer/cli"
 
-# #26/#27 Phase 2a (U4): Runner.execute_daemon drives the persistent daemon serially
+# #26/#27 Phase 2a (U4): DaemonBackend drives the persistent daemon serially
 # against the bundled fixture app and produces the SAME verdicts the in-process
 # `--rails` path is designed to produce — the R1 correctness identity, strategy held
 # constant (reload both sides). Tool-side runs in this process (Prism); only the
@@ -46,7 +46,7 @@ class RunnerDaemonTest < Minitest::Test
   end
 
   # Successful daemon coverage narrowing: no stale "lower bound / no narrowing"
-  # caveat. Fallback-only warnings live on Runner.daemon_coverage_map (nil map).
+  # caveat. Fallback-only warnings live on DaemonBackend.build_coverage_map (nil map).
   def test_cli_does_not_claim_stale_daemon_lower_bound_when_map_ok
     _out, err = capture_io do
       assert_raises(SystemExit) { Mutineer::CLI.execute(config_for("order_test.rb")) }
@@ -60,7 +60,7 @@ class RunnerDaemonTest < Minitest::Test
     cfg = config_for("order_test.rb")
     Mutineer::DaemonClient.stub(:new, ->(*) { raise Mutineer::DaemonBootError, "boom" }) do
       _out, err = capture_io do
-        map = Mutineer::Runner.daemon_coverage_map(cfg, cfg.tests.map { |t| File.expand_path(t, cfg.project_root) })
+        map = Mutineer::DaemonBackend.build_coverage_map(cfg, cfg.tests.map { |t| File.expand_path(t, cfg.project_root) })
         assert_nil map
       end
       assert_match(/daemon coverage map unavailable/, err)
