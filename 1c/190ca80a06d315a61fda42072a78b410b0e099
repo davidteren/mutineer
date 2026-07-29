@@ -1,0 +1,40 @@
+README.md
+  s_c3b50974b4fe07::t_4d3e6e4693902d 73
+CHANGELOG.md
+  s_c3b50974b4fe07::t_10f9575a75762b 16-18,21-26
+test/json_reporter_test.rb
+  s_c3b50974b4fe07::t_01db2d692e41fd 86-88
+  s_c3b50974b4fe07::t_8c3350e5bf8d88 46,49,52,60,62
+  s_c3b50974b4fe07::t_4982beb69be894 69-85,89-93
+test/reporter_test.rb
+  s_c3b50974b4fe07::t_da15b6952ae466 90-93,95-107,109-125
+  s_c3b50974b4fe07::t_46f6dd2d35fb1c 94,108
+docs/json-schema.md
+  s_c3b50974b4fe07::t_4d3e6e4693902d 119-123,126-130
+  s_c3b50974b4fe07::t_9e5fa29f56675e 28,48-49,71,73-74,76-77,79-88
+lib/mutineer/reporter.rb
+  s_c3b50974b4fe07::t_adbc352a4cb52b 515
+  s_c3b50974b4fe07::t_3196cfc5a4ea72 56-64
+  s_c3b50974b4fe07::t_803c4c5e060ac5 142-143,399,402,406-407,455,520,613
+  s_c3b50974b4fe07::t_b1e4affa74db21 153-163
+  s_c3b50974b4fe07::t_8c3350e5bf8d88 516
+  s_c3b50974b4fe07::t_46c49b72945017 619-623
+  s_c3b50974b4fe07::t_955771a5e6eb72 23-27
+  s_c3b50974b4fe07::t_f709bb9077c206 481-512
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "1c190ca80a06d315a61fda42072a78b410b0e099",
+  "prompts": {},
+  "sessions": {
+    "s_c3b50974b4fe07": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b0704a9-36ec-4a11-9287-5d697e7789d6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
