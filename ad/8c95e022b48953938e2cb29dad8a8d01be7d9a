@@ -1,0 +1,37 @@
+README.md
+  s_c3b50974b4fe07::t_4836f42c812d95 50,73
+lib/mutineer/reporter.rb
+  s_c3b50974b4fe07::t_338442c3fbb1f9 463-466
+  s_c3b50974b4fe07::t_cec05bb5343139 57-69
+  s_c3b50974b4fe07::t_f80b74ef5eb2bf 172,507-510
+docs/json-schema.md
+  s_c3b50974b4fe07::t_4836f42c812d95 10,116
+docs/json-schema.html
+  s_c3b50974b4fe07::t_f344c7e95cf7b7 165
+  s_c3b50974b4fe07::t_975a42c3582f40 106-107,133-135
+  s_c3b50974b4fe07::t_7fb6a898f44b2f 136
+docs/agentic-coding.md
+  s_c3b50974b4fe07::t_4836f42c812d95 127
+docs/llms-full.txt
+  s_c3b50974b4fe07::t_4836f42c812d95 82,390
+  s_c3b50974b4fe07::t_bf691dae50bfc1 445-446,468-477
+  s_c3b50974b4fe07::t_c2d93eca9cc2a1 478
+action.yml
+  s_c3b50974b4fe07::t_4836f42c812d95 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "ad8c95e022b48953938e2cb29dad8a8d01be7d9a",
+  "prompts": {},
+  "sessions": {
+    "s_c3b50974b4fe07": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b0704a9-36ec-4a11-9287-5d697e7789d6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
