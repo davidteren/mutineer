@@ -175,6 +175,23 @@ class DaemonBackendContractTest < Minitest::Test
     assert_match(/not running/, error.message)
   end
 
+  # `--since` matching nothing is the normal case for a docs-only PR, and README
+  # documents that flag for PR CI. Booting the app once for the coverage map and
+  # again per worker, to score zero mutants, is pure waste.
+  def test_an_empty_job_list_boots_nothing
+    Dir.mktmpdir("mutineer-empty") do |root|
+      config = Mutineer::Config.new(sources: [], tests: [], project_root: root,
+                                    framework: "minitest", jobs: 4)
+
+      Mutineer::DaemonClient.stub(:new, ->(**) { flunk "booted a daemon for zero jobs" }) do
+        aggregate, source_map = Mutineer::DaemonBackend.execute(config, [])
+
+        assert_equal 0, aggregate.total
+        assert_empty source_map
+      end
+    end
+  end
+
   # A daemon that dies before accepting the boot payload makes the write raise
   # Errno::EPIPE. Left as a SystemCallError it reaches the CLI as a usage error
   # (exit 2), which would tell CI the flags were wrong rather than the daemon died.

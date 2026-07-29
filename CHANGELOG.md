@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **`--daemon` with nothing to mutate boots nothing** — `--since` matching no
+  changed line (a docs-only PR, which README documents `--since origin/<base>`
+  for) still booted the app once for the coverage map and again for every
+  `--jobs` worker, to score zero mutants. The daemon path now returns before
+  booting anything when the job list is empty (#76).
 - **A dead daemon ends the run instead of scoring the rest against it** — a
   daemon that dies while running one mutant was already handled: `DaemonClient`
   respawns and answers `error` for that mutant. But a daemon that could not come

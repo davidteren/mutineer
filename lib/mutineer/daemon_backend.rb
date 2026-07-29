@@ -44,6 +44,12 @@ module Mutineer
       jobs = Runner.filter_since(jobs, source_map, config) if config.since
       abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
 
+      # Nothing to mutate (`--since` matched no changed line, or every mutant is
+      # suppressed). Return before booting anything: the coverage daemon and the
+      # worker daemons below each boot the whole app, and README documents
+      # `--since origin/<base>` for PR CI, where a docs-only PR is routine.
+      return [AggregateResult.new(ignored_results), source_map] if jobs.empty?
+
       # Build the coverage map once (app-side). nil when the build fails: runners
       # fall back to the full --test set (and emit a stderr warning) rather than
       # mis-scoring everything as no_coverage.
