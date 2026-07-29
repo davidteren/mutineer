@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "English"
+require "minitest/mock"
 require "tmpdir"
 require "mutineer/config"
 require "mutineer/daemon_backend"
@@ -67,6 +68,174 @@ class DaemonBackendContractTest < Minitest::Test
       assert_nil boot[:schema], "no db/schema.rb in this app, so the daemon skips worker-DB schema loading"
       assert boot[:rails]
       refute boot[:coverage], "worker daemons boot with Coverage off; only the map-building daemon enables it"
+    end
+  end
+
+  # Mutatable fixture for the daemon-path tests: one arithmetic operator, so the
+  # Arithmetic mutator yields a real Mutation to send through job_result.
+  SOURCE = "class Order\n  def total(a, b)\n    a + b\n  end\nend\n"
+
+  # A real job pair, so the daemon paths run their actual code and the only stubbed
+  # thing is the daemon itself. Stubbing job_result instead would bypass the very
+  # rescue these tests exist to pin.
+  def with_jobs
+    Dir.mktmpdir("mutineer-daemon") do |root|
+      FileUtils.mkdir_p(File.join(root, "app"))
+      path = File.join(root, "app/order.rb")
+      File.binwrite(path, SOURCE)
+      subject = Mutineer::Project.discover([path]).first
+      mutations = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, SOURCE)
+      config = Mutineer::Config.new(sources: [path], tests: [], project_root: root, framework: "minitest")
+      jobs = [[subject, mutations.first, "id-0"], [subject, mutations.first, "id-1"]]
+      yield jobs, config, { path => SOURCE }
+    end
+  end
+
+  # A daemon that dies on ONE mutant is DaemonClient's business: it respawns and
+  # answers "error" for that mutant. The run must carry on, identically on both
+  # paths, or --jobs N stops matching --jobs 1.
+  def test_a_crash_running_one_mutant_is_an_error_verdict_on_both_paths
+    with_jobs do |jobs, config, source_map|
+      client = Object.new
+      def client.start = self
+      def client.quit = nil
+      def client.request(id:, **) = id.zero? ? "error" : "killed"
+
+      %i[run_serial run_parallel].each do |path|
+        args = path == :run_serial ? [jobs, config, [], nil, source_map] : [jobs, 2, config, [], nil, source_map]
+        results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+          Mutineer::DaemonBackend.send(path, *args)
+        end
+
+        assert_equal 2, results.size, "#{path}: every input job must keep a slot"
+        assert_predicate results[0], :error?
+        assert_match(/daemon verdict: error/, results[0].details)
+        # subject and mutation, not just id: the reporter needs all three to place
+        # an errored mutant at its file and line, and dropping them still passes an
+        # id-only assertion.
+        assert_equal "id-0", results[0].id
+        assert_equal jobs[0][0], results[0].subject
+        assert_equal jobs[0][1], results[0].mutation
+        assert_predicate results[1], :killed?
+        assert_equal jobs[1][0], results[1].subject
+      end
+    end
+  end
+
+  # DaemonClient raises this only after exhausting its restart budget: the daemon is
+  # gone, and close_io has already run, so every later request would fail too. Scoring
+  # the rest against it would print a score covering a fraction of the run.
+  def test_daemon_giving_up_ends_the_run_on_both_paths
+    with_jobs do |jobs, config, source_map|
+      client = Object.new
+      def client.start = self
+      def client.quit = nil
+      def client.request(**) = raise(Mutineer::DaemonBootError, "daemon crashed 3 times; aborting the run")
+
+      %i[run_serial run_parallel].each do |path|
+        args = path == :run_serial ? [jobs, config, [], nil, source_map] : [jobs, 2, config, [], nil, source_map]
+        assert_raises(Mutineer::DaemonBootError, "#{path} must not score a run the daemon abandoned") do
+          Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+            Mutineer::DaemonBackend.send(path, *args)
+          end
+        end
+      end
+    end
+  end
+
+  # A fault in the tool-side work (apply, the Prism parse, coverage selection) is
+  # deterministic: it hits every mutant. Turning it into N error verdicts would empty
+  # the denominator and blame the daemon, so it must stay fatal.
+  def test_a_tool_side_fault_still_ends_the_run
+    with_jobs do |jobs, config, _source_map|
+      client = Object.new
+      def client.start = self
+      def client.quit = nil
+      def client.request(**) = "killed"
+
+      # An empty source_map makes mutation.apply fail on nil, before the daemon call.
+      assert_raises(StandardError) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+          Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, {})
+        end
+      end
+    end
+  end
+
+  # DaemonBootError is not the only way a client dies: close_io nils the pipes before
+  # a respawn, so a client whose respawn failed would otherwise fail per-mutant
+  # forever and let the run score every remaining mutant against nothing.
+  def test_a_client_whose_pipes_are_gone_reports_itself_dead
+    client = Mutineer::DaemonClient.allocate
+    client.instance_variable_set(:@stdin, nil)
+
+    error = assert_raises(Mutineer::DaemonBootError) do
+      client.request(id: 0, payload: {}, tests: [], timeout: 1)
+    end
+    assert_match(/not running/, error.message)
+  end
+
+  # A daemon that dies before accepting the boot payload makes the write raise
+  # Errno::EPIPE. Left as a SystemCallError it reaches the CLI as a usage error
+  # (exit 2), which would tell CI the flags were wrong rather than the daemon died.
+  def test_a_daemon_that_dies_before_the_handshake_is_a_boot_error
+    client = Mutineer::DaemonClient.allocate
+    client.instance_variable_set(:@boot, {})
+    client.instance_variable_set(:@app_root, Dir.pwd)
+    client.instance_variable_set(:@errio, StringIO.new)
+    def client.app_env = {}
+    def client.send_line(_obj) = raise(Errno::EPIPE)
+
+    error = assert_raises(Mutineer::DaemonBootError) { client.send(:spawn_daemon) }
+    assert_match(/could not be started/, error.message)
+  end
+
+  # queue.clear is the only parallel-specific logic here, and deleting it left the
+  # suite green: join re-raises either way. Pin the sibling stop with more jobs than
+  # workers, so a healthy worker cannot quietly finish the whole queue.
+  def test_a_dead_daemon_stops_the_other_workers
+    with_jobs do |jobs, config, source_map| # rubocop:disable Lint/UnusedBlockArgument
+      subject, mutation, = jobs.first
+      many = Array.new(12) { |i| [subject, mutation, "id-#{i}"] }
+      map = { subject.file => SOURCE }
+
+      # A latch rather than a sleep: the healthy worker holds inside its first request
+      # until the dying one has aborted, so what it does next is decided by whether
+      # the queue was drained, not by timing.
+      gate = Queue.new
+
+      dying = Object.new
+      dying.instance_variable_set(:@gate, gate)
+      def dying.start = self
+      def dying.quit = nil
+      def dying.request(**)
+        @gate << :aborted
+        raise(Mutineer::DaemonBootError, "daemon crashed 3 times; aborting the run")
+      end
+
+      healthy = Object.new
+      healthy.instance_variable_set(:@seen, [])
+      healthy.instance_variable_set(:@gate, gate)
+      def healthy.start = self
+      def healthy.quit = nil
+      def healthy.seen = @seen
+      def healthy.request(id:, **)
+        @seen << id
+        @gate.pop      # wait for the abort
+        @gate << :done # never block a later call
+        "killed"
+      end
+
+      queue = [dying, healthy]
+      assert_raises(Mutineer::DaemonBootError) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { queue.shift }) do
+          Mutineer::DaemonBackend.send(:run_parallel, many, 2, config, [], nil, map)
+        end
+      end
+
+      assert_operator healthy.seen.size, :<=, 2,
+                      "the healthy worker kept draining the queue after the daemon gave up " \
+                      "(#{healthy.seen.size} of #{many.size} jobs)"
     end
   end
 end

@@ -214,6 +214,11 @@ module Mutineer
       # environment, not weak tests. Runtime error (exit 1), not usage (exit 2).
       warn "mutineer: #{e.message}"
       exit 1
+    rescue Mutineer::DaemonBootError => e
+      # The daemon is gone for good, so the run ended rather than scoring the rest
+      # against it. A deliberate stop deserves a message, not a raw backtrace.
+      warn "mutineer: #{e.message}"
+      exit 1
     end
 
     # Flag validation: every flag/usage failure exits 2, consistent with the

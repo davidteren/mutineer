@@ -136,22 +136,36 @@ module Mutineer
     # Parallel path: N daemon handles, each pinned to its own worker slot (own DB).
     # A shared queue of job indices feeds N tool-side threads; results are placed by
     # input index so the verdict set matches serial. Callers must not pass fail_fast
-    # here ({execute} forces serial for fail-fast).
+    # here ({execute} forces serial for fail-fast). Per-mutant crashes are classified
+    # in {job_result}, shared with the serial path; a {DaemonBootError} ends the run
+    # here rather than scoring the remainder against a daemon that has given up.
     #
     # @api private
-    # @return [Array<Mutineer::Result>] completed results in input order.
+    # @return [Array<Mutineer::Result>] one result per input job, in input order.
     def self.run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map)
       results = Array.new(jobs.size)
       queue   = Queue.new
       jobs.each_index { |i| queue << i }
 
-      clients = Array.new(worker_count) do
-        DaemonClient.new(boot: boot_config(config, abs_tests),
-                         app_root: config.project_root).start
+      # Built one at a time so a refused spawn part-way (EMFILE under a high --jobs)
+      # can still quit the daemons already up. Array.new would lose every reference.
+      clients = []
+      begin
+        worker_count.times do
+          clients << DaemonClient.new(boot: boot_config(config, abs_tests),
+                                      app_root: config.project_root).start
+        end
+      rescue StandardError
+        clients.each(&:quit)
+        raise
       end
 
       clients.each_with_index.map do |client, worker|
         Thread.new do
+          # The abort below is re-raised by join and reported once there; without
+          # this Ruby also dumps the thread's backtrace, which the serial path never
+          # does. Same fault, same output, whatever --jobs is set to.
+          Thread.current.report_on_exception = false
           loop do
             i = begin
               queue.pop(true)
@@ -160,22 +174,37 @@ module Mutineer
             end
             results[i] = job_result(jobs[i], i, client, worker, config, coverage_map, abs_tests, source_map)
           end
+        rescue DaemonBootError
+          # The daemon gave up for good. Stop feeding the other workers rather
+          # than letting them score the rest of the run against a dead client;
+          # Thread#join re-raises this and ends the run.
+          queue.clear
+          raise
         ensure
           client.quit
         end
       end.each(&:join)
 
-      results.compact
+      # Every job was popped by some worker and every pop assigns, so no slot can
+      # be nil here: an escaping exception aborts the run via join instead.
+      results
     end
 
     # Build the payload for one job, run it on the given daemon/worker, and attach
-    # the subject/mutation/id. Shared body of both daemon paths.
+    # the subject/mutation/id. Shared body of both daemon paths, so `--jobs 1` and
+    # `--jobs N` classify an identical fault identically.
+    #
+    # Error model, in one place because both paths call this: a crash while running
+    # ONE mutant is {DaemonClient}'s business: it respawns and answers `"error"`.
+    # Nothing is caught here on purpose — anything reaching this far is either
+    # {DaemonBootError}, which must end the run, or a defect, which must stay visible.
     #
     # @param job [Array(Mutineer::Subject, Mutineer::Mutation, String)] the work item.
     # @param req_id [Integer] request id (echoed back for IPC ordering safety).
     # @param client [Mutineer::DaemonClient] the daemon handle to run on.
     # @param worker [Integer] the worker slot (→ worker DB) this daemon routes to.
     # @api private
+    # @raise [Mutineer::DaemonBootError] when the daemon has given up; ends the run.
     # @return [Mutineer::Result] the decorated result.
     def self.job_result(job, req_id, client, worker, config, coverage_map, abs_tests, source_map)
       subject, mutation, id = job

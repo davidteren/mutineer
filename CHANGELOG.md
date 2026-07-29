@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **A dead daemon ends the run instead of scoring the rest against it** — a
+  daemon that dies while running one mutant was already handled: `DaemonClient`
+  respawns and answers `error` for that mutant. But a daemon that could not come
+  back was not. `restart!` closes the pipes before respawning, so if the respawn
+  failed at the OS level (`EMFILE` or `ENOMEM` under `--jobs N`, `ENOENT` when
+  `bundle` does not resolve) the client was left permanently dead while raising
+  errors that read as ordinary per-mutant failures. Every remaining mutant scored
+  `error` against nothing, and Mutineer printed a mutation score built on the
+  fraction of mutants that ran before the daemon died. `DaemonClient` now raises
+  `DaemonBootError` whenever it is gone for good — a refused spawn, a failed boot
+  handshake on respawn, closed pipes, or `MAX_RESTARTS` crashes — and the CLI
+  reports it as a message and exit 1 rather than a backtrace. Under `--jobs N`
+  the remaining queue is dropped so sibling workers stop too. Errored mutants
+  still cannot fail the `--threshold` gate once any mutant is scored (#78).
+
 ### Changed
 - **Daemon orchestration split out of `Runner`** — the persistent-daemon backend
   (job fan-out, worker DBs, coverage-map build, boot config, verdict mapping) now
