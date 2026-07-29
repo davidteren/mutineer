@@ -357,14 +357,16 @@ module Mutineer
       config.sources.map { |f| File.dirname(File.expand_path(f, config.project_root)) }.uniq
     end
 
-    # Removes stale mutant tempfiles from the given directories.
+    # Removes stale mutant tempfiles from the given directories. The daemon writes a
+    # differently-named temp, so {DaemonBackend} passes its glob when it has to sweep
+    # tool-side (nothing boots on an empty run, so the daemon's own sweep never runs).
     #
-    # @api private
     # @param dirs [Array<String>] directories to sweep.
+    # @param glob [String] filename pattern to remove.
     # @return [void]
-    def self.sweep_orphans(dirs)
+    def self.sweep_orphans(dirs, glob = "mutineer_mutant*.rb")
       dirs.each do |dir|
-        Dir.glob(File.join(dir, "mutineer_mutant*.rb")).each do |f|
+        Dir.glob(File.join(dir, glob)).each do |f|
           File.unlink(f) rescue nil # rubocop:disable Style/RescueModifier
         end
       end
