@@ -74,7 +74,7 @@ module Mutineer
       # below only holds when fail-fast cannot race.
       worker_count = [config.jobs || 1, 1].max
       worker_count = 1 if config.fail_fast
-      worker_count = [worker_count, jobs.size].min if jobs.size.positive?
+      worker_count = [worker_count, jobs.size].min
 
       results =
         if worker_count > 1
