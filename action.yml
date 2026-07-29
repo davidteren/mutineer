@@ -26,7 +26,7 @@ inputs:
     required: false
     default: ""
   threshold:
-    description: "Fail (exit 1) when the mutation score is below this value (0 = off)."
+    description: "Fail (exit 1) when the mutation score is below this value, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (0 = off)."
     required: false
     default: ""
   baseline:
@@ -89,7 +89,7 @@ inputs:
 
 outputs:
   exit-code:
-    description: "The exit code returned by mutineer (0 pass, 1 below-threshold/regressed, 2 usage)."
+    description: "The exit code returned by mutineer (0 pass, 1 below-threshold/incomplete-run/regressed, 2 usage)."
     value: ${{ steps.run.outputs.exit-code }}
   report:
     description: "Path to the written report file, when the `output` input is set."

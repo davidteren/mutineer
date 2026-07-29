@@ -63,13 +63,13 @@
     </aside>
 
     <article class="prose">
-      <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Reference · schema_version 1.1</span>
+      <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Reference · schema_version 1.2</span>
       <h1>JSON report schema reference</h1>
       <p class="doc-lede"><code>mutineer run --format json</code> emits a single JSON object (one line, newline-terminated) describing the whole run. It is the <strong>machine-readable contract</strong> for tooling — CI gates, dashboards, and AI coding agents.</p>
       <p>Output is deterministic: arrays are sorted by <code>(file, line, operator)</code> regardless of <code>--jobs</code> worker finish order, so two runs of the same inputs produce byte-identical output.</p>
 
       <h2 id="versioning">Versioning contract</h2>
-      <p>The top-level <code>schema_version</code> (a string, e.g. <code>"1.1"</code>) follows these rules:</p>
+      <p>The top-level <code>schema_version</code> (a string, e.g. <code>"1.2"</code>) follows these rules:</p>
       <ul>
         <li><strong>Additive changes</strong> (new keys on existing objects, new top-level keys) bump the <strong>minor</strong> version (<code>1.0</code> → <code>1.1</code>). Existing keys keep their meaning. Consumers MUST ignore unknown keys.</li>
         <li><strong>Breaking changes</strong> (renaming/removing a key, changing a value's type or meaning) bump the <strong>major</strong> version (<code>1.x</code> → <code>2.0</code>).</li>
@@ -78,11 +78,12 @@
 
       <h2 id="shape">Top-level shape</h2>
       <pre><code>{
-  <span class="p">"schema_version"</span>: <span class="k">"1.1"</span>,
+  <span class="p">"schema_version"</span>: <span class="k">"1.2"</span>,
   <span class="p">"summary"</span>:      { <span class="c">/* run totals, see below */</span> },
   <span class="p">"survivors"</span>:    [ <span class="c">/* mutants the suite failed to catch — the actionable gaps */</span> ],
   <span class="p">"no_coverage"</span>:  [ <span class="c">/* mutants on lines no test exercises */</span> ],
   <span class="p">"uncapturable"</span>: [ <span class="c">/* mutants whose would-be test errored during coverage capture */</span> ],
+  <span class="p">"no_verdict"</span>:   [ <span class="c">/* attempted mutants that produced no verdict: errored, timeout, uncapturable */</span> ],
   <span class="p">"ignored"</span>:      [ <span class="c">/* mutants the user suppressed (equivalent mutants) */</span> ],
   <span class="p">"per_source"</span>:   [ <span class="c">/* per-file roll-up */</span> ],
   <span class="p">"baseline"</span>:     { <span class="c">/* present ONLY with --baseline: the delta vs a prior run */</span> }
@@ -102,6 +103,8 @@
             <tr><td class="op">errored</td><td class="rule">int</td><td>Mutants whose run raised (excluded).</td></tr>
             <tr><td class="op">timeout</td><td class="rule">int</td><td>Mutants whose run exceeded the per-mutant timeout (excluded).</td></tr>
             <tr><td class="op">ignored</td><td class="rule">int</td><td>Mutants suppressed via <code>#&nbsp;mutineer:disable-line</code> or <code>.mutineer.yml</code> <code>ignore:</code> (excluded).</td></tr>
+            <tr><td class="op">attempted</td><td class="rule">int</td><td>Mutants actually run: <code>killed + survived + no_verdict</code>. <strong>Not</strong> <code>total</code> — no-coverage, skipped and ignored mutants were never attempted.</td></tr>
+            <tr><td class="op">no_verdict</td><td class="rule">int</td><td>Attempted mutants that produced no verdict: <code>errored + timeout + uncapturable</code>. The completeness gate is <code>no_verdict / attempted</code>.</td></tr>
             <tr><td class="op">score</td><td class="rule">float | null</td><td><code>killed / (killed + survived) * 100</code>, rounded. <strong><code>null</code></strong> when the denominator is empty (no covered mutants) — never <code>0.0</code>.</td></tr>
           </tbody>
         </table>
@@ -126,6 +129,10 @@
 
       <h2 id="other-statuses"><code>no_coverage[]</code> and <code>uncapturable[]</code> (array of object)</h2>
       <p>Both use the lean shape <code>{ subject, file, line }</code>. <code>no_coverage</code> is a genuine coverage gap; <code>uncapturable</code> means the test that should cover the line errored while capturing coverage (fix the harness, not the test).</p>
+
+      <h2 id="no-verdict"><code>no_verdict[]</code> (array of object)</h2>
+      <p>Every mutant that was attempted and produced no verdict: <code>{ subject, file, line, id, status, details }</code>. <code>status</code> is <code>"error"</code>, <code>"timeout"</code> or <code>"uncapturable"</code>, and its length equals <code>summary.no_verdict</code>. <code>details</code> carries the cause for <code>"error"</code>; it is <code>null</code> for the other two, where the status is the whole story.</p>
+      <p>A failure before the mutant could be forked has no subject, so <code>subject</code>, <code>file</code>, <code>line</code> and <code>id</code> are <code>null</code> on that entry — <code>id</code> is therefore not a reliable join key here, unlike in <code>survivors[]</code>. These mutants are excluded from the score's denominator, so a broken harness raises the score rather than lowering it; that is why <code>--threshold</code> gates on completeness as well.</p>
 
       <h2 id="ignored"><code>ignored[]</code> (array of object)</h2>
       <p>Suppressed (equivalent) mutants, so you can audit what's silenced: <code>{ subject, file, line, operator, token, id }</code>.</p>
@@ -155,7 +162,7 @@
           <thead><tr><th scope="col">Code</th><th scope="col">Meaning</th></tr></thead>
           <tbody>
             <tr><td class="op">0</td><td>Score ≥ threshold (or no gate) <strong>and</strong> no baseline regression.</td></tr>
-            <tr><td class="op">1</td><td>Score below <code>--threshold</code>, OR a <code>--baseline</code> regression, OR a runtime error.</td></tr>
+            <tr><td class="op">1</td><td>Score below <code>--threshold</code>, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a <code>--baseline</code> regression, OR a runtime error.</td></tr>
             <tr><td class="op">2</td><td>Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline).</td></tr>
           </tbody>
         </table>

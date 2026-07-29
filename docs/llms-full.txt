@@ -79,7 +79,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no threshold set) |
-| `1` | Survivors below threshold, or a runtime error |
+| `1` | Score below threshold, nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, a `--baseline` regression, or a runtime error |
 | `2` | Usage / invalid-flag error |
 
 ### Operators
@@ -387,7 +387,7 @@ human review / suppression rather than looping forever.
 | Code | Pipeline action |
 |------|-----------------|
 | `0` | Pass — score ≥ threshold and no baseline regression. |
-| `1` | Fail the check — tests are too weak (below threshold) or a regression was introduced. |
+| `1` | Fail the check — tests are too weak (below threshold), the run did not complete (nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted), or a regression was introduced. |
 | `2` | Fail the *job* differently — this is a misinvocation (bad flag/path), not a test-quality signal. |
 
 Branch on these directly; never scrape the human report. The JSON `summary` and `baseline` blocks carry
@@ -404,7 +404,7 @@ worker finish order, so two runs of the same inputs produce byte-identical outpu
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.1"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.2"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -417,11 +417,12 @@ A consumer should accept any `1.x` document and read only the keys it knows.
 
 ```jsonc
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
+  "no_verdict":   [ /* attempted mutants that produced no verdict: errored, timeout, uncapturable */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
   "per_source":   [ /* per-file roll-up */ ],
   "baseline":     { /* present ONLY with --baseline: the delta vs a prior run */ }
@@ -441,6 +442,8 @@ A consumer should accept any `1.x` document and read only the keys it knows.
 | `errored` | int | Mutants whose run raised (excluded). |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). |
+| `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants were never attempted. |
+| `no_verdict` | int | Attempted mutants that produced no verdict: `errored + timeout + uncapturable`. The completeness gate is `no_verdict / attempted`. |
 | `score` | float \| null | `killed / (killed + survived) * 100`, rounded. **`null`** when the denominator is empty (no covered mutants) — never `0.0`. |
 
 ### `survivors[]` (array of object)
@@ -461,6 +464,17 @@ Each surviving mutant — the records an agent or reviewer acts on:
 
 Both use the lean shape `{ subject, file, line }`. `no_coverage` is a genuine coverage gap; `uncapturable`
 means the test that should cover the line errored while capturing coverage (fix the harness, not the test).
+
+### `no_verdict[]` (array of object)
+
+Every mutant that was attempted and produced no verdict: `{ subject, file, line, id, status, details }`.
+`status` is `"error"`, `"timeout"` or `"uncapturable"`, and its length equals `summary.no_verdict`.
+`details` carries the cause for `"error"`; it is `null` for the other two, where the status is the whole
+story. A failure before the mutant could be forked has no subject, so `subject`, `file`, `line` and `id`
+are `null` there — so `id` is not a reliable join key in this array, unlike in `survivors[]`.
+
+These mutants are excluded from the score's denominator, so a broken harness raises the score rather
+than lowering it. That is why `--threshold` gates on completeness as well.
 
 ### `ignored[]` (array of object)
 

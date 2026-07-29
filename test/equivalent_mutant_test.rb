@@ -106,7 +106,7 @@ class EquivalentMutantTest < Minitest::Test
                                    tests: ["test/fixtures/calculator_weak_test.rb"])
     doc = render_json(agg, source_map)
 
-    assert_equal "1.1", doc["schema_version"]
+    assert_equal "1.2", doc["schema_version"]
     assert_equal 2, doc["summary"]["survived"]
     assert_equal 0, doc["summary"]["ignored"]
     ids = doc["survivors"].map { |s| s["id"] }

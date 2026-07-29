@@ -75,6 +75,73 @@ class ReporterTest < Minitest::Test
     assert_equal 0, r.exit_code(threshold: 80.0) # 80.0 >= 80.0
   end
 
+  # A score over a slice of the run is not this suite's score: 90 errored and 10
+  # run (9 killed) reads 90% and used to exit 0, so CI could not tell a complete
+  # run from a broken one.
+  def test_exit_code_fails_when_most_attempted_mutants_produced_no_verdict
+    results = Array.new(90) { Mutineer::Result.error("daemon worker crashed") } +
+              Array.new(9) { Mutineer::Result.killed } + [Mutineer::Result.survived]
+    r = reporter(results)
+
+    assert_equal 90.0, r.instance_variable_get(:@agg).mutation_score
+    assert_equal 1, r.exit_code(threshold: 80.0)
+  end
+
+  # The report's verdict line and the exit code must come from one rule, or a run
+  # that exits 1 prints PASSED — and with --output that is what gets archived.
+  def test_verdict_line_agrees_with_the_exit_code
+    results = Array.new(90) { Mutineer::Result.error("crash") } +
+              Array.new(9) { Mutineer::Result.killed } + [survivor_result]
+    out = StringIO.new
+    r = reporter(results)
+    r.human_report(out, StringIO.new, 80.0)
+
+    assert_equal 1, r.exit_code(threshold: 80.0)
+    refute_match(/PASSED/, out.string, "the report said PASSED on a run that exits 1")
+    assert_match(/FAILED: 90 of 100 attempted/, out.string)
+  end
+
+  # --format json is the documented CI path, so the reason must not live only in
+  # the renderer a person reads.
+  def test_the_gate_explains_itself_on_every_format
+    results = Array.new(90) { Mutineer::Result.error("crash") } +
+              Array.new(9) { Mutineer::Result.killed } + [survivor_result]
+
+    %w[json human].each do |format|
+      err = StringIO.new
+      reporter(results).report(out: StringIO.new, err: err, threshold: 80.0, format: format)
+
+      assert_match(/90 of 100 attempted mutants produced no verdict/, err.string, "#{format}: no reason given")
+      assert_match(/limit 10%/, err.string, "#{format}: never states the rule")
+    end
+  end
+
+  # A --since PR run can yield a handful of mutants, where one timeout is over 10%.
+  # One bad mutant must never fail the gate on its own, at any run size.
+  def test_a_single_broken_mutant_never_fails_the_gate
+    assert_equal 0, reporter([Mutineer::Result.timeout] + Array.new(4) { Mutineer::Result.killed })
+      .exit_code(threshold: 80.0)
+  end
+
+  # The flip side: a couple of flaky mutants in a large run must not turn CI red.
+  def test_exit_code_tolerates_a_few_broken_mutants
+    results = Array.new(3) { Mutineer::Result.error("flake") } +
+              Array.new(900) { Mutineer::Result.killed } +
+              Array.new(97) { Mutineer::Result.survived }
+
+    assert_equal 0, reporter(results).exit_code(threshold: 80.0)
+  end
+
+  # Timeouts and uncapturable count toward the same limit — all three mean the
+  # mutant was attempted and no verdict came back.
+  def test_exit_code_counts_timeouts_and_uncapturable_as_broken
+    results = Array.new(5) { Mutineer::Result.timeout } +
+              Array.new(5) { Mutineer::Result.uncapturable } +
+              Array.new(10) { Mutineer::Result.killed }
+
+    assert_equal 1, reporter(results).exit_code(threshold: 50.0)
+  end
+
   def test_exit_code_nil_score_pure_no_coverage_skips_gate
     assert_equal 0, reporter([Mutineer::Result.no_coverage]).exit_code(threshold: 80.0)
   end

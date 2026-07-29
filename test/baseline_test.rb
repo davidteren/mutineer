@@ -35,6 +35,8 @@ class BaselineTest < Minitest::Test
   # A baseline doc (a prior --format json run) carrying the given survivor ids.
   def baseline_doc(ids, score: nil)
     {
+      # Deliberately an older schema: a baseline written by a prior version must
+      # still be readable, per the "accept any 1.x" contract in docs/json-schema.md.
       "schema_version" => "1.1",
       "summary" => { "score" => score },
       "survivors" => ids.map do |id|
@@ -167,7 +169,7 @@ class BaselineTest < Minitest::Test
     results = [Mutineer::Result.killed, survivor("ccc")]
     doc = JSON.parse(render(results, base.diff(agg(*results)), format: "json"))
 
-    assert_equal "1.1", doc["schema_version"] # schema unchanged
+    assert_equal "1.2", doc["schema_version"] # the baseline block alone does not move it
     assert doc["baseline"]["regressed"]
     assert_equal 1, doc["baseline"]["new_survivors"].size
     assert_equal "ccc", doc["baseline"]["new_survivors"].first["id"]
