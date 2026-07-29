@@ -32,6 +32,10 @@ module Mutineer
     # {ExternalBackend::SMOKE_TIMEOUT}, which bounds a different thing.
     DEFAULT_TIMEOUT = 60
 
+    # The daemon's per-mutant tempfile, written into the source dir so
+    # require_relative resolves. Kept in step with DaemonServer#sweep_temps.
+    DAEMON_TEMP_GLOB = "mutineer_daemon*.rb"
+
     # Full daemon run: collect jobs, build the coverage map once, then execute
     # serially or across N worker daemons. Fail-fast forces serial so the survivor
     # set matches jobs 1.
@@ -43,6 +47,18 @@ module Mutineer
       jobs, ignored_results, source_map = Runner.collect_jobs(config, operator_classes)
       jobs = Runner.filter_since(jobs, source_map, config) if config.since
       abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
+
+      # Nothing to mutate (`--since` matched no changed line, or every mutant is
+      # suppressed). Return before booting anything: the coverage daemon and the
+      # worker daemons below each boot the whole app, and README documents
+      # `--since origin/<base>` for PR CI, where a docs-only PR is routine.
+      if jobs.empty?
+        # The daemon sweeps orphaned temps at boot and nothing boots here, so sweep
+        # tool-side. A file a hard-killed run left in app/models breaks the app's own
+        # Zeitwerk boot, not just Mutineer's next run.
+        Runner.sweep_orphans(Runner.source_dirs(config), DAEMON_TEMP_GLOB)
+        return [AggregateResult.new(ignored_results), source_map]
+      end
 
       # Build the coverage map once (app-side). nil when the build fails: runners
       # fall back to the full --test set (and emit a stderr warning) rather than
@@ -58,7 +74,7 @@ module Mutineer
       # below only holds when fail-fast cannot race.
       worker_count = [config.jobs || 1, 1].max
       worker_count = 1 if config.fail_fast
-      worker_count = [worker_count, jobs.size].min if jobs.size.positive?
+      worker_count = [worker_count, jobs.size].min
 
       results =
         if worker_count > 1

@@ -175,6 +175,60 @@ class DaemonBackendContractTest < Minitest::Test
     assert_match(/not running/, error.message)
   end
 
+  # `--since` matching nothing is the normal case for a docs-only PR, and README
+  # documents that flag for PR CI. Booting the app once for the coverage map and
+  # again per worker, to score zero mutants, is pure waste.
+  def test_an_empty_job_list_boots_nothing
+    Dir.mktmpdir("mutineer-empty") do |root|
+      config = Mutineer::Config.new(sources: [], tests: [], project_root: root,
+                                    framework: "minitest", jobs: 4)
+
+      Mutineer::DaemonClient.stub(:new, ->(**) { flunk "booted a daemon for zero jobs" }) do
+        aggregate, source_map = Mutineer::DaemonBackend.execute(config, [])
+
+        assert_equal 0, aggregate.total
+        assert_empty source_map
+      end
+    end
+  end
+
+  # The daemon sweeps its orphaned temps at boot. Nothing boots on an empty run, so
+  # a file left by a hard-killed run would survive — and one sitting in app/models
+  # breaks the app's own Zeitwerk boot, not just the next Mutineer run.
+  def test_an_empty_job_list_still_sweeps_orphaned_daemon_temps
+    Dir.mktmpdir("mutineer-sweep") do |root|
+      FileUtils.mkdir_p(File.join(root, "app"))
+      source = File.join(root, "app/order.rb")
+      File.binwrite(source, SOURCE)
+      orphan = File.join(root, "app/mutineer_daemon20260101-1-abcdef.rb")
+      File.binwrite(orphan, "class Order; end\n")
+
+      config = Mutineer::Config.new(sources: [source], tests: [], project_root: root,
+                                    framework: "minitest", only: ["NoSuchMethod"])
+
+      Mutineer::DaemonClient.stub(:new, ->(**) { flunk "booted a daemon for zero jobs" }) do
+        Mutineer::DaemonBackend.execute(config, [])
+      end
+
+      refute_path_exists orphan, "a zero-job run must still clear orphaned daemon temps"
+    end
+  end
+
+  # Same input, same answer on the other backend that can know before it pays: the
+  # smoke check runs the whole suite to calibrate a timeout no mutant would use.
+  def test_an_empty_job_list_skips_the_external_smoke_check
+    Dir.mktmpdir("mutineer-empty-ext") do |root|
+      config = Mutineer::Config.new(sources: [], tests: [], project_root: root,
+                                    framework: "minitest", test_command: "false")
+
+      Mutineer::ExternalBackend.stub(:smoke_check!, ->(*) { flunk "ran the suite for zero jobs" }) do
+        aggregate, = Mutineer::Runner.execute(config)
+
+        assert_equal 0, aggregate.total
+      end
+    end
+  end
+
   # A daemon that dies before accepting the boot payload makes the write raise
   # Errno::EPIPE. Left as a SystemCallError it reaches the CLI as a usage error
   # (exit 2), which would tell CI the flags were wrong rather than the daemon died.

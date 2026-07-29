@@ -7,6 +7,16 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **Nothing to mutate now costs nothing** — `--since` matching no changed line (a
+  docs-only PR, which README documents `--since origin/<base>` for) still did the
+  expensive part before discovering there was no work: `--daemon` booted the app
+  once for the coverage map and again for every `--jobs` worker, and
+  `--test-command` ran the whole suite for a smoke check that calibrates a timeout
+  no mutant would use. Both backends now return as soon as the job list is empty.
+  The in-process path is unchanged: it boots before collecting jobs, so it cannot
+  know the list is empty yet. One consequence worth stating: a zero-job `--daemon`
+  run no longer boots the app, so an app that fails to boot now exits 0 (nothing
+  to do) instead of exit 1 (#76).
 - **A dead daemon ends the run instead of scoring the rest against it** — a
   daemon that dies while running one mutant was already handled: `DaemonClient`
   respawns and answers `error` for that mutant. But a daemon that could not come
