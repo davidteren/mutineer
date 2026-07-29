@@ -192,6 +192,12 @@ module Mutineer
       jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
       jobs = filter_since(jobs, source_map, config) if config.since
 
+      # Nothing to mutate: return before the smoke check, which runs the whole
+      # --test set to calibrate a timeout no mutant would use. Mirrors the daemon
+      # path (#76). The in-process path cannot do this — it boots and builds
+      # coverage before collect_jobs, so it does not yet know the list is empty.
+      return [AggregateResult.new(ignored_results), source_map] if jobs.empty?
+
       # Calibrate the per-mutant timeout from the clean run (a real suite far
       # outlasts the 10s in-process fork budget), and abort if it is not green.
       # 3x the clean run, floor 30s, ceiling 300s: a heuristic. The floor covers

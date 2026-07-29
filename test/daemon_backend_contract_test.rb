@@ -192,6 +192,21 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # Same input, same answer on the other backend that can know before it pays: the
+  # smoke check runs the whole suite to calibrate a timeout no mutant would use.
+  def test_an_empty_job_list_skips_the_external_smoke_check
+    Dir.mktmpdir("mutineer-empty-ext") do |root|
+      config = Mutineer::Config.new(sources: [], tests: [], project_root: root,
+                                    framework: "minitest", test_command: "false")
+
+      Mutineer::ExternalBackend.stub(:smoke_check!, ->(*) { flunk "ran the suite for zero jobs" }) do
+        aggregate, = Mutineer::Runner.execute(config)
+
+        assert_equal 0, aggregate.total
+      end
+    end
+  end
+
   # A daemon that dies before accepting the boot payload makes the write raise
   # Errno::EPIPE. Left as a SystemCallError it reaches the CLI as a usage error
   # (exit 2), which would tell CI the flags were wrong rather than the daemon died.
