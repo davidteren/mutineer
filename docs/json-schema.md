@@ -113,13 +113,15 @@ The delta versus the prior `--format json` report, matched by stable `id`:
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
 | `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
 
 Under a positive `--threshold`, a run is gated on being complete as well as on its score. Mutants with no
 verdict are excluded from the score's denominator, so a broken harness inflates the score instead of
 lowering it. Past 10% of attempted mutants — and never for a single one, however small the run — the
-score is treated as covering too little of the run to gate on. Read `no_verdict[]` to see what failed.
+score is treated as covering too little of the run to gate on. The floor applies only when there *is* a
+score: a run where nothing could be scored at all fails on a single broken mutant, because there is no
+score to weigh it against. Read `no_verdict[]` to see what failed.
 A run where *nothing* was scored and something broke already exits 1.
 
 `--threshold` and `--baseline` are independent gates OR'd together (the worse code wins); usage errors (2)

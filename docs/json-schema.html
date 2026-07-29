@@ -162,7 +162,7 @@
           <thead><tr><th scope="col">Code</th><th scope="col">Meaning</th></tr></thead>
           <tbody>
             <tr><td class="op">0</td><td>Score ≥ threshold (or no gate) <strong>and</strong> no baseline regression.</td></tr>
-            <tr><td class="op">1</td><td>Score below <code>--threshold</code>, OR more than one mutant produced no verdict and they exceed 10% of those attempted, OR a <code>--baseline</code> regression, OR a runtime error.</td></tr>
+            <tr><td class="op">1</td><td>Score below <code>--threshold</code>, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a <code>--baseline</code> regression, OR a runtime error.</td></tr>
             <tr><td class="op">2</td><td>Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline).</td></tr>
           </tbody>
         </table>

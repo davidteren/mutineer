@@ -79,7 +79,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no threshold set) |
-| `1` | Score below threshold, more than one mutant produced no verdict and they exceed 10% of those attempted, a `--baseline` regression, or a runtime error |
+| `1` | Score below threshold, nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, a `--baseline` regression, or a runtime error |
 | `2` | Usage / invalid-flag error |
 
 ### Operators
@@ -387,7 +387,7 @@ human review / suppression rather than looping forever.
 | Code | Pipeline action |
 |------|-----------------|
 | `0` | Pass — score ≥ threshold and no baseline regression. |
-| `1` | Fail the check — tests are too weak (below threshold), the run did not complete (more than one mutant produced no verdict and they exceed 10% of those attempted), or a regression was introduced. |
+| `1` | Fail the check — tests are too weak (below threshold), the run did not complete (nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted), or a regression was introduced. |
 | `2` | Fail the *job* differently — this is a misinvocation (bad flag/path), not a test-quality signal. |
 
 Branch on these directly; never scrape the human report. The JSON `summary` and `baseline` blocks carry
