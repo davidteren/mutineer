@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.11.4] - 2026-07-29
+
 ### Fixed
 - **`--threshold` now gates on the run being complete, not just its score** — a
   score is `killed / (killed + survived)`, so mutants that error, time out or come
@@ -316,6 +318,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.11.4]: https://github.com/davidteren/mutineer/releases/tag/v0.11.4
 [0.11.3]: https://github.com/davidteren/mutineer/releases/tag/v0.11.3
 [0.11.2]: https://github.com/davidteren/mutineer/releases/tag/v0.11.2
 [0.11.1]: https://github.com/davidteren/mutineer/releases/tag/v0.11.1
