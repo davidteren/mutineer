@@ -54,14 +54,19 @@ module Mutineer
         out.print rendered
       end
 
-      # Here rather than in the human renderer: --format json is the documented CI
-      # path, and a run that exits 1 must say why on every format, not only the one
-      # a person reads.
-      return unless threshold&.positive? && broken_share_exceeded?
+      # Both ways a run can fail the gate on completeness, said here rather than in
+      # the human renderer: --format json is the documented CI path, and a run that
+      # exits 1 must say why on every format, not only the one a person reads.
+      return unless threshold&.positive?
 
-      err.puts "[mutineer] #{no_verdict_ratio}: #{broken_counts_detail}. The score covers " \
-               "only part of the run, so the --threshold gate fails. See no_verdict[] in " \
-               "--format json for the cause of each."
+      if @agg.mutation_score.nil? && broken_nil_score?
+        err.puts "[mutineer] nothing could be scored (#{broken_counts_detail}), so the " \
+                 "--threshold gate fails. See no_verdict[] in --format json for the cause of each."
+      elsif broken_share_exceeded?
+        err.puts "[mutineer] #{no_verdict_ratio}: #{broken_counts_detail}. The score covers " \
+                 "only part of the run, so the --threshold gate fails. See no_verdict[] in " \
+                 "--format json for the cause of each."
+      end
     end
 
     # Renders the human report.
@@ -164,7 +169,7 @@ module Mutineer
         # worker finish order in the output and break the byte-stability promise.
         no_verdict: @agg.results.select { |r| r.error? || r.timeout? || r.uncapturable? }
                         .map { |r| no_verdict_json(r) }
-                        .sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:id].to_s, h[:status].to_s] },
+                        .sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:id].to_s, h[:status].to_s, h[:details].to_s] },
         # Equivalent mutants the user suppressed: emitted with their stable id so
         # the user can audit what is silenced (and copy ids for survivors they
         # want to add). Excluded from the score; never in `survivors`.
@@ -455,10 +460,10 @@ module Mutineer
                  "#{@agg.ignored_count} ignored excluded"
       if score.nil?
         out.puts "Mutation score: N/A  (no covered mutants)"
-        if broken_nil_score?
-          err.puts "[mutineer] no covered mutations (#{broken_counts_detail}); " \
-                   "threshold gate fails under a positive --threshold (broken harness)."
-        else
+        # Only the benign case here: the gate-failure explanation is emitted once
+        # from {report}, for every format, so it cannot be said twice or only to
+        # the reader of the human report.
+        unless broken_nil_score?
           err.puts "[mutineer] no covered mutations; mutation score is N/A and the threshold check is skipped."
         end
       else
@@ -499,12 +504,10 @@ module Mutineer
     # skipped-invalid and ignored mutants were never attempted, so counting them
     # would dilute the share and let a broken run slip under the limit.
     #
-    # skipped-invalid is excluded from BOTH sides on purpose. It means Mutineer
-    # generated a mutant that did not re-parse and correctly declined to run it —
-    # a validity outcome, not a broken harness, and a few are normal for some
-    # operators. The cost is that a run which is overwhelmingly skipped still
-    # scores on what little ran; that is a different failure (a bad operator, ours
-    # not the user's) and wants its own signal rather than this gate's.
+    # skipped-invalid is excluded from both sides: it means a mutant did not
+    # re-parse and was correctly never run, which is a validity outcome rather
+    # than a broken harness. Cost: an overwhelmingly-skipped run still scores on
+    # what little ran; that is our operator misbehaving and wants its own signal.
     #
     # @api private
     # @return [Integer] killed + survived + no-verdict.

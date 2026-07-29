@@ -103,6 +103,8 @@
             <tr><td class="op">errored</td><td class="rule">int</td><td>Mutants whose run raised (excluded).</td></tr>
             <tr><td class="op">timeout</td><td class="rule">int</td><td>Mutants whose run exceeded the per-mutant timeout (excluded).</td></tr>
             <tr><td class="op">ignored</td><td class="rule">int</td><td>Mutants suppressed via <code>#&nbsp;mutineer:disable-line</code> or <code>.mutineer.yml</code> <code>ignore:</code> (excluded).</td></tr>
+            <tr><td class="op">attempted</td><td class="rule">int</td><td>Mutants actually run: <code>killed + survived + no_verdict</code>. <strong>Not</strong> <code>total</code> — no-coverage, skipped and ignored mutants were never attempted.</td></tr>
+            <tr><td class="op">no_verdict</td><td class="rule">int</td><td>Attempted mutants that produced no verdict: <code>errored + timeout + uncapturable</code>. The completeness gate is <code>no_verdict / attempted</code>.</td></tr>
             <tr><td class="op">score</td><td class="rule">float | null</td><td><code>killed / (killed + survived) * 100</code>, rounded. <strong><code>null</code></strong> when the denominator is empty (no covered mutants) — never <code>0.0</code>.</td></tr>
           </tbody>
         </table>
@@ -127,6 +129,10 @@
 
       <h2 id="other-statuses"><code>no_coverage[]</code> and <code>uncapturable[]</code> (array of object)</h2>
       <p>Both use the lean shape <code>{ subject, file, line }</code>. <code>no_coverage</code> is a genuine coverage gap; <code>uncapturable</code> means the test that should cover the line errored while capturing coverage (fix the harness, not the test).</p>
+
+      <h2 id="no-verdict"><code>no_verdict[]</code> (array of object)</h2>
+      <p>Every mutant that was attempted and produced no verdict: <code>{ subject, file, line, id, status, details }</code>. <code>status</code> is <code>"error"</code>, <code>"timeout"</code> or <code>"uncapturable"</code>, and its length equals <code>summary.no_verdict</code>. <code>details</code> carries the cause for <code>"error"</code>; it is <code>null</code> for the other two, where the status is the whole story.</p>
+      <p>A failure before the mutant could be forked has no subject, so <code>subject</code>, <code>file</code>, <code>line</code> and <code>id</code> are <code>null</code> on that entry — <code>id</code> is therefore not a reliable join key here, unlike in <code>survivors[]</code>. These mutants are excluded from the score's denominator, so a broken harness raises the score rather than lowering it; that is why <code>--threshold</code> gates on completeness as well.</p>
 
       <h2 id="ignored"><code>ignored[]</code> (array of object)</h2>
       <p>Suppressed (equivalent) mutants, so you can audit what's silenced: <code>{ subject, file, line, operator, token, id }</code>.</p>
@@ -156,7 +162,7 @@
           <thead><tr><th scope="col">Code</th><th scope="col">Meaning</th></tr></thead>
           <tbody>
             <tr><td class="op">0</td><td>Score ≥ threshold (or no gate) <strong>and</strong> no baseline regression.</td></tr>
-            <tr><td class="op">1</td><td>Score below <code>--threshold</code>, OR a <code>--baseline</code> regression, OR a runtime error.</td></tr>
+            <tr><td class="op">1</td><td>Score below <code>--threshold</code>, OR more than one mutant produced no verdict and they exceed 10% of those attempted, OR a <code>--baseline</code> regression, OR a runtime error.</td></tr>
             <tr><td class="op">2</td><td>Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline).</td></tr>
           </tbody>
         </table>

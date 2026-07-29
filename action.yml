@@ -26,7 +26,7 @@ inputs:
     required: false
     default: ""
   threshold:
-    description: "Fail (exit 1) when the mutation score is below this value, or when more than 10% of attempted mutants produced no verdict (0 = off)."
+    description: "Fail (exit 1) when the mutation score is below this value, or when more than one mutant produced no verdict and they exceed 10% of those attempted (0 = off)."
     required: false
     default: ""
   baseline:

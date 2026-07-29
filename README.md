@@ -47,7 +47,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 |------|---------|
 | `--test FILE` | Test file covering the sources (repeatable) |
 | `--operators LIST` | Comma-separated operator names (default: the Tier-1 set) |
-| `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when more than 10% of attempted mutants produced no verdict (default: 0 = off) |
+| `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
 | `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
 | `--framework NAME` | `minitest` (default) or `rspec`; auto-detected as rspec when most `--test` files end in `_spec.rb` |
 | `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`) — ideal for PR CI |
@@ -70,7 +70,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no threshold set) |
-| `1` | Score below threshold, more than 10% of attempted mutants with no verdict, a `--baseline` regression, or a runtime error |
+| `1` | Score below threshold, more than one mutant produced no verdict and they exceed 10% of those attempted, a `--baseline` regression, or a runtime error |
 | `2` | Usage / invalid-flag error |
 
 ### Operators
