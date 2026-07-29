@@ -80,6 +80,21 @@ class JsonReporterTest < Minitest::Test
     assert_equal 1, doc["uncapturable"].size
   end
 
+  # Entries collide on (file, line) far more than survivors do — every pre-fork
+  # entry lands on the same key — and sort_by is not stable, so without id and
+  # status in the key the array would carry worker finish order between runs.
+  def test_no_verdict_order_is_stable_for_colliding_entries
+    a = Mutineer::Result.error("one").with(subject: subject, mutation: mutation_at(">=", ">", :comparison), id: "aaa")
+    b = Mutineer::Result.error("two").with(subject: subject, mutation: mutation_at(">=", ">", :comparison), id: "bbb")
+    pre1 = Mutineer::Result.error("boot a")
+    pre2 = Mutineer::Result.timeout
+
+    forward = render([a, b, pre1, pre2])["no_verdict"]
+    reverse = render([pre2, pre1, b, a])["no_verdict"]
+
+    assert_equal forward, reverse, "the array must not carry input order between runs"
+  end
+
   # The two figures the completeness gate is computed from, so a consumer never has
   # to re-derive which statuses count.
   def test_summary_carries_the_figures_the_gate_uses

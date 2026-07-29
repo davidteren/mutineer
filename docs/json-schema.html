@@ -63,13 +63,13 @@
     </aside>
 
     <article class="prose">
-      <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Reference · schema_version 1.1</span>
+      <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Reference · schema_version 1.2</span>
       <h1>JSON report schema reference</h1>
       <p class="doc-lede"><code>mutineer run --format json</code> emits a single JSON object (one line, newline-terminated) describing the whole run. It is the <strong>machine-readable contract</strong> for tooling — CI gates, dashboards, and AI coding agents.</p>
       <p>Output is deterministic: arrays are sorted by <code>(file, line, operator)</code> regardless of <code>--jobs</code> worker finish order, so two runs of the same inputs produce byte-identical output.</p>
 
       <h2 id="versioning">Versioning contract</h2>
-      <p>The top-level <code>schema_version</code> (a string, e.g. <code>"1.1"</code>) follows these rules:</p>
+      <p>The top-level <code>schema_version</code> (a string, e.g. <code>"1.2"</code>) follows these rules:</p>
       <ul>
         <li><strong>Additive changes</strong> (new keys on existing objects, new top-level keys) bump the <strong>minor</strong> version (<code>1.0</code> → <code>1.1</code>). Existing keys keep their meaning. Consumers MUST ignore unknown keys.</li>
         <li><strong>Breaking changes</strong> (renaming/removing a key, changing a value's type or meaning) bump the <strong>major</strong> version (<code>1.x</code> → <code>2.0</code>).</li>
@@ -78,11 +78,12 @@
 
       <h2 id="shape">Top-level shape</h2>
       <pre><code>{
-  <span class="p">"schema_version"</span>: <span class="k">"1.1"</span>,
+  <span class="p">"schema_version"</span>: <span class="k">"1.2"</span>,
   <span class="p">"summary"</span>:      { <span class="c">/* run totals, see below */</span> },
   <span class="p">"survivors"</span>:    [ <span class="c">/* mutants the suite failed to catch — the actionable gaps */</span> ],
   <span class="p">"no_coverage"</span>:  [ <span class="c">/* mutants on lines no test exercises */</span> ],
   <span class="p">"uncapturable"</span>: [ <span class="c">/* mutants whose would-be test errored during coverage capture */</span> ],
+  <span class="p">"no_verdict"</span>:   [ <span class="c">/* attempted mutants that produced no verdict: errored, timeout, uncapturable */</span> ],
   <span class="p">"ignored"</span>:      [ <span class="c">/* mutants the user suppressed (equivalent mutants) */</span> ],
   <span class="p">"per_source"</span>:   [ <span class="c">/* per-file roll-up */</span> ],
   <span class="p">"baseline"</span>:     { <span class="c">/* present ONLY with --baseline: the delta vs a prior run */</span> }

@@ -124,7 +124,7 @@ human review / suppression rather than looping forever.
 | Code | Pipeline action |
 |------|-----------------|
 | `0` | Pass — score ≥ threshold and no baseline regression. |
-| `1` | Fail the check — tests are too weak (below threshold) or a regression was introduced. |
+| `1` | Fail the check — tests are too weak (below threshold), the run did not complete (more than 10% of attempted mutants produced no verdict), or a regression was introduced. Tell them apart with `summary.score`, `summary.no_verdict / summary.attempted`, and `baseline.regressed`. |
 | `2` | Fail the *job* differently — this is a misinvocation (bad flag/path), not a test-quality signal. |
 
 Branch on these directly; never scrape the human report. The JSON `summary` and `baseline` blocks carry

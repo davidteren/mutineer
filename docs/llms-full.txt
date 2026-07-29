@@ -79,7 +79,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no threshold set) |
-| `1` | Survivors below threshold, or a runtime error |
+| `1` | Score below threshold, more than 10% of attempted mutants with no verdict, a `--baseline` regression, or a runtime error |
 | `2` | Usage / invalid-flag error |
 
 ### Operators
@@ -387,7 +387,7 @@ human review / suppression rather than looping forever.
 | Code | Pipeline action |
 |------|-----------------|
 | `0` | Pass — score ≥ threshold and no baseline regression. |
-| `1` | Fail the check — tests are too weak (below threshold) or a regression was introduced. |
+| `1` | Fail the check — tests are too weak (below threshold), the run did not complete (more than 10% of attempted mutants produced no verdict), or a regression was introduced. |
 | `2` | Fail the *job* differently — this is a misinvocation (bad flag/path), not a test-quality signal. |
 
 Branch on these directly; never scrape the human report. The JSON `summary` and `baseline` blocks carry
@@ -404,7 +404,7 @@ worker finish order, so two runs of the same inputs produce byte-identical outpu
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.1"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.2"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -417,11 +417,12 @@ A consumer should accept any `1.x` document and read only the keys it knows.
 
 ```jsonc
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
+  "no_verdict":   [ /* attempted mutants that produced no verdict: errored, timeout, uncapturable */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
   "per_source":   [ /* per-file roll-up */ ],
   "baseline":     { /* present ONLY with --baseline: the delta vs a prior run */ }

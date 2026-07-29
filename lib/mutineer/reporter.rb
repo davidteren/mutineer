@@ -157,10 +157,14 @@ module Mutineer
         # carries the cause where there is one. Uncapturable mutants also appear in
         # uncapturable[]; that key keeps its lean shape for existing consumers.
         # to_s/to_i because a pre-fork failure has no subject, so its file and line
-        # are null and would not compare against a real entry.
+        # are null and would not compare against a real entry. id and status extend
+        # the key to a total order: these entries collide on (file, line) far more
+        # than survivors do — several mutants on one crashy line, every pre-fork
+        # entry on ("", 0) — and sort_by is not stable, so equal keys would leave
+        # worker finish order in the output and break the byte-stability promise.
         no_verdict: @agg.results.select { |r| r.error? || r.timeout? || r.uncapturable? }
                         .map { |r| no_verdict_json(r) }
-                        .sort_by { |h| [h[:file].to_s, h[:line].to_i] },
+                        .sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:id].to_s, h[:status].to_s] },
         # Equivalent mutants the user suppressed: emitted with their stable id so
         # the user can audit what is silenced (and copy ids for survivors they
         # want to add). Excluded from the score; never in `survivors`.
@@ -494,6 +498,13 @@ module Mutineer
     # Mutants that were actually run. Deliberately not `total`: no_coverage,
     # skipped-invalid and ignored mutants were never attempted, so counting them
     # would dilute the share and let a broken run slip under the limit.
+    #
+    # skipped-invalid is excluded from BOTH sides on purpose. It means Mutineer
+    # generated a mutant that did not re-parse and correctly declined to run it —
+    # a validity outcome, not a broken harness, and a few are normal for some
+    # operators. The cost is that a run which is overwhelmingly skipped still
+    # scores on what little ran; that is a different failure (a bad operator, ours
+    # not the user's) and wants its own signal rather than this gate's.
     #
     # @api private
     # @return [Integer] killed + survived + no-verdict.
