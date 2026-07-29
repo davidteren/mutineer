@@ -20,6 +20,11 @@ module Mutineer
     # a different number yet.
     BROKEN_SHARE_LIMIT = 0.10
 
+    # A share alone gives a small run no tolerance at all: on a `--since` PR that
+    # yields 8 mutants, one timeout is 12.5%. README recommends exactly that
+    # workflow, so one bad mutant never fails the gate on its own, at any size.
+    BROKEN_FLOOR = 1
+
     def initialize(aggregate, source_map)
       @agg = aggregate
       @source_map = source_map
@@ -48,6 +53,15 @@ module Mutineer
       else
         out.print rendered
       end
+
+      # Here rather than in the human renderer: --format json is the documented CI
+      # path, and a run that exits 1 must say why on every format, not only the one
+      # a person reads.
+      return unless threshold&.positive? && broken_share_exceeded?
+
+      err.puts "[mutineer] #{no_verdict_ratio}: #{broken_counts_detail}. The score covers " \
+               "only part of the run, so the --threshold gate fails. See no_verdict[] in " \
+               "--format json for the cause of each."
     end
 
     # Renders the human report.
@@ -125,6 +139,8 @@ module Mutineer
           skipped_invalid: @agg.skipped_invalid_count,
           errored: @agg.errored_count, timeout: @agg.timeout_count,
           ignored: @agg.ignored_count,
+          # The gate is computed from these two, so a consumer never re-derives them.
+          attempted: attempted_count, no_verdict: no_verdict_count,
           score: score
         },
         survivors: @agg.surviving_mutants.map { |r| survivor_json(r) }
@@ -134,13 +150,17 @@ module Mutineer
         # Same shape as no_coverage; additive key.
         uncapturable: @agg.results.select(&:uncapturable?).map { |r| no_coverage_json(r) }
                           .sort_by { |h| [h[:file], h[:line]] },
-        # Mutants that were attempted and produced no verdict. `details` carries the
-        # cause (a daemon crash, a timeout); until this key existed it was built and
-        # never rendered, so a broken run looked like a weak suite in every format.
-        # to_s/to_i because a pre-fork failure carries no subject or mutation, so
-        # its file and line are null and would not compare against a real entry's.
-        errored: @agg.results.select { |r| r.error? || r.timeout? }.map { |r| errored_json(r) }
-                     .sort_by { |h| [h[:file].to_s, h[:line].to_i] },
+        # Every mutant that was attempted and produced no verdict, whatever the
+        # reason — the set the --threshold completeness gate counts. Named for the
+        # condition rather than one status, because summary.errored means :error
+        # alone and a key that reconciled with neither would be worse. `details`
+        # carries the cause where there is one. Uncapturable mutants also appear in
+        # uncapturable[]; that key keeps its lean shape for existing consumers.
+        # to_s/to_i because a pre-fork failure has no subject, so its file and line
+        # are null and would not compare against a real entry.
+        no_verdict: @agg.results.select { |r| r.error? || r.timeout? || r.uncapturable? }
+                        .map { |r| no_verdict_json(r) }
+                        .sort_by { |h| [h[:file].to_s, h[:line].to_i] },
         # Equivalent mutants the user suppressed: emitted with their stable id so
         # the user can audit what is silenced (and copy ids for survivors they
         # want to add). Excluded from the score; never in `survivors`.
@@ -376,15 +396,15 @@ module Mutineer
       }
     end
 
-    # An entry under the JSON `errored:` key: an attempted mutant with no verdict.
+    # An entry under the JSON `no_verdict:` key: an attempted mutant with no verdict.
     # A pre-fork failure has no subject or mutation attached, so those degrade to
     # nulls rather than dropping the entry — the count must still reconcile with
-    # `summary.errored` + `summary.timeout`.
+    # `summary.no_verdict`.
     #
     # @api private
     # @param result [Mutineer::Result] an errored or timed-out result.
-    # @return [Hash] errored JSON object.
-    def errored_json(result)
+    # @return [Hash] no-verdict JSON object.
+    def no_verdict_json(result)
       file = result.subject&.file
       line =
         if result.mutation && file
@@ -432,17 +452,13 @@ module Mutineer
       if score.nil?
         out.puts "Mutation score: N/A  (no covered mutants)"
         if broken_nil_score?
-          err.puts "[mutineer] no covered mutations (#{broken_nil_score_detail}); " \
+          err.puts "[mutineer] no covered mutations (#{broken_counts_detail}); " \
                    "threshold gate fails under a positive --threshold (broken harness)."
         else
           err.puts "[mutineer] no covered mutations; mutation score is N/A and the threshold check is skipped."
         end
       else
         out.puts "Mutation score: #{score}%  (killed / (killed + survived); #{excluded})"
-        if broken_share_exceeded?
-          err.puts "[mutineer] #{broken_nil_score_detail}: too much of the run produced no " \
-                   "verdict, so this score covers only part of it; threshold gate fails."
-        end
       end
     end
 
@@ -462,16 +478,46 @@ module Mutineer
     # @api private
     # @return [Boolean] true when too much of the run failed to produce a verdict.
     def broken_share_exceeded?
-      broken = @agg.errored_count + @agg.timeout_count + @agg.uncapturable_count
-      attempted = @agg.killed_count + @agg.survived_count + broken
-      attempted.positive? && broken > attempted * BROKEN_SHARE_LIMIT
+      attempted = attempted_count
+      attempted.positive? && no_verdict_count > BROKEN_FLOOR &&
+        no_verdict_count > attempted * BROKEN_SHARE_LIMIT
     end
 
-    # Human-readable counts for a broken nil-score run.
+    # Mutants that were attempted and produced no verdict, whatever the reason.
+    #
+    # @api private
+    # @return [Integer] errored + timed out + uncapturable.
+    def no_verdict_count
+      @agg.errored_count + @agg.timeout_count + @agg.uncapturable_count
+    end
+
+    # Mutants that were actually run. Deliberately not `total`: no_coverage,
+    # skipped-invalid and ignored mutants were never attempted, so counting them
+    # would dilute the share and let a broken run slip under the limit.
+    #
+    # @api private
+    # @return [Integer] killed + survived + no-verdict.
+    def attempted_count
+      @agg.killed_count + @agg.survived_count + no_verdict_count
+    end
+
+    # The sentence both the verdict line and the stderr note are built from, so a
+    # user cannot read one number in the report and a different one beside it.
+    #
+    # @api private
+    # @return [String] e.g. "90 of 100 attempted mutants produced no verdict (90.0%, limit 10%)".
+    def no_verdict_ratio
+      pct = (no_verdict_count * 100.0 / attempted_count).round(1)
+      "#{no_verdict_count} of #{attempted_count} attempted mutants produced no verdict " \
+        "(#{pct}%, limit #{(BROKEN_SHARE_LIMIT * 100).round}%)"
+    end
+
+    # Human-readable counts of the states that produced no verdict. Used by both
+    # the nil-score message and the completeness gate, so they agree.
     #
     # @api private
     # @return [String]
-    def broken_nil_score_detail
+    def broken_counts_detail
       parts = []
       parts << "#{@agg.errored_count} errored" if @agg.errored_count.positive?
       parts << "#{@agg.timeout_count} timeout" if @agg.timeout_count.positive?
@@ -564,13 +610,17 @@ module Mutineer
       score = @agg.mutation_score
       if score.nil?
         if broken_nil_score?
-          out.puts "FAILED: no covered mutants (#{broken_nil_score_detail}); " \
+          out.puts "FAILED: no covered mutants (#{broken_counts_detail}); " \
                    "threshold #{threshold}% cannot pass with a broken harness"
         end
         return
       end
 
-      if score >= threshold
+      # Same rule as exit_code, or the report says PASSED on a run that exits 1 —
+      # and with --output that wrong verdict is what gets archived.
+      if broken_share_exceeded?
+        out.puts "FAILED: #{no_verdict_ratio}; #{score}% covers only part of the run"
+      elsif score >= threshold
         out.puts "PASSED: #{score}% >= threshold #{threshold}%"
       else
         out.puts "FAILED: #{score}% < threshold #{threshold}%"

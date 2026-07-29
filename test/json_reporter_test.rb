@@ -43,13 +43,13 @@ class JsonReporterTest < Minitest::Test
 
   # Until this key existed, Result#details was built and rendered nowhere, so a
   # daemon crash reached the user as nothing but a bump in the errored count.
-  def test_errored_entries_carry_their_cause
+  def test_no_verdict_entries_carry_their_cause
     doc = render([Mutineer::Result.error("daemon worker crashed: Errno::EPIPE"),
                   Mutineer::Result.timeout, Mutineer::Result.killed])
-    entries = doc["errored"]
+    entries = doc["no_verdict"]
 
     assert_equal 2, entries.size
-    assert_equal doc["summary"]["errored"] + doc["summary"]["timeout"], entries.size
+    assert_equal doc["summary"]["no_verdict"], entries.size
     crash = entries.find { |e| e["status"] == "error" }
     assert_match(/daemon worker crashed/, crash["details"])
     assert_equal "timeout", entries.find { |e| e["status"] == "timeout" }["status"]
@@ -57,13 +57,38 @@ class JsonReporterTest < Minitest::Test
 
   # A pre-fork failure has no subject or mutation, so its file and line are null.
   # It must still appear rather than break the sort or vanish from the array.
-  def test_errored_entry_without_a_subject_still_appears
+  def test_no_verdict_entry_without_a_subject_still_appears
     doc = render([Mutineer::Result.error("boot failed"), survivor])
-    entry = doc["errored"].first
+    entry = doc["no_verdict"].first
 
     assert_nil entry["file"]
     assert_nil entry["line"]
     assert_equal "boot failed", entry["details"]
+  end
+
+  # The gate counts uncapturable, and the docs send the user to no_verdict[] to see
+  # what failed, so a run failed purely by uncapturable mutants must not find it empty.
+  def test_no_verdict_includes_uncapturable_because_the_gate_counts_it
+    unc = Mutineer::Result.uncapturable.with(subject: subject,
+                                             mutation: mutation_at("100", "0", :literal_mutation))
+    doc = render([unc, Mutineer::Result.killed])
+
+    assert_equal 1, doc["no_verdict"].size
+    assert_equal "uncapturable", doc["no_verdict"].first["status"]
+    assert_equal doc["summary"]["no_verdict"], doc["no_verdict"].size
+    # It keeps its own lean array too, for consumers that already read that key.
+    assert_equal 1, doc["uncapturable"].size
+  end
+
+  # The two figures the completeness gate is computed from, so a consumer never has
+  # to re-derive which statuses count.
+  def test_summary_carries_the_figures_the_gate_uses
+    uncovered = Mutineer::Result.no_coverage.with(subject: subject,
+                                                  mutation: mutation_at("100", "0", :literal_mutation))
+    doc = render([Mutineer::Result.error("x"), Mutineer::Result.killed, uncovered])
+
+    assert_equal 2, doc["summary"]["attempted"] # no_coverage was never attempted
+    assert_equal 1, doc["summary"]["no_verdict"]
   end
 
   def test_survivor_entry_has_all_keys_and_diff

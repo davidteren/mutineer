@@ -70,7 +70,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no threshold set) |
-| `1` | Survivors below threshold, or a runtime error |
+| `1` | Score below threshold, more than 10% of attempted mutants with no verdict, a `--baseline` regression, or a runtime error |
 | `2` | Usage / invalid-flag error |
 
 ### Operators
