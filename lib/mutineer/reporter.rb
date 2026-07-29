@@ -14,6 +14,12 @@ module Mutineer
   # `source_map` is { file_path => raw source string }, used to extract the
   # containing source line for each survivor diff.
   class Reporter
+    # Share of attempted mutants that may produce no verdict before `--threshold`
+    # stops trusting the score. A handful of flaky mutants in a large run is noise;
+    # a mostly-broken run is not a score. Deliberately not a flag: no one has needed
+    # a different number yet.
+    BROKEN_SHARE_LIMIT = 0.10
+
     def initialize(aggregate, source_map)
       @agg = aggregate
       @source_map = source_map
@@ -85,6 +91,11 @@ module Mutineer
         return 0 # pure no_coverage / ignored / empty — gate skipped
       end
 
+      # A score computed over a small slice of what was attempted is not this
+      # suite's score. Without this, 90 errored mutants and 10 that ran (9 killed)
+      # reports 90% and exits 0, so CI cannot tell a complete run from a broken one.
+      return 1 if broken_share_exceeded?
+
       score >= threshold ? 0 : 1
     end
 
@@ -106,7 +117,7 @@ module Mutineer
       score = @agg.mutation_score
 
       doc = {
-        schema_version: "1.1",
+        schema_version: "1.2",
         summary: {
           total: @agg.total, killed: killed, survived: survived,
           no_coverage: @agg.no_coverage_count,
@@ -123,6 +134,13 @@ module Mutineer
         # Same shape as no_coverage; additive key.
         uncapturable: @agg.results.select(&:uncapturable?).map { |r| no_coverage_json(r) }
                           .sort_by { |h| [h[:file], h[:line]] },
+        # Mutants that were attempted and produced no verdict. `details` carries the
+        # cause (a daemon crash, a timeout); until this key existed it was built and
+        # never rendered, so a broken run looked like a weak suite in every format.
+        # to_s/to_i because a pre-fork failure carries no subject or mutation, so
+        # its file and line are null and would not compare against a real entry's.
+        errored: @agg.results.select { |r| r.error? || r.timeout? }.map { |r| errored_json(r) }
+                     .sort_by { |h| [h[:file].to_s, h[:line].to_i] },
         # Equivalent mutants the user suppressed: emitted with their stable id so
         # the user can audit what is silenced (and copy ids for survivors they
         # want to add). Excluded from the score; never in `survivors`.
@@ -134,7 +152,7 @@ module Mutineer
                         .sort_by { |h| h[:file] }
       }
       # Additive baseline-delta block, present only with --baseline. Existing
-      # consumers ignore the extra key; schema_version stays 1.1.
+      # consumers ignore the extra key; it does not move schema_version on its own.
       doc[:baseline] = baseline_json(baseline) if baseline
       "#{JSON.generate(doc)}\n"
     end
@@ -358,6 +376,31 @@ module Mutineer
       }
     end
 
+    # An entry under the JSON `errored:` key: an attempted mutant with no verdict.
+    # A pre-fork failure has no subject or mutation attached, so those degrade to
+    # nulls rather than dropping the entry — the count must still reconcile with
+    # `summary.errored` + `summary.timeout`.
+    #
+    # @api private
+    # @param result [Mutineer::Result] an errored or timed-out result.
+    # @return [Hash] errored JSON object.
+    def errored_json(result)
+      file = result.subject&.file
+      line =
+        if result.mutation && file
+          source = @source_map[file] || File.read(file)
+          source.byteslice(0, result.mutation.start_offset).count("\n") + 1
+        end
+      {
+        subject: result.subject&.qualified_name,
+        file: file,
+        line: line,
+        id: result.id,
+        status: result.status.to_s,
+        details: result.details
+      }
+    end
+
     # Writes the summary block.
     #
     # @param out [IO] output stream.
@@ -396,6 +439,10 @@ module Mutineer
         end
       else
         out.puts "Mutation score: #{score}%  (killed / (killed + survived); #{excluded})"
+        if broken_share_exceeded?
+          err.puts "[mutineer] #{broken_nil_score_detail}: too much of the run produced no " \
+                   "verdict, so this score covers only part of it; threshold gate fails."
+        end
       end
     end
 
@@ -406,6 +453,18 @@ module Mutineer
     def broken_nil_score?
       @agg.total.positive? &&
         (@agg.errored_count + @agg.timeout_count + @agg.uncapturable_count).positive?
+    end
+
+    # Mutants that were attempted but produced no verdict, over everything
+    # attempted. Above the limit the score describes too small a slice of the run
+    # to gate on. A few flaky mutants in a large run stay under it.
+    #
+    # @api private
+    # @return [Boolean] true when too much of the run failed to produce a verdict.
+    def broken_share_exceeded?
+      broken = @agg.errored_count + @agg.timeout_count + @agg.uncapturable_count
+      attempted = @agg.killed_count + @agg.survived_count + broken
+      attempted.positive? && broken > attempted * BROKEN_SHARE_LIMIT
     end
 
     # Human-readable counts for a broken nil-score run.

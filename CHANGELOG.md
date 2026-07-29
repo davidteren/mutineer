@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **`--threshold` now gates on the run being complete, not just its score** — a
+  score is `killed / (killed + survived)`, so mutants that error, time out or come
+  back uncapturable are excluded from the denominator: a broken harness *raised*
+  the score instead of lowering it. Ninety errored mutants and ten that ran (nine
+  killed) reported 90% and exited 0, so CI could not tell a complete run from a
+  mostly-broken one. Past 10% of attempted mutants producing no verdict, a positive
+  `--threshold` now exits 1 whatever the score, and the human report says why. A
+  few flaky mutants in a large run still pass (#78).
+
+### Added
+- **`errored[]` in the JSON report** (`schema_version` 1.2) — the per-mutant list
+  of everything attempted that produced no verdict, with `status` and the `details`
+  explaining the cause. `Result#details` was built and rendered nowhere before, so a
+  daemon crash reached the user as nothing but a larger errored count (#78).
+
 ## [0.11.3] - 2026-07-29
 
 ### Fixed

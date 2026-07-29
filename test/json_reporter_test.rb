@@ -34,11 +34,36 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.1", doc["schema_version"]
+    assert_equal "1.2", doc["schema_version"]
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
     assert doc["summary"].key?("timeout")
+  end
+
+  # Until this key existed, Result#details was built and rendered nowhere, so a
+  # daemon crash reached the user as nothing but a bump in the errored count.
+  def test_errored_entries_carry_their_cause
+    doc = render([Mutineer::Result.error("daemon worker crashed: Errno::EPIPE"),
+                  Mutineer::Result.timeout, Mutineer::Result.killed])
+    entries = doc["errored"]
+
+    assert_equal 2, entries.size
+    assert_equal doc["summary"]["errored"] + doc["summary"]["timeout"], entries.size
+    crash = entries.find { |e| e["status"] == "error" }
+    assert_match(/daemon worker crashed/, crash["details"])
+    assert_equal "timeout", entries.find { |e| e["status"] == "timeout" }["status"]
+  end
+
+  # A pre-fork failure has no subject or mutation, so its file and line are null.
+  # It must still appear rather than break the sort or vanish from the array.
+  def test_errored_entry_without_a_subject_still_appears
+    doc = render([Mutineer::Result.error("boot failed"), survivor])
+    entry = doc["errored"].first
+
+    assert_nil entry["file"]
+    assert_nil entry["line"]
+    assert_equal "boot failed", entry["details"]
   end
 
   def test_survivor_entry_has_all_keys_and_diff

@@ -20,11 +20,12 @@ A consumer should accept any `1.x` document and read only the keys it knows.
 
 ```jsonc
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
+  "errored":      [ /* mutants that were attempted and produced no verdict */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
   "per_source":   [ /* per-file roll-up */ ],
   "baseline":     { /* present ONLY with --baseline: the delta vs a prior run */ }
@@ -65,6 +66,20 @@ Each surviving mutant — the records an agent or reviewer acts on:
 Both use the lean shape `{ subject, file, line }`. `no_coverage` is a genuine coverage gap; `uncapturable`
 means the test that should cover the line errored while capturing coverage (fix the harness, not the test).
 
+### `errored[]` (array of object)
+
+Mutants that were attempted but produced no verdict: `{ subject, file, line, id, status, details }`.
+`status` is `"error"` or `"timeout"`, and `details` carries the cause (a daemon crash, for instance).
+Its length equals `summary.errored + summary.timeout`.
+
+A failure before the mutant could be forked has no subject or mutation, so `subject`, `file` and `line`
+are `null` on that entry — it still appears, because the counts must reconcile.
+
+Read this array when the score looks better than you expect: mutants that error are excluded from the
+score's denominator, so a broken harness raises the score rather than lowering it. Under a positive
+`--threshold`, a run where more than 10% of attempted mutants produced no verdict exits 1 regardless of
+the score, for that reason.
+
 ### `ignored[]` (array of object)
 
 Suppressed (equivalent) mutants, so you can audit what's silenced: `{ subject, file, line, operator, token, id }`.
@@ -91,8 +106,14 @@ The delta versus the prior `--format json` report, matched by stable `id`:
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR a `--baseline` regression, OR a runtime error. |
+| `1` | Score below `--threshold`, OR more than 10% of attempted mutants produced no verdict, OR a `--baseline` regression, OR a runtime error. |
 | `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+
+Under a positive `--threshold`, a run is gated on being complete as well as on its score. Errored,
+timed-out and uncapturable mutants are excluded from the denominator, so a broken harness inflates the
+score instead of lowering it; past 10% of attempted mutants, the score is treated as covering too little
+of the run to gate on. Read `errored[]` to see what failed. A run where *nothing* was scored and
+something broke already exits 1.
 
 `--threshold` and `--baseline` are independent gates OR'd together (the worse code wins); usage errors (2)
 always win. This lets a pipeline distinguish "tests too weak" (1) from "you invoked me wrong" (2).
