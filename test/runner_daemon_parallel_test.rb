@@ -32,10 +32,15 @@ class RunnerDaemonParallelTest < Minitest::Test
   end
 
   def assert_parallel_matches_serial(test_file)
-    serial,   = Mutineer::Runner.execute(config_for(test_file, 1))
-    parallel, = Mutineer::Runner.execute(config_for(test_file, 2))
+    serial, = Mutineer::Runner.execute(config_for(test_file, 1))
+    parallel = nil
+    _out, err = capture_io do
+      parallel, = Mutineer::Runner.execute(config_for(test_file, 2))
+    end
     assert_equal identity(serial), identity(parallel),
                  "--jobs 2 must equal --jobs 1 (score/kills/survivors) on #{test_file}"
+    assert_match(%r{\[mutineer\] \d+/\d+ mutants \(\d+%\)}, err,
+                 "daemon parallel path must emit progress on stderr")
     [serial, parallel]
   end
 

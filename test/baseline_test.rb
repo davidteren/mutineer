@@ -69,6 +69,24 @@ class BaselineTest < Minitest::Test
     assert_equal 1, delta.fixed_survivors.size # bbb fixed (informational)
   end
 
+  # A --since run's score covers a different denominator than a full-run
+  # baseline, so scoped: true skips the score-drop half of the gate. The
+  # new-survivor half (stable ids compare fine across scopes) still fires.
+  def test_scoped_diff_skips_score_drop_but_keeps_new_survivor_gate
+    base = Mutineer::Baseline.new(baseline_doc(%w[aaa], score: 80.0))
+    current = agg(Mutineer::Result.killed, survivor("aaa")) # 50.0% vs 80.0%
+
+    delta = base.diff(current, scoped: true)
+    refute delta.score_drop, "scoped diff must not compare cross-denominator scores"
+    refute delta.regressed
+    assert_equal 80.0, delta.score_before # both scores still reported as facts
+    assert_equal 50.0, delta.score_after
+
+    assert base.diff(current).regressed, "same run unscoped still gates on the drop"
+    assert base.diff(agg(Mutineer::Result.killed, survivor("zzz")), scoped: true).regressed,
+           "a new survivor id regresses even when scoped"
+  end
+
   # Acceptance 3: score drop -> regression, with the "A% -> B%" facts.
   def test_score_drop_regresses
     base = Mutineer::Baseline.new(baseline_doc([], score: 80.0))

@@ -36,6 +36,11 @@ module Mutineer
         @last_step = step
         @io.puts "[mutineer] #{@done}/#{@total} mutants (#{(@done * 100) / @total}%)"
       end
+    rescue IOError, Errno::EPIPE
+      # Progress is best-effort: a closed stderr (piped consumer went away) must
+      # never kill the run — in the daemon's worker threads a raise here would
+      # propagate through Thread#join and abort scoring.
+      nil
     end
   end
 end

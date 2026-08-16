@@ -17,7 +17,8 @@ module Mutineer
     #   fixed_survivors - baseline survivor hashes absent from the current run
     #                     (informational, never gates).
     #   score_drop      - current score < baseline score - epsilon. nil on
-    #                     either side skips the check (see #diff).
+    #                     either side skips the check, and a diff-scoped run
+    #                     (`scoped: true`) never sets it (see #diff).
     #   regressed       - any new survivors OR a score drop.
     Delta = Data.define(:new_survivors, :fixed_survivors,
                         :score_before, :score_after, :score_drop, :regressed)
@@ -57,10 +58,18 @@ module Mutineer
     # `epsilon` tolerates float jitter on the score (default 0.0 = any drop
     # gates).
     #
+    # `scoped: true` marks the current run as diff-scoped (`--since`): its score
+    # is computed over only the changed-line mutants, a different denominator
+    # from a full-run baseline, so comparing the two scores manufactures false
+    # regressions. A scoped diff keeps the new-survivor gate (stable ids compare
+    # fine across scopes) and still reports both scores, but never sets
+    # score_drop.
+    #
     # @param aggregate [Mutineer::AggregateResult] current results.
     # @param epsilon [Float] score-drop tolerance.
+    # @param scoped [Boolean] current run was diff-scoped (`--since`).
     # @return [Mutineer::Baseline::Delta] delta summary.
-    def diff(aggregate, epsilon: 0.0)
+    def diff(aggregate, epsilon: 0.0, scoped: false)
       current = aggregate.surviving_mutants
       current_ids = current.map(&:id)
       baseline_ids = @survivors.map { |h| h["id"] }
@@ -71,8 +80,9 @@ module Mutineer
       current_score = aggregate.mutation_score
       # nil-score discipline (mirrors Reporter#exit_code): a score absent on
       # either side cannot be compared. Skip the drop check, keep the new-
-      # survivor check.
-      score_drop = !@score.nil? && !current_score.nil? &&
+      # survivor check. Same for a scoped run: its denominator differs from the
+      # baseline's, so the scores are not comparable either.
+      score_drop = !scoped && !@score.nil? && !current_score.nil? &&
                    current_score < @score - epsilon
 
       Delta.new(new_survivors: new_survivors, fixed_survivors: fixed,

@@ -51,7 +51,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
 | `--framework NAME` | `minitest` (default) or `rspec`; auto-detected as rspec when most `--test` files end in `_spec.rb` |
 | `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`) — ideal for PR CI |
-| `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (see [CI](#ci-gating)) |
+| `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (score drop is skipped under `--since`, whose score covers a different denominator; see [CI](#ci-gating)) |
 | `--baseline-epsilon FLOAT` | Score-drop tolerance for `--baseline` (default: 0) |
 | `--jobs N` | Parallel worker count (default: processor count; `1` under `--rails`) |
 | `--verbose` | Surface the real error when a fork capture fails (alias `--debug`) |
@@ -247,8 +247,9 @@ default (`--since origin/$GITHUB_BASE_REF`, fetching the base tip itself when
 the checkout is shallow). Pass `since: none` for a full scan, or an explicit
 `since:` ref (which needs `fetch-depth: 0` on checkout). With the default JSON
 format the action also writes a score summary to the job's step summary and
-annotates each surviving mutant on the PR diff (`::error file=…,line=…`), and
-the CLI prints a progress line to the log at every 10% of the run.
+annotates each surviving mutant on the PR diff (`error` level when the gate
+failed, `warning` when it passed), exposes the report path via the `report`
+output, and the CLI prints a progress line to the log at every 10% of the run.
 
 ## For AI agents & pipelines
 

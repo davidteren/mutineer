@@ -38,6 +38,21 @@ class ProgressTest < Minitest::Test
     io = StringIO.new
     progress = Mutineer::Progress.new(40, io: io)
     Array.new(4) { Thread.new { 10.times { progress.tick } } }.each(&:join)
-    assert_includes io.string, "[mutineer] 40/40 mutants (100%)"
+    # The mutex covers increment+compare+print, so the ten 10%-step lines are
+    # fully deterministic regardless of interleaving — assert the exact set,
+    # which a double-count or missed boundary anywhere in the middle would break.
+    assert_equal((1..10).map { |s| "[mutineer] #{s * 4}/40 mutants (#{s * 10}%)" },
+                 io.string.lines.map(&:chomp))
+  end
+
+  # Pins the default stream: progress must go to stderr, never stdout — the
+  # `--format json` byte-exact stdout contract depends on it.
+  def test_default_stream_is_stderr
+    out, err = capture_io do
+      progress = Mutineer::Progress.new(2)
+      2.times { progress.tick }
+    end
+    assert_includes err, "[mutineer] 2/2 mutants (100%)"
+    assert_empty out
   end
 end

@@ -6,19 +6,36 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Added
+### Changed
 - **PR runs scope themselves in the GitHub Action**: on `pull_request` events
   the `since` input now defaults to the PR base (`origin/$GITHUB_BASE_REF`), so
-  the action grades just the diff out of the box. The action fetches the base
-  tip itself when the checkout is shallow, and falls back to a full scan with a
-  warning when it cannot resolve the base; `since: none` forces a full scan.
-  Workflows that already pass `since` are unchanged.
+  the action grades just the diff out of the box. **Migration note for existing
+  workflows**: a PR gate that previously full-scanned now scores only the PR's
+  changed lines, so `threshold` applies to fewer mutants; pass `since: none` to
+  keep the old full-scan behavior. Workflows that already pass `since` are
+  unchanged. The action fetches the base tip itself when the checkout is
+  shallow, and falls back to a full scan with a warning when it cannot resolve
+  the base. The default deliberately does NOT fire on `pull_request_target`:
+  checkout there defaults to the base branch, so auto-scoping would diff the
+  base against itself and green the gate on an empty run.
+- **`--baseline` on a diff-scoped run gates on new survivors only**: a
+  `--since` run's score covers only the changed-line mutants, a different
+  denominator from a full-run baseline, so comparing the two scores
+  manufactured false regressions (a 3/4-mutant PR at 75% "dropped" from a
+  92% whole-repo baseline with zero new survivors). With `--since`, the
+  score-drop half of the baseline gate is skipped; new-survivor detection by
+  stable id (and the reported before/after scores) are unchanged.
+
+### Added
 - **The Action reports where CI readers look**: with the default JSON format it
   writes a score/pass-fail table (plus the baseline delta, when `baseline` is
-  set) to the job step summary, and emits one `::error file=…,line=…` annotation
-  per surviving mutant so failures land on the PR diff instead of only in a
-  collapsed log group. When `output` is unset the JSON report is routed to a
-  temp file for this and still printed to the log.
+  set) to the job step summary, and emits one `file=…,line=…` annotation per
+  surviving mutant so results land on the PR diff instead of only in a
+  collapsed log group — `error` level when the gate failed, `warning` when it
+  passed. When `output` is unset the JSON report is routed to a temp file and
+  still printed to the log, and the `report` output now exposes the report
+  path in both cases so a later step can consume the JSON without scraping
+  the log.
 - **Progress during the run**: every backend prints `[mutineer] N/M mutants
   (P%)` to stderr at each 10% step, so a long run is never silent between
   config resolution and the report. Stdout stays byte-exact for `--format json`

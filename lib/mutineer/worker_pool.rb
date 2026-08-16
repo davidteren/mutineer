@@ -30,7 +30,9 @@ module Mutineer
     #   returns early (--fail-fast). Unscheduled slots stay nil.
     # @param on_result [Proc, nil] called in the parent with each collected
     #   Result as it is reaped, in finish order (progress reporting); its
-    #   return value is ignored.
+    #   return value is ignored. Must be fast and non-blocking: it runs on the
+    #   pool's single reap thread, so a slow callback stalls draining the other
+    #   in-flight children's pipes (the #4 deadlock discipline).
     # @yieldparam item [Array] one work item.
     # @return [Array<Mutineer::Result>] results in input order (nil for any item
     #   left unscheduled by an early stop).

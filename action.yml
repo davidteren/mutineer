@@ -102,7 +102,10 @@ outputs:
     description: "The exit code returned by mutineer (0 pass, 1 below-threshold/incomplete-run/regressed, 2 usage)."
     value: ${{ steps.run.outputs.exit-code }}
   report:
-    description: "Path to the written report file, when the `output` input is set."
+    description: >-
+      Path to the written report file: the `output` input when set, else the
+      auto-routed JSON report path (json format). Unset when no report file
+      exists (e.g. human format without `output`).
     value: ${{ steps.run.outputs.report }}
 
 runs:
@@ -146,14 +149,17 @@ runs:
       run: |
         set -o pipefail
 
-        # Default --since to the PR base when unset. GITHUB_BASE_REF is set only
-        # on pull_request events, so pushes and manual runs keep the full scan.
-        # `since: none` forces a full scan on PRs too. A shallow checkout (the
-        # actions/checkout default) lacks the base ref, so fetch just its tip;
-        # when that fails, warn and fall back to a full scan rather than exiting 2.
+        # Default --since to the PR base when unset — on pull_request events ONLY.
+        # GITHUB_BASE_REF is also set on pull_request_target, but checkout there
+        # defaults to the BASE branch itself: auto-scoping would diff the base
+        # against itself, schedule zero mutants, and green the gate for any PR.
+        # Pushes and manual runs keep the full scan. `since: none` forces a full
+        # scan on PRs too. A shallow checkout (the actions/checkout default)
+        # lacks the base ref, so fetch just its tip; when that fails, warn and
+        # fall back to a full scan rather than exiting 2.
         if [ "$SINCE" = "none" ]; then
           SINCE=""
-        elif [ -z "$SINCE" ] && [ -n "$GITHUB_BASE_REF" ]; then
+        elif [ -z "$SINCE" ] && [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -n "$GITHUB_BASE_REF" ]; then
           if git rev-parse --verify -q "origin/$GITHUB_BASE_REF^{commit}" >/dev/null 2>&1 \
              || git fetch --no-tags --depth=1 origin "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF" >/dev/null 2>&1; then
             SINCE="origin/$GITHUB_BASE_REF"
@@ -171,6 +177,10 @@ runs:
         if [ "$FORMAT" = "json" ] && [ -z "$REPORT_FILE" ]; then
           REPORT_FILE="${RUNNER_TEMP:-/tmp}/mutineer-report.json"
           AUTO_REPORT="1"
+          # The path is constant within a job: clear any report a previous
+          # mutineer step left, so a run that dies before writing can never
+          # have the earlier run's data summarized as its own.
+          rm -f "$REPORT_FILE"
         fi
 
         args=(run)
@@ -212,7 +222,10 @@ runs:
         # (the run's verdict is unaffected either way).
         if [ "$FORMAT" = "json" ] && [ -f "$REPORT_FILE" ] && command -v jq >/dev/null 2>&1; then
           if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            # `oneline` scrubs every interpolated report field to a single line
+            # so no field can start a new markdown line or break the table row.
             jq -r --arg code "$code" '
+              def oneline: tostring | gsub("[\r\n]"; " ");
               ("## Mutineer " + (if $code == "0" then "passed" else "failed (exit \($code))" end)),
               "",
               "| Score | Killed | Survived | No coverage | Ignored | No verdict |",
@@ -227,8 +240,8 @@ runs:
                else empty end),
               (if (.survivors | length) > 0 then "", "### Surviving mutants", "" else empty end),
               (.survivors[:20][]
-                 | "- `\(.file):\(.line)` \(.operator): `"
-                   + (.token | tostring | gsub("[\r\n]"; " ")) + "` (id `\(.id)`)"),
+                 | "- `" + (.file | oneline) + ":\(.line)` " + (.operator | oneline) + ": `"
+                   + (.token | oneline) + "` (id `" + (.id | oneline) + "`)"),
               (if (.survivors | length) > 20 then
                  "", "… and \((.survivors | length) - 20) more; see the report."
                else empty end)
@@ -237,16 +250,27 @@ runs:
           fi
           # Inline PR-diff annotations, capped at 50 (GitHub shows at most 10
           # per step in the checks UI; the rest stay on the files tab).
-          jq -r --arg wd "$WORKDIR" '
+          # Level tracks the gate: a failing run annotates errors, a passing run
+          # warnings — red marks on a green PR would be the wrong signal.
+          # `msg` percent-escapes and single-lines message text; `prop` also
+          # escapes the , and : that delimit workflow-command properties, so a
+          # pathological path cannot corrupt the file= field.
+          WD="${WORKDIR#./}"; WD="${WD%/}"
+          jq -r --arg wd "$WD" --arg lvl "$([ "$code" = "0" ] && echo warning || echo error)" '
+            def msg: tostring | gsub("%"; "%25") | gsub("[\r\n]"; " ");
+            def prop: msg | gsub(":"; "%3A") | gsub(","; "%2C");
             .survivors[:50][]
             | (if $wd == "" or $wd == "." then .file else $wd + "/" + .file end) as $f
-            | "::error file=\($f),line=\(.line),title=Surviving mutant::\(.operator): `"
-              + (.token | tostring | gsub("[\r\n]"; " "))
-              + "` survived: no covering test failed (id \(.id))"
+            | "::\($lvl) file=" + ($f | prop) + ",line=\(.line),title=Surviving mutant::"
+              + (.operator | msg) + ": `" + (.token | msg)
+              + "` survived: no covering test failed (id " + (.id | msg) + ")"
           ' "$REPORT_FILE" \
             || echo "::warning::mutineer: could not emit survivor annotations."
         fi
 
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
-        [ -n "$OUTPUT" ] && echo "report=$OUTPUT" >> "$GITHUB_OUTPUT"
+        # Expose the report path whenever one exists — the caller's `output` when
+        # set, else the auto-routed JSON report — so a later step can consume the
+        # machine-readable report without scraping the log.
+        [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ] && echo "report=$REPORT_FILE" >> "$GITHUB_OUTPUT"
         exit $code

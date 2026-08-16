@@ -465,8 +465,13 @@ module Mutineer
 
       # Diff the current run against the baseline (preflighted above) by the
       # stable survivor id. The delta is rendered inline (human section / additive
-      # json block) and gates exit independently of --threshold.
-      delta = (Baseline.load(config.baseline).diff(aggregate, epsilon: config.baseline_epsilon) if config.baseline)
+      # json block) and gates exit independently of --threshold. A --since run is
+      # scoped: its score covers a different denominator than a full-run baseline,
+      # so only the new-survivor half of the gate applies (see Baseline#diff).
+      delta = if config.baseline
+                Baseline.load(config.baseline).diff(aggregate, epsilon: config.baseline_epsilon,
+                                                               scoped: !config.since.nil?)
+              end
 
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta)
