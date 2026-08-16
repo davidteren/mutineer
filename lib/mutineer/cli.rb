@@ -41,6 +41,7 @@ module Mutineer
         --baseline-epsilon FLOAT  Score-drop tolerance for --baseline (default: 0)
         --only NAME          Restrict to one fully-qualified subject
         --since REF          Only mutate lines changed since git REF (e.g. origin/main)
+        --no-since           Disable diff scoping (a typed no beats a .mutineer.yml since:)
         --jobs N             Parallel worker count (default: processor count)
         --strategy NAME      reload (whole-file) or redefine (surgical); default: reload
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
@@ -96,6 +97,9 @@ module Mutineer
         o.on("--fail-fast") { opts[:fail_fast] = true; explicit << :fail_fast }
         o.on("--only NAME") { |v| opts[:only] = v; explicit << :only }
         o.on("--since REF") { |v| opts[:since] = v; explicit << :since }
+        # A typed "no" must beat a .mutineer.yml `since:` key (CLI-over-config
+        # precedence): marking :since explicit with a nil value blocks the fill.
+        o.on("--no-since") { opts[:since] = nil; explicit << :since }
         o.on("--test FILE") { |v| (opts[:tests] ||= []) << v }
         o.on("--operators LIST") { |v| opts[:operators] = v.split(",").map(&:strip); explicit << :operators }
         o.on("--threshold FLOAT") do |v|

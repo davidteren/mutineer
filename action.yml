@@ -25,8 +25,9 @@ inputs:
       pull_request events this defaults to the PR base (`origin/$GITHUB_BASE_REF`);
       the action fetches the base tip when the checkout is shallow, and falls
       back to a full scan with a warning when it cannot. Pass `none` to force a
-      full scan. An explicitly passed ref must resolve in the checkout
-      (use `fetch-depth: 0`).
+      full scan (passed through as `--no-since`, so it also overrides a `since:`
+      key in the repo's `.mutineer.yml`). An explicitly passed ref must resolve
+      in the checkout (use `fetch-depth: 0`).
     required: false
     default: ""
   threshold:
@@ -157,11 +158,18 @@ runs:
         # scan on PRs too. A shallow checkout (the actions/checkout default)
         # lacks the base ref, so fetch just its tip; when that fails, warn and
         # fall back to a full scan rather than exiting 2.
+        NO_SINCE=""
         if [ "$SINCE" = "none" ]; then
+          # --no-since (not just an omitted flag): a `since:` key in the repo's
+          # .mutineer.yml would otherwise silently re-enable diff scoping.
           SINCE=""
+          NO_SINCE="1"
         elif [ -z "$SINCE" ] && [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -n "$GITHUB_BASE_REF" ]; then
-          if git rev-parse --verify -q "origin/$GITHUB_BASE_REF^{commit}" >/dev/null 2>&1 \
-             || git fetch --no-tags --depth=1 origin "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF" >/dev/null 2>&1; then
+          # Fetch first (a force-updating refspec), so a stale origin/<base>
+          # left in a reused self-hosted workspace is refreshed rather than
+          # trusted; fall back to an existing ref only when the fetch fails.
+          if git fetch --no-tags --depth=1 origin "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF" >/dev/null 2>&1 \
+             || git rev-parse --verify -q "origin/$GITHUB_BASE_REF^{commit}" >/dev/null 2>&1; then
             SINCE="origin/$GITHUB_BASE_REF"
             echo "::notice::mutineer: scoping to lines changed since origin/$GITHUB_BASE_REF (pass 'since: none' for a full scan)."
           else
@@ -185,6 +193,7 @@ runs:
         args=(run)
         for s in $SOURCES; do args+=("$s"); done
         for t in $TESTS; do args+=(--test "$t"); done
+        [ -n "$NO_SINCE" ]         && args+=(--no-since)
         [ -n "$SINCE" ]            && args+=(--since "$SINCE")
         [ -n "$THRESHOLD" ]        && args+=(--threshold "$THRESHOLD")
         [ -n "$BASELINE" ]         && args+=(--baseline "$BASELINE")
@@ -198,6 +207,13 @@ runs:
         [ -n "$REPORT_FILE" ]      && args+=(--output "$REPORT_FILE")
         # shellcheck disable=SC2206
         [ -n "$EXTRA_ARGS" ]       && args+=($EXTRA_ARGS)
+        # The summary, annotations, and `report=` output are driven by the
+        # `format` and `output` INPUTS; a --format/--output smuggled through
+        # extra-args overrides the CLI flags behind the action's back.
+        case " $EXTRA_ARGS " in
+          *" --format"* | *" --output"*)
+            echo "::warning::mutineer: extra-args contains --format/--output; use the 'format' and 'output' inputs instead, or the step summary, annotations, and report output may misbehave." ;;
+        esac
 
         if [ "$USE_BUNDLER" = "true" ]; then
           runner=(bundle exec mutineer)
@@ -246,10 +262,10 @@ runs:
                  + " | \(.summary.ignored) | \(.summary.no_verdict) |"),
               (if .baseline then
                  "", ("Baseline: \(.baseline.new_survivors | length) new survivor(s)"
-                      + (if (.summary.scoped // false) then
-                           "; score-drop check skipped (diff-scoped run: \(.baseline.score_after // "N/A") scoped vs \(.baseline.score_before // "N/A") full-run baseline, not comparable)"
-                         else
+                      + (if (.baseline.score_comparable != false) then
                            "; score \(.baseline.score_before // "N/A") -> \(.baseline.score_after // "N/A")"
+                         else
+                           "; score-drop check skipped (\(.baseline.score_after // "N/A") now vs \(.baseline.score_before // "N/A") baseline: scores from a diff-scoped side are not comparable)"
                          end)
                       + (if .baseline.regressed then ": REGRESSED." else "." end))
                else empty end),
@@ -291,5 +307,9 @@ runs:
         # Expose the report path whenever THIS run wrote one — the caller's
         # `output` when set, else the auto-routed JSON report — so a later step
         # can consume the machine-readable report without scraping the log.
-        report_fresh && echo "report=$REPORT_FILE" >> "$GITHUB_OUTPUT"
+        # Absolutized: a relative `output` resolves against THIS step's
+        # working-directory, which a later step at the repo root cannot see.
+        if report_fresh; then
+          echo "report=$(cd "$(dirname "$REPORT_FILE")" && pwd)/$(basename "$REPORT_FILE")" >> "$GITHUB_OUTPUT"
+        fi
         exit $code

@@ -95,8 +95,20 @@ class BaselineTest < Minitest::Test
 
     delta = scoped_base.diff(current)
     refute delta.score_drop, "a scoped baseline's score must not gate a full run"
+    refute delta.score_comparable
     refute delta.regressed
     assert scoped_base.diff(agg(survivor("zzz"))).regressed, "new survivors still gate"
+  end
+
+  # Only the literal JSON boolean true marks a baseline scoped: a malformed
+  # value (the STRING "false") must not silently disable the score-drop gate.
+  def test_scoped_marker_requires_literal_true
+    base = Mutineer::Baseline.new(baseline_doc(%w[aaa], score: 80.0, scoped: "false"))
+    delta = base.diff(agg(Mutineer::Result.killed, survivor("aaa"))) # 50.0% vs 80.0%
+
+    assert delta.score_comparable, "a non-boolean scoped value is not scoped"
+    assert delta.score_drop
+    assert delta.regressed
   end
 
   # Acceptance 3: score drop -> regression, with the "A% -> B%" facts.
@@ -203,6 +215,9 @@ class BaselineTest < Minitest::Test
     assert doc["baseline"]["regressed"]
     assert_equal 1, doc["baseline"]["new_survivors"].size
     assert_equal "ccc", doc["baseline"]["new_survivors"].first["id"]
+    # Additive comparability marker: no score on this baseline doc, so the two
+    # scores must not be rendered as a comparison.
+    assert_equal false, doc["baseline"]["score_comparable"]
   end
 
   # Schema-safety: with no baseline, the doc has no `baseline` key (additive only).

@@ -106,6 +106,7 @@ The delta versus the prior `--format json` report, matched by stable `id`:
 | `score_before` | float \| null | Baseline score. |
 | `score_after` | float \| null | This run's score. |
 | `score_dropped` | bool | True if `score_after < score_before - epsilon`. |
+| `score_comparable` | bool | True when the two scores share a denominator (neither side was diff-scoped, both non-null). False means the score-drop check was skipped — do not render the scores as a comparison. Additive key. |
 | `new_survivors[]` | array | Survivors present now but absent in the baseline: `{ subject, file, line, operator, token, id }`. |
 | `fixed_survivors[]` | array | Baseline survivors no longer present: `{ subject, file, line, operator, id }`. |
 

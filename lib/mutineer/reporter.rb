@@ -315,6 +315,10 @@ module Mutineer
         score_before: delta.score_before,
         score_after: delta.score_after,
         score_dropped: delta.score_drop,
+        # Additive: false when the score-drop check was skipped (a nil score or
+        # a diff-scoped side), so a consumer knows not to render the two scores
+        # as a comparison.
+        score_comparable: delta.score_comparable,
         new_survivors: delta.new_survivors.map { |r| ignored_json(r) }
                             .sort_by { |h| [h[:file], h[:line], h[:operator]] },
         fixed_survivors: delta.fixed_survivors.map do |h|

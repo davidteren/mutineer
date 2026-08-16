@@ -42,9 +42,13 @@ All notable changes to this project are documented here. The format is based on
   92% whole-repo baseline with zero new survivors). With `--since`, the
   score-drop half of the baseline gate is skipped; new-survivor detection by
   stable id (and the reported before/after scores) are unchanged. The JSON
-  report records the scope in a new additive `summary.scoped` key, and a
-  stored baseline whose report was scoped also skips the score-drop check in
-  later runs (the protection works in both directions).
+  report records the scope in a new additive `summary.scoped` key, a stored
+  baseline whose report was scoped also skips the score-drop check in later
+  runs (the protection works in both directions), and the `baseline` block
+  records `score_comparable` so a consumer knows when not to render the two
+  scores as a comparison. A new `--no-since` flag disables diff scoping
+  explicitly: a typed no beats a `.mutineer.yml` `since:` key, and the
+  action's `since: none` passes it through.
 
 ## [0.11.4] - 2026-07-29
 

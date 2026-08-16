@@ -19,9 +19,13 @@ module Mutineer
     #   score_drop      - current score < baseline score - epsilon. nil on
     #                     either side skips the check, and a diff-scoped run
     #                     (`scoped: true`) never sets it (see #diff).
+    #   score_comparable - the two scores share a denominator (neither side was
+    #                     diff-scoped and both are non-nil), so a consumer may
+    #                     render them side by side. False means the score-drop
+    #                     check was skipped, not that it passed.
     #   regressed       - any new survivors OR a score drop.
     Delta = Data.define(:new_survivors, :fixed_survivors,
-                        :score_before, :score_after, :score_drop, :regressed)
+                        :score_before, :score_after, :score_drop, :score_comparable, :regressed)
 
     # Load a prior --format json run. Raises ConfigError (NOT exit: a data class
     # must never kill the host) on a missing/unreadable file, unparseable JSON,
@@ -55,7 +59,9 @@ module Mutineer
     def initialize(doc)
       @survivors = doc["survivors"] || []
       @score = doc.dig("summary", "score")
-      @scoped = doc.dig("summary", "scoped") ? true : false
+      # Strict literal true only: a malformed value (say the STRING "false" in a
+      # hand-edited baseline) must not silently disable the score-drop gate.
+      @scoped = doc.dig("summary", "scoped") == true
     end
 
     # Diff a current AggregateResult against this baseline by stable survivor id.
@@ -87,12 +93,12 @@ module Mutineer
       # survivor check. Same when EITHER side is diff-scoped (the current run
       # via `scoped:`, or the stored baseline via its `summary.scoped` marker):
       # the denominators differ, so the scores are not comparable.
-      score_drop = !scoped && !@scoped && !@score.nil? && !current_score.nil? &&
-                   current_score < @score - epsilon
+      comparable = !scoped && !@scoped && !@score.nil? && !current_score.nil?
+      score_drop = comparable && current_score < @score - epsilon
 
       Delta.new(new_survivors: new_survivors, fixed_survivors: fixed,
                 score_before: @score, score_after: current_score,
-                score_drop: score_drop,
+                score_drop: score_drop, score_comparable: comparable,
                 regressed: !new_survivors.empty? || score_drop)
     end
   end

@@ -51,6 +51,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
 | `--framework NAME` | `minitest` (default) or `rspec`; auto-detected as rspec when most `--test` files end in `_spec.rb` |
 | `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`) — ideal for PR CI |
+| `--no-since` | Disable diff scoping; a typed no beats a `.mutineer.yml` `since:` key |
 | `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (score drop is skipped under `--since`, whose score covers a different denominator; see [CI](#ci-gating)) |
 | `--baseline-epsilon FLOAT` | Score-drop tolerance for `--baseline` (default: 0) |
 | `--jobs N` | Parallel worker count (default: processor count; `1` under `--rails`) |

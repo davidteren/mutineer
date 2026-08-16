@@ -134,6 +134,16 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  # --no-since marks :since explicit with a nil value, so a .mutineer.yml
+  # `since:` key must NOT refill it (a typed no beats the file).
+  def test_no_since_beats_file_since
+    with_config("since: origin/main\n") do |path|
+      capture_io { @hash = Config.from_file(path) }
+      assert_nil Config.resolve({ since: nil }, @hash, Set.new(%i[since])).since
+      assert_equal "origin/main", Config.resolve({}, @hash, Set.new).since, "without the flag the file still wins"
+    end
+  end
+
   # --- framework: explicit value, config file, and auto-detect ---
 
   def test_from_file_accepts_framework
