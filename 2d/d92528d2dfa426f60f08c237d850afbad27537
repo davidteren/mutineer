@@ -1,0 +1,49 @@
+test/runner_daemon_test.rb
+  s_41a200d2c6c311::t_d39b2feb3db287 57-58
+test/progress_test.rb
+  s_41a200d2c6c311::t_0ad2771f08eb22 41-56
+docs/agentic-coding.md
+  s_41a200d2c6c311::t_2409af9f0dabfb 36-38
+test/baseline_test.rb
+  s_41a200d2c6c311::t_16415f5ef386aa 72-89
+action.yml
+  s_41a200d2c6c311::t_5ad68a839d966b 105-108
+  s_41a200d2c6c311::t_3fc37ac8ad17d3 180-183
+  s_41a200d2c6c311::t_91a84caa9b7236 152-159,162
+  s_41a200d2c6c311::t_c9a80951537dd4 225-226,228,243-244,253-261,264-266,272-275
+README.md
+  s_41a200d2c6c311::t_6eba4be15521a9 54
+  s_41a200d2c6c311::t_3ae3b01ef1d095 250-252
+test/runner_daemon_parallel_test.rb
+  s_41a200d2c6c311::t_6eea7324c8543c 35-39,42-43
+lib/mutineer/cli.rb
+  s_41a200d2c6c311::t_94121cad2b2240 468-474
+lib/mutineer/worker_pool.rb
+  s_41a200d2c6c311::t_b0b24139d70361 33-35
+lib/mutineer/progress.rb
+  s_41a200d2c6c311::t_ddb6ab700e7534 39-43
+CHANGELOG.md
+  s_41a200d2c6c311::t_4535c20e860ee8 9,12-29,32-38
+lib/mutineer/baseline.rb
+  s_41a200d2c6c311::t_fc7b58cdb635e4 61-67,70,72
+  s_41a200d2c6c311::t_ea792cba8268cd 83-85
+  s_41a200d2c6c311::t_f68681eeeddc79 20-21
+test/runner_external_test.rb
+  s_41a200d2c6c311::t_e18c9bbb739079 39-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "2dd92528d2dfa426f60f08c237d850afbad27537",
+  "prompts": {},
+  "sessions": {
+    "s_41a200d2c6c311": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72eb7a6f-ce65-4793-8c30-23ed6dcea2ff",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
