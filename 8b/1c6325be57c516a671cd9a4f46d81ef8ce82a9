@@ -1,0 +1,31 @@
+test/runner_daemon_parallel_test.rb
+  s_41a200d2c6c311::t_9da9622d824be3 35-36
+README.md
+  s_41a200d2c6c311::t_0ef6af11bda651 245-257
+action.yml
+  s_41a200d2c6c311::t_7df3db7e0beace 148
+  s_41a200d2c6c311::t_f36f7d57ce9f8a 228-231,241-246,254
+  s_41a200d2c6c311::t_66ea74fba206fc 266,274,277-280
+  s_41a200d2c6c311::t_d8b11769065608 181-185
+  s_41a200d2c6c311::t_eb674478e09463 166
+CHANGELOG.md
+  s_41a200d2c6c311::t_e9468edf93559e 9-24,31-33
+docs/agentic-coding.md
+  s_41a200d2c6c311::t_adfb2d32adc46e 101-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "8b1c6325be57c516a671cd9a4f46d81ef8ce82a9",
+  "prompts": {},
+  "sessions": {
+    "s_41a200d2c6c311": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72eb7a6f-ce65-4793-8c30-23ed6dcea2ff",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
