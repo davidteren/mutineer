@@ -1,0 +1,30 @@
+CHANGELOG.md
+  s_41a200d2c6c311::t_051814cc1e1713 33-37
+action.yml
+  s_41a200d2c6c311::t_a5439a7ed95257 173-188,192
+  s_41a200d2c6c311::t_f9be15ffc0218a 228-229,232-233
+  s_41a200d2c6c311::t_db8a7b47a32574 332-335,337,339
+  s_41a200d2c6c311::t_9034e4678e6c0b 25-31
+README.md
+  s_41a200d2c6c311::t_55fbac5e9ef86d 247-250
+test/config_test.rb
+  s_41a200d2c6c311::t_5cb33eb38b842f 147-160
+lib/mutineer/config.rb
+  s_41a200d2c6c311::t_4c0d59339fd940 185-189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "25e4fc55099b1115c900d7cdd700660ebd3925fb",
+  "prompts": {},
+  "sessions": {
+    "s_41a200d2c6c311": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72eb7a6f-ce65-4793-8c30-23ed6dcea2ff",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
