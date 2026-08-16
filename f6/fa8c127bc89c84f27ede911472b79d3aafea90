@@ -1,0 +1,26 @@
+lib/mutineer/changed_lines.rb
+  s_41a200d2c6c311::t_573e3e214a495b 60-63,67,72-77
+action.yml
+  s_41a200d2c6c311::t_1300d2bdb3f7f5 269,271
+  s_41a200d2c6c311::t_3ba6122380a061 317-323
+  s_41a200d2c6c311::t_4c03961987fcbe 168-175,177,179
+  s_41a200d2c6c311::t_63a7bebc086056 297-298
+lib/mutineer/reporter.rb
+  s_41a200d2c6c311::t_2514e8cb1569f5 593-595
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "f6fa8c127bc89c84f27ede911472b79d3aafea90",
+  "prompts": {},
+  "sessions": {
+    "s_41a200d2c6c311": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72eb7a6f-ce65-4793-8c30-23ed6dcea2ff",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
