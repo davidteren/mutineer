@@ -165,15 +165,18 @@ runs:
           SINCE=""
           NO_SINCE="1"
         elif [ -z "$SINCE" ] && [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -n "$GITHUB_BASE_REF" ]; then
-          # Fetch first (a force-updating refspec), so a stale origin/<base>
-          # left in a reused self-hosted workspace is refreshed rather than
-          # trusted; fall back to an existing ref only when the fetch fails.
-          if git fetch --no-tags --depth=1 origin "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF" >/dev/null 2>&1 \
-             || git rev-parse --verify -q "origin/$GITHUB_BASE_REF^{commit}" >/dev/null 2>&1; then
+          # Percent-escape the branch name for workflow-command messages: a
+          # valid refname may contain %XX sequences the runner would decode
+          # into extra commands.
+          SAFE_BASE="${GITHUB_BASE_REF//%/%25}"
+          # Fetch with a force-updating refspec — the ONLY acceptance path, so
+          # a stale origin/<base> left in a reused self-hosted workspace is
+          # refreshed, never trusted as-is.
+          if git fetch --no-tags --depth=1 origin "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF" >/dev/null 2>&1; then
             SINCE="origin/$GITHUB_BASE_REF"
-            echo "::notice::mutineer: scoping to lines changed since origin/$GITHUB_BASE_REF (pass 'since: none' for a full scan)."
+            echo "::notice::mutineer: scoping to lines changed since origin/$SAFE_BASE (pass 'since: none' for a full scan)."
           else
-            echo "::warning::mutineer: could not resolve origin/$GITHUB_BASE_REF; running a full scan (use fetch-depth: 0 or pass 'since'). A full scan scores every mutant, not only the PR's changed lines."
+            echo "::warning::mutineer: could not fetch origin/$SAFE_BASE; running without an action-provided --since (a .mutineer.yml 'since:' key may still scope the run). A full scan scores every mutant, not only the PR's changed lines."
           fi
         fi
 
@@ -263,9 +266,9 @@ runs:
               (if .baseline then
                  "", ("Baseline: \(.baseline.new_survivors | length) new survivor(s)"
                       + (if (.baseline.score_comparable != false) then
-                           "; score \(.baseline.score_before // "N/A") -> \(.baseline.score_after // "N/A")"
+                           "; score \(.baseline.score_before // "N/A" | oneline) -> \(.baseline.score_after // "N/A" | oneline)"
                          else
-                           "; score-drop check skipped (\(.baseline.score_after // "N/A") now vs \(.baseline.score_before // "N/A") baseline: scores from a diff-scoped side are not comparable)"
+                           "; score-drop check skipped (\(.baseline.score_after // "N/A" | oneline) now vs \(.baseline.score_before // "N/A" | oneline) baseline: scores from a diff-scoped side are not comparable)"
                          end)
                       + (if .baseline.regressed then ": REGRESSED." else "." end))
                else empty end),
@@ -291,7 +294,8 @@ runs:
             def msg: tostring | gsub("%"; "%25") | gsub("[\r\n]"; " ");
             def prop: msg | gsub(":"; "%3A") | gsub(","; "%2C");
             .survivors[:50][]
-            | (if $wd == "" or $wd == "." then .file else $wd + "/" + .file end) as $f
+            | (if (.file | startswith("/")) or $wd == "" or $wd == "."
+               then .file else $wd + "/" + .file end) as $f
             | "::\($lvl) file=" + ($f | prop) + ",line=\(.line),title=Surviving mutant::"
               + (.operator | msg) + ": `" + (.token | msg)
               + "` survived: no test caught this change (id " + (.id | msg) + ")"
@@ -310,6 +314,12 @@ runs:
         # Absolutized: a relative `output` resolves against THIS step's
         # working-directory, which a later step at the repo root cannot see.
         if report_fresh; then
-          echo "report=$(cd "$(dirname "$REPORT_FILE")" && pwd)/$(basename "$REPORT_FILE")" >> "$GITHUB_OUTPUT"
+          # Heredoc form: safe even if the caller-supplied path contains a
+          # newline (a plain KEY=VALUE line would let it inject extra outputs).
+          {
+            echo "report<<MUTINEER_REPORT_EOF"
+            echo "$(cd "$(dirname "$REPORT_FILE")" && pwd)/$(basename "$REPORT_FILE")"
+            echo "MUTINEER_REPORT_EOF"
+          } >> "$GITHUB_OUTPUT"
         fi
         exit $code

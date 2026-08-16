@@ -590,6 +590,9 @@ module Mutineer
         out.puts "  + #{r.subject.qualified_name} (#{file}:#{line}) #{r.mutation.operator}"
       end
       out.puts "score dropped #{delta.score_before}% -> #{delta.score_after}%" if delta.score_drop
+      # An OK verdict must not imply a check that never ran: say when the score
+      # comparison was skipped (a diff-scoped side or a nil score).
+      out.puts "score-drop check skipped (scores not comparable)" unless delta.score_comparable
       out.puts(delta.regressed ? "REGRESSION vs baseline" : "OK: no regression vs baseline")
     end
 
