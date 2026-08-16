@@ -1,0 +1,25 @@
+lib/mutineer/baseline.rb
+  s_41a200d2c6c311::t_817194c4cc0895 43-50
+CHANGELOG.md
+  s_41a200d2c6c311::t_be72c29d9e938d 47-54
+docs/json-schema.md
+  s_41a200d2c6c311::t_6e5e08e09699c2 51
+test/baseline_test.rb
+  s_41a200d2c6c311::t_ce5d77fc94ebdf 178-189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "b46b9bd095a04b74de8dd50d249f39baf9b317ad",
+  "prompts": {},
+  "sessions": {
+    "s_41a200d2c6c311": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72eb7a6f-ce65-4793-8c30-23ed6dcea2ff",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
