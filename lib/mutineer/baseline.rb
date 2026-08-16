@@ -40,6 +40,14 @@ module Mutineer
       unless doc.is_a?(Hash) && doc["schema_version"] && doc["survivors"].is_a?(Array)
         raise ConfigError, "not a Mutineer JSON report: #{path}"
       end
+      # A diff-scoped report covers only that diff's mutants: used as a
+      # baseline, every survivor outside the original diff would read as a NEW
+      # regression, and its score shares no denominator with any other run.
+      # Refuse loudly (exit 2 via the CLI) rather than gate unreliably.
+      if doc.dig("summary", "scoped") == true
+        raise ConfigError, "#{path} was written by a --since run and covers only that diff's " \
+                           "mutants; regenerate the baseline from a full run (or --no-since)"
+      end
 
       new(doc)
     rescue JSON::ParserError => e

@@ -175,6 +175,18 @@ class BaselineTest < Minitest::Test
     end
   end
 
+  # A scoped report is refused as a baseline: outside its diff every survivor
+  # would read as NEW, so gating against it manufactures false regressions.
+  def test_load_refuses_a_scoped_report_as_baseline
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "scoped.json")
+      File.write(path, JSON.generate(baseline_doc(%w[aaa], score: 90.0, scoped: true)))
+      err = assert_raises(Mutineer::ConfigError) { Mutineer::Baseline.load(path) }
+      assert_match(/--since run/, err.message)
+      assert_match(/full run/, err.message)
+    end
+  end
+
   # --- rendering: the delta facts reach human stdout + the additive json block ---
 
   def render(results, delta, format:)
