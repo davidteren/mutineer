@@ -1,0 +1,53 @@
+lib/mutineer/runner.rb
+  s_41a200d2c6c311::t_e2182a4acc571e 211,217
+  s_41a200d2c6c311::t_aeaa4ac15a6e0d 125-127
+  s_41a200d2c6c311::t_12a74e4bff0327 13
+lib/mutineer/worker_pool.rb
+  s_41a200d2c6c311::t_251f6c39880e23 31-33,37
+  s_41a200d2c6c311::t_521e54a18a59d7 46
+README.md
+  s_41a200d2c6c311::t_ae6ee47d3d1447 245-251
+  s_41a200d2c6c311::t_83d9ee51350afc 252
+lib/mutineer.rb
+  s_41a200d2c6c311::t_60a408157bb409 30
+CHANGELOG.md
+  s_41a200d2c6c311::t_f61243f1086fd8 9-27
+lib/mutineer/daemon_backend.rb
+  s_41a200d2c6c311::t_236e377c96021b 7
+  s_41a200d2c6c311::t_bff78cd7b4928b 141,146
+  s_41a200d2c6c311::t_31afafaa6c49fc 165-167
+  s_41a200d2c6c311::t_ec8113ef0fbb2c 196
+test/progress_test.rb
+  s_41a200d2c6c311::t_3a62403feb14ca 1-43
+test/worker_pool_test.rb
+  s_41a200d2c6c311::t_85f118ee25a337 97-113
+docs/agentic-coding.md
+  s_41a200d2c6c311::t_ef87e0ddaed4f8 78-79
+lib/mutineer/progress.rb
+  s_41a200d2c6c311::t_50c5b6b7a5ab85 1-41
+action.yml
+  s_41a200d2c6c311::t_b8655447edae29 226
+  s_41a200d2c6c311::t_b24e8438f042fd 245
+  s_41a200d2c6c311::t_eaad337284f702 24-29
+  s_41a200d2c6c311::t_d18844a12d4e22 233
+  s_41a200d2c6c311::t_f3ee928e0445b9 145,148-175,189,204-207,210-225,227-232,234-244,246-248
+  s_41a200d2c6c311::t_199256f9a5d6b2 74-77
+  s_41a200d2c6c311::t_4aa0a722b744af 67-70
+  s_41a200d2c6c311::t_613a670c626fa9 249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "60029f919be918b2c4bd9d4e691b4fb47f676438",
+  "prompts": {},
+  "sessions": {
+    "s_41a200d2c6c311": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72eb7a6f-ce65-4793-8c30-23ed6dcea2ff",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
