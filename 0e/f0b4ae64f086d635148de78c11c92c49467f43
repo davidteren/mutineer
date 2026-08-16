@@ -1,0 +1,45 @@
+lib/mutineer/baseline.rb
+  s_41a200d2c6c311::t_aa3624fbed8352 87-90
+  s_41a200d2c6c311::t_8b97ee96717b9c 49-52,58
+test/json_reporter_test.rb
+  s_41a200d2c6c311::t_678729fab95600 42-51
+docs/json-schema.md
+  s_41a200d2c6c311::t_3d464f06d9b835 51
+action.yml
+  s_41a200d2c6c311::t_171947b7667154 222
+  s_41a200d2c6c311::t_8aa9a127cfedcf 291-294
+  s_41a200d2c6c311::t_d781a5b89478f2 249,251-252
+  s_41a200d2c6c311::t_698906ed253e28 178-181
+  s_41a200d2c6c311::t_7052a8e7c76d79 168
+  s_41a200d2c6c311::t_47dafd9b8a6aa8 233-234,237-239
+  s_41a200d2c6c311::t_4857b64bf94fe6 208-215
+  s_41a200d2c6c311::t_61231a2598df1c 230
+  s_41a200d2c6c311::t_c2bbd4af231290 284
+test/baseline_test.rb
+  s_41a200d2c6c311::t_c1966e8810987f 90-101
+  s_41a200d2c6c311::t_7eec488ef45678 36,41
+lib/mutineer/reporter.rb
+  s_41a200d2c6c311::t_cda1d1443421c1 132-133,135
+  s_41a200d2c6c311::t_7deb431cd4a1f4 154-158
+  s_41a200d2c6c311::t_e37f23a2e39c19 35-39,42
+CHANGELOG.md
+  s_41a200d2c6c311::t_6952e3a53ac408 44-47
+lib/mutineer/cli.rb
+  s_41a200d2c6c311::t_1a2e8c078d4c25 477-478
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "0ef0b4ae64f086d635148de78c11c92c49467f43",
+  "prompts": {},
+  "sessions": {
+    "s_41a200d2c6c311": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72eb7a6f-ce65-4793-8c30-23ed6dcea2ff",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
