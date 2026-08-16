@@ -165,7 +165,7 @@ runs:
             SINCE="origin/$GITHUB_BASE_REF"
             echo "::notice::mutineer: scoping to lines changed since origin/$GITHUB_BASE_REF (pass 'since: none' for a full scan)."
           else
-            echo "::warning::mutineer: could not resolve origin/$GITHUB_BASE_REF; running a full scan (use fetch-depth: 0 or pass 'since')."
+            echo "::warning::mutineer: could not resolve origin/$GITHUB_BASE_REF; running a full scan (use fetch-depth: 0 or pass 'since'). A full scan scores every mutant, not only the PR's changed lines."
           fi
         fi
 
@@ -175,14 +175,12 @@ runs:
         REPORT_FILE="$OUTPUT"
         AUTO_REPORT=""
         if [ "$FORMAT" = "json" ] && [ -z "$REPORT_FILE" ]; then
-          REPORT_FILE="${RUNNER_TEMP:-/tmp}/mutineer-report.json"
+          # Unique per invocation, so multiple mutineer steps in one job can
+          # never overwrite each other's auto-routed report (RUNNER_TEMP is
+          # cleaned up at job end).
+          REPORT_FILE="$(mktemp "${RUNNER_TEMP:-/tmp}/mutineer-report-XXXXXX")"
           AUTO_REPORT="1"
         fi
-        # Clear whatever report path this run resolved (auto temp or caller-set):
-        # a run that dies before writing must never have an earlier step's data
-        # summarized, annotated, or exposed via `report=` as its own. A successful
-        # run overwrites the file anyway, so only stale data is ever removed.
-        [ -n "$REPORT_FILE" ] && rm -f "$REPORT_FILE"
 
         args=(run)
         for s in $SOURCES; do args+=("$s"); done
@@ -207,13 +205,21 @@ runs:
           runner=(mutineer)
         fi
 
+        # Freshness stamp: the summary, annotations, and `report=` output must
+        # only ever consume a report THIS run wrote. Deleting a stale file is
+        # not an option (a caller's `output` may equal its `baseline`, and a
+        # pre-run delete would destroy the baseline before Mutineer loads it),
+        # so instead require the report to be newer than this stamp.
+        RUN_STAMP="$(mktemp "${RUNNER_TEMP:-/tmp}/mutineer-stamp-XXXXXX")"
+        report_fresh() { [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ] && [ "$REPORT_FILE" -nt "$RUN_STAMP" ]; }
+
         echo "::group::mutineer ${args[*]}"
         set +e
         "${runner[@]}" "${args[@]}"
         code=$?
         set -e
         # Keep the report visible in the log when it was auto-routed to a file.
-        if [ -n "$AUTO_REPORT" ] && [ -f "$REPORT_FILE" ]; then
+        if [ -n "$AUTO_REPORT" ] && report_fresh; then
           cat "$REPORT_FILE"
         fi
         echo "::endgroup::"
@@ -221,15 +227,16 @@ runs:
         # Step summary + per-survivor annotations from the JSON report. jq ships
         # on GitHub-hosted runners; a self-hosted runner without it skips this
         # (the run's verdict is unaffected either way).
-        if [ "$FORMAT" = "json" ] && [ -f "$REPORT_FILE" ] && command -v jq >/dev/null 2>&1; then
+        if [ "$FORMAT" = "json" ] && report_fresh && command -v jq >/dev/null 2>&1; then
           if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
             # `oneline` scrubs every interpolated report field to a single line
-            # so no field can start a new markdown line or break the table row.
+            # and neutralizes backticks so a survivor token cannot close the
+            # inline-code span and inject markdown into the summary.
             # A diff-scoped run's score covers a different denominator than a
             # full-run baseline, so the baseline line must not juxtapose the two
-            # scores as if comparable (mirrors Baseline#diff scoped:).
-            jq -r --arg code "$code" --arg since "$SINCE" '
-              def oneline: tostring | gsub("[\r\n]"; " ");
+            # scores as if comparable; the report itself says so (summary.scoped).
+            jq -r --arg code "$code" '
+              def oneline: tostring | gsub("[\r\n]"; " ") | gsub("`"; "'\''");
               ("## Mutineer " + (if $code == "0" then "passed" else "failed (exit \($code))" end)),
               "",
               "| Score | Killed | Survived | No coverage | Ignored | No verdict |",
@@ -239,10 +246,10 @@ runs:
                  + " | \(.summary.ignored) | \(.summary.no_verdict) |"),
               (if .baseline then
                  "", ("Baseline: \(.baseline.new_survivors | length) new survivor(s)"
-                      + (if $since == "" then
-                           "; score \(.baseline.score_before // "N/A") -> \(.baseline.score_after // "N/A")"
-                         else
+                      + (if (.summary.scoped // false) then
                            "; score-drop check skipped (diff-scoped run: \(.baseline.score_after // "N/A") scoped vs \(.baseline.score_before // "N/A") full-run baseline, not comparable)"
+                         else
+                           "; score \(.baseline.score_before // "N/A") -> \(.baseline.score_after // "N/A")"
                          end)
                       + (if .baseline.regressed then ": REGRESSED." else "." end))
                else empty end),
@@ -274,15 +281,15 @@ runs:
               + "` survived: no test caught this change (id " + (.id | msg) + ")"
           ' "$REPORT_FILE" \
             || echo "::warning::mutineer: could not emit survivor annotations."
-        elif [ "$FORMAT" = "json" ] && [ ! -f "$REPORT_FILE" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        elif [ "$FORMAT" = "json" ] && ! report_fresh && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
           # The run died before writing a report (e.g. a usage error): say so in
           # the summary instead of leaving the documented surface silently blank.
           echo "Mutineer did not produce a report (exit $code); see the job log." >> "$GITHUB_STEP_SUMMARY"
         fi
 
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
-        # Expose the report path whenever one exists — the caller's `output` when
-        # set, else the auto-routed JSON report — so a later step can consume the
-        # machine-readable report without scraping the log.
-        [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ] && echo "report=$REPORT_FILE" >> "$GITHUB_OUTPUT"
+        # Expose the report path whenever THIS run wrote one — the caller's
+        # `output` when set, else the auto-routed JSON report — so a later step
+        # can consume the machine-readable report without scraping the log.
+        report_fresh && echo "report=$REPORT_FILE" >> "$GITHUB_OUTPUT"
         exit $code

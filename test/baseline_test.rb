@@ -33,12 +33,12 @@ class BaselineTest < Minitest::Test
   def agg(*results) = Mutineer::AggregateResult.new(results)
 
   # A baseline doc (a prior --format json run) carrying the given survivor ids.
-  def baseline_doc(ids, score: nil)
+  def baseline_doc(ids, score: nil, scoped: nil)
     {
       # Deliberately an older schema: a baseline written by a prior version must
       # still be readable, per the "accept any 1.x" contract in docs/json-schema.md.
       "schema_version" => "1.1",
-      "summary" => { "score" => score },
+      "summary" => { "score" => score, "scoped" => scoped }.compact,
       "survivors" => ids.map do |id|
         { "id" => id, "subject" => "Pricing#total", "file" => FILE, "line" => 3,
           "operator" => "comparison" }
@@ -85,6 +85,18 @@ class BaselineTest < Minitest::Test
     assert base.diff(current).regressed, "same run unscoped still gates on the drop"
     assert base.diff(agg(Mutineer::Result.killed, survivor("zzz")), scoped: true).regressed,
            "a new survivor id regresses even when scoped"
+  end
+
+  # The reverse direction: a report that was itself diff-scoped, later used AS
+  # the baseline, must not have its scoped score compared against a full run's.
+  def test_scoped_baseline_doc_also_skips_score_drop
+    scoped_base = Mutineer::Baseline.new(baseline_doc(%w[aaa], score: 90.0, scoped: true))
+    current = agg(Mutineer::Result.killed, survivor("aaa")) # 50.0% full run
+
+    delta = scoped_base.diff(current)
+    refute delta.score_drop, "a scoped baseline's score must not gate a full run"
+    refute delta.regressed
+    assert scoped_base.diff(agg(survivor("zzz"))).regressed, "new survivors still gate"
   end
 
   # Acceptance 3: score drop -> regression, with the "A% -> B%" facts.

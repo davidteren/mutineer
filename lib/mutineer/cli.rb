@@ -474,7 +474,8 @@ module Mutineer
               end
 
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
-                      format: config.format, output: config.output, baseline: delta)
+                      format: config.format, output: config.output, baseline: delta,
+                      scoped: !config.since.nil?)
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered

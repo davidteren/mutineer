@@ -39,6 +39,16 @@ class JsonReporterTest < Minitest::Test
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
     assert doc["summary"].key?("timeout")
+    assert_equal false, doc["summary"]["scoped"], "unscoped run records scoped: false"
+  end
+
+  # A --since run's report must say so, so a consumer (or a later --baseline
+  # load) knows its score covers only the changed-line mutants.
+  def test_scoped_run_records_scoped_true
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json", scoped: true)
+    assert_equal true, JSON.parse(out.string)["summary"]["scoped"]
   end
 
   # Until this key existed, Result#details was built and rendered nowhere, so a

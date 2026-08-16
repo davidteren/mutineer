@@ -46,12 +46,16 @@ module Mutineer
 
     # Builds a baseline from a JSON document.
     #
-    # The baseline retains the survivor document and score from the JSON report.
+    # The baseline retains the survivor document, score, and scope marker from
+    # the JSON report. A report whose `summary.scoped` is true came from a
+    # `--since` run: its score covers only changed-line mutants, so later diffs
+    # must not compare a full-run score against it.
     #
     # @param doc [Hash] parsed JSON document.
     def initialize(doc)
       @survivors = doc["survivors"] || []
       @score = doc.dig("summary", "score")
+      @scoped = doc.dig("summary", "scoped") ? true : false
     end
 
     # Diff a current AggregateResult against this baseline by stable survivor id.
@@ -80,9 +84,10 @@ module Mutineer
       current_score = aggregate.mutation_score
       # nil-score discipline (mirrors Reporter#exit_code): a score absent on
       # either side cannot be compared. Skip the drop check, keep the new-
-      # survivor check. Same for a scoped run: its denominator differs from the
-      # baseline's, so the scores are not comparable either.
-      score_drop = !scoped && !@score.nil? && !current_score.nil? &&
+      # survivor check. Same when EITHER side is diff-scoped (the current run
+      # via `scoped:`, or the stored baseline via its `summary.scoped` marker):
+      # the denominators differ, so the scores are not comparable.
+      score_drop = !scoped && !@scoped && !@score.nil? && !current_score.nil? &&
                    current_score < @score - epsilon
 
       Delta.new(new_survivors: new_survivors, fixed_survivors: fixed,
