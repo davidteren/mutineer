@@ -144,6 +144,20 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  # `since: false` (or empty) normalizes to nil: a raw false would skip
+  # scoping in the runner but still mark the JSON report scoped, silently
+  # disabling the baseline score-drop gate on a full run.
+  def test_since_false_and_empty_normalize_to_nil
+    with_config("since: false\n") do |path|
+      capture_io { @hash = Config.from_file(path) }
+      assert_nil Config.resolve({}, @hash, Set.new).since
+    end
+    with_config("since: \"\"\n") do |path|
+      capture_io { @hash = Config.from_file(path) }
+      assert_nil Config.resolve({}, @hash, Set.new).since
+    end
+  end
+
   # --- framework: explicit value, config file, and auto-detect ---
 
   def test_from_file_accepts_framework

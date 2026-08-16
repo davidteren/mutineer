@@ -182,6 +182,11 @@ module Mutineer
       when "ignore"    then Array(value).map(&:to_s)
       when "baseline"  then value.to_s
       when "test_command" then value.to_s
+      when "since"
+        # false / empty normalize to nil ("no scoping"), so every consumer's
+        # nil-check (runner scoping, the report's scoped marker) agrees. A
+        # false left raw would skip scoping but still mark the report scoped.
+        value == false || value.to_s.empty? ? nil : value.to_s
       else value
       end
     end

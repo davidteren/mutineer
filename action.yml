@@ -22,12 +22,13 @@ inputs:
   since:
     description: >-
       Mutate only lines changed since this git ref (e.g. `origin/main`). On
-      pull_request events this defaults to the PR base (`origin/$GITHUB_BASE_REF`);
-      the action fetches the base tip when the checkout is shallow, and falls
-      back to a full scan with a warning when it cannot. Pass `none` to force a
-      full scan (passed through as `--no-since`, so it also overrides a `since:`
-      key in the repo's `.mutineer.yml`). An explicitly passed ref must resolve
-      in the checkout (use `fetch-depth: 0`).
+      pull_request events this defaults to the PR's exact base commit from the
+      event payload (fetched by the action when the checkout is shallow;
+      falls back to the base branch tip). When neither resolves, the action
+      warns and runs without an action-provided --since (a `since:` key in the
+      repo's `.mutineer.yml` still applies). Pass `none` to force a full scan
+      (passed through as `--no-since`, overriding `.mutineer.yml` too). An
+      explicitly passed ref must resolve in the checkout (use `fetch-depth: 0`).
     required: false
     default: ""
   threshold:
@@ -169,14 +170,26 @@ runs:
           # valid refname may contain %XX sequences the runner would decode
           # into extra commands.
           SAFE_BASE="${GITHUB_BASE_REF//%/%25}"
-          # Fetch with a force-updating refspec — the ONLY acceptance path, so
-          # a stale origin/<base> left in a reused self-hosted workspace is
-          # refreshed, never trusted as-is.
-          if git fetch --no-tags --depth=1 origin "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF" >/dev/null 2>&1; then
+          # Prefer the PR's exact base commit from the event payload: the
+          # branch tip can advance mid-job, and the checked-out merge ref was
+          # computed against THIS sha, not the moving tip. An exact sha cannot
+          # be stale, so an already-present object is trusted as-is.
+          BASE_SHA=""
+          if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "$GITHUB_EVENT_PATH" ] && command -v jq >/dev/null 2>&1; then
+            BASE_SHA="$(jq -r '.pull_request.base.sha // empty' "$GITHUB_EVENT_PATH" 2>/dev/null)"
+          fi
+          if [ -n "$BASE_SHA" ] && { git rev-parse --verify -q "$BASE_SHA^{commit}" >/dev/null 2>&1 \
+               || git fetch --no-tags --depth=1 origin "$BASE_SHA" >/dev/null 2>&1; }; then
+            SINCE="$BASE_SHA"
+            echo "::notice::mutineer: scoping to lines changed since the PR base commit $BASE_SHA (pass 'since: none' for a full scan)."
+          # Branch-tip fallback (no event payload / no jq / unfetchable sha):
+          # fetch with a force-updating refspec so a stale origin/<base> in a
+          # reused self-hosted workspace is refreshed, never trusted as-is.
+          elif git fetch --no-tags --depth=1 origin "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF" >/dev/null 2>&1; then
             SINCE="origin/$GITHUB_BASE_REF"
             echo "::notice::mutineer: scoping to lines changed since origin/$SAFE_BASE (pass 'since: none' for a full scan)."
           else
-            echo "::warning::mutineer: could not fetch origin/$SAFE_BASE; running without an action-provided --since (a .mutineer.yml 'since:' key may still scope the run). A full scan scores every mutant, not only the PR's changed lines."
+            echo "::warning::mutineer: could not fetch the PR base; running without an action-provided --since (a .mutineer.yml 'since:' key may still scope the run). A full scan scores every mutant, not only the PR's changed lines."
           fi
         fi
 
@@ -212,10 +225,12 @@ runs:
         [ -n "$EXTRA_ARGS" ]       && args+=($EXTRA_ARGS)
         # The summary, annotations, and `report=` output are driven by the
         # `format` and `output` INPUTS; a --format/--output smuggled through
-        # extra-args overrides the CLI flags behind the action's back.
+        # extra-args would override the CLI flags behind the action's back and
+        # silently break that plumbing. Explicit failure beats quiet misbehavior.
         case " $EXTRA_ARGS " in
           *" --format"* | *" --output"*)
-            echo "::warning::mutineer: extra-args contains --format/--output; use the 'format' and 'output' inputs instead, or the step summary, annotations, and report output may misbehave." ;;
+            echo "::error::mutineer: extra-args must not carry --format/--output; use the 'format' and 'output' inputs (the step summary, annotations, and report output depend on them)."
+            exit 2 ;;
         esac
 
         if [ "$USE_BUNDLER" = "true" ]; then
@@ -314,12 +329,14 @@ runs:
         # Absolutized: a relative `output` resolves against THIS step's
         # working-directory, which a later step at the repo root cannot see.
         if report_fresh; then
-          # Heredoc form: safe even if the caller-supplied path contains a
-          # newline (a plain KEY=VALUE line would let it inject extra outputs).
+          # Heredoc form with a RANDOM delimiter: safe even if the caller-
+          # supplied path contains a newline or a guessed fixed delimiter (a
+          # plain KEY=VALUE line would let it inject extra outputs).
+          EOF_MARK="MUTINEER_REPORT_$(od -An -tx8 -N8 /dev/urandom | tr -d ' \n')"
           {
-            echo "report<<MUTINEER_REPORT_EOF"
+            echo "report<<$EOF_MARK"
             echo "$(cd "$(dirname "$REPORT_FILE")" && pwd)/$(basename "$REPORT_FILE")"
-            echo "MUTINEER_REPORT_EOF"
+            echo "$EOF_MARK"
           } >> "$GITHUB_OUTPUT"
         fi
         exit $code

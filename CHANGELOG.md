@@ -30,9 +30,11 @@ All notable changes to this project are documented here. The format is based on
   changed lines, so `threshold` applies to fewer mutants; pass `since: none` to
   keep the old full-scan behavior. Workflows that already pass a non-empty `since` are
   unchanged (an explicit empty string is indistinguishable from unset and picks
-  up the new default). The action fetches the base tip itself when the checkout is
-  shallow, and falls back to a full scan with a warning when it cannot resolve
-  the base. The default deliberately does NOT fire on `pull_request_target`:
+  up the new default). The action scopes to the PR's exact base commit from the
+  event payload (immune to the base branch advancing mid-job), falling back to
+  a fresh fetch of the base branch tip; when neither can be resolved it warns
+  and runs without an action-provided `--since` (a `.mutineer.yml` `since:`
+  key, if any, still applies). The default deliberately does NOT fire on `pull_request_target`:
   checkout there defaults to the base branch, so auto-scoping would diff the
   base against itself and green the gate on an empty run.
 - **`--baseline` on a diff-scoped run gates on new survivors only**: a

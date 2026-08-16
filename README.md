@@ -244,10 +244,10 @@ This repo ships a composite action (`action.yml`) that wraps the CLI for CI:
 ```
 
 **Default change:** on `pull_request` events (not `pull_request_target`) the
-action scopes the run to the PR's changed lines (`--since origin/$GITHUB_BASE_REF`,
-fetching the base tip itself when the checkout is shallow). Pass `since: none`
-for a full scan, or an explicit `since:` ref (which needs `fetch-depth: 0` on
-checkout).
+action scopes the run to the PR's changed lines, diffing against the PR's exact
+base commit (fetched by the action itself when the checkout is shallow; falls
+back to the base branch tip). Pass `since: none` for a full scan, or an
+explicit `since:` ref (which needs `fetch-depth: 0` on checkout).
 
 With the default JSON format the action also:
 
