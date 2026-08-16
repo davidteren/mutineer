@@ -6,26 +6,6 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Changed
-- **PR runs scope themselves in the GitHub Action**: on `pull_request` events
-  the `since` input now defaults to the PR base (`origin/$GITHUB_BASE_REF`), so
-  the action grades just the diff out of the box. **Migration note for existing
-  workflows**: a PR gate that previously full-scanned now scores only the PR's
-  changed lines, so `threshold` applies to fewer mutants; pass `since: none` to
-  keep the old full-scan behavior. Workflows that already pass `since` are
-  unchanged. The action fetches the base tip itself when the checkout is
-  shallow, and falls back to a full scan with a warning when it cannot resolve
-  the base. The default deliberately does NOT fire on `pull_request_target`:
-  checkout there defaults to the base branch, so auto-scoping would diff the
-  base against itself and green the gate on an empty run.
-- **`--baseline` on a diff-scoped run gates on new survivors only**: a
-  `--since` run's score covers only the changed-line mutants, a different
-  denominator from a full-run baseline, so comparing the two scores
-  manufactured false regressions (a 3/4-mutant PR at 75% "dropped" from a
-  92% whole-repo baseline with zero new survivors). With `--since`, the
-  score-drop half of the baseline gate is skipped; new-survivor detection by
-  stable id (and the reported before/after scores) are unchanged.
-
 ### Added
 - **The Action reports where CI readers look**: with the default JSON format it
   writes a score/pass-fail table (plus the baseline delta, when `baseline` is
@@ -41,6 +21,27 @@ All notable changes to this project are documented here. The format is based on
   config resolution and the report. Stdout stays byte-exact for `--format json`
   and `--output`. `WorkerPool#run` gains an optional `on_result:` callback for
   this (called in the parent per reaped result).
+
+### Changed
+- **PR runs scope themselves in the GitHub Action**: on `pull_request` events
+  the `since` input now defaults to the PR base (`origin/$GITHUB_BASE_REF`), so
+  the action grades just the diff out of the box. **Migration note for existing
+  workflows**: a PR gate that previously full-scanned now scores only the PR's
+  changed lines, so `threshold` applies to fewer mutants; pass `since: none` to
+  keep the old full-scan behavior. Workflows that already pass a non-empty `since` are
+  unchanged (an explicit empty string is indistinguishable from unset and picks
+  up the new default). The action fetches the base tip itself when the checkout is
+  shallow, and falls back to a full scan with a warning when it cannot resolve
+  the base. The default deliberately does NOT fire on `pull_request_target`:
+  checkout there defaults to the base branch, so auto-scoping would diff the
+  base against itself and green the gate on an empty run.
+- **`--baseline` on a diff-scoped run gates on new survivors only**: a
+  `--since` run's score covers only the changed-line mutants, a different
+  denominator from a full-run baseline, so comparing the two scores
+  manufactured false regressions (a 3/4-mutant PR at 75% "dropped" from a
+  92% whole-repo baseline with zero new survivors). With `--since`, the
+  score-drop half of the baseline gate is skipped; new-survivor detection by
+  stable id (and the reported before/after scores) are unchanged.
 
 ## [0.11.4] - 2026-07-29
 

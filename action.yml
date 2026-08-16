@@ -145,7 +145,7 @@ runs:
         OUTPUT: ${{ inputs.output }}
         EXTRA_ARGS: ${{ inputs.extra-args }}
         USE_BUNDLER: ${{ inputs.use-bundler }}
-        WORKDIR: ${{ inputs.working-directory }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
       run: |
         set -o pipefail
 
@@ -163,7 +163,7 @@ runs:
           if git rev-parse --verify -q "origin/$GITHUB_BASE_REF^{commit}" >/dev/null 2>&1 \
              || git fetch --no-tags --depth=1 origin "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF" >/dev/null 2>&1; then
             SINCE="origin/$GITHUB_BASE_REF"
-            echo "mutineer: scoping to lines changed since origin/$GITHUB_BASE_REF (pass 'since: none' for a full scan)"
+            echo "::notice::mutineer: scoping to lines changed since origin/$GITHUB_BASE_REF (pass 'since: none' for a full scan)."
           else
             echo "::warning::mutineer: could not resolve origin/$GITHUB_BASE_REF; running a full scan (use fetch-depth: 0 or pass 'since')."
           fi
@@ -177,11 +177,12 @@ runs:
         if [ "$FORMAT" = "json" ] && [ -z "$REPORT_FILE" ]; then
           REPORT_FILE="${RUNNER_TEMP:-/tmp}/mutineer-report.json"
           AUTO_REPORT="1"
-          # The path is constant within a job: clear any report a previous
-          # mutineer step left, so a run that dies before writing can never
-          # have the earlier run's data summarized as its own.
-          rm -f "$REPORT_FILE"
         fi
+        # Clear whatever report path this run resolved (auto temp or caller-set):
+        # a run that dies before writing must never have an earlier step's data
+        # summarized, annotated, or exposed via `report=` as its own. A successful
+        # run overwrites the file anyway, so only stale data is ever removed.
+        [ -n "$REPORT_FILE" ] && rm -f "$REPORT_FILE"
 
         args=(run)
         for s in $SOURCES; do args+=("$s"); done
@@ -224,7 +225,10 @@ runs:
           if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
             # `oneline` scrubs every interpolated report field to a single line
             # so no field can start a new markdown line or break the table row.
-            jq -r --arg code "$code" '
+            # A diff-scoped run's score covers a different denominator than a
+            # full-run baseline, so the baseline line must not juxtapose the two
+            # scores as if comparable (mirrors Baseline#diff scoped:).
+            jq -r --arg code "$code" --arg since "$SINCE" '
               def oneline: tostring | gsub("[\r\n]"; " ");
               ("## Mutineer " + (if $code == "0" then "passed" else "failed (exit \($code))" end)),
               "",
@@ -234,8 +238,12 @@ runs:
                  + " | \(.summary.killed) | \(.summary.survived) | \(.summary.no_coverage)"
                  + " | \(.summary.ignored) | \(.summary.no_verdict) |"),
               (if .baseline then
-                 "", ("Baseline: \(.baseline.new_survivors | length) new survivor(s); score "
-                      + "\(.baseline.score_before // "N/A") -> \(.baseline.score_after // "N/A")"
+                 "", ("Baseline: \(.baseline.new_survivors | length) new survivor(s)"
+                      + (if $since == "" then
+                           "; score \(.baseline.score_before // "N/A") -> \(.baseline.score_after // "N/A")"
+                         else
+                           "; score-drop check skipped (diff-scoped run: \(.baseline.score_after // "N/A") scoped vs \(.baseline.score_before // "N/A") full-run baseline, not comparable)"
+                         end)
                       + (if .baseline.regressed then ": REGRESSED." else "." end))
                else empty end),
               (if (.survivors | length) > 0 then "", "### Surviving mutants", "" else empty end),
@@ -243,7 +251,7 @@ runs:
                  | "- `" + (.file | oneline) + ":\(.line)` " + (.operator | oneline) + ": `"
                    + (.token | oneline) + "` (id `" + (.id | oneline) + "`)"),
               (if (.survivors | length) > 20 then
-                 "", "… and \((.survivors | length) - 20) more; see the report."
+                 "", "… and \((.survivors | length) - 20) more: full list in the JSON report (the action'\''s `report` output)."
                else empty end)
             ' "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY" \
               || echo "::warning::mutineer: could not render the step summary."
@@ -255,7 +263,7 @@ runs:
           # `msg` percent-escapes and single-lines message text; `prop` also
           # escapes the , and : that delimit workflow-command properties, so a
           # pathological path cannot corrupt the file= field.
-          WD="${WORKDIR#./}"; WD="${WD%/}"
+          WD="${WORKING_DIRECTORY#./}"; WD="${WD%/}"
           jq -r --arg wd "$WD" --arg lvl "$([ "$code" = "0" ] && echo warning || echo error)" '
             def msg: tostring | gsub("%"; "%25") | gsub("[\r\n]"; " ");
             def prop: msg | gsub(":"; "%3A") | gsub(","; "%2C");
@@ -263,9 +271,13 @@ runs:
             | (if $wd == "" or $wd == "." then .file else $wd + "/" + .file end) as $f
             | "::\($lvl) file=" + ($f | prop) + ",line=\(.line),title=Surviving mutant::"
               + (.operator | msg) + ": `" + (.token | msg)
-              + "` survived: no covering test failed (id " + (.id | msg) + ")"
+              + "` survived: no test caught this change (id " + (.id | msg) + ")"
           ' "$REPORT_FILE" \
             || echo "::warning::mutineer: could not emit survivor annotations."
+        elif [ "$FORMAT" = "json" ] && [ ! -f "$REPORT_FILE" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          # The run died before writing a report (e.g. a usage error): say so in
+          # the summary instead of leaving the documented surface silently blank.
+          echo "Mutineer did not produce a report (exit $code); see the job log." >> "$GITHUB_STEP_SUMMARY"
         fi
 
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"

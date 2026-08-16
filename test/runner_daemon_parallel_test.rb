@@ -32,7 +32,8 @@ class RunnerDaemonParallelTest < Minitest::Test
   end
 
   def assert_parallel_matches_serial(test_file)
-    serial, = Mutineer::Runner.execute(config_for(test_file, 1))
+    serial = nil
+    capture_io { serial, = Mutineer::Runner.execute(config_for(test_file, 1)) } # silence progress noise
     parallel = nil
     _out, err = capture_io do
       parallel, = Mutineer::Runner.execute(config_for(test_file, 2))

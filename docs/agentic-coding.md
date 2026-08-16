@@ -98,6 +98,8 @@ For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the 
           sources: app/models/order.rb
           rails: true
           use-bundler: true
+          # since: defaults to origin/${{ github.base_ref }} on pull_request
+          # events here too; `none` = full scan.
 ```
 
 See `action.yml` for all inputs (`operators`, `framework`, `strategy`, `jobs`, `extra-args`, …) and the
