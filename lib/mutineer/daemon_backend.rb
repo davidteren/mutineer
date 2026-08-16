@@ -4,6 +4,7 @@ require_relative "parser"
 require_relative "result"
 require_relative "coverage_map"
 require_relative "daemon_client"
+require_relative "progress"
 # No require_relative "runner" on purpose: runner.rb requires this file, and the
 # reverse edge makes Ruby warn "circular require considered harmful" on every -w
 # load. Runner is loaded first on every real path; requiring this file alone leaves
@@ -137,10 +138,12 @@ module Mutineer
       client = DaemonClient.new(boot: boot_config(config, abs_tests),
                                 app_root: config.project_root).start
       results = []
+      progress = Progress.new(jobs.size)
       begin
         jobs.each_with_index do |job, i|
           r = job_result(job, i, client, 0, config, coverage_map, abs_tests, source_map)
           results << r
+          progress.tick
           break if config.fail_fast && r.survived?
         end
       ensure
@@ -159,8 +162,9 @@ module Mutineer
     # @api private
     # @return [Array<Mutineer::Result>] one result per input job, in input order.
     def self.run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map)
-      results = Array.new(jobs.size)
-      queue   = Queue.new
+      results  = Array.new(jobs.size)
+      progress = Progress.new(jobs.size)
+      queue    = Queue.new
       jobs.each_index { |i| queue << i }
 
       # Built one at a time so a refused spawn part-way (EMFILE under a high --jobs)
@@ -189,6 +193,7 @@ module Mutineer
               break
             end
             results[i] = job_result(jobs[i], i, client, worker, config, coverage_map, abs_tests, source_map)
+            progress.tick
           end
         rescue DaemonBootError
           # The daemon gave up for good. Stop feeding the other workers rather

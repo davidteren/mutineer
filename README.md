@@ -233,16 +233,22 @@ This repo ships a composite action (`action.yml`) that wraps the CLI for CI:
 
 ```yaml
 - uses: actions/checkout@v4
-  with: { fetch-depth: 0 }        # --since needs full history
 - uses: ruby/setup-ruby@v1
   with: { ruby-version: "3.4", bundler-cache: true }
 - uses: davidteren/mutineer@v0
   with:
     sources: app/
-    since: origin/${{ github.base_ref }}
     baseline: .mutineer/baseline.json
     threshold: "90"
 ```
+
+On a pull request the action scopes the run to the PR's changed lines by
+default (`--since origin/$GITHUB_BASE_REF`, fetching the base tip itself when
+the checkout is shallow). Pass `since: none` for a full scan, or an explicit
+`since:` ref (which needs `fetch-depth: 0` on checkout). With the default JSON
+format the action also writes a score summary to the job's step summary and
+annotates each surviving mutant on the PR diff (`::error file=…,line=…`), and
+the CLI prints a progress line to the log at every 10% of the run.
 
 ## For AI agents & pipelines
 

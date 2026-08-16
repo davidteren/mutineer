@@ -68,8 +68,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0          # --since needs full history
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
@@ -77,7 +75,8 @@ jobs:
       - uses: davidteren/mutineer@main
         with:
           sources: app/
-          since: origin/${{ github.base_ref }}
+          # since: defaults to origin/${{ github.base_ref }} on pull_request
+          # events (the action fetches the base tip itself); `none` = full scan.
           baseline: .mutineer/baseline.json
           threshold: "90"
           output: .mutineer/pr.json
@@ -96,7 +95,6 @@ For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the 
           sources: app/models/order.rb
           rails: true
           use-bundler: true
-          since: origin/${{ github.base_ref }}
 ```
 
 See `action.yml` for all inputs (`operators`, `framework`, `strategy`, `jobs`, `extra-args`, …) and the

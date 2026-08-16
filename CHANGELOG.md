@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **PR runs scope themselves in the GitHub Action**: on `pull_request` events
+  the `since` input now defaults to the PR base (`origin/$GITHUB_BASE_REF`), so
+  the action grades just the diff out of the box. The action fetches the base
+  tip itself when the checkout is shallow, and falls back to a full scan with a
+  warning when it cannot resolve the base; `since: none` forces a full scan.
+  Workflows that already pass `since` are unchanged.
+- **The Action reports where CI readers look**: with the default JSON format it
+  writes a score/pass-fail table (plus the baseline delta, when `baseline` is
+  set) to the job step summary, and emits one `::error file=…,line=…` annotation
+  per surviving mutant so failures land on the PR diff instead of only in a
+  collapsed log group. When `output` is unset the JSON report is routed to a
+  temp file for this and still printed to the log.
+- **Progress during the run**: every backend prints `[mutineer] N/M mutants
+  (P%)` to stderr at each 10% step, so a long run is never silent between
+  config resolution and the report. Stdout stays byte-exact for `--format json`
+  and `--output`. `WorkerPool#run` gains an optional `on_result:` callback for
+  this (called in the parent per reaped result).
+
 ## [0.11.4] - 2026-07-29
 
 ### Fixed

@@ -21,8 +21,12 @@ inputs:
     default: ""
   since:
     description: >-
-      Mutate only lines changed since this git ref (e.g. `origin/main`). Ideal
-      for PR CI — grades just the diff. Requires a non-shallow checkout.
+      Mutate only lines changed since this git ref (e.g. `origin/main`). On
+      pull_request events this defaults to the PR base (`origin/$GITHUB_BASE_REF`);
+      the action fetches the base tip when the checkout is shallow, and falls
+      back to a full scan with a warning when it cannot. Pass `none` to force a
+      full scan. An explicitly passed ref must resolve in the checkout
+      (use `fetch-depth: 0`).
     required: false
     default: ""
   threshold:
@@ -60,11 +64,17 @@ inputs:
     required: false
     default: "false"
   format:
-    description: "Report format: human or json (default: json so the report is machine-readable)."
+    description: >-
+      Report format: human or json (default: json so the report is
+      machine-readable). The json format also feeds the job step summary and the
+      per-survivor PR annotations; human/html formats skip both.
     required: false
     default: "json"
   output:
-    description: "Write the report to this file instead of stdout."
+    description: >-
+      Write the report to this file instead of stdout. When unset with the
+      default json format, the report is written to a temp file (for the step
+      summary and annotations) and still printed to the log.
     required: false
     default: ""
   extra-args:
@@ -132,8 +142,37 @@ runs:
         OUTPUT: ${{ inputs.output }}
         EXTRA_ARGS: ${{ inputs.extra-args }}
         USE_BUNDLER: ${{ inputs.use-bundler }}
+        WORKDIR: ${{ inputs.working-directory }}
       run: |
         set -o pipefail
+
+        # Default --since to the PR base when unset. GITHUB_BASE_REF is set only
+        # on pull_request events, so pushes and manual runs keep the full scan.
+        # `since: none` forces a full scan on PRs too. A shallow checkout (the
+        # actions/checkout default) lacks the base ref, so fetch just its tip;
+        # when that fails, warn and fall back to a full scan rather than exiting 2.
+        if [ "$SINCE" = "none" ]; then
+          SINCE=""
+        elif [ -z "$SINCE" ] && [ -n "$GITHUB_BASE_REF" ]; then
+          if git rev-parse --verify -q "origin/$GITHUB_BASE_REF^{commit}" >/dev/null 2>&1 \
+             || git fetch --no-tags --depth=1 origin "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF" >/dev/null 2>&1; then
+            SINCE="origin/$GITHUB_BASE_REF"
+            echo "mutineer: scoping to lines changed since origin/$GITHUB_BASE_REF (pass 'since: none' for a full scan)"
+          else
+            echo "::warning::mutineer: could not resolve origin/$GITHUB_BASE_REF; running a full scan (use fetch-depth: 0 or pass 'since')."
+          fi
+        fi
+
+        # The JSON report also feeds the step summary and the inline annotations,
+        # so route it to a temp file when the caller set no `output`; the log
+        # still shows it (cat below), so the visible behavior is unchanged.
+        REPORT_FILE="$OUTPUT"
+        AUTO_REPORT=""
+        if [ "$FORMAT" = "json" ] && [ -z "$REPORT_FILE" ]; then
+          REPORT_FILE="${RUNNER_TEMP:-/tmp}/mutineer-report.json"
+          AUTO_REPORT="1"
+        fi
+
         args=(run)
         for s in $SOURCES; do args+=("$s"); done
         for t in $TESTS; do args+=(--test "$t"); done
@@ -147,7 +186,7 @@ runs:
         [ -n "$JOBS" ]             && args+=(--jobs "$JOBS")
         [ "$RAILS" = "true" ]      && args+=(--rails)
         [ -n "$FORMAT" ]           && args+=(--format "$FORMAT")
-        [ -n "$OUTPUT" ]           && args+=(--output "$OUTPUT")
+        [ -n "$REPORT_FILE" ]      && args+=(--output "$REPORT_FILE")
         # shellcheck disable=SC2206
         [ -n "$EXTRA_ARGS" ]       && args+=($EXTRA_ARGS)
 
@@ -162,7 +201,51 @@ runs:
         "${runner[@]}" "${args[@]}"
         code=$?
         set -e
+        # Keep the report visible in the log when it was auto-routed to a file.
+        if [ -n "$AUTO_REPORT" ] && [ -f "$REPORT_FILE" ]; then
+          cat "$REPORT_FILE"
+        fi
         echo "::endgroup::"
+
+        # Step summary + per-survivor annotations from the JSON report. jq ships
+        # on GitHub-hosted runners; a self-hosted runner without it skips this
+        # (the run's verdict is unaffected either way).
+        if [ "$FORMAT" = "json" ] && [ -f "$REPORT_FILE" ] && command -v jq >/dev/null 2>&1; then
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            jq -r --arg code "$code" '
+              ("## Mutineer " + (if $code == "0" then "passed" else "failed (exit \($code))" end)),
+              "",
+              "| Score | Killed | Survived | No coverage | Ignored | No verdict |",
+              "|---|---|---|---|---|---|",
+              ("| " + (.summary.score | if . == null then "N/A" else "\(.)%" end)
+                 + " | \(.summary.killed) | \(.summary.survived) | \(.summary.no_coverage)"
+                 + " | \(.summary.ignored) | \(.summary.no_verdict) |"),
+              (if .baseline then
+                 "", ("Baseline: \(.baseline.new_survivors | length) new survivor(s); score "
+                      + "\(.baseline.score_before // "N/A") -> \(.baseline.score_after // "N/A")"
+                      + (if .baseline.regressed then ": REGRESSED." else "." end))
+               else empty end),
+              (if (.survivors | length) > 0 then "", "### Surviving mutants", "" else empty end),
+              (.survivors[:20][]
+                 | "- `\(.file):\(.line)` \(.operator): `"
+                   + (.token | tostring | gsub("[\r\n]"; " ")) + "` (id `\(.id)`)"),
+              (if (.survivors | length) > 20 then
+                 "", "… and \((.survivors | length) - 20) more; see the report."
+               else empty end)
+            ' "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY" \
+              || echo "::warning::mutineer: could not render the step summary."
+          fi
+          # Inline PR-diff annotations, capped at 50 (GitHub shows at most 10
+          # per step in the checks UI; the rest stay on the files tab).
+          jq -r --arg wd "$WORKDIR" '
+            .survivors[:50][]
+            | (if $wd == "" or $wd == "." then .file else $wd + "/" + .file end) as $f
+            | "::error file=\($f),line=\(.line),title=Surviving mutant::\(.operator): `"
+              + (.token | tostring | gsub("[\r\n]"; " "))
+              + "` survived: no covering test failed (id \(.id))"
+          ' "$REPORT_FILE" \
+            || echo "::warning::mutineer: could not emit survivor annotations."
+        fi
 
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
         [ -n "$OUTPUT" ] && echo "report=$OUTPUT" >> "$GITHUB_OUTPUT"

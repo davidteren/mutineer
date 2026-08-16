@@ -10,6 +10,7 @@ require_relative "coverage_map"
 require_relative "changed_lines"
 require_relative "mutator_registry"
 require_relative "worker_pool"
+require_relative "progress"
 require_relative "mutant_id"
 require_relative "file_swap"
 require_relative "external_backend"
@@ -121,7 +122,9 @@ module Mutineer
         begin
           framework = config.framework
           stop_when = config.fail_fast ? ->(r) { r.survived? } : nil
-          bare = WorkerPool.new(jobs_n).run(jobs, stop_when: stop_when) do |subject, mutation|
+          progress  = Progress.new(jobs.size)
+          bare = WorkerPool.new(jobs_n).run(jobs, stop_when: stop_when,
+                                                  on_result: ->(_r) { progress.tick }) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
                 subject: subject, strategy: strategy, rails: config.rails, framework: framework)
           end
@@ -205,11 +208,13 @@ module Mutineer
       timeout = [[smoke_elapsed * 3, 30].max, 300].min.ceil
 
       results = []
+      progress = Progress.new(jobs.size)
       begin
         jobs.each do |subject, mutation, id|
           r = run_external(subject, mutation, config.test_command, abs_tests,
                            timeout: timeout, verbose: config.verbose)
           results << r.with(subject: subject, mutation: mutation, id: id)
+          progress.tick
           break if config.fail_fast && r.survived? # stop at the first survivor
         end
       ensure
