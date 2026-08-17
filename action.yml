@@ -216,11 +216,21 @@ runs:
         report_ok() { [ -n "$TMP_REPORT" ] && [ -s "$TMP_REPORT" ]; }
         # Mutineer preflights ITS --output path (the temp file), so a bad
         # caller path would otherwise only surface as a cp failure after the
-        # whole run. Keep the documented up-front usage failure.
+        # whole run. Keep the documented up-front usage failure. The path is
+        # percent-escaped for the workflow-command message (a newline in it
+        # must not inject extra commands), and a directory target is rejected
+        # (cp would drop the report INSIDE it and report= would name a dir).
         if [ -n "$OUTPUT" ]; then
+          SAFE_OUT="${OUTPUT//%/%25}"
+          SAFE_OUT="${SAFE_OUT//$'\r'/%0D}"
+          SAFE_OUT="${SAFE_OUT//$'\n'/%0A}"
+          if [ -d "$OUTPUT" ]; then
+            echo "::error::mutineer: output '$SAFE_OUT' is a directory; pass a file path."
+            exit 2
+          fi
           out_dir="$(dirname "$OUTPUT")"
           if [ ! -d "$out_dir" ] || [ ! -w "$out_dir" ]; then
-            echo "::error::mutineer: cannot write output '$OUTPUT': no such directory or not writable."
+            echo "::error::mutineer: cannot write output '$SAFE_OUT': no such directory or not writable."
             exit 2
           fi
         fi
