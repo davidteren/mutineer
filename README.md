@@ -254,8 +254,11 @@ With the default JSON format the action also:
 - writes a score summary to the job's step summary;
 - annotates surviving mutants on the PR diff, up to 50 (`error` level when the
   gate failed, `warning` when it passed);
-- exposes the report path via the `report` output for later steps;
-- prints a progress line to the log at every 10% of the run.
+- exposes the report path via the `report` output for later steps (with
+  `format: human`/`html` this needs the `output` input).
+
+The CLI prints a progress line to the log at every 10% of the run, whatever
+the format.
 
 ## For AI agents & pipelines
 

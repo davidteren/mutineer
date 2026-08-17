@@ -29,6 +29,9 @@ inputs:
       repo's `.mutineer.yml` still applies). Pass `none` to force a full scan
       (passed through as `--no-since`, overriding `.mutineer.yml` too). An
       explicitly passed ref must resolve in the checkout (use `fetch-depth: 0`).
+      The default scoping and `none` need mutineer >= 1.0.0 (relevant with
+      `use-bundler: true`, where the caller's Gemfile picks the version; the
+      action enforces the floor with a clear error).
     required: false
     default: ""
   threshold:
@@ -181,12 +184,14 @@ runs:
           if [ -n "$BASE_SHA" ] && { git rev-parse --verify -q "$BASE_SHA^{commit}" >/dev/null 2>&1 \
                || git fetch --no-tags --depth=1 origin "$BASE_SHA" >/dev/null 2>&1; }; then
             SINCE="$BASE_SHA"
+            AUTO_SINCE="1"
             echo "::notice::mutineer: scoping to lines changed since the PR base commit $BASE_SHA (pass 'since: none' for a full scan)."
           # Branch-tip fallback (no event payload / no jq / unfetchable sha):
           # fetch with a force-updating refspec so a stale origin/<base> in a
           # reused self-hosted workspace is refreshed, never trusted as-is.
           elif git fetch --no-tags --depth=1 origin "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF" >/dev/null 2>&1; then
             SINCE="origin/$GITHUB_BASE_REF"
+            AUTO_SINCE="1"
             echo "::notice::mutineer: scoping to lines changed since origin/$SAFE_BASE (pass 'since: none' for a full scan)."
           else
             echo "::warning::mutineer: could not fetch the PR base; running without an action-provided --since (a .mutineer.yml 'since:' key may still scope the run). A full scan scores every mutant, not only the PR's changed lines."
@@ -230,10 +235,14 @@ runs:
         # Word-wise (same word splitting as the args+= expansion above): exact
         # flag matches only, across any whitespace, so an unrelated flag that
         # merely contains the substring is not rejected.
+        # OptionParser completes unambiguous abbreviations (--out reaches
+        # --output), so match every abbreviation down to the ambiguous stems
+        # (--f/--o themselves would exit 2 as ambiguous in mutineer anyway).
+        # --only, --operators, --fail-fast, and --framework stay usable.
         for extra_arg in $EXTRA_ARGS; do
-          case "$extra_arg" in
-            --format | --format=* | --output | --output=*)
-              echo "::error::mutineer: extra-args must not carry --format/--output; use the 'format' and 'output' inputs (the step summary, annotations, and report output depend on them)."
+          case "${extra_arg%%=*}" in
+            --f | --fo | --for | --form | --forma | --format | --o | --ou | --out | --outp | --outpu | --output)
+              echo "::error::mutineer: extra-args must not carry --format/--output (or an abbreviation); use the 'format' and 'output' inputs (the step summary, annotations, and report output depend on them)."
               exit 2 ;;
           esac
         done
@@ -242,6 +251,19 @@ runs:
           runner=(bundle exec mutineer)
         else
           runner=(mutineer)
+        fi
+
+        # The action's since plumbing (--no-since; scoped-vs-baseline
+        # semantics) needs mutineer >= 1.0.0. With use-bundler the caller's
+        # Gemfile picks the version, so assert the floor whenever this run
+        # relies on action-supplied scoping — a 0.x gem would either reject
+        # --no-since or silently compare cross-denominator baseline scores.
+        if [ -n "$NO_SINCE" ] || [ -n "${AUTO_SINCE:-}" ]; then
+          gem_ver="$("${runner[@]}" --version 2>/dev/null || echo 0)"
+          if [ "$(printf '%s\n' "1.0.0" "$gem_ver" | sort -V | head -1)" != "1.0.0" ]; then
+            echo "::error::mutineer: resolved mutineer $gem_ver, but the action's PR scoping (auto since / since: none) needs >= 1.0.0; upgrade the Gemfile pin, or pass an explicit 'since:' ref."
+            exit 2
+          fi
         fi
 
         # Freshness stamp: the summary, annotations, and `report=` output must
@@ -254,7 +276,10 @@ runs:
         # second mtimes, a fast run's report can land in the SAME second as the
         # stamp, and `-nt` would hide a real report. Same-second ties count as
         # fresh; a genuinely stale file from an earlier step is seconds older.
-        report_fresh() { [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ] && [ ! "$REPORT_FILE" -ot "$RUN_STAMP" ]; }
+        # `-s` (non-empty), not `-f`: the auto path is mktemp'd EMPTY moments
+        # before the stamp, and on whole-second-mtime systems that placeholder
+        # would tie with the stamp and read as fresh. No real report is 0 bytes.
+        report_fresh() { [ -n "$REPORT_FILE" ] && [ -s "$REPORT_FILE" ] && [ ! "$REPORT_FILE" -ot "$RUN_STAMP" ]; }
 
         echo "::group::mutineer ${args[*]}"
         set +e
@@ -280,7 +305,8 @@ runs:
             # scores as if comparable; the report itself says so (summary.scoped).
             jq -r --arg code "$code" '
               def oneline: tostring | gsub("[\r\n]"; " ") | gsub("`"; "'\''");
-              ("## Mutineer " + (if $code == "0" then "passed" else "failed (exit \($code))" end)),
+              ("## Mutineer " + (if $code == "0" then "passed" else "failed (exit \($code))" end)
+                 + (if (.summary.scoped // false) then " (diff-scoped run: changed lines only)" else "" end)),
               "",
               "| Score | Killed | Survived | No coverage | Ignored | No verdict |",
               "|---|---|---|---|---|---|",
@@ -292,9 +318,12 @@ runs:
                       + (if (.baseline.score_comparable != false) then
                            "; score \(.baseline.score_before // "N/A" | oneline) -> \(.baseline.score_after // "N/A" | oneline)"
                          else
-                           "; score-drop check skipped (\(.baseline.score_after // "N/A" | oneline) now vs \(.baseline.score_before // "N/A" | oneline) baseline: scores from a diff-scoped side are not comparable)"
+                           "; score-drop check skipped (\(.baseline.score_after // "N/A" | oneline) now vs \(.baseline.score_before // "N/A" | oneline) baseline: the two scores do not share a comparable denominator)"
                          end)
                       + (if .baseline.regressed then ": REGRESSED." else "." end))
+               else empty end),
+              (if ((.summary.scoped // false) and .summary.total == 0) then
+                 "", "No mutants were in scope for this diff (docs- or test-only changes), so the gate is vacuous for this PR; a full scan (e.g. the baseline refresh on main) is the backstop."
                else empty end),
               (if (.survivors | length) > 0 then "", "### Surviving mutants", "" else empty end),
               (.survivors[:20][]
@@ -333,7 +362,7 @@ runs:
           ' "$REPORT_FILE" \
             || echo "::warning::mutineer: could not emit survivor annotations."
         elif [ "$FORMAT" = "json" ] && report_fresh; then
-          # A successful run must not lose its documented surfaces silently:
+          # A completed report must not lose its documented surfaces silently:
           # this branch only reaches when jq is absent (self-hosted runner).
           echo "::notice::mutineer: jq not found on this runner; skipping the step summary and survivor annotations (the JSON report and exit code are unaffected)."
         elif [ "$FORMAT" = "json" ] && ! report_fresh && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then

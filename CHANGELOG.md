@@ -17,7 +17,8 @@ Changed).
 - **The Action reports where CI readers look**: with the default JSON format it
   writes a score/pass-fail table (plus the baseline delta, when `baseline` is
   set) to the job step summary, and emits one `file=…,line=…` annotation per
-  surviving mutant so results land on the PR diff instead of only in a
+  surviving mutant (up to 50; the summary lists the first 20, the full set
+  stays in the JSON report) so results land on the PR diff instead of only in a
   collapsed log group — `error` level when the gate failed, `warning` when it
   passed. When `output` is unset the JSON report is routed to a temp file and
   still printed to the log, and the `report` output now exposes the report
@@ -37,13 +38,19 @@ Changed).
   so `threshold` applies to fewer mutants. Stay on `@v0` to keep the old
   default, or pass `since: none` on `@v1` for full scans. Workflows that
   already pass a non-empty `since` are unchanged (an explicit empty string is
-  indistinguishable from unset and picks up the new default). The action scopes to the PR's exact base commit from the
-  event payload (immune to the base branch advancing mid-job), falling back to
-  a fresh fetch of the base branch tip; when neither can be resolved it warns
-  and runs without an action-provided `--since` (a `.mutineer.yml` `since:`
-  key, if any, still applies). The default deliberately does NOT fire on `pull_request_target`:
+  indistinguishable from unset and picks up the new default). A PR with no
+  changed source lines (docs- or test-only) scores zero mutants and passes the
+  scoped gate vacuously; keep a full-scan baseline refresh on main as the
+  backstop. With `use-bundler: true` the caller's Gemfile picks the gem, and
+  the new default needs mutineer >= 1.0.0 (the action enforces the floor with
+  a clear error). The action scopes to the PR's exact base commit from the
+  event payload (immune to the
+  base branch advancing mid-job), falling back to a fresh fetch of the base
+  branch tip; when neither can be resolved it warns and runs without an
+  action-provided `--since` (a `.mutineer.yml` `since:` key, if any, still
+  applies). The default deliberately does NOT fire on `pull_request_target`:
   checkout there defaults to the base branch, so auto-scoping would diff the
-  base against itself and green the gate on an empty run.
+  base against itself and green the gate on an empty run (#86).
 - **`--baseline` on a diff-scoped run gates on new survivors only**: a
   `--since` run's score covers only the changed-line mutants, a different
   denominator from a full-run baseline, so comparing the two scores
@@ -52,12 +59,13 @@ Changed).
   score-drop half of the baseline gate is skipped; new-survivor detection by
   stable id (and the reported before/after scores) are unchanged. The JSON
   report records the scope in a new additive `summary.scoped` key
-  (`schema_version` 1.3), and the
-  `baseline` block records `score_comparable` so a consumer knows when not to
-  render the two scores as a comparison. The reverse direction is a hard
-  guard: a scoped report is refused as a baseline (exit 2 with a regenerate
-  hint), because survivors outside its diff would all read as new
-  regressions. A new `--no-since` flag disables diff scoping explicitly: a
+  (`schema_version` 1.3), and the `baseline` block records `score_comparable`
+  so a consumer knows when not to render the two scores as a comparison
+  (`fixed_survivors` is likewise empty under a scoped side: an out-of-scope
+  survivor was never re-tested, so absence does not mean fixed). The reverse
+  direction is a hard guard: a scoped report is refused as a baseline (exit 2
+  with a regenerate hint), because survivors outside its diff would all read
+  as new regressions. A new `--no-since` flag disables diff scoping explicitly: a
   typed no beats a `.mutineer.yml` `since:` key, and the action's
   `since: none` passes it through (#86).
 

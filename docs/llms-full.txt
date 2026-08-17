@@ -56,7 +56,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 |------|---------|
 | `--test FILE` | Test file covering the sources (repeatable) |
 | `--operators LIST` | Comma-separated operator names (default: the Tier-1 set) |
-| `--threshold FLOAT` | Exit 1 when the score is below FLOAT (default: 0 = off) |
+| `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
 | `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
 | `--framework NAME` | `minitest` (default) or `rspec`; auto-detected as rspec when most `--test` files end in `_spec.rb` |
 | `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`) — ideal for PR CI |
@@ -307,15 +307,20 @@ team adopt Mutineer on a legacy suite without fixing everything first):
 
 ```sh
 # On main, refresh the baseline (e.g. nightly) and commit/cache it:
-mutineer run app/ --format json --output .mutineer/baseline.json
+mutineer run app/ --no-since --format json --output .mutineer/baseline.json
 
 # On a PR:
 mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json
 ```
 
 `--baseline` exits `1` on any **new** survivor (matched by stable `id`, so it survives unrelated edits) or
-a **score drop** (`--baseline-epsilon` tolerates float jitter). Combine with `--threshold` to enforce an
-absolute floor too — the worse of the two gates wins.
+a **score drop** (`--baseline-epsilon` tolerates float jitter); under `--since` the score-drop half is
+skipped, because a diff-scoped score covers a different denominator — new-survivor detection still gates.
+Combine with `--threshold` to enforce an absolute floor too — the worse of the two gates wins.
+
+Keep the full-scan baseline refresh on main as the backstop: a PR that changes only tests or docs has no
+changed source lines, scores zero mutants, and passes the scoped gate vacuously — only the full scan
+catches a weakened suite for untouched code.
 
 ### GitHub Action
 
@@ -331,16 +336,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0          # --since needs full history
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
           bundler-cache: true
-      - uses: davidteren/mutineer@main
+      - uses: davidteren/mutineer@v1
         with:
           sources: app/
-          since: origin/${{ github.base_ref }}
+          # since: defaults to origin/${{ github.base_ref }} on pull_request
+          # events (the action fetches the base tip itself); `none` = full scan.
           baseline: .mutineer/baseline.json
           threshold: "90"
           output: .mutineer/pr.json
@@ -354,12 +358,12 @@ jobs:
 For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the app's own bundle):
 
 ```yaml
-      - uses: davidteren/mutineer@main
+      - uses: davidteren/mutineer@v1
         with:
           sources: app/models/order.rb
           rails: true
           use-bundler: true
-          since: origin/${{ github.base_ref }}
+          # since: defaults to the PR base on pull_request events; `none` = full scan.
 ```
 
 See `action.yml` for all inputs (`operators`, `framework`, `strategy`, `jobs`, `extra-args`, …) and the
@@ -497,14 +501,14 @@ The delta versus the prior `--format json` report, matched by stable `id`:
 | `score_dropped` | bool | True if `score_after < score_before - epsilon`. |
 | `score_comparable` | bool | True when the two scores share a denominator (neither side was diff-scoped, both non-null). False means the score-drop check was skipped — do not render the scores as a comparison. Additive key. |
 | `new_survivors[]` | array | Survivors present now but absent in the baseline: `{ subject, file, line, operator, token, id }`. |
-| `fixed_survivors[]` | array | Baseline survivors no longer present: `{ subject, file, line, operator, id }`. |
+| `fixed_survivors[]` | array | Baseline survivors no longer present: `{ subject, file, line, operator, id }`. Empty under a diff-scoped side: an out-of-scope survivor was never re-tested, so absence does not mean fixed. |
 
 ## Exit codes
 
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR a `--baseline` regression, OR a runtime error. |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
 | `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
 
 `--threshold` and `--baseline` are independent gates OR'd together (the worse code wins); usage errors (2)

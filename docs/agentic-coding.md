@@ -47,15 +47,20 @@ team adopt Mutineer on a legacy suite without fixing everything first):
 
 ```sh
 # On main, refresh the baseline (e.g. nightly) and commit/cache it:
-mutineer run app/ --format json --output .mutineer/baseline.json
+mutineer run app/ --no-since --format json --output .mutineer/baseline.json
 
 # On a PR:
 mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json
 ```
 
 `--baseline` exits `1` on any **new** survivor (matched by stable `id`, so it survives unrelated edits) or
-a **score drop** (`--baseline-epsilon` tolerates float jitter). Combine with `--threshold` to enforce an
-absolute floor too — the worse of the two gates wins.
+a **score drop** (`--baseline-epsilon` tolerates float jitter); under `--since` the score-drop half is
+skipped, because a diff-scoped score covers a different denominator — new-survivor detection still gates.
+Combine with `--threshold` to enforce an absolute floor too — the worse of the two gates wins.
+
+Keep the full-scan baseline refresh on main as the backstop: a PR that changes only tests or docs has no
+changed source lines, scores zero mutants, and passes the scoped gate vacuously — only the full scan
+catches a weakened suite for untouched code.
 
 ### GitHub Action
 
@@ -75,7 +80,7 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
-      - uses: davidteren/mutineer@main
+      - uses: davidteren/mutineer@v1
         with:
           sources: app/
           # since: defaults to origin/${{ github.base_ref }} on pull_request
@@ -93,7 +98,7 @@ jobs:
 For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the app's own bundle):
 
 ```yaml
-      - uses: davidteren/mutineer@main
+      - uses: davidteren/mutineer@v1
         with:
           sources: app/models/order.rb
           rails: true

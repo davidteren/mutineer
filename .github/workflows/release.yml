@@ -58,3 +58,12 @@ jobs:
           awk -v ver="$ver" '$0 ~ "^## \\["ver"\\]"{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then printf 'Release %s\n' "$GITHUB_REF_NAME" > notes.md; fi
           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+
+      # Keep the floating major tag (v1, v2, ...) on the newest release in its
+      # line, so `uses: davidteren/mutineer@v1` tracks the latest v1.x.y.
+      - name: Move floating major tag
+        run: |
+          set -euo pipefail
+          major="${GITHUB_REF_NAME%%.*}"
+          git tag -f "$major" "$GITHUB_REF_NAME"
+          git push -f origin "$major"

@@ -15,7 +15,9 @@ module Mutineer
     #   new_survivors   - current Result objects whose stable id is absent from
     #                     the baseline (the regressions to name).
     #   fixed_survivors - baseline survivor hashes absent from the current run
-    #                     (informational, never gates).
+    #                     (informational, never gates). Empty when either side
+    #                     is diff-scoped: an out-of-scope baseline survivor was
+    #                     never re-tested, so absence does not mean fixed.
     #   score_drop      - current score < baseline score - epsilon. nil on
     #                     either side skips the check, and a diff-scoped run
     #                     (`scoped: true`) never sets it (see #diff).
@@ -46,7 +48,8 @@ module Mutineer
       # Refuse loudly (exit 2 via the CLI) rather than gate unreliably.
       if doc.dig("summary", "scoped") == true
         raise ConfigError, "#{path} was written by a --since run and covers only that diff's " \
-                           "mutants; regenerate the baseline from a full run (or --no-since)"
+                           "mutants; regenerate the baseline from a full run " \
+                           "(use --no-since if .mutineer.yml sets since:)"
       end
 
       new(doc)
@@ -93,7 +96,13 @@ module Mutineer
       baseline_ids = @survivors.map { |h| h["id"] }
 
       new_survivors = current.reject { |r| baseline_ids.include?(r.id) }
-      fixed = @survivors.reject { |h| current_ids.include?(h["id"]) }
+      # Under a diff-scoped side an out-of-scope baseline survivor was never
+      # re-tested, so reporting it "fixed" would be false: empty is honest.
+      fixed = if scoped || @scoped
+                []
+              else
+                @survivors.reject { |h| current_ids.include?(h["id"]) }
+              end
 
       current_score = aggregate.mutation_score
       # nil-score discipline (mirrors Reporter#exit_code): a score absent on

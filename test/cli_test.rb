@@ -165,6 +165,38 @@ class CliTest < Minitest::Test
     end
   end
 
+  # --no-since must beat a .mutineer.yml `since:` key end to end, through the
+  # real OptionParser wiring. The counterfactual is asserted too: without the
+  # flag, the file's unresolvable ref reaches validate_since! and exits 2.
+  def test_no_since_overrides_config_file_since
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "since: origin/does-not-exist\n")
+      _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                              "--no-since", chdir: proj)
+      assert_equal 0, status.exitstatus, "--no-since must neutralize the file's since:"
+      _, err, status2 = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                 chdir: proj)
+      assert_equal 2, status2.exitstatus, "without --no-since the file's since: applies"
+      assert_match(/--since requires a git repository|unknown git ref/, err)
+    end
+  end
+
+  # --since end to end through the real CLI wiring: the emitted JSON must
+  # record summary.scoped, or a scoped report would be written unmarked and
+  # the baseline refusal could not recognize it.
+  def test_since_run_records_scoped_in_json
+    with_project do |proj|
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                              "--since", "HEAD", "--format", "json", "--output", "r.json", chdir: proj)
+      assert_equal 0, status.exitstatus
+      assert_equal true, JSON.parse(File.read(File.join(proj, "r.json")))["summary"]["scoped"]
+    end
+  end
+
   def test_json_output_round_trips_to_file
     with_project do |proj|
       _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",

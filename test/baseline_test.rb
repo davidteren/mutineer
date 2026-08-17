@@ -100,6 +100,20 @@ class BaselineTest < Minitest::Test
     assert scoped_base.diff(agg(survivor("zzz"))).regressed, "new survivors still gate"
   end
 
+  # An out-of-scope baseline survivor was never re-tested under a diff-scoped
+  # side, so it must not be reported as fixed (empty is honest, not false).
+  def test_scoped_side_reports_no_fixed_survivors
+    base = Mutineer::Baseline.new(baseline_doc(%w[aaa bbb]))
+    scoped_delta = base.diff(agg(survivor("aaa")), scoped: true)
+    assert_empty scoped_delta.fixed_survivors, "bbb was never re-tested; not fixed"
+
+    scoped_base = Mutineer::Baseline.new(baseline_doc(%w[aaa bbb], scoped: true))
+    assert_empty scoped_base.diff(agg(survivor("aaa"))).fixed_survivors
+
+    assert_equal 1, base.diff(agg(survivor("aaa"))).fixed_survivors.size,
+                 "unscoped diff still reports bbb fixed"
+  end
+
   # Only the literal JSON boolean true marks a baseline scoped: a malformed
   # value (the STRING "false") must not silently disable the score-drop gate.
   def test_scoped_marker_requires_literal_true
