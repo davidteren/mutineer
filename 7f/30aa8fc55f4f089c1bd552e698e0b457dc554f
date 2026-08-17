@@ -1,0 +1,27 @@
+test/action_harness_test.rb
+  s_41a200d2c6c311::t_99917e50d692c9 25,29-30
+docs/intent-engineering/20260816-055742-review-feat-action-ci-consumer-loop.md
+  s_41a200d2c6c311::t_010cf37d16b56d 33,52-58
+action.yml
+  s_41a200d2c6c311::t_319fbff5f135ce 204-214,216,232,278-283,290,327,354,356,360,372-377,384
+test/fixtures/action_harness.sh
+  s_41a200d2c6c311::t_99917e50d692c9 107-112
+docs/intent-engineering/20260816-050126-audit.md
+  s_41a200d2c6c311::t_010cf37d16b56d 10-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "7f30aa8fc55f4f089c1bd552e698e0b457dc554f",
+  "prompts": {},
+  "sessions": {
+    "s_41a200d2c6c311": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72eb7a6f-ce65-4793-8c30-23ed6dcea2ff",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
