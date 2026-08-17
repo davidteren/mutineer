@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-17
+
+The GitHub Action's PR default changes in this release, which is why it is a
+new major: workflows pinned to `davidteren/mutineer@v0` keep the old full-scan
+behavior; upgrading to `@v1` opts into diff-scoped PR runs (details under
+Changed).
+
 ### Added
 - **The Action reports where CI readers look**: with the default JSON format it
   writes a score/pass-fail table (plus the baseline delta, when `baseline` is
@@ -15,22 +22,22 @@ All notable changes to this project are documented here. The format is based on
   passed. When `output` is unset the JSON report is routed to a temp file and
   still printed to the log, and the `report` output now exposes the report
   path in both cases so a later step can consume the JSON without scraping
-  the log.
+  the log (#86).
 - **Progress during the run**: every backend prints `[mutineer] N/M mutants
   (P%)` to stderr at each 10% step, so a long run is never silent between
   config resolution and the report. Stdout stays byte-exact for `--format json`
   and `--output`. `WorkerPool#run` gains an optional `on_result:` callback for
-  this (called in the parent per reaped result).
+  this (called in the parent per reaped result) (#86).
 
 ### Changed
 - **PR runs scope themselves in the GitHub Action**: on `pull_request` events
-  the `since` input now defaults to the PR base (`origin/$GITHUB_BASE_REF`), so
-  the action grades just the diff out of the box. **Migration note for existing
-  workflows**: a PR gate that previously full-scanned now scores only the PR's
-  changed lines, so `threshold` applies to fewer mutants; pass `since: none` to
-  keep the old full-scan behavior. Workflows that already pass a non-empty `since` are
-  unchanged (an explicit empty string is indistinguishable from unset and picks
-  up the new default). The action scopes to the PR's exact base commit from the
+  the `since` input now defaults to the PR base, so the action grades just the
+  diff out of the box. **Migration note (the reason for the major bump)**: a
+  PR gate that previously full-scanned now scores only the PR's changed lines,
+  so `threshold` applies to fewer mutants. Stay on `@v0` to keep the old
+  default, or pass `since: none` on `@v1` for full scans. Workflows that
+  already pass a non-empty `since` are unchanged (an explicit empty string is
+  indistinguishable from unset and picks up the new default). The action scopes to the PR's exact base commit from the
   event payload (immune to the base branch advancing mid-job), falling back to
   a fresh fetch of the base branch tip; when neither can be resolved it warns
   and runs without an action-provided `--since` (a `.mutineer.yml` `since:`
@@ -51,7 +58,7 @@ All notable changes to this project are documented here. The format is based on
   hint), because survivors outside its diff would all read as new
   regressions. A new `--no-since` flag disables diff scoping explicitly: a
   typed no beats a `.mutineer.yml` `since:` key, and the action's
-  `since: none` passes it through.
+  `since: none` passes it through (#86).
 
 ## [0.11.4] - 2026-07-29
 
@@ -365,6 +372,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.0.0]: https://github.com/davidteren/mutineer/releases/tag/v1.0.0
 [0.11.4]: https://github.com/davidteren/mutineer/releases/tag/v0.11.4
 [0.11.3]: https://github.com/davidteren/mutineer/releases/tag/v0.11.3
 [0.11.2]: https://github.com/davidteren/mutineer/releases/tag/v0.11.2

@@ -236,7 +236,7 @@ This repo ships a composite action (`action.yml`) that wraps the CLI for CI:
 - uses: actions/checkout@v4
 - uses: ruby/setup-ruby@v1
   with: { ruby-version: "3.4", bundler-cache: true }
-- uses: davidteren/mutineer@v0
+- uses: davidteren/mutineer@v1
   with:
     sources: app/
     baseline: .mutineer/baseline.json

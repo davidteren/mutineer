@@ -207,13 +207,12 @@ This repo ships a composite action (`action.yml`) that wraps the CLI for CI:
 
 ```yaml
 - uses: actions/checkout@v4
-  with: { fetch-depth: 0 }        # --since needs full history
 - uses: ruby/setup-ruby@v1
   with: { ruby-version: "3.4", bundler-cache: true }
-- uses: davidteren/mutineer@v0
+- uses: davidteren/mutineer@v1
   with:
     sources: app/
-    since: origin/${{ github.base_ref }}
+    # since: defaults to the PR base on pull_request events; `none` = full scan
     baseline: .mutineer/baseline.json
     threshold: "90"
 ```
