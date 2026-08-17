@@ -30,7 +30,7 @@
 |---|------|-------|-----------|------|------|
 | 9 | `CHANGELOG.md` | New entries omit the `(#NN)` issue/PR reference recent entries carry | convention-over-configuration | convention | 75 |
 
-- **#9**: Deferred, not declined: the reference number is the PR's own, and the PR does not exist yet. Add `(#NN)` to the four Unreleased entries in the post-open pass.
+- **#9**: Resolved post-open: the PR opened as #86 and the references were added in commit `bc4ebe4` (all four entries now carry `(#86)`). Kept here because this artifact records the review as it stood at its run id.
 
 ## Observations
 
@@ -49,3 +49,10 @@
 ## Verdict
 
 **Ready with fixes** (all applied except #9, which needs the future PR number). No blocking findings remain.
+
+---
+
+*Postscript (post-open): this report and the audit it references were committed
+to `docs/intent-engineering/` in `bc4ebe4` as a deliberate audit trail for
+PR #86. The Coverage line above ("untracked docs/intent-engineering/ out of
+scope") describes the state at the review's run id, before the commit.*

@@ -201,15 +201,19 @@ runs:
         # The JSON report also feeds the step summary and the inline annotations,
         # so route it to a temp file when the caller set no `output`; the log
         # still shows it (cat below), so the visible behavior is unchanged.
-        REPORT_FILE="$OUTPUT"
-        AUTO_REPORT=""
-        if [ "$FORMAT" = "json" ] && [ -z "$REPORT_FILE" ]; then
-          # Unique per invocation, so multiple mutineer steps in one job can
-          # never overwrite each other's auto-routed report (RUNNER_TEMP is
-          # cleaned up at job end).
-          REPORT_FILE="$(mktemp "${RUNNER_TEMP:-/tmp}/mutineer-report-XXXXXX")"
-          AUTO_REPORT="1"
+        # Route every file report through a fresh per-invocation temp file and
+        # copy to the caller's `output` only after a successful write. mktemp
+        # creates the file empty and unique, so "did THIS run produce a
+        # report" is simply "is it non-empty": no mtime comparison (bash 3.2 /
+        # whole-second filesystems misjudge same-second files), no cross-step
+        # collisions, and a run that dies early can neither clobber nor
+        # impersonate the caller's existing file (`output` may even equal
+        # `baseline`). RUNNER_TEMP is cleaned up at job end.
+        TMP_REPORT=""
+        if [ "$FORMAT" = "json" ] || [ -n "$OUTPUT" ]; then
+          TMP_REPORT="$(mktemp "${RUNNER_TEMP:-/tmp}/mutineer-report-XXXXXX")"
         fi
+        report_ok() { [ -n "$TMP_REPORT" ] && [ -s "$TMP_REPORT" ]; }
 
         args=(run)
         for s in $SOURCES; do args+=("$s"); done
@@ -225,7 +229,7 @@ runs:
         [ -n "$JOBS" ]             && args+=(--jobs "$JOBS")
         [ "$RAILS" = "true" ]      && args+=(--rails)
         [ -n "$FORMAT" ]           && args+=(--format "$FORMAT")
-        [ -n "$REPORT_FILE" ]      && args+=(--output "$REPORT_FILE")
+        [ -n "$TMP_REPORT" ]       && args+=(--output "$TMP_REPORT")
         # shellcheck disable=SC2206
         [ -n "$EXTRA_ARGS" ]       && args+=($EXTRA_ARGS)
         # The summary, annotations, and `report=` output are driven by the
@@ -266,36 +270,24 @@ runs:
           fi
         fi
 
-        # Freshness stamp: the summary, annotations, and `report=` output must
-        # only ever consume a report THIS run wrote. Deleting a stale file is
-        # not an option (a caller's `output` may equal its `baseline`, and a
-        # pre-run delete would destroy the baseline before Mutineer loads it),
-        # so instead require the report to be newer than this stamp.
-        RUN_STAMP="$(mktemp "${RUNNER_TEMP:-/tmp}/mutineer-stamp-XXXXXX")"
-        # `! -ot` (not older), not `-nt`: on a filesystem or shell with whole-
-        # second mtimes, a fast run's report can land in the SAME second as the
-        # stamp, and `-nt` would hide a real report. Same-second ties count as
-        # fresh; a genuinely stale file from an earlier step is seconds older.
-        # `-s` (non-empty), not `-f`: the auto path is mktemp'd EMPTY moments
-        # before the stamp, and on whole-second-mtime systems that placeholder
-        # would tie with the stamp and read as fresh. No real report is 0 bytes.
-        report_fresh() { [ -n "$REPORT_FILE" ] && [ -s "$REPORT_FILE" ] && [ ! "$REPORT_FILE" -ot "$RUN_STAMP" ]; }
-
         echo "::group::mutineer ${args[*]}"
         set +e
         "${runner[@]}" "${args[@]}"
         code=$?
         set -e
-        # Keep the report visible in the log when it was auto-routed to a file.
-        if [ -n "$AUTO_REPORT" ] && report_fresh; then
-          cat "$REPORT_FILE"
+        # Deliver the caller's requested output file only from a written report,
+        # and keep an auto-routed report visible in the log.
+        if report_ok && [ -n "$OUTPUT" ]; then
+          cp "$TMP_REPORT" "$OUTPUT"
+        elif report_ok; then
+          cat "$TMP_REPORT"
         fi
         echo "::endgroup::"
 
         # Step summary + per-survivor annotations from the JSON report. jq ships
         # on GitHub-hosted runners; a self-hosted runner without it skips this
         # (the run's verdict is unaffected either way).
-        if [ "$FORMAT" = "json" ] && report_fresh && command -v jq >/dev/null 2>&1; then
+        if [ "$FORMAT" = "json" ] && report_ok && command -v jq >/dev/null 2>&1; then
           if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
             # `oneline` scrubs every interpolated report field to a single line
             # and neutralizes backticks so a survivor token cannot close the
@@ -332,7 +324,7 @@ runs:
               (if (.survivors | length) > 20 then
                  "", "… and \((.survivors | length) - 20) more: full list in the JSON report (the action'\''s `report` output)."
                else empty end)
-            ' "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY" \
+            ' "$TMP_REPORT" >> "$GITHUB_STEP_SUMMARY" \
               || echo "::warning::mutineer: could not render the step summary."
           fi
           # Inline PR-diff annotations, capped at 50 (GitHub shows at most 10
@@ -359,13 +351,13 @@ runs:
             | "::\($lvl) file=" + ($f | prop) + ",line=\(.line),title=Surviving mutant::"
               + (.operator | msg) + ": `" + (.token | msg)
               + "` survived: no test caught this change (id " + (.id | msg) + ")"
-          ' "$REPORT_FILE" \
+          ' "$TMP_REPORT" \
             || echo "::warning::mutineer: could not emit survivor annotations."
-        elif [ "$FORMAT" = "json" ] && report_fresh; then
+        elif [ "$FORMAT" = "json" ] && report_ok; then
           # A completed report must not lose its documented surfaces silently:
           # this branch only reaches when jq is absent (self-hosted runner).
           echo "::notice::mutineer: jq not found on this runner; skipping the step summary and survivor annotations (the JSON report and exit code are unaffected)."
-        elif [ "$FORMAT" = "json" ] && ! report_fresh && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        elif [ "$FORMAT" = "json" ] && ! report_ok && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
           # The run died before writing a report (e.g. a usage error): say so in
           # the summary instead of leaving the documented surface silently blank.
           echo "Mutineer did not produce a report (exit $code); see the job log." >> "$GITHUB_STEP_SUMMARY"
@@ -377,14 +369,19 @@ runs:
         # can consume the machine-readable report without scraping the log.
         # Absolutized: a relative `output` resolves against THIS step's
         # working-directory, which a later step at the repo root cannot see.
-        if report_fresh; then
+        if report_ok; then
+          if [ -n "$OUTPUT" ]; then
+            report_path="$(cd "$(dirname "$OUTPUT")" && pwd)/$(basename "$OUTPUT")"
+          else
+            report_path="$TMP_REPORT"
+          fi
           # Heredoc form with a RANDOM delimiter: safe even if the caller-
           # supplied path contains a newline or a guessed fixed delimiter (a
           # plain KEY=VALUE line would let it inject extra outputs).
           EOF_MARK="MUTINEER_REPORT_$(od -An -tx8 -N8 /dev/urandom | tr -d ' \n')"
           {
             echo "report<<$EOF_MARK"
-            echo "$(cd "$(dirname "$REPORT_FILE")" && pwd)/$(basename "$REPORT_FILE")"
+            echo "$report_path"
             echo "$EOF_MARK"
           } >> "$GITHUB_OUTPUT"
         fi

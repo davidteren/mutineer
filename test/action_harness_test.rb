@@ -22,10 +22,12 @@ class ActionHarnessTest < Minitest::Test
     refute_match(/FAIL:/, out, "harness reported failures:\n#{out}")
 
     { "case1" => 1, "case2" => 0, "case3" => 1, "case3b" => 1, "case4" => 1,
-      "case5" => 1, "case6" => 2, "case7" => 1, "case8" => 2, "case8b" => 2 }.each do |c, code|
+      "case5" => 1, "case6" => 2, "case7" => 1, "case8" => 2, "case8b" => 2, "case9" => 0 }.each do |c, code|
       assert_includes out, "#{c}: exit=#{code}", "#{c} exit code drifted:\n#{out}"
     end
     assert_includes out, "OK: abbreviation rejected"
+    assert_includes out, "OK: caller output delivered"
+    assert_includes out, "OK: report output names caller path"
     assert_includes out, "OK: scoped to base.sha"
     assert_includes out, "OK: stale file NOT deleted (baseline-safe)"
     assert_includes out, "OK: rejected before running"
