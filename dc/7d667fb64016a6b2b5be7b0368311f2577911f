@@ -1,0 +1,75 @@
+README.md
+  s_41a200d2c6c311::t_691c1b359eaaee 257-261
+CHANGELOG.md
+  s_41a200d2c6c311::t_32e548faba0db4 63-68
+  s_41a200d2c6c311::t_8a4dfb955a84c6 62
+  s_41a200d2c6c311::t_55d6b6120246c9 48-51
+  s_41a200d2c6c311::t_f52b5170aba84f 46-47
+  s_41a200d2c6c311::t_2c686d1d12ec97 20-21,41-45
+  s_41a200d2c6c311::t_6c8e20afd7c5af 53
+test/baseline_test.rb
+  s_41a200d2c6c311::t_06430184f28c42 103-116
+test/fixtures/action_harness.sh
+  s_41a200d2c6c311::t_3a7ab51a5e3b9b 22-23
+  s_41a200d2c6c311::t_87674da8f76ad2 103-106
+  s_41a200d2c6c311::t_278924bcaef25e 1-21,24-102
+test/action_harness_test.rb
+  s_41a200d2c6c311::t_278924bcaef25e 1-24,26-27,29-35
+  s_41a200d2c6c311::t_4dfc2ec2bb5ef5 25,28
+test/cli_test.rb
+  s_41a200d2c6c311::t_90b12ae80df204 184-199
+  s_41a200d2c6c311::t_88813261a5b50d 168-183
+docs/agentic-coding.md
+  s_41a200d2c6c311::t_90fb48902a6cd9 83,101
+  s_41a200d2c6c311::t_2c686d1d12ec97 50,57-63
+.github/workflows/release.yml
+  s_41a200d2c6c311::t_374a3baaae6788 61-69
+AGENTS.md
+  s_41a200d2c6c311::t_13d3f7d521cc63 68-70
+  s_41a200d2c6c311::t_cd5d4722272261 81-83
+docs/agentic-coding.html
+  s_41a200d2c6c311::t_2c686d1d12ec97 89,93,110,113,123,128
+docs/json-schema.md
+  s_41a200d2c6c311::t_b59689a5af8e44 111
+docs/json-schema.html
+  s_41a200d2c6c311::t_b59689a5af8e44 156
+  s_41a200d2c6c311::t_6c8e20afd7c5af 66,72,81,109,154
+docs/llms-full.txt
+  s_41a200d2c6c311::t_b59689a5af8e44 504
+  s_41a200d2c6c311::t_90fb48902a6cd9 59,343,361,511
+  s_41a200d2c6c311::t_2c686d1d12ec97 310,317-323,346-347,366
+action.yml
+  s_41a200d2c6c311::t_67d599bb23b457 308-309
+  s_41a200d2c6c311::t_3ef1c1532172df 321
+  s_41a200d2c6c311::t_329ffc9a3b47b6 325-327
+  s_41a200d2c6c311::t_2fb1c0854bb69c 365
+  s_41a200d2c6c311::t_867823bb88a104 194
+  s_41a200d2c6c311::t_f5be61028acaa7 279-282
+  s_41a200d2c6c311::t_5b53f260b4851d 256-268
+  s_41a200d2c6c311::t_0fb6bc4a60455c 238-241,243-245
+  s_41a200d2c6c311::t_7f5b5190562b66 187
+  s_41a200d2c6c311::t_109c03dcb64531 32-34
+lib/mutineer/baseline.rb
+  s_41a200d2c6c311::t_8ccab3a3d307fa 18-20
+  s_41a200d2c6c311::t_c4836273ba6624 51-52
+  s_41a200d2c6c311::t_4402c60cda4882 99-105
+test/changed_lines_test.rb
+  s_41a200d2c6c311::t_6d3a3b1fef5f33 4
+  s_41a200d2c6c311::t_751af1844a9268 14-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "dc7d667fb64016a6b2b5be7b0368311f2577911f",
+  "prompts": {},
+  "sessions": {
+    "s_41a200d2c6c311": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72eb7a6f-ce65-4793-8c30-23ed6dcea2ff",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
