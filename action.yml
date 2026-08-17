@@ -227,11 +227,16 @@ runs:
         # `format` and `output` INPUTS; a --format/--output smuggled through
         # extra-args would override the CLI flags behind the action's back and
         # silently break that plumbing. Explicit failure beats quiet misbehavior.
-        case " $EXTRA_ARGS " in
-          *" --format"* | *" --output"*)
-            echo "::error::mutineer: extra-args must not carry --format/--output; use the 'format' and 'output' inputs (the step summary, annotations, and report output depend on them)."
-            exit 2 ;;
-        esac
+        # Word-wise (same word splitting as the args+= expansion above): exact
+        # flag matches only, across any whitespace, so an unrelated flag that
+        # merely contains the substring is not rejected.
+        for extra_arg in $EXTRA_ARGS; do
+          case "$extra_arg" in
+            --format | --format=* | --output | --output=*)
+              echo "::error::mutineer: extra-args must not carry --format/--output; use the 'format' and 'output' inputs (the step summary, annotations, and report output depend on them)."
+              exit 2 ;;
+          esac
+        done
 
         if [ "$USE_BUNDLER" = "true" ]; then
           runner=(bundle exec mutineer)
@@ -245,7 +250,11 @@ runs:
         # pre-run delete would destroy the baseline before Mutineer loads it),
         # so instead require the report to be newer than this stamp.
         RUN_STAMP="$(mktemp "${RUNNER_TEMP:-/tmp}/mutineer-stamp-XXXXXX")"
-        report_fresh() { [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ] && [ "$REPORT_FILE" -nt "$RUN_STAMP" ]; }
+        # `! -ot` (not older), not `-nt`: on a filesystem or shell with whole-
+        # second mtimes, a fast run's report can land in the SAME second as the
+        # stamp, and `-nt` would hide a real report. Same-second ties count as
+        # fresh; a genuinely stale file from an earlier step is seconds older.
+        report_fresh() { [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ] && [ ! "$REPORT_FILE" -ot "$RUN_STAMP" ]; }
 
         echo "::group::mutineer ${args[*]}"
         set +e
@@ -304,7 +313,14 @@ runs:
           # `msg` percent-escapes and single-lines message text; `prop` also
           # escapes the , and : that delimit workflow-command properties, so a
           # pathological path cannot corrupt the file= field.
-          WD="${WORKING_DIRECTORY#./}"; WD="${WD%/}"
+          WD="$WORKING_DIRECTORY"
+          # Annotations need repo-relative paths: strip an absolute
+          # ${{ github.workspace }} prefix, then ./ and any trailing slash.
+          if [ -n "${GITHUB_WORKSPACE:-}" ]; then
+            [ "$WD" = "$GITHUB_WORKSPACE" ] && WD="."
+            WD="${WD#"$GITHUB_WORKSPACE"/}"
+          fi
+          WD="${WD#./}"; WD="${WD%/}"
           jq -r --arg wd "$WD" --arg lvl "$([ "$code" = "0" ] && echo warning || echo error)" '
             def msg: tostring | gsub("%"; "%25") | gsub("[\r\n]"; " ");
             def prop: msg | gsub(":"; "%3A") | gsub(","; "%2C");
@@ -316,6 +332,10 @@ runs:
               + "` survived: no test caught this change (id " + (.id | msg) + ")"
           ' "$REPORT_FILE" \
             || echo "::warning::mutineer: could not emit survivor annotations."
+        elif [ "$FORMAT" = "json" ] && report_fresh; then
+          # A successful run must not lose its documented surfaces silently:
+          # this branch only reaches when jq is absent (self-hosted runner).
+          echo "::notice::mutineer: jq not found on this runner; skipping the step summary and survivor annotations (the JSON report and exit code are unaffected)."
         elif [ "$FORMAT" = "json" ] && ! report_fresh && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
           # The run died before writing a report (e.g. a usage error): say so in
           # the summary instead of leaving the documented surface silently blank.

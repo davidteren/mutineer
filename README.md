@@ -252,8 +252,8 @@ explicit `since:` ref (which needs `fetch-depth: 0` on checkout).
 With the default JSON format the action also:
 
 - writes a score summary to the job's step summary;
-- annotates each surviving mutant on the PR diff (`error` level when the gate
-  failed, `warning` when it passed);
+- annotates surviving mutants on the PR diff, up to 50 (`error` level when the
+  gate failed, `warning` when it passed);
 - exposes the report path via the `report` output for later steps;
 - prints a progress line to the log at every 10% of the run.
 

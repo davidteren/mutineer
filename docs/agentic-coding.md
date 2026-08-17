@@ -34,7 +34,7 @@ oracle, closing the loop with a concrete stopping condition:
 4. Re-run. Stop when `summary.survived == 0` (or `summary.score >= target`).
 
 Progress lines go to **stderr**; do not merge streams (`2>&1`) when parsing JSON from
-stdout — prefer `--output FILE` and read the file, as every recipe here does.
+stdout — prefer `--output FILE` and read the file.
 
 `--since` keeps each iteration fast by mutating only the lines the agent just touched. Genuinely
 equivalent mutants (which can never be killed) should be suppressed so the loop terminates — see

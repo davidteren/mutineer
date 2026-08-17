@@ -34,7 +34,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.2", doc["schema_version"]
+    assert_equal "1.3", doc["schema_version"] # 1.3 added summary.scoped + baseline.score_comparable
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]

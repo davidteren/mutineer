@@ -223,7 +223,7 @@ class BaselineTest < Minitest::Test
     results = [Mutineer::Result.killed, survivor("ccc")]
     doc = JSON.parse(render(results, base.diff(agg(*results)), format: "json"))
 
-    assert_equal "1.2", doc["schema_version"] # the baseline block alone does not move it
+    assert_equal "1.3", doc["schema_version"] # 1.3 = the additive scoped/score_comparable keys
     assert doc["baseline"]["regressed"]
     assert_equal 1, doc["baseline"]["new_survivors"].size
     assert_equal "ccc", doc["baseline"]["new_survivors"].first["id"]

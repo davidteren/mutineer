@@ -51,7 +51,8 @@ Changed).
   92% whole-repo baseline with zero new survivors). With `--since`, the
   score-drop half of the baseline gate is skipped; new-survivor detection by
   stable id (and the reported before/after scores) are unchanged. The JSON
-  report records the scope in a new additive `summary.scoped` key, and the
+  report records the scope in a new additive `summary.scoped` key
+  (`schema_version` 1.3), and the
   `baseline` block records `score_comparable` so a consumer knows when not to
   render the two scores as a comparison. The reverse direction is a hard
   guard: a scoped report is refused as a baseline (exit 2 with a regenerate

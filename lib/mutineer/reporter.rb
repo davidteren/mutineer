@@ -141,7 +141,7 @@ module Mutineer
       score = @agg.mutation_score
 
       doc = {
-        schema_version: "1.2",
+        schema_version: "1.3",
         summary: {
           total: @agg.total, killed: killed, survived: survived,
           no_coverage: @agg.no_coverage_count,
