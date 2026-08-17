@@ -1,0 +1,32 @@
+docs/index.html
+  s_41a200d2c6c311::t_ca0e1841f47698 145
+docs/llms-full.txt
+  s_41a200d2c6c311::t_f979246a8038bc 212,215
+lib/mutineer/version.rb
+  s_41a200d2c6c311::t_5cb952ee186e4d 5
+CHANGELOG.md
+  s_41a200d2c6c311::t_3701386baf3ea7 34-40
+  s_41a200d2c6c311::t_0b92317b84ee83 61
+  s_41a200d2c6c311::t_fe0be9af4f1d09 9-15
+  s_41a200d2c6c311::t_3e6c75eafaa3fb 25
+  s_41a200d2c6c311::t_8dbacca44cc777 30
+  s_41a200d2c6c311::t_7337b2a7ef34af 375
+README.md
+  s_41a200d2c6c311::t_e1e2e7087431fc 239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "dcfd536521a4346060e28ae4384dab08a92c5c33",
+  "prompts": {},
+  "sessions": {
+    "s_41a200d2c6c311": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72eb7a6f-ce65-4793-8c30-23ed6dcea2ff",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
