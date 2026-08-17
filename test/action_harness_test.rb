@@ -39,10 +39,13 @@ class ActionHarnessTest < Minitest::Test
     sec = ->(prefix) do
       sections.find { |x| x.start_with?(prefix) } || flunk("missing section #{prefix}:\n#{out}")
     end
-    assert_includes sec.call("3b:"), "--since origin/main", "branch-tip fallback regressed"
-    refute_includes sec.call("4:"), "--since", "pull_request_target must not be scoped"
-    assert_includes sec.call("5:"), "--no-since", "since: none must pass --no-since through"
-    refute_includes sec.call("5:"), "--since origin", "since: none must not also scope"
+    # Compare against the invocation line only: the section TITLES name the
+    # flags they are about, so matching the whole section would self-trigger.
+    args_of = ->(prefix) { sec.call(prefix)[/STUB-ARGS:.*/] || "" }
+    assert_includes args_of.call("3b:"), "--since origin/main", "branch-tip fallback regressed"
+    refute_includes args_of.call("4:"), "--since", "pull_request_target must not be scoped"
+    assert_includes args_of.call("5:"), "--no-since", "since: none must pass --no-since through"
+    refute_includes args_of.call("5:"), "--since origin", "since: none must not also scope"
     assert_includes sec.call("7:"), "file=sub/lib/calc.rb", "working-directory prefix regressed"
   end
 end
