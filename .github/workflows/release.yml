@@ -6,7 +6,9 @@ name: Release
 # (OIDC — no API key, no OTP), and cuts the GitHub release from the CHANGELOG.
 on:
   push:
-    tags: ["v*"]
+    # Three-component release tags only: the workflow itself force-pushes the
+    # bare floating major tag (v1, v2, ...), which must not re-trigger it.
+    tags: ["v*.*.*"]
 
 permissions:
   contents: write   # create the GitHub release

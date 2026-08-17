@@ -31,7 +31,18 @@ class ActionHarnessTest < Minitest::Test
     assert_includes out, "OK: scoped to base.sha"
     assert_includes out, "OK: stale file NOT deleted (baseline-safe)"
     assert_includes out, "OK: rejected before running"
-    assert_includes out, "--no-since", "since: none must pass --no-since through"
     assert_includes out, "::error file=lib/we%2Cird%3Aname.rb", "property escaping regressed"
+
+    # Exit codes alone cannot discriminate the scoping scenarios (a regressed
+    # branch keeps the same code), so assert each case's decisive line.
+    sections = out.split(/^== /)
+    sec = ->(prefix) do
+      sections.find { |x| x.start_with?(prefix) } || flunk("missing section #{prefix}:\n#{out}")
+    end
+    assert_includes sec.call("3b:"), "--since origin/main", "branch-tip fallback regressed"
+    refute_includes sec.call("4:"), "--since", "pull_request_target must not be scoped"
+    assert_includes sec.call("5:"), "--no-since", "since: none must pass --no-since through"
+    refute_includes sec.call("5:"), "--since origin", "since: none must not also scope"
+    assert_includes sec.call("7:"), "file=sub/lib/calc.rb", "working-directory prefix regressed"
   end
 end

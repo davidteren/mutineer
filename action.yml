@@ -214,6 +214,16 @@ runs:
           TMP_REPORT="$(mktemp "${RUNNER_TEMP:-/tmp}/mutineer-report-XXXXXX")"
         fi
         report_ok() { [ -n "$TMP_REPORT" ] && [ -s "$TMP_REPORT" ]; }
+        # Mutineer preflights ITS --output path (the temp file), so a bad
+        # caller path would otherwise only surface as a cp failure after the
+        # whole run. Keep the documented up-front usage failure.
+        if [ -n "$OUTPUT" ]; then
+          out_dir="$(dirname "$OUTPUT")"
+          if [ ! -d "$out_dir" ] || [ ! -w "$out_dir" ]; then
+            echo "::error::mutineer: cannot write output '$OUTPUT': no such directory or not writable."
+            exit 2
+          fi
+        fi
 
         args=(run)
         for s in $SOURCES; do args+=("$s"); done
@@ -264,7 +274,9 @@ runs:
         # --no-since or silently compare cross-denominator baseline scores.
         if [ -n "$NO_SINCE" ] || [ -n "${AUTO_SINCE:-}" ]; then
           gem_ver="$("${runner[@]}" --version 2>/dev/null || echo 0)"
-          if [ "$(printf '%s\n' "1.0.0" "$gem_ver" | sort -V | head -1)" != "1.0.0" ]; then
+          # Gem::Version, not sort -V: exact gem semantics (prereleases
+          # included) and ruby is always present where this action runs.
+          if ! ruby -e 'exit(Gem::Version.correct?(ARGV[0]) && Gem::Version.new(ARGV[0]) >= Gem::Version.new("1.0.0") ? 0 : 1)' "$gem_ver" 2>/dev/null; then
             echo "::error::mutineer: resolved mutineer $gem_ver, but the action's PR scoping (auto since / since: none) needs >= 1.0.0; upgrade the Gemfile pin, or pass an explicit 'since:' ref."
             exit 2
           fi
