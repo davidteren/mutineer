@@ -1,0 +1,24 @@
+.github/workflows/release.yml
+  s_41a200d2c6c311::t_b7d1aff1b44b8e 9-11
+action.yml
+  s_41a200d2c6c311::t_c699e0bfc9b938 277-279
+  s_41a200d2c6c311::t_e76539d287c727 217-226
+test/action_harness_test.rb
+  s_41a200d2c6c311::t_58b03796ac4468 35-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "0e1879bacffc17c789a85f6f51687de60b1b2e8a",
+  "prompts": {},
+  "sessions": {
+    "s_41a200d2c6c311": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72eb7a6f-ce65-4793-8c30-23ed6dcea2ff",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
