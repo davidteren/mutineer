@@ -1,0 +1,46 @@
+docs/intent-engineering/20260816-055742-review-feat-action-ci-consumer-loop.md
+  s_41a200d2c6c311::t_5f856703a555f8 1-51
+docs/intent-engineering/20260816-050126-audit.md
+  s_41a200d2c6c311::t_7b594ff02849ee 1-168
+docs/agentic-coding.md
+  s_41a200d2c6c311::t_ab06beb1afb11f 37
+test/baseline_test.rb
+  s_41a200d2c6c311::t_e8e29a66fee3f8 226
+CHANGELOG.md
+  s_41a200d2c6c311::t_ab06beb1afb11f 54-55
+test/json_reporter_test.rb
+  s_41a200d2c6c311::t_3f5ebfa52431f3 37
+docs/json-schema.md
+  s_41a200d2c6c311::t_ab06beb1afb11f 10,23
+docs/llms-full.txt
+  s_41a200d2c6c311::t_ab06beb1afb11f 63-64,407,420,448,498
+lib/mutineer/reporter.rb
+  s_41a200d2c6c311::t_ff0bb227f8cec6 144
+README.md
+  s_41a200d2c6c311::t_4e427fb4ac27cb 255-256
+test/cli_test.rb
+  s_41a200d2c6c311::t_56c557df78063a 174,255
+test/equivalent_mutant_test.rb
+  s_41a200d2c6c311::t_56c557df78063a 109
+action.yml
+  s_41a200d2c6c311::t_0b84e491d512ae 316-323
+  s_41a200d2c6c311::t_298994a0da5102 335-338
+  s_41a200d2c6c311::t_8d6dbc27f9aee6 253-257
+  s_41a200d2c6c311::t_88beec30dc1606 230-239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "bc4ebe4b95bbe1298fd103e061d1d9e2d3574ed8",
+  "prompts": {},
+  "sessions": {
+    "s_41a200d2c6c311": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72eb7a6f-ce65-4793-8c30-23ed6dcea2ff",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
