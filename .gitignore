@@ -5,5 +5,9 @@ Gemfile.lock
 .yardoc/
 doc/
 
+# Amp orb portal manifests are generated per thread, never committed.
+# The lifecycle hooks themselves (.agents/setup, .agents/resume) ARE committed.
+.amp/portals/*
+
 # throwaway #26/#27 Phase 2 spike (not shipped)
 /spike/

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#
+# Amp orb resume for the mutineer gem — https://ampcode.com/manual/orbs
+#
+# Deliberately does nothing. There is nothing to repair when an orb wakes:
+#
+#   * no databases, dev servers, tunnels or long-lived processes exist — the
+#     Rails fixture app's SQLite file is recreated by its own test_helper
+#     (`load db/schema.rb`, force: true) at the start of every run
+#   * the orb snapshot preserves the mise-installed Ruby and both bundles
+#   * `ruby`, `gem` and `bundle` stay on PATH because .agents/setup persisted
+#     mise's shims in ~/.bash_profile, which every login shell reads
+#
+# Amp waits at most 10 seconds for this hook; it returns immediately. If this
+# project ever grows a service, declare it in .amp/services.yaml rather than
+# starting it here.
+set -euo pipefail
+
+exit 0

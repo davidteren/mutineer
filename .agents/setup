@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+#
+# Amp orb setup for the mutineer gem — https://ampcode.com/manual/orbs
+#
+# An orb is a bare Debian 12 sandbox with no Ruby, so this installs, in order:
+#
+#   1. a C toolchain            — native gem extensions need one if a gem has no
+#                                 precompiled build for this platform
+#   2. mise + Ruby 3.4          — matches the gemspec's `>= 3.4` and CI's "3.4"
+#   3. bundler                  — Ruby 3.4 ships it, but do not assume
+#   4. the gem's own bundle     — zero runtime deps; minitest/rake/yard/rspec only
+#   5. the Rails fixture bundle — test/fixtures/rails_app has its OWN isolated
+#                                 bundle (Rails must never enter the gem's), and
+#                                 `rake test:daemon` and `bin/dogfood` both need it
+#
+# Every phase checks before it installs, so a stale-snapshot rerun converges in
+# seconds without downloading anything. Output goes to
+# ~/.cache/amp/logs/setup.log; each phase prints its start offset in seconds so
+# that log shows which step is slow.
+set -euo pipefail
+
+# The Ruby series to install. Kept in sync with .github/workflows/ci.yml, which
+# pins "3.4" (latest patch) rather than an exact patch version.
+RUBY_SERIES="3.4"
+
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly RUBY_SERIES REPO_ROOT
+
+PROFILE="$HOME/.bash_profile"
+PROFILE_BEGIN="# >>> mutineer orb: mise-managed Ruby >>>"
+PROFILE_END="# <<< mutineer orb: mise-managed Ruby <<<"
+readonly PROFILE PROFILE_BEGIN PROFILE_END
+
+# Name of the phase currently running, so a failure says which one broke.
+phase="startup"
+trap 'code=$?; [ "$code" -eq 0 ] || echo "ERROR: .agents/setup failed during \"$phase\" (exit $code)" >&2' EXIT
+
+# step NAME — announce a phase and record it for the failure trap.
+step() {
+  phase="$1"
+  printf '\n==> [+%ds] %s\n' "$SECONDS" "$phase"
+}
+
+# apt-get update is only worth its ~10s once per run, and only if something is
+# actually missing; a warm snapshot skips it entirely.
+apt_updated=0
+
+# apt_install PKG... — install Debian packages non-interactively, updating the
+# package lists lazily on first use.
+apt_install() {
+  if [ "$apt_updated" -eq 0 ]; then
+    sudo apt-get update -qq
+    apt_updated=1
+  fi
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
+}
+
+# persist_hook FILE — append the mise activation block to a bash startup file
+# unless a previous run already put it there.
+persist_hook() {
+  local file="$1"
+  if grep -Fqx "$PROFILE_BEGIN" "$file" 2>/dev/null; then
+    echo "hook already in $file"
+    return
+  fi
+  cat >>"$file" <<EOF
+
+$PROFILE_BEGIN
+export PATH="\$HOME/.local/bin:\$PATH"
+if [ -z "\${MUTINEER_ORB_MISE:-}" ] && command -v mise >/dev/null 2>&1; then
+  export MUTINEER_ORB_MISE=1
+  eval "\$(mise activate bash --shims)"
+fi
+$PROFILE_END
+EOF
+  echo "appended hook to $file"
+}
+
+# install_bundle DIR LABEL — install a Gemfile's dependencies unless the already
+# installed gems still satisfy it. Both Gemfile.lock files are gitignored, so a
+# fresh orb resolves versions from scratch while a warm one exits on the cheap
+# `bundle check`.
+install_bundle() {
+  local dir="$1" label="$2"
+  if (cd -- "$dir" && bundle check >/dev/null 2>&1); then
+    echo "$label bundle already satisfied"
+  else
+    (cd -- "$dir" && bundle install --jobs 4)
+  fi
+}
+
+cd -- "$REPO_ROOT"
+
+# ---------------------------------------------------------------------------
+step "C toolchain"
+# ---------------------------------------------------------------------------
+# nokogiri (via Rails) and sqlite3 both ship precompiled linux gems, so nothing
+# should need compiling — but a compiler turns an obscure native-extension
+# failure into a non-event, and it is a one-time cost baked into the snapshot.
+if command -v cc >/dev/null 2>&1 && command -v make >/dev/null 2>&1; then
+  echo "cc and make already present"
+else
+  apt_install build-essential
+fi
+
+# ---------------------------------------------------------------------------
+step "mise"
+# ---------------------------------------------------------------------------
+# mise.run installs a single binary to ~/.local/bin/mise.
+export PATH="$HOME/.local/bin:$PATH"
+if command -v mise >/dev/null 2>&1; then
+  echo "already installed: $(mise --version)"
+else
+  curl -fsSL https://mise.run | sh
+fi
+
+# Answer mise's confirmation prompts; nothing here can be interactive.
+export MISE_YES=1
+
+# Put mise's shims on PATH for the rest of this script. Shims (rather than
+# `mise activate`'s dynamic PATH rewriting) are what make ruby/gem/bundle
+# resolvable from every context an orb spawns: non-interactive login shells,
+# supervised services, and the subprocesses Mutineer forks per mutant.
+eval "$(mise activate bash --shims)"
+
+# ---------------------------------------------------------------------------
+step "Ruby $RUBY_SERIES"
+# ---------------------------------------------------------------------------
+current_ruby="$(ruby -e 'print RUBY_VERSION' 2>/dev/null || true)"
+case "$current_ruby" in
+  "$RUBY_SERIES".*)
+    echo "ruby $current_ruby already installed"
+    ;;
+  *)
+    # mise downloads a precompiled Ruby (seconds) when one exists for the
+    # platform and otherwise falls back to a ruby-build source compile
+    # (3-8 minutes). ruby.compile=false turns that silent fallback into an
+    # explicit error so the slow path below is a deliberate, logged decision
+    # and only then pulls in the source-build headers.
+    if ! MISE_RUBY_COMPILE=false mise install "ruby@$RUBY_SERIES"; then
+      echo "no precompiled Ruby $RUBY_SERIES for this platform — compiling from source" >&2
+      apt_install libssl-dev libyaml-dev libreadline-dev zlib1g-dev libffi-dev
+      MISE_RUBY_COMPILE=true mise install "ruby@$RUBY_SERIES"
+    fi
+    mise use --global "ruby@$RUBY_SERIES"
+    hash -r
+    echo "installed ruby $(ruby -e 'print RUBY_VERSION')"
+    ;;
+esac
+
+# ---------------------------------------------------------------------------
+step "persist Ruby on PATH for future shells"
+# ---------------------------------------------------------------------------
+# An installer cannot change the environment of shells Amp starts later, so the
+# activation has to live in bash's startup files. Amp, supervised orb services
+# and the tmux terminal pane all start LOGIN shells (~/.bash_profile); a plain
+# interactive shell reads ~/.bashrc instead. Both get the hook.
+#
+# Bash reads ~/.bash_profile *instead of* ~/.profile when it exists, and Debian
+# ships only the latter — so creating ~/.bash_profile here would silently drop
+# whatever ~/.profile sets up. Seed the new file by sourcing it.
+if [ ! -e "$PROFILE" ] && [ -e "$HOME/.profile" ]; then
+  cat >"$PROFILE" <<'EOF'
+# Created by mutineer's .agents/setup. Bash reads this file instead of
+# ~/.profile for login shells, so keep ~/.profile in effect.
+. "$HOME/.profile"
+EOF
+  echo "created $PROFILE sourcing ~/.profile"
+fi
+
+persist_hook "$PROFILE"
+persist_hook "$HOME/.bashrc"
+
+# Prove it from a clean login shell rather than from this process, whose PATH
+# this script already doctored. A minimal environment means only the profile
+# hook can be responsible for the result.
+clean_ruby="$(env -i HOME="$HOME" /bin/bash -lc 'ruby -e "print RUBY_VERSION"' 2>/dev/null || true)"
+case "$clean_ruby" in
+  "$RUBY_SERIES".*)
+    echo "clean login shell resolves ruby $clean_ruby"
+    ;;
+  *)
+    echo "a clean login shell resolved '${clean_ruby:-nothing}', not Ruby $RUBY_SERIES.x" >&2
+    exit 1
+    ;;
+esac
+
+# ---------------------------------------------------------------------------
+step "bundler"
+# ---------------------------------------------------------------------------
+if command -v bundle >/dev/null 2>&1; then
+  echo "already available: $(bundle --version)"
+else
+  gem install bundler --no-document
+  mise reshim
+  hash -r
+fi
+
+# ---------------------------------------------------------------------------
+step "gem bundle (zero runtime deps)"
+# ---------------------------------------------------------------------------
+install_bundle "$REPO_ROOT" "gem"
+
+# ---------------------------------------------------------------------------
+step "Rails fixture app bundle"
+# ---------------------------------------------------------------------------
+# The heavy one (Rails + sqlite3). Failing here exits non-zero so Amp does not
+# publish a snapshot in which `rake test:daemon` and `bin/dogfood` cannot run.
+install_bundle "$REPO_ROOT/test/fixtures/rails_app" "Rails fixture app"
+
+printf '\n==> [+%ds] setup complete — ruby %s, both bundles installed\n' \
+  "$SECONDS" "$(ruby -e 'print RUBY_VERSION')"
