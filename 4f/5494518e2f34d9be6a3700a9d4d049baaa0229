@@ -1,0 +1,19 @@
+docs/index.html
+  s_d671b9aedacf48::t_24746a6d2ebf9d 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "4f5494518e2f34d9be6a3700a9d4d049baaa0229",
+  "prompts": {},
+  "sessions": {
+    "s_d671b9aedacf48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a0818c-556f-7c71-b18b-61352d347bc2",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
