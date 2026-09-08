@@ -1,0 +1,21 @@
+docs/index.html
+  s_d671b9aedacf48::t_149d376637d586 102
+docs/llms.txt
+  s_d671b9aedacf48::t_44f44a400f3b75 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "90ca052db9a2e6e5c776013f257f285288fa187a",
+  "prompts": {},
+  "sessions": {
+    "s_d671b9aedacf48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a0818c-556f-7c71-b18b-61352d347bc2",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
