@@ -109,9 +109,9 @@ fi
 # ---------------------------------------------------------------------------
 step "C toolchain"
 # ---------------------------------------------------------------------------
-# nokogiri (via Rails) and sqlite3 both ship precompiled linux gems, so nothing
-# should need compiling — but a compiler turns an obscure native-extension
-# failure into a non-event, and it is a one-time cost baked into the snapshot.
+# The fixture pins sqlite3 ~> 1.7, which has no precompiled gem for Ruby 3.4,
+# so Bundler compiles it. build-essential is required for that phase, not a
+# spare safety net. nokogiri via Rails may still ship a linux binary.
 if command -v cc >/dev/null 2>&1 && command -v make >/dev/null 2>&1; then
   echo "cc and make already present"
 else
@@ -148,15 +148,26 @@ case "$current_ruby" in
     ;;
   *)
     # mise downloads a precompiled Ruby (seconds) when one exists for the
-    # platform and otherwise falls back to a ruby-build source compile
-    # (3-8 minutes). ruby.compile=false turns that silent fallback into an
-    # explicit error so the slow path below is a deliberate, logged decision
-    # and only then pulls in the source-build headers.
-    if ! MISE_RUBY_COMPILE=false mise install "ruby@$RUBY_SERIES"; then
-      echo "no precompiled Ruby $RUBY_SERIES for this platform — compiling from source" >&2
-      apt_install libssl-dev libyaml-dev libreadline-dev zlib1g-dev libffi-dev
-      MISE_RUBY_COMPILE=true mise install "ruby@$RUBY_SERIES"
+    # platform and otherwise would compile from source (3-8 minutes).
+    # ruby.compile=false turns that silent fallback into an error. Only that
+    # specific miss takes the compile path; a network or mise failure must
+    # not be relabelled as "no precompiled binary".
+    ruby_install_log="$(mktemp)"
+    if MISE_RUBY_COMPILE=false mise install "ruby@$RUBY_SERIES" >"$ruby_install_log" 2>&1; then
+      cat "$ruby_install_log"
+    else
+      cat "$ruby_install_log" >&2
+      if grep -qiE 'precompiled|ruby\.compile|compile is disabled|must compile' "$ruby_install_log"; then
+        echo "no precompiled Ruby $RUBY_SERIES for this platform — compiling from source" >&2
+        apt_install libssl-dev libyaml-dev libreadline-dev zlib1g-dev libffi-dev
+        MISE_RUBY_COMPILE=true mise install "ruby@$RUBY_SERIES"
+      else
+        echo "ERROR: mise install ruby@$RUBY_SERIES failed (not a missing precompiled binary)." >&2
+        rm -f "$ruby_install_log"
+        exit 1
+      fi
     fi
+    rm -f "$ruby_install_log"
     mise use --global "ruby@$RUBY_SERIES"
     hash -r
     echo "installed ruby $(ruby -e 'print RUBY_VERSION')"
@@ -189,13 +200,17 @@ persist_hook "$HOME/.bashrc"
 # Prove it from a clean login shell rather than from this process, whose PATH
 # this script already doctored. A minimal environment means only the profile
 # hook can be responsible for the result.
-clean_ruby="$(env -i HOME="$HOME" /bin/bash -lc 'ruby -e "print RUBY_VERSION"' 2>/dev/null || true)"
+clean_err="$(mktemp)"
+clean_ruby="$(env -i HOME="$HOME" /bin/bash -lc 'ruby -e "print RUBY_VERSION"' 2>"$clean_err")" || true
 case "$clean_ruby" in
   "$RUBY_SERIES".*)
     echo "clean login shell resolves ruby $clean_ruby"
+    rm -f "$clean_err"
     ;;
   *)
     echo "a clean login shell resolved '${clean_ruby:-nothing}', not Ruby $RUBY_SERIES.x" >&2
+    cat "$clean_err" >&2
+    rm -f "$clean_err"
     exit 1
     ;;
 esac
