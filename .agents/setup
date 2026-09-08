@@ -149,9 +149,10 @@ case "$current_ruby" in
   *)
     # mise downloads a precompiled Ruby (seconds) when one exists for the
     # platform and otherwise would compile from source (3-8 minutes).
-    # ruby.compile=false turns that silent fallback into an error. Only that
-    # specific miss takes the compile path; a network or mise failure must
-    # not be relabelled as "no precompiled binary".
+    # ruby.compile=false turns that silent fallback into an error. We only
+    # compile when mise's error names a missing precompiled binary. mise
+    # itself maps some GitHub/network misses to that same message, so a
+    # transient outage can still take the compile path.
     ruby_install_log="$(mktemp)"
     if MISE_RUBY_COMPILE=false mise install "ruby@$RUBY_SERIES" >"$ruby_install_log" 2>&1; then
       cat "$ruby_install_log"
