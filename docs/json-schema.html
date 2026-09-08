@@ -21,7 +21,8 @@
 <meta name="twitter:description" content="The machine-readable contract for `mutineer run --format json`: versioning rules and a field-by-field reference for summary, survivors, baseline, and exit codes.">
 <meta name="twitter:image" content="https://davidteren.github.io/mutineer/assets/og-image.png?v=2">
 <meta name="twitter:image:alt" content="Mutineer — Your tests pass. But do they test? Clean-room mutation testing for Ruby.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e23b3b'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='1' fill='%2367286a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
+<script src="assets/mutineer.js"></script>
 <link rel="stylesheet" href="assets/mutineer.css">
 </head>
 <body>
@@ -29,14 +30,14 @@
 
 <header class="site">
   <div class="wrap nav">
-    <a class="brand" href="index.html"><span class="mark" aria-hidden="true">M</span> Mutineer</a>
+    <a class="brand" href="index.html"><span class="mark" aria-hidden="true">M↗</span> mutineer<span class="brand-note">/ Ruby mutation testing</span></a>
     <nav aria-label="Primary">
-      <a href="index.html#how" class="hide-sm">How it works</a>
-      <a href="index.html#agents">AI &amp; CI</a>
-      <a href="agentic-coding.html" class="hide-sm">Agent &amp; CI</a>
-      <a href="json-schema.html" class="current">JSON schema</a>
-      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub</a>
-      <button class="toggle" id="theme" aria-label="Toggle dark mode" aria-pressed="true" title="Toggle theme">◐</button>
+      <a href="index.html#install">Install</a>
+      <a href="agentic-coding.html">Agent &amp; CI</a>
+      <a href="json-schema.html" aria-current="page">JSON schema</a>
+      <a href="sample-report.html">Sample report</a>
+      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub ↗</a>
+      <button class="toggle" id="theme" aria-label="Switch to light mode" hidden>◐ <span>Dark</span></button>
     </nav>
   </div>
 </header>
@@ -51,6 +52,7 @@
         <li><a href="#summary">summary</a></li>
         <li><a href="#survivors">survivors[]</a></li>
         <li><a href="#other-statuses">no_coverage / uncapturable</a></li>
+        <li><a href="#no-verdict">no_verdict[]</a></li>
         <li><a href="#ignored">ignored[]</a></li>
         <li><a href="#per-source">per_source[]</a></li>
         <li><a href="#baseline">baseline</a></li>
@@ -58,7 +60,7 @@
       </ul>
       <div class="doc-nav-pages">
         <a href="agentic-coding.html">Agent &amp; CI</a>
-        <a href="json-schema.html" class="current">JSON schema</a>
+        <a href="json-schema.html" class="current" aria-current="page">JSON schema</a>
       </div>
     </aside>
 
@@ -90,7 +92,7 @@
 }</code></pre>
 
       <h2 id="summary"><code>summary</code> (object)</h2>
-      <div class="table-wrap">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Reference table">
         <table>
           <thead><tr><th scope="col">Key</th><th scope="col">Type</th><th scope="col">Meaning</th></tr></thead>
           <tbody>
@@ -113,7 +115,7 @@
 
       <h2 id="survivors"><code>survivors[]</code> (array of object)</h2>
       <p>Each surviving mutant — the records an agent or reviewer acts on:</p>
-      <div class="table-wrap">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Reference table">
         <table>
           <thead><tr><th scope="col">Key</th><th scope="col">Type</th><th scope="col">Meaning</th></tr></thead>
           <tbody>
@@ -143,7 +145,7 @@
 
       <h2 id="baseline"><code>baseline</code> (object, only with <code>--baseline</code>)</h2>
       <p>The delta versus the prior <code>--format json</code> report, matched by stable <code>id</code>:</p>
-      <div class="table-wrap">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Reference table">
         <table>
           <thead><tr><th scope="col">Key</th><th scope="col">Type</th><th scope="col">Meaning</th></tr></thead>
           <tbody>
@@ -159,7 +161,7 @@
       </div>
 
       <h2 id="exit-codes">Exit codes</h2>
-      <div class="table-wrap">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Reference table">
         <table>
           <thead><tr><th scope="col">Code</th><th scope="col">Meaning</th></tr></thead>
           <tbody>
@@ -191,6 +193,5 @@
   </div>
 </footer>
 
-<script src="assets/mutineer.js"></script>
 </body>
 </html>
