@@ -1,0 +1,30 @@
+.github/workflows/release.yml
+  h_e8a5bb9272fa34 17-24
+action.yml
+  h_e8a5bb9272fa34 301-304,306-310,312,402
+docs/agentic-coding.md
+  h_e8a5bb9272fa34 86-87,106-107
+docs/intent-engineering/20260816-050126-audit.md
+  h_e8a5bb9272fa34 36,38,159-160,167
+docs/intent-engineering/20260816-055742-review-feat-action-ci-consumer-loop.md
+  h_e8a5bb9272fa34 37
+docs/json-schema.html
+  h_e8a5bb9272fa34 109
+docs/llms-full.txt
+  h_e8a5bb9272fa34 346-347,452
+test/action_harness_test.rb
+  h_e8a5bb9272fa34 34-35,37-38
+test/fixtures/action_harness.sh
+  h_e8a5bb9272fa34 66-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "f0c5e5ddaebd189e1ec16187c4c5b535ba710fda",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
