@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-08-17
+## [1.0.0] - 2026-09-08
 
 The GitHub Action's PR default changes in this release, which is why it is a
 new major: workflows pinned to `davidteren/mutineer@v0` keep the old full-scan
