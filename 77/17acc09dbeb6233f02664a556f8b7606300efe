@@ -1,0 +1,16 @@
+.agents/setup
+  h_e8a5bb9272fa34 112-114,151-168,170,203-204,208,212-213
+docs/plans/2026-08-21-001-feat-orb-setup-plan.md
+  h_e8a5bb9272fa34 73,98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "7717acc09dbeb6233f02664a556f8b7606300efe",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
