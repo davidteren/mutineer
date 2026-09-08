@@ -1,0 +1,14 @@
+.agents/setup
+  h_e8a5bb9272fa34 5-8,98-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "1c39743000bb1f084c3e386e66a05e8bbf8d2227",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
