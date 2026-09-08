@@ -23,7 +23,7 @@ Key facts:
 - [Overview, operators, and usage](https://davidteren.github.io/mutineer/): what Mutineer is, the mutation operators, install, and CLI flags.
 - [For AI agents & CI](https://davidteren.github.io/mutineer/agentic-coding.html): the agent inner loop, CI regression gating, the GitHub Action, and equivalent-mutant suppression.
 - [JSON report schema](https://davidteren.github.io/mutineer/json-schema.html): the versioned JSON contract — `summary`, `survivors[]`, `ignored[]`, and `baseline` blocks.
-- [Sample HTML report](https://davidteren.github.io/mutineer/sample-report.html): example of the self-contained HTML output.
+- [Sample HTML report](https://davidteren.github.io/mutineer/sample-report.html): example report data displayed in the website theme; the CLI’s self-contained HTML output has a different presentation.
 
 ## Source & packages
 
