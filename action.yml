@@ -21,8 +21,17 @@ inputs:
     default: ""
   since:
     description: >-
-      Mutate only lines changed since this git ref (e.g. `origin/main`). Ideal
-      for PR CI — grades just the diff. Requires a non-shallow checkout.
+      Mutate only lines changed since this git ref (e.g. `origin/main`). On
+      pull_request events this defaults to the PR's exact base commit from the
+      event payload (fetched by the action when the checkout is shallow;
+      falls back to the base branch tip). When neither resolves, the action
+      warns and runs without an action-provided --since (a `since:` key in the
+      repo's `.mutineer.yml` still applies). Pass `none` to force a full scan
+      (passed through as `--no-since`, overriding `.mutineer.yml` too). An
+      explicitly passed ref must resolve in the checkout (use `fetch-depth: 0`).
+      The default scoping and `none` need mutineer >= 1.0.0 (relevant with
+      `use-bundler: true`, where the caller's Gemfile picks the version; the
+      action enforces the floor with a clear error).
     required: false
     default: ""
   threshold:
@@ -60,11 +69,17 @@ inputs:
     required: false
     default: "false"
   format:
-    description: "Report format: human or json (default: json so the report is machine-readable)."
+    description: >-
+      Report format: human or json (default: json so the report is
+      machine-readable). The json format also feeds the job step summary and the
+      per-survivor PR annotations; human/html formats skip both.
     required: false
     default: "json"
   output:
-    description: "Write the report to this file instead of stdout."
+    description: >-
+      Write the report to this file instead of stdout. When unset with the
+      default json format, the report is written to a temp file (for the step
+      summary and annotations) and still printed to the log.
     required: false
     default: ""
   extra-args:
@@ -92,7 +107,10 @@ outputs:
     description: "The exit code returned by mutineer (0 pass, 1 below-threshold/incomplete-run/regressed, 2 usage)."
     value: ${{ steps.run.outputs.exit-code }}
   report:
-    description: "Path to the written report file, when the `output` input is set."
+    description: >-
+      Path to the written report file: the `output` input when set, else the
+      auto-routed JSON report path (json format). Unset when no report file
+      exists (e.g. human format without `output`).
     value: ${{ steps.run.outputs.report }}
 
 runs:
@@ -132,11 +150,95 @@ runs:
         OUTPUT: ${{ inputs.output }}
         EXTRA_ARGS: ${{ inputs.extra-args }}
         USE_BUNDLER: ${{ inputs.use-bundler }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
       run: |
         set -o pipefail
+
+        # Default --since to the PR base when unset — on pull_request events ONLY.
+        # GITHUB_BASE_REF is also set on pull_request_target, but checkout there
+        # defaults to the BASE branch itself: auto-scoping would diff the base
+        # against itself, schedule zero mutants, and green the gate for any PR.
+        # Pushes and manual runs keep the full scan. `since: none` forces a full
+        # scan on PRs too. A shallow checkout (the actions/checkout default)
+        # lacks the base ref, so fetch just its tip; when that fails, warn and
+        # fall back to a full scan rather than exiting 2.
+        NO_SINCE=""
+        if [ "$SINCE" = "none" ]; then
+          # --no-since (not just an omitted flag): a `since:` key in the repo's
+          # .mutineer.yml would otherwise silently re-enable diff scoping.
+          SINCE=""
+          NO_SINCE="1"
+        elif [ -z "$SINCE" ] && [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -n "$GITHUB_BASE_REF" ]; then
+          # Percent-escape the branch name for workflow-command messages: a
+          # valid refname may contain %XX sequences the runner would decode
+          # into extra commands.
+          SAFE_BASE="${GITHUB_BASE_REF//%/%25}"
+          # Prefer the PR's exact base commit from the event payload: the
+          # branch tip can advance mid-job, and the checked-out merge ref was
+          # computed against THIS sha, not the moving tip. An exact sha cannot
+          # be stale, so an already-present object is trusted as-is.
+          BASE_SHA=""
+          if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "$GITHUB_EVENT_PATH" ] && command -v jq >/dev/null 2>&1; then
+            BASE_SHA="$(jq -r '.pull_request.base.sha // empty' "$GITHUB_EVENT_PATH" 2>/dev/null)"
+          fi
+          if [ -n "$BASE_SHA" ] && { git rev-parse --verify -q "$BASE_SHA^{commit}" >/dev/null 2>&1 \
+               || git fetch --no-tags --depth=1 origin "$BASE_SHA" >/dev/null 2>&1; }; then
+            SINCE="$BASE_SHA"
+            AUTO_SINCE="1"
+            echo "::notice::mutineer: scoping to lines changed since the PR base commit $BASE_SHA (pass 'since: none' for a full scan)."
+          # Branch-tip fallback (no event payload / no jq / unfetchable sha):
+          # fetch with a force-updating refspec so a stale origin/<base> in a
+          # reused self-hosted workspace is refreshed, never trusted as-is.
+          elif git fetch --no-tags --depth=1 origin "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF" >/dev/null 2>&1; then
+            SINCE="origin/$GITHUB_BASE_REF"
+            AUTO_SINCE="1"
+            echo "::notice::mutineer: scoping to lines changed since origin/$SAFE_BASE (pass 'since: none' for a full scan)."
+          else
+            echo "::warning::mutineer: could not fetch the PR base; running without an action-provided --since (a .mutineer.yml 'since:' key may still scope the run). A full scan scores every mutant, not only the PR's changed lines."
+          fi
+        fi
+
+        # The JSON report also feeds the step summary and the inline annotations,
+        # so route it to a temp file when the caller set no `output`; the log
+        # still shows it (cat below), so the visible behavior is unchanged.
+        # Route every file report through a fresh per-invocation temp file and
+        # copy to the caller's `output` only after a successful write. mktemp
+        # creates the file empty and unique, so "did THIS run produce a
+        # report" is simply "is it non-empty": no mtime comparison (bash 3.2 /
+        # whole-second filesystems misjudge same-second files), no cross-step
+        # collisions, and a run that dies early can neither clobber nor
+        # impersonate the caller's existing file (`output` may even equal
+        # `baseline`). RUNNER_TEMP is cleaned up at job end.
+        TMP_REPORT=""
+        if [ "$FORMAT" = "json" ] || [ -n "$OUTPUT" ]; then
+          TMP_REPORT="$(mktemp "${RUNNER_TEMP:-/tmp}/mutineer-report-XXXXXX")"
+        fi
+        report_ok() { [ -n "$TMP_REPORT" ] && [ -s "$TMP_REPORT" ]; }
+        # Mutineer preflights ITS --output path (the temp file), so a bad
+        # caller path would otherwise only surface as a cp failure after the
+        # whole run. Keep the documented up-front usage failure. The path is
+        # percent-escaped for the workflow-command message (a newline in it
+        # must not inject extra commands), and a directory target is rejected
+        # (cp would drop the report INSIDE it and report= would name a dir).
+        if [ -n "$OUTPUT" ]; then
+          SAFE_OUT="${OUTPUT//%/%25}"
+          SAFE_OUT="${SAFE_OUT//$'\r'/%0D}"
+          SAFE_OUT="${SAFE_OUT//$'\n'/%0A}"
+          if [ -d "$OUTPUT" ]; then
+            echo "::error::mutineer: output '$SAFE_OUT' is a directory; pass a file path."
+            exit 2
+          fi
+          out_dir="$(dirname "$OUTPUT")"
+          if [ ! -d "$out_dir" ] || [ ! -w "$out_dir" ]; then
+            echo "::error::mutineer: cannot write output '$SAFE_OUT': no such directory or not writable."
+            exit 2
+          fi
+        fi
+
         args=(run)
         for s in $SOURCES; do args+=("$s"); done
         for t in $TESTS; do args+=(--test "$t"); done
+        [ -n "$NO_SINCE" ]         && args+=(--no-since)
         [ -n "$SINCE" ]            && args+=(--since "$SINCE")
         [ -n "$THRESHOLD" ]        && args+=(--threshold "$THRESHOLD")
         [ -n "$BASELINE" ]         && args+=(--baseline "$BASELINE")
@@ -147,9 +249,27 @@ runs:
         [ -n "$JOBS" ]             && args+=(--jobs "$JOBS")
         [ "$RAILS" = "true" ]      && args+=(--rails)
         [ -n "$FORMAT" ]           && args+=(--format "$FORMAT")
-        [ -n "$OUTPUT" ]           && args+=(--output "$OUTPUT")
+        [ -n "$TMP_REPORT" ]       && args+=(--output "$TMP_REPORT")
         # shellcheck disable=SC2206
         [ -n "$EXTRA_ARGS" ]       && args+=($EXTRA_ARGS)
+        # The summary, annotations, and `report=` output are driven by the
+        # `format` and `output` INPUTS; a --format/--output smuggled through
+        # extra-args would override the CLI flags behind the action's back and
+        # silently break that plumbing. Explicit failure beats quiet misbehavior.
+        # Word-wise (same word splitting as the args+= expansion above): exact
+        # flag matches only, across any whitespace, so an unrelated flag that
+        # merely contains the substring is not rejected.
+        # OptionParser completes unambiguous abbreviations (--out reaches
+        # --output), so match every abbreviation down to the ambiguous stems
+        # (--f/--o themselves would exit 2 as ambiguous in mutineer anyway).
+        # --only, --operators, --fail-fast, and --framework stay usable.
+        for extra_arg in $EXTRA_ARGS; do
+          case "${extra_arg%%=*}" in
+            --f | --fo | --for | --form | --forma | --format | --o | --ou | --out | --outp | --outpu | --output)
+              echo "::error::mutineer: extra-args must not carry --format/--output (or an abbreviation); use the 'format' and 'output' inputs (the step summary, annotations, and report output depend on them)."
+              exit 2 ;;
+          esac
+        done
 
         if [ "$USE_BUNDLER" = "true" ]; then
           runner=(bundle exec mutineer)
@@ -157,13 +277,141 @@ runs:
           runner=(mutineer)
         fi
 
+        # The action's since plumbing (--no-since; scoped-vs-baseline
+        # semantics) needs mutineer >= 1.0.0. With use-bundler the caller's
+        # Gemfile picks the version, so assert the floor whenever this run
+        # relies on action-supplied scoping — a 0.x gem would either reject
+        # --no-since or silently compare cross-denominator baseline scores.
+        if [ -n "$NO_SINCE" ] || [ -n "${AUTO_SINCE:-}" ]; then
+          gem_ver="$("${runner[@]}" --version 2>/dev/null || echo 0)"
+          # Gem::Version, not sort -V: exact gem semantics (prereleases
+          # included) and ruby is always present where this action runs.
+          if ! ruby -e 'exit(Gem::Version.correct?(ARGV[0]) && Gem::Version.new(ARGV[0]) >= Gem::Version.new("1.0.0") ? 0 : 1)' "$gem_ver" 2>/dev/null; then
+            echo "::error::mutineer: resolved mutineer $gem_ver, but the action's PR scoping (auto since / since: none) needs >= 1.0.0; upgrade the Gemfile pin, or pass an explicit 'since:' ref."
+            exit 2
+          fi
+        fi
+
         echo "::group::mutineer ${args[*]}"
         set +e
         "${runner[@]}" "${args[@]}"
         code=$?
         set -e
+        # Deliver the caller's requested output file only from a written report,
+        # and keep an auto-routed report visible in the log. cp/cat must not
+        # abort under `set -e`: a copy failure would drop $code and skip the
+        # exit-code=/report= outputs for a run that already finished.
+        delivered_output=""
+        if report_ok && [ -n "$OUTPUT" ]; then
+          if cp "$TMP_REPORT" "$OUTPUT"; then
+            delivered_output=1
+          else
+            echo "::warning::mutineer: could not copy the report to '$SAFE_OUT'; the report remains available through the 'report' output, and the run's exit code is unchanged."
+          fi
+        elif report_ok; then
+          cat "$TMP_REPORT" || echo "::warning::mutineer: could not echo the JSON report to the log; the run's exit code is unchanged."
+        fi
         echo "::endgroup::"
 
+        # Step summary + per-survivor annotations from the JSON report. jq ships
+        # on GitHub-hosted runners; a self-hosted runner without it skips this
+        # (the run's verdict is unaffected either way).
+        if [ "$FORMAT" = "json" ] && report_ok && command -v jq >/dev/null 2>&1; then
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            # `oneline` scrubs every interpolated report field to a single line
+            # and neutralizes backticks so a survivor token cannot close the
+            # inline-code span and inject markdown into the summary.
+            # A diff-scoped run's score covers a different denominator than a
+            # full-run baseline, so the baseline line must not juxtapose the two
+            # scores as if comparable; the report itself says so (summary.scoped).
+            jq -r --arg code "$code" '
+              def oneline: tostring | gsub("[\r\n]"; " ") | gsub("`"; "'\''");
+              ("## Mutineer " + (if $code == "0" then "passed" else "failed (exit \($code))" end)
+                 + (if (.summary.scoped // false) then " (diff-scoped run: changed lines only)" else "" end)),
+              "",
+              "| Score | Killed | Survived | No coverage | Ignored | No verdict |",
+              "|---|---|---|---|---|---|",
+              ("| " + (.summary.score | if . == null then "N/A" else "\(.)%" end)
+                 + " | \(.summary.killed) | \(.summary.survived) | \(.summary.no_coverage)"
+                 + " | \(.summary.ignored) | \(.summary.no_verdict) |"),
+              (if .baseline then
+                 "", ("Baseline: \(.baseline.new_survivors | length) new survivor(s)"
+                      + (if (.baseline.score_comparable != false) then
+                           "; score \(.baseline.score_before // "N/A" | oneline) -> \(.baseline.score_after // "N/A" | oneline)"
+                         else
+                           "; score-drop check skipped (\(.baseline.score_after // "N/A" | oneline) now vs \(.baseline.score_before // "N/A" | oneline) baseline: the two scores do not share a comparable denominator)"
+                         end)
+                      + (if .baseline.regressed then ": REGRESSED." else "." end))
+               else empty end),
+              (if ((.summary.scoped // false) and .summary.total == 0) then
+                 "", "No mutants were in scope for this diff (docs- or test-only changes), so the gate is vacuous for this PR; a full scan (e.g. the baseline refresh on main) is the backstop."
+               else empty end),
+              (if (.survivors | length) > 0 then "", "### Surviving mutants", "" else empty end),
+              (.survivors[:20][]
+                 | "- `" + (.file | oneline) + ":\(.line)` " + (.operator | oneline) + ": `"
+                   + (.token | oneline) + "` (id `" + (.id | oneline) + "`)"),
+              (if (.survivors | length) > 20 then
+                 "", "… and \((.survivors | length) - 20) more: full list in the JSON report (the action'\''s `report` output)."
+               else empty end)
+            ' "$TMP_REPORT" >> "$GITHUB_STEP_SUMMARY" \
+              || echo "::warning::mutineer: could not render the step summary."
+          fi
+          # Inline PR-diff annotations, capped at 50 (GitHub shows at most 10
+          # per step in the checks UI; the rest stay on the files tab).
+          # Level tracks the gate: a failing run annotates errors, a passing run
+          # warnings — red marks on a green PR would be the wrong signal.
+          # `msg` percent-escapes and single-lines message text; `prop` also
+          # escapes the , and : that delimit workflow-command properties, so a
+          # pathological path cannot corrupt the file= field.
+          WD="$WORKING_DIRECTORY"
+          # Annotations need repo-relative paths: strip an absolute
+          # ${{ github.workspace }} prefix, then ./ and any trailing slash.
+          if [ -n "${GITHUB_WORKSPACE:-}" ]; then
+            [ "$WD" = "$GITHUB_WORKSPACE" ] && WD="."
+            WD="${WD#"$GITHUB_WORKSPACE"/}"
+          fi
+          WD="${WD#./}"; WD="${WD%/}"
+          jq -r --arg wd "$WD" --arg lvl "$([ "$code" = "0" ] && echo warning || echo error)" '
+            def msg: tostring | gsub("%"; "%25") | gsub("[\r\n]"; " ");
+            def prop: msg | gsub(":"; "%3A") | gsub(","; "%2C");
+            .survivors[:50][]
+            | (if (.file | startswith("/")) or $wd == "" or $wd == "."
+               then .file else $wd + "/" + .file end) as $f
+            | "::\($lvl) file=" + ($f | prop) + ",line=\(.line),title=Surviving mutant::"
+              + (.operator | msg) + ": `" + (.token | msg)
+              + "` survived: no test caught this change (id " + (.id | msg) + ")"
+          ' "$TMP_REPORT" \
+            || echo "::warning::mutineer: could not emit survivor annotations."
+        elif [ "$FORMAT" = "json" ] && report_ok; then
+          # A completed report must not lose its documented surfaces silently:
+          # this branch only reaches when jq is absent (self-hosted runner).
+          echo "::notice::mutineer: jq not found on this runner; skipping the step summary and survivor annotations (the JSON report and exit code are unaffected)."
+        elif [ "$FORMAT" = "json" ] && ! report_ok && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          # The run died before writing a report (e.g. a usage error): say so in
+          # the summary instead of leaving the documented surface silently blank.
+          echo "Mutineer did not produce a report (exit $code); see the job log." >> "$GITHUB_STEP_SUMMARY"
+        fi
+
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
-        [ -n "$OUTPUT" ] && echo "report=$OUTPUT" >> "$GITHUB_OUTPUT"
+        # Expose the report path whenever THIS run wrote one — the caller's
+        # `output` when set, else the auto-routed JSON report — so a later step
+        # can consume the machine-readable report without scraping the log.
+        # Absolutized: a relative `output` resolves against THIS step's
+        # working-directory, which a later step at the repo root cannot see.
+        if report_ok; then
+          if [ -n "$delivered_output" ]; then
+            report_path="$(cd "$(dirname "$OUTPUT")" && pwd)/$(basename "$OUTPUT")"
+          else
+            report_path="$TMP_REPORT"
+          fi
+          # Heredoc form with a RANDOM delimiter: safe even if the caller-
+          # supplied path contains a newline or a guessed fixed delimiter (a
+          # plain KEY=VALUE line would let it inject extra outputs).
+          EOF_MARK="MUTINEER_REPORT_$(od -An -tx8 -N8 /dev/urandom | tr -d ' \n')"
+          {
+            echo "report<<$EOF_MARK"
+            echo "$report_path"
+            echo "$EOF_MARK"
+          } >> "$GITHUB_OUTPUT"
+        fi
         exit $code

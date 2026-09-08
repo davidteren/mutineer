@@ -28,10 +28,15 @@ module Mutineer
     # @param stop_when [Proc, nil] called with each collected Result; when it
     #   returns truthy, no further items are scheduled and the run drains and
     #   returns early (--fail-fast). Unscheduled slots stay nil.
+    # @param on_result [Proc, nil] called in the parent with each collected
+    #   Result as it is reaped, in finish order (progress reporting); its
+    #   return value is ignored. Must be fast and non-blocking: it runs on the
+    #   pool's single reap thread, so a slow callback stalls draining the other
+    #   in-flight children's pipes (the #4 deadlock discipline).
     # @yieldparam item [Array] one work item.
     # @return [Array<Mutineer::Result>] results in input order (nil for any item
     #   left unscheduled by an early stop).
-    def run(items, stop_when: nil)
+    def run(items, stop_when: nil, on_result: nil)
       results  = Array.new(items.size)
       queue    = (0...items.size).to_a
       running  = {} # pid => [index, read_io, buffer]
@@ -40,6 +45,7 @@ module Mutineer
       until queue.empty? && running.empty?
         fill(items, queue, running) { |*args| yield(*args) } unless stopping
         result = reap(results, running)
+        on_result&.call(result) if result
         if !stopping && stop_when && result && stop_when.call(result)
           stopping = true
           queue.clear # schedule no more; let in-flight workers drain

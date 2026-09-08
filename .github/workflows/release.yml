@@ -6,11 +6,21 @@ name: Release
 # (OIDC — no API key, no OTP), and cuts the GitHub release from the CHANGELOG.
 on:
   push:
-    tags: ["v*"]
+    # Three-component release tags only: the workflow itself force-pushes the
+    # bare floating major tag (v1, v2, ...), which must not re-trigger it.
+    tags: ["v*.*.*"]
 
 permissions:
   contents: write   # create the GitHub release
   id-token: write   # OIDC token for RubyGems Trusted Publishing
+
+# One release at a time. Two tags in the same major (v1.0.0 then v1.0.1)
+# overlapping would let the older run force-push @v1 backward after the
+# newer one had already moved it. cancel-in-progress: false queues the
+# second run instead of cancelling a publish already in flight.
+concurrency:
+  group: mutineer-release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -58,3 +68,12 @@ jobs:
           awk -v ver="$ver" '$0 ~ "^## \\["ver"\\]"{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then printf 'Release %s\n' "$GITHUB_REF_NAME" > notes.md; fi
           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+
+      # Keep the floating major tag (v1, v2, ...) on the newest release in its
+      # line, so `uses: davidteren/mutineer@v1` tracks the latest v1.x.y.
+      - name: Move floating major tag
+        run: |
+          set -euo pipefail
+          major="${GITHUB_REF_NAME%%.*}"
+          git tag -f "$major" "$GITHUB_REF_NAME"
+          git push -f origin "$major"

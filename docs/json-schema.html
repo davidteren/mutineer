@@ -63,13 +63,13 @@
     </aside>
 
     <article class="prose">
-      <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Reference · schema_version 1.2</span>
+      <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Reference · schema_version 1.3</span>
       <h1>JSON report schema reference</h1>
       <p class="doc-lede"><code>mutineer run --format json</code> emits a single JSON object (one line, newline-terminated) describing the whole run. It is the <strong>machine-readable contract</strong> for tooling — CI gates, dashboards, and AI coding agents.</p>
       <p>Output is deterministic: arrays are sorted by <code>(file, line, operator)</code> regardless of <code>--jobs</code> worker finish order, so two runs of the same inputs produce byte-identical output.</p>
 
       <h2 id="versioning">Versioning contract</h2>
-      <p>The top-level <code>schema_version</code> (a string, e.g. <code>"1.2"</code>) follows these rules:</p>
+      <p>The top-level <code>schema_version</code> (a string, e.g. <code>"1.3"</code>) follows these rules:</p>
       <ul>
         <li><strong>Additive changes</strong> (new keys on existing objects, new top-level keys) bump the <strong>minor</strong> version (<code>1.0</code> → <code>1.1</code>). Existing keys keep their meaning. Consumers MUST ignore unknown keys.</li>
         <li><strong>Breaking changes</strong> (renaming/removing a key, changing a value's type or meaning) bump the <strong>major</strong> version (<code>1.x</code> → <code>2.0</code>).</li>
@@ -78,7 +78,7 @@
 
       <h2 id="shape">Top-level shape</h2>
       <pre><code>{
-  <span class="p">"schema_version"</span>: <span class="k">"1.2"</span>,
+  <span class="p">"schema_version"</span>: <span class="k">"1.3"</span>,
   <span class="p">"summary"</span>:      { <span class="c">/* run totals, see below */</span> },
   <span class="p">"survivors"</span>:    [ <span class="c">/* mutants the suite failed to catch — the actionable gaps */</span> ],
   <span class="p">"no_coverage"</span>:  [ <span class="c">/* mutants on lines no test exercises */</span> ],
@@ -106,6 +106,7 @@
             <tr><td class="op">attempted</td><td class="rule">int</td><td>Mutants actually run: <code>killed + survived + no_verdict</code>. <strong>Not</strong> <code>total</code> — no-coverage, skipped and ignored mutants were never attempted.</td></tr>
             <tr><td class="op">no_verdict</td><td class="rule">int</td><td>Attempted mutants that produced no verdict: <code>errored + timeout + uncapturable</code>. The completeness gate is <code>no_verdict / attempted</code>.</td></tr>
             <tr><td class="op">score</td><td class="rule">float | null</td><td><code>killed / (killed + survived) * 100</code>, rounded. <strong><code>null</code></strong> when the denominator is empty (no covered mutants) — never <code>0.0</code>.</td></tr>
+            <tr><td class="op">scoped</td><td class="rule">bool</td><td><code>true</code> when the run was diff-scoped (<code>--since</code>): the score covers only the changed-line mutants, so it is not comparable to a full-run score. A scoped current run skips <code>--baseline</code>'s score-drop check (new-survivor detection still applies); a scoped report is refused as a baseline (exit 2) because survivors outside its diff would read as new regressions. Additive key (absent in reports from older versions; treat absent as <code>false</code>).</td></tr>
           </tbody>
         </table>
       </div>
@@ -150,8 +151,9 @@
             <tr><td class="op">score_before</td><td class="rule">float | null</td><td>Baseline score.</td></tr>
             <tr><td class="op">score_after</td><td class="rule">float | null</td><td>This run's score.</td></tr>
             <tr><td class="op">score_dropped</td><td class="rule">bool</td><td>True if <code>score_after &lt; score_before - epsilon</code>.</td></tr>
+            <tr><td class="op">score_comparable</td><td class="rule">bool</td><td>True when the two scores share a denominator (neither side was diff-scoped, both non-null). False means the score-drop check was skipped — do not render the scores as a comparison. Additive key.</td></tr>
             <tr><td class="op">new_survivors[]</td><td class="rule">array</td><td>Survivors present now but absent in the baseline: <code>{ subject, file, line, operator, token, id }</code>.</td></tr>
-            <tr><td class="op">fixed_survivors[]</td><td class="rule">array</td><td>Baseline survivors no longer present: <code>{ subject, file, line, operator, id }</code>.</td></tr>
+            <tr><td class="op">fixed_survivors[]</td><td class="rule">array</td><td>Baseline survivors no longer present: <code>{ subject, file, line, operator, id }</code>. Empty under a diff-scoped side: an out-of-scope survivor was never re-tested, so absence does not mean fixed.</td></tr>
           </tbody>
         </table>
       </div>

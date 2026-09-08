@@ -94,6 +94,23 @@ class WorkerPoolTest < Minitest::Test
     assert_empty Mutineer::WorkerPool.new(2).run([]) { Mutineer::Result.killed }
   end
 
+  # on_result fires in the parent once per reaped result (progress reporting),
+  # including the result that trips stop_when; unscheduled items never fire it.
+  def test_on_result_fires_once_per_reaped_result
+    seen = []
+    items = (0...6).map { |i| [i] }
+    Mutineer::WorkerPool.new(2).run(items, on_result: ->(r) { seen << r }) { |_| Mutineer::Result.killed }
+    assert_equal 6, seen.size
+    assert seen.all?(&:killed?)
+
+    seen = []
+    Mutineer::WorkerPool.new(1).run(items, stop_when: ->(r) { r.survived? },
+                                           on_result: ->(r) { seen << r }) do |i|
+      i == 2 ? Mutineer::Result.survived : Mutineer::Result.killed
+    end
+    assert_equal 3, seen.size, "on_result sees exactly the reaped results, stopping one included"
+  end
+
   # R6: a fork failure with nothing running cannot make progress -> re-raise
   # (rather than spin forever). Singleton `fork` shadows Kernel#fork in the pool.
   def test_eagain_with_nothing_running_reraises

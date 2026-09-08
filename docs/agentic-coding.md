@@ -33,6 +33,9 @@ oracle, closing the loop with a concrete stopping condition:
 
 4. Re-run. Stop when `summary.survived == 0` (or `summary.score >= target`).
 
+Progress lines go to **stderr**; do not merge streams (`2>&1`) when parsing JSON from
+stdout — prefer `--output FILE` and read the file.
+
 `--since` keeps each iteration fast by mutating only the lines the agent just touched. Genuinely
 equivalent mutants (which can never be killed) should be suppressed so the loop terminates — see
 **Avoiding infinite loops** below.
@@ -44,15 +47,20 @@ team adopt Mutineer on a legacy suite without fixing everything first):
 
 ```sh
 # On main, refresh the baseline (e.g. nightly) and commit/cache it:
-mutineer run app/ --format json --output .mutineer/baseline.json
+mutineer run app/ --no-since --format json --output .mutineer/baseline.json
 
 # On a PR:
 mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json
 ```
 
 `--baseline` exits `1` on any **new** survivor (matched by stable `id`, so it survives unrelated edits) or
-a **score drop** (`--baseline-epsilon` tolerates float jitter). Combine with `--threshold` to enforce an
-absolute floor too — the worse of the two gates wins.
+a **score drop** (`--baseline-epsilon` tolerates float jitter); under `--since` the score-drop half is
+skipped, because a diff-scoped score covers a different denominator — new-survivor detection still gates.
+Combine with `--threshold` to enforce an absolute floor too — the worse of the two gates wins.
+
+Keep the full-scan baseline refresh on main as the backstop: a PR that changes only tests or docs has no
+changed source lines, scores zero mutants, and passes the scoped gate vacuously — only the full scan
+catches a weakened suite for untouched code.
 
 ### GitHub Action
 
@@ -68,16 +76,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0          # --since needs full history
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
           bundler-cache: true
-      - uses: davidteren/mutineer@main
+      - uses: davidteren/mutineer@v1
         with:
           sources: app/
-          since: origin/${{ github.base_ref }}
+          # since: defaults to the PR's base commit SHA from the event
+          # payload (falls back to fetching the base tip); `none` = full scan.
           baseline: .mutineer/baseline.json
           threshold: "90"
           output: .mutineer/pr.json
@@ -91,12 +98,13 @@ jobs:
 For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the app's own bundle):
 
 ```yaml
-      - uses: davidteren/mutineer@main
+      - uses: davidteren/mutineer@v1
         with:
           sources: app/models/order.rb
           rails: true
           use-bundler: true
-          since: origin/${{ github.base_ref }}
+          # since: defaults to the PR's base commit SHA (falls back to
+          # fetching the base tip); `none` = full scan.
 ```
 
 See `action.yml` for all inputs (`operators`, `framework`, `strategy`, `jobs`, `extra-args`, …) and the

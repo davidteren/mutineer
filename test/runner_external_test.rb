@@ -36,6 +36,8 @@ class RunnerExternalTest < Minitest::Test
       assert_equal 0, status.exitstatus, "stdout:#{out}\nstderr:#{err}"
       assert_match(/100(\.0)?%/, out)
       assert_match(/upper bound/, err)
+      assert_match(%r{\[mutineer\] \d+/\d+ mutants \(\d+%\)}, err,
+                   "external backend must emit progress on stderr")
     end
   end
 

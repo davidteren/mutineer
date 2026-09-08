@@ -32,11 +32,14 @@ module Mutineer
 
     # Single entry point. Branches on `format` ("human" | "json" | "html") and
     # routes the rendered report to `output` (a file, with a stderr confirmation)
-    # or to `out`. Diagnostics always go to `err`.
-    def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil, baseline: nil)
+    # or to `out`. Diagnostics always go to `err`. `scoped` marks a diff-scoped
+    # (`--since`) run; the JSON report records it so a consumer (or a later
+    # `--baseline` load) knows the score covers only the changed-line mutants.
+    def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil,
+               baseline: nil, scoped: false)
       rendered =
         if format == "json"
-          json_report(baseline)
+          json_report(baseline, scoped: scoped)
         elsif format == "html"
           html_report
         else
@@ -126,8 +129,10 @@ module Mutineer
     #
     # @api private
     # @param baseline [Mutineer::Baseline::Delta, nil] baseline delta.
+    # @param scoped [Boolean] the run was diff-scoped (`--since`), so its score
+    #   covers only the changed-line mutants (additive `summary.scoped` key).
     # @return [String] JSON text.
-    def json_report(baseline = nil)
+    def json_report(baseline = nil, scoped: false)
       killed = @agg.killed_count
       survived = @agg.survived_count
       # null (not 0.0) on an empty denominator, matching the nil-vs-0.0
@@ -136,7 +141,7 @@ module Mutineer
       score = @agg.mutation_score
 
       doc = {
-        schema_version: "1.2",
+        schema_version: "1.3",
         summary: {
           total: @agg.total, killed: killed, survived: survived,
           no_coverage: @agg.no_coverage_count,
@@ -146,7 +151,11 @@ module Mutineer
           ignored: @agg.ignored_count,
           # The gate is computed from these two, so a consumer never re-derives them.
           attempted: attempted_count, no_verdict: no_verdict_count,
-          score: score
+          score: score,
+          # Additive: true when the run was diff-scoped (--since). The score then
+          # covers only the changed-line mutants, so it is not comparable to a
+          # full-run score; Baseline#diff reads this to skip the score-drop gate.
+          scoped: scoped
         },
         survivors: @agg.surviving_mutants.map { |r| survivor_json(r) }
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },
@@ -306,6 +315,10 @@ module Mutineer
         score_before: delta.score_before,
         score_after: delta.score_after,
         score_dropped: delta.score_drop,
+        # Additive: false when the score-drop check was skipped (a nil score or
+        # a diff-scoped side), so a consumer knows not to render the two scores
+        # as a comparison.
+        score_comparable: delta.score_comparable,
         new_survivors: delta.new_survivors.map { |r| ignored_json(r) }
                             .sort_by { |h| [h[:file], h[:line], h[:operator]] },
         fixed_survivors: delta.fixed_survivors.map do |h|
@@ -577,6 +590,9 @@ module Mutineer
         out.puts "  + #{r.subject.qualified_name} (#{file}:#{line}) #{r.mutation.operator}"
       end
       out.puts "score dropped #{delta.score_before}% -> #{delta.score_after}%" if delta.score_drop
+      # An OK verdict must not imply a check that never ran: say when the score
+      # comparison was skipped (a diff-scoped side or a nil score).
+      out.puts "score-drop check skipped (scores not comparable)" unless delta.score_comparable
       out.puts(delta.regressed ? "REGRESSION vs baseline" : "OK: no regression vs baseline")
     end
 

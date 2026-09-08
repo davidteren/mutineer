@@ -54,6 +54,8 @@ class RunnerDaemonTest < Minitest::Test
     refute_match(/--daemon score is a lower bound/, err)
     refute_match(/no coverage narrowing yet/, err)
     refute_match(/daemon coverage map unavailable/, err)
+    assert_match(%r{\[mutineer\] \d+/\d+ mutants \(\d+%\)}, err,
+                 "daemon serial path must emit progress on stderr")
   end
 
   def test_daemon_coverage_map_warns_when_unavailable

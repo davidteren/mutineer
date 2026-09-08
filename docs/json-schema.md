@@ -7,7 +7,7 @@ worker finish order, so two runs of the same inputs produce byte-identical outpu
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.2"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.3"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -20,7 +20,7 @@ A consumer should accept any `1.x` document and read only the keys it knows.
 
 ```jsonc
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
@@ -48,6 +48,7 @@ A consumer should accept any `1.x` document and read only the keys it knows.
 | `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants were never attempted. |
 | `no_verdict` | int | Attempted mutants that produced no verdict: `errored + timeout + uncapturable`. The completeness gate is `no_verdict / attempted`. |
 | `score` | float \| null | `killed / (killed + survived) * 100`, rounded. **`null`** when the denominator is empty (no covered mutants) — never `0.0`. |
+| `scoped` | bool | `true` when the run was diff-scoped (`--since`): the score covers only the changed-line mutants, so it is not comparable to a full-run score. A scoped CURRENT run skips `--baseline`'s score-drop check (new-survivor detection still applies); a scoped report is REFUSED as a baseline (exit 2) because survivors outside its diff would read as new regressions. Additive key (absent in reports from older versions; treat absent as `false`). |
 
 ### `survivors[]` (array of object)
 
@@ -105,8 +106,9 @@ The delta versus the prior `--format json` report, matched by stable `id`:
 | `score_before` | float \| null | Baseline score. |
 | `score_after` | float \| null | This run's score. |
 | `score_dropped` | bool | True if `score_after < score_before - epsilon`. |
+| `score_comparable` | bool | True when the two scores share a denominator (neither side was diff-scoped, both non-null). False means the score-drop check was skipped — do not render the scores as a comparison. Additive key. |
 | `new_survivors[]` | array | Survivors present now but absent in the baseline: `{ subject, file, line, operator, token, id }`. |
-| `fixed_survivors[]` | array | Baseline survivors no longer present: `{ subject, file, line, operator, id }`. |
+| `fixed_survivors[]` | array | Baseline survivors no longer present: `{ subject, file, line, operator, id }`. Empty under a diff-scoped side: an out-of-scope survivor was never re-tested, so absence does not mean fixed. |
 
 ## Exit codes
 

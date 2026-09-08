@@ -57,16 +57,24 @@ module Mutineer
 
     # Returns the stdout of `git -C <root> diff --unified=0 <ref> -- <file>`.
     #
+    # A failure is warned, never silent: an empty result means "no changed
+    # lines", which under `--since` removes every mutant for the file — a green
+    # gate must not be manufactured by a broken diff without a trace.
+    #
     # @param ref [String] git ref to diff against.
     # @param abs_file [String] absolute path of the file being diffed.
     # @param project_root [String] repository root for `git -C`.
-    # @return [String] diff text, or `""` on failure.
+    # @return [String] diff text, or `""` on failure (after a stderr warning).
     def git_diff(ref, abs_file, project_root)
       out, _err, status = Open3.capture3(
         "git", "-C", project_root, "diff", "--unified=0", ref, "--", abs_file
       )
-      status.success? ? out : ""
-    rescue StandardError
+      return out if status.success?
+
+      warn "[mutineer] git diff failed for #{abs_file}; its lines will not be mutated (--since)"
+      ""
+    rescue StandardError => e
+      warn "[mutineer] git diff failed for #{abs_file} (#{e.class}); its lines will not be mutated (--since)"
       ""
     end
   end

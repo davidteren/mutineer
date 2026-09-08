@@ -41,6 +41,7 @@ module Mutineer
         --baseline-epsilon FLOAT  Score-drop tolerance for --baseline (default: 0)
         --only NAME          Restrict to one fully-qualified subject
         --since REF          Only mutate lines changed since git REF (e.g. origin/main)
+        --no-since           Disable diff scoping (a typed no beats a .mutineer.yml since:)
         --jobs N             Parallel worker count (default: processor count)
         --strategy NAME      reload (whole-file) or redefine (surgical); default: reload
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
@@ -96,6 +97,9 @@ module Mutineer
         o.on("--fail-fast") { opts[:fail_fast] = true; explicit << :fail_fast }
         o.on("--only NAME") { |v| opts[:only] = v; explicit << :only }
         o.on("--since REF") { |v| opts[:since] = v; explicit << :since }
+        # A typed "no" must beat a .mutineer.yml `since:` key (CLI-over-config
+        # precedence): marking :since explicit with a nil value blocks the fill.
+        o.on("--no-since") { opts[:since] = nil; explicit << :since }
         o.on("--test FILE") { |v| (opts[:tests] ||= []) << v }
         o.on("--operators LIST") { |v| opts[:operators] = v.split(",").map(&:strip); explicit << :operators }
         o.on("--threshold FLOAT") do |v|
@@ -465,11 +469,17 @@ module Mutineer
 
       # Diff the current run against the baseline (preflighted above) by the
       # stable survivor id. The delta is rendered inline (human section / additive
-      # json block) and gates exit independently of --threshold.
-      delta = (Baseline.load(config.baseline).diff(aggregate, epsilon: config.baseline_epsilon) if config.baseline)
+      # json block) and gates exit independently of --threshold. A --since run is
+      # scoped: its score covers a different denominator than a full-run baseline,
+      # so only the new-survivor half of the gate applies (see Baseline#diff).
+      delta = if config.baseline
+                Baseline.load(config.baseline).diff(aggregate, epsilon: config.baseline_epsilon,
+                                                               scoped: !config.since.nil?)
+              end
 
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
-                      format: config.format, output: config.output, baseline: delta)
+                      format: config.format, output: config.output, baseline: delta,
+                      scoped: !config.since.nil?)
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered

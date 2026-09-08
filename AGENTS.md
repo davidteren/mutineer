@@ -65,7 +65,9 @@ a lower PR, restack dependents and re-gate them.
 
 ## Releasing (tag-driven — CI publishes, no manual `gem push`)
 
-Semver: **new feature → minor bump, fix → patch.**
+Semver: **new feature → minor bump, fix → patch.** A behavior change to the
+GitHub Action's defaults is a **major** bump: consumers pin `@v<major>`, and a
+default flip must never reach them without opting in.
 
 1. On a branch, bump `lib/mutineer/version.rb` and move the `CHANGELOG.md`
    `## [Unreleased]` block into a dated `## [X.Y.Z] - YYYY-MM-DD` section.
@@ -76,7 +78,9 @@ Semver: **new feature → minor bump, fix → patch.**
    ```
 4. `.github/workflows/release.yml` then: guards `tag == Mutineer::VERSION`, runs
    tests, publishes to RubyGems via **Trusted Publishing** (OIDC — no API key, no
-   OTP), and cuts the GitHub release from the CHANGELOG section.
+   OTP), cuts the GitHub release from the CHANGELOG section, and force-moves the
+   floating major tag (`v1`, `v2`, …) to the release so `uses: …@v<major>`
+   consumers track the latest in that line.
 
 Safety nets:
 - The **tag must equal `Mutineer::VERSION`** or the release aborts.

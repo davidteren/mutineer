@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "tmpdir"
 
 class ChangedLinesTest < Minitest::Test
   CL = Mutineer::ChangedLines
@@ -8,6 +9,19 @@ class ChangedLinesTest < Minitest::Test
   def test_parse_single_hunk_with_count
     diff = "@@ -1,0 +5,3 @@\n+a\n+b\n+c\n"
     assert_equal Set[5, 6, 7], CL.parse(diff)
+  end
+
+  # A failed per-file diff must warn, never silently mean "no changed lines" —
+  # under --since that silence would drop every mutant for the file untraced.
+  def test_git_diff_failure_warns_and_returns_empty
+    Dir.mktmpdir do |not_a_repo|
+      out = nil
+      _stdout, err = capture_io do
+        out = CL.git_diff("HEAD", File.join(not_a_repo, "f.rb"), not_a_repo)
+      end
+      assert_equal "", out
+      assert_match(/git diff failed for .*f\.rb; its lines will not be mutated/, err)
+    end
   end
 
   def test_parse_hunk_without_new_count_means_one_line

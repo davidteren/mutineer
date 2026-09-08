@@ -33,12 +33,12 @@ class BaselineTest < Minitest::Test
   def agg(*results) = Mutineer::AggregateResult.new(results)
 
   # A baseline doc (a prior --format json run) carrying the given survivor ids.
-  def baseline_doc(ids, score: nil)
+  def baseline_doc(ids, score: nil, scoped: nil)
     {
       # Deliberately an older schema: a baseline written by a prior version must
       # still be readable, per the "accept any 1.x" contract in docs/json-schema.md.
       "schema_version" => "1.1",
-      "summary" => { "score" => score },
+      "summary" => { "score" => score, "scoped" => scoped }.compact,
       "survivors" => ids.map do |id|
         { "id" => id, "subject" => "Pricing#total", "file" => FILE, "line" => 3,
           "operator" => "comparison" }
@@ -67,6 +67,62 @@ class BaselineTest < Minitest::Test
     refute delta.regressed
     assert_empty delta.new_survivors
     assert_equal 1, delta.fixed_survivors.size # bbb fixed (informational)
+  end
+
+  # A --since run's score covers a different denominator than a full-run
+  # baseline, so scoped: true skips the score-drop half of the gate. The
+  # new-survivor half (stable ids compare fine across scopes) still fires.
+  def test_scoped_diff_skips_score_drop_but_keeps_new_survivor_gate
+    base = Mutineer::Baseline.new(baseline_doc(%w[aaa], score: 80.0))
+    current = agg(Mutineer::Result.killed, survivor("aaa")) # 50.0% vs 80.0%
+
+    delta = base.diff(current, scoped: true)
+    refute delta.score_drop, "scoped diff must not compare cross-denominator scores"
+    refute delta.regressed
+    assert_equal 80.0, delta.score_before # both scores still reported as facts
+    assert_equal 50.0, delta.score_after
+
+    assert base.diff(current).regressed, "same run unscoped still gates on the drop"
+    assert base.diff(agg(Mutineer::Result.killed, survivor("zzz")), scoped: true).regressed,
+           "a new survivor id regresses even when scoped"
+  end
+
+  # The reverse direction: a report that was itself diff-scoped, later used AS
+  # the baseline, must not have its scoped score compared against a full run's.
+  def test_scoped_baseline_doc_also_skips_score_drop
+    scoped_base = Mutineer::Baseline.new(baseline_doc(%w[aaa], score: 90.0, scoped: true))
+    current = agg(Mutineer::Result.killed, survivor("aaa")) # 50.0% full run
+
+    delta = scoped_base.diff(current)
+    refute delta.score_drop, "a scoped baseline's score must not gate a full run"
+    refute delta.score_comparable
+    refute delta.regressed
+    assert scoped_base.diff(agg(survivor("zzz"))).regressed, "new survivors still gate"
+  end
+
+  # An out-of-scope baseline survivor was never re-tested under a diff-scoped
+  # side, so it must not be reported as fixed (empty is honest, not false).
+  def test_scoped_side_reports_no_fixed_survivors
+    base = Mutineer::Baseline.new(baseline_doc(%w[aaa bbb]))
+    scoped_delta = base.diff(agg(survivor("aaa")), scoped: true)
+    assert_empty scoped_delta.fixed_survivors, "bbb was never re-tested; not fixed"
+
+    scoped_base = Mutineer::Baseline.new(baseline_doc(%w[aaa bbb], scoped: true))
+    assert_empty scoped_base.diff(agg(survivor("aaa"))).fixed_survivors
+
+    assert_equal 1, base.diff(agg(survivor("aaa"))).fixed_survivors.size,
+                 "unscoped diff still reports bbb fixed"
+  end
+
+  # Only the literal JSON boolean true marks a baseline scoped: a malformed
+  # value (the STRING "false") must not silently disable the score-drop gate.
+  def test_scoped_marker_requires_literal_true
+    base = Mutineer::Baseline.new(baseline_doc(%w[aaa], score: 80.0, scoped: "false"))
+    delta = base.diff(agg(Mutineer::Result.killed, survivor("aaa"))) # 50.0% vs 80.0%
+
+    assert delta.score_comparable, "a non-boolean scoped value is not scoped"
+    assert delta.score_drop
+    assert delta.regressed
   end
 
   # Acceptance 3: score drop -> regression, with the "A% -> B%" facts.
@@ -133,6 +189,18 @@ class BaselineTest < Minitest::Test
     end
   end
 
+  # A scoped report is refused as a baseline: outside its diff every survivor
+  # would read as NEW, so gating against it manufactures false regressions.
+  def test_load_refuses_a_scoped_report_as_baseline
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "scoped.json")
+      File.write(path, JSON.generate(baseline_doc(%w[aaa], score: 90.0, scoped: true)))
+      err = assert_raises(Mutineer::ConfigError) { Mutineer::Baseline.load(path) }
+      assert_match(/--since run/, err.message)
+      assert_match(/full run/, err.message)
+    end
+  end
+
   # --- rendering: the delta facts reach human stdout + the additive json block ---
 
   def render(results, delta, format:)
@@ -169,10 +237,13 @@ class BaselineTest < Minitest::Test
     results = [Mutineer::Result.killed, survivor("ccc")]
     doc = JSON.parse(render(results, base.diff(agg(*results)), format: "json"))
 
-    assert_equal "1.2", doc["schema_version"] # the baseline block alone does not move it
+    assert_equal "1.3", doc["schema_version"] # 1.3 = the additive scoped/score_comparable keys
     assert doc["baseline"]["regressed"]
     assert_equal 1, doc["baseline"]["new_survivors"].size
     assert_equal "ccc", doc["baseline"]["new_survivors"].first["id"]
+    # Additive comparability marker: no score on this baseline doc, so the two
+    # scores must not be rendered as a comparison.
+    assert_equal false, doc["baseline"]["score_comparable"]
   end
 
   # Schema-safety: with no baseline, the doc has no `baseline` key (additive only).
