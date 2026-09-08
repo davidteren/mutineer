@@ -1,0 +1,18 @@
+action.yml
+  h_e8a5bb9272fa34 309
+docs/agentic-coding.html
+  h_e8a5bb9272fa34 113,128
+docs/llms-full.txt
+  h_e8a5bb9272fa34 216-217,367-368
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "6bbd951f2f7bf267a4e5773412b950c5d8334dca",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
