@@ -2,6 +2,10 @@
 #
 # Amp orb setup for the mutineer gem — https://ampcode.com/manual/orbs
 #
+# Debian Amp orbs only. This script writes ~/.bash_profile and ~/.bashrc and
+# may run `mise use --global`; those steps would change a developer laptop
+# (macOS + rbenv). Non-Debian hosts are refused before any install.
+#
 # An orb is a bare Debian 12 sandbox with no Ruby, so this installs, in order:
 #
 #   1. a C toolchain            — native gem extensions need one if a gem has no
@@ -90,6 +94,17 @@ install_bundle() {
 }
 
 cd -- "$REPO_ROOT"
+
+# ---------------------------------------------------------------------------
+step "platform check"
+# ---------------------------------------------------------------------------
+# Amp orbs are Debian 12. Refuse anything else so a local agent cannot
+# install mise, pin a global Ruby, or append shell hooks on a laptop.
+if [ ! -r /etc/os-release ] || ! grep -q '^ID=debian$' /etc/os-release; then
+  echo "ERROR: .agents/setup only runs on Debian Amp orbs; refusing to run here ($(uname -s 2>/dev/null || echo unknown))." >&2
+  echo "It writes ~/.bash_profile and ~/.bashrc and may run 'mise use --global'." >&2
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 step "C toolchain"
