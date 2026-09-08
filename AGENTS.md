@@ -29,9 +29,25 @@ bundle exec rake yard:strict                    # 100% documented — see below
 - Subprocesses use plain `bundle exec` — never hardcode `rbenv exec` (breaks CI and
   non-rbenv users).
 
+## Website checks
+
+For changes to the GitHub Pages site or its tests, also run:
+
+```sh
+node --test test/site_test.js
+npm ci --prefix test/browser
+npx --prefix test/browser playwright install chromium
+npm test --prefix test/browser
+```
+
+These development-only checks require Node.js 22+, npm, and Python 3.
+Playwright starts a local server on port 8766; keep that port free so the
+checks run against this checkout. The gem and its default Rake suite remain
+independent of Node and Playwright. CI runs these checks in `website browser tests`.
+
 ## CI gates that block merge
 
-`yard:strict` · `test` (×2 OS) · `rails dogfood` + daemon integration · socket/gitguardian.
+`yard:strict` · `test` (×2 OS) · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
 
 ## PR review gate (before any merge — never skip)
 
