@@ -306,7 +306,7 @@ runs:
           if cp "$TMP_REPORT" "$OUTPUT"; then
             delivered_output=1
           else
-            echo "::warning::mutineer: could not copy the report to '$SAFE_OUT'; the JSON remains in the log and the run's exit code is unchanged."
+            echo "::warning::mutineer: could not copy the report to '$SAFE_OUT'; the report remains available through the 'report' output, and the run's exit code is unchanged."
           fi
         elif report_ok; then
           cat "$TMP_REPORT" || echo "::warning::mutineer: could not echo the JSON report to the log; the run's exit code is unchanged."

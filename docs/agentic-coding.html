@@ -110,7 +110,7 @@ jobs:
       - uses: davidteren/mutineer@v1
         with:
           sources: app/
-          <span class="c"># since: defaults to the PR base on pull_request events; `none` = full scan</span>
+          <span class="c"># since: defaults to the PR's base commit SHA (falls back to fetching the base tip); `none` = full scan</span>
           baseline: .mutineer/baseline.json
           threshold: "90"
           output: .mutineer/pr.json
@@ -125,7 +125,7 @@ jobs:
           sources: app/models/order.rb
           rails: true
           use-bundler: true
-          <span class="c"># since: defaults to the PR base on pull_request events; `none` = full scan</span></code></pre>
+          <span class="c"># since: defaults to the PR's base commit SHA (falls back to fetching the base tip); `none` = full scan</span></code></pre>
       <p>See <code>action.yml</code> for all inputs (<code>operators</code>, <code>framework</code>, <code>strategy</code>, <code>jobs</code>, <code>extra-args</code>, …) and the <code>exit-code</code> / <code>report</code> outputs.</p>
 
       <h2 id="equivalent">Avoiding infinite loops: equivalent mutants</h2>

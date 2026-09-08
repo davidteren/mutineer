@@ -213,7 +213,8 @@ This repo ships a composite action (`action.yml`) that wraps the CLI for CI:
 - uses: davidteren/mutineer@v1
   with:
     sources: app/
-    # since: defaults to the PR base on pull_request events; `none` = full scan
+    # since: defaults to the PR's base commit SHA (falls back to fetching
+    # the base tip); `none` = full scan
     baseline: .mutineer/baseline.json
     threshold: "90"
 ```
@@ -363,7 +364,8 @@ For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the 
           sources: app/models/order.rb
           rails: true
           use-bundler: true
-          # since: defaults to the PR base on pull_request events; `none` = full scan.
+          # since: defaults to the PR's base commit SHA (falls back to
+          # fetching the base tip); `none` = full scan.
 ```
 
 See `action.yml` for all inputs (`operators`, `framework`, `strategy`, `jobs`, `extra-args`, …) and the
