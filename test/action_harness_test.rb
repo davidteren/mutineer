@@ -31,7 +31,11 @@ class ActionHarnessTest < Minitest::Test
     assert_includes out, "OK: scoped to base.sha"
     assert_includes out, "OK: stale file NOT deleted (baseline-safe)"
     assert_includes out, "OK: rejected before running"
+    assert_includes out, "OK: passing-run warnings"
+    assert_includes out, "OK: no errors on passing run"
     assert_includes out, "::error file=lib/we%2Cird%3Aname.rb", "property escaping regressed"
+    assert_includes out, "100%25", "msg percent-escaping of the survivor token regressed"
+    refute_match(/::(?:error|warning)[^\n]*<\n/, out, "msg must collapse newlines in the survivor token")
 
     # Exit codes alone cannot discriminate the scoping scenarios (a regressed
     # branch keeps the same code), so assert each case's decisive line.

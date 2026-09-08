@@ -63,8 +63,8 @@ echo "  summary head: $(head -1 "$SCRATCH/case1/summary.md")"
 
 echo; echo "== 2: PASSING run (expects ::warning annotations, 'passed' summary) =="
 run_step case2 STUB_EXIT=0
-grep -c '::warning file=' "$SCRATCH/case2/stdout.txt" | sed 's/^/  warning count: /'
-grep -c '::error' "$SCRATCH/case2/stdout.txt" | sed 's/^/  error count: /' || true
+grep -q '::warning file=' "$SCRATCH/case2/stdout.txt" && echo "  OK: passing-run warnings" || echo "  FAIL: no warnings on passing run"
+grep -q '::error' "$SCRATCH/case2/stdout.txt" && echo "  FAIL: errors on passing run" || echo "  OK: no errors on passing run"
 echo "  summary head: $(head -1 "$SCRATCH/case2/summary.md")"
 
 echo; echo "== 3: pull_request + event payload (expects --since <base.sha>) =="

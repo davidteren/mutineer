@@ -14,6 +14,14 @@ permissions:
   contents: write   # create the GitHub release
   id-token: write   # OIDC token for RubyGems Trusted Publishing
 
+# One release at a time. Two tags in the same major (v1.0.0 then v1.0.1)
+# overlapping would let the older run force-push @v1 backward after the
+# newer one had already moved it. cancel-in-progress: false queues the
+# second run instead of cancelling a publish already in flight.
+concurrency:
+  group: mutineer-release
+  cancel-in-progress: false
+
 jobs:
   release:
     name: publish gem + github release

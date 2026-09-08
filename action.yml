@@ -298,11 +298,18 @@ runs:
         code=$?
         set -e
         # Deliver the caller's requested output file only from a written report,
-        # and keep an auto-routed report visible in the log.
+        # and keep an auto-routed report visible in the log. cp/cat must not
+        # abort under `set -e`: a copy failure would drop $code and skip the
+        # exit-code=/report= outputs for a run that already finished.
+        delivered_output=""
         if report_ok && [ -n "$OUTPUT" ]; then
-          cp "$TMP_REPORT" "$OUTPUT"
+          if cp "$TMP_REPORT" "$OUTPUT"; then
+            delivered_output=1
+          else
+            echo "::warning::mutineer: could not copy the report to '$SAFE_OUT'; the JSON remains in the log and the run's exit code is unchanged."
+          fi
         elif report_ok; then
-          cat "$TMP_REPORT"
+          cat "$TMP_REPORT" || echo "::warning::mutineer: could not echo the JSON report to the log; the run's exit code is unchanged."
         fi
         echo "::endgroup::"
 
@@ -392,7 +399,7 @@ runs:
         # Absolutized: a relative `output` resolves against THIS step's
         # working-directory, which a later step at the repo root cannot see.
         if report_ok; then
-          if [ -n "$OUTPUT" ]; then
+          if [ -n "$delivered_output" ]; then
             report_path="$(cd "$(dirname "$OUTPUT")" && pwd)/$(basename "$OUTPUT")"
           else
             report_path="$TMP_REPORT"

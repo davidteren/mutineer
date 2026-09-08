@@ -34,7 +34,7 @@
 
 ## Observations
 
-- Suppressed below gate (recorded, worth follow-ups): the JSON report records no `--since` scope, so the `scoped:` protection is one-directional; a scoped report stored as a baseline would gate future full runs against a scoped score (predictability, P2/50, `manual`). A missing `jq` silently skips summary/annotations; a one-line `::notice` would make the absence attributable (predictability, P3/50).
+- Resolved by this PR: the JSON report records `summary.scoped`, and a scoped report is refused as a baseline (exit 2 with a regenerate hint), so the `scoped:` protection is two-directional. A missing `jq` silently skips summary/annotations; a one-line `::notice` would make the absence attributable (predictability, P3/50).
 - Predictability verified every field the jq programs consume exists in the JSON schema, and called out the deliberate DWIM asymmetry as correct: auto-since is best-effort (falls back to the stricter full scan), an explicit `since:` stays strict (exit 2).
 - Convention verified `Progress` matches sibling idiom exactly and that `jq` in the action is a guarded runner-tool, not a gem dependency.
 - Experience noted the progress line has no ETA (fine for its purpose).

@@ -83,8 +83,8 @@ jobs:
       - uses: davidteren/mutineer@v1
         with:
           sources: app/
-          # since: defaults to origin/${{ github.base_ref }} on pull_request
-          # events (the action fetches the base tip itself); `none` = full scan.
+          # since: defaults to the PR's base commit SHA from the event
+          # payload (falls back to fetching the base tip); `none` = full scan.
           baseline: .mutineer/baseline.json
           threshold: "90"
           output: .mutineer/pr.json
@@ -103,8 +103,8 @@ For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the 
           sources: app/models/order.rb
           rails: true
           use-bundler: true
-          # since: defaults to origin/${{ github.base_ref }} on pull_request
-          # events here too; `none` = full scan.
+          # since: defaults to the PR's base commit SHA (falls back to
+          # fetching the base tip); `none` = full scan.
 ```
 
 See `action.yml` for all inputs (`operators`, `framework`, `strategy`, `jobs`, `extra-args`, …) and the
