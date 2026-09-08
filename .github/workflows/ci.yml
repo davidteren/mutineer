@@ -60,3 +60,25 @@ jobs:
         run: bundle install
       - name: Daemon integration tests (Phase 2a)
         run: bundle exec rake test:daemon
+
+  site:
+    name: website browser tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: test/browser/package-lock.json
+      - name: Check theme and copy logic
+        run: node --test test/site_test.js
+      - name: Install browser test tools
+        working-directory: test/browser
+        run: npm ci
+      - name: Install Chromium
+        working-directory: test/browser
+        run: npx playwright install --with-deps chromium
+      - name: Check website in Chromium
+        working-directory: test/browser
+        run: npm test

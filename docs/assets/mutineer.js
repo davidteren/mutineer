@@ -35,10 +35,12 @@
 
     // Copy controls report failure and remain reusable after repeated clicks.
     document.querySelectorAll('.copy').forEach(function (button) {
-      var timer;
+      var timer, pending = false;
       button.hidden = false;
       button.setAttribute('aria-live', 'polite');
       button.addEventListener('click', async function () {
+        if (pending) return;
+        pending = true;
         clearTimeout(timer);
         try {
           await navigator.clipboard.writeText(button.getAttribute('data-copy') || '');
@@ -46,6 +48,7 @@
         } catch (e) {
           button.textContent = 'Select text';
         }
+        pending = false;
         timer = setTimeout(function () { button.textContent = 'Copy'; }, 1800);
       });
     });

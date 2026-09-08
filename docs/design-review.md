@@ -114,6 +114,8 @@ offset from the seed hue. Colour is fixed at build time; page loads do not rando
 - `bundle exec rake test`: 451 tests and 1,355 assertions passed; no failures, errors, or skips.
 - Ruby load smoke check passed. `bundle exec rake yard:strict` passed with 100% documentation; it printed existing link/option warnings.
 - `node --test test/site_test.js` passed. It checks saved, invalid, and blocked-storage themes; system changes; explicit choices; and copy success/failure feedback.
+- `npm ci --prefix test/browser` installs the isolated development-only browser test tools. `npm test --prefix test/browser` passed both Playwright checks. The new website CI job runs these checks and the Node regression test.
+- Review fixes prevent overlapping clipboard writes and give JSON table regions distinct accessible names.
 - Local link and fragment checks passed for all four pages, with no duplicate IDs.
 - Browser measurements found no page-wide overflow at 390 px on all four pages, or at 320 px on the homepage. JSON tables scroll within their containers.
 - Desktop screenshots covered both homepage themes and the dark guide. Mobile screenshots covered all four pages in light mode.

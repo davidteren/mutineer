@@ -35,6 +35,15 @@ test('site follows system theme until chosen, tolerates blocked storage, and rep
     assert.equal(copy.textContent, 'Copied ✓');
     reset();
     assert.equal(copy.textContent, 'Copy');
+    let finishCopy, calls = 0;
+    context.navigator.clipboard.writeText = () => { calls++; return new Promise(resolve => { finishCopy = resolve; }); };
+    const firstClick = copy.click();
+    await copy.click();
+    assert.equal(calls, 1, 'overlapping clicks must share the pending write');
+    finishCopy();
+    await firstClick;
+    assert.equal(copy.textContent, 'Copied ✓');
+    reset();
     context.navigator.clipboard.writeText = async () => { throw Error('denied'); };
     await copy.click();
     assert.equal(copy.textContent, 'Select text');
