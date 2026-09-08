@@ -1,0 +1,211 @@
+docs/plans/2026-08-21-001-feat-orb-setup-plan.md
+  s_c54ba2d2d4aa0c::t_82c44d05dc95bf 113
+  s_b6cb6ddff1d15b::t_ff50fd14bcc3db 96
+  s_a3d52d509f408c::t_eb6ebc9069dd15 43
+  s_24f994060af4ce::t_153f81061a03c9 98
+  s_6b1d04bd2a1371::t_6df5e26842aee6 73
+  s_be25bf6fcced1f::t_5de5fd27a7cac0 112,165
+  s_76460b9457776b::t_b664a39163bf4d 147-148
+  s_2ab305b647fe65::t_33756861bea44a 115
+  s_15348b6e57f5f7::t_e9ce8c90f2083f 179
+  s_06bffe57efb7d3::t_1d4f90c2323d74 166
+  s_9fecbfd88e6ca6::t_3983a6c1314a5b 108
+  s_742957d8175151::t_243a15aebe6b19 106
+  s_19dc535d3bccf3::t_ed9f2db7fd80aa 81
+  s_186be8d8ae8a1a::t_d0b6fa22bd3d87 111
+  s_3972ba6cbc1a6f::t_17a09bfd91bf3b 1-42,44-72,74-80,82-95,97,99,103,105,107,109-110,114,116-146,149-164,167-178,180-183
+  s_582063300b0f01::t_bb04d5028f6cdc 100
+  s_c9abe2bd05668d::t_4357b1a51d24f3 104
+.agents/setup
+  s_19d7cf9cb5ad0e::t_e1628ba061c106 58-78
+  s_617aa269012f81::t_1b5a64a9788a66 155-166,168,170-172
+  s_a6c22474e0fe18::t_895cd71eef2f2e 1-57,79-154,167,169,173-212
+.agents/resume
+  s_cd538d8d67767f::t_97e0eaf3faec5a 1-19
+.gitignore
+  s_25aea3d40a48ba::t_bffbc5723cd71e 8-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "1864b598ac0e20ffde8e2a13182e3ad1a3c55d20",
+  "prompts": {},
+  "sessions": {
+    "s_06bffe57efb7d3": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEiDF9UKxUJEmwi1Vf4",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_15348b6e57f5f7": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEiMPwsr0MQvbPOvKp4",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_186be8d8ae8a1a": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEkQ9KXOQLLZulAisjS",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_19d7cf9cb5ad0e": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BFGEgnbrioW1cXs3Opd",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_19dc535d3bccf3": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEiS7bXCtGVT6rzCWtd",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_24f994060af4ce": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEtc8nFGjljGeDK7hZM",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_25aea3d40a48ba": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BFE4wwpYvpjonF8M9jQ",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_2ab305b647fe65": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEi2xR9EBte4cpVFGDe",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_3972ba6cbc1a6f": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEXVgM2TA3qPb2ZQR15",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_582063300b0f01": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEtgzcK16uoBPbW9Ktg",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_617aa269012f81": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BFGQUmGzsxITlrotie9",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_6b1d04bd2a1371": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEtj5YVwicp6CYtl6rk",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_742957d8175151": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEcTu9sNpBr1q7VcVAU",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_76460b9457776b": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEi84pZ88GvEFuwdoCV",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_9fecbfd88e6ca6": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEhw850OP1I1KVi4chT",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_a3d52d509f408c": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEkA7oRalFEJv6Yv9xK",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_a6c22474e0fe18": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BFD2brjhTQwu8eoI6Al",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_b6cb6ddff1d15b": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEkNqEFSIZrPYLmXAB9",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_be25bf6fcced1f": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEtplwjnq7AkhvJn6ex",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_c54ba2d2d4aa0c": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEiZOFzdgOCKhE2q1E0",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_c9abe2bd05668d": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BEkOkHSDx1IB7ziF2cz",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_cd538d8d67767f": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "TU-034BFDtb8h11jvWFsfhhHm",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
