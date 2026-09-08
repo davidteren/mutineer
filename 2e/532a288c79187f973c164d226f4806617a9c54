@@ -1,0 +1,25 @@
+docs/agentic-coding.html
+  s_c9ff8c2315366f::t_964b7c3e5c64de 25-26
+docs/index.html
+  s_c9ff8c2315366f::t_084fd3e31e6495 25-26
+docs/json-schema.html
+  s_c9ff8c2315366f::t_ebfb55509ca1a2 25-26
+docs/sample-report.html
+  s_c9ff8c2315366f::t_e4e827962e3a96 9-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "2e532a288c79187f973c164d226f4806617a9c54",
+  "prompts": {},
+  "sessions": {
+    "s_c9ff8c2315366f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0820d-f8dd-7d92-a98d-aff6dbd9f02f",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
