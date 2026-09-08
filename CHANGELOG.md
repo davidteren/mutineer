@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-08
+
 ## [1.0.0] - 2026-09-08
 
 The GitHub Action's PR default changes in this release, which is why it is a
@@ -381,6 +383,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[0.12.0]: https://github.com/davidteren/mutineer/releases/tag/v0.12.0
 [1.0.0]: https://github.com/davidteren/mutineer/releases/tag/v1.0.0
 [0.11.4]: https://github.com/davidteren/mutineer/releases/tag/v0.11.4
 [0.11.3]: https://github.com/davidteren/mutineer/releases/tag/v0.11.3

@@ -2,5 +2,5 @@
 
 module Mutineer
   # Current Mutineer release version.
-  VERSION = "1.0.0"
+  VERSION = "0.12.0"
 end
