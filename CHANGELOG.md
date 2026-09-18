@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-18
+
 ### Added
 - **RubyGems `documentation_uri`**: the published gem now points at the docs
   site (`https://davidteren.github.io/mutineer/`) so gem-page discovery
@@ -405,6 +407,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.0.1]: https://github.com/davidteren/mutineer/releases/tag/v1.0.1
 [1.0.0]: https://github.com/davidteren/mutineer/releases/tag/v1.0.0
 [0.11.4]: https://github.com/davidteren/mutineer/releases/tag/v0.11.4
 [0.11.3]: https://github.com/davidteren/mutineer/releases/tag/v0.11.3
