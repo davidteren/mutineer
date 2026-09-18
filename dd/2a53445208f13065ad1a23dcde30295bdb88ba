@@ -1,0 +1,19 @@
+lib/mutineer/file_swap.rb
+  s_ddab29e45f130a::t_e0ef9481855a70 4-5,7-8,20,24-25,32-58,62-63,70-86,92-94,103-105,114-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dd2a53445208f13065ad1a23dcde30295bdb88ba",
+  "prompts": {},
+  "sessions": {
+    "s_ddab29e45f130a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a0b4f6-7af8-7191-aa04-25abfd6a9fca",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
