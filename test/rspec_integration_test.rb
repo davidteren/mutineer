@@ -33,4 +33,29 @@ class RSpecIntegrationTest < Minitest::Test
     assert_equal "add", survivor.subject.name.to_s
     assert_equal :arithmetic, survivor.mutation.operator
   end
+
+  # #96: RSpec assertion failures on the unmutated suite abort before scoring.
+  def test_failing_spec_aborts_before_scoring
+    Dir.mktmpdir("mutineer-rspec-clean") do |dir|
+      File.write(File.join(dir, "calc.rb"), "class AuditRSpecCalc\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(File.join(dir, "calc_spec.rb"), <<~RUBY)
+        require_relative "calc"
+        RSpec.describe AuditRSpecCalc do
+          it "adds" do
+            expect(described_class.new.add(2, 3)).not_to be_nil
+          end
+          it "fails unrelated" do
+            expect(1).to eq(2)
+          end
+        end
+      RUBY
+      config = Mutineer::Config.new(
+        sources: ["calc.rb"], tests: ["calc_spec.rb"],
+        framework: "rspec", operators: ["arithmetic"],
+        cache_dir: File.join(dir, "cache"), project_root: dir
+      )
+      err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::Runner.execute(config) }
+      assert_match(/unmutated suite is not green/, err.message)
+    end
+  end
 end

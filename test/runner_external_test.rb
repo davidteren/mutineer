@@ -63,6 +63,37 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
+  # #99: a second external run must refuse while the first owns the source.
+  def test_second_run_refuses_while_first_owns_source
+    with_project("calculator_strong_test.rb") do |proj|
+      path = File.join(proj, "calculator.rb")
+      original = File.binread(path)
+      rd_ready, wr_ready = IO.pipe
+      rd_resume, wr_resume = IO.pipe
+      pid = fork do
+        rd_ready.close
+        wr_resume.close
+        Mutineer::FileSwap.with(path, original) do
+          wr_ready.write("1")
+          wr_ready.close
+          rd_resume.read(1)
+        end
+        exit! 0
+      end
+      wr_ready.close
+      rd_resume.close
+      rd_ready.read(1)
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj)
+      wr_resume.write("1")
+      wr_resume.close
+      Process.wait(pid)
+      assert_equal 1, status.exitstatus, err
+      assert_match(/another mutineer run owns/, err)
+      assert_equal original, File.binread(path)
+    end
+  end
+
   # A command that fails on the UNMUTATED tree is a broken environment: abort
   # before scoring (exit 1), name the diagnosis, run zero mutants.
   def test_smoke_failure_aborts

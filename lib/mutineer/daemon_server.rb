@@ -150,7 +150,8 @@ module Mutineer
           load_paths: Array(@cfg["load_paths"]), project_root: root,
           boot_path: @cfg["boot"], framework: @framework, cache_dir: File.join(root, ".mutineer")
         ).build_via_fork(after_fork: coverage_after_fork)
-        { "map" => cmap.map, "failed_test_files" => cmap.failed_test_files }
+        { "map" => cmap.map, "failed_test_files" => cmap.failed_test_files,
+          "failed_clean_tests" => cmap.failed_clean_tests }
       rescue Exception => e # rubocop:disable Lint/RescueException
         @errio.puts("[daemon] coverage build failed: #{e.class}: #{e.message}")
         { "map" => {}, "failed_test_files" => [], "error" => "#{e.class}: #{e.message}" }

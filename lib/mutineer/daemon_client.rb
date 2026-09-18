@@ -87,10 +87,11 @@ module Mutineer
     end
 
     # Ask the daemon to build the coverage map app-side and return it. One-shot
-    # control message (no id). Returns `{"map"=>..., "failed_test_files"=>...}`
+    # control message (no id). Returns
+    # `{"map"=>..., "failed_test_files"=>..., "failed_clean_tests"=>...}`
     # (possibly with an `"error"`), or nil if the daemon vanished. The caller then
     # falls back to running the full test set (no narrowing) rather than
-    # mis-scoring.
+    # mis-scoring, except a red unmutated suite which aborts.
     #
     # @return [Hash, nil] the coverage payload, or nil on a dead pipe.
     def coverage

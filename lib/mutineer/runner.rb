@@ -99,6 +99,7 @@ module Mutineer
           load_paths: config.load_paths, framework: config.framework
         ).build_or_load
       end
+      abort_if_unclean!(coverage_map)
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
       jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
@@ -185,43 +186,48 @@ module Mutineer
     def self.execute_external(config, operator_classes)
       abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
       dirs      = source_dirs(config)
+      sources   = config.sources.map { |s| File.expand_path(s, config.project_root) }
 
-      # Heal any file a prior hard-killed run left mutated BEFORE reading source.
-      # collect_jobs computes mutation offsets/ids from the on-disk bytes, so a
-      # still-mutated file would yield garbage offsets against the later-healed
-      # source. Heal first, then discover jobs from the clean tree.
-      FileSwap.restore_orphans(dirs)
-
-      jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
-      jobs = filter_since(jobs, source_map, config) if config.since
-
-      # Nothing to mutate: return before the smoke check, which runs the whole
-      # --test set to calibrate a timeout no mutant would use (#76).
-      return [AggregateResult.new(ignored_results), source_map] if jobs.empty?
-
-      # Calibrate the per-mutant timeout from the clean run (a real suite far
-      # outlasts the 10s in-process fork budget), and abort if it is not green.
-      # 3x the clean run, floor 30s, ceiling 300s: a heuristic. The floor covers
-      # a fast suite; the ceiling bounds a hung mutant (infinite loop) so a
-      # handful cannot stall a serial run for ~45min on a slow suite.
-      smoke_elapsed = ExternalBackend.smoke_check!(config.test_command, abs_tests)
-      timeout = [[smoke_elapsed * 3, 30].max, 300].min.ceil
-
-      results = []
-      progress = Progress.new(jobs.size)
-      begin
-        jobs.each do |subject, mutation, id|
-          r = run_external(subject, mutation, config.test_command, abs_tests,
-                           timeout: timeout, verbose: config.verbose)
-          results << r.with(subject: subject, mutation: mutation, id: id)
-          progress.tick
-          break if config.fail_fast && r.survived? # stop at the first survivor
-        end
-      ensure
+      # Own every source before healing leftovers or reading bytes for mutation.
+      # A backup file alone is not ownership; flock is.
+      FileSwap.owning(sources) do
+        # Heal any file a prior hard-killed run left mutated BEFORE reading source.
+        # collect_jobs computes mutation offsets/ids from the on-disk bytes, so a
+        # still-mutated file would yield garbage offsets against the later-healed
+        # source. Heal first, then discover jobs from the clean tree.
         FileSwap.restore_orphans(dirs)
-      end
 
-      [AggregateResult.new(results + ignored_results), source_map]
+        jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
+        jobs = filter_since(jobs, source_map, config) if config.since
+
+        # Nothing to mutate: return before the smoke check, which runs the whole
+        # --test set to calibrate a timeout no mutant would use (#76).
+        next [AggregateResult.new(ignored_results), source_map] if jobs.empty?
+
+        # Calibrate the per-mutant timeout from the clean run (a real suite far
+        # outlasts the 10s in-process fork budget), and abort if it is not green.
+        # 3x the clean run, floor 30s, ceiling 300s: a heuristic. The floor covers
+        # a fast suite; the ceiling bounds a hung mutant (infinite loop) so a
+        # handful cannot stall a serial run for ~45min on a slow suite.
+        smoke_elapsed = ExternalBackend.smoke_check!(config.test_command, abs_tests)
+        timeout = [[smoke_elapsed * 3, 30].max, 300].min.ceil
+
+        results = []
+        progress = Progress.new(jobs.size)
+        begin
+          jobs.each do |subject, mutation, id|
+            r = run_external(subject, mutation, config.test_command, abs_tests,
+                             timeout: timeout, verbose: config.verbose)
+            results << r.with(subject: subject, mutation: mutation, id: id)
+            progress.tick
+            break if config.fail_fast && r.survived? # stop at the first survivor
+          end
+        ensure
+          FileSwap.restore_orphans(dirs)
+        end
+
+        [AggregateResult.new(results + ignored_results), source_map]
+      end
     end
 
     # Runs one mutant through the external backend: apply the whole-file mutation
@@ -239,6 +245,21 @@ module Mutineer
       FileSwap.with(subject.file, mutated) do
         ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose)
       end
+    end
+
+    # Aborts the run when coverage capture saw a red unmutated suite. Scoring
+    # those results would treat existing assertion failures as killed mutants.
+    #
+    # @param coverage_map [Mutineer::CoverageMap] the built or loaded map.
+    # @return [void]
+    # @raise [Mutineer::SmokeCheckError] when any captured test failed clean.
+    def self.abort_if_unclean!(coverage_map)
+      files = coverage_map.failed_clean_tests
+      return if files.empty?
+
+      raise SmokeCheckError,
+            "the unmutated suite is not green (#{files.join(', ')}) — " \
+            "#{ExternalBackend.generic_env_hint}."
     end
 
     # Coverage-based test selection, shared by the in-process ({run}) and daemon

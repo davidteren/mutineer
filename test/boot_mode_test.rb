@@ -64,15 +64,12 @@ class BootModeTest < Minitest::Test
     end
   end
 
-  # Selection isolates per mutant: given the covering weak suite AND an unrelated
-  # always-failing test, only the covering one runs — so the weak survivor still
-  # survives. If all --test files ran per mutant, the failing test would kill it.
-  def test_only_covering_test_runs_when_multiple_given
+  # #96: an unrelated failing test is still a red unmutated suite. Abort scoring
+  # instead of letting that failure certify (or kill) mutants.
+  def test_failing_unrelated_test_aborts_before_scoring
     Dir.mktmpdir("mutineer-boot") do |cache|
-      agg = run_boot(WEAK, FAILING, cache_dir: cache)
-
-      assert_operator agg.surviving_mutants.size, :>, 0,
-                      "unrelated failing test must not be selected for covered mutants"
+      err = assert_raises(Mutineer::SmokeCheckError) { run_boot(WEAK, FAILING, cache_dir: cache) }
+      assert_match(/unmutated suite is not green/, err.message)
     end
   end
 
