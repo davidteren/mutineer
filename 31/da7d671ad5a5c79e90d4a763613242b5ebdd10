@@ -1,0 +1,46 @@
+.github/workflows/release-pr.yml
+  h_e8a5bb9272fa34 43-55,68-71,74-77,80
+CHANGELOG.md
+  h_e8a5bb9272fa34 14-32
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 220-224
+lib/mutineer/coverage_map.rb
+  h_e8a5bb9272fa34 25,36,38,42,62-63,82,148-154,157,160,162,178-179,182-183,185,198-199,203-207,209,235,238-242,288-289,309-312,330-486,514,516-517,544,546-547,569-663,739-740,742-743,774-778,780,789-799
+lib/mutineer/daemon_backend.rb
+  h_e8a5bb9272fa34 108-118
+lib/mutineer/daemon_client.rb
+  h_e8a5bb9272fa34 90-91,94
+lib/mutineer/daemon_server.rb
+  h_e8a5bb9272fa34 153-154
+lib/mutineer/file_swap.rb
+  h_e8a5bb9272fa34 4-5,7-8,20,24-25,32-58,62-63,70-86,92-94,103-105,114-165
+lib/mutineer/runner.rb
+  h_e8a5bb9272fa34 102,189,191-198,200-205,207-226,229-230,250-264
+test/boot_mode_test.rb
+  h_e8a5bb9272fa34 67-69,71-72
+test/cli_test.rb
+  h_e8a5bb9272fa34 151-176
+test/coverage_map_test.rb
+  h_e8a5bb9272fa34 59-129,380-499
+test/file_swap_test.rb
+  h_e8a5bb9272fa34 80-139,141,143-171
+test/integration_test.rb
+  h_e8a5bb9272fa34 5,80-137
+test/release_workflow_test.rb
+  h_e8a5bb9272fa34 1-120
+test/rspec_integration_test.rb
+  h_e8a5bb9272fa34 36-60
+test/runner_external_test.rb
+  h_e8a5bb9272fa34 66-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "31da7d671ad5a5c79e90d4a763613242b5ebdd10",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
