@@ -1,0 +1,18 @@
+.github/workflows/release-pr.yml
+  h_e8a5bb9272fa34 43-55,68-71,74-77,80
+CHANGELOG.md
+  h_e8a5bb9272fa34 23-26
+test/release_workflow_test.rb
+  h_e8a5bb9272fa34 1-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8970475b6c4fa507a05194d3141684a8553054fa",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
