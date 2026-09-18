@@ -1,0 +1,32 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 9-15
+lib/mutineer/coverage_map.rb
+  h_e8a5bb9272fa34 25,36,38,42,62,81,147-153,159,161,177,180-181,183,196,200-204,206,232,235-238,284-285,305-308,326-480,508,510,537,539,636-637
+lib/mutineer/daemon_backend.rb
+  h_e8a5bb9272fa34 108-118
+lib/mutineer/daemon_client.rb
+  h_e8a5bb9272fa34 90-91,94
+lib/mutineer/daemon_server.rb
+  h_e8a5bb9272fa34 153-154
+lib/mutineer/runner.rb
+  h_e8a5bb9272fa34 102,245-259
+test/boot_mode_test.rb
+  h_e8a5bb9272fa34 67-69,71-72
+test/cli_test.rb
+  h_e8a5bb9272fa34 151-176
+test/coverage_map_test.rb
+  h_e8a5bb9272fa34 59-129
+test/rspec_integration_test.rb
+  h_e8a5bb9272fa34 36-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d16572ff235856f57e5bf46f2c002a91651a15e5",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
