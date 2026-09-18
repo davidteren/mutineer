@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **RubyGems `documentation_uri`**: the published gem now points at the docs
+  site (`https://davidteren.github.io/mutineer/`) so gem-page discovery
+  reaches the Pages docs (#90).
+
 ## [1.0.0] - 2026-09-08
 
 The GitHub Action's PR default changes in this release, which is why it is a
