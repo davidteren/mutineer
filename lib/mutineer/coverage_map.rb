@@ -22,7 +22,7 @@ module Mutineer
     # Seconds per coverage subprocess before the parent kills it.
     DEFAULT_CAPTURE_TIMEOUT = 120
 
-    attr_reader :project_root, :failed_test_files, :phase_a_ran, :map
+    attr_reader :project_root, :failed_test_files, :failed_clean_tests, :phase_a_ran, :map
 
     # Build a QUERY-ONLY map from data captured elsewhere (the daemon builds the
     # map app-side and ships `map` + `failed_test_files` over IPC; the tool
@@ -33,11 +33,13 @@ module Mutineer
     # @param map [Hash] the "file:line" => [test_files] map.
     # @param failed_test_files [Array<String>] test files whose capture failed.
     # @param project_root [String] project root (for path relativization).
+    # @param failed_clean_tests [Array<String>] test files whose unmutated run failed.
     # @return [Mutineer::CoverageMap] a query-only map.
-    def self.from_data(map:, failed_test_files:, project_root:)
+    def self.from_data(map:, failed_test_files:, project_root:, failed_clean_tests: [])
       instance = allocate
       instance.instance_variable_set(:@map, map || {})
       instance.instance_variable_set(:@failed_test_files, failed_test_files || [])
+      instance.instance_variable_set(:@failed_clean_tests, failed_clean_tests || [])
       instance.instance_variable_set(:@project_root, project_root)
       instance
     end
@@ -57,6 +59,7 @@ module Mutineer
       @verbose      = verbose
       @map          = {}
       @failed_test_files = []
+      @failed_clean_tests = []
       @phase_a_ran  = false
     end
 
@@ -75,7 +78,7 @@ module Mutineer
     # never collides with a standalone one).
     def build_via_fork(after_fork: nil)
       warn_external_sources
-      cached_or { run_phase_a_via_fork(after_fork: after_fork) }
+      cached_or(after_fork: after_fork) { run_phase_a_via_fork(after_fork: after_fork) }
     end
 
     # Lookup: the test files that cover `file:line`, or [] when none do.
@@ -141,14 +144,21 @@ module Mutineer
     end
 
     # Shared cache dance for both build paths: hit the digest-keyed cache, else
-    # yield to populate @map and persist it.
-    def cached_or
+    # yield to populate @map and persist it. A digest match is not proof that
+    # today's unmutated suite still passes — re-check on a cache hit.
+    #
+    # @param after_fork [Proc, nil] boot-mode fork hook forwarded to a clean re-check.
+    # @yield when the cache is missing or stale.
+    # @return [Mutineer::CoverageMap] self.
+    def cached_or(after_fork: nil)
       @digest = compute_digest
       cached = read_cache
       if cached && cached["digest"] == @digest
         @map = cached["map"] || {}
         @failed_test_files = cached["failed_test_files"] || []
+        @failed_clean_tests = []
         warn_incomplete unless @failed_test_files.empty?
+        verify_cached_clean(after_fork: after_fork)
         return self
       end
 
@@ -164,12 +174,13 @@ module Mutineer
       @phase_a_ran = true
       @map = {}
       @failed_test_files = []
+      @failed_clean_tests = []
 
       @test_paths.each do |test_path|
-        coverage = capture(test_path)
-        next unless coverage
+        payload = capture(test_path)
+        next unless payload
 
-        record(coverage, test_path)
+        accept_capture_payload(test_path, payload)
       end
     end
 
@@ -182,16 +193,17 @@ module Mutineer
       @phase_a_ran = true
       @map = {}
       @failed_test_files = []
+      @failed_clean_tests = []
       abs_sources = abs_source_paths
 
       @test_paths.each do |test_path|
-        # Tri-state payload: Hash = coverage, String = error diagnostic from the
-        # child, nil = pipe gone / empty. The String diagnostic is what becomes
-        # an :uncapturable status.
-        case (coverage = fork_capture(absolute(test_path), abs_sources, after_fork))
-        when Hash   then record(coverage, test_path)
+        # Tri-state payload: Hash = capture result, String = error diagnostic from
+        # the child, nil = pipe gone / empty. The String diagnostic is what
+        # becomes an :uncapturable status.
+        case (payload = fork_capture(absolute(test_path), abs_sources, after_fork))
+        when Hash then accept_capture_payload(test_path, payload)
         when String
-          fail_test(test_path, @verbose ? "fork capture failed: #{coverage}" :
+          fail_test(test_path, @verbose ? "fork capture failed: #{payload}" :
             "fork capture produced no result (re-run with --verbose for the error)")
         else fail_test(test_path, "fork capture produced no result")
         end
@@ -217,12 +229,13 @@ module Mutineer
             # file needs neither Runner (Prism) nor Rails.
             after_fork&.call
             Coverage.result(clear: true, stop: false) # discard pre-test delta
-            TestRunners.for(@framework).run([abs_test])
+            passed = TestRunners.for(@framework).run([abs_test]).zero?
             # lines:true yields {file => {lines: [...]}}; reduce to the counts
             # array record() expects, keeping only our source files.
-            Coverage.result(stop: false)
-                    .select { |f, _| abs_sources.include?(f) }
-                    .transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
+            coverage = Coverage.result(stop: false)
+                               .select { |f, _| abs_sources.include?(f) }
+                               .transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
+            { "passed" => passed, "coverage" => coverage }
           rescue Exception => e # rubocop:disable Lint/RescueException
             # Stringify (an arbitrary Exception may not marshal); the parent
             # surfaces this under --verbose. A String marshals safely over the pipe.
@@ -268,8 +281,8 @@ module Mutineer
 
     # Spawns a fresh `ruby` reading an inline script from stdin. A fork would
     # miss already-loaded app lines, so Coverage must start in a clean process
-    # before any source is loaded. Returns the parsed Coverage.result hash, or
-    # nil when the subprocess failed (logged + skipped).
+    # before any source is loaded. Returns the wrapped capture payload
+    # (`passed` + `coverage`), or nil when the subprocess failed (logged + skipped).
     def capture(test_path)
       out = +""
       status = nil
@@ -289,7 +302,10 @@ module Mutineer
       end
       return fail_test(test_path, "subprocess exited #{status.exitstatus}") unless status.success?
 
-      JSON.parse(out)
+      parsed = JSON.parse(out)
+      return fail_test(test_path, "invalid coverage output: missing pass/coverage payload") unless wrapped_capture?(parsed)
+
+      parsed
     rescue JSON::ParserError => e
       fail_test(test_path, "invalid coverage output: #{e.message}")
     end
@@ -305,6 +321,161 @@ module Mutineer
       @failed_test_files << rel
       warn "[mutineer] coverage skipped for #{rel}: #{reason}"
       nil
+    end
+
+    # True when `payload` is the wrapped capture JSON/Marshal contract
+    # (`passed` + `coverage`), not a raw Coverage.result hash.
+    #
+    # @api private
+    # @param payload [Object] parsed subprocess output or forked Marshal value.
+    # @return [Boolean]
+    def wrapped_capture?(payload)
+      payload.is_a?(Hash) && payload.key?("passed") && payload.key?("coverage")
+    end
+
+    # Records a wrapped capture: assertion failures go to {#failed_clean_tests};
+    # successful coverage is inverted into the map. Capture crashes stay in
+    # {#failed_test_files} via {#fail_test}.
+    #
+    # @api private
+    # @param test_path [String] test file path.
+    # @param payload [Hash] wrapped capture with string keys.
+    # @return [void]
+    def accept_capture_payload(test_path, payload)
+      unless wrapped_capture?(payload)
+        fail_test(test_path, "invalid coverage output: missing pass/coverage payload")
+        return
+      end
+
+      unless payload["passed"]
+        @failed_clean_tests << relativize(test_path)
+        return
+      end
+
+      coverage = payload["coverage"]
+      record(coverage, test_path) if coverage.is_a?(Hash)
+    end
+
+    # Re-runs each successfully captured test on a cache hit. Digest equality
+    # cannot prove the current unmutated suite still passes.
+    #
+    # @api private
+    # @param after_fork [Proc, nil] boot-mode fork hook.
+    # @return [void]
+    def verify_cached_clean(after_fork: nil)
+      @test_paths.each do |test_path|
+        rel = relativize(test_path)
+        next if @failed_test_files.include?(rel)
+
+        ok = if @boot_path
+               fork_clean_pass?(absolute(test_path), after_fork)
+             else
+               subprocess_clean_pass?(test_path)
+             end
+        @failed_clean_tests << rel unless ok
+      end
+    end
+
+    # Runs one test file in a fresh interpreter and returns whether it passed.
+    #
+    # @api private
+    # @param test_path [String] test file path.
+    # @return [Boolean]
+    def subprocess_clean_pass?(test_path)
+      status = nil
+      Open3.popen2(RbConfig.ruby, "-") do |stdin, stdout, wait_thr|
+        stdin.write(clean_check_script(test_path))
+        stdin.close
+        reader = Thread.new { stdout.read }
+        unless wait_thr.join(@capture_timeout)
+          Process.kill(:KILL, wait_thr.pid) rescue nil # rubocop:disable Style/RescueModifier
+          reader.kill
+          return false
+        end
+        reader.join
+        status = wait_thr.value
+      end
+      status&.success?
+    end
+
+    # Runs one test file in a fork of the booted parent and returns whether it passed.
+    #
+    # @api private
+    # @param abs_test [String] absolute test file path.
+    # @param after_fork [Proc, nil] boot-mode fork hook.
+    # @return [Boolean]
+    def fork_clean_pass?(abs_test, after_fork)
+      rd, wr = IO.pipe
+      pid = fork do
+        rd.close
+        begin
+          after_fork&.call
+          Coverage.result(clear: true, stop: false) if Coverage.running?
+          wr.write(Marshal.dump(TestRunners.for(@framework).run([abs_test]).zero?))
+        rescue Exception # rubocop:disable Lint/RescueException
+          wr.write(Marshal.dump(false))
+        ensure
+          wr.close
+          exit!(0)
+        end
+      end
+      wr.close
+      data = rd.read
+      rd.close
+      Process.waitpid2(pid)
+      return false if data.empty?
+
+      Marshal.load(data)
+    rescue StandardError
+      false
+    end
+
+    # Builds a pass/fail-only subprocess script (no coverage instrumentation).
+    #
+    # @api private
+    # @param test_path [String] test file path.
+    # @return [String] Ruby script text.
+    def clean_check_script(test_path)
+      @framework == "rspec" ? rspec_clean_check_script(test_path) : minitest_clean_check_script(test_path)
+    end
+
+    # Minitest clean-suite check for a cache hit.
+    #
+    # @api private
+    # @param test_path [String] test file path.
+    # @return [String] Ruby script text.
+    def minitest_clean_check_script(test_path)
+      <<~RUBY
+        require "minitest"
+        require "stringio"
+        def Minitest.autorun; end
+        $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
+        load #{absolute(test_path).inspect}
+        $stdout = StringIO.new
+        exit(Minitest.run([]) ? 0 : 1)
+      RUBY
+    end
+
+    # RSpec clean-suite check for a cache hit.
+    #
+    # @api private
+    # @param test_path [String] test file path.
+    # @return [String] Ruby script text.
+    def rspec_clean_check_script(test_path)
+      <<~RUBY
+        require "stringio"
+        begin
+          require "rspec/core"
+        rescue LoadError
+          exit 3
+        end
+        RSpec::Core::Runner.disable_autorun!
+        $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
+        _sink = StringIO.new
+        $stdout = _sink
+        status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
+        exit(status.zero? ? 0 : 1)
+      RUBY
     end
 
     # Builds the framework-specific subprocess script.
@@ -334,9 +505,9 @@ module Mutineer
         load #{absolute(test_path).inspect}
         _orig = $stdout
         $stdout = StringIO.new
-        Minitest.run([])
+        _passed = Minitest.run([])
         $stdout = _orig
-        puts Coverage.result.to_json
+        puts JSON.generate("passed" => _passed == true, "coverage" => Coverage.result)
       RUBY
     end
 
@@ -363,9 +534,9 @@ module Mutineer
         _orig = $stdout
         _sink = StringIO.new
         $stdout = _sink
-        RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
+        _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
         $stdout = _orig
-        puts Coverage.result.to_json
+        puts JSON.generate("passed" => _status.zero?, "coverage" => Coverage.result)
       RUBY
     end
 
@@ -462,6 +633,8 @@ module Mutineer
     # @api private
     # @return [void]
     def save
+      return unless @failed_clean_tests.empty?
+
       FileUtils.mkdir_p(@cache_dir)
       data = { "digest" => @digest, "failed_test_files" => @failed_test_files, "map" => @map }
       tmp = "#{cache_path}.tmp"

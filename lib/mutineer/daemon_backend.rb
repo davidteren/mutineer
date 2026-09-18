@@ -105,6 +105,17 @@ module Mutineer
       ensure
         client.quit
       end
+      # A red unmutated suite must abort, even when the shipped map is empty.
+      # Falling back to the full --test set would treat those failures as kills.
+      if data.is_a?(Hash) && Array(data["failed_clean_tests"]).any?
+        Runner.abort_if_unclean!(CoverageMap.from_data(
+          map: data["map"] || {},
+          failed_test_files: data["failed_test_files"] || [],
+          project_root: config.project_root,
+          failed_clean_tests: data["failed_clean_tests"]
+        ))
+      end
+
       unless data && !(data["map"] || {}).empty?
         reason = data.is_a?(Hash) && data["error"] ? data["error"] : "empty map"
         warn_coverage_fallback(reason)

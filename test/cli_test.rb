@@ -148,6 +148,32 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #96: a red unmutated suite must not certify a 100% mutation gate.
+  def test_failing_clean_suite_exits_one_not_perfect_score
+    with_project do |proj|
+      File.write(File.join(proj, "calculator_strong_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "calculator"
+        class CalculatorStrongTest < Minitest::Test
+          def test_add
+            refute_nil Calculator.new.add(2, 3)
+          end
+          def test_unrelated
+            assert_equal 1, 2
+          end
+        end
+      RUBY
+      out, err, status = mutineer(
+        "run", "calculator.rb", "--test", "calculator_strong_test.rb",
+        "--operators", "arithmetic", "--jobs", "1", "--format", "json",
+        "--threshold", "100", chdir: proj
+      )
+      refute_equal 0, status.exitstatus
+      assert_match(/unmutated suite is not green/, err)
+      refute_match(/"score": 100\.0/, out)
+    end
+  end
+
   def test_below_threshold_exits_one
     with_project do |proj|
       _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",

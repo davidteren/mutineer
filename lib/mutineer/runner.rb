@@ -99,6 +99,7 @@ module Mutineer
           load_paths: config.load_paths, framework: config.framework
         ).build_or_load
       end
+      abort_if_unclean!(coverage_map)
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
       jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
@@ -239,6 +240,21 @@ module Mutineer
       FileSwap.with(subject.file, mutated) do
         ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose)
       end
+    end
+
+    # Aborts the run when coverage capture saw a red unmutated suite. Scoring
+    # those results would treat existing assertion failures as killed mutants.
+    #
+    # @param coverage_map [Mutineer::CoverageMap] the built or loaded map.
+    # @return [void]
+    # @raise [Mutineer::SmokeCheckError] when any captured test failed clean.
+    def self.abort_if_unclean!(coverage_map)
+      files = coverage_map.failed_clean_tests
+      return if files.empty?
+
+      raise SmokeCheckError,
+            "the unmutated suite is not green (#{files.join(', ')}) — " \
+            "#{ExternalBackend.generic_env_hint}."
     end
 
     # Coverage-based test selection, shared by the in-process ({run}) and daemon

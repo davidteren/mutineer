@@ -56,6 +56,77 @@ class CoverageMapTest < Minitest::Test
     assert_includes map.failed_test_files.map { |f| File.basename(f) }, "broken_test.rb"
   end
 
+  # #96: an assertion failure is a red unmutated suite, not a skipped capture.
+  def test_assertion_failure_is_failed_clean_not_capture_skip
+    Dir.mktmpdir("mutineer-clean") do |dir|
+      src  = File.join(dir, "calc.rb")
+      test = File.join(dir, "calc_test.rb")
+      File.write(src, "class AuditFailingCalculator\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(test, <<~RUBY)
+        require "minitest/autorun"
+        require_relative "calc"
+        class AuditFailingCalculatorTest < Minitest::Test
+          def test_add
+            refute_nil AuditFailingCalculator.new.add(2, 3)
+          end
+          def test_unrelated
+            assert_equal 1, 2
+          end
+        end
+      RUBY
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(
+          source_paths: [src], test_paths: [test],
+          cache_dir: File.join(dir, "cache"), project_root: dir
+        ).build_or_load
+      end
+      assert_includes map.failed_clean_tests, "calc_test.rb"
+      assert_empty map.failed_test_files, "a red assertion is not a capture crash"
+    end
+  end
+
+  # #96: a warm cache cannot certify a suite that now fails without a file-content
+  # change (the digest still matches).
+  def test_warm_cache_records_failed_clean_when_suite_turns_red
+    Dir.mktmpdir("mutineer-warm-clean") do |dir|
+      src    = File.join(dir, "calc.rb")
+      test   = File.join(dir, "calc_test.rb")
+      marker = File.join(dir, "pass_marker")
+      File.write(src, "class AuditWarmCalculator\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(test, <<~RUBY)
+        require "minitest/autorun"
+        require_relative "calc"
+        class AuditWarmCalculatorTest < Minitest::Test
+          def test_add
+            assert_equal 5, AuditWarmCalculator.new.add(2, 3)
+          end
+          def test_environment
+            assert File.exist?(File.expand_path("pass_marker", __dir__)), "marker missing"
+          end
+        end
+      RUBY
+      mk = lambda do
+        Mutineer::CoverageMap.new(
+          source_paths: [src], test_paths: [test],
+          cache_dir: File.join(dir, "cache"), project_root: dir
+        ).build_or_load
+      end
+
+      File.write(marker, "ok\n")
+      first = nil
+      capture_subprocess_io { first = mk.call }
+      assert_empty first.failed_clean_tests
+      assert first.phase_a_ran
+
+      File.unlink(marker)
+      second = nil
+      capture_subprocess_io { second = mk.call }
+      refute second.phase_a_ran, "digest still matches — do not rebuild coverage"
+      assert_includes second.failed_clean_tests, "calc_test.rb"
+    end
+  end
+
   # --- #8: fork-capture diagnostic (R1/KTD-1) ------------------------------
 
   # A test file whose top-level `raise` makes the forked child blow up while

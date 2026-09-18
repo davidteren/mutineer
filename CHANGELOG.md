@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **A red unmutated suite can no longer pass a mutation gate** — coverage
+  capture now keeps the original Minitest/RSpec result, and a failing clean run
+  aborts with the existing smoke-check error (exit 1) instead of scoring those
+  assertion failures as killed mutants. A warm coverage cache re-checks the
+  current suite and cannot bypass this (#96).
+
 ## [1.0.0] - 2026-09-08
 
 The GitHub Action's PR default changes in this release, which is why it is a
