@@ -40,8 +40,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          latest_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
-          [ -z "$latest_tag" ] && { echo "No tags yet — nothing to base a release on."; exit 0; }
+          # MUTINEER_VERSION_CALC_START
+          # Complete vMAJOR.MINOR.PATCH tags only. git describe --tags --abbrev=0
+          # also matches the floating major tag (v1) and then splits it into
+          # empty minor/patch fields (v1..1). Newest matching ancestor wins.
+          latest_tag=""
+          while IFS= read -r tag; do
+            [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+            git merge-base --is-ancestor "$tag" HEAD 2>/dev/null || continue
+            latest_tag="$tag"
+            break
+          done < <(git tag --list --sort=-v:refname)
+
+          [ -z "$latest_tag" ] && { echo "No complete vMAJOR.MINOR.PATCH tags yet — nothing to base a release on."; exit 0; }
 
           # Classify shippable commits since the last tag (subjects are DATA, never eval'd).
           log="$(git log --pretty='%s' "${latest_tag}..HEAD" || true)"
@@ -54,10 +65,19 @@ jobs:
           # Semver from the tag: any feature -> minor bump, else patch. (Major is manual.)
           base="${latest_tag#v}"
           IFS='.' read -r maj min pat <<< "$base"
+          if ! [[ "$maj" =~ ^[0-9]+$ && "$min" =~ ^[0-9]+$ && "$pat" =~ ^[0-9]+$ ]]; then
+            echo "Refusing malformed version tag: ${latest_tag}" >&2
+            exit 1
+          fi
           if [ "$feats" -gt 0 ]; then min=$((min + 1)); pat=0; else pat=$((pat + 1)); fi
           next="${maj}.${min}.${pat}"
+          if ! [[ "$next" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Refusing malformed next version: ${next}" >&2
+            exit 1
+          fi
           branch="release/v${next}"
           echo "latest_tag=$latest_tag  feats=$feats  fixes=$fixes  ->  v$next"
+          # MUTINEER_VERSION_CALC_END
 
           # Idempotent: don't duplicate an already-open release PR for this version.
           if [ -n "$(gh pr list --state open --head "$branch" --json number --jq '.[0].number // empty')" ]; then

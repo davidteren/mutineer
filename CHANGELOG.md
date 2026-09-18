@@ -20,6 +20,10 @@ All notable changes to this project are documented here. The format is based on
   a successful map records fingerprints of project-local loaded Ruby files,
   old cache entries without that data rebuild, and a helper-only edit no
   longer hides a new survivor behind a stale 100% score (#97).
+- **Release version calculation ignores floating major tags** — `release-pr.yml`
+  selects the newest complete `vMAJOR.MINOR.PATCH` ancestor and validates the
+  next version before writing files, so a later `v1` tag can no longer produce
+  `v1..1` (#95).
 
 ## [1.0.0] - 2026-09-08
 
