@@ -77,18 +77,98 @@ class FileSwapTest < Minitest::Test
     end
   end
 
-  # Concurrency guard: a backup already on disk means a second run is racing on the
-  # same file. Refuse — and do NOT touch the existing backup or the source.
-  def test_with_raises_when_backup_already_exists
-    with_file("original\n") do |_dir, path|
-      backup = path + Mutineer::FileSwap::BACKUP_SUFFIX
-      File.binwrite(backup, "someone-elses-original\n")
-      assert_raises(Mutineer::ConcurrentRunError) do
-        Mutineer::FileSwap.with(path, "mutated\n") { flunk "block must not run" }
+  # A leftover backup with no live owner is the original, not a concurrent run.
+  # Restore from it, then swap, then put those bytes back.
+  def test_with_uses_orphan_backup_as_original
+    with_file("mutated-leftover\n") do |_dir, path|
+      File.binwrite(path + Mutineer::FileSwap::BACKUP_SUFFIX, "true-original\n")
+      seen = nil
+      Mutineer::FileSwap.with(path, "new-mutant\n") { seen = File.binread(path) }
+      assert_equal "new-mutant\n", seen
+      assert_equal "true-original\n", File.binread(path)
+    end
+  end
+
+  # #99: restore_orphans must not consume a live owner's backup or mutant.
+  def test_restore_orphans_leaves_live_owner_intact
+    with_file("original") do |dir, path|
+      rd_ready, wr_ready = IO.pipe
+      rd_resume, wr_resume = IO.pipe
+      pid = fork do
+        rd_ready.close
+        wr_resume.close
+        Mutineer::FileSwap.with(path, "mutant") do
+          wr_ready.write("1")
+          wr_ready.close
+          rd_resume.read(1)
+          File.binwrite(File.join(dir, "observed"), File.binread(path))
+        end
+        exit! 0
       end
-      # The other run's backup and our source are left untouched.
-      assert_equal "someone-elses-original\n", File.binread(backup)
-      assert_equal "original\n", File.binread(path)
+      wr_ready.close
+      rd_resume.close
+      rd_ready.read(1)
+      capture_io { Mutineer::FileSwap.restore_orphans([dir]) }
+      backup_kept = File.exist?(path + Mutineer::FileSwap::BACKUP_SUFFIX)
+      wr_resume.write("1")
+      wr_resume.close
+      Process.wait(pid)
+      assert_equal "mutant", File.binread(File.join(dir, "observed"))
+      assert backup_kept, "live owner must keep its recovery backup"
+      assert_equal "original", File.binread(path)
+    end
+  end
+
+  # #99: a second swap must refuse while another process owns the source.
+  def test_with_raises_when_another_process_owns
+    with_file("original") do |_dir, path|
+      rd_ready, wr_ready = IO.pipe
+      rd_resume, wr_resume = IO.pipe
+      pid = fork do
+        rd_ready.close
+        wr_resume.close
+        Mutineer::FileSwap.with(path, "mutant") do
+          wr_ready.write("1")
+          wr_ready.close
+          rd_resume.read(1)
+        end
+        exit! 0
+      end
+      wr_ready.close
+      rd_resume.close
+      rd_ready.read(1)
+      assert_raises(Mutineer::ConcurrentRunError) do
+        Mutineer::FileSwap.with(path, "other") { flunk "block must not run" }
+      end
+      assert_equal "mutant", File.binread(path)
+      wr_resume.write("1")
+      wr_resume.close
+      Process.wait(pid)
+      assert_equal "original", File.binread(path)
+    end
+  end
+
+  # #99: after the lock owner dies, the next restore heals the exact original.
+  def test_restore_orphans_heals_after_owner_dies
+    with_file("original") do |dir, path|
+      rd_ready, wr_ready = IO.pipe
+      pid = fork do
+        rd_ready.close
+        Mutineer::FileSwap.with(path, "mutant") do
+          wr_ready.write("1")
+          wr_ready.close
+          sleep 30
+        end
+        exit! 0
+      end
+      wr_ready.close
+      rd_ready.read(1)
+      Process.kill("KILL", pid)
+      Process.wait(pid)
+      assert_equal "mutant", File.binread(path)
+      capture_io { Mutineer::FileSwap.restore_orphans([dir]) }
+      assert_equal "original", File.binread(path)
+      assert_empty Dir.glob(File.join(dir, "*#{Mutineer::FileSwap::BACKUP_SUFFIX}"))
     end
   end
 

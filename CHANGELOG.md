@@ -12,6 +12,10 @@ All notable changes to this project are documented here. The format is based on
   aborts with the existing smoke-check error (exit 1) instead of scoring those
   assertion failures as killed mutants. A warm coverage cache re-checks the
   current suite and cannot bypass this (#96).
+- **Concurrent external runs no longer restore each other's source files** —
+  swap and orphan recovery share one exclusive OS lock per source, acquired
+  before reading or healing. A live owner's mutant and backup stay intact; a
+  dead owner's backup still restores the original bytes (#99).
 
 ## [1.0.0] - 2026-09-08
 
