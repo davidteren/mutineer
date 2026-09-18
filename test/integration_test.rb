@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "tmpdir"
+require "fileutils"
 
 # End-to-end acceptance gate: run Mutineer against the fixtures via the library API
 # (no CLI subprocess) and assert the EXACT survivor set. These fixtures are the
@@ -74,6 +75,64 @@ class IntegrationTest < Minitest::Test
     assert_equal 4, result.killed_count, "Expected multiply, divide, modulo, power killed"
     refute result.surviving_mutants.any? { |r| r.subject.name.to_s == "multiply" }
     refute result.surviving_mutants.any? { |r| r.subject.name.to_s == "divide" }
+  end
+
+  # #97: changing only a required helper must not leave a stale no_coverage
+  # verdict. Cached and fresh runs report the same survivor.
+  def test_helper_change_matches_fresh_coverage
+    Dir.mktmpdir("mutineer-helper-int") do |dir|
+      src    = File.join(dir, "calculator.rb")
+      test   = File.join(dir, "calculator_test.rb")
+      helper = File.join(dir, "test_helper.rb")
+      cache  = File.join(dir, "cache")
+      File.write(src, <<~RUBY)
+        class AuditIntCacheCalculator
+          def compute(value)
+            if value == 1
+              1 + 2
+            else
+              4 + 5
+            end
+          end
+        end
+      RUBY
+      File.write(test, <<~RUBY)
+        require_relative "test_helper"
+        require_relative "calculator"
+        class AuditIntCacheCalculatorTest < Minitest::Test
+          def test_compute
+            AuditIntCases::VALUES.each do |value|
+              result = AuditIntCacheCalculator.new.compute(value)
+              value == 1 ? assert_equal(3, result) : refute_nil(result)
+            end
+          end
+        end
+      RUBY
+      write_helper = lambda do |values|
+        File.write(helper, "require 'minitest/autorun'\nmodule AuditIntCases\n  VALUES = #{values.inspect}\nend\n")
+      end
+      run = lambda do
+        Mutineer::Config.new(
+          sources: [src], tests: [test], operators: ["arithmetic"],
+          cache_dir: cache, project_root: dir, jobs: 1
+        ).then { |c| Mutineer::Runner.execute(c).first }
+      end
+
+      write_helper.call([1])
+      first = run.call
+      assert_equal 100.0, first.mutation_score
+      assert_equal 1, first.no_coverage_count
+
+      write_helper.call([1, 2])
+      cached = run.call
+      FileUtils.rm_rf(cache)
+      fresh = run.call
+      assert_equal fresh.survived_count, cached.survived_count
+      assert_equal fresh.no_coverage_count, cached.no_coverage_count
+      assert_equal 1, cached.survived_count
+      assert_equal 0, cached.no_coverage_count
+      assert_equal 50.0, cached.mutation_score
+    end
   end
 
   # R2 — operator restriction

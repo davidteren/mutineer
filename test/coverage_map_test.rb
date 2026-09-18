@@ -377,6 +377,126 @@ class CoverageMapTest < Minitest::Test
 
   # --- R6/cache: a cache HIT with recorded failures must still warn ---------
 
+  # #97: a required helper is not part of the source/test digest, but changing it
+  # must rebuild the map so newly covered branches are not left as no_coverage.
+  def test_required_helper_change_invalidates_cache
+    Dir.mktmpdir("mutineer-helper-cache") do |dir|
+      src    = File.join(dir, "calculator.rb")
+      test   = File.join(dir, "calculator_test.rb")
+      helper = File.join(dir, "test_helper.rb")
+      cache  = File.join(dir, "cache")
+      File.write(src, <<~RUBY)
+        class AuditCacheCalculator
+          def compute(value)
+            if value == 1
+              1 + 2
+            else
+              4 + 5
+            end
+          end
+        end
+      RUBY
+      File.write(test, <<~RUBY)
+        require_relative "test_helper"
+        require_relative "calculator"
+        class AuditCacheCalculatorTest < Minitest::Test
+          def test_compute
+            AuditCases::VALUES.each do |value|
+              result = AuditCacheCalculator.new.compute(value)
+              value == 1 ? assert_equal(3, result) : refute_nil(result)
+            end
+          end
+        end
+      RUBY
+      write_helper = lambda do |values|
+        File.write(helper, "require 'minitest/autorun'\nmodule AuditCases\n  VALUES = #{values.inspect}\nend\n")
+      end
+      mk = lambda do
+        Mutineer::CoverageMap.new(
+          source_paths: [src], test_paths: [test],
+          cache_dir: cache, project_root: dir
+        ).build_or_load
+      end
+
+      write_helper.call([1])
+      first = nil
+      capture_subprocess_io { first = mk.call }
+      assert first.phase_a_ran
+      else_line = File.read(src)[0...File.read(src).index("4 + 5")].count("\n") + 1
+      assert_empty first.tests_for(src, else_line), "else branch starts uncovered"
+
+      write_helper.call([1, 2])
+      second = nil
+      capture_subprocess_io { second = mk.call }
+      assert second.phase_a_ran, "helper change must rebuild the map"
+      refute_empty second.tests_for(src, else_line), "else branch is now covered"
+    end
+  end
+
+  def test_unchanged_helper_still_reuses_cache
+    Dir.mktmpdir("mutineer-helper-stable") do |dir|
+      src    = File.join(dir, "calculator.rb")
+      test   = File.join(dir, "calculator_test.rb")
+      helper = File.join(dir, "test_helper.rb")
+      cache  = File.join(dir, "cache")
+      File.write(src, "class HCalc\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(helper, "require 'minitest/autorun'\n")
+      File.write(test, <<~RUBY)
+        require_relative "test_helper"
+        require_relative "calculator"
+        class HCalcTest < Minitest::Test
+          def test_add; assert_equal 5, HCalc.new.add(2, 3); end
+        end
+      RUBY
+      mk = lambda do
+        Mutineer::CoverageMap.new(
+          source_paths: [src], test_paths: [test],
+          cache_dir: cache, project_root: dir
+        ).build_or_load
+      end
+      capture_subprocess_io { mk.call }
+      second = nil
+      capture_subprocess_io { second = mk.call }
+      refute second.phase_a_ran, "unchanged helper: cache hit"
+    end
+  end
+
+  def test_old_cache_without_dependencies_rebuilds
+    Dir.mktmpdir("mutineer-old-cache") do |dir|
+      src  = File.join(dir, "calculator.rb")
+      test = File.join(dir, "calculator_test.rb")
+      cache = File.join(dir, "cache")
+      File.write(src, "class OldCacheCalc\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(test, <<~RUBY)
+        require "minitest/autorun"
+        require_relative "calculator"
+        class OldCacheCalcTest < Minitest::Test
+          def test_add; assert_equal 5, OldCacheCalc.new.add(2, 3); end
+        end
+      RUBY
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(
+          source_paths: [src], test_paths: [test],
+          cache_dir: cache, project_root: dir
+        ).build_or_load
+      end
+      assert map.phase_a_ran
+      payload = JSON.parse(File.read(File.join(cache, "coverage.json")))
+      payload.delete("dependencies")
+      File.write(File.join(cache, "coverage.json"), JSON.generate(payload))
+
+      second = nil
+      capture_subprocess_io do
+        second = Mutineer::CoverageMap.new(
+          source_paths: [src], test_paths: [test],
+          cache_dir: cache, project_root: dir
+        ).build_or_load
+      end
+      assert second.phase_a_ran, "cache without dependency fingerprints must rebuild"
+    end
+  end
+
   def test_cache_hit_with_failed_files_warns
     dir = Dir.mktmpdir("mutineer-cache")
     bad = File.join(Dir.mktmpdir, "broken_test.rb")

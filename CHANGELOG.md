@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format is based on
   swap and orphan recovery share one exclusive OS lock per source, acquired
   before reading or healing. A live owner's mutant and backup stay intact; a
   dead owner's backup still restores the original bytes (#99).
+- **Coverage cache now invalidates when a required test helper changes** —
+  a successful map records fingerprints of project-local loaded Ruby files,
+  old cache entries without that data rebuild, and a helper-only edit no
+  longer hides a new survivor behind a stale 100% score (#97).
 
 ## [1.0.0] - 2026-09-08
 

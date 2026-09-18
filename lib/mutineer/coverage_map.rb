@@ -60,6 +60,7 @@ module Mutineer
       @map          = {}
       @failed_test_files = []
       @failed_clean_tests = []
+      @loaded_dependencies = {}
       @phase_a_ran  = false
     end
 
@@ -153,7 +154,7 @@ module Mutineer
     def cached_or(after_fork: nil)
       @digest = compute_digest
       cached = read_cache
-      if cached && cached["digest"] == @digest
+      if cached && cached["digest"] == @digest && dependencies_match?(cached)
         @map = cached["map"] || {}
         @failed_test_files = cached["failed_test_files"] || []
         @failed_clean_tests = []
@@ -175,6 +176,7 @@ module Mutineer
       @map = {}
       @failed_test_files = []
       @failed_clean_tests = []
+      @loaded_dependencies = {}
 
       @test_paths.each do |test_path|
         payload = capture(test_path)
@@ -194,6 +196,7 @@ module Mutineer
       @map = {}
       @failed_test_files = []
       @failed_clean_tests = []
+      @loaded_dependencies = {}
       abs_sources = abs_source_paths
 
       @test_paths.each do |test_path|
@@ -235,7 +238,8 @@ module Mutineer
             coverage = Coverage.result(stop: false)
                                .select { |f, _| abs_sources.include?(f) }
                                .transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
-            { "passed" => passed, "coverage" => coverage }
+            { "passed" => passed, "coverage" => coverage,
+              "loaded_files" => capture_loaded_files }
           rescue Exception => e # rubocop:disable Lint/RescueException
             # Stringify (an arbitrary Exception may not marshal); the parent
             # surfaces this under --verbose. A String marshals safely over the pipe.
@@ -346,6 +350,8 @@ module Mutineer
         fail_test(test_path, "invalid coverage output: missing pass/coverage payload")
         return
       end
+
+      record_loaded(payload["loaded_files"])
 
       unless payload["passed"]
         @failed_clean_tests << relativize(test_path)
@@ -507,7 +513,8 @@ module Mutineer
         $stdout = StringIO.new
         _passed = Minitest.run([])
         $stdout = _orig
-        puts JSON.generate("passed" => _passed == true, "coverage" => Coverage.result)
+        puts JSON.generate("passed" => _passed == true, "coverage" => Coverage.result,
+                           "loaded_files" => #{loaded_files_expression})
       RUBY
     end
 
@@ -536,7 +543,8 @@ module Mutineer
         $stdout = _sink
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
         $stdout = _orig
-        puts JSON.generate("passed" => _status.zero?, "coverage" => Coverage.result)
+        puts JSON.generate("passed" => _status.zero?, "coverage" => Coverage.result,
+                           "loaded_files" => #{loaded_files_expression})
       RUBY
     end
 
@@ -555,6 +563,101 @@ module Mutineer
 
           (@map["#{rel}:#{idx + 1}"] ||= []) << rel_test
         end
+      end
+    end
+
+    # Ruby source of the child-side `$LOADED_FEATURES` filter (project `.rb` files).
+    #
+    # @api private
+    # @return [String] expression to embed in a capture subprocess script.
+    def loaded_files_expression
+      root = project_root_real
+      prefix = root.end_with?("/") ? root : "#{root}/"
+      "begin; _root = #{prefix.inspect}; $LOADED_FEATURES.filter_map { |f| next unless f.end_with?(\".rb\"); abs = (File.realpath(f) rescue next); abs if abs.start_with?(_root) }; rescue StandardError; []; end"
+    end
+
+    # Canonical project root for loaded-feature matching (`/var` vs `/private/var`).
+    #
+    # @api private
+    # @return [String] realpath of the project root when it exists.
+    def project_root_real
+      File.realpath(File.expand_path(@project_root))
+    rescue Errno::ENOENT
+      File.expand_path(@project_root)
+    end
+
+    # Project-local `.rb` files loaded in this process at capture time.
+    #
+    # @api private
+    # @return [Array<String>] absolute realpaths.
+    def capture_loaded_files
+      prefix = project_root_real
+      prefix = "#{prefix}/" unless prefix.end_with?("/")
+      $LOADED_FEATURES.filter_map do |f|
+        next unless f.end_with?(".rb")
+
+        abs = File.realpath(f)
+        abs if abs.start_with?(prefix)
+      rescue Errno::ENOENT
+        nil
+      end
+    end
+
+    # Fingerprints project-local support files from a capture payload.
+    #
+    # @api private
+    # @param paths [Array, nil] absolute loaded-file paths.
+    # @return [void]
+    def record_loaded(paths)
+      Array(paths).each do |raw|
+        next unless raw.is_a?(String) && File.file?(raw)
+
+        abs = File.realpath(raw)
+        rel = loaded_relative(abs)
+        next unless rel
+        next unless rel.end_with?(".rb")
+        next if rel.start_with?("vendor/bundle/") || rel.start_with?("node_modules/")
+
+        @loaded_dependencies[rel] = file_fingerprint(abs)
+      end
+    end
+
+    # Path of `abs` relative to the real project root, or nil when outside it.
+    #
+    # @api private
+    # @param abs [String] absolute realpath.
+    # @return [String, nil]
+    def loaded_relative(abs)
+      root = project_root_real
+      prefix = root.end_with?("/") ? root : "#{root}/"
+      return unless abs.start_with?(prefix)
+
+      abs.delete_prefix(prefix)
+    end
+
+    # Byte fingerprint of a file for cache dependency checks.
+    #
+    # @api private
+    # @param abs [String] absolute path.
+    # @return [String] hex digest.
+    def file_fingerprint(abs)
+      content = File.binread(abs)
+      Digest::SHA256.hexdigest("#{content.bytesize}\0#{content}")
+    end
+
+    # True when the cached map recorded support-file fingerprints and they still
+    # match. Missing validity data is a miss (rebuild).
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @return [Boolean]
+    def dependencies_match?(cached)
+      deps = cached["dependencies"]
+      return false unless deps.is_a?(Hash)
+
+      deps.all? do |rel, fingerprint|
+        abs = absolute(rel)
+        File.file?(abs) && file_fingerprint(abs) == fingerprint
       end
     end
 
@@ -636,7 +739,8 @@ module Mutineer
       return unless @failed_clean_tests.empty?
 
       FileUtils.mkdir_p(@cache_dir)
-      data = { "digest" => @digest, "failed_test_files" => @failed_test_files, "map" => @map }
+      data = { "digest" => @digest, "failed_test_files" => @failed_test_files,
+               "dependencies" => @loaded_dependencies, "map" => @map }
       tmp = "#{cache_path}.tmp"
       File.write(tmp, JSON.generate(data))
       File.rename(tmp, cache_path) # atomic swap
@@ -667,9 +771,13 @@ module Mutineer
     # @param path [String] path to relativize.
     # @return [String] relative path.
     def relativize(path)
-      return path unless path.start_with?("/")
+      abs = path.start_with?("/") ? path : absolute(path)
+      abs = realpath_if_exists(abs)
+      root = project_root_real
+      prefix = root.end_with?("/") ? root : "#{root}/"
+      return abs unless abs.start_with?(prefix)
 
-      path.delete_prefix("#{@project_root}/")
+      abs.delete_prefix(prefix)
     end
 
     # Expands a path relative to the project root.
@@ -678,7 +786,17 @@ module Mutineer
     # @param path [String] path to expand.
     # @return [String] absolute path.
     def absolute(path)
-      File.absolute_path?(path) ? path : File.expand_path(path, @project_root)
+      raw = File.absolute_path?(path) ? path : File.expand_path(path, @project_root)
+      realpath_if_exists(raw)
+    end
+
+    # Real path when the file exists, otherwise `path` unchanged.
+    #
+    # @api private
+    # @param path [String] absolute or relative path.
+    # @return [String]
+    def realpath_if_exists(path)
+      File.exist?(path) ? File.realpath(path) : path
     end
   end
 end
