@@ -159,8 +159,8 @@ module Mutineer
         @failed_test_files = cached["failed_test_files"] || []
         @failed_clean_tests = []
         @loaded_dependencies = cached["dependencies"] || {}
-        warn_incomplete unless @failed_test_files.empty?
         retry_failed_captures(after_fork)
+        warn_incomplete unless @failed_test_files.empty?
         verify_cached_clean(after_fork: after_fork)
         verify_combined_clean(after_fork: after_fork)
         save

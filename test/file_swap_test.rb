@@ -154,10 +154,20 @@ class FileSwapTest < Minitest::Test
     end
   end
 
-  def test_with_does_not_leave_a_sibling_lock_file
-    with_file("original\n") do |_dir, path|
+  def test_with_leaves_only_source_and_optional_cache_dir
+    with_file("original\n") do |dir, path|
       Mutineer::FileSwap.with(path, "mutated\n") { :ok }
-      refute_path_exists path + ".mutineer-lock"
+      leftover = Dir.children(dir) - [File.basename(path), ".mutineer"]
+      assert_empty leftover, leftover.inspect
+      refute_path_exists path + Mutineer::FileSwap::BACKUP_SUFFIX
+    end
+  end
+
+  def test_lock_file_is_stable_across_working_directory
+    with_file("original\n") do |_dir, path|
+      canonical = Mutineer::FileSwap.canonical_path(path)
+      first = Mutineer::FileSwap.lock_file(canonical)
+      Dir.chdir("/") { assert_equal first, Mutineer::FileSwap.lock_file(canonical) }
     end
   end
 

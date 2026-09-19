@@ -32,7 +32,8 @@ module Mutineer
     # Suffix for the on-disk backup; fixed so `restore_orphans` finds it.
     BACKUP_SUFFIX = ".mutineer-backup"
 
-    # Subdirectory under `lock_dir` (or beside the source) that holds flock files.
+    # Subdirectory beside the source that holds flock files (stable across cwd
+    # and `cache_dir`, so concurrent runs on one inode share one lock).
     LOCK_DIR_NAME = "file-swap-locks"
 
     # Canonical source path => open lock File held by this process.
@@ -54,15 +55,14 @@ module Mutineer
     # {ConcurrentRunError} when another process holds a path (non-blocking).
     #
     # @param paths [Array<String>] source file paths to own.
-    # @param lock_dir [String, nil] directory for flock files (ignored cache).
     # @yield the block to run while ownership is held.
     # @return [Object] the block's return value.
-    def self.owning(paths, lock_dir: nil)
+    def self.owning(paths)
       acquired = []
       Array(paths).map { |p| canonical_path(p) }.uniq.sort.each do |path|
         next if OWNED.key?(path)
 
-        acquire!(path, lock_dir: lock_dir)
+        acquire!(path)
         acquired << path
       end
       yield
@@ -78,15 +78,14 @@ module Mutineer
     #
     # @param source_file [String] path to the real source file.
     # @param mutated [String] mutated source text to write for the duration.
-    # @param lock_dir [String, nil] flock directory shared with {owning}.
     # @yield the block to run while the mutant is on disk.
     # @return [Object] the block's return value.
-    def self.with(source_file, mutated, lock_dir: nil)
+    def self.with(source_file, mutated)
       path = canonical_path(source_file)
       created = false
       original = nil
       backup = path + BACKUP_SUFFIX
-      owning([path], lock_dir: lock_dir) do
+      owning([path]) do
         begin
           original = File.exist?(backup) ? File.binread(backup) : File.binread(path)
           File.binwrite(backup, original)
@@ -109,15 +108,14 @@ module Mutineer
     # tree was auto-restored (a file they did not touch).
     #
     # @param dirs [Array<String>] directories to sweep for orphaned backups.
-    # @param lock_dir [String, nil] flock directory shared with {owning}.
     # @return [void]
-    def self.restore_orphans(dirs, lock_dir: nil)
+    def self.restore_orphans(dirs)
       healed = 0
       dirs.uniq.each do |dir|
         Dir.glob(File.join(dir, "*#{BACKUP_SUFFIX}")).each do |backup|
           source_file = backup.delete_suffix(BACKUP_SUFFIX)
           begin
-            owning([source_file], lock_dir: lock_dir) { healed += restore_one(backup, source_file) }
+            owning([source_file]) { healed += restore_one(backup, source_file) }
           rescue ConcurrentRunError
             next
           end
@@ -132,11 +130,10 @@ module Mutineer
     #
     # @api private
     # @param path [String] canonical source path.
-    # @param lock_dir [String, nil] directory for the flock file.
     # @return [void]
     # @raise [Mutineer::ConcurrentRunError] when the lock is held elsewhere.
-    def self.acquire!(path, lock_dir: nil)
-      file = File.open(lock_file(path, lock_dir), File::RDWR | File::CREAT, 0o644)
+    def self.acquire!(path)
+      file = File.open(lock_file(path), File::RDWR | File::CREAT, 0o644)
       unless file.flock(File::LOCK_EX | File::LOCK_NB)
         file.close
         raise ConcurrentRunError, path
@@ -144,15 +141,14 @@ module Mutineer
       OWNED[path] = file
     end
 
-    # Flock path for a canonical source. Defaults beside the source under
-    # `.mutineer/file-swap-locks` so tmpdir tests clean up with the fixture.
+    # Flock path for a canonical source: `<dir>/.mutineer/file-swap-locks/<sha>`.
+    # Derived only from the source path so cwd and `cache_dir` cannot split a lock.
     #
     # @api private
     # @param path [String] canonical source path.
-    # @param lock_dir [String, nil] override directory (project cache).
     # @return [String] lock file path.
-    def self.lock_file(path, lock_dir)
-      dir = lock_dir || File.join(File.dirname(path), ".mutineer", LOCK_DIR_NAME)
+    def self.lock_file(path)
+      dir = File.join(File.dirname(path), ".mutineer", LOCK_DIR_NAME)
       FileUtils.mkdir_p(dir)
       File.join(dir, Digest::SHA256.hexdigest(path))
     end
