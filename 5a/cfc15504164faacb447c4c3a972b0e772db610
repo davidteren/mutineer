@@ -1,0 +1,14 @@
+test/coverage_map_test.rb
+  h_e8a5bb9272fa34 568
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5acfc15504164faacb447c4c3a972b0e772db610",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
