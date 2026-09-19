@@ -565,6 +565,7 @@ class CoverageMapTest < Minitest::Test
       File.write(helper, "require 'minitest/autorun'\n")
       second = nil
       _out, err = capture_subprocess_io { second = mk.call }
+      refute second.phase_a_ran, "fixed helper: must retry from cache, not rebuild"
       refute_includes second.failed_test_files, "calc_test.rb"
       refute_includes err, "cached coverage map may be incomplete"
       refute_empty second.tests_for(src, File.read(src)[0...File.read(src).index("a + b")].count("\n") + 1)
