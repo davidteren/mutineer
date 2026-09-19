@@ -1,0 +1,22 @@
+lib/mutineer/coverage_map.rb
+  h_e8a5bb9272fa34 163
+lib/mutineer/file_swap.rb
+  h_e8a5bb9272fa34 35-36,60,65,83,88,112,118,135-136,144-145,150-151
+lib/mutineer/runner.rb
+  h_e8a5bb9272fa34 193-194,199,227
+test/coverage_map_test.rb
+  h_e8a5bb9272fa34 567,569
+test/file_swap_test.rb
+  h_e8a5bb9272fa34 157-158,160-170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1b2bf0b0cc33048bcbd5b44f6326cfdc47559556",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
