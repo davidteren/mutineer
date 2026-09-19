@@ -120,6 +120,47 @@ class FileSwapTest < Minitest::Test
   end
 
   # #99: a second swap must refuse while another process owns the source.
+  def test_symlink_alias_shares_ownership
+    skip "symlinks unavailable" unless File.respond_to?(:symlink)
+    with_file("original") do |dir, path|
+      link = File.join(dir, "alias.rb")
+      begin
+        File.symlink(path, link)
+      rescue NotImplementedError, Errno::EPERM, Errno::EACCES
+        skip "symlinks unavailable"
+      end
+      rd_ready, wr_ready = IO.pipe
+      rd_resume, wr_resume = IO.pipe
+      pid = fork do
+        rd_ready.close
+        wr_resume.close
+        Mutineer::FileSwap.with(path, "mutant") do
+          wr_ready.write("1")
+          wr_ready.close
+          rd_resume.read(1)
+        end
+        exit! 0
+      end
+      wr_ready.close
+      rd_resume.close
+      rd_ready.read(1)
+      assert_raises(Mutineer::ConcurrentRunError) do
+        Mutineer::FileSwap.with(link, "other") { flunk "alias must not swap while real path is owned" }
+      end
+      wr_resume.write("1")
+      wr_resume.close
+      Process.wait(pid)
+      assert_equal "original", File.binread(path)
+    end
+  end
+
+  def test_with_does_not_leave_a_sibling_lock_file
+    with_file("original\n") do |_dir, path|
+      Mutineer::FileSwap.with(path, "mutated\n") { :ok }
+      refute_path_exists path + ".mutineer-lock"
+    end
+  end
+
   def test_with_raises_when_another_process_owns
     with_file("original") do |_dir, path|
       rd_ready, wr_ready = IO.pipe

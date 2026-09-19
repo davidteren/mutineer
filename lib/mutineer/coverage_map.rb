@@ -158,12 +158,17 @@ module Mutineer
         @map = cached["map"] || {}
         @failed_test_files = cached["failed_test_files"] || []
         @failed_clean_tests = []
+        @loaded_dependencies = cached["dependencies"] || {}
         warn_incomplete unless @failed_test_files.empty?
+        retry_failed_captures(after_fork)
         verify_cached_clean(after_fork: after_fork)
+        verify_combined_clean(after_fork: after_fork)
+        save
         return self
       end
 
       yield
+      verify_combined_clean(after_fork: after_fork)
       save
       self
     end
@@ -374,23 +379,72 @@ module Mutineer
         next if @failed_test_files.include?(rel)
 
         ok = if @boot_path
-               fork_clean_pass?(absolute(test_path), after_fork)
+               fork_clean_pass?([absolute(test_path)], after_fork)
              else
-               subprocess_clean_pass?(test_path)
+               subprocess_clean_pass?([test_path])
              end
         @failed_clean_tests << rel unless ok
       end
     end
 
-    # Runs one test file in a fresh interpreter and returns whether it passed.
+    # Re-runs tests whose previous capture crashed. A fixed helper is invisible
+    # to the source/test digest when that capture never recorded `loaded_files`.
     #
     # @api private
-    # @param test_path [String] test file path.
+    # @param after_fork [Proc, nil] boot-mode fork hook.
+    # @return [void]
+    def retry_failed_captures(after_fork)
+      pending = @failed_test_files.dup
+      return if pending.empty?
+
+      @failed_test_files = []
+      abs_sources = abs_source_paths
+      pending.each do |rel|
+        test_path = @test_paths.find { |t| relativize(t) == rel } || rel
+        if @boot_path
+          payload = fork_capture(absolute(test_path), abs_sources, after_fork)
+          case payload
+          when Hash then accept_capture_payload(test_path, payload)
+          when String
+            fail_test(test_path, @verbose ? "fork capture failed: #{payload}" :
+              "fork capture produced no result (re-run with --verbose for the error)")
+          else fail_test(test_path, "fork capture produced no result")
+          end
+        else
+          payload = capture(test_path)
+          accept_capture_payload(test_path, payload) if payload
+        end
+      end
+    end
+
+    # Runs every successfully captured test together. Per-file capture can miss a
+    # failure that only appears when covering files share one process.
+    #
+    # @api private
+    # @param after_fork [Proc, nil] boot-mode fork hook.
+    # @return [void]
+    def verify_combined_clean(after_fork: nil)
+      runnable = @test_paths.reject { |t| @failed_test_files.include?(relativize(t)) }
+      return if runnable.size < 2
+      return unless @failed_clean_tests.empty?
+
+      ok = if @boot_path
+             fork_clean_pass?(runnable.map { |t| absolute(t) }, after_fork)
+           else
+             subprocess_clean_pass?(runnable)
+           end
+      @failed_clean_tests << "combined suite" unless ok
+    end
+
+    # Runs test files in a fresh interpreter and returns whether they passed.
+    #
+    # @api private
+    # @param test_paths [Array<String>] test file paths.
     # @return [Boolean]
-    def subprocess_clean_pass?(test_path)
+    def subprocess_clean_pass?(test_paths)
       status = nil
       Open3.popen2(RbConfig.ruby, "-") do |stdin, stdout, wait_thr|
-        stdin.write(clean_check_script(test_path))
+        stdin.write(clean_check_script(test_paths))
         stdin.close
         reader = Thread.new { stdout.read }
         unless wait_thr.join(@capture_timeout)
@@ -404,20 +458,24 @@ module Mutineer
       status&.success?
     end
 
-    # Runs one test file in a fork of the booted parent and returns whether it passed.
+    # Runs test files in a fork of the booted parent and returns whether they passed.
+    # Bounded by `@capture_timeout` so a hung child cannot block the CLI.
     #
     # @api private
-    # @param abs_test [String] absolute test file path.
+    # @param abs_tests [Array<String>] absolute test file paths.
     # @param after_fork [Proc, nil] boot-mode fork hook.
     # @return [Boolean]
-    def fork_clean_pass?(abs_test, after_fork)
+    def fork_clean_pass?(abs_tests, after_fork)
       rd, wr = IO.pipe
+      rd.binmode
+      wr.binmode
       pid = fork do
         rd.close
+        Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
         begin
           after_fork&.call
           Coverage.result(clear: true, stop: false) if Coverage.running?
-          wr.write(Marshal.dump(TestRunners.for(@framework).run([abs_test]).zero?))
+          wr.write(Marshal.dump(TestRunners.for(@framework).run(abs_tests).zero?))
         rescue Exception # rubocop:disable Lint/RescueException
           wr.write(Marshal.dump(false))
         ensure
@@ -426,6 +484,12 @@ module Mutineer
         end
       end
       wr.close
+      readable, = IO.select([rd], nil, nil, @capture_timeout)
+      unless readable
+        kill_fork_clean(pid)
+        rd.close
+        return false
+      end
       data = rd.read
       rd.close
       Process.waitpid2(pid)
@@ -436,38 +500,56 @@ module Mutineer
       false
     end
 
+    # SIGKILLs a hung clean-check child (and its group) then reaps it.
+    #
+    # @api private
+    # @param pid [Integer] child pid.
+    # @return [void]
+    def kill_fork_clean(pid)
+      begin
+        Process.kill(:KILL, -pid)
+      rescue Errno::ESRCH, Errno::EPERM
+        Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
+      end
+      Process.waitpid2(pid) rescue nil # rubocop:disable Style/RescueModifier
+    end
+
     # Builds a pass/fail-only subprocess script (no coverage instrumentation).
     #
     # @api private
-    # @param test_path [String] test file path.
+    # @param test_paths [Array<String>] test file paths.
     # @return [String] Ruby script text.
-    def clean_check_script(test_path)
-      @framework == "rspec" ? rspec_clean_check_script(test_path) : minitest_clean_check_script(test_path)
+    def clean_check_script(test_paths)
+      @framework == "rspec" ? rspec_clean_check_script(test_paths) : minitest_clean_check_script(test_paths)
     end
 
-    # Minitest clean-suite check for a cache hit.
+    # Minitest clean-suite check. Preloads configured sources like capture and
+    # standalone {Runner.execute}, so tests that rely on that preload stay green.
     #
     # @api private
-    # @param test_path [String] test file path.
+    # @param test_paths [Array<String>] test file paths.
     # @return [String] Ruby script text.
-    def minitest_clean_check_script(test_path)
+    def minitest_clean_check_script(test_paths)
+      loads = Array(test_paths).map { |t| "load #{absolute(t).inspect}" }.join("\n")
       <<~RUBY
         require "minitest"
         require "stringio"
         def Minitest.autorun; end
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        load #{absolute(test_path).inspect}
+        #{abs_source_paths.inspect}.each { |f| load f }
+        #{loads}
         $stdout = StringIO.new
         exit(Minitest.run([]) ? 0 : 1)
       RUBY
     end
 
-    # RSpec clean-suite check for a cache hit.
+    # RSpec clean-suite check. Preloads configured sources like capture.
     #
     # @api private
-    # @param test_path [String] test file path.
+    # @param test_paths [Array<String>] spec file paths.
     # @return [String] Ruby script text.
-    def rspec_clean_check_script(test_path)
+    def rspec_clean_check_script(test_paths)
+      specs = Array(test_paths).map { |t| absolute(t).inspect }.join(", ")
       <<~RUBY
         require "stringio"
         begin
@@ -477,9 +559,10 @@ module Mutineer
         end
         RSpec::Core::Runner.disable_autorun!
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
+        #{abs_source_paths.inspect}.each { |f| load f }
         _sink = StringIO.new
         $stdout = _sink
-        status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
+        status = RSpec::Core::Runner.run(["--no-color", #{specs}], _sink, _sink)
         exit(status.zero? ? 0 : 1)
       RUBY
     end

@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "digest"
+require "fileutils"
+
 module Mutineer
   # Raised when another process already holds exclusive ownership of a source
   # file. Aborting beats silently restoring (or capturing) the other run's mutant.
@@ -29,26 +32,37 @@ module Mutineer
     # Suffix for the on-disk backup; fixed so `restore_orphans` finds it.
     BACKUP_SUFFIX = ".mutineer-backup"
 
-    # Suffix for the exclusive ownership lock, sibling to the source file.
-    LOCK_SUFFIX = ".mutineer-lock"
+    # Subdirectory under `lock_dir` (or beside the source) that holds flock files.
+    LOCK_DIR_NAME = "file-swap-locks"
 
-    # Expanded source path => open lock File held by this process.
+    # Canonical source path => open lock File held by this process.
     # @api private
     OWNED = {}
+
+    # Real path when the file exists, otherwise `File.expand_path`. Symlink
+    # aliases of one inode share this identity for locks, backups, and ownership.
+    #
+    # @param path [String] source path, relative or absolute.
+    # @return [String] canonical absolute path.
+    def self.canonical_path(path)
+      expanded = File.expand_path(path)
+      File.exist?(expanded) ? File.realpath(expanded) : expanded
+    end
 
     # Holds exclusive OS ownership of each source path for the duration of the
     # block. Re-entrant for paths this process already owns. Raises
     # {ConcurrentRunError} when another process holds a path (non-blocking).
     #
     # @param paths [Array<String>] source file paths to own.
+    # @param lock_dir [String, nil] directory for flock files (ignored cache).
     # @yield the block to run while ownership is held.
     # @return [Object] the block's return value.
-    def self.owning(paths)
+    def self.owning(paths, lock_dir: nil)
       acquired = []
-      Array(paths).map { |p| File.expand_path(p) }.uniq.sort.each do |path|
+      Array(paths).map { |p| canonical_path(p) }.uniq.sort.each do |path|
         next if OWNED.key?(path)
 
-        acquire!(path)
+        acquire!(path, lock_dir: lock_dir)
         acquired << path
       end
       yield
@@ -64,14 +78,15 @@ module Mutineer
     #
     # @param source_file [String] path to the real source file.
     # @param mutated [String] mutated source text to write for the duration.
+    # @param lock_dir [String, nil] flock directory shared with {owning}.
     # @yield the block to run while the mutant is on disk.
     # @return [Object] the block's return value.
-    def self.with(source_file, mutated)
-      path = File.expand_path(source_file)
+    def self.with(source_file, mutated, lock_dir: nil)
+      path = canonical_path(source_file)
       created = false
       original = nil
       backup = path + BACKUP_SUFFIX
-      owning([path]) do
+      owning([path], lock_dir: lock_dir) do
         begin
           original = File.exist?(backup) ? File.binread(backup) : File.binread(path)
           File.binwrite(backup, original)
@@ -94,14 +109,15 @@ module Mutineer
     # tree was auto-restored (a file they did not touch).
     #
     # @param dirs [Array<String>] directories to sweep for orphaned backups.
+    # @param lock_dir [String, nil] flock directory shared with {owning}.
     # @return [void]
-    def self.restore_orphans(dirs)
+    def self.restore_orphans(dirs, lock_dir: nil)
       healed = 0
       dirs.uniq.each do |dir|
         Dir.glob(File.join(dir, "*#{BACKUP_SUFFIX}")).each do |backup|
           source_file = backup.delete_suffix(BACKUP_SUFFIX)
           begin
-            owning([source_file]) { healed += restore_one(backup, source_file) }
+            owning([source_file], lock_dir: lock_dir) { healed += restore_one(backup, source_file) }
           rescue ConcurrentRunError
             next
           end
@@ -112,20 +128,33 @@ module Mutineer
       warn "[mutineer] restored #{healed} source file(s) left mutated by a previous interrupted run."
     end
 
-    # Exclusive non-blocking flock for `path`. Leaves the lock file in place;
-    # unlinking it races with another opener on a new inode.
+    # Exclusive non-blocking flock for canonical `path`.
     #
     # @api private
-    # @param path [String] expanded source path.
+    # @param path [String] canonical source path.
+    # @param lock_dir [String, nil] directory for the flock file.
     # @return [void]
     # @raise [Mutineer::ConcurrentRunError] when the lock is held elsewhere.
-    def self.acquire!(path)
-      file = File.open(path + LOCK_SUFFIX, File::RDWR | File::CREAT, 0o644)
+    def self.acquire!(path, lock_dir: nil)
+      file = File.open(lock_file(path, lock_dir), File::RDWR | File::CREAT, 0o644)
       unless file.flock(File::LOCK_EX | File::LOCK_NB)
         file.close
         raise ConcurrentRunError, path
       end
       OWNED[path] = file
+    end
+
+    # Flock path for a canonical source. Defaults beside the source under
+    # `.mutineer/file-swap-locks` so tmpdir tests clean up with the fixture.
+    #
+    # @api private
+    # @param path [String] canonical source path.
+    # @param lock_dir [String, nil] override directory (project cache).
+    # @return [String] lock file path.
+    def self.lock_file(path, lock_dir)
+      dir = lock_dir || File.join(File.dirname(path), ".mutineer", LOCK_DIR_NAME)
+      FileUtils.mkdir_p(dir)
+      File.join(dir, Digest::SHA256.hexdigest(path))
     end
 
     # Releases a lock acquired by {acquire!}.

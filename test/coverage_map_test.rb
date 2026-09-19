@@ -508,4 +508,111 @@ class CoverageMapTest < Minitest::Test
     refute second.phase_a_ran, "second build should be a cache hit"
     assert_includes err, "cached coverage map may be incomplete"
   end
+
+  def test_warm_cache_preloads_sources_for_tests_without_require
+    Dir.mktmpdir("mutineer-preload") do |dir|
+      src  = File.join(dir, "calc.rb")
+      test = File.join(dir, "calc_test.rb")
+      cache = File.join(dir, "cache")
+      File.write(src, "class PreloadCalc\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(test, <<~RUBY)
+        require "minitest/autorun"
+        class PreloadCalcTest < Minitest::Test
+          def test_add; assert_equal 5, PreloadCalc.new.add(2, 3); end
+        end
+      RUBY
+      mk = lambda do
+        Mutineer::CoverageMap.new(
+          source_paths: [src], test_paths: [test],
+          cache_dir: cache, project_root: dir
+        ).build_or_load
+      end
+      first = nil
+      capture_subprocess_io { first = mk.call }
+      assert_empty first.failed_clean_tests
+      second = nil
+      capture_subprocess_io { second = mk.call }
+      refute second.phase_a_ran
+      assert_empty second.failed_clean_tests
+    end
+  end
+
+  def test_cache_retries_capture_after_helper_load_error_is_fixed
+    Dir.mktmpdir("mutineer-retry-fail") do |dir|
+      src    = File.join(dir, "calc.rb")
+      test   = File.join(dir, "calc_test.rb")
+      helper = File.join(dir, "boom_helper.rb")
+      cache  = File.join(dir, "cache")
+      File.write(src, "class RetryCalc\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(test, <<~RUBY)
+        require_relative "boom_helper"
+        require_relative "calc"
+        class RetryCalcTest < Minitest::Test
+          def test_add; assert_equal 5, RetryCalc.new.add(2, 3); end
+        end
+      RUBY
+      File.write(helper, "raise 'boom helper'\n")
+      mk = lambda do
+        Mutineer::CoverageMap.new(
+          source_paths: [src], test_paths: [test],
+          cache_dir: cache, project_root: dir
+        ).build_or_load
+      end
+      first = nil
+      capture_subprocess_io { first = mk.call }
+      assert_includes first.failed_test_files, "calc_test.rb"
+
+      File.write(helper, "require 'minitest/autorun'\n")
+      second = nil
+      capture_subprocess_io { second = mk.call }
+      refute_includes second.failed_test_files, "calc_test.rb"
+      refute_empty second.tests_for(src, File.read(src)[0...File.read(src).index("a + b")].count("\n") + 1)
+    end
+  end
+
+  def test_fork_clean_pass_times_out_instead_of_hanging
+    Coverage.start(lines: true) unless Coverage.running?
+    hang = File.join(Dir.mktmpdir, "hang_clean_test.rb")
+    File.write(hang, "sleep 5\n")
+    map = Mutineer::CoverageMap.new(
+      source_paths: [CALC], test_paths: [hang],
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, capture_timeout: 0.05
+    )
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    refute map.send(:fork_clean_pass?, [hang], nil)
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+    assert_operator elapsed, :<, 2.0
+  end
+
+  def test_combined_clean_fails_when_files_pass_alone
+    Dir.mktmpdir("mutineer-combined") do |dir|
+      src  = File.join(dir, "calc.rb")
+      a    = File.join(dir, "a_test.rb")
+      b    = File.join(dir, "b_test.rb")
+      File.write(src, "class CombinedCalc\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(a, <<~RUBY)
+        require "minitest/autorun"
+        require_relative "calc"
+        $combined_seen = true
+        class CombinedATest < Minitest::Test
+          def test_add; assert_equal 5, CombinedCalc.new.add(2, 3); end
+        end
+      RUBY
+      File.write(b, <<~RUBY)
+        require "minitest/autorun"
+        require_relative "calc"
+        class CombinedBTest < Minitest::Test
+          def test_isolated; refute defined?($combined_seen) && $combined_seen; end
+        end
+      RUBY
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(
+          source_paths: [src], test_paths: [a, b],
+          cache_dir: File.join(dir, "cache"), project_root: dir
+        ).build_or_load
+      end
+      assert_includes map.failed_clean_tests, "combined suite"
+    end
+  end
 end

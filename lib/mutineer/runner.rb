@@ -185,17 +185,19 @@ module Mutineer
     # @return [Array(Mutineer::AggregateResult, Hash<String,String>)] aggregate and source map.
     def self.execute_external(config, operator_classes)
       abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
-      dirs      = source_dirs(config)
-      sources   = config.sources.map { |s| File.expand_path(s, config.project_root) }
+      sources   = config.sources.map { |s| FileSwap.canonical_path(File.expand_path(s, config.project_root)) }
+      dirs      = sources.map { |s| File.dirname(s) }.uniq
+      lock_dir  = File.join(config.cache_dir, FileSwap::LOCK_DIR_NAME)
 
       # Own every source before healing leftovers or reading bytes for mutation.
-      # A backup file alone is not ownership; flock is.
-      FileSwap.owning(sources) do
+      # A backup file alone is not ownership; flock is. Canonical paths so
+      # symlink aliases of one inode share one lock.
+      FileSwap.owning(sources, lock_dir: lock_dir) do
         # Heal any file a prior hard-killed run left mutated BEFORE reading source.
         # collect_jobs computes mutation offsets/ids from the on-disk bytes, so a
         # still-mutated file would yield garbage offsets against the later-healed
         # source. Heal first, then discover jobs from the clean tree.
-        FileSwap.restore_orphans(dirs)
+        FileSwap.restore_orphans(dirs, lock_dir: lock_dir)
 
         jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
         jobs = filter_since(jobs, source_map, config) if config.since
@@ -223,7 +225,7 @@ module Mutineer
             break if config.fail_fast && r.survived? # stop at the first survivor
           end
         ensure
-          FileSwap.restore_orphans(dirs)
+          FileSwap.restore_orphans(dirs, lock_dir: lock_dir)
         end
 
         [AggregateResult.new(results + ignored_results), source_map]

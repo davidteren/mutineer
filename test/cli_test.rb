@@ -168,7 +168,7 @@ class CliTest < Minitest::Test
         "--operators", "arithmetic", "--jobs", "1", "--format", "json",
         "--threshold", "100", chdir: proj
       )
-      refute_equal 0, status.exitstatus
+      assert_equal 1, status.exitstatus
       assert_match(/unmutated suite is not green/, err)
       refute_match(/"score": 100\.0/, out)
     end
