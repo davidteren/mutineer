@@ -275,6 +275,8 @@ structured exit codes, and diff-scoped runs. See:
   contract:
   [rendered](https://davidteren.github.io/mutineer/json-schema.html) ·
   [source](docs/json-schema.md)
+- **Ruby API (YARD)** — class reference for the shipped gem:
+  [https://davidteren.github.io/mutineer/api/](https://davidteren.github.io/mutineer/api/)
 
 ## Configuration
 

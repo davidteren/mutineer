@@ -19,7 +19,7 @@ module Mutineer
     # Computes the stable id for a single mutant.
     #
     # NUL-joined so token delimiters (`||=`, spaces, `::`, `#`) can never collide
-    # with the separator; SHA256[0,12] gives a fixed-length, copy-pasteable key.
+    # with the separator; `SHA256[0,12]` gives a fixed-length, copy-pasteable key.
     #
     # @param subject [Mutineer::Subject] the subject (method) the mutant lives in;
     #   its `qualified_name` anchors the id to a method rather than a byte position.

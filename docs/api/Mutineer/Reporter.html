@@ -1,0 +1,3369 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>
+  Class: Mutineer::Reporter
+  
+    &mdash; Documentation by YARD 0.9.45
+  
+</title>
+
+  <link rel="stylesheet" href="../css/style.css" type="text/css">
+
+  <link rel="stylesheet" href="../css/common.css" type="text/css">
+
+<script type="text/javascript">
+  pathId = "Mutineer::Reporter";
+  relpath = '../';
+</script>
+
+
+  <script type="text/javascript" charset="utf-8" src="../js/jquery.js"></script>
+
+  <script type="text/javascript" charset="utf-8" src="../js/app.js"></script>
+
+
+  </head>
+  <body>
+    <div id="main_progress" aria-hidden="true"></div>
+
+    <div class="nav_wrap">
+      <iframe id="nav" src="../class_list.html?1"></iframe>
+      <div id="resizer"></div>
+    </div>
+
+    <div id="main" tabindex="-1">
+      <div id="header">
+        <div id="menu">
+  
+    <a href="../_index.html">Index (R)</a> &raquo;
+    <span class='title'><span class='object_link'><a href="../Mutineer.html" title="Mutineer (module)">Mutineer</a></span></span>
+     &raquo; 
+    <span class="title">Reporter</span>
+  
+</div>
+
+        <div id="search">
+  
+    <a class="full_list_link" id="class_list_link"
+        href="../class_list.html">
+
+        <svg width="24" height="24">
+          <rect x="0" y="4" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="12" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="20" width="24" height="4" rx="1" ry="1"></rect>
+        </svg>
+    </a>
+  
+</div>
+        <div class="clear"></div>
+      </div>
+
+      <div id="content"><h1>Class: Mutineer::Reporter
+  
+  
+  
+</h1>
+<div class="box_info">
+  
+  <dl>
+    <dt>Inherits:</dt>
+    <dd>
+      <span class="inheritName">Object</span>
+      
+        <ul class="fullTree">
+          <li>Object</li>
+          
+            <li class="next">Mutineer::Reporter</li>
+          
+        </ul>
+        <a href="#" class="inheritanceTree">show all</a>
+      
+    </dd>
+  </dl>
+  
+
+  
+  
+  
+  
+  
+
+  
+
+  
+  <dl>
+    <dt>Defined in:</dt>
+    <dd>lib/mutineer/reporter.rb
+</dd>
+  </dl>
+  
+</div>
+
+<h2>Overview</h2><div class="docstring">
+  <div class="discussion">
+    <p>Renders an AggregateResult: the summary block, mutation score, and per-file
+survivor diffs. Stream discipline: the report goes to <code>out</code> (stdout),
+diagnostics/warnings go to <code>err</code> (stderr), so <code>mutineer ... &gt; report.txt</code>
+captures only the report.</p>
+<p><code>source_map</code> is { file_path =&gt; raw source string }, used to extract the
+containing source line for each survivor diff.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+  
+    <h2>
+      Constant Summary
+      <small><a href="#" class="constants_summary_toggle">collapse</a></small>
+    </h2>
+
+    <dl class="constants">
+      
+        <dt id="BROKEN_SHARE_LIMIT-constant" class="">BROKEN_SHARE_LIMIT =
+          <div class="docstring">
+  <div class="discussion">
+    <p>Share of attempted mutants that may produce no verdict before <code>--threshold</code>
+stops trusting the score. A handful of flaky mutants in a large run is noise;
+a mostly-broken run is not a score. Deliberately not a flag: no one has needed
+a different number yet.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+        </dt>
+        <dd><pre class="code"><span class='float'>0.10</span></pre></dd>
+      
+        <dt id="BROKEN_FLOOR-constant" class="">BROKEN_FLOOR =
+          <div class="docstring">
+  <div class="discussion">
+    <p>A share alone gives a small run no tolerance at all: on a <code>--since</code> PR that
+yields 8 mutants, one timeout is 12.5%. README recommends exactly that
+workflow, so one bad mutant never fails the gate on its own, at any size.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+        </dt>
+        <dd><pre class="code"><span class='int'>1</span></pre></dd>
+      
+    </dl>
+  
+
+
+
+
+
+
+
+  
+    <h2>
+      Instance Method Summary
+      <small><a href="#" class="summary_toggle">collapse</a></small>
+    </h2>
+
+    <ul class="summary">
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#attempted_count-instance_method" title="#attempted_count (instance method)">#<strong>attempted_count</strong>  &#x21d2; Integer </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Mutants that were actually run.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#baseline_json-instance_method" title="#baseline_json (instance method)">#<strong>baseline_json</strong>(delta)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>The same delta facts the human report prints, for dashboards.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#baseline_section-instance_method" title="#baseline_section (instance method)">#<strong>baseline_section</strong>(out, delta)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>The --baseline delta, appended after the normal report.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#broken_counts_detail-instance_method" title="#broken_counts_detail (instance method)">#<strong>broken_counts_detail</strong>  &#x21d2; String </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Human-readable counts of the states that produced no verdict.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#broken_nil_score%3F-instance_method" title="#broken_nil_score? (instance method)">#<strong>broken_nil_score?</strong>  &#x21d2; Boolean </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>True when nil score is due to errors/timeouts/uncapturable (gate must fail).</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#broken_share_exceeded%3F-instance_method" title="#broken_share_exceeded? (instance method)">#<strong>broken_share_exceeded?</strong>  &#x21d2; Boolean </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Mutants that were attempted but produced no verdict, over everything attempted.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#diff_for-instance_method" title="#diff_for (instance method)">#<strong>diff_for</strong>(m, source)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Builds a line-aligned diff for a mutation whose byte range may span several lines (e.g. statement-removal of a multi-line statement).</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#esc-instance_method" title="#esc (instance method)">#<strong>esc</strong>(text)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>HTML-escapes any text destined for the document (stdlib CGI).</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#exit_code-instance_method" title="#exit_code (instance method)">#<strong>exit_code</strong>(threshold:)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>0 pass / 1 below threshold or untestable-with-errors.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#html_report-instance_method" title="#html_report (instance method)">#<strong>html_report</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>One self-contained HTML file (inline CSS, no external assets): the overall score + summary counts, a per-source table, and every surviving mutant with its stable id and diff.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#human_report-instance_method" title="#human_report (instance method)">#<strong>human_report</strong>(out, err, threshold)  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Renders the human report.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#ignored_json-instance_method" title="#ignored_json (instance method)">#<strong>ignored_json</strong>(result)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>An entry under the JSON <code>ignored:</code> key: what the user already suppressed.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#initialize-instance_method" title="#initialize (instance method)">#<strong>initialize</strong>(aggregate, source_map)  &#x21d2; Reporter </a>
+    
+
+    
+  </span>
+  
+  
+    <span class="note title constructor">constructor</span>
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>A new instance of Reporter.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#json_report-instance_method" title="#json_report (instance method)">#<strong>json_report</strong>(baseline = nil, scoped: false)  &#x21d2; String </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Canonical machine-readable schema.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#no_coverage_json-instance_method" title="#no_coverage_json (instance method)">#<strong>no_coverage_json</strong>(result)  &#x21d2; Hash </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Builds no-coverage JSON.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#no_verdict_count-instance_method" title="#no_verdict_count (instance method)">#<strong>no_verdict_count</strong>  &#x21d2; Integer </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Mutants that were attempted and produced no verdict, whatever the reason.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#no_verdict_json-instance_method" title="#no_verdict_json (instance method)">#<strong>no_verdict_json</strong>(result)  &#x21d2; Hash </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>An entry under the JSON <code>no_verdict:</code> key: an attempted mutant with no verdict.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#no_verdict_ratio-instance_method" title="#no_verdict_ratio (instance method)">#<strong>no_verdict_ratio</strong>  &#x21d2; String </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>The sentence both the verdict line and the stderr note are built from, so a user cannot read one number in the report and a different one beside it.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#per_source-instance_method" title="#per_source (instance method)">#<strong>per_source</strong>(out)  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>One line per source after the global summary, so a multi-source run shows which file is weak.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#per_source_html-instance_method" title="#per_source_html (instance method)">#<strong>per_source_html</strong>(per_source)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>The per-source breakdown table.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#per_source_json-instance_method" title="#per_source_json (instance method)">#<strong>per_source_json</strong>(file, agg)  &#x21d2; Hash </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Builds per-source JSON.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#report-instance_method" title="#report (instance method)">#<strong>report</strong>(out: $stdout, err: $stderr, threshold: 0.0, format: &quot;human&quot;, output: nil, baseline: nil, scoped: false)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Single entry point.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#score_line-instance_method" title="#score_line (instance method)">#<strong>score_line</strong>(out, err)  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Writes the score line.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#summary-instance_method" title="#summary (instance method)">#<strong>summary</strong>(out)  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Writes the summary block.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#summary_html-instance_method" title="#summary_html (instance method)">#<strong>summary_html</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>The summary counts block for the HTML header.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#survivor-instance_method" title="#survivor (instance method)">#<strong>survivor</strong>(out, file, result)  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Writes one survivor entry.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#survivor_json-instance_method" title="#survivor_json (instance method)">#<strong>survivor_json</strong>(result)  &#x21d2; Hash </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Builds survivor JSON.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#survivors-instance_method" title="#survivors (instance method)">#<strong>survivors</strong>(out)  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Writes the survivors block.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#survivors_html-instance_method" title="#survivors_html (instance method)">#<strong>survivors_html</strong>(survivors)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>The surviving-mutants list, each with subject, location, operator, stable id, and a colorized diff.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#verdict-instance_method" title="#verdict (instance method)">#<strong>verdict</strong>(out, threshold)  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Writes the final verdict line.</p></div></span>
+  
+</li>
+
+      
+    </ul>
+    
+  
+
+<div id="constructor_details" class="method_details_list">
+  <h2>Constructor Details</h2>
+  
+    <div class="method_details first">
+  <h3 class="signature first" id="initialize-instance_method">
+  
+    #<strong>initialize</strong>(aggregate, source_map)  &#x21d2; <tt><span class='object_link'><a href="" title="Mutineer::Reporter (class)">Reporter</a></span></tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Returns a new instance of Reporter.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+28
+29
+30
+31</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 28</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_initialize'>initialize</span><span class='lparen'>(</span><span class='id identifier rubyid_aggregate'>aggregate</span><span class='comma'>,</span> <span class='id identifier rubyid_source_map'>source_map</span><span class='rparen'>)</span>
+  <span class='ivar'>@agg</span> <span class='op'>=</span> <span class='id identifier rubyid_aggregate'>aggregate</span>
+  <span class='ivar'>@source_map</span> <span class='op'>=</span> <span class='id identifier rubyid_source_map'>source_map</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+  
+</div>
+
+
+  <div id="instance_method_details" class="method_details_list">
+    <h2>Instance Method Details</h2>
+
+    
+      <div class="method_details first">
+  <h3 class="signature first" id="attempted_count-instance_method">
+  
+    #<strong>attempted_count</strong>  &#x21d2; <tt>Integer</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Mutants that were actually run. Deliberately not <code>total</code>: no_coverage,
+skipped-invalid and ignored mutants were never attempted, so counting them
+would dilute the share and let a broken run slip under the limit.</p>
+<p>skipped-invalid is excluded from both sides: it means a mutant did not
+re-parse and was correctly never run, which is a validity outcome rather
+than a broken harness. Cost: an overwhelmingly-skipped run still scores on
+what little ran; that is our operator misbehaving and wants its own signal.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>killed + survived + no-verdict.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+527
+528
+529</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 527</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_attempted_count'>attempted_count</span>
+  <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_killed_count'>killed_count</span> <span class='op'>+</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_survived_count'>survived_count</span> <span class='op'>+</span> <span class='id identifier rubyid_no_verdict_count'>no_verdict_count</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="baseline_json-instance_method">
+  
+    #<strong>baseline_json</strong>(delta)  &#x21d2; <tt>Object</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>The same delta facts the human report prints, for dashboards. new_survivors
+reuse the ignored_json shape (subject/file/line/operator/token/id) and sort
+byte-stably so output does not depend on --jobs finish order.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+312
+313
+314
+315
+316
+317
+318
+319
+320
+321
+322
+323
+324
+325
+326
+327
+328
+329</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 312</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_baseline_json'>baseline_json</span><span class='lparen'>(</span><span class='id identifier rubyid_delta'>delta</span><span class='rparen'>)</span>
+  <span class='lbrace'>{</span>
+    <span class='label'>regressed:</span> <span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_regressed'>regressed</span><span class='comma'>,</span>
+    <span class='label'>score_before:</span> <span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_score_before'>score_before</span><span class='comma'>,</span>
+    <span class='label'>score_after:</span> <span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_score_after'>score_after</span><span class='comma'>,</span>
+    <span class='label'>score_dropped:</span> <span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_score_drop'>score_drop</span><span class='comma'>,</span>
+    <span class='comment'># Additive: false when the score-drop check was skipped (a nil score or
+</span>    <span class='comment'># a diff-scoped side), so a consumer knows not to render the two scores
+</span>    <span class='comment'># as a comparison.
+</span>    <span class='label'>score_comparable:</span> <span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_score_comparable'>score_comparable</span><span class='comma'>,</span>
+    <span class='label'>new_survivors:</span> <span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_new_survivors'>new_survivors</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_ignored_json'>ignored_json</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+                        <span class='period'>.</span><span class='id identifier rubyid_sort_by'>sort_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='lbracket'>[</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:line</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:operator</span><span class='rbracket'>]</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='comma'>,</span>
+    <span class='label'>fixed_survivors:</span> <span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_fixed_survivors'>fixed_survivors</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span>
+      <span class='lbrace'>{</span> <span class='label'>subject:</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>subject</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='label'>file:</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>file</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='label'>line:</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>line</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='comma'>,</span>
+        <span class='label'>operator:</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>operator</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='label'>id:</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>id</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
+    <span class='kw'>end</span><span class='period'>.</span><span class='id identifier rubyid_sort_by'>sort_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='lbracket'>[</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:line</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_to_i'>to_i</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:operator</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
+  <span class='rbrace'>}</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="baseline_section-instance_method">
+  
+    #<strong>baseline_section</strong>(out, delta)  &#x21d2; <tt>Object</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>The --baseline delta, appended after the normal report. Names every NEW
+survivor (subject (file:line) operator) and the score delta when it dropped,
+then a one-line REGRESSION/OK verdict so CI logs show which gate fired.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+579
+580
+581
+582
+583
+584
+585
+586
+587
+588
+589
+590
+591
+592
+593
+594
+595
+596
+597</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 579</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_baseline_section'>baseline_section</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='id identifier rubyid_delta'>delta</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Baseline comparison</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>-------------------</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>killed </span><span class='embexpr_beg'>#{</span><span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_killed_count'>killed_count</span><span class='embexpr_end'>}</span><span class='tstring_content'>, </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_new_survivors'>new_survivors</span><span class='period'>.</span><span class='id identifier rubyid_size'>size</span><span class='embexpr_end'>}</span><span class='tstring_content'> new survivors vs baseline</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_new_survivors'>new_survivors</span>
+       <span class='period'>.</span><span class='id identifier rubyid_sort_by'>sort_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='lbracket'>[</span><span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_start_offset'>start_offset</span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
+       <span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span>
+    <span class='id identifier rubyid_file'>file</span> <span class='op'>=</span> <span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span>
+    <span class='id identifier rubyid_source'>source</span> <span class='op'>=</span> <span class='ivar'>@source_map</span><span class='lbracket'>[</span><span class='id identifier rubyid_file'>file</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_read'>read</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span>
+    <span class='id identifier rubyid_line'>line</span><span class='comma'>,</span> <span class='op'>=</span> <span class='id identifier rubyid_diff_for'>diff_for</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span>
+    <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>  + </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_qualified_name'>qualified_name</span><span class='embexpr_end'>}</span><span class='tstring_content'> (</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_file'>file</span><span class='embexpr_end'>}</span><span class='tstring_content'>:</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_line'>line</span><span class='embexpr_end'>}</span><span class='tstring_content'>) </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span>
+  <span class='kw'>end</span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>score dropped </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_score_before'>score_before</span><span class='embexpr_end'>}</span><span class='tstring_content'>% -&gt; </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_score_after'>score_after</span><span class='embexpr_end'>}</span><span class='tstring_content'>%</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_score_drop'>score_drop</span>
+  <span class='comment'># An OK verdict must not imply a check that never ran: say when the score
+</span>  <span class='comment'># comparison was skipped (a diff-scoped side or a nil score).
+</span>  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>score-drop check skipped (scores not comparable)</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>unless</span> <span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_score_comparable'>score_comparable</span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span><span class='lparen'>(</span><span class='id identifier rubyid_delta'>delta</span><span class='period'>.</span><span class='id identifier rubyid_regressed'>regressed</span> <span class='op'>?</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>REGRESSION vs baseline</span><span class='tstring_end'>&quot;</span></span> <span class='op'>:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>OK: no regression vs baseline</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="broken_counts_detail-instance_method">
+  
+    #<strong>broken_counts_detail</strong>  &#x21d2; <tt>String</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Human-readable counts of the states that produced no verdict. Used by both
+the nil-score message and the completeness gate, so they agree.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+547
+548
+549
+550
+551
+552
+553</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 547</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_broken_counts_detail'>broken_counts_detail</span>
+  <span class='id identifier rubyid_parts'>parts</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
+  <span class='id identifier rubyid_parts'>parts</span> <span class='op'>&lt;&lt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_errored_count'>errored_count</span><span class='embexpr_end'>}</span><span class='tstring_content'> errored</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_errored_count'>errored_count</span><span class='period'>.</span><span class='id identifier rubyid_positive?'>positive?</span>
+  <span class='id identifier rubyid_parts'>parts</span> <span class='op'>&lt;&lt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_timeout_count'>timeout_count</span><span class='embexpr_end'>}</span><span class='tstring_content'> timeout</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_timeout_count'>timeout_count</span><span class='period'>.</span><span class='id identifier rubyid_positive?'>positive?</span>
+  <span class='id identifier rubyid_parts'>parts</span> <span class='op'>&lt;&lt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_uncapturable_count'>uncapturable_count</span><span class='embexpr_end'>}</span><span class='tstring_content'> uncapturable</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_uncapturable_count'>uncapturable_count</span><span class='period'>.</span><span class='id identifier rubyid_positive?'>positive?</span>
+  <span class='id identifier rubyid_parts'>parts</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>, </span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="broken_nil_score?-instance_method">
+  
+    #<strong>broken_nil_score?</strong>  &#x21d2; <tt>Boolean</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>True when nil score is due to errors/timeouts/uncapturable (gate must fail).</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+491
+492
+493
+494</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 491</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_broken_nil_score?'>broken_nil_score?</span>
+  <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_total'>total</span><span class='period'>.</span><span class='id identifier rubyid_positive?'>positive?</span> <span class='op'>&amp;&amp;</span>
+    <span class='lparen'>(</span><span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_errored_count'>errored_count</span> <span class='op'>+</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_timeout_count'>timeout_count</span> <span class='op'>+</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_uncapturable_count'>uncapturable_count</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_positive?'>positive?</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="broken_share_exceeded?-instance_method">
+  
+    #<strong>broken_share_exceeded?</strong>  &#x21d2; <tt>Boolean</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Mutants that were attempted but produced no verdict, over everything
+attempted. Above the limit the score describes too small a slice of the run
+to gate on. A few flaky mutants in a large run stay under it.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>true when too much of the run failed to produce a verdict.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+502
+503
+504
+505
+506</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 502</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_broken_share_exceeded?'>broken_share_exceeded?</span>
+  <span class='id identifier rubyid_attempted'>attempted</span> <span class='op'>=</span> <span class='id identifier rubyid_attempted_count'>attempted_count</span>
+  <span class='id identifier rubyid_attempted'>attempted</span><span class='period'>.</span><span class='id identifier rubyid_positive?'>positive?</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_no_verdict_count'>no_verdict_count</span> <span class='op'>&gt;</span> <span class='const'><span class='object_link'><a href="#BROKEN_FLOOR-constant" title="Mutineer::Reporter::BROKEN_FLOOR (constant)">BROKEN_FLOOR</a></span></span> <span class='op'>&amp;&amp;</span>
+    <span class='id identifier rubyid_no_verdict_count'>no_verdict_count</span> <span class='op'>&gt;</span> <span class='id identifier rubyid_attempted'>attempted</span> <span class='op'>*</span> <span class='const'><span class='object_link'><a href="#BROKEN_SHARE_LIMIT-constant" title="Mutineer::Reporter::BROKEN_SHARE_LIMIT (constant)">BROKEN_SHARE_LIMIT</a></span></span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="diff_for-instance_method">
+  
+    #<strong>diff_for</strong>(m, source)  &#x21d2; <tt>Object</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Builds a line-aligned diff for a mutation whose byte range may span several
+lines (e.g. statement-removal of a multi-line statement). Returns the
+mutation's 1-based start line, the full original line-block it touches, the
+spliced mutated block, and a single-line token label for the header.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+390
+391
+392
+393
+394
+395
+396
+397
+398
+399
+400
+401
+402
+403</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 390</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_diff_for'>diff_for</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span>
+  <span class='comment'># Byte math: Prism offsets are byte offsets; byteindex/byterindex/
+</span>  <span class='comment'># byteslice keep line splicing correct for multibyte sources.
+</span>  <span class='id identifier rubyid_line_begin'>line_begin</span> <span class='op'>=</span> <span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_start_offset'>start_offset</span><span class='period'>.</span><span class='id identifier rubyid_zero?'>zero?</span> <span class='op'>?</span> <span class='int'>0</span> <span class='op'>:</span> <span class='lparen'>(</span><span class='id identifier rubyid_source'>source</span><span class='period'>.</span><span class='id identifier rubyid_byterindex'>byterindex</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\n</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_start_offset'>start_offset</span> <span class='op'>-</span> <span class='int'>1</span><span class='rparen'>)</span> <span class='op'>||</span> <span class='op'>-</span><span class='int'>1</span><span class='rparen'>)</span> <span class='op'>+</span> <span class='int'>1</span>
+  <span class='id identifier rubyid_line_end'>line_end</span>   <span class='op'>=</span> <span class='id identifier rubyid_source'>source</span><span class='period'>.</span><span class='id identifier rubyid_byteindex'>byteindex</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\n</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_end_offset'>end_offset</span><span class='rparen'>)</span> <span class='op'>||</span> <span class='id identifier rubyid_source'>source</span><span class='period'>.</span><span class='id identifier rubyid_bytesize'>bytesize</span>
+  <span class='id identifier rubyid_before'>before</span> <span class='op'>=</span> <span class='id identifier rubyid_source'>source</span><span class='period'>.</span><span class='id identifier rubyid_byteslice'>byteslice</span><span class='lparen'>(</span><span class='id identifier rubyid_line_begin'>line_begin</span><span class='op'>...</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_start_offset'>start_offset</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_after'>after</span>  <span class='op'>=</span> <span class='id identifier rubyid_source'>source</span><span class='period'>.</span><span class='id identifier rubyid_byteslice'>byteslice</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_end_offset'>end_offset</span><span class='op'>...</span><span class='id identifier rubyid_line_end'>line_end</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_original_block'>original_block</span> <span class='op'>=</span> <span class='id identifier rubyid_source'>source</span><span class='period'>.</span><span class='id identifier rubyid_byteslice'>byteslice</span><span class='lparen'>(</span><span class='id identifier rubyid_line_begin'>line_begin</span><span class='op'>...</span><span class='id identifier rubyid_line_end'>line_end</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_mutated_block'>mutated_block</span>  <span class='op'>=</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_before'>before</span><span class='embexpr_end'>}</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_replacement'>replacement</span><span class='embexpr_end'>}</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_after'>after</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_start_line'>start_line</span>  <span class='op'>=</span> <span class='id identifier rubyid_source'>source</span><span class='period'>.</span><span class='id identifier rubyid_byteslice'>byteslice</span><span class='lparen'>(</span><span class='int'>0</span><span class='comma'>,</span> <span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_start_offset'>start_offset</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_count'>count</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\n</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span> <span class='op'>+</span> <span class='int'>1</span>
+  <span class='id identifier rubyid_token'>token</span>       <span class='op'>=</span> <span class='id identifier rubyid_source'>source</span><span class='period'>.</span><span class='id identifier rubyid_byteslice'>byteslice</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_start_offset'>start_offset</span><span class='op'>...</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_end_offset'>end_offset</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_gsub'>gsub</span><span class='lparen'>(</span><span class='tstring'><span class='regexp_beg'>/</span><span class='tstring_content'>\s+</span><span class='regexp_end'>/</span></span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'> </span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_strip'>strip</span>
+  <span class='id identifier rubyid_token'>token</span>       <span class='op'>=</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_token'>token</span><span class='lbracket'>[</span><span class='int'>0</span><span class='comma'>,</span> <span class='int'>47</span><span class='rbracket'>]</span><span class='embexpr_end'>}</span><span class='tstring_content'>...</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='id identifier rubyid_token'>token</span><span class='period'>.</span><span class='id identifier rubyid_length'>length</span> <span class='op'>&gt;</span> <span class='int'>50</span>
+  <span class='lbracket'>[</span><span class='id identifier rubyid_start_line'>start_line</span><span class='comma'>,</span> <span class='id identifier rubyid_original_block'>original_block</span><span class='comma'>,</span> <span class='id identifier rubyid_mutated_block'>mutated_block</span><span class='comma'>,</span> <span class='id identifier rubyid_token'>token</span><span class='rbracket'>]</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="esc-instance_method">
+  
+    #<strong>esc</strong>(text)  &#x21d2; <tt>Object</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>HTML-escapes any text destined for the document (stdlib CGI).</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+307</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 307</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_esc'>esc</span><span class='lparen'>(</span><span class='id identifier rubyid_text'>text</span><span class='rparen'>)</span> <span class='op'>=</span> <span class='const'>CGI</span><span class='period'>.</span><span class='id identifier rubyid_escapeHTML'>escapeHTML</span><span class='lparen'>(</span><span class='id identifier rubyid_text'>text</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='rparen'>)</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="exit_code-instance_method">
+  
+    #<strong>exit_code</strong>(threshold:)  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>0 pass / 1 below threshold or untestable-with-errors. Usage errors (exit 2)
+are the CLI's job. When the score is nil (nothing killed or survived), pure
+no_coverage / all-ignored / empty still skip the gate; if any mutant was
+errored, timed out, or uncapturable, fail the gate so a broken harness
+cannot green CI under --threshold.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+105
+106
+107
+108
+109
+110
+111
+112
+113
+114
+115
+116
+117
+118
+119
+120
+121
+122</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 105</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_exit_code'>exit_code</span><span class='lparen'>(</span><span class='label'>threshold:</span><span class='rparen'>)</span>
+  <span class='kw'>return</span> <span class='int'>0</span> <span class='kw'>if</span> <span class='id identifier rubyid_threshold'>threshold</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span> <span class='op'>||</span> <span class='id identifier rubyid_threshold'>threshold</span> <span class='op'>&lt;=</span> <span class='int'>0</span>
+
+  <span class='id identifier rubyid_score'>score</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_mutation_score'>mutation_score</span>
+  <span class='kw'>if</span> <span class='id identifier rubyid_score'>score</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span>
+    <span class='id identifier rubyid_broken'>broken</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_errored_count'>errored_count</span> <span class='op'>+</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_timeout_count'>timeout_count</span> <span class='op'>+</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_uncapturable_count'>uncapturable_count</span>
+    <span class='kw'>return</span> <span class='int'>1</span> <span class='kw'>if</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_total'>total</span><span class='period'>.</span><span class='id identifier rubyid_positive?'>positive?</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_broken'>broken</span><span class='period'>.</span><span class='id identifier rubyid_positive?'>positive?</span>
+
+    <span class='kw'>return</span> <span class='int'>0</span> <span class='comment'># pure no_coverage / ignored / empty — gate skipped
+</span>  <span class='kw'>end</span>
+
+  <span class='comment'># A score computed over a small slice of what was attempted is not this
+</span>  <span class='comment'># suite&#39;s score. Without this, 90 errored mutants and 10 that ran (9 killed)
+</span>  <span class='comment'># reports 90% and exits 0, so CI cannot tell a complete run from a broken one.
+</span>  <span class='kw'>return</span> <span class='int'>1</span> <span class='kw'>if</span> <span class='id identifier rubyid_broken_share_exceeded?'>broken_share_exceeded?</span>
+
+  <span class='id identifier rubyid_score'>score</span> <span class='op'>&gt;=</span> <span class='id identifier rubyid_threshold'>threshold</span> <span class='op'>?</span> <span class='int'>0</span> <span class='op'>:</span> <span class='int'>1</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="html_report-instance_method">
+  
+    #<strong>html_report</strong>  &#x21d2; <tt>Object</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>One self-contained HTML file (inline CSS, no external assets): the overall
+score + summary counts, a per-source table, and every surviving mutant with
+its stable id and diff. All source/diff/identifier text is HTML-escaped
+(CGI.escapeHTML) so a <code>&lt;</code>/<code>&gt;</code> in source can never break the markup. Reuses
+survivor_json/per_source_json so one run yields one set of facts regardless
+of --format.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+204
+205
+206
+207
+208
+209
+210
+211
+212
+213
+214
+215
+216
+217
+218
+219
+220
+221
+222
+223
+224
+225
+226
+227
+228
+229
+230
+231
+232
+233
+234
+235
+236
+237
+238
+239
+240
+241
+242
+243
+244
+245
+246
+247
+248
+249
+250</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 204</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_html_report'>html_report</span>
+  <span class='id identifier rubyid_score'>score</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_mutation_score'>mutation_score</span>
+  <span class='id identifier rubyid_survivors'>survivors</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_surviving_mutants'>surviving_mutants</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_survivor_json'>survivor_json</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+                  <span class='period'>.</span><span class='id identifier rubyid_sort_by'>sort_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='lbracket'>[</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:line</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:operator</span><span class='rbracket'>]</span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
+  <span class='id identifier rubyid_per_source'>per_source</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_by_source'>by_source</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_agg'>agg</span><span class='op'>|</span> <span class='id identifier rubyid_per_source_json'>per_source_json</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_agg'>agg</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+                   <span class='period'>.</span><span class='id identifier rubyid_sort_by'>sort_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
+
+  <span class='heredoc_beg'>&lt;&lt;~HTML</span>
+<span class='tstring_content'>    &lt;!DOCTYPE html&gt;
+</span><span class='tstring_content'>    &lt;html lang=&quot;en&quot;&gt;
+</span><span class='tstring_content'>    &lt;head&gt;
+</span><span class='tstring_content'>    &lt;meta charset=&quot;utf-8&quot;&gt;
+</span><span class='tstring_content'>    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+</span><span class='tstring_content'>    &lt;title&gt;Mutineer Mutation Report&lt;/title&gt;
+</span><span class='tstring_content'>    &lt;style&gt;
+</span><span class='tstring_content'>      body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+</span><span class='tstring_content'>             margin: 2rem; color: #1b1b1b; background: #fafafa; }
+</span><span class='tstring_content'>      h1 { margin: 0 0 .25rem; }
+</span><span class='tstring_content'>      .score { font-size: 2.5rem; font-weight: 700; }
+</span><span class='tstring_content'>      .counts { color: #444; margin: .5rem 0 1.5rem; }
+</span><span class='tstring_content'>      .counts span { display: inline-block; margin-right: 1rem; white-space: nowrap; }
+</span><span class='tstring_content'>      table { border-collapse: collapse; width: 100%; margin-bottom: 2rem; background: #fff; }
+</span><span class='tstring_content'>      th, td { border: 1px solid #ddd; padding: .4rem .6rem; text-align: left; }
+</span><span class='tstring_content'>      th { background: #f0f0f0; }
+</span><span class='tstring_content'>      td.num { text-align: right; font-variant-numeric: tabular-nums; }
+</span><span class='tstring_content'>      .survivor { background: #fff; border: 1px solid #ddd; border-radius: 4px;
+</span><span class='tstring_content'>                  padding: .75rem 1rem; margin-bottom: 1rem; }
+</span><span class='tstring_content'>      .survivor h3 { margin: 0 0 .25rem; font-size: 1rem; }
+</span><span class='tstring_content'>      .meta { color: #555; font-size: .85rem; margin-bottom: .5rem; }
+</span><span class='tstring_content'>      .id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+</span><span class='tstring_content'>      pre.diff { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+</span><span class='tstring_content'>                 background: #f6f8fa; padding: .5rem .75rem; overflow-x: auto;
+</span><span class='tstring_content'>                 margin: 0; border-radius: 4px; }
+</span><span class='tstring_content'>      .diff .add { color: #116329; }
+</span><span class='tstring_content'>      .diff .del { color: #82071e; }
+</span><span class='tstring_content'>    &lt;/style&gt;
+</span><span class='tstring_content'>    &lt;/head&gt;
+</span><span class='tstring_content'>    &lt;body&gt;
+</span><span class='tstring_content'>    &lt;h1&gt;Mutineer — Mutation Report&lt;/h1&gt;
+</span><span class='tstring_content'>    &lt;div class=&quot;score&quot;&gt;Score: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_score'>score</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span> <span class='op'>?</span> <span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>N/A</span><span class='tstring_end'>&#39;</span></span> <span class='op'>:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_score'>score</span><span class='embexpr_end'>}</span><span class='tstring_content'>%</span><span class='tstring_end'>&quot;</span></span><span class='embexpr_end'>}</span><span class='tstring_content'>&lt;/div&gt;
+</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_summary_html'>summary_html</span><span class='embexpr_end'>}</span><span class='tstring_content'>
+</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_per_source_html'>per_source_html</span><span class='lparen'>(</span><span class='id identifier rubyid_per_source'>per_source</span><span class='rparen'>)</span><span class='embexpr_end'>}</span><span class='tstring_content'>
+</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_survivors_html'>survivors_html</span><span class='lparen'>(</span><span class='id identifier rubyid_survivors'>survivors</span><span class='rparen'>)</span><span class='embexpr_end'>}</span><span class='tstring_content'>
+</span><span class='tstring_content'>    &lt;/body&gt;
+</span><span class='tstring_content'>    &lt;/html&gt;
+</span><span class='heredoc_end'>  HTML
+</span><span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="human_report-instance_method">
+  
+    #<strong>human_report</strong>(out, err, threshold)  &#x21d2; <tt>void</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>Renders the human report.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>out</span>
+      
+      
+        <span class='type'>(<tt>IO</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>output stream.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>err</span>
+      
+      
+        <span class='type'>(<tt>IO</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>error stream.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>threshold</span>
+      
+      
+        <span class='type'>(<tt>Float</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>score threshold.</p></div>
+      
+    </li>
+  
+</ul>
+
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 81</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_human_report'>human_report</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='id identifier rubyid_err'>err</span><span class='comma'>,</span> <span class='id identifier rubyid_threshold'>threshold</span><span class='rparen'>)</span>
+  <span class='kw'>if</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_total'>total</span><span class='period'>.</span><span class='id identifier rubyid_zero?'>zero?</span>
+    <span class='id identifier rubyid_err'>err</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>No mutations generated — verify target files contain in-scope </span><span class='tstring_end'>&quot;</span></span> \
+             <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>operators and are reached by the suite.</span><span class='tstring_end'>&quot;</span></span>
+    <span class='kw'>return</span>
+  <span class='kw'>end</span>
+
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Mutineer — Mutation Results</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>=========================</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span>
+  <span class='id identifier rubyid_summary'>summary</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span>
+  <span class='id identifier rubyid_score_line'>score_line</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='id identifier rubyid_err'>err</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_per_source'>per_source</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='rparen'>)</span>
+
+  <span class='id identifier rubyid_survivors'>survivors</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_verdict'>verdict</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='id identifier rubyid_threshold'>threshold</span><span class='rparen'>)</span> <span class='kw'>if</span> <span class='id identifier rubyid_threshold'>threshold</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_threshold'>threshold</span><span class='period'>.</span><span class='id identifier rubyid_positive?'>positive?</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="ignored_json-instance_method">
+  
+    #<strong>ignored_json</strong>(result)  &#x21d2; <tt>Object</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>An entry under the JSON <code>ignored:</code> key: what the user already suppressed.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+371
+372
+373
+374
+375
+376
+377
+378
+379
+380
+381
+382
+383
+384</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 371</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_ignored_json'>ignored_json</span><span class='lparen'>(</span><span class='id identifier rubyid_result'>result</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_m'>m</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span>
+  <span class='id identifier rubyid_file'>file</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span>
+  <span class='id identifier rubyid_source'>source</span> <span class='op'>=</span> <span class='ivar'>@source_map</span><span class='lbracket'>[</span><span class='id identifier rubyid_file'>file</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_read'>read</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_start_line'>start_line</span><span class='comma'>,</span> <span class='id identifier rubyid__orig'>_orig</span><span class='comma'>,</span> <span class='id identifier rubyid__mut'>_mut</span><span class='comma'>,</span> <span class='id identifier rubyid_token'>token</span> <span class='op'>=</span> <span class='id identifier rubyid_diff_for'>diff_for</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span>
+  <span class='lbrace'>{</span>
+    <span class='label'>subject:</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_qualified_name'>qualified_name</span><span class='comma'>,</span>
+    <span class='label'>file:</span> <span class='id identifier rubyid_file'>file</span><span class='comma'>,</span>
+    <span class='label'>line:</span> <span class='id identifier rubyid_start_line'>start_line</span><span class='comma'>,</span>
+    <span class='label'>operator:</span> <span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='comma'>,</span>
+    <span class='label'>token:</span> <span class='id identifier rubyid_token'>token</span><span class='comma'>,</span>
+    <span class='label'>id:</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_id'>id</span>
+  <span class='rbrace'>}</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="json_report-instance_method">
+  
+    #<strong>json_report</strong>(baseline = nil, scoped: false)  &#x21d2; <tt>String</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Canonical machine-readable schema. survivors/no_coverage are sorted by
+(file, line, operator) so output is byte-stable regardless of --jobs
+worker finish order.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>baseline</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Baseline/Delta.html" title="Mutineer::Baseline::Delta (class)">Mutineer::Baseline::Delta</a></span></tt>, <tt>nil</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>nil</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>baseline delta.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>scoped</span>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>false</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>the run was diff-scoped (<code>--since</code>), so its score
+covers only the changed-line mutants (additive <code>summary.scoped</code> key).</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>JSON text.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+135
+136
+137
+138
+139
+140
+141
+142
+143
+144
+145
+146
+147
+148
+149
+150
+151
+152
+153
+154
+155
+156
+157
+158
+159
+160
+161
+162
+163
+164
+165
+166
+167
+168
+169
+170
+171
+172
+173
+174
+175
+176
+177
+178
+179
+180
+181
+182
+183
+184
+185
+186
+187
+188
+189
+190
+191
+192
+193
+194
+195
+196</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 135</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_json_report'>json_report</span><span class='lparen'>(</span><span class='id identifier rubyid_baseline'>baseline</span> <span class='op'>=</span> <span class='kw'>nil</span><span class='comma'>,</span> <span class='label'>scoped:</span> <span class='kw'>false</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_killed'>killed</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_killed_count'>killed_count</span>
+  <span class='id identifier rubyid_survived'>survived</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_survived_count'>survived_count</span>
+  <span class='comment'># null (not 0.0) on an empty denominator, matching the nil-vs-0.0
+</span>  <span class='comment'># discipline in AggregateResult; and the SAME rounding as the human report
+</span>  <span class='comment'># (one run must not yield two scores by --format).
+</span>  <span class='id identifier rubyid_score'>score</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_mutation_score'>mutation_score</span>
+
+  <span class='id identifier rubyid_doc'>doc</span> <span class='op'>=</span> <span class='lbrace'>{</span>
+    <span class='label'>schema_version:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>1.3</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span>
+    <span class='label'>summary:</span> <span class='lbrace'>{</span>
+      <span class='label'>total:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_total'>total</span><span class='comma'>,</span> <span class='label'>killed:</span> <span class='id identifier rubyid_killed'>killed</span><span class='comma'>,</span> <span class='label'>survived:</span> <span class='id identifier rubyid_survived'>survived</span><span class='comma'>,</span>
+      <span class='label'>no_coverage:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_no_coverage_count'>no_coverage_count</span><span class='comma'>,</span>
+      <span class='label'>uncapturable:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_uncapturable_count'>uncapturable_count</span><span class='comma'>,</span>
+      <span class='label'>skipped_invalid:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_skipped_invalid_count'>skipped_invalid_count</span><span class='comma'>,</span>
+      <span class='label'>errored:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_errored_count'>errored_count</span><span class='comma'>,</span> <span class='label'>timeout:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_timeout_count'>timeout_count</span><span class='comma'>,</span>
+      <span class='label'>ignored:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_ignored_count'>ignored_count</span><span class='comma'>,</span>
+      <span class='comment'># The gate is computed from these two, so a consumer never re-derives them.
+</span>      <span class='label'>attempted:</span> <span class='id identifier rubyid_attempted_count'>attempted_count</span><span class='comma'>,</span> <span class='label'>no_verdict:</span> <span class='id identifier rubyid_no_verdict_count'>no_verdict_count</span><span class='comma'>,</span>
+      <span class='label'>score:</span> <span class='id identifier rubyid_score'>score</span><span class='comma'>,</span>
+      <span class='comment'># Additive: true when the run was diff-scoped (--since). The score then
+</span>      <span class='comment'># covers only the changed-line mutants, so it is not comparable to a
+</span>      <span class='comment'># full-run score; Baseline#diff reads this to skip the score-drop gate.
+</span>      <span class='label'>scoped:</span> <span class='id identifier rubyid_scoped'>scoped</span>
+    <span class='rbrace'>}</span><span class='comma'>,</span>
+    <span class='label'>survivors:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_surviving_mutants'>surviving_mutants</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_survivor_json'>survivor_json</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+                   <span class='period'>.</span><span class='id identifier rubyid_sort_by'>sort_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='lbracket'>[</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:line</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:operator</span><span class='rbracket'>]</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='comma'>,</span>
+    <span class='label'>no_coverage:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_results'>results</span><span class='period'>.</span><span class='id identifier rubyid_select'>select</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:no_coverage?</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_no_coverage_json'>no_coverage_json</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+                     <span class='period'>.</span><span class='id identifier rubyid_sort_by'>sort_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='lbracket'>[</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:line</span><span class='rbracket'>]</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='comma'>,</span>
+    <span class='comment'># Same shape as no_coverage; additive key.
+</span>    <span class='label'>uncapturable:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_results'>results</span><span class='period'>.</span><span class='id identifier rubyid_select'>select</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:uncapturable?</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_no_coverage_json'>no_coverage_json</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+                      <span class='period'>.</span><span class='id identifier rubyid_sort_by'>sort_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='lbracket'>[</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:line</span><span class='rbracket'>]</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='comma'>,</span>
+    <span class='comment'># Every mutant that was attempted and produced no verdict, whatever the
+</span>    <span class='comment'># reason — the set the --threshold completeness gate counts. Named for the
+</span>    <span class='comment'># condition rather than one status, because summary.errored means :error
+</span>    <span class='comment'># alone and a key that reconciled with neither would be worse. `details`
+</span>    <span class='comment'># carries the cause where there is one. Uncapturable mutants also appear in
+</span>    <span class='comment'># uncapturable[]; that key keeps its lean shape for existing consumers.
+</span>    <span class='comment'># to_s/to_i because a pre-fork failure has no subject, so its file and line
+</span>    <span class='comment'># are null and would not compare against a real entry. id and status extend
+</span>    <span class='comment'># the key to a total order: these entries collide on (file, line) far more
+</span>    <span class='comment'># than survivors do — several mutants on one crashy line, every pre-fork
+</span>    <span class='comment'># entry on (&quot;&quot;, 0) — and sort_by is not stable, so equal keys would leave
+</span>    <span class='comment'># worker finish order in the output and break the byte-stability promise.
+</span>    <span class='label'>no_verdict:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_results'>results</span><span class='period'>.</span><span class='id identifier rubyid_select'>select</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_error?'>error?</span> <span class='op'>||</span> <span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_timeout?'>timeout?</span> <span class='op'>||</span> <span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_uncapturable?'>uncapturable?</span> <span class='rbrace'>}</span>
+                    <span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_no_verdict_json'>no_verdict_json</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+                    <span class='period'>.</span><span class='id identifier rubyid_sort_by'>sort_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='lbracket'>[</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:line</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_to_i'>to_i</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:id</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:status</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:details</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='comma'>,</span>
+    <span class='comment'># Equivalent mutants the user suppressed: emitted with their stable id so
+</span>    <span class='comment'># the user can audit what is silenced (and copy ids for survivors they
+</span>    <span class='comment'># want to add). Excluded from the score; never in `survivors`.
+</span>    <span class='label'>ignored:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_results'>results</span><span class='period'>.</span><span class='id identifier rubyid_select'>select</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:ignored?</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_ignored_json'>ignored_json</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+                 <span class='period'>.</span><span class='id identifier rubyid_sort_by'>sort_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='lbracket'>[</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:line</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:operator</span><span class='rbracket'>]</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='comma'>,</span>
+    <span class='comment'># Per-source breakdown (additive; baseline consumes it). Sorted by file so
+</span>    <span class='comment'># output is byte-stable. Reuses AggregateResult via by_source.
+</span>    <span class='label'>per_source:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_by_source'>by_source</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_agg'>agg</span><span class='op'>|</span> <span class='id identifier rubyid_per_source_json'>per_source_json</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_agg'>agg</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+                    <span class='period'>.</span><span class='id identifier rubyid_sort_by'>sort_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
+  <span class='rbrace'>}</span>
+  <span class='comment'># Additive baseline-delta block, present only with --baseline. Existing
+</span>  <span class='comment'># consumers ignore the extra key; it does not move schema_version on its own.
+</span>  <span class='id identifier rubyid_doc'>doc</span><span class='lbracket'>[</span><span class='symbol'>:baseline</span><span class='rbracket'>]</span> <span class='op'>=</span> <span class='id identifier rubyid_baseline_json'>baseline_json</span><span class='lparen'>(</span><span class='id identifier rubyid_baseline'>baseline</span><span class='rparen'>)</span> <span class='kw'>if</span> <span class='id identifier rubyid_baseline'>baseline</span>
+  <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='const'>JSON</span><span class='period'>.</span><span class='id identifier rubyid_generate'>generate</span><span class='lparen'>(</span><span class='id identifier rubyid_doc'>doc</span><span class='rparen'>)</span><span class='embexpr_end'>}</span><span class='tstring_content'>\n</span><span class='tstring_end'>&quot;</span></span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="no_coverage_json-instance_method">
+  
+    #<strong>no_coverage_json</strong>(result)  &#x21d2; <tt>Hash</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Builds no-coverage JSON.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>result</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>result object.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Hash</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>no-coverage JSON object.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+410
+411
+412
+413
+414
+415
+416
+417
+418
+419</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 410</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_no_coverage_json'>no_coverage_json</span><span class='lparen'>(</span><span class='id identifier rubyid_result'>result</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_m'>m</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span>
+  <span class='id identifier rubyid_file'>file</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span>
+  <span class='id identifier rubyid_source'>source</span> <span class='op'>=</span> <span class='ivar'>@source_map</span><span class='lbracket'>[</span><span class='id identifier rubyid_file'>file</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_read'>read</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span>
+  <span class='lbrace'>{</span>
+    <span class='label'>subject:</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_qualified_name'>qualified_name</span><span class='comma'>,</span>
+    <span class='label'>file:</span> <span class='id identifier rubyid_file'>file</span><span class='comma'>,</span>
+    <span class='label'>line:</span> <span class='id identifier rubyid_source'>source</span><span class='period'>.</span><span class='id identifier rubyid_byteslice'>byteslice</span><span class='lparen'>(</span><span class='int'>0</span><span class='comma'>,</span> <span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_start_offset'>start_offset</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_count'>count</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\n</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span> <span class='op'>+</span> <span class='int'>1</span>
+  <span class='rbrace'>}</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="no_verdict_count-instance_method">
+  
+    #<strong>no_verdict_count</strong>  &#x21d2; <tt>Integer</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Mutants that were attempted and produced no verdict, whatever the reason.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>errored + timed out + uncapturable.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+512
+513
+514</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 512</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_no_verdict_count'>no_verdict_count</span>
+  <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_errored_count'>errored_count</span> <span class='op'>+</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_timeout_count'>timeout_count</span> <span class='op'>+</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_uncapturable_count'>uncapturable_count</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="no_verdict_json-instance_method">
+  
+    #<strong>no_verdict_json</strong>(result)  &#x21d2; <tt>Hash</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>An entry under the JSON <code>no_verdict:</code> key: an attempted mutant with no verdict.
+A pre-fork failure has no subject or mutation attached, so those degrade to
+nulls rather than dropping the entry — the count must still reconcile with
+<code>summary.no_verdict</code>.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>result</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>an errored or timed-out result.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Hash</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>no-verdict JSON object.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+429
+430
+431
+432
+433
+434
+435
+436
+437
+438
+439
+440
+441
+442
+443
+444</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 429</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_no_verdict_json'>no_verdict_json</span><span class='lparen'>(</span><span class='id identifier rubyid_result'>result</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_file'>file</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='op'>&amp;.</span><span class='id identifier rubyid_file'>file</span>
+  <span class='id identifier rubyid_line'>line</span> <span class='op'>=</span>
+    <span class='kw'>if</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_file'>file</span>
+      <span class='id identifier rubyid_source'>source</span> <span class='op'>=</span> <span class='ivar'>@source_map</span><span class='lbracket'>[</span><span class='id identifier rubyid_file'>file</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_read'>read</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span>
+      <span class='id identifier rubyid_source'>source</span><span class='period'>.</span><span class='id identifier rubyid_byteslice'>byteslice</span><span class='lparen'>(</span><span class='int'>0</span><span class='comma'>,</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_start_offset'>start_offset</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_count'>count</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\n</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span> <span class='op'>+</span> <span class='int'>1</span>
+    <span class='kw'>end</span>
+  <span class='lbrace'>{</span>
+    <span class='label'>subject:</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='op'>&amp;.</span><span class='id identifier rubyid_qualified_name'>qualified_name</span><span class='comma'>,</span>
+    <span class='label'>file:</span> <span class='id identifier rubyid_file'>file</span><span class='comma'>,</span>
+    <span class='label'>line:</span> <span class='id identifier rubyid_line'>line</span><span class='comma'>,</span>
+    <span class='label'>id:</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_id'>id</span><span class='comma'>,</span>
+    <span class='label'>status:</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_status'>status</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='comma'>,</span>
+    <span class='label'>details:</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_details'>details</span>
+  <span class='rbrace'>}</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="no_verdict_ratio-instance_method">
+  
+    #<strong>no_verdict_ratio</strong>  &#x21d2; <tt>String</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>The sentence both the verdict line and the stderr note are built from, so a
+user cannot read one number in the report and a different one beside it.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>e.g. &quot;90 of 100 attempted mutants produced no verdict (90.0%, limit 10%)&quot;.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+536
+537
+538
+539
+540</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 536</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_no_verdict_ratio'>no_verdict_ratio</span>
+  <span class='id identifier rubyid_pct'>pct</span> <span class='op'>=</span> <span class='lparen'>(</span><span class='id identifier rubyid_no_verdict_count'>no_verdict_count</span> <span class='op'>*</span> <span class='float'>100.0</span> <span class='op'>/</span> <span class='id identifier rubyid_attempted_count'>attempted_count</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_round'>round</span><span class='lparen'>(</span><span class='int'>1</span><span class='rparen'>)</span>
+  <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_no_verdict_count'>no_verdict_count</span><span class='embexpr_end'>}</span><span class='tstring_content'> of </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_attempted_count'>attempted_count</span><span class='embexpr_end'>}</span><span class='tstring_content'> attempted mutants produced no verdict </span><span class='tstring_end'>&quot;</span></span> \
+    <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>(</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_pct'>pct</span><span class='embexpr_end'>}</span><span class='tstring_content'>%, limit </span><span class='embexpr_beg'>#{</span><span class='lparen'>(</span><span class='const'><span class='object_link'><a href="#BROKEN_SHARE_LIMIT-constant" title="Mutineer::Reporter::BROKEN_SHARE_LIMIT (constant)">BROKEN_SHARE_LIMIT</a></span></span> <span class='op'>*</span> <span class='int'>100</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_round'>round</span><span class='embexpr_end'>}</span><span class='tstring_content'>%)</span><span class='tstring_end'>&quot;</span></span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="per_source-instance_method">
+  
+    #<strong>per_source</strong>(out)  &#x21d2; <tt>void</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>One line per source after the global summary, so a multi-source run shows
+which file is weak. Omitted for a single-source run: the global summary
+already says everything (no redundant one-line block).</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>out</span>
+      
+      
+        <span class='type'>(<tt>IO</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>output stream.</p></div>
+      
+    </li>
+  
+</ul>
+
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+561
+562
+563
+564
+565
+566
+567
+568
+569
+570
+571
+572
+573
+574</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 561</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_per_source'>per_source</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_sources'>sources</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_by_source'>by_source</span>
+  <span class='kw'>return</span> <span class='kw'>if</span> <span class='id identifier rubyid_sources'>sources</span><span class='period'>.</span><span class='id identifier rubyid_size'>size</span> <span class='op'>&lt;=</span> <span class='int'>1</span>
+
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Per-source</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>----------</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_sources'>sources</span><span class='period'>.</span><span class='id identifier rubyid_sort'>sort</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_agg'>agg</span><span class='op'>|</span>
+    <span class='id identifier rubyid_score'>score</span> <span class='op'>=</span> <span class='id identifier rubyid_agg'>agg</span><span class='period'>.</span><span class='id identifier rubyid_mutation_score'>mutation_score</span>
+    <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='id identifier rubyid_format'>format</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>%s  %s  (%d killed / %d survived / %d no-cov)</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span>
+                    <span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_score'>score</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span> <span class='op'>?</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>N/A</span><span class='tstring_end'>&quot;</span></span> <span class='op'>:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_score'>score</span><span class='embexpr_end'>}</span><span class='tstring_content'>%</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span>
+                    <span class='id identifier rubyid_agg'>agg</span><span class='period'>.</span><span class='id identifier rubyid_killed_count'>killed_count</span><span class='comma'>,</span> <span class='id identifier rubyid_agg'>agg</span><span class='period'>.</span><span class='id identifier rubyid_survived_count'>survived_count</span><span class='comma'>,</span> <span class='id identifier rubyid_agg'>agg</span><span class='period'>.</span><span class='id identifier rubyid_no_coverage_count'>no_coverage_count</span><span class='rparen'>)</span>
+  <span class='kw'>end</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="per_source_html-instance_method">
+  
+    #<strong>per_source_html</strong>(per_source)  &#x21d2; <tt>Object</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>The per-source breakdown table.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+266
+267
+268
+269
+270
+271
+272
+273
+274
+275
+276
+277
+278
+279
+280
+281
+282</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 266</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_per_source_html'>per_source_html</span><span class='lparen'>(</span><span class='id identifier rubyid_per_source'>per_source</span><span class='rparen'>)</span>
+  <span class='kw'>return</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='id identifier rubyid_per_source'>per_source</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
+
+  <span class='id identifier rubyid_rows'>rows</span> <span class='op'>=</span> <span class='id identifier rubyid_per_source'>per_source</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span>
+    <span class='id identifier rubyid_score'>score</span> <span class='op'>=</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:score</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span> <span class='op'>?</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>N/A</span><span class='tstring_end'>&quot;</span></span> <span class='op'>:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:score</span><span class='rbracket'>]</span><span class='embexpr_end'>}</span><span class='tstring_content'>%</span><span class='tstring_end'>&quot;</span></span>
+    <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>&lt;tr&gt;&lt;td&gt;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_esc'>esc</span><span class='lparen'>(</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span><span class='rparen'>)</span><span class='embexpr_end'>}</span><span class='tstring_content'>&lt;/td&gt;&lt;td class=\&quot;num\&quot;&gt;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_score'>score</span><span class='embexpr_end'>}</span><span class='tstring_content'>&lt;/td&gt;</span><span class='tstring_end'>&quot;</span></span> \
+      <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>&lt;td class=\&quot;num\&quot;&gt;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:killed</span><span class='rbracket'>]</span><span class='embexpr_end'>}</span><span class='tstring_content'>&lt;/td&gt;&lt;td class=\&quot;num\&quot;&gt;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:survived</span><span class='rbracket'>]</span><span class='embexpr_end'>}</span><span class='tstring_content'>&lt;/td&gt;</span><span class='tstring_end'>&quot;</span></span> \
+      <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>&lt;td class=\&quot;num\&quot;&gt;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:no_coverage</span><span class='rbracket'>]</span><span class='embexpr_end'>}</span><span class='tstring_content'>&lt;/td&gt;&lt;/tr&gt;</span><span class='tstring_end'>&quot;</span></span>
+  <span class='kw'>end</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\n  </span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+  <span class='heredoc_beg'>&lt;&lt;~HTML</span><span class='period'>.</span><span class='id identifier rubyid_chomp'>chomp</span>
+<span class='tstring_content'>    &lt;h2&gt;Per-source&lt;/h2&gt;
+</span><span class='tstring_content'>    &lt;table&gt;
+</span><span class='tstring_content'>    &lt;tr&gt;&lt;th&gt;File&lt;/th&gt;&lt;th&gt;Score&lt;/th&gt;&lt;th&gt;Killed&lt;/th&gt;&lt;th&gt;Survived&lt;/th&gt;&lt;th&gt;No coverage&lt;/th&gt;&lt;/tr&gt;
+</span><span class='tstring_content'>      </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_rows'>rows</span><span class='embexpr_end'>}</span><span class='tstring_content'>
+</span><span class='tstring_content'>    &lt;/table&gt;
+</span><span class='heredoc_end'>  HTML
+</span><span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="per_source_json-instance_method">
+  
+    #<strong>per_source_json</strong>(file, agg)  &#x21d2; <tt>Hash</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Builds per-source JSON.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>file</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>source file path.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>agg</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="AggregateResult.html" title="Mutineer::AggregateResult (class)">Mutineer::AggregateResult</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>source aggregate.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Hash</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>per-source JSON object.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+337
+338
+339
+340
+341
+342
+343</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 337</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_per_source_json'>per_source_json</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_agg'>agg</span><span class='rparen'>)</span>
+  <span class='lbrace'>{</span>
+    <span class='label'>file:</span> <span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='label'>total:</span> <span class='id identifier rubyid_agg'>agg</span><span class='period'>.</span><span class='id identifier rubyid_total'>total</span><span class='comma'>,</span>
+    <span class='label'>killed:</span> <span class='id identifier rubyid_agg'>agg</span><span class='period'>.</span><span class='id identifier rubyid_killed_count'>killed_count</span><span class='comma'>,</span> <span class='label'>survived:</span> <span class='id identifier rubyid_agg'>agg</span><span class='period'>.</span><span class='id identifier rubyid_survived_count'>survived_count</span><span class='comma'>,</span>
+    <span class='label'>no_coverage:</span> <span class='id identifier rubyid_agg'>agg</span><span class='period'>.</span><span class='id identifier rubyid_no_coverage_count'>no_coverage_count</span><span class='comma'>,</span> <span class='label'>score:</span> <span class='id identifier rubyid_agg'>agg</span><span class='period'>.</span><span class='id identifier rubyid_mutation_score'>mutation_score</span>
+  <span class='rbrace'>}</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="report-instance_method">
+  
+    #<strong>report</strong>(out: $stdout, err: $stderr, threshold: 0.0, format: &quot;human&quot;, output: nil, baseline: nil, scoped: false)  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Single entry point. Branches on <code>format</code> (&quot;human&quot; | &quot;json&quot; | &quot;html&quot;) and
+routes the rendered report to <code>output</code> (a file, with a stderr confirmation)
+or to <code>out</code>. Diagnostics always go to <code>err</code>. <code>scoped</code> marks a diff-scoped
+(<code>--since</code>) run; the JSON report records it so a consumer (or a later
+<code>--baseline</code> load) knows the score covers only the changed-line mutants.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 38</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_report'>report</span><span class='lparen'>(</span><span class='label'>out:</span> <span class='gvar'>$stdout</span><span class='comma'>,</span> <span class='label'>err:</span> <span class='gvar'>$stderr</span><span class='comma'>,</span> <span class='label'>threshold:</span> <span class='float'>0.0</span><span class='comma'>,</span> <span class='label'>format:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>human</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='label'>output:</span> <span class='kw'>nil</span><span class='comma'>,</span>
+           <span class='label'>baseline:</span> <span class='kw'>nil</span><span class='comma'>,</span> <span class='label'>scoped:</span> <span class='kw'>false</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_rendered'>rendered</span> <span class='op'>=</span>
+    <span class='kw'>if</span> <span class='id identifier rubyid_format'>format</span> <span class='op'>==</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>json</span><span class='tstring_end'>&quot;</span></span>
+      <span class='id identifier rubyid_json_report'>json_report</span><span class='lparen'>(</span><span class='id identifier rubyid_baseline'>baseline</span><span class='comma'>,</span> <span class='label'>scoped:</span> <span class='id identifier rubyid_scoped'>scoped</span><span class='rparen'>)</span>
+    <span class='kw'>elsif</span> <span class='id identifier rubyid_format'>format</span> <span class='op'>==</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>html</span><span class='tstring_end'>&quot;</span></span>
+      <span class='id identifier rubyid_html_report'>html_report</span>
+    <span class='kw'>else</span>
+      <span class='id identifier rubyid_sio'>sio</span> <span class='op'>=</span> <span class='const'>StringIO</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span>
+      <span class='id identifier rubyid_human_report'>human_report</span><span class='lparen'>(</span><span class='id identifier rubyid_sio'>sio</span><span class='comma'>,</span> <span class='id identifier rubyid_err'>err</span><span class='comma'>,</span> <span class='id identifier rubyid_threshold'>threshold</span><span class='rparen'>)</span>
+      <span class='id identifier rubyid_baseline_section'>baseline_section</span><span class='lparen'>(</span><span class='id identifier rubyid_sio'>sio</span><span class='comma'>,</span> <span class='id identifier rubyid_baseline'>baseline</span><span class='rparen'>)</span> <span class='kw'>if</span> <span class='id identifier rubyid_baseline'>baseline</span>
+      <span class='id identifier rubyid_sio'>sio</span><span class='period'>.</span><span class='id identifier rubyid_string'>string</span>
+    <span class='kw'>end</span>
+
+  <span class='kw'>if</span> <span class='id identifier rubyid_output'>output</span>
+    <span class='id identifier rubyid_abs'>abs</span> <span class='op'>=</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='id identifier rubyid_output'>output</span><span class='rparen'>)</span>
+    <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_write'>write</span><span class='lparen'>(</span><span class='id identifier rubyid_abs'>abs</span><span class='comma'>,</span> <span class='id identifier rubyid_rendered'>rendered</span><span class='rparen'>)</span>
+    <span class='id identifier rubyid_err'>err</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Report written to </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs'>abs</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span>
+  <span class='kw'>else</span>
+    <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_print'>print</span> <span class='id identifier rubyid_rendered'>rendered</span>
+  <span class='kw'>end</span>
+
+  <span class='comment'># Both ways a run can fail the gate on completeness, said here rather than in
+</span>  <span class='comment'># the human renderer: --format json is the documented CI path, and a run that
+</span>  <span class='comment'># exits 1 must say why on every format, not only the one a person reads.
+</span>  <span class='kw'>return</span> <span class='kw'>unless</span> <span class='id identifier rubyid_threshold'>threshold</span><span class='op'>&amp;.</span><span class='id identifier rubyid_positive?'>positive?</span>
+
+  <span class='kw'>if</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_mutation_score'>mutation_score</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_broken_nil_score?'>broken_nil_score?</span>
+    <span class='id identifier rubyid_err'>err</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>[mutineer] nothing could be scored (</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_broken_counts_detail'>broken_counts_detail</span><span class='embexpr_end'>}</span><span class='tstring_content'>), so the </span><span class='tstring_end'>&quot;</span></span> \
+             <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>--threshold gate fails. See no_verdict[] in --format json for the cause of each.</span><span class='tstring_end'>&quot;</span></span>
+  <span class='kw'>elsif</span> <span class='id identifier rubyid_broken_share_exceeded?'>broken_share_exceeded?</span>
+    <span class='id identifier rubyid_err'>err</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>[mutineer] </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_no_verdict_ratio'>no_verdict_ratio</span><span class='embexpr_end'>}</span><span class='tstring_content'>: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_broken_counts_detail'>broken_counts_detail</span><span class='embexpr_end'>}</span><span class='tstring_content'>. The score covers </span><span class='tstring_end'>&quot;</span></span> \
+             <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>only part of the run, so the --threshold gate fails. See no_verdict[] in </span><span class='tstring_end'>&quot;</span></span> \
+             <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>--format json for the cause of each.</span><span class='tstring_end'>&quot;</span></span>
+  <span class='kw'>end</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="score_line-instance_method">
+  
+    #<strong>score_line</strong>(out, err)  &#x21d2; <tt>void</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>Writes the score line.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>out</span>
+      
+      
+        <span class='type'>(<tt>IO</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>output stream.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>err</span>
+      
+      
+        <span class='type'>(<tt>IO</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>error stream.</p></div>
+      
+    </li>
+  
+</ul>
+
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+468
+469
+470
+471
+472
+473
+474
+475
+476
+477
+478
+479
+480
+481
+482
+483
+484
+485</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 468</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_score_line'>score_line</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='id identifier rubyid_err'>err</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_score'>score</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_mutation_score'>mutation_score</span>
+  <span class='id identifier rubyid_excluded'>excluded</span> <span class='op'>=</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_no_coverage_count'>no_coverage_count</span><span class='embexpr_end'>}</span><span class='tstring_content'> no-coverage, </span><span class='embexpr_beg'>#{</span><span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_uncapturable_count'>uncapturable_count</span><span class='embexpr_end'>}</span><span class='tstring_content'> uncapturable, </span><span class='tstring_end'>&quot;</span></span> \
+             <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_skipped_invalid_count'>skipped_invalid_count</span><span class='embexpr_end'>}</span><span class='tstring_content'> skipped, </span><span class='tstring_end'>&quot;</span></span> \
+             <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_errored_count'>errored_count</span> <span class='op'>+</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_timeout_count'>timeout_count</span><span class='embexpr_end'>}</span><span class='tstring_content'> errored, </span><span class='tstring_end'>&quot;</span></span> \
+             <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_ignored_count'>ignored_count</span><span class='embexpr_end'>}</span><span class='tstring_content'> ignored excluded</span><span class='tstring_end'>&quot;</span></span>
+  <span class='kw'>if</span> <span class='id identifier rubyid_score'>score</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span>
+    <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Mutation score: N/A  (no covered mutants)</span><span class='tstring_end'>&quot;</span></span>
+    <span class='comment'># Only the benign case here: the gate-failure explanation is emitted once
+</span>    <span class='comment'># from {report}, for every format, so it cannot be said twice or only to
+</span>    <span class='comment'># the reader of the human report.
+</span>    <span class='kw'>unless</span> <span class='id identifier rubyid_broken_nil_score?'>broken_nil_score?</span>
+      <span class='id identifier rubyid_err'>err</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>[mutineer] no covered mutations; mutation score is N/A and the threshold check is skipped.</span><span class='tstring_end'>&quot;</span></span>
+    <span class='kw'>end</span>
+  <span class='kw'>else</span>
+    <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Mutation score: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_score'>score</span><span class='embexpr_end'>}</span><span class='tstring_content'>%  (killed / (killed + survived); </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_excluded'>excluded</span><span class='embexpr_end'>}</span><span class='tstring_content'>)</span><span class='tstring_end'>&quot;</span></span>
+  <span class='kw'>end</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="summary-instance_method">
+  
+    #<strong>summary</strong>(out)  &#x21d2; <tt>void</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>Writes the summary block.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>out</span>
+      
+      
+        <span class='type'>(<tt>IO</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>output stream.</p></div>
+      
+    </li>
+  
+</ul>
+
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+450
+451
+452
+453
+454
+455
+456
+457
+458
+459
+460
+461</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 450</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_summary'>summary</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Summary</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>-------</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='id identifier rubyid_format'>format</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Total:        %-6d  Killed:        %d</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_total'>total</span><span class='comma'>,</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_killed_count'>killed_count</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='id identifier rubyid_format'>format</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Survived:     %-6d  No coverage:   %d</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_survived_count'>survived_count</span><span class='comma'>,</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_no_coverage_count'>no_coverage_count</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='id identifier rubyid_format'>format</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Skipped:      %-6d  Errored:       %d</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_skipped_invalid_count'>skipped_invalid_count</span><span class='comma'>,</span>
+                  <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_errored_count'>errored_count</span> <span class='op'>+</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_timeout_count'>timeout_count</span><span class='rparen'>)</span>
+  <span class='comment'># A broken harness, not a coverage gap: report it distinctly from No coverage.
+</span>  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='id identifier rubyid_format'>format</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Uncapturable: %-6d  (tests failed to run)</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_uncapturable_count'>uncapturable_count</span><span class='rparen'>)</span>
+  <span class='comment'># Equivalent mutants the user suppressed; excluded from the denominator.
+</span>  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='id identifier rubyid_format'>format</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Ignored:      %-6d  (equivalent, suppressed)</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_ignored_count'>ignored_count</span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="summary_html-instance_method">
+  
+    #<strong>summary_html</strong>  &#x21d2; <tt>Object</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>The summary counts block for the HTML header.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+253
+254
+255
+256
+257
+258
+259
+260
+261
+262
+263</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 253</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_summary_html'>summary_html</span>
+  <span class='id identifier rubyid_counts'>counts</span> <span class='op'>=</span> <span class='lbrace'>{</span>
+    <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>total</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_total'>total</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>killed</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_killed_count'>killed_count</span><span class='comma'>,</span>
+    <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>survived</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_survived_count'>survived_count</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>no_coverage</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_no_coverage_count'>no_coverage_count</span><span class='comma'>,</span>
+    <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>uncapturable</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_uncapturable_count'>uncapturable_count</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>ignored</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_ignored_count'>ignored_count</span><span class='comma'>,</span>
+    <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>skipped</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_skipped_invalid_count'>skipped_invalid_count</span><span class='comma'>,</span>
+    <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>errored</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_errored_count'>errored_count</span> <span class='op'>+</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_timeout_count'>timeout_count</span>
+  <span class='rbrace'>}</span>
+  <span class='id identifier rubyid_spans'>spans</span> <span class='op'>=</span> <span class='id identifier rubyid_counts'>counts</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_k'>k</span><span class='comma'>,</span> <span class='id identifier rubyid_v'>v</span><span class='op'>|</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>&lt;span&gt;&lt;strong&gt;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_v'>v</span><span class='embexpr_end'>}</span><span class='tstring_content'>&lt;/strong&gt; </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_esc'>esc</span><span class='lparen'>(</span><span class='id identifier rubyid_k'>k</span><span class='rparen'>)</span><span class='embexpr_end'>}</span><span class='tstring_content'>&lt;/span&gt;</span><span class='tstring_end'>&quot;</span></span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\n  </span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+  <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>&lt;div class=\&quot;counts\&quot;&gt;\n  </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_spans'>spans</span><span class='embexpr_end'>}</span><span class='tstring_content'>\n&lt;/div&gt;</span><span class='tstring_end'>&quot;</span></span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="survivor-instance_method">
+  
+    #<strong>survivor</strong>(out, file, result)  &#x21d2; <tt>void</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>Writes one survivor entry.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>out</span>
+      
+      
+        <span class='type'>(<tt>IO</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>output stream.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>file</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>source file path.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>result</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>survivor result.</p></div>
+      
+    </li>
+  
+</ul>
+
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+623
+624
+625
+626
+627
+628
+629
+630
+631
+632</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 623</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_survivor'>survivor</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_result'>result</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_m'>m</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span>
+  <span class='id identifier rubyid_source'>source</span> <span class='op'>=</span> <span class='ivar'>@source_map</span><span class='lbracket'>[</span><span class='id identifier rubyid_file'>file</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_read'>read</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_start_line'>start_line</span><span class='comma'>,</span> <span class='id identifier rubyid_original_block'>original_block</span><span class='comma'>,</span> <span class='id identifier rubyid_mutated_block'>mutated_block</span><span class='comma'>,</span> <span class='id identifier rubyid_token'>token</span> <span class='op'>=</span> <span class='id identifier rubyid_diff_for'>diff_for</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span>
+
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>  </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_qualified_name'>qualified_name</span><span class='embexpr_end'>}</span><span class='tstring_content'> (</span><span class='embexpr_beg'>#{</span><span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_basename'>basename</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span><span class='embexpr_end'>}</span><span class='tstring_content'>:</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_start_line'>start_line</span><span class='embexpr_end'>}</span><span class='tstring_content'>)</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>  Operator: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='embexpr_end'>}</span><span class='tstring_content'>  (</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_token'>token</span><span class='embexpr_end'>}</span><span class='tstring_content'> -&gt; </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_replacement'>replacement</span><span class='embexpr_end'>}</span><span class='tstring_content'>)</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_original_block'>original_block</span><span class='period'>.</span><span class='id identifier rubyid_each_line'>each_line</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_l'>l</span><span class='op'>|</span> <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>  - </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_l'>l</span><span class='period'>.</span><span class='id identifier rubyid_chomp'>chomp</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span> <span class='rbrace'>}</span>
+  <span class='id identifier rubyid_mutated_block'>mutated_block</span><span class='period'>.</span><span class='id identifier rubyid_each_line'>each_line</span>  <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_l'>l</span><span class='op'>|</span> <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>  + </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_l'>l</span><span class='period'>.</span><span class='id identifier rubyid_chomp'>chomp</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span> <span class='rbrace'>}</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="survivor_json-instance_method">
+  
+    #<strong>survivor_json</strong>(result)  &#x21d2; <tt>Hash</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Builds survivor JSON.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>result</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>survivor result.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Hash</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>survivor JSON object.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+350
+351
+352
+353
+354
+355
+356
+357
+358
+359
+360
+361
+362
+363
+364
+365
+366
+367
+368</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 350</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_survivor_json'>survivor_json</span><span class='lparen'>(</span><span class='id identifier rubyid_result'>result</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_m'>m</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span>
+  <span class='id identifier rubyid_file'>file</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span>
+  <span class='id identifier rubyid_source'>source</span> <span class='op'>=</span> <span class='ivar'>@source_map</span><span class='lbracket'>[</span><span class='id identifier rubyid_file'>file</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_read'>read</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_start_line'>start_line</span><span class='comma'>,</span> <span class='id identifier rubyid_original_block'>original_block</span><span class='comma'>,</span> <span class='id identifier rubyid_mutated_block'>mutated_block</span><span class='comma'>,</span> <span class='id identifier rubyid_token'>token</span> <span class='op'>=</span> <span class='id identifier rubyid_diff_for'>diff_for</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_minus'>minus</span> <span class='op'>=</span> <span class='id identifier rubyid_original_block'>original_block</span><span class='period'>.</span><span class='id identifier rubyid_each_line'>each_line</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_l'>l</span><span class='op'>|</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>-</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_l'>l</span><span class='period'>.</span><span class='id identifier rubyid_chomp'>chomp</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\n</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_plus'>plus</span>  <span class='op'>=</span> <span class='id identifier rubyid_mutated_block'>mutated_block</span><span class='period'>.</span><span class='id identifier rubyid_each_line'>each_line</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_l'>l</span><span class='op'>|</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>+</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_l'>l</span><span class='period'>.</span><span class='id identifier rubyid_chomp'>chomp</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\n</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+  <span class='lbrace'>{</span>
+    <span class='label'>subject:</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_qualified_name'>qualified_name</span><span class='comma'>,</span>
+    <span class='label'>file:</span> <span class='id identifier rubyid_file'>file</span><span class='comma'>,</span>
+    <span class='label'>line:</span> <span class='id identifier rubyid_start_line'>start_line</span><span class='comma'>,</span>
+    <span class='label'>operator:</span> <span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='comma'>,</span>
+    <span class='comment'># The stable, copy-pasteable id (next to the human-readable token) so a
+</span>    <span class='comment'># user can paste it straight into .mutineer.yml `ignore:`.
+</span>    <span class='label'>id:</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_id'>id</span><span class='comma'>,</span>
+    <span class='label'>token:</span> <span class='id identifier rubyid_token'>token</span><span class='comma'>,</span>
+    <span class='label'>diff:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>--- a/</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_file'>file</span><span class='embexpr_end'>}</span><span class='tstring_content'>\n+++ b/</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_file'>file</span><span class='embexpr_end'>}</span><span class='tstring_content'>\n@@ -</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_start_line'>start_line</span><span class='embexpr_end'>}</span><span class='tstring_content'> +</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_start_line'>start_line</span><span class='embexpr_end'>}</span><span class='tstring_content'> @@\n</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_minus'>minus</span><span class='embexpr_end'>}</span><span class='tstring_content'>\n</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_plus'>plus</span><span class='embexpr_end'>}</span><span class='tstring_content'>\n</span><span class='tstring_end'>&quot;</span></span>
+  <span class='rbrace'>}</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="survivors-instance_method">
+  
+    #<strong>survivors</strong>(out)  &#x21d2; <tt>void</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>Writes the survivors block.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>out</span>
+      
+      
+        <span class='type'>(<tt>IO</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>output stream.</p></div>
+      
+    </li>
+  
+</ul>
+
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+603
+604
+605
+606
+607
+608
+609
+610
+611
+612
+613
+614
+615</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 603</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_survivors'>survivors</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_mutants'>mutants</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_surviving_mutants'>surviving_mutants</span>
+  <span class='kw'>return</span> <span class='kw'>if</span> <span class='id identifier rubyid_mutants'>mutants</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
+
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Surviving Mutants</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>-----------------</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_mutants'>mutants</span><span class='period'>.</span><span class='id identifier rubyid_group_by'>group_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_sort'>sort</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_group'>group</span><span class='op'>|</span>
+    <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span>
+    <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='id identifier rubyid_file'>file</span>
+    <span class='id identifier rubyid_group'>group</span><span class='period'>.</span><span class='id identifier rubyid_sort_by'>sort_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_start_offset'>start_offset</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_survivor'>survivor</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_r'>r</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+  <span class='kw'>end</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="survivors_html-instance_method">
+  
+    #<strong>survivors_html</strong>(survivors)  &#x21d2; <tt>Object</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>The surviving-mutants list, each with subject, location, operator, stable
+id, and a colorized diff. All text is HTML-escaped.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+286
+287
+288
+289
+290
+291
+292
+293
+294
+295
+296
+297
+298
+299
+300
+301
+302
+303
+304</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 286</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_survivors_html'>survivors_html</span><span class='lparen'>(</span><span class='id identifier rubyid_survivors'>survivors</span><span class='rparen'>)</span>
+  <span class='kw'>return</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>&lt;h2&gt;Surviving Mutants&lt;/h2&gt;\n&lt;p&gt;None — every covered mutant was killed.&lt;/p&gt;</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='id identifier rubyid_survivors'>survivors</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
+
+  <span class='id identifier rubyid_cards'>cards</span> <span class='op'>=</span> <span class='id identifier rubyid_survivors'>survivors</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_s'>s</span><span class='op'>|</span>
+    <span class='id identifier rubyid_diff_lines'>diff_lines</span> <span class='op'>=</span> <span class='id identifier rubyid_s'>s</span><span class='lbracket'>[</span><span class='symbol'>:diff</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_each_line'>each_line</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_line'>line</span><span class='op'>|</span>
+      <span class='id identifier rubyid_cls'>cls</span> <span class='op'>=</span> <span class='id identifier rubyid_line'>line</span><span class='period'>.</span><span class='id identifier rubyid_start_with?'>start_with?</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>+</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span> <span class='op'>?</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>add</span><span class='tstring_end'>&quot;</span></span> <span class='op'>:</span> <span class='lparen'>(</span><span class='id identifier rubyid_line'>line</span><span class='period'>.</span><span class='id identifier rubyid_start_with?'>start_with?</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>-</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span> <span class='op'>?</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>del</span><span class='tstring_end'>&quot;</span></span> <span class='op'>:</span> <span class='kw'>nil</span><span class='rparen'>)</span>
+      <span class='id identifier rubyid_text'>text</span> <span class='op'>=</span> <span class='id identifier rubyid_esc'>esc</span><span class='lparen'>(</span><span class='id identifier rubyid_line'>line</span><span class='period'>.</span><span class='id identifier rubyid_chomp'>chomp</span><span class='rparen'>)</span>
+      <span class='id identifier rubyid_cls'>cls</span> <span class='op'>?</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>&lt;span class=\&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_cls'>cls</span><span class='embexpr_end'>}</span><span class='tstring_content'>\&quot;&gt;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_text'>text</span><span class='embexpr_end'>}</span><span class='tstring_content'>&lt;/span&gt;</span><span class='tstring_end'>&quot;</span></span> <span class='op'>:</span> <span class='id identifier rubyid_text'>text</span>
+    <span class='kw'>end</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\n</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+    <span class='heredoc_beg'>&lt;&lt;~CARD</span><span class='period'>.</span><span class='id identifier rubyid_chomp'>chomp</span>
+<span class='tstring_content'>      &lt;div class=&quot;survivor&quot;&gt;
+</span><span class='tstring_content'>      &lt;h3&gt;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_esc'>esc</span><span class='lparen'>(</span><span class='id identifier rubyid_s'>s</span><span class='lbracket'>[</span><span class='symbeg'>:</span><span class='id identifier rubyid_subject'>subject</span><span class='rbracket'>]</span><span class='rparen'>)</span><span class='embexpr_end'>}</span><span class='tstring_content'>&lt;/h3&gt;
+</span><span class='tstring_content'>      &lt;div class=&quot;meta&quot;&gt;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_esc'>esc</span><span class='lparen'>(</span><span class='id identifier rubyid_s'>s</span><span class='lbracket'>[</span><span class='symbeg'>:</span><span class='id identifier rubyid_file'>file</span><span class='rbracket'>]</span><span class='rparen'>)</span><span class='embexpr_end'>}</span><span class='tstring_content'>:</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_s'>s</span><span class='lbracket'>[</span><span class='symbeg'>:</span><span class='id identifier rubyid_line'>line</span><span class='rbracket'>]</span><span class='embexpr_end'>}</span><span class='tstring_content'> &amp;middot; </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_esc'>esc</span><span class='lparen'>(</span><span class='id identifier rubyid_s'>s</span><span class='lbracket'>[</span><span class='symbeg'>:</span><span class='id identifier rubyid_operator'>operator</span><span class='rbracket'>]</span><span class='rparen'>)</span><span class='embexpr_end'>}</span><span class='tstring_content'> &amp;middot; &lt;span class=&quot;id&quot;&gt;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_esc'>esc</span><span class='lparen'>(</span><span class='id identifier rubyid_s'>s</span><span class='lbracket'>[</span><span class='symbeg'>:</span><span class='id identifier rubyid_id'>id</span><span class='rbracket'>]</span><span class='rparen'>)</span><span class='embexpr_end'>}</span><span class='tstring_content'>&lt;/span&gt;&lt;/div&gt;
+</span><span class='tstring_content'>      &lt;pre class=&quot;diff&quot;&gt;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_diff_lines'>diff_lines</span><span class='embexpr_end'>}</span><span class='tstring_content'>&lt;/pre&gt;
+</span><span class='tstring_content'>      &lt;/div&gt;
+</span><span class='heredoc_end'>    CARD
+</span>  <span class='kw'>end</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\n</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+  <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>&lt;h2&gt;Surviving Mutants&lt;/h2&gt;\n</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_cards'>cards</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="verdict-instance_method">
+  
+    #<strong>verdict</strong>(out, threshold)  &#x21d2; <tt>void</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>Writes the final verdict line.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>out</span>
+      
+      
+        <span class='type'>(<tt>IO</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>output stream.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>threshold</span>
+      
+      
+        <span class='type'>(<tt>Float</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>score threshold.</p></div>
+      
+    </li>
+  
+</ul>
+
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+639
+640
+641
+642
+643
+644
+645
+646
+647
+648
+649
+650
+651
+652
+653
+654
+655
+656
+657
+658</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 639</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_verdict'>verdict</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='id identifier rubyid_threshold'>threshold</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_score'>score</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_mutation_score'>mutation_score</span>
+  <span class='kw'>if</span> <span class='id identifier rubyid_score'>score</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span>
+    <span class='kw'>if</span> <span class='id identifier rubyid_broken_nil_score?'>broken_nil_score?</span>
+      <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>FAILED: no covered mutants (</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_broken_counts_detail'>broken_counts_detail</span><span class='embexpr_end'>}</span><span class='tstring_content'>); </span><span class='tstring_end'>&quot;</span></span> \
+               <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>threshold </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_threshold'>threshold</span><span class='embexpr_end'>}</span><span class='tstring_content'>% cannot pass with a broken harness</span><span class='tstring_end'>&quot;</span></span>
+    <span class='kw'>end</span>
+    <span class='kw'>return</span>
+  <span class='kw'>end</span>
+
+  <span class='comment'># Same rule as exit_code, or the report says PASSED on a run that exits 1 —
+</span>  <span class='comment'># and with --output that wrong verdict is what gets archived.
+</span>  <span class='kw'>if</span> <span class='id identifier rubyid_broken_share_exceeded?'>broken_share_exceeded?</span>
+    <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>FAILED: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_no_verdict_ratio'>no_verdict_ratio</span><span class='embexpr_end'>}</span><span class='tstring_content'>; </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_score'>score</span><span class='embexpr_end'>}</span><span class='tstring_content'>% covers only part of the run</span><span class='tstring_end'>&quot;</span></span>
+  <span class='kw'>elsif</span> <span class='id identifier rubyid_score'>score</span> <span class='op'>&gt;=</span> <span class='id identifier rubyid_threshold'>threshold</span>
+    <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>PASSED: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_score'>score</span><span class='embexpr_end'>}</span><span class='tstring_content'>% &gt;= threshold </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_threshold'>threshold</span><span class='embexpr_end'>}</span><span class='tstring_content'>%</span><span class='tstring_end'>&quot;</span></span>
+  <span class='kw'>else</span>
+    <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>FAILED: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_score'>score</span><span class='embexpr_end'>}</span><span class='tstring_content'>% &lt; threshold </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_threshold'>threshold</span><span class='embexpr_end'>}</span><span class='tstring_content'>%</span><span class='tstring_end'>&quot;</span></span>
+  <span class='kw'>end</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+  </div>
+
+</div>
+
+      <div id="footer">
+  Generated on DATE by
+  <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
+  0.9.45 (ruby-3.4.10).
+</div>
+
+    </div>
+  </body>
+</html>

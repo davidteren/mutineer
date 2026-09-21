@@ -1,0 +1,1547 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>
+  Module: Mutineer::ExternalBackend
+  
+    &mdash; Documentation by YARD 0.9.45
+  
+</title>
+
+  <link rel="stylesheet" href="../css/style.css" type="text/css">
+
+  <link rel="stylesheet" href="../css/common.css" type="text/css">
+
+<script type="text/javascript">
+  pathId = "Mutineer::ExternalBackend";
+  relpath = '../';
+</script>
+
+
+  <script type="text/javascript" charset="utf-8" src="../js/jquery.js"></script>
+
+  <script type="text/javascript" charset="utf-8" src="../js/app.js"></script>
+
+
+  </head>
+  <body>
+    <div id="main_progress" aria-hidden="true"></div>
+
+    <div class="nav_wrap">
+      <iframe id="nav" src="../class_list.html?1"></iframe>
+      <div id="resizer"></div>
+    </div>
+
+    <div id="main" tabindex="-1">
+      <div id="header">
+        <div id="menu">
+  
+    <a href="../_index.html">Index (E)</a> &raquo;
+    <span class='title'><span class='object_link'><a href="../Mutineer.html" title="Mutineer (module)">Mutineer</a></span></span>
+     &raquo; 
+    <span class="title">ExternalBackend</span>
+  
+</div>
+
+        <div id="search">
+  
+    <a class="full_list_link" id="class_list_link"
+        href="../class_list.html">
+
+        <svg width="24" height="24">
+          <rect x="0" y="4" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="12" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="20" width="24" height="4" rx="1" ry="1"></rect>
+        </svg>
+    </a>
+  
+</div>
+        <div class="clear"></div>
+      </div>
+
+      <div id="content"><h1>Module: Mutineer::ExternalBackend
+  
+  
+  
+</h1>
+<div class="box_info">
+  
+
+  
+  
+  
+  
+  
+
+  
+
+  
+  <dl>
+    <dt>Defined in:</dt>
+    <dd>lib/mutineer/external_backend.rb
+</dd>
+  </dl>
+  
+</div>
+
+<h2>Overview</h2><div class="docstring">
+  <div class="discussion">
+    <p>External execution backend. Runs the user's <code>--test-command</code> as a subprocess
+in the app's own runtime (whatever Ruby its bundle resolves to), so mutineer
+(Ruby ≥ 3.4) can mutation-test apps pinned to an older Ruby.</p>
+<p>This is deliberately NOT a <code>TestRunners</code> framework adapter: those return an
+Integer 0/1 from inside a fork and are dispatched by framework name. This is a
+whole backend — it spawns a process, enforces a wall-clock timeout, and maps
+the exit status to a Result. The mapping is the same direction as in-process
+(suite passes =&gt; survived, suite fails =&gt; killed) but coarser: it cannot tell an
+infrastructure error from a genuine kill, so the smoke check (below) guards the
+persistent case and the score is disclosed as an upper bound.</p>
+<p>Child environment: bundler/gem env injected by Mutineer's Ruby is stripped, and
+version-manager concrete version bins (e.g. <code>~/.rbenv/versions/3.4.9/bin</code>) are
+removed from PATH so shims / <code>.ruby-version</code> can select the app's Ruby (#32).</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+  
+    <h2>
+      Constant Summary
+      <small><a href="#" class="constants_summary_toggle">collapse</a></small>
+    </h2>
+
+    <dl class="constants">
+      
+        <dt id="SMOKE_TIMEOUT-constant" class="">SMOKE_TIMEOUT =
+          <div class="docstring">
+  <div class="discussion">
+    <p>Generous ceiling for the one-off smoke/calibration run (a cold app boot plus
+the full suite). The per-mutant timeout is derived from how long this took.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+        </dt>
+        <dd><pre class="code"><span class='int'>900</span></pre></dd>
+      
+        <dt id="POLL-constant" class="">POLL =
+          <div class="docstring">
+  <div class="discussion">
+    <p>Poll interval for the deadline wait loop. Independent of Isolation's loop —
+this backend waits on an external process TREE, not an in-process fork.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+        </dt>
+        <dd><pre class="code"><span class='float'>0.02</span></pre></dd>
+      
+        <dt id="VERSION_BIN_PATH-constant" class="">VERSION_BIN_PATH =
+          <div class="docstring">
+  <div class="discussion">
+    <p>PATH entries that pin a concrete Ruby under a version manager (ahead of
+shims). Optional trailing slash; normal bins are left alone.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+        </dt>
+        <dd><pre class="code"><span class='tstring'><span class='regexp_beg'>%r{</span><span class='tstring_content'>
+  (?:
+    /\.rbenv/versions/[^/]+/bin
+    |/\.asdf/installs/ruby/[^/]+/bin
+    |/\.rubies/[^/]+/bin
+    |/rubies/[^/]+/bin
+  )/?\z
+</span><span class='regexp_end'>}x</span></span></pre></dd>
+      
+        <dt id="CLEAR_ENV_KEYS-constant" class="">CLEAR_ENV_KEYS =
+          <div class="docstring">
+  <div class="discussion">
+    <p>Env keys Process.spawn must unset (nil value) so Mutineer's Ruby/bundler
+context does not leak. Spawn merges env onto the parent; omitting a key
+does NOT clear it.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+        </dt>
+        <dd><pre class="code"><span class='qwords_beg'>%w[</span><span class='words_sep'>
+</span><span class='words_sep'>  </span><span class='tstring_content'>BUNDLER_VERSION</span><span class='words_sep'> </span><span class='tstring_content'>RBENV_VERSION</span><span class='words_sep'> </span><span class='tstring_content'>ASDF_RUBY_VERSION</span><span class='words_sep'> </span><span class='tstring_content'>RBENV_DIR</span><span class='words_sep'>
+</span><span class='tstring_end'>]</span></span><span class='period'>.</span><span class='id identifier rubyid_freeze'>freeze</span></pre></dd>
+      
+    </dl>
+  
+
+
+
+
+
+
+
+  
+    <h2>
+      Class Method Summary
+      <small><a href="#" class="summary_toggle">collapse</a></small>
+    </h2>
+
+    <ul class="summary">
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#build_argv-class_method" title="build_argv (class method)">.<strong>build_argv</strong>(command, files)  &#x21d2; Array&lt;String&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Turn a command template into an argv array (no shell → no eval, no injection).</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#child_env-class_method" title="child_env (class method)">.<strong>child_env</strong>  &#x21d2; Hash{String =&gt; String, nil} </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Environment delta for the test-command child.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#clear_env_key%3F-class_method" title="clear_env_key? (class method)">.<strong>clear_env_key?</strong>(key)  &#x21d2; Boolean </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>True when the key must be unset in the child (bundler/gem/version-manager).</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#generic_env_hint-class_method" title="generic_env_hint (class method)">.<strong>generic_env_hint</strong>  &#x21d2; String </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Generic smoke-failure framing when no Ruby-version mismatch is detected.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#ruby_version_mismatch_hint-class_method" title="ruby_version_mismatch_hint (class method)">.<strong>ruby_version_mismatch_hint</strong>(output)  &#x21d2; String<sup>?</sup> </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Targeted hint when Bundler reports a RubyVersionMismatch (common under rbenv/asdf/chruby when Mutineer's version bin sits ahead of shims on PATH).</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#run-class_method" title="run (class method)">.<strong>run</strong>(command, files, timeout:, verbose: false)  &#x21d2; Mutineer::Result </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Runs the command for ONE mutant against whatever is currently on disk (the caller has already swapped the mutant in via FileSwap).</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#smoke_check!-class_method" title="smoke_check! (class method)">.<strong>smoke_check!</strong>(command, files, timeout: SMOKE_TIMEOUT)  &#x21d2; Float </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Pre-flight: run the command once against the UNMUTATED tree.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#spawn_capture-class_method" title="spawn_capture (class method)">.<strong>spawn_capture</strong>(command, files, timeout)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Spawns the command to a captured combined-output tempfile, enforces a wall-clock timeout (SIGKILL past the deadline), and returns [kind, exit_code, output, elapsed].</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#tail-class_method" title="tail (class method)">.<strong>tail</strong>(output, lines = 40)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Last ~40 lines of captured output, for a smoke-failure message.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#version_manager_shim_dirs-class_method" title="version_manager_shim_dirs (class method)">.<strong>version_manager_shim_dirs</strong>  &#x21d2; Array&lt;String&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Existing shim directories for rbenv / asdf (chruby uses PATH without shims).</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#wait_with_timeout-class_method" title="wait_with_timeout (class method)">.<strong>wait_with_timeout</strong>(pid, timeout)  &#x21d2; Array(Symbol, Integer, nil) </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Waits for the spawned pid, SIGKILLing its process group past the deadline.</p></div></span>
+  
+</li>
+
+      
+    </ul>
+    
+  
+
+
+
+  <div id="class_method_details" class="method_details_list">
+    <h2>Class Method Details</h2>
+
+    
+      <div class="method_details first">
+  <h3 class="signature first" id="build_argv-class_method">
+  
+    .<strong>build_argv</strong>(command, files)  &#x21d2; <tt>Array&lt;String&gt;</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Turn a command template into an argv array (no shell → no eval, no
+injection). The <code>%{files}</code> token expands IN PLACE to N separate argv
+elements — one per path, unescaped — so a path containing a space stays a
+single argument. It is not a space-joined string.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>command</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the --test-command template (contains %files).</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>files</span>
+      
+      
+        <span class='type'>(<tt>Array&lt;String&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>test file paths to substitute.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array&lt;String&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>argv.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+62
+63
+64</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/external_backend.rb', line 62</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_build_argv'>build_argv</span><span class='lparen'>(</span><span class='id identifier rubyid_command'>command</span><span class='comma'>,</span> <span class='id identifier rubyid_files'>files</span><span class='rparen'>)</span>
+  <span class='const'>Shellwords</span><span class='period'>.</span><span class='id identifier rubyid_split'>split</span><span class='lparen'>(</span><span class='id identifier rubyid_command'>command</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_flat_map'>flat_map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_tok'>tok</span><span class='op'>|</span> <span class='id identifier rubyid_tok'>tok</span> <span class='op'>==</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>%{files}</span><span class='tstring_end'>&quot;</span></span> <span class='op'>?</span> <span class='id identifier rubyid_files'>files</span> <span class='op'>:</span> <span class='lbracket'>[</span><span class='id identifier rubyid_tok'>tok</span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="child_env-class_method">
+  
+    .<strong>child_env</strong>  &#x21d2; <tt>Hash{String =&gt; String, nil}</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Environment delta for the test-command child. Process.spawn merges this
+onto the parent env: set a key to <code>nil</code> to unset it. Scrubs Mutineer/bundler
+injection and version-manager PATH pins so shims / <code>.ruby-version</code> can win.
+Keeps other vars (e.g. <code>RAILS_ENV</code>) so setting them on the Mutineer command
+still reaches the suite.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Hash{String =&gt; String, nil}</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>env for Process.spawn.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/external_backend.rb', line 74</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_child_env'>child_env</span>
+  <span class='id identifier rubyid_env'>env</span> <span class='op'>=</span> <span class='lbrace'>{</span><span class='rbrace'>}</span>
+  <span class='id identifier rubyid_cleared_pin'>cleared_pin</span> <span class='op'>=</span> <span class='kw'>false</span>
+  <span class='const'>ENV</span><span class='period'>.</span><span class='id identifier rubyid_each_key'>each_key</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_k'>k</span><span class='op'>|</span>
+    <span class='kw'>next</span> <span class='kw'>unless</span> <span class='id identifier rubyid_clear_env_key?'>clear_env_key?</span><span class='lparen'>(</span><span class='id identifier rubyid_k'>k</span><span class='rparen'>)</span>
+
+    <span class='id identifier rubyid_env'>env</span><span class='lbracket'>[</span><span class='id identifier rubyid_k'>k</span><span class='rbracket'>]</span> <span class='op'>=</span> <span class='kw'>nil</span>
+    <span class='id identifier rubyid_cleared_pin'>cleared_pin</span> <span class='op'>=</span> <span class='kw'>true</span>
+  <span class='kw'>end</span>
+  <span class='id identifier rubyid_path'>path</span> <span class='op'>=</span> <span class='const'>ENV</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>PATH</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='period'>.</span><span class='id identifier rubyid_split'>split</span><span class='lparen'>(</span><span class='const'>File</span><span class='op'>::</span><span class='const'>PATH_SEPARATOR</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_kept'>kept</span> <span class='op'>=</span> <span class='id identifier rubyid_path'>path</span><span class='period'>.</span><span class='id identifier rubyid_reject'>reject</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_p'>p</span><span class='op'>|</span> <span class='id identifier rubyid_p'>p</span><span class='period'>.</span><span class='id identifier rubyid_match?'>match?</span><span class='lparen'>(</span><span class='const'><span class='object_link'><a href="#VERSION_BIN_PATH-constant" title="Mutineer::ExternalBackend::VERSION_BIN_PATH (constant)">VERSION_BIN_PATH</a></span></span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+  <span class='id identifier rubyid_scrubbed_bin'>scrubbed_bin</span> <span class='op'>=</span> <span class='id identifier rubyid_kept'>kept</span><span class='period'>.</span><span class='id identifier rubyid_size'>size</span> <span class='op'>!=</span> <span class='id identifier rubyid_path'>path</span><span class='period'>.</span><span class='id identifier rubyid_size'>size</span>
+  <span class='comment'># Only reorder PATH when we scrubbed a pin; otherwise leave the user&#39;s PATH alone.
+</span>  <span class='id identifier rubyid_path'>path</span> <span class='op'>=</span> <span class='kw'>if</span> <span class='id identifier rubyid_cleared_pin'>cleared_pin</span> <span class='op'>||</span> <span class='id identifier rubyid_scrubbed_bin'>scrubbed_bin</span>
+           <span class='lparen'>(</span><span class='id identifier rubyid_version_manager_shim_dirs'>version_manager_shim_dirs</span> <span class='op'>+</span> <span class='id identifier rubyid_kept'>kept</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_uniq'>uniq</span>
+         <span class='kw'>else</span>
+           <span class='id identifier rubyid_kept'>kept</span>
+         <span class='kw'>end</span>
+  <span class='id identifier rubyid_env'>env</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>PATH</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span> <span class='op'>=</span> <span class='id identifier rubyid_path'>path</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='const'>File</span><span class='op'>::</span><span class='const'>PATH_SEPARATOR</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_env'>env</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="clear_env_key?-class_method">
+  
+    .<strong>clear_env_key?</strong>(key)  &#x21d2; <tt>Boolean</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>True when the key must be unset in the child (bundler/gem/version-manager).</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>key</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>environment variable name.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+101
+102
+103</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/external_backend.rb', line 101</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_clear_env_key?'>clear_env_key?</span><span class='lparen'>(</span><span class='id identifier rubyid_key'>key</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_key'>key</span><span class='period'>.</span><span class='id identifier rubyid_start_with?'>start_with?</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>BUNDLE_</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>RUBY</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>GEM_</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span> <span class='op'>||</span> <span class='const'><span class='object_link'><a href="#CLEAR_ENV_KEYS-constant" title="Mutineer::ExternalBackend::CLEAR_ENV_KEYS (constant)">CLEAR_ENV_KEYS</a></span></span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_key'>key</span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="generic_env_hint-class_method">
+  
+    .<strong>generic_env_hint</strong>  &#x21d2; <tt>String</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Generic smoke-failure framing when no Ruby-version mismatch is detected.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+181
+182
+183
+184</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/external_backend.rb', line 181</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_generic_env_hint'>generic_env_hint</span>
+  <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>the unmutated suite is not green (failing tests, or a broken environment: </span><span class='tstring_end'>&quot;</span></span> \
+    <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>DB, RAILS_ENV, migrations) — fix that before scoring</span><span class='tstring_end'>&quot;</span></span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="ruby_version_mismatch_hint-class_method">
+  
+    .<strong>ruby_version_mismatch_hint</strong>(output)  &#x21d2; <tt>String</tt><sup>?</sup> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Targeted hint when Bundler reports a RubyVersionMismatch (common under
+rbenv/asdf/chruby when Mutineer's version bin sits ahead of shims on PATH).</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>output</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>captured child stdout+stderr.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>String</tt>, <tt>nil</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>hint text, or nil when not a version mismatch.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+192
+193
+194
+195
+196
+197
+198
+199
+200
+201
+202
+203
+204
+205
+206
+207</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/external_backend.rb', line 192</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_ruby_version_mismatch_hint'>ruby_version_mismatch_hint</span><span class='lparen'>(</span><span class='id identifier rubyid_output'>output</span><span class='rparen'>)</span>
+  <span class='kw'>return</span> <span class='kw'>nil</span> <span class='kw'>if</span> <span class='id identifier rubyid_output'>output</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span> <span class='op'>||</span> <span class='id identifier rubyid_output'>output</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
+  <span class='kw'>return</span> <span class='kw'>nil</span> <span class='kw'>unless</span> <span class='id identifier rubyid_output'>output</span><span class='period'>.</span><span class='id identifier rubyid_match?'>match?</span><span class='lparen'>(</span><span class='tstring'><span class='regexp_beg'>/</span><span class='tstring_content'>RubyVersionMismatch|Your Ruby version is .* but your Gemfile specified</span><span class='regexp_end'>/i</span></span><span class='rparen'>)</span>
+
+  <span class='id identifier rubyid_ran'>ran</span> <span class='op'>=</span> <span class='id identifier rubyid_output'>output</span><span class='lbracket'>[</span><span class='tstring'><span class='regexp_beg'>/</span><span class='tstring_content'>Your Ruby version is ([0-9.]+)</span><span class='regexp_end'>/i</span></span><span class='comma'>,</span> <span class='int'>1</span><span class='rbracket'>]</span>
+  <span class='id identifier rubyid_want'>want</span> <span class='op'>=</span> <span class='id identifier rubyid_output'>output</span><span class='lbracket'>[</span><span class='tstring'><span class='regexp_beg'>/</span><span class='tstring_content'>Gemfile specified ([0-9.]+)</span><span class='regexp_end'>/i</span></span><span class='comma'>,</span> <span class='int'>1</span><span class='rbracket'>]</span>
+  <span class='id identifier rubyid_parts'>parts</span> <span class='op'>=</span> <span class='op'>+</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Detected a Ruby version mismatch</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_parts'>parts</span> <span class='op'>&lt;&lt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>: the test command ran under </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_ran'>ran</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='id identifier rubyid_ran'>ran</span>
+  <span class='id identifier rubyid_parts'>parts</span> <span class='op'>&lt;&lt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'> but the app expects </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_want'>want</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='id identifier rubyid_want'>want</span>
+  <span class='id identifier rubyid_parts'>parts</span> <span class='op'>&lt;&lt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>. Mutineer already scrubbed version-manager bins and RBENV_VERSION/</span><span class='tstring_end'>&quot;</span></span> \
+           <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>ASDF_RUBY_VERSION from the child env; the suite still picked the wrong </span><span class='tstring_end'>&quot;</span></span> \
+           <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Ruby. Use a wrapper that re-selects the app Ruby and ensure </span><span class='tstring_end'>&quot;</span></span> \
+           <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>.ruby-version / .tool-versions is present </span><span class='tstring_end'>&quot;</span></span> \
+           <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>(see README: Apps on Ruby &lt; 3.4 → Under a version manager)</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_parts'>parts</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="run-class_method">
+  
+    .<strong>run</strong>(command, files, timeout:, verbose: false)  &#x21d2; <tt><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span></tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Runs the command for ONE mutant against whatever is currently on disk (the
+caller has already swapped the mutant in via FileSwap). Maps the outcome to a
+Result. Uses <span class='object_link'><a href="#child_env-class_method" title="Mutineer::ExternalBackend.child_env (method)">child_env</a></span> so version-manager PATH pins from Mutineer's Ruby do
+not force the suite onto the wrong interpreter.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>command</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the --test-command template.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>files</span>
+      
+      
+        <span class='type'>(<tt>Array&lt;String&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>test file paths.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>timeout</span>
+      
+      
+        <span class='type'>(<tt>Numeric</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>per-mutant wall-clock timeout in seconds.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>verbose</span>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>false</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>print the child's captured output on a non-pass.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span></tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+129
+130
+131
+132
+133
+134
+135
+136
+137
+138
+139
+140
+141
+142
+143
+144
+145
+146
+147
+148
+149
+150</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/external_backend.rb', line 129</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_run'>run</span><span class='lparen'>(</span><span class='id identifier rubyid_command'>command</span><span class='comma'>,</span> <span class='id identifier rubyid_files'>files</span><span class='comma'>,</span> <span class='label'>timeout:</span><span class='comma'>,</span> <span class='label'>verbose:</span> <span class='kw'>false</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_kind'>kind</span><span class='comma'>,</span> <span class='id identifier rubyid_code'>code</span><span class='comma'>,</span> <span class='id identifier rubyid_output'>output</span><span class='comma'>,</span> <span class='op'>=</span> <span class='id identifier rubyid_spawn_capture'>spawn_capture</span><span class='lparen'>(</span><span class='id identifier rubyid_command'>command</span><span class='comma'>,</span> <span class='id identifier rubyid_files'>files</span><span class='comma'>,</span> <span class='id identifier rubyid_timeout'>timeout</span><span class='rparen'>)</span>
+  <span class='kw'>case</span> <span class='id identifier rubyid_kind'>kind</span>
+  <span class='kw'>when</span> <span class='symbol'>:timeout</span>
+    <span class='comment'># A timeout is the one non-pass we flag by default — a normal kill is also
+</span>    <span class='comment'># a non-zero exit, so notifying on every non-zero would spam every kill.
+</span>    <span class='id identifier rubyid_warn'>warn</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>[mutineer] test-command exceeded </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_timeout'>timeout</span><span class='embexpr_end'>}</span><span class='tstring_content'>s and was killed (scored timeout).</span><span class='tstring_end'>&quot;</span></span>
+    <span class='id identifier rubyid_warn'>warn</span> <span class='id identifier rubyid_output'>output</span> <span class='kw'>if</span> <span class='id identifier rubyid_verbose'>verbose</span> <span class='op'>&amp;&amp;</span> <span class='op'>!</span><span class='id identifier rubyid_output'>output</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
+    <span class='const'><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Result</a></span></span><span class='period'>.</span><span class='id identifier rubyid_timeout'><span class='object_link'><a href="Result.html#timeout-class_method" title="Mutineer::Result.timeout (method)">timeout</a></span></span>
+  <span class='kw'>else</span> <span class='comment'># :exited
+</span>    <span class='kw'>return</span> <span class='const'><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Result</a></span></span><span class='period'>.</span><span class='id identifier rubyid_survived'><span class='object_link'><a href="Result.html#survived-class_method" title="Mutineer::Result.survived (method)">survived</a></span></span> <span class='kw'>if</span> <span class='id identifier rubyid_code'>code</span><span class='op'>&amp;.</span><span class='id identifier rubyid_zero?'>zero?</span>
+    <span class='comment'># Signal death (nil exitstatus) is infrastructure, not a suite assertion
+</span>    <span class='comment'># failure — match Isolation/daemon (error), do not inflate kill rate.
+</span>    <span class='kw'>if</span> <span class='id identifier rubyid_code'>code</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span>
+      <span class='id identifier rubyid_warn'>warn</span> <span class='id identifier rubyid_output'>output</span> <span class='kw'>if</span> <span class='id identifier rubyid_verbose'>verbose</span> <span class='op'>&amp;&amp;</span> <span class='op'>!</span><span class='id identifier rubyid_output'>output</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
+      <span class='kw'>return</span> <span class='const'><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Result</a></span></span><span class='period'>.</span><span class='id identifier rubyid_error'><span class='object_link'><a href="Result.html#error-class_method" title="Mutineer::Result.error (method)">error</a></span></span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>test-command terminated by signal</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+    <span class='kw'>end</span>
+
+    <span class='id identifier rubyid_warn'>warn</span> <span class='id identifier rubyid_output'>output</span> <span class='kw'>if</span> <span class='id identifier rubyid_verbose'>verbose</span> <span class='op'>&amp;&amp;</span> <span class='op'>!</span><span class='id identifier rubyid_output'>output</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
+    <span class='const'><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Result</a></span></span><span class='period'>.</span><span class='id identifier rubyid_killed'><span class='object_link'><a href="Result.html#killed-class_method" title="Mutineer::Result.killed (method)">killed</a></span></span>
+  <span class='kw'>end</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="smoke_check!-class_method">
+  
+    .<strong>smoke_check!</strong>(command, files, timeout: SMOKE_TIMEOUT)  &#x21d2; <tt>Float</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Pre-flight: run the command once against the UNMUTATED tree. Green (exit 0)
+returns the elapsed seconds (used to calibrate the per-mutant timeout);
+anything else raises SmokeCheckError so the run aborts before scoring.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>command</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the --test-command template.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>files</span>
+      
+      
+        <span class='type'>(<tt>Array&lt;String&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>test file paths.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>timeout</span>
+      
+      
+        <span class='type'>(<tt>Numeric</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>SMOKE_TIMEOUT</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>ceiling for the calibration run.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Float</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>elapsed seconds of the clean run.</p></div>
+      
+    </li>
+  
+</ul>
+<p class="tag_title">Raises:</p>
+<ul class="raise">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="SmokeCheckError.html" title="Mutineer::SmokeCheckError (class)">Mutineer::SmokeCheckError</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>when the clean suite is not green.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+161
+162
+163
+164
+165
+166
+167
+168
+169
+170
+171
+172
+173
+174
+175</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/external_backend.rb', line 161</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_smoke_check!'>smoke_check!</span><span class='lparen'>(</span><span class='id identifier rubyid_command'>command</span><span class='comma'>,</span> <span class='id identifier rubyid_files'>files</span><span class='comma'>,</span> <span class='label'>timeout:</span> <span class='const'><span class='object_link'><a href="#SMOKE_TIMEOUT-constant" title="Mutineer::ExternalBackend::SMOKE_TIMEOUT (constant)">SMOKE_TIMEOUT</a></span></span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_kind'>kind</span><span class='comma'>,</span> <span class='id identifier rubyid_code'>code</span><span class='comma'>,</span> <span class='id identifier rubyid_output'>output</span><span class='comma'>,</span> <span class='id identifier rubyid_elapsed'>elapsed</span> <span class='op'>=</span> <span class='id identifier rubyid_spawn_capture'>spawn_capture</span><span class='lparen'>(</span><span class='id identifier rubyid_command'>command</span><span class='comma'>,</span> <span class='id identifier rubyid_files'>files</span><span class='comma'>,</span> <span class='id identifier rubyid_timeout'>timeout</span><span class='rparen'>)</span>
+  <span class='kw'>return</span> <span class='id identifier rubyid_elapsed'>elapsed</span> <span class='kw'>if</span> <span class='id identifier rubyid_kind'>kind</span> <span class='op'>==</span> <span class='symbol'>:exited</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_code'>code</span><span class='op'>&amp;.</span><span class='id identifier rubyid_zero?'>zero?</span>
+
+  <span class='id identifier rubyid_reason'>reason</span> <span class='op'>=</span>
+    <span class='kw'>if</span> <span class='id identifier rubyid_kind'>kind</span> <span class='op'>==</span> <span class='symbol'>:timeout</span> <span class='kw'>then</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>did not finish within </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_timeout'>timeout</span><span class='embexpr_end'>}</span><span class='tstring_content'>s</span><span class='tstring_end'>&quot;</span></span>
+    <span class='kw'>elsif</span> <span class='id identifier rubyid_code'>code</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span>      <span class='kw'>then</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>was terminated by a signal</span><span class='tstring_end'>&quot;</span></span>
+    <span class='kw'>else</span>                      <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>exited </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_code'>code</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span>
+    <span class='kw'>end</span>
+  <span class='id identifier rubyid_detail'>detail</span> <span class='op'>=</span> <span class='id identifier rubyid_output'>output</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span> <span class='op'>?</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_end'>&quot;</span></span> <span class='op'>:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\n--- last output ---\n</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_tail'>tail</span><span class='lparen'>(</span><span class='id identifier rubyid_output'>output</span><span class='rparen'>)</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_hint'>hint</span> <span class='op'>=</span> <span class='id identifier rubyid_ruby_version_mismatch_hint'>ruby_version_mismatch_hint</span><span class='lparen'>(</span><span class='id identifier rubyid_output'>output</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_raise'>raise</span> <span class='const'><span class='object_link'><a href="SmokeCheckError.html" title="Mutineer::SmokeCheckError (class)">SmokeCheckError</a></span></span><span class='comma'>,</span>
+        <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>the test command </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_reason'>reason</span><span class='embexpr_end'>}</span><span class='tstring_content'> against the UNMUTATED source — </span><span class='tstring_end'>&quot;</span></span> \
+        <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_hint'>hint</span> <span class='op'>||</span> <span class='id identifier rubyid_generic_env_hint'>generic_env_hint</span><span class='embexpr_end'>}</span><span class='tstring_content'>.</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_detail'>detail</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="spawn_capture-class_method">
+  
+    .<strong>spawn_capture</strong>(command, files, timeout)  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Spawns the command to a captured combined-output tempfile, enforces a
+wall-clock timeout (SIGKILL past the deadline), and returns
+[kind, exit_code, output, elapsed]. Mirrors Isolation's single-waiter loop:
+we are the only caller of waitpid on this pid, so the kill can never hit a
+reaped/recycled pid.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+216
+217
+218
+219
+220
+221
+222
+223
+224
+225
+226
+227
+228
+229
+230
+231
+232
+233
+234
+235
+236
+237
+238
+239
+240
+241
+242
+243</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/external_backend.rb', line 216</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_spawn_capture'>spawn_capture</span><span class='lparen'>(</span><span class='id identifier rubyid_command'>command</span><span class='comma'>,</span> <span class='id identifier rubyid_files'>files</span><span class='comma'>,</span> <span class='id identifier rubyid_timeout'>timeout</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_argv'>argv</span> <span class='op'>=</span> <span class='id identifier rubyid_build_argv'>build_argv</span><span class='lparen'>(</span><span class='id identifier rubyid_command'>command</span><span class='comma'>,</span> <span class='id identifier rubyid_files'>files</span><span class='rparen'>)</span>
+  <span class='comment'># Unreachable in practice (validate_test_command! guarantees a non-empty
+</span>  <span class='comment'># command with %{files}); a neutral ArgumentError, not the smoke-specific
+</span>  <span class='comment'># SmokeCheckError, since this is not a smoke-check failure.
+</span>  <span class='id identifier rubyid_raise'>raise</span> <span class='const'>ArgumentError</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>--test-command produced an empty command</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='id identifier rubyid_argv'>argv</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
+
+  <span class='id identifier rubyid_out'>out</span> <span class='op'>=</span> <span class='const'>Tempfile</span><span class='period'>.</span><span class='id identifier rubyid_create'>create</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>mutineer_ext</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_start'>start</span> <span class='op'>=</span> <span class='const'>Process</span><span class='period'>.</span><span class='id identifier rubyid_clock_gettime'>clock_gettime</span><span class='lparen'>(</span><span class='const'>Process</span><span class='op'>::</span><span class='const'>CLOCK_MONOTONIC</span><span class='rparen'>)</span>
+  <span class='comment'># `pgroup: true` puts the child in its OWN process group so a timeout can
+</span>  <span class='comment'># kill the whole tree (`bundle exec rails test` forks parallel workers;
+</span>  <span class='comment'># spring/bundler add more) — killing only the leader would orphan workers
+</span>  <span class='comment'># that keep holding the shared DB, corrupting later serial mutants. The
+</span>  <span class='comment'># explicit [program, argv0] form guarantees the no-shell exec path even for a
+</span>  <span class='comment'># degenerate single-element argv (Process.spawn(*argv) would route a lone
+</span>  <span class='comment'># metachar-bearing string through /bin/sh, breaking the argv-only invariant).
+</span>  <span class='id identifier rubyid_pid'>pid</span> <span class='op'>=</span> <span class='const'>Process</span><span class='period'>.</span><span class='id identifier rubyid_spawn'>spawn</span><span class='lparen'>(</span><span class='id identifier rubyid_child_env'>child_env</span><span class='comma'>,</span> <span class='lbracket'>[</span><span class='id identifier rubyid_argv'>argv</span><span class='period'>.</span><span class='id identifier rubyid_first'>first</span><span class='comma'>,</span> <span class='id identifier rubyid_argv'>argv</span><span class='period'>.</span><span class='id identifier rubyid_first'>first</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='op'>*</span><span class='id identifier rubyid_argv'>argv</span><span class='lbracket'>[</span><span class='int'>1</span><span class='op'>..</span><span class='rbracket'>]</span><span class='comma'>,</span>
+                      <span class='label'>out:</span> <span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='label'>err:</span> <span class='qsymbols_beg'>%i[</span><span class='tstring_content'>child</span><span class='words_sep'> </span><span class='tstring_content'>out</span><span class='tstring_end'>]</span></span><span class='comma'>,</span> <span class='label'>pgroup:</span> <span class='kw'>true</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_kind'>kind</span><span class='comma'>,</span> <span class='id identifier rubyid_code'>code</span> <span class='op'>=</span> <span class='id identifier rubyid_wait_with_timeout'>wait_with_timeout</span><span class='lparen'>(</span><span class='id identifier rubyid_pid'>pid</span><span class='comma'>,</span> <span class='id identifier rubyid_timeout'>timeout</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_elapsed'>elapsed</span> <span class='op'>=</span> <span class='const'>Process</span><span class='period'>.</span><span class='id identifier rubyid_clock_gettime'>clock_gettime</span><span class='lparen'>(</span><span class='const'>Process</span><span class='op'>::</span><span class='const'>CLOCK_MONOTONIC</span><span class='rparen'>)</span> <span class='op'>-</span> <span class='id identifier rubyid_start'>start</span>
+  <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_rewind'>rewind</span>
+  <span class='lbracket'>[</span><span class='id identifier rubyid_kind'>kind</span><span class='comma'>,</span> <span class='id identifier rubyid_code'>code</span><span class='comma'>,</span> <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_read'>read</span><span class='comma'>,</span> <span class='id identifier rubyid_elapsed'>elapsed</span><span class='rbracket'>]</span>
+<span class='kw'>ensure</span>
+  <span class='kw'>if</span> <span class='id identifier rubyid_out'>out</span>
+    <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_close'>close</span>
+    <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_unlink'>unlink</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span> <span class='kw'>rescue</span> <span class='kw'>nil</span> <span class='comment'># rubocop:disable Style/RescueModifier
+</span>  <span class='kw'>end</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="tail-class_method">
+  
+    .<strong>tail</strong>(output, lines = 40)  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Last ~40 lines of captured output, for a smoke-failure message.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+284
+285
+286</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/external_backend.rb', line 284</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_tail'>tail</span><span class='lparen'>(</span><span class='id identifier rubyid_output'>output</span><span class='comma'>,</span> <span class='id identifier rubyid_lines'>lines</span> <span class='op'>=</span> <span class='int'>40</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_output'>output</span><span class='period'>.</span><span class='id identifier rubyid_lines'>lines</span><span class='period'>.</span><span class='id identifier rubyid_last'>last</span><span class='lparen'>(</span><span class='id identifier rubyid_lines'>lines</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="version_manager_shim_dirs-class_method">
+  
+    .<strong>version_manager_shim_dirs</strong>  &#x21d2; <tt>Array&lt;String&gt;</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Existing shim directories for rbenv / asdf (chruby uses PATH without shims).</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array&lt;String&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>absolute shim paths that exist.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+109
+110
+111
+112
+113
+114
+115
+116
+117</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/external_backend.rb', line 109</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_version_manager_shim_dirs'>version_manager_shim_dirs</span>
+  <span class='id identifier rubyid_home'>home</span> <span class='op'>=</span> <span class='const'>ENV</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>HOME</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span>
+  <span class='kw'>return</span> <span class='lbracket'>[</span><span class='rbracket'>]</span> <span class='kw'>if</span> <span class='id identifier rubyid_home'>home</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span> <span class='op'>||</span> <span class='id identifier rubyid_home'>home</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
+
+  <span class='lbracket'>[</span>
+    <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='id identifier rubyid_home'>home</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>.rbenv</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>shims</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span><span class='comma'>,</span>
+    <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='id identifier rubyid_home'>home</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>.asdf</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>shims</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+  <span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_select'>select</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_d'>d</span><span class='op'>|</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_directory?'>directory?</span><span class='lparen'>(</span><span class='id identifier rubyid_d'>d</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="wait_with_timeout-class_method">
+  
+    .<strong>wait_with_timeout</strong>(pid, timeout)  &#x21d2; <tt>Array(Symbol, Integer, nil)</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Waits for the spawned pid, SIGKILLing its process group past the deadline.
+Single-waiter deadline loop (mirrors Isolation), so the kill can never hit a
+reaped/recycled pid.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>pid</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the spawned child pid.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>timeout</span>
+      
+      
+        <span class='type'>(<tt>Numeric</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>wall-clock deadline in seconds.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array(Symbol, Integer, nil)</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p><code>[:exited, code]</code> or <code>[:timeout, nil]</code>.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+253
+254
+255
+256
+257
+258
+259
+260
+261
+262
+263
+264
+265
+266
+267
+268
+269
+270
+271
+272
+273
+274
+275
+276
+277
+278
+279</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/external_backend.rb', line 253</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_wait_with_timeout'>wait_with_timeout</span><span class='lparen'>(</span><span class='id identifier rubyid_pid'>pid</span><span class='comma'>,</span> <span class='id identifier rubyid_timeout'>timeout</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_deadline'>deadline</span> <span class='op'>=</span> <span class='const'>Process</span><span class='period'>.</span><span class='id identifier rubyid_clock_gettime'>clock_gettime</span><span class='lparen'>(</span><span class='const'>Process</span><span class='op'>::</span><span class='const'>CLOCK_MONOTONIC</span><span class='rparen'>)</span> <span class='op'>+</span> <span class='id identifier rubyid_timeout'>timeout</span>
+  <span class='id identifier rubyid_loop'>loop</span> <span class='kw'>do</span>
+    <span class='id identifier rubyid_reaped'>reaped</span><span class='comma'>,</span> <span class='id identifier rubyid_status'>status</span> <span class='op'>=</span> <span class='const'>Process</span><span class='period'>.</span><span class='id identifier rubyid_waitpid2'>waitpid2</span><span class='lparen'>(</span><span class='id identifier rubyid_pid'>pid</span><span class='comma'>,</span> <span class='const'>Process</span><span class='op'>::</span><span class='const'>WNOHANG</span><span class='rparen'>)</span>
+    <span class='kw'>return</span> <span class='lbracket'>[</span><span class='symbol'>:exited</span><span class='comma'>,</span> <span class='id identifier rubyid_status'>status</span><span class='period'>.</span><span class='id identifier rubyid_exitstatus'>exitstatus</span><span class='rbracket'>]</span> <span class='kw'>if</span> <span class='id identifier rubyid_reaped'>reaped</span>
+
+    <span class='kw'>if</span> <span class='const'>Process</span><span class='period'>.</span><span class='id identifier rubyid_clock_gettime'>clock_gettime</span><span class='lparen'>(</span><span class='const'>Process</span><span class='op'>::</span><span class='const'>CLOCK_MONOTONIC</span><span class='rparen'>)</span> <span class='op'>&gt;=</span> <span class='id identifier rubyid_deadline'>deadline</span>
+      <span class='comment'># Kill the whole process GROUP (negative pid) so forked test workers die
+</span>      <span class='comment'># with the leader; fall back to the leader alone if the group is already
+</span>      <span class='comment'># gone. The child led its group (pgroup: true at spawn).
+</span>      <span class='kw'>begin</span>
+        <span class='const'>Process</span><span class='period'>.</span><span class='id identifier rubyid_kill'>kill</span><span class='lparen'>(</span><span class='symbol'>:KILL</span><span class='comma'>,</span> <span class='op'>-</span><span class='id identifier rubyid_pid'>pid</span><span class='rparen'>)</span>
+      <span class='kw'>rescue</span> <span class='const'>Errno</span><span class='op'>::</span><span class='const'>ESRCH</span><span class='comma'>,</span> <span class='const'>Errno</span><span class='op'>::</span><span class='const'>EPERM</span>
+        <span class='const'>Process</span><span class='period'>.</span><span class='id identifier rubyid_kill'>kill</span><span class='lparen'>(</span><span class='symbol'>:KILL</span><span class='comma'>,</span> <span class='id identifier rubyid_pid'>pid</span><span class='rparen'>)</span> <span class='kw'>rescue</span> <span class='kw'>nil</span> <span class='comment'># rubocop:disable Style/RescueModifier
+</span>      <span class='kw'>end</span>
+      <span class='kw'>begin</span>
+        <span class='id identifier rubyid__reaped'>_reaped</span><span class='comma'>,</span> <span class='id identifier rubyid_status'>status</span> <span class='op'>=</span> <span class='const'>Process</span><span class='period'>.</span><span class='id identifier rubyid_waitpid2'>waitpid2</span><span class='lparen'>(</span><span class='id identifier rubyid_pid'>pid</span><span class='rparen'>)</span>
+        <span class='comment'># Finished cleanly between poll and kill — honor real exit code.
+</span>        <span class='kw'>return</span> <span class='lbracket'>[</span><span class='symbol'>:exited</span><span class='comma'>,</span> <span class='id identifier rubyid_status'>status</span><span class='period'>.</span><span class='id identifier rubyid_exitstatus'>exitstatus</span><span class='rbracket'>]</span> <span class='kw'>if</span> <span class='id identifier rubyid_status'>status</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_status'>status</span><span class='period'>.</span><span class='id identifier rubyid_exited?'>exited?</span> <span class='op'>&amp;&amp;</span> <span class='op'>!</span><span class='id identifier rubyid_status'>status</span><span class='period'>.</span><span class='id identifier rubyid_signaled?'>signaled?</span>
+      <span class='kw'>rescue</span> <span class='const'>Errno</span><span class='op'>::</span><span class='const'>ECHILD</span>
+        <span class='comment'># already reaped
+</span>      <span class='kw'>end</span>
+      <span class='kw'>return</span> <span class='lbracket'>[</span><span class='symbol'>:timeout</span><span class='comma'>,</span> <span class='kw'>nil</span><span class='rbracket'>]</span>
+    <span class='kw'>end</span>
+    <span class='id identifier rubyid_sleep'>sleep</span> <span class='const'><span class='object_link'><a href="#POLL-constant" title="Mutineer::ExternalBackend::POLL (constant)">POLL</a></span></span>
+  <span class='kw'>end</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+  </div>
+
+</div>
+
+      <div id="footer">
+  Generated on DATE by
+  <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
+  0.9.45 (ruby-3.4.10).
+</div>
+
+    </div>
+  </body>
+</html>

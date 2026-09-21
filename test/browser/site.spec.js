@@ -34,7 +34,7 @@ test('theme, keyboard disclosure, copy and mobile navigation work together', asy
 });
 
 test('markdown twins and agent entrypoints are served', async ({ request }) => {
-  for (const path of ['/index.md', '/agentic-coding.md', '/json-schema.md', '/llms.txt', '/llms-full.txt', '/skill.md', '/agents.txt', '/sitemap.xml']) {
+  for (const path of ['/index.md', '/agentic-coding.md', '/json-schema.md', '/llms.txt', '/llms-full.txt', '/skill.md', '/agents.txt', '/sitemap.xml', '/api/']) {
     const res = await request.get(path);
     expect(res.ok(), `${path} should be 200`).toBeTruthy();
   }

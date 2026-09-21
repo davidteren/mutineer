@@ -48,6 +48,20 @@ begin
       abort "yard:strict could not parse coverage from `yard stats` output" if coverage.nil?
       abort "yard:strict failed: #{coverage}% documented (< 100%)" if coverage < 100.0
     end
+
+    desc "Write YARD HTML into docs/api for GitHub Pages"
+    task :pages do
+      require_relative "rake/yard_pages"
+      YardPages.generate!
+    end
+
+    namespace :pages do
+      desc "Fail unless docs/api matches a fresh YARD build"
+      task :check do
+        require_relative "rake/yard_pages"
+        abort "docs/api is stale. Run `rake yard:pages`." unless YardPages.published_markers? && YardPages.current?
+      end
+    end
   end
 rescue LoadError
   # YARD is a development dependency; its tasks are simply unavailable without it.

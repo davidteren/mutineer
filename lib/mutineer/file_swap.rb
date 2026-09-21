@@ -7,6 +7,8 @@ module Mutineer
   # Raised when another process already holds exclusive ownership of a source
   # file. Aborting beats silently restoring (or capturing) the other run's mutant.
   class ConcurrentRunError < StandardError
+    # @param path [String] the source file the other run already owns.
+    # @return [ConcurrentRunError]
     def initialize(path)
       super("another mutineer run owns #{path} — aborting to avoid corrupting the source file.")
     end

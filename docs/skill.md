@@ -53,4 +53,5 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 - Docs: https://davidteren.github.io/mutineer/
 - Agent & CI guide: https://davidteren.github.io/mutineer/agentic-coding.html
 - JSON schema: https://davidteren.github.io/mutineer/json-schema.html
+- Ruby API: https://davidteren.github.io/mutineer/api/
 - Source: https://github.com/davidteren/mutineer

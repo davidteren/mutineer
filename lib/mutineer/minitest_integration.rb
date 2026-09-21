@@ -10,14 +10,16 @@ module Mutineer
   # Never call this in the parent — it manipulates global Minitest state
   # (autorun, runnables) that only makes sense in a throwaway forked child.
   #
-  # No `rescue` here: Isolation.run's fork block is the single exception
-  # boundary (any exception there becomes exit 2). Adding a rescue would
-  # create a second exit-2 path and break this method's 0/1 return contract.
+  # A missing minitest is rescued as FrameworkUnavailable (Isolation.run
+  # still turns that raise into exit 2). There is no rescue around the
+  # suite run itself: Isolation.run's fork block is the single exception
+  # boundary for unexpected errors. Swallowing those here would create a
+  # second exit-2 path and break this method's 0/1 return contract.
   class MinitestIntegration
-    # ponytail: tested via runner_test.rb (U6), not in isolation — a direct
-    # unit test would require forking and duplicate isolation_test's coverage.
+    # Tested via runner_test.rb, not in isolation — a direct unit test
+    # would require forking and duplicate isolation_test's coverage.
     #
-    # `test_files` is one path or an Array of paths (M3 coverage selection
+    # `test_files` is one path or an Array of paths (coverage selection
     # passes the covering subset); each is loaded before the single
     # Minitest.run.
     #

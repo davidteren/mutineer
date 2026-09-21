@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>
+  Module: Mutineer::RailsWorkerDb
+  
+    &mdash; Documentation by YARD 0.9.45
+  
+</title>
+
+  <link rel="stylesheet" href="../css/style.css" type="text/css">
+
+  <link rel="stylesheet" href="../css/common.css" type="text/css">
+
+<script type="text/javascript">
+  pathId = "Mutineer::RailsWorkerDb";
+  relpath = '../';
+</script>
+
+
+  <script type="text/javascript" charset="utf-8" src="../js/jquery.js"></script>
+
+  <script type="text/javascript" charset="utf-8" src="../js/app.js"></script>
+
+
+  </head>
+  <body>
+    <div id="main_progress" aria-hidden="true"></div>
+
+    <div class="nav_wrap">
+      <iframe id="nav" src="../class_list.html?1"></iframe>
+      <div id="resizer"></div>
+    </div>
+
+    <div id="main" tabindex="-1">
+      <div id="header">
+        <div id="menu">
+  
+    <a href="../_index.html">Index (R)</a> &raquo;
+    <span class='title'><span class='object_link'><a href="../Mutineer.html" title="Mutineer (module)">Mutineer</a></span></span>
+     &raquo; 
+    <span class="title">RailsWorkerDb</span>
+  
+</div>
+
+        <div id="search">
+  
+    <a class="full_list_link" id="class_list_link"
+        href="../class_list.html">
+
+        <svg width="24" height="24">
+          <rect x="0" y="4" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="12" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="20" width="24" height="4" rx="1" ry="1"></rect>
+        </svg>
+    </a>
+  
+</div>
+        <div class="clear"></div>
+      </div>
+
+      <div id="content"><h1>Module: Mutineer::RailsWorkerDb
+  
+  
+  
+</h1>
+<div class="box_info">
+  
+
+  
+  
+  
+  
+  
+
+  
+
+  
+  <dl>
+    <dt>Defined in:</dt>
+    <dd>lib/mutineer/rails_worker_db.rb
+</dd>
+  </dl>
+  
+</div>
+
+<h2>Overview</h2><div class="docstring">
+  <div class="discussion">
+    <p>Per-worker database isolation for the daemon path.</p>
+<p>Loaded APP-SIDE by <span class='object_link'><a href="DaemonServer.html" title="Mutineer::DaemonServer (module)">DaemonServer</a></span> (a sibling gem file, pulled in by absolute
+path so it bypasses the app bundle, the same trick <span class='object_link'><a href="DaemonClient.html" title="Mutineer::DaemonClient (class)">DaemonClient</a></span> uses to run
+<code>daemon_server.rb</code> under a bundle that has no mutineer). It uses the app's
+OWN already-booted ActiveRecord and NEVER <code>require &quot;active_record&quot;</code>: every
+method that touches AR first confirms <span class='object_link'><a href="#available%3F-class_method" title="Mutineer::RailsWorkerDb.available? (method)">RailsWorkerDb.available?</a></span>, so the daemon core stays
+framework-agnostic and the gem keeps its zero-runtime-dependency promise.</p>
+<p>Isolation model: each parallel worker gets its OWN database so concurrent
+forks cannot clobber each other's transactional fixtures. <span class='object_link'><a href="#after_fork-class_method" title="Mutineer::RailsWorkerDb.after_fork (method)">RailsWorkerDb.after_fork</a></span> runs
+inside a freshly-forked child and points that child's connection at the
+worker's database BEFORE any test loads; transactional fixtures then
+repopulate that isolated database per test.</p>
+<p>Scope: SQLite adapter only (per-worker file, hermetic). Postgres per-worker
+DBs (<code>CREATE DATABASE &lt;db&gt;-&lt;worker&gt;</code>) are not implemented yet; a non-SQLite
+config raises a clear NotImplementedError rather than silently mis-routing.</p>
+<p>Routing failures surface as <code>error</code> via <span class='object_link'><a href="#verify_connection!-class_method" title="Mutineer::RailsWorkerDb.verify_connection! (method)">RailsWorkerDb.verify_connection!</a></span>. Tagging an
+in-test DB failure as <code>error</code> (not <code>killed</code>) is only observable under
+concurrent load and is not yet implemented.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+
+
+
+
+
+
+  
+    <h2>
+      Class Method Summary
+      <small><a href="#" class="summary_toggle">collapse</a></small>
+    </h2>
+
+    <ul class="summary">
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#after_fork-class_method" title="after_fork (class method)">.<strong>after_fork</strong>(worker, schema_path = nil)  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Child-side (after fork): route this process's ActiveRecord at the worker's own database and confirm it is reachable, so a routing failure reads as <code>error</code> (via the daemon's child rescue) rather than a false verdict.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#available%3F-class_method" title="available? (class method)">.<strong>available?</strong>  &#x21d2; Boolean </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>True when the app has ActiveRecord loaded.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#load_schema-class_method" title="load_schema (class method)">.<strong>load_schema</strong>(schema_path)  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Load a Rails <code>schema.rb</code> into the current connection with output silenced (fork child stdout is already File::NULL; this is belt-and-braces).</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#per_worker_config-class_method" title="per_worker_config (class method)">.<strong>per_worker_config</strong>(config_hash, worker)  &#x21d2; Hash </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Pure config-shaping (no AR): given a connection config hash, return the per-worker variant with its database swapped to the worker's own name.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#verify_connection!-class_method" title="verify_connection! (class method)">.<strong>verify_connection!</strong>  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Force a round-trip to the freshly-routed connection so a broken route fails HERE (→ <code>error</code>) instead of later masquerading as a test failure (→ false <code>killed</code>).</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#worker_database_path-class_method" title="worker_database_path (class method)">.<strong>worker_database_path</strong>(database, worker)  &#x21d2; String </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Derive a per-worker database path from a base path by inserting <code>-&lt;worker&gt;</code> before the extension.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#worker_db_config-class_method" title="worker_db_config (class method)">.<strong>worker_db_config</strong>(worker)  &#x21d2; Hash </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Build the AR connection config for one worker by copying the app's current (default test) config and swapping in the per-worker database path.</p></div></span>
+  
+</li>
+
+      
+    </ul>
+    
+  
+
+
+
+  <div id="class_method_details" class="method_details_list">
+    <h2>Class Method Details</h2>
+
+    
+      <div class="method_details first">
+  <h3 class="signature first" id="after_fork-class_method">
+  
+    .<strong>after_fork</strong>(worker, schema_path = nil)  &#x21d2; <tt>void</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>Child-side (after fork): route this process's ActiveRecord at the worker's
+own database and confirm it is reachable, so a routing failure reads as
+<code>error</code> (via the daemon's child rescue) rather than a false verdict. Loads
+the schema into the worker database when a schema path is given
+(idempotent: schema.rb runs with <code>force: true</code>), covering a fresh worker
+file.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>worker</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the worker slot index.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>schema_path</span>
+      
+      
+        <span class='type'>(<tt>String</tt>, <tt>nil</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>nil</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>absolute path to <code>db/schema.rb</code>, or nil to skip.</p></div>
+      
+    </li>
+  
+</ul>
+
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+106
+107
+108
+109
+110
+111
+112</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/rails_worker_db.rb', line 106</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_after_fork'>after_fork</span><span class='lparen'>(</span><span class='id identifier rubyid_worker'>worker</span><span class='comma'>,</span> <span class='id identifier rubyid_schema_path'>schema_path</span> <span class='op'>=</span> <span class='kw'>nil</span><span class='rparen'>)</span>
+  <span class='kw'>return</span> <span class='kw'>unless</span> <span class='id identifier rubyid_available?'>available?</span>
+
+  <span class='const'>ActiveRecord</span><span class='op'>::</span><span class='const'>Base</span><span class='period'>.</span><span class='id identifier rubyid_establish_connection'>establish_connection</span><span class='lparen'>(</span><span class='id identifier rubyid_worker_db_config'>worker_db_config</span><span class='lparen'>(</span><span class='id identifier rubyid_worker'>worker</span><span class='rparen'>)</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_load_schema'>load_schema</span><span class='lparen'>(</span><span class='id identifier rubyid_schema_path'>schema_path</span><span class='rparen'>)</span> <span class='kw'>if</span> <span class='id identifier rubyid_schema_path'>schema_path</span>
+  <span class='id identifier rubyid_verify_connection!'>verify_connection!</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="available?-class_method">
+  
+    .<strong>available?</strong>  &#x21d2; <tt>Boolean</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>True when the app has ActiveRecord loaded. The only condition under which
+any other method here may touch AR. Never triggers an autoload/require of
+AR itself.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+32
+33
+34</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/rails_worker_db.rb', line 32</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_available?'>available?</span>
+  <span class='kw'>defined?</span><span class='lparen'>(</span><span class='const'>ActiveRecord</span><span class='op'>::</span><span class='const'>Base</span><span class='rparen'>)</span> <span class='op'>?</span> <span class='kw'>true</span> <span class='op'>:</span> <span class='kw'>false</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="load_schema-class_method">
+  
+    .<strong>load_schema</strong>(schema_path)  &#x21d2; <tt>void</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>Load a Rails <code>schema.rb</code> into the current connection with output silenced
+(fork child stdout is already File::NULL; this is belt-and-braces).</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>schema_path</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>absolute path to <code>db/schema.rb</code>.</p></div>
+      
+    </li>
+  
+</ul>
+
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+119
+120
+121
+122
+123
+124
+125
+126
+127</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/rails_worker_db.rb', line 119</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_load_schema'>load_schema</span><span class='lparen'>(</span><span class='id identifier rubyid_schema_path'>schema_path</span><span class='rparen'>)</span>
+  <span class='const'>ActiveRecord</span><span class='op'>::</span><span class='const'>Migration</span><span class='period'>.</span><span class='id identifier rubyid_verbose'>verbose</span> <span class='op'>=</span> <span class='kw'>false</span> <span class='kw'>if</span> <span class='kw'>defined?</span><span class='lparen'>(</span><span class='const'>ActiveRecord</span><span class='op'>::</span><span class='const'>Migration</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_original'>original</span> <span class='op'>=</span> <span class='gvar'>$stdout</span>
+  <span class='gvar'>$stdout</span> <span class='op'>=</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_open'>open</span><span class='lparen'>(</span><span class='const'>File</span><span class='op'>::</span><span class='const'>NULL</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>w</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_load'>load</span> <span class='id identifier rubyid_schema_path'>schema_path</span>
+<span class='kw'>ensure</span>
+  <span class='gvar'>$stdout</span><span class='period'>.</span><span class='id identifier rubyid_close'>close</span> <span class='kw'>unless</span> <span class='gvar'>$stdout</span><span class='period'>.</span><span class='id identifier rubyid_equal?'>equal?</span><span class='lparen'>(</span><span class='id identifier rubyid_original'>original</span><span class='rparen'>)</span>
+  <span class='gvar'>$stdout</span> <span class='op'>=</span> <span class='id identifier rubyid_original'>original</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="per_worker_config-class_method">
+  
+    .<strong>per_worker_config</strong>(config_hash, worker)  &#x21d2; <tt>Hash</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Pure config-shaping (no AR): given a connection config hash, return the
+per-worker variant with its database swapped to the worker's own name.
+Adapter-general: SQLite (<code>storage/test.sqlite3</code> -&gt; <code>storage/test-&lt;w&gt;.sqlite3</code>)
+and Postgres (<code>myapp_test</code> -&gt; <code>myapp_test-&lt;w&gt;</code>, Rails <code>parallelize</code> naming)
+both fall out of <span class='object_link'><a href="#worker_database_path-class_method" title="Mutineer::RailsWorkerDb.worker_database_path (method)">worker_database_path</a></span>. Extracted and unit-tested so the
+Postgres shape is proven ready without a live database.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>config_hash</span>
+      
+      
+        <span class='type'>(<tt>Hash</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>a connection config hash (symbol or string keys).</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>worker</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the worker slot index.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Hash</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the per-worker config (symbol keys), database swapped.</p></div>
+      
+    </li>
+  
+</ul>
+<p class="tag_title">Raises:</p>
+<ul class="raise">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>NotImplementedError</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>for an in-memory or empty database (no per-worker split).</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/rails_worker_db.rb', line 85</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_per_worker_config'>per_worker_config</span><span class='lparen'>(</span><span class='id identifier rubyid_config_hash'>config_hash</span><span class='comma'>,</span> <span class='id identifier rubyid_worker'>worker</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_hash'>hash</span>     <span class='op'>=</span> <span class='id identifier rubyid_config_hash'>config_hash</span><span class='period'>.</span><span class='id identifier rubyid_transform_keys'>transform_keys</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:to_sym</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_database'>database</span> <span class='op'>=</span> <span class='id identifier rubyid_hash'>hash</span><span class='lbracket'>[</span><span class='symbol'>:database</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span>
+  <span class='kw'>if</span> <span class='id identifier rubyid_database'>database</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span> <span class='op'>||</span> <span class='id identifier rubyid_database'>database</span> <span class='op'>==</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>:memory:</span><span class='tstring_end'>&quot;</span></span>
+    <span class='id identifier rubyid_raise'>raise</span> <span class='const'>NotImplementedError</span><span class='comma'>,</span>
+          <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>worker-DB isolation needs a file/name-backed database (got </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_database'>database</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>).</span><span class='tstring_end'>&quot;</span></span>
+  <span class='kw'>end</span>
+
+  <span class='id identifier rubyid_hash'>hash</span><span class='period'>.</span><span class='id identifier rubyid_merge'>merge</span><span class='lparen'>(</span><span class='label'>database:</span> <span class='id identifier rubyid_worker_database_path'>worker_database_path</span><span class='lparen'>(</span><span class='id identifier rubyid_database'>database</span><span class='comma'>,</span> <span class='id identifier rubyid_worker'>worker</span><span class='rparen'>)</span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="verify_connection!-class_method">
+  
+    .<strong>verify_connection!</strong>  &#x21d2; <tt>void</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>Force a round-trip to the freshly-routed connection so a broken route fails
+HERE (→ <code>error</code>) instead of later masquerading as a test failure
+(→ false <code>killed</code>).</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+134
+135
+136</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/rails_worker_db.rb', line 134</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_verify_connection!'>verify_connection!</span>
+  <span class='const'>ActiveRecord</span><span class='op'>::</span><span class='const'>Base</span><span class='period'>.</span><span class='id identifier rubyid_connection'>connection</span><span class='period'>.</span><span class='id identifier rubyid_execute'>execute</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>SELECT 1</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="worker_database_path-class_method">
+  
+    .<strong>worker_database_path</strong>(database, worker)  &#x21d2; <tt>String</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Derive a per-worker database path from a base path by inserting <code>-&lt;worker&gt;</code>
+before the extension. Pure string transform (no AR) so it is unit-testable
+in the zero-dep suite. <code>storage/test.sqlite3</code>, worker 1 -&gt;
+<code>storage/test-1.sqlite3</code>.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>database</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the base database path.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>worker</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the worker slot index (0..N-1).</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the per-worker database path.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+44
+45
+46
+47</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/rails_worker_db.rb', line 44</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_worker_database_path'>worker_database_path</span><span class='lparen'>(</span><span class='id identifier rubyid_database'>database</span><span class='comma'>,</span> <span class='id identifier rubyid_worker'>worker</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_ext'>ext</span> <span class='op'>=</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_extname'>extname</span><span class='lparen'>(</span><span class='id identifier rubyid_database'>database</span><span class='rparen'>)</span>
+  <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_database'>database</span><span class='period'>.</span><span class='id identifier rubyid_delete_suffix'>delete_suffix</span><span class='lparen'>(</span><span class='id identifier rubyid_ext'>ext</span><span class='rparen'>)</span><span class='embexpr_end'>}</span><span class='tstring_content'>-</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_worker'>worker</span><span class='embexpr_end'>}</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_ext'>ext</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="worker_db_config-class_method">
+  
+    .<strong>worker_db_config</strong>(worker)  &#x21d2; <tt>Hash</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Build the AR connection config for one worker by copying the app's current
+(default test) config and swapping in the per-worker database path. SQLite
+only this pass: a non-SQLite adapter raises so the SQLite-first scope fails
+loud instead of mis-routing.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>worker</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the worker slot index.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Hash</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>a symbol-keyed AR configuration hash for the worker database.</p></div>
+      
+    </li>
+  
+</ul>
+<p class="tag_title">Raises:</p>
+<ul class="raise">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>NotImplementedError</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>when the app's database is non-SQLite or in-memory.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/rails_worker_db.rb', line 57</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_worker_db_config'>worker_db_config</span><span class='lparen'>(</span><span class='id identifier rubyid_worker'>worker</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_hash'>hash</span>    <span class='op'>=</span> <span class='const'>ActiveRecord</span><span class='op'>::</span><span class='const'>Base</span><span class='period'>.</span><span class='id identifier rubyid_connection_db_config'>connection_db_config</span><span class='period'>.</span><span class='id identifier rubyid_configuration_hash'>configuration_hash</span>
+  <span class='id identifier rubyid_adapter'>adapter</span> <span class='op'>=</span> <span class='id identifier rubyid_hash'>hash</span><span class='lbracket'>[</span><span class='symbol'>:adapter</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span>
+  <span class='comment'># Config shaping (per_worker_config) is already adapter-general: it derives
+</span>  <span class='comment'># correct SQLite and Postgres worker-DB names. What is gated is runtime
+</span>  <span class='comment'># provisioning: SQLite files are created on connect, but Postgres needs an
+</span>  <span class='comment'># explicit `CREATE DATABASE` per worker. Until that lands, refuse non-SQLite
+</span>  <span class='comment'># loudly rather than route to a database that does not exist.
+</span>  <span class='kw'>unless</span> <span class='id identifier rubyid_adapter'>adapter</span><span class='period'>.</span><span class='id identifier rubyid_start_with?'>start_with?</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>sqlite</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+    <span class='id identifier rubyid_raise'>raise</span> <span class='const'>NotImplementedError</span><span class='comma'>,</span>
+          <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>worker-DB isolation currently provisions SQLite only (got adapter </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_adapter'>adapter</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>); </span><span class='tstring_end'>&quot;</span></span> \
+          <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Postgres per-worker provisioning is not yet supported. Use a SQLite test DB, or drop --jobs.</span><span class='tstring_end'>&quot;</span></span>
+  <span class='kw'>end</span>
+
+  <span class='id identifier rubyid_per_worker_config'>per_worker_config</span><span class='lparen'>(</span><span class='id identifier rubyid_hash'>hash</span><span class='comma'>,</span> <span class='id identifier rubyid_worker'>worker</span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+  </div>
+
+</div>
+
+      <div id="footer">
+  Generated on DATE by
+  <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
+  0.9.45 (ruby-3.4.10).
+</div>
+
+    </div>
+  </body>
+</html>

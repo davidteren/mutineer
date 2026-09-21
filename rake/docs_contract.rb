@@ -480,6 +480,7 @@ module DocsContract
               <a href="index.html#install">Install</a>
               <a href="agentic-coding.html">Agent &amp; CI</a>
               <a href="json-schema.html" aria-current="page">JSON schema</a>
+              <a href="api/">API</a>
               <a href="sample-report.html">Sample report</a>
               <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub ↗</a>
               <button class="toggle" id="theme" aria-label="Switch to light mode" hidden>◐ <span>Dark</span></button>
@@ -518,6 +519,7 @@ module DocsContract
             <nav aria-label="Footer">
               <a href="index.html">Home</a>
               <a href="agentic-coding.html">Agent &amp; CI recipes</a>
+              <a href="api/">API</a>
               <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub</a>
               <a href="#main">Top ↑</a>
             </nav>

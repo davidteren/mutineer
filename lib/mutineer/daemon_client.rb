@@ -56,7 +56,7 @@ module Mutineer
     # this mutant. Never a wrong verdict, never a wedged run.
     #
     # @param id [Integer] request id (echoed back for ordering safety).
-    # @param payload [Hash] {"code" => mutated ruby, "source_file" => path}.
+    # @param payload [Hash] mutated ruby under the "code" key, path under "source_file".
     # @param tests [Array<String>] covering test file paths.
     # @param timeout [Numeric] per-mutant wall-clock timeout (seconds).
     # @param worker [Integer] worker slot; the daemon routes the fork to

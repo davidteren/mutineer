@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>
+  File: CHANGELOG
+  
+    &mdash; Documentation by YARD 0.9.45
+  
+</title>
+
+  <link rel="stylesheet" href="css/style.css" type="text/css">
+
+  <link rel="stylesheet" href="css/common.css" type="text/css">
+
+<script type="text/javascript">
+  pathId = "CHANGELOG";
+  relpath = '';
+</script>
+
+
+  <script type="text/javascript" charset="utf-8" src="js/jquery.js"></script>
+
+  <script type="text/javascript" charset="utf-8" src="js/app.js"></script>
+
+
+  </head>
+  <body>
+    <div id="main_progress" aria-hidden="true"></div>
+
+    <div class="nav_wrap">
+      <iframe id="nav" src="file_list.html?1"></iframe>
+      <div id="resizer"></div>
+    </div>
+
+    <div id="main" tabindex="-1">
+      <div id="header">
+        <div id="menu">
+  
+    <a href="_index.html">Index</a> &raquo; 
+    <span class="title">File: CHANGELOG</span>
+  
+</div>
+
+        <div id="search">
+  
+    <a class="full_list_link" id="class_list_link"
+        href="class_list.html">
+
+        <svg width="24" height="24">
+          <rect x="0" y="4" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="12" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="20" width="24" height="4" rx="1" ry="1"></rect>
+        </svg>
+    </a>
+  
+</div>
+        <div class="clear"></div>
+      </div>
+
+      <div id="content"><div id='filecontents'><h1 id="Changelog">Changelog</h1>
+<p>All notable changes to this project are documented here. The format is based on
+<a href="https://keepachangelog.com/">Keep a Changelog</a>, and this project adheres to
+<a href="https://semver.org/">Semantic Versioning</a>.</p>
+<h2 id="_Unreleased_">[Unreleased]</h2>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong>AI-readable docs wiring</strong>: HTML pages with Markdown twins now advertise
+<code>rel=&quot;alternate&quot; type=&quot;text/markdown&quot;</code>, <code>index.md</code> is the landing/CLI
+essentials twin, <code>skill.md</code> is listed under Optional in <code>llms.txt</code>, and
+<code>sitemap.xml</code> is generated from the same catalog as <code>llms.txt</code> (#91).</li>
+<li><strong>Single-source CLI contract</strong>: exit codes and <code>--threshold</code> live in
+<code>docs/fragments/contract.yml</code>; <code>rake docs:generate</code> writes <code>llms-full.txt</code>,
+<code>json-schema.html</code>, and the marked copies so they cannot drift (#82).</li>
+<li><strong>YARD API on Pages</strong>: the current gem's YARD HTML is published at
+<code>/api/</code>, linked from the docs site, and <code>rake yard:pages:check</code> keeps it
+from lagging the shipped sources. <code>documentation_uri</code> stays the Pages
+root (#92).</li>
+</ul>
+<h2 id="_1_0_1____2026_09_18"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.0.1">1.0.1</a> - 2026-09-18</h2>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong>RubyGems <code>documentation_uri</code></strong>: the published gem now points at the docs
+site (<code>https://davidteren.github.io/mutineer/</code>) so gem-page discovery
+reaches the Pages docs (#90).</li>
+</ul>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong>A red unmutated suite can no longer pass a mutation gate</strong> — coverage
+capture now keeps the original Minitest/RSpec result, and a failing clean run
+aborts with the existing smoke-check error (exit 1) instead of scoring those
+assertion failures as killed mutants. A warm coverage cache re-checks the
+current suite and cannot bypass this (#96).</li>
+<li><strong>Concurrent external runs no longer restore each other's source files</strong> —
+swap and orphan recovery share one exclusive OS lock per source, acquired
+before reading or healing. A live owner's mutant and backup stay intact; a
+dead owner's backup still restores the original bytes (#99).</li>
+<li><strong>Coverage cache now invalidates when a required test helper changes</strong> —
+a successful map records fingerprints of project-local loaded Ruby files,
+old cache entries without that data rebuild, and a helper-only edit no
+longer hides a new survivor behind a stale 100% score (#97).</li>
+<li><strong>Release version calculation ignores floating major tags</strong> — <code>release-pr.yml</code>
+selects the newest complete <code>vMAJOR.MINOR.PATCH</code> ancestor and validates the
+next version before writing files, so a later <code>v1</code> tag can no longer produce
+<code>v1..1</code> (#95).</li>
+</ul>
+<h2 id="_1_0_0____2026_09_08"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.0.0">1.0.0</a> - 2026-09-08</h2>
+<p>The GitHub Action's PR default changes in this release, which is why it is a
+new major: workflows pinned to <code>davidteren/mutineer@v0</code> keep the old full-scan
+behavior; upgrading to <code>@v1</code> opts into diff-scoped PR runs (details under
+Changed).</p>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong>The Action reports where CI readers look</strong>: with the default JSON format it
+writes a score/pass-fail table (plus the baseline delta, when <code>baseline</code> is
+set) to the job step summary, and emits one <code>file=…,line=…</code> annotation per
+surviving mutant (up to 50; the summary lists the first 20, the full set
+stays in the JSON report) so results land on the PR diff instead of only in a
+collapsed log group — <code>error</code> level when the gate failed, <code>warning</code> when it
+passed. When <code>output</code> is unset the JSON report is routed to a temp file and
+still printed to the log, and the <code>report</code> output now exposes the report
+path in both cases so a later step can consume the JSON without scraping
+the log (#86).</li>
+<li><strong>Progress during the run</strong>: every backend prints <code>[mutineer] N/M mutants (P%)</code> to stderr at each 10% step, so a long run is never silent between
+config resolution and the report. Stdout stays byte-exact for <code>--format json</code>
+and <code>--output</code>. <code>WorkerPool#run</code> gains an optional <code>on_result:</code> callback for
+this (called in the parent per reaped result) (#86).</li>
+</ul>
+<h3 id="Changed">Changed</h3>
+<ul>
+<li><strong>PR runs scope themselves in the GitHub Action</strong>: on <code>pull_request</code> events
+the <code>since</code> input now defaults to the PR base, so the action grades just the
+diff out of the box. <strong>Migration note (the reason for the major bump)</strong>: a
+PR gate that previously full-scanned now scores only the PR's changed lines,
+so <code>threshold</code> applies to fewer mutants. Stay on <code>@v0</code> to keep the old
+default, or pass <code>since: none</code> on <code>@v1</code> for full scans. Workflows that
+already pass a non-empty <code>since</code> are unchanged (an explicit empty string is
+indistinguishable from unset and picks up the new default). A PR with no
+changed source lines (docs- or test-only) scores zero mutants and passes the
+scoped gate vacuously; keep a full-scan baseline refresh on main as the
+backstop. With <code>use-bundler: true</code> the caller's Gemfile picks the gem, and
+the new default needs mutineer &gt;= 1.0.0 (the action enforces the floor with
+a clear error). The action scopes to the PR's exact base commit from the
+event payload (immune to the
+base branch advancing mid-job), falling back to a fresh fetch of the base
+branch tip; when neither can be resolved it warns and runs without an
+action-provided <code>--since</code> (a <code>.mutineer.yml</code> <code>since:</code> key, if any, still
+applies). The default deliberately does NOT fire on <code>pull_request_target</code>:
+checkout there defaults to the base branch, so auto-scoping would diff the
+base against itself and green the gate on an empty run (#86).</li>
+<li><strong><code>--baseline</code> on a diff-scoped run gates on new survivors only</strong>: a
+<code>--since</code> run's score covers only the changed-line mutants, a different
+denominator from a full-run baseline, so comparing the two scores
+manufactured false regressions (a 3/4-mutant PR at 75% &quot;dropped&quot; from a
+92% whole-repo baseline with zero new survivors). With <code>--since</code>, the
+score-drop half of the baseline gate is skipped; new-survivor detection by
+stable id (and the reported before/after scores) are unchanged. The JSON
+report records the scope in a new additive <code>summary.scoped</code> key
+(<code>schema_version</code> 1.3), and the <code>baseline</code> block records <code>score_comparable</code>
+so a consumer knows when not to render the two scores as a comparison
+(<code>fixed_survivors</code> is likewise empty under a scoped side: an out-of-scope
+survivor was never re-tested, so absence does not mean fixed). The reverse
+direction is a hard guard: a scoped report is refused as a baseline (exit 2
+with a regenerate hint), because survivors outside its diff would all read
+as new regressions. A new <code>--no-since</code> flag disables diff scoping explicitly: a
+typed no beats a <code>.mutineer.yml</code> <code>since:</code> key, and the action's
+<code>since: none</code> passes it through (#86).</li>
+</ul>
+<h2 id="_0_11_4____2026_07_29"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.11.4">0.11.4</a> - 2026-07-29</h2>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong><code>--threshold</code> now gates on the run being complete, not just its score</strong> — a
+score is <code>killed / (killed + survived)</code>, so mutants that error, time out or come
+back uncapturable are excluded from the denominator: a broken harness <em>raised</em>
+the score instead of lowering it. Ninety errored mutants and ten that ran (nine
+killed) reported 90% and exited 0, so CI could not tell a complete run from a
+mostly-broken one. Past 10% of attempted mutants producing no verdict, a positive
+<code>--threshold</code> now exits 1 whatever the score, and the report says which states
+broke, on every <code>--format</code>. A single bad mutant never trips it, however small the
+run, so a <code>--since</code> PR with a handful of mutants keeps its flake tolerance (#78).</li>
+</ul>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong><code>no_verdict[]</code> in the JSON report</strong> (<code>schema_version</code> 1.2) — every attempted
+mutant that produced no verdict, with its <code>status</code> and, where there is one, the
+<code>details</code> explaining the cause. <code>Result#details</code> was built and rendered in no
+format at all, so a daemon crash reached the user as nothing but a larger errored
+count. <code>summary</code> gains <code>attempted</code> and <code>no_verdict</code>, the two figures the
+completeness gate is computed from (#78).</li>
+</ul>
+<h2 id="_0_11_3____2026_07_29"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.11.3">0.11.3</a> - 2026-07-29</h2>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong>Nothing to mutate now costs nothing</strong> — <code>--since</code> matching no changed line (a
+docs-only PR, which README documents <code>--since origin/&lt;base&gt;</code> for) still did the
+expensive part before discovering there was no work: <code>--daemon</code> booted the app
+once for the coverage map and again for every <code>--jobs</code> worker, and
+<code>--test-command</code> ran the whole suite for a smoke check that calibrates a timeout
+no mutant would use. Both backends now return as soon as the job list is empty.
+The in-process path is unchanged: it boots before collecting jobs, so it cannot
+know the list is empty yet. One consequence worth stating: a zero-job <code>--daemon</code>
+run no longer boots the app, so an app that fails to boot now exits 0 (nothing
+to do) instead of exit 1 (#76).</li>
+<li><strong>A dead daemon ends the run instead of scoring the rest against it</strong> — a
+daemon that dies while running one mutant was already handled: <code>DaemonClient</code>
+respawns and answers <code>error</code> for that mutant. But a daemon that could not come
+back was not. <code>restart!</code> closes the pipes before respawning, so if the respawn
+failed at the OS level (<code>EMFILE</code> or <code>ENOMEM</code> under <code>--jobs N</code>, <code>ENOENT</code> when
+<code>bundle</code> does not resolve) the client was left permanently dead while raising
+errors that read as ordinary per-mutant failures. Every remaining mutant scored
+<code>error</code> against nothing, and Mutineer printed a mutation score built on the
+fraction of mutants that ran before the daemon died. <code>DaemonClient</code> now raises
+<code>DaemonBootError</code> whenever it is gone for good — a refused spawn, a failed boot
+handshake on respawn, closed pipes, or <code>MAX_RESTARTS</code> crashes — and the CLI
+reports it as a message and exit 1 rather than a backtrace. Under <code>--jobs N</code>
+the remaining queue is dropped so sibling workers stop too. Errored mutants
+still cannot fail the <code>--threshold</code> gate once any mutant is scored (#78).</li>
+</ul>
+<h3 id="Changed">Changed</h3>
+<ul>
+<li><strong>Daemon orchestration split out of <code>Runner</code></strong> — the persistent-daemon backend
+(job fan-out, worker DBs, coverage-map build, boot config, verdict mapping) now
+lives in <code>Mutineer::DaemonBackend</code>. <code>Runner</code> keeps job collection, coverage
+selection and the single in-process mutant run, and drops from 662 to 439 lines.
+The external backend's orchestration stays on <code>Runner</code> for now, so the two
+backends are not yet symmetrical. No CLI or behaviour change (#58).
+Internal-only removals: <code>Runner.execute_daemon</code>, <code>Runner.daemon_coverage_map</code>
+and <code>Runner::DAEMON_TIMEOUT</code> no longer exist. They were never documented —
+the supported programmatic contract is the JSON report, the stable mutant ids
+and the exit codes — so only code calling <code>Runner</code> internals directly is
+affected.</li>
+<li><strong>Comment diet on orchestration files</strong> — present-tense YARD contracts; drop
+ticket/phase/KTD history tags from runner, CLI, daemon pair, coverage map,
+reporter, result, and related modules. Safety and score invariants kept (#57).</li>
+</ul>
+<h2 id="_0_11_2____2026_07_24"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.11.2">0.11.2</a> - 2026-07-24</h2>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong><code>--test-command</code> under version managers</strong> — scrub Mutineer's rbenv/asdf
+version bins and bundler/gem env from the child so the suite can resolve the
+app's Ruby via shims / <code>.ruby-version</code>. Smoke check prints a targeted hint on
+<code>Bundler::RubyVersionMismatch</code> instead of only blaming DB/migrations. Docs
+cover a wrapper recipe for stubborn setups (#32).</li>
+</ul>
+<h2 id="_0_11_1____2026_07_23"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.11.1">0.11.1</a> - 2026-07-23</h2>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong><code>--daemon</code> score disclosure</strong> — stop claiming “no coverage narrowing / lower
+bound” on every run (narrowing already ships). Warn only when the coverage map
+is unavailable and the run falls back to the full <code>--test</code> set (#48).</li>
+<li><strong><code>--threshold</code> CI fidelity</strong> — exit 1 when a positive threshold is set but the
+run produced only errors/timeouts/uncapturable (nil score with a broken harness)
+instead of silently green; pure no_coverage / all-ignored still skips the gate
+(#49). Non-numeric <code>--threshold</code> / YAML <code>threshold</code> is a usage error (exit 2),
+not a silent gate-off (#51).</li>
+<li><strong><code>--daemon</code> contracts</strong> — reject <code>--framework rspec</code> (exit 2); force
+<code>--strategy reload</code> with a clear warning when redefine was requested (daemon
+whole-file only) (#50). <strong>In-process <code>--rails</code> always serial</strong> unless
+<code>--daemon</code> (only daemon has per-worker DB isolation) (#55).</li>
+<li><strong>Isolation timeout</strong> — kill the child process group and honor a clean exit
+that races the deadline (not always timeout) (#52). <strong>External backend</strong> —
+signal death is <code>error</code>, not <code>killed</code> (#53).</li>
+<li><strong><code>--fail-fast</code> is serial</strong> on the in-process path (matches daemon) so the
+survivor set is deterministic under any <code>--jobs</code> (#54).</li>
+<li><strong>Dry-run uses <code>collect_jobs</code></strong> so candidates match a real run (#59).</li>
+<li><strong>Daemon schema load once per worker</strong> (not every mutant fork) (#56).</li>
+<li><strong>Nested <code>statement_removal</code></strong> visits inner statement lists (#62).</li>
+<li>Dead seams: remove unused <code>RailsWorkerDb.provision</code>, simplify parallel daemon
+fail-fast branch, drop unused <code>validate_daemon!</code> arg (#60).</li>
+<li>Archive historical implementation spec under <code>docs/archive/</code> (#61).</li>
+</ul>
+<h2 id="_0_11_0____2026_07_02"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.11.0">0.11.0</a> - 2026-07-02</h2>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong><code>--daemon</code> backend — fast, parallel-safe Rails mutation testing</strong> (#26/#27
+Phase 2). Boots the app <strong>once</strong> in a persistent daemon and forks per mutant
+(restoring shared-boot speed), and gives <strong>each parallel worker its own
+database</strong> so <code>--jobs N</code> is safe under Rails for the first time — parallel
+verdicts are proven identical to serial (no fixture cross-talk). Coverage
+narrowing is restored on this path (each mutant runs only its covering tests;
+a mutant on an uncovered line is <code>no_coverage</code>), so the daemon score is
+comparable to the in-process <code>--rails</code> score. Opt in with <code>--rails --daemon</code>
+(also <code>daemon: true</code> in <code>.mutineer.yml</code>); <code>--daemon</code> can't be combined with
+<code>--test-command</code>. <strong>SQLite</strong> today (hermetic, CI-proven); <strong>Postgres</strong>
+per-worker provisioning is in progress (#34/#35). The gem core stays Prism +
+stdlib, zero runtime dependencies — worker-DB routing uses the app's own
+ActiveRecord.</li>
+</ul>
+<h2 id="_0_10_0____2026_07_02"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.10.0">0.10.0</a> - 2026-07-02</h2>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong><code>--test-command</code> external backend</strong> (#27) — mutation-test apps pinned to Ruby
+&lt; 3.4. Mutineer stays on ≥ 3.4 but runs your suite as a subprocess in the app's
+own runtime via <code>--test-command &quot;bundle exec rails test %{files}&quot;</code> (<code>%{files}</code>
+expands to the <code>--test</code> paths; env is inherited). The mutant is applied on disk
+with crash-safe backup/restore (self-heals a hard-killed run on next startup); a
+smoke check aborts before scoring if the unmutated suite isn't green. This path
+is reload-only, serial (<code>--jobs</code> forced to 1), and does no coverage narrowing —
+so its score is an upper bound, not comparable to an in-process <code>--rails</code> score
+(Mutineer prints this caveat). Also settable as <code>test_command:</code> in <code>.mutineer.yml</code>.
+Safe parallelism for this path is tracked in #26.</li>
+</ul>
+<h2 id="_0_9_1____2026_07_01"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.9.1">0.9.1</a> - 2026-07-01</h2>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong>Per-method uncapturable granularity</strong> (#25) — the <code>:uncapturable</code> taint was
+whole-file, so a method reachable only by a <em>failed</em> capture in an otherwise-
+covered file was mislabeled <code>no_coverage</code>. It's now attributed per method (by
+the method's body coverage), so only the affected method is tainted. Fully-
+failed files are unchanged.</li>
+</ul>
+<h2 id="_0_9_0____2026_06_30"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.9.0">0.9.0</a> - 2026-06-30</h2>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong><code>--fail-fast</code></strong> (#21) — stop at the first surviving mutant; in-flight workers
+drain, the rest are skipped. Fast red signal for PR gates.</li>
+<li><strong><code>--format html</code></strong> (#23) — a single self-contained HTML report (inline CSS, no
+external assets) with the score, per-source table, and a card per survivor
+(subject, file:line, operator, stable id, diff).</li>
+<li><strong>String, regex, and collection-method operators</strong> (#24, Tier-2, opt-in via
+<code>--operators</code>): <code>string_literal</code>, <code>regex</code>, <code>collection_method</code>
+(<code>map</code>↔<code>each</code>, <code>all?</code>↔<code>any?</code>, <code>first</code>↔<code>last</code>, <code>min</code>↔<code>max</code>, <code>select</code>↔<code>reject</code>).</li>
+</ul>
+<h3 id="Changed">Changed</h3>
+<ul>
+<li><strong><code>--dry-run</code> now honors suppression</strong> (#22) — inline <code># mutineer:disable-line</code>
+and <code>.mutineer.yml</code> <code>ignore:</code> entries are omitted from the preview and counted
+as &quot;ignored (suppressed)&quot;, matching a real run.</li>
+</ul>
+<h2 id="_0_8_0____2026_06_30"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.8.0">0.8.0</a> - 2026-06-30</h2>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong>Singleton methods are now mutated</strong> (#20) — <code>class &lt;&lt; self</code> and
+<code>module_function</code> methods were discovered but applied to the instance scope, so
+the mutant never ran on the singleton the caller dispatches to; every such
+mutant falsely survived and the file read a false 0%. <code>module_function</code> methods
+are now discovered as singletons, and the redefine strategy re-opens
+<code>class &lt;&lt; self</code> so the mutation lands on the called method. (Scores for
+singleton-heavy files will rise to their true values.)</li>
+<li><strong>Write-heavy Rails tests are capturable again</strong> (#19) — capture/worker pipes
+are <code>binmode</code>: a binary Marshal payload over a text-mode pipe could raise an
+encoding error the child then swallowed → empty pipe → false <code>:uncapturable</code>.
+That was the root cause of the residual write-heavy failures too. A child that
+dies without writing now also reports how it died (exit status / signal), and
+<code>--verbose</code> always surfaces a real reason. Verified on a real Rails app: all 6
+previously-uncapturable interactors (incl. caxlsx + Google-client) now capture
+with real scores, 0 uncapturable.</li>
+</ul>
+<h2 id="_0_7_1____2026_06_30"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.7.1">0.7.1</a> - 2026-06-30</h2>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong>GitHub Action</strong> (<code>action.yml</code>, composite) wrapping the CLI for CI — gate a PR
+on new survivors / score drop with <code>sources</code>, <code>since</code>, <code>baseline</code>, <code>threshold</code>,
+etc. Inputs are passed via <code>env</code> (no <code>${{ }}</code> interpolation into the run script)
+for command-injection safety.</li>
+<li>Docs site (GitHub Pages) with Open Graph / Twitter Card share image; YARD doc
+comments across the library.</li>
+</ul>
+<h2 id="_0_7_0____2026_06_30"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.7.0">0.7.0</a> - 2026-06-30</h2>
+<p>Rails hardening + CI batch (issues #8–#13), all verified Rails-free.</p>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong>Equivalent-mutant suppression</strong> (#10) — inline <code># mutineer:disable-line [ops]</code>
+and a <code>.mutineer.yml</code> <code>ignore:</code> list keyed on a stable, offset-free mutant id;
+suppressed mutants are excluded from the score (100% reachable). The stable id
+(and readable token) is emitted per survivor in JSON.</li>
+<li><strong>Source→test auto-pairing + multi-source runs</strong> (#11) — pass a directory or
+several sources with <code>--test</code> omitted; tests are inferred by convention
+(<code>app/</code>,<code>lib/</code> → <code>test/…_test.rb</code> / <code>spec/…_spec.rb</code>) and run under one boot,
+with per-source results (human + JSON <code>per_source</code>).</li>
+<li><strong><code>--baseline &lt;file.json&gt;</code> CI gating</strong> (#13) — diff against a prior run by stable
+id; exit 1 on new survivors or a score drop (with <code>--baseline-epsilon</code>), naming
+what regressed. Combines with <code>--threshold</code> via max exit code.</li>
+<li><strong><code>--verbose</code>/<code>--debug</code></strong> (#8) — surface the real error when a fork capture fails.</li>
+<li><strong><code>:uncapturable</code> status</strong> (#9) — distinct from <code>no_coverage</code>; reported separately
+(&quot;tests failed to run&quot; vs &quot;genuinely uncovered&quot;). Both excluded from the score.</li>
+</ul>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong>Fork capture no longer drops fixture transactions</strong> (#8) — <code>reconnect</code> skips
+<code>clear_all_connections!</code> when a fixture transaction is open, and stops swallowing
+the child error; write-heavy Rails tests are mutation-testable again.</li>
+</ul>
+<h3 id="Changed">Changed</h3>
+<ul>
+<li>JSON <code>schema_version</code> → <code>1.1</code> (additive: survivor <code>id</code>/<code>token</code>, <code>ignored</code>,
+<code>uncapturable</code>, <code>per_source</code>).</li>
+</ul>
+<h2 id="_0_6_2____2026_06_29"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.6.2">0.6.2</a> - 2026-06-29</h2>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong><code>--rails</code> defaults <code>RAILS_ENV</code> to <code>test</code></strong> (#7) — an unset <code>RAILS_ENV</code> booted
+development, where the suite isn't loaded, so every mutant was falsely reported
+<code>no_coverage</code> (score N/A, exit 0). An explicit <code>RAILS_ENV</code> is respected.</li>
+<li><strong><code>--rails</code> defaults to <code>--jobs 1</code></strong> (#12) — parallel mutant forks share one
+database and deadlock on transactional fixtures; explicit <code>--jobs N</code> opts back
+into parallelism.</li>
+</ul>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong>Tier-2 operator discoverability</strong> (#14) — the human-format run summary now
+lists the available opt-in tier-2 operators and how to enable them.</li>
+</ul>
+<h2 id="_0_6_1____2026_06_29"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.6.1">0.6.1</a> - 2026-06-29</h2>
+<h3 id="Changed">Changed</h3>
+<ul>
+<li><strong>Removed <code>eval</code> entirely</strong> — the redefine strategy now <code>load</code>s the wrapped
+method snippet from a tempfile instead of evaluating a string. Behavior is
+identical (top-level load rebuilds the same <code>Module.nesting</code>), but the gem no
+longer uses dynamic string execution, clearing supply-chain scanner flags.
+Zero runtime dependencies unchanged.</li>
+</ul>
+<h2 id="_0_6_0____2026_06_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.6.0">0.6.0</a> - 2026-06-28</h2>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong>RSpec support</strong> (#6) — <code>--framework rspec</code> (or auto-detected when most
+<code>--test</code> files end in <code>_spec.rb</code>) runs RSpec suites instead of Minitest, via a
+pluggable test-runner abstraction. Both frameworks are loaded lazily, so
+Mutineer keeps zero runtime gem dependencies and works in an rspec-only
+project; coverage selection works for both. <code>.mutineer.yml</code> accepts <code>framework:</code>.</li>
+</ul>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong>Redefine strategy keeps compact <code>class A::B</code> as a single nesting wrapper</strong>
+(#5) — avoids a constant-resolution disagreement with the reload strategy.</li>
+</ul>
+<h2 id="_0_5_0____2026_06_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.5.0">0.5.0</a> - 2026-06-28</h2>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong><code>class &lt;&lt; self</code> methods are now discovered and mutated</strong> (#3) — previously
+they were treated as instance methods, so the redefine strategy mis-targeted
+them. <code>class &lt;&lt; other_obj</code> blocks are skipped (not representable).</li>
+<li><strong>Worker pool no longer deadlocks on large results</strong> (#4) — pipes are drained
+with <code>IO.select</code> and children reaped on EOF, so a result bigger than the OS
+pipe buffer (~64KB) can't wedge the run.</li>
+</ul>
+<h2 id="_0_4_0____2026_06_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.4.0">0.4.0</a> - 2026-06-28</h2>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong><code>--since &lt;git-ref&gt;</code></strong> (#2) — mutate only the lines changed since a git ref
+(e.g. <code>--since origin/main</code>), so CI on a pull request mutation-tests just the
+new/changed code. Composes with coverage selection; <code>--dry-run --since</code>
+narrows the preview too. Unknown ref / not-a-git-repo exits 2.</li>
+</ul>
+<h2 id="_0_3_0____2026_06_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.3.0">0.3.0</a> - 2026-06-28</h2>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong>Coverage-guided test selection in boot mode</strong> (#1) — <code>--rails</code>/<code>--boot</code> now
+captures coverage by forking the booted app and runs only the test files that
+cover each mutant's line (uncovered lines report <code>no_coverage</code>), instead of
+running every <code>--test</code> file for every mutant. Cached like standalone mode.</li>
+</ul>
+<h2 id="_0_2_0____2026_06_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.2.0">0.2.0</a> - 2026-06-28</h2>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong>Boot mode for Rails (and any app needing its environment booted)</strong> —
+<code>--rails</code> boots <code>config/environment</code> once in the parent and forks per mutant
+(children inherit the booted app), defaults the strategy to <code>redefine</code>, and
+reconnects ActiveRecord in each fork for DB fork-safety. <code>--boot FILE</code> boots a
+custom entry point. Boot mode requires <code>--test</code> files and runs them for every
+mutant (coverage-guided selection in boot mode is future work). <code>.mutineer.yml</code>
+accepts <code>boot:</code> and <code>rails:</code>.</li>
+<li>GitHub Actions CI (test suite + gem build on Ruby 3.4, ubuntu + macos).</li>
+</ul>
+<h3 id="Changed">Changed</h3>
+<ul>
+<li><code>--strategy</code> values are now <code>reload</code> / <code>redefine</code> (canonical); <code>7a</code> / <code>7b</code>
+remain accepted as deprecated aliases.</li>
+</ul>
+<h2 id="_0_1_0____2026_06_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v0.1.0">0.1.0</a> - 2026-06-28</h2>
+<h3 id="Added">Added</h3>
+<ul>
+<li>Initial release of Mutineer — a clean-room, Prism-based mutation-testing tool
+for Ruby with zero runtime dependencies (Ruby ≥ 3.4).</li>
+<li>Mutation operators: arithmetic, comparison, boolean-connector, boolean-literal,
+statement-removal (Tier 1, default); return-nil, literal-mutation,
+condition-negation (Tier 2, opt-in via <code>--operators</code>).</li>
+<li>Coverage-guided test selection with a digest-keyed, auto-invalidating cache.</li>
+<li>Fork-isolated, parallel execution (<code>--jobs</code>) with per-mutant timeouts.</li>
+<li>Two application strategies: <code>reload</code> (whole-file, default) and <code>redefine</code>
+(surgical), verified to agree on namespaced multi-statement methods. (<code>7a</code>/<code>7b</code>
+accepted as deprecated aliases.)</li>
+<li><code>run</code>, <code>--dry-run</code>, <code>--threshold</code>, <code>--only</code>, <code>--operators</code>, <code>--strategy</code>,
+<code>--format human|json</code>, <code>--output</code>, <code>--list-operators</code>.</li>
+<li><code>.mutineer.yml</code> configuration (CLI &gt; config &gt; default precedence).</li>
+<li>Byte-correct source handling for multibyte (UTF-8) sources.</li>
+</ul></div></div>
+
+      <div id="footer">
+  Generated on DATE by
+  <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
+  0.9.45 (ruby-3.4.10).
+</div>
+
+    </div>
+  </body>
+</html>

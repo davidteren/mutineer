@@ -15,12 +15,11 @@ require_relative "mutators/collection_method"
 module Mutineer
   # Maps operator names to operator classes.
   #
-  # DEFAULT_NAMES is the v1 default set
-  # (the M4 Tier-1 + statement-removal operators per locked decision #2). The
-  # three Tier-2 operators live in ALL but are OFF by default — they only run
-  # when named via --operators or `operators:` in .mutineer.yml (KTD8). Keeping
-  # DEFAULT_NAMES an explicit subset (not ALL.keys) is what keeps the M4 default
-  # survivor set unchanged.
+  # DEFAULT_NAMES is the v1 default set (Tier-1 plus statement-removal).
+  # The six Tier-2 operators live in ALL but are OFF by default — they only
+  # run when named via `--operators` or `operators:` in `.mutineer.yml`.
+  # Keeping DEFAULT_NAMES an explicit subset (not ALL.keys) is what keeps
+  # the default survivor set unchanged.
   class MutatorRegistry
     # All available mutator classes keyed by operator name.
     ALL = {

@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>
+  File: README
+  
+    &mdash; Documentation by YARD 0.9.45
+  
+</title>
+
+  <link rel="stylesheet" href="css/style.css" type="text/css">
+
+  <link rel="stylesheet" href="css/common.css" type="text/css">
+
+<script type="text/javascript">
+  pathId = "README";
+  relpath = '';
+</script>
+
+
+  <script type="text/javascript" charset="utf-8" src="js/jquery.js"></script>
+
+  <script type="text/javascript" charset="utf-8" src="js/app.js"></script>
+
+
+  </head>
+  <body>
+    <div id="main_progress" aria-hidden="true"></div>
+
+    <div class="nav_wrap">
+      <iframe id="nav" src="file_list.html?1"></iframe>
+      <div id="resizer"></div>
+    </div>
+
+    <div id="main" tabindex="-1">
+      <div id="header">
+        <div id="menu">
+  
+    <a href="_index.html">Index</a> &raquo; 
+    <span class="title">File: README</span>
+  
+</div>
+
+        <div id="search">
+  
+    <a class="full_list_link" id="class_list_link"
+        href="class_list.html">
+
+        <svg width="24" height="24">
+          <rect x="0" y="4" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="12" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="20" width="24" height="4" rx="1" ry="1"></rect>
+        </svg>
+    </a>
+  
+</div>
+        <div class="clear"></div>
+      </div>
+
+      <div id="content"><div id='filecontents'><h1 id="Mutineer">Mutineer</h1>
+<p><a href="https://rubygems.org/gems/mutineer"><img src="https://img.shields.io/gem/v/mutineer?logo=rubygems&amp;color=e23b3b" alt="Gem Version" /></a>
+<a href="https://github.com/marketplace/actions/mutineer-ruby"><img src="https://img.shields.io/badge/Marketplace-Mutineer%20Ruby-2da44e?logo=githubactions&amp;logoColor=white" alt="GitHub Marketplace" /></a>
+<a href="https://socket.dev/rubygems/package/mutineer"><img src="https://img.shields.io/badge/Socket-security%20report-0a66c2?logo=socket&amp;logoColor=white" alt="Socket" /></a></p>
+<p>A clean-room mutation-testing tool for Ruby. Mutineer mutates your source one
+change at a time, runs your test suite (Minitest or RSpec) against each mutant, and reports the
+ones your tests failed to catch — the gaps where your suite isn't actually
+testing anything.</p>
+<ul>
+<li><strong>Prism + stdlib only</strong> — zero runtime dependencies (Ruby ≥ 3.4).</li>
+<li><strong>One mutation per mutant</strong>, validity-checked by re-parsing.</li>
+<li><strong>Fork-isolated</strong>, parallel execution (Linux + macOS).</li>
+<li><strong>Coverage-guided</strong> — each mutant runs only the test files that cover its line.</li>
+</ul>
+<p>📖 <strong><a href="https://davidteren.github.io/mutineer/">mutineer.github.io →</a></strong> — overview, operators, and usage.</p>
+<h2 id="Install">Install</h2>
+<pre class="code sh"><code class="sh">gem install mutineer
+</code></pre>
+<p>Or in a Gemfile:</p>
+<pre class="code ruby"><code class="ruby"><span class='id identifier rubyid_gem'>gem</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>mutineer</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='label'>group:</span> <span class='symbol'>:test</span>
+</code></pre>
+<h2 id="Usage">Usage</h2>
+<pre class="code sh"><code class="sh">mutineer run &lt;source...&gt; --test &lt;test...&gt; [options]
+</code></pre>
+<p>Mutate <code>lib/calculator.rb</code>, checking it against its test, and fail CI if the
+mutation score drops below 90%:</p>
+<pre class="code sh"><code class="sh">mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
+</code></pre>
+<h3 id="Options">Options</h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--test FILE</code></td>
+<td>Test file covering the sources (repeatable)</td>
+</tr>
+<tr>
+<td><code>--operators LIST</code></td>
+<td>Comma-separated operator names (default: the Tier-1 set)</td>
+</tr>
+<tr>
+<td><code>--threshold FLOAT</code></td>
+<td>Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off)</td>
+</tr>
+<tr>
+<td><code>--only NAME</code></td>
+<td>Restrict to one fully-qualified subject, e.g. <code>Calculator#add</code></td>
+</tr>
+<tr>
+<td><code>--framework NAME</code></td>
+<td><code>minitest</code> (default) or <code>rspec</code>; auto-detected as rspec when most <code>--test</code> files end in <code>_spec.rb</code></td>
+</tr>
+<tr>
+<td><code>--since REF</code></td>
+<td>Only mutate lines changed since git <code>REF</code> (e.g. <code>origin/main</code>) — ideal for PR CI</td>
+</tr>
+<tr>
+<td><code>--no-since</code></td>
+<td>Disable diff scoping; a typed no beats a <code>.mutineer.yml</code> <code>since:</code> key</td>
+</tr>
+<tr>
+<td><code>--baseline FILE</code></td>
+<td>Compare against a prior <code>--format json</code> run; exit 1 on new survivors / score drop (score drop is skipped under <code>--since</code>, whose score covers a different denominator; see <a href="#ci-gating">CI</a>)</td>
+</tr>
+<tr>
+<td><code>--baseline-epsilon FLOAT</code></td>
+<td>Score-drop tolerance for <code>--baseline</code> (default: 0)</td>
+</tr>
+<tr>
+<td><code>--jobs N</code></td>
+<td>Parallel worker count (default: processor count; <code>1</code> under <code>--rails</code>)</td>
+</tr>
+<tr>
+<td><code>--verbose</code></td>
+<td>Surface the real error when a fork capture fails (alias <code>--debug</code>)</td>
+</tr>
+<tr>
+<td><code>--strategy NAME</code></td>
+<td>Mutation application: <code>reload</code> whole-file (default) or <code>redefine</code> surgical (<code>7a</code>/<code>7b</code> accepted as deprecated aliases)</td>
+</tr>
+<tr>
+<td><code>--test-command CMD</code></td>
+<td>Run the suite as a subprocess in the app's own runtime (for apps on Ruby &lt; 3.4); <code>CMD</code> must contain <code>%{files}</code>. See <a href="#apps-on-ruby--34">Apps on Ruby &lt; 3.4</a></td>
+</tr>
+<tr>
+<td><code>--daemon</code></td>
+<td>Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so <code>--jobs N</code> is safe under Rails (needs <code>--rails</code>/<code>--boot</code>; not with <code>--test-command</code>). See <a href="#faster-parallel-safe-rails-the---daemon-backend">the daemon backend</a></td>
+</tr>
+<tr>
+<td>`--format human\</td>
+<td>json\</td>
+<td>html`</td>
+<td>Report format (default: human; <code>html</code> is a self-contained file)</td>
+</tr>
+<tr>
+<td><code>--output FILE</code></td>
+<td>Write the report to FILE instead of stdout</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>List candidate mutations without executing (honors suppression)</td>
+</tr>
+<tr>
+<td><code>--fail-fast</code></td>
+<td>Stop at the first surviving mutant</td>
+</tr>
+<tr>
+<td><code>--list-operators</code></td>
+<td>List available operators (default vs optional) and exit</td>
+</tr>
+<tr>
+<td><code>--version</code>, <code>--help</code></td>
+<td>Print version / usage and exit</td>
+</tr>
+</tbody>
+</table>
+<h3 id="Exit_codes">Exit codes</h3>
+<!-- contract:exit-codes -->
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>Score ≥ threshold (or no gate) <strong>and</strong> no baseline regression.</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>Score below <code>--threshold</code>, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a <code>--baseline</code> regression, OR a runtime error.</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline).</td>
+</tr>
+</tbody>
+</table>
+<!-- /contract:exit-codes -->
+<h3 id="Operators">Operators</h3>
+<p>Run <code>mutineer --list-operators</code> to see them. Default (Tier 1): <code>arithmetic</code>,
+<code>comparison</code>, <code>boolean_connector</code>, <code>boolean_literal</code>, <code>statement_removal</code>.
+Available but off by default (Tier 2, enable via <code>--operators</code>): <code>return_nil</code>,
+<code>literal_mutation</code>, <code>condition_negation</code>, <code>string_literal</code>, <code>regex</code>,
+<code>collection_method</code>.</p>
+<h2 id="Rails_apps">Rails apps</h2>
+<p>Rails code needs its environment booted before the suite runs, so point Mutineer
+at your app with <code>--rails</code> and run it inside the project's bundle:</p>
+<pre class="code sh"><code class="sh">RAILS_ENV=test bundle exec mutineer run \
+  app/models/order.rb --test test/models/order_test.rb --rails
+</code></pre>
+<p><code>--rails</code> boots <code>config/environment</code> once in the parent process (every mutant
+then forks and inherits it), defaults <code>--strategy</code> to <code>redefine</code> (surgical — it
+avoids reloading files into the app tree), and reconnects ActiveRecord in each
+fork so the database connection is fork-safe. Use <code>--boot FILE</code> to boot a
+different entry point. Boot mode requires at least one <code>--test</code> file and is
+coverage-guided — each mutant runs only the test files that exercise its line
+(coverage is captured by forking the booted app, then cached).</p>
+<p>Add Mutineer to your Gemfile's test group:</p>
+<pre class="code ruby"><code class="ruby"><span class='id identifier rubyid_gem'>gem</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>mutineer</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='label'>group:</span> <span class='symbol'>:test</span><span class='comma'>,</span> <span class='label'>require:</span> <span class='kw'>false</span>
+</code></pre>
+<h3 id="Faster__parallel_safe_Rails__the____daemon__backend_">Faster, parallel-safe Rails (the <code>--daemon</code> backend)</h3>
+<p><code>--rails</code> boots your app once but runs mutants <strong>serially</strong> — parallel <code>--jobs</code>
+under Rails is unsafe, because every worker shares one test database and clobbers
+the others' fixtures. <code>--daemon</code> fixes both: it boots the app once in a persistent
+helper and forks per mutant, and gives <strong>each parallel worker its own database</strong>,
+so <code>--jobs N</code> is safe and its verdicts are proven identical to a serial run.</p>
+<pre class="code sh"><code class="sh">RAILS_ENV=test bundle exec mutineer run \
+  app/models/order.rb --test test/models/order_test.rb \
+  --rails --daemon --jobs 4
+</code></pre>
+<ul>
+<li><strong>One boot, forked per mutant</strong> — restores the shared-boot speed.</li>
+<li><strong>Coverage-guided</strong> — each mutant runs only its covering tests (like <code>--rails</code>);
+a mutant on an uncovered line is <code>no_coverage</code>, so the score stays comparable to
+the in-process <code>--rails</code> score.</li>
+<li><strong>Safe <code>--jobs N</code></strong> — each worker routes to its own copy of the test database, so
+parallel verdicts equal serial (no fixture cross-talk).</li>
+<li><strong>One backend at a time</strong> — <code>--daemon</code> can't be combined with <code>--test-command</code>
+(choose one), and it needs an app to boot (<code>--rails</code> or <code>--boot</code>).</li>
+</ul>
+<p>Status: <strong>SQLite</strong> today (hermetic, CI-proven). <strong>Postgres</strong> per-worker
+provisioning is in progress (#34/#35); until it lands, use <code>--daemon</code> with a
+SQLite test database, or drop <code>--jobs</code> to run serially on other adapters.</p>
+<h3 id="Apps_on_Ruby___3_4">Apps on Ruby &lt; 3.4</h3>
+<p>Mutineer's own process needs Ruby ≥ 3.4 (it parses with stdlib Prism), and the
+<code>--rails</code> path above boots your app <em>inside Mutineer's process</em> — so it can't run
+against an app pinned to an older Ruby (<code>ruby &quot;3.1.6&quot;</code> in the Gemfile), where the
+bundle rejects 3.4.</p>
+<p><code>--test-command</code> decouples the two: Mutineer stays on ≥ 3.4, but your suite runs
+as a <strong>subprocess in your app's own runtime</strong> (whatever Ruby its bundle resolves
+to). Run Mutineer with a 3.4+ Ruby and hand it the command that runs your tests:</p>
+<pre class="code sh"><code class="sh">RAILS_ENV=test mutineer run app/models/order.rb \
+  --test test/models/order_test.rb \
+  --test-command &quot;bundle exec rails test %{files}&quot;
+</code></pre>
+<ul>
+<li><strong><code>%{files}</code></strong> is required; it expands to the <code>--test</code> paths as separate
+arguments (a path with a space stays one argument — there is no shell).</li>
+<li><strong>Environment:</strong> vars like <code>RAILS_ENV</code> / <code>DATABASE_URL</code> set on the Mutineer
+command are inherited. Mutineer <strong>unsets</strong> <code>BUNDLE_*</code>, <code>GEM_*</code>, <code>RUBY*</code>,
+<code>RBENV_VERSION</code>, <code>ASDF_RUBY_VERSION</code>, and <code>RBENV_DIR</code> in the child (so
+Mutineer's own Ruby cannot pin the suite), and drops version-manager
+<strong>version bins</strong> (e.g. <code>~/.rbenv/versions/3.4.x/bin</code>) from <code>PATH</code>, then
+prepends rbenv/asdf shims when a pin was scrubbed. Do not rely on
+<code>RBENV_VERSION=…</code> on the Mutineer command for the suite; use <code>.ruby-version</code>
+or a wrapper. Don't put <code>KEY=val</code> prefixes <em>inside</em> <code>--test-command</code> (no shell;
+that would be treated as the program name).</li>
+</ul>
+<h4 id="Under_a_version_manager__rbenv___asdf___chruby_">Under a version manager (rbenv / asdf / chruby)</h4>
+<p>Automatic scrub targets <strong>rbenv</strong> and <strong>asdf</strong> (shims + version bins). <strong>chruby</strong>
+has no shims: Mutineer still strips <code>…/rubies/…/bin</code> so it cannot leave Mutineer's
+Ruby pinned, but you need a wrapper that sources chruby and selects the app
+version. If the smoke check still reports a <strong>Ruby version mismatch</strong>, wrap the
+suite. Example rbenv wrapper (<code>bin/mutineer-test</code> in the app):</p>
+<pre class="code sh"><code class="sh">#!/usr/bin/env bash
+set -euo pipefail
+cd &quot;$(dirname &quot;$0&quot;)/..&quot;
+unset GEM_HOME GEM_PATH RUBYLIB RUBYOPT BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION
+export RBENV_VERSION=&quot;$(cat .ruby-version 2&gt;/dev/null || true)&quot;
+export RAILS_ENV=&quot;${RAILS_ENV:-test}&quot;
+export PATH=&quot;${HOME}/.rbenv/shims:${PATH}&quot;
+exec bundle exec rails test &quot;$@&quot;
+</code></pre>
+<pre class="code sh"><code class="sh"># Mutineer on 3.4+; suite on the app&#39;s Ruby via the wrapper
+mutineer run app/models/order.rb \
+  --test test/models/order_test.rb \
+  --test-command &quot;bin/mutineer-test %{files}&quot;
+</code></pre>
+<p>Mutineer also surfaces a targeted smoke-check message when Bundler prints
+<code>RubyVersionMismatch</code>, instead of only blaming DB/migrations.</p>
+<p>Tradeoffs — this path is correct but not free:</p>
+<ul>
+<li><strong>Slower:</strong> your app re-boots for every mutant (no shared boot yet).</li>
+<li><strong>No coverage narrowing:</strong> every mutant runs the <em>full</em> <code>--test</code> set, so the
+score is an <strong>upper bound and not comparable to an in-process (<code>--rails</code>)
+score</strong> — uncovered mutants count as survivors, and an infrastructure failure
+is scored as a kill. Mutineer prints this caveat on every run and aborts up
+front (a &quot;smoke check&quot;) if your unmutated suite isn't green.</li>
+<li><strong>Reload strategy only</strong> (<code>--strategy redefine</code> is rejected on this path) and
+<strong>serial</strong> (<code>--jobs</code> is forced to 1). For apps on Ruby ≥ 3.4, <code>--daemon</code> gives
+safe parallelism instead (see <a href="#faster-parallel-safe-rails-the---daemon-backend">the daemon backend</a>).</li>
+</ul>
+<h2 id="Suppressing_equivalent_mutants">Suppressing equivalent mutants</h2>
+<p>Some mutants are equivalent (behaviour-identical) and survive forever — keeping a
+file off 100%. Suppress them so the score and <code>--threshold</code> gate stay meaningful:</p>
+<ul>
+<li><strong>Inline:</strong> <code>some_line # mutineer:disable-line</code> (or scope it: <code># mutineer:disable-line comparison</code>).</li>
+<li><strong>Config:</strong> a <code>.mutineer.yml</code> <code>ignore:</code> list of stable mutant ids. Each survivor's
+<code>id</code> is printed in the JSON report, so copy it straight into <code>ignore:</code>.</li>
+</ul>
+<p>Suppressed mutants are excluded from the score (so 100% becomes reachable).</p>
+<h2 id="CI_gating">CI gating</h2>
+<p>Store a JSON run as a baseline, then fail the build only when a PR makes things
+worse:</p>
+<pre class="code sh"><code class="sh">mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
+</code></pre>
+<p><code>--baseline</code> reports which survivors are new (by stable id) and any score drop. It
+combines with <code>--threshold</code> (the worse of the two sets the exit code). Pass a
+directory (or several sources) to audit a whole layer in one boot — tests are
+auto-paired by convention and the report breaks down per source.</p>
+<h3 id="GitHub_Action">GitHub Action</h3>
+<p>This repo ships a composite action (<code>action.yml</code>) that wraps the CLI for CI:</p>
+<pre class="code yaml"><code class="yaml">- uses: actions/checkout@v4
+- uses: ruby/setup-ruby@v1
+  with: { ruby-version: &quot;3.4&quot;, bundler-cache: true }
+- uses: davidteren/mutineer@v1
+  with:
+    sources: app/
+    baseline: .mutineer/baseline.json
+    threshold: &quot;90&quot;
+</code></pre>
+<p><strong>Default change:</strong> on <code>pull_request</code> events (not <code>pull_request_target</code>) the
+action scopes the run to the PR's changed lines, diffing against the PR's exact
+base commit (fetched by the action itself when the checkout is shallow; falls
+back to the base branch tip). Pass <code>since: none</code> for a full scan, or an
+explicit <code>since:</code> ref (which needs <code>fetch-depth: 0</code> on checkout).</p>
+<p>With the default JSON format the action also:</p>
+<ul>
+<li>writes a score summary to the job's step summary;</li>
+<li>annotates surviving mutants on the PR diff, up to 50 (<code>error</code> level when the
+gate failed, <code>warning</code> when it passed);</li>
+<li>exposes the report path via the <code>report</code> output for later steps (with
+<code>format: human</code>/<code>html</code> this needs the <code>output</code> input).</li>
+</ul>
+<p>The CLI prints a progress line to the log at every 10% of the run, whatever
+the format.</p>
+<h2 id="For_AI_agents___pipelines">For AI agents &amp; pipelines</h2>
+<p>Mutineer is built for programmatic use — versioned JSON, stable mutant ids,
+structured exit codes, and diff-scoped runs. See:</p>
+<ul>
+<li><strong>AI agents &amp; CI recipes</strong> — the agent inner-loop and CI-gate recipes (and how
+to avoid infinite loops on equivalent mutants):
+<a href="https://davidteren.github.io/mutineer/agentic-coding.html">rendered</a> ·
+<a href="docs/agentic-coding.md">source</a></li>
+<li><strong>JSON schema reference</strong> — the <code>--format json</code> schema and its versioning
+contract:
+<a href="https://davidteren.github.io/mutineer/json-schema.html">rendered</a> ·
+<a href="docs/json-schema.md">source</a></li>
+<li><strong>Ruby API (YARD)</strong> — class reference for the shipped gem:
+<a href="https://davidteren.github.io/mutineer/api/"><a href="https://davidteren.github.io/mutineer/api/">https://davidteren.github.io/mutineer/api/</a></a></li>
+</ul>
+<h2 id="Configuration">Configuration</h2>
+<p>Mutineer reads an optional <code>.mutineer.yml</code> from the project root (nearest one,
+walking up). CLI flags override config; config overrides defaults.</p>
+<p>Sources are positional CLI arguments and test files come from <code>--test</code>; the
+config file accepts these keys: <code>operators</code>, <code>threshold</code>, <code>jobs</code>, <code>only</code>,
+<code>require</code> (extra files to load before mutating), <code>boot</code>/<code>rails</code>, and
+<code>test_command</code> (the external-runtime suite command — see
+<a href="#apps-on-ruby--34">Apps on Ruby &lt; 3.4</a>).</p>
+<pre class="code yaml"><code class="yaml"># .mutineer.yml
+operators: [arithmetic, comparison, boolean_connector, boolean_literal, statement_removal]
+threshold: 90
+jobs: 4
+require:
+  - config/environment
+</code></pre>
+<p>Coverage results are cached in <code>.mutineer/coverage.json</code> (digest-keyed; rebuilt
+automatically when sources change). Add <code>.mutineer/</code> to your <code>.gitignore</code>.</p>
+<h2 id="License">License</h2>
+<p>MIT — see <a href="LICENSE">LICENSE</a>.</p></div></div>
+
+      <div id="footer">
+  Generated on DATE by
+  <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
+  0.9.45 (ruby-3.4.10).
+</div>
+
+    </div>
+  </body>
+</html>

@@ -21,6 +21,8 @@ module MutineerSiteDocs
       "the agent inner loop, CI regression gating, the GitHub Action, and equivalent-mutant suppression.", "0.8", true),
     Entry.new("/json-schema.html", :docs, "JSON report schema",
       "the versioned JSON contract — `summary`, `survivors[]`, `ignored[]`, and `baseline` blocks.", "0.8", true),
+    Entry.new("/api/", :docs, "Ruby API (YARD)",
+      "class reference generated from this checkout — tracks the shipped gem.", "0.7", true),
     Entry.new("/sample-report.html", :docs, "Sample HTML report",
       "example report data displayed in the website theme; the CLI’s self-contained HTML output has a different presentation.", "0.5", true),
     Entry.new("/llms-full.txt", :optional, "Full docs as one file",

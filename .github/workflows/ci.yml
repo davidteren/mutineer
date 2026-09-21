@@ -38,6 +38,8 @@ jobs:
           bundler-cache: true
       - name: Enforce 100% YARD documentation
         run: bundle exec rake yard:strict
+      - name: Published API docs match this checkout
+        run: bundle exec rake yard:pages:check
 
   rails-integration:
     name: rails dogfood (ruby 3.4)

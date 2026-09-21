@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>
+  Module: Mutineer::DaemonBackend
+  
+    &mdash; Documentation by YARD 0.9.45
+  
+</title>
+
+  <link rel="stylesheet" href="../css/style.css" type="text/css">
+
+  <link rel="stylesheet" href="../css/common.css" type="text/css">
+
+<script type="text/javascript">
+  pathId = "Mutineer::DaemonBackend";
+  relpath = '../';
+</script>
+
+
+  <script type="text/javascript" charset="utf-8" src="../js/jquery.js"></script>
+
+  <script type="text/javascript" charset="utf-8" src="../js/app.js"></script>
+
+
+  </head>
+  <body>
+    <div id="main_progress" aria-hidden="true"></div>
+
+    <div class="nav_wrap">
+      <iframe id="nav" src="../class_list.html?1"></iframe>
+      <div id="resizer"></div>
+    </div>
+
+    <div id="main" tabindex="-1">
+      <div id="header">
+        <div id="menu">
+  
+    <a href="../_index.html">Index (D)</a> &raquo;
+    <span class='title'><span class='object_link'><a href="../Mutineer.html" title="Mutineer (module)">Mutineer</a></span></span>
+     &raquo; 
+    <span class="title">DaemonBackend</span>
+  
+</div>
+
+        <div id="search">
+  
+    <a class="full_list_link" id="class_list_link"
+        href="../class_list.html">
+
+        <svg width="24" height="24">
+          <rect x="0" y="4" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="12" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="20" width="24" height="4" rx="1" ry="1"></rect>
+        </svg>
+    </a>
+  
+</div>
+        <div class="clear"></div>
+      </div>
+
+      <div id="content"><h1>Module: Mutineer::DaemonBackend
+  
+  
+  
+</h1>
+<div class="box_info">
+  
+
+  
+  
+  
+  
+  
+
+  
+
+  
+  <dl>
+    <dt>Defined in:</dt>
+    <dd>lib/mutineer/daemon_backend.rb
+</dd>
+  </dl>
+  
+</div>
+
+<h2>Overview</h2><div class="docstring">
+  <div class="discussion">
+    <p>Daemon execution backend. Boots the app ONCE in a persistent subprocess under
+the app's own bundle and forks per mutant, so a Rails run pays the boot cost
+once instead of per mutant. Tool-side this only discovers jobs and builds the
+ready-to-<code>load</code> payload (Prism); the daemon needs no Prism/mutineer.</p>
+<p>When jobs &gt; 1 each worker runs against its OWN database, which is what makes
+<code>--jobs N</code> safe under Rails (#26): parallel verdicts are identical to serial.</p>
+<p>Job collection, <code>--since</code> filtering and coverage selection stay on <span class='object_link'><a href="Runner.html" title="Mutineer::Runner (class)">Runner</a></span> and
+are called from here, so the daemon path can never drift from the in-process
+path on which mutants run or which tests narrow a mutant (score parity).</p>
+<p>Unlike <span class='object_link'><a href="ExternalBackend.html" title="Mutineer::ExternalBackend (module)">ExternalBackend</a></span>, which is a leaf <span class='object_link'><a href="Runner.html" title="Mutineer::Runner (class)">Runner</a></span> calls into, this module owns
+its orchestration and calls back for that shared vocabulary.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+  
+    <h2>
+      Constant Summary
+      <small><a href="#" class="constants_summary_toggle">collapse</a></small>
+    </h2>
+
+    <dl class="constants">
+      
+        <dt id="DEFAULT_TIMEOUT-constant" class="">DEFAULT_TIMEOUT =
+          <div class="docstring">
+  <div class="discussion">
+    <p>Default per-mutant timeout on the daemon path (seconds), overridden by
+config.daemon_timeout. Coverage narrowing usually keeps each job short; this
+still covers a slow suite or full-suite fallback when the map is unavailable.
+Named like its in-process counterpart <span class='object_link'><a href="Isolation.html#DEFAULT_TIMEOUT-constant" title="Mutineer::Isolation::DEFAULT_TIMEOUT (constant)">Isolation::DEFAULT_TIMEOUT</a></span>, not like
+<span class='object_link'><a href="ExternalBackend.html#SMOKE_TIMEOUT-constant" title="Mutineer::ExternalBackend::SMOKE_TIMEOUT (constant)">ExternalBackend::SMOKE_TIMEOUT</a></span>, which bounds a different thing.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+        </dt>
+        <dd><pre class="code"><span class='int'>60</span></pre></dd>
+      
+        <dt id="DAEMON_TEMP_GLOB-constant" class="">DAEMON_TEMP_GLOB =
+          <div class="docstring">
+  <div class="discussion">
+    <p>The daemon's per-mutant tempfile, written into the source dir so
+require_relative resolves. Kept in step with DaemonServer#sweep_temps.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+        </dt>
+        <dd><pre class="code"><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>mutineer_daemon*.rb</span><span class='tstring_end'>&quot;</span></span></pre></dd>
+      
+    </dl>
+  
+
+
+
+
+
+
+
+  
+    <h2>
+      Class Method Summary
+      <small><a href="#" class="summary_toggle">collapse</a></small>
+    </h2>
+
+    <ul class="summary">
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#boot_config-class_method" title="boot_config (class method)">.<strong>boot_config</strong>(config, abs_tests, coverage: false)  &#x21d2; Hash </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>The boot config the daemon needs to boot the app once: where to boot, the test load roots (so <code>require &quot;test_helper&quot;</code> resolves in every fork), framework, and whether this is Rails.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#build_coverage_map-class_method" title="build_coverage_map (class method)">.<strong>build_coverage_map</strong>(config, abs_tests)  &#x21d2; Mutineer::CoverageMap<sup>?</sup> </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Build the coverage map via a short-lived daemon (boots the app once, captures per-test coverage app-side, ships the map back).</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#execute-class_method" title="execute (class method)">.<strong>execute</strong>(config, operator_classes)  &#x21d2; Array(Mutineer::AggregateResult, Hash&lt;String,String&gt;) </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Full daemon run: collect jobs, build the coverage map once, then execute serially or across N worker daemons.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#job_result-class_method" title="job_result (class method)">.<strong>job_result</strong>(job, req_id, client, worker, config, coverage_map, abs_tests, source_map)  &#x21d2; Mutineer::Result </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Build the payload for one job, run it on the given daemon/worker, and attach the subject/mutation/id.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#result_for-class_method" title="result_for (class method)">.<strong>result_for</strong>(verdict)  &#x21d2; Mutineer::Result </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Map a daemon verdict string to a Result.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#run_parallel-class_method" title="run_parallel (class method)">.<strong>run_parallel</strong>(jobs, worker_count, config, abs_tests, coverage_map, source_map)  &#x21d2; Array&lt;Mutineer::Result&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Parallel path: N daemon handles, each pinned to its own worker slot (own DB).</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#run_serial-class_method" title="run_serial (class method)">.<strong>run_serial</strong>(jobs, config, abs_tests, coverage_map, source_map)  &#x21d2; Array&lt;Mutineer::Result&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Serial path: one daemon (worker 0), one mutant at a time.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#schema_path-class_method" title="schema_path (class method)">.<strong>schema_path</strong>(config)  &#x21d2; String<sup>?</sup> </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Absolute path to the app's <code>db/schema.rb</code> if it exists, else nil.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#warn_coverage_fallback-class_method" title="warn_coverage_fallback (class method)">.<strong>warn_coverage_fallback</strong>(reason = &quot;unknown&quot;)  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'><p>Stderr note when daemon coverage is unavailable (full --test set per mutant).</p></div></span>
+  
+</li>
+
+      
+    </ul>
+    
+  
+
+
+
+  <div id="class_method_details" class="method_details_list">
+    <h2>Class Method Details</h2>
+
+    
+      <div class="method_details first">
+  <h3 class="signature first" id="boot_config-class_method">
+  
+    .<strong>boot_config</strong>(config, abs_tests, coverage: false)  &#x21d2; <tt>Hash</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>The boot config the daemon needs to boot the app once: where to boot, the test
+load roots (so <code>require &quot;test_helper&quot;</code> resolves in every fork), framework, and
+whether this is Rails.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>config</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Config.html" title="Mutineer::Config (class)">Mutineer::Config</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the run config.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>abs_tests</span>
+      
+      
+        <span class='type'>(<tt>Array&lt;String&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>absolute --test paths.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>coverage</span>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>false</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>whether this daemon builds the coverage map.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Hash</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the boot config shipped to the daemon.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+276
+277
+278
+279
+280
+281
+282
+283
+284
+285
+286
+287
+288
+289
+290
+291
+292
+293
+294
+295</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_backend.rb', line 276</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_boot_config'>boot_config</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='comma'>,</span> <span class='label'>coverage:</span> <span class='kw'>false</span><span class='rparen'>)</span>
+  <span class='lbrace'>{</span>
+    <span class='label'>project_root:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_project_root'>project_root</span><span class='comma'>,</span>
+    <span class='label'>boot:</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_boot'>boot</span> <span class='op'>||</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>config/environment</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span><span class='comma'>,</span>
+    <span class='label'>load_paths:</span> <span class='const'><span class='object_link'><a href="Runner.html" title="Mutineer::Runner (class)">Runner</a></span></span><span class='period'>.</span><span class='id identifier rubyid_test_load_roots'><span class='object_link'><a href="Runner.html#test_load_roots-class_method" title="Mutineer::Runner.test_load_roots (method)">test_load_roots</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='rparen'>)</span><span class='comma'>,</span>
+    <span class='label'>source_dirs:</span> <span class='const'><span class='object_link'><a href="Runner.html" title="Mutineer::Runner (class)">Runner</a></span></span><span class='period'>.</span><span class='id identifier rubyid_source_dirs'><span class='object_link'><a href="Runner.html#source_dirs-class_method" title="Mutineer::Runner.source_dirs (method)">source_dirs</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='rparen'>)</span><span class='comma'>,</span> <span class='comment'># so the daemon can sweep orphan mutant temps
+</span>    <span class='label'>framework:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_framework'>framework</span><span class='comma'>,</span>
+    <span class='label'>rails:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_rails'>rails</span><span class='comma'>,</span>
+    <span class='comment'># Schema for per-worker DB isolation. Sent when present; the daemon
+</span>    <span class='comment'># skips worker-DB schema loading if the path is absent (e.g. structure.sql apps).
+</span>    <span class='label'>schema:</span> <span class='id identifier rubyid_schema_path'>schema_path</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='rparen'>)</span><span class='comma'>,</span>
+    <span class='comment'># Coverage narrowing. Only the short-lived map-building daemon starts
+</span>    <span class='comment'># Coverage (before boot); worker daemons boot with it OFF (no wasted
+</span>    <span class='comment'># instrumentation/memory across every mutant fork). `sources`/`tests` are the
+</span>    <span class='comment'># map-build inputs.
+</span>    <span class='label'>coverage:</span> <span class='id identifier rubyid_coverage'>coverage</span><span class='comma'>,</span>
+    <span class='label'>sources:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_sources'>sources</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_s'>s</span><span class='op'>|</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='id identifier rubyid_s'>s</span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span> <span class='rbrace'>}</span><span class='comma'>,</span>
+    <span class='label'>tests:</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span>
+  <span class='rbrace'>}</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="build_coverage_map-class_method">
+  
+    .<strong>build_coverage_map</strong>(config, abs_tests)  &#x21d2; <tt><span class='object_link'><a href="CoverageMap.html" title="Mutineer::CoverageMap (class)">Mutineer::CoverageMap</a></span></tt><sup>?</sup> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Build the coverage map via a short-lived daemon (boots the app once, captures
+per-test coverage app-side, ships the map back). Returns a query-only
+CoverageMap, or nil when the build fails / returns empty. Callers then run the
+full --test set. Coverage-build IPC has no wall-clock (same limitation as
+in-process build_via_fork). A normal nonempty map scores like in-process;
+nil falls back to the full suite (more testing, not comparable).</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>config</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Config.html" title="Mutineer::Config (class)">Mutineer::Config</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the run config.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>abs_tests</span>
+      
+      
+        <span class='type'>(<tt>Array&lt;String&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>absolute --test paths.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="CoverageMap.html" title="Mutineer::CoverageMap (class)">Mutineer::CoverageMap</a></span></tt>, <tt>nil</tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+100
+101
+102
+103
+104
+105
+106
+107
+108
+109
+110
+111
+112
+113
+114
+115
+116
+117
+118
+119
+120
+121
+122
+123
+124
+125
+126
+127
+128
+129
+130</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_backend.rb', line 100</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_build_coverage_map'>build_coverage_map</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_client'>client</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="DaemonClient.html" title="Mutineer::DaemonClient (class)">DaemonClient</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'><span class='object_link'><a href="DaemonClient.html#initialize-instance_method" title="Mutineer::DaemonClient#initialize (method)">new</a></span></span><span class='lparen'>(</span><span class='label'>boot:</span> <span class='id identifier rubyid_boot_config'>boot_config</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='comma'>,</span> <span class='label'>coverage:</span> <span class='kw'>true</span><span class='rparen'>)</span><span class='comma'>,</span>
+                            <span class='label'>app_root:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_start'><span class='object_link'><a href="DaemonClient.html#start-instance_method" title="Mutineer::DaemonClient#start (method)">start</a></span></span>
+  <span class='id identifier rubyid_data'>data</span> <span class='op'>=</span> <span class='kw'>begin</span>
+    <span class='id identifier rubyid_client'>client</span><span class='period'>.</span><span class='id identifier rubyid_coverage'>coverage</span>
+  <span class='kw'>ensure</span>
+    <span class='id identifier rubyid_client'>client</span><span class='period'>.</span><span class='id identifier rubyid_quit'>quit</span>
+  <span class='kw'>end</span>
+  <span class='comment'># A red unmutated suite must abort, even when the shipped map is empty.
+</span>  <span class='comment'># Falling back to the full --test set would treat those failures as kills.
+</span>  <span class='kw'>if</span> <span class='id identifier rubyid_data'>data</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Hash</span><span class='rparen'>)</span> <span class='op'>&amp;&amp;</span> <span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_data'>data</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>failed_clean_tests</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_any?'>any?</span>
+    <span class='const'><span class='object_link'><a href="Runner.html" title="Mutineer::Runner (class)">Runner</a></span></span><span class='period'>.</span><span class='id identifier rubyid_abort_if_unclean!'><span class='object_link'><a href="Runner.html#abort_if_unclean!-class_method" title="Mutineer::Runner.abort_if_unclean! (method)">abort_if_unclean!</a></span></span><span class='lparen'>(</span><span class='const'><span class='object_link'><a href="CoverageMap.html" title="Mutineer::CoverageMap (class)">CoverageMap</a></span></span><span class='period'>.</span><span class='id identifier rubyid_from_data'><span class='object_link'><a href="CoverageMap.html#from_data-class_method" title="Mutineer::CoverageMap.from_data (method)">from_data</a></span></span><span class='lparen'>(</span>
+      <span class='label'>map:</span> <span class='id identifier rubyid_data'>data</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>map</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='lbrace'>{</span><span class='rbrace'>}</span><span class='comma'>,</span>
+      <span class='label'>failed_test_files:</span> <span class='id identifier rubyid_data'>data</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>failed_test_files</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='lbracket'>[</span><span class='rbracket'>]</span><span class='comma'>,</span>
+      <span class='label'>project_root:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_project_root'>project_root</span><span class='comma'>,</span>
+      <span class='label'>failed_clean_tests:</span> <span class='id identifier rubyid_data'>data</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>failed_clean_tests</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span>
+    <span class='rparen'>)</span><span class='rparen'>)</span>
+  <span class='kw'>end</span>
+
+  <span class='kw'>unless</span> <span class='id identifier rubyid_data'>data</span> <span class='op'>&amp;&amp;</span> <span class='op'>!</span><span class='lparen'>(</span><span class='id identifier rubyid_data'>data</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>map</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='lbrace'>{</span><span class='rbrace'>}</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
+    <span class='id identifier rubyid_reason'>reason</span> <span class='op'>=</span> <span class='id identifier rubyid_data'>data</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Hash</span><span class='rparen'>)</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_data'>data</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>error</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span> <span class='op'>?</span> <span class='id identifier rubyid_data'>data</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>error</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span> <span class='op'>:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>empty map</span><span class='tstring_end'>&quot;</span></span>
+    <span class='id identifier rubyid_warn_coverage_fallback'>warn_coverage_fallback</span><span class='lparen'>(</span><span class='id identifier rubyid_reason'>reason</span><span class='rparen'>)</span>
+    <span class='kw'>return</span> <span class='kw'>nil</span>
+  <span class='kw'>end</span>
+
+  <span class='const'><span class='object_link'><a href="CoverageMap.html" title="Mutineer::CoverageMap (class)">CoverageMap</a></span></span><span class='period'>.</span><span class='id identifier rubyid_from_data'><span class='object_link'><a href="CoverageMap.html#from_data-class_method" title="Mutineer::CoverageMap.from_data (method)">from_data</a></span></span><span class='lparen'>(</span><span class='label'>map:</span> <span class='id identifier rubyid_data'>data</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>map</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='label'>failed_test_files:</span> <span class='id identifier rubyid_data'>data</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>failed_test_files</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='lbracket'>[</span><span class='rbracket'>]</span><span class='comma'>,</span>
+                        <span class='label'>project_root:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span>
+<span class='kw'>rescue</span> <span class='const'><span class='object_link'><a href="DaemonBootError.html" title="Mutineer::DaemonBootError (class)">DaemonBootError</a></span></span> <span class='op'>=&gt;</span> <span class='id identifier rubyid_e'>e</span>
+  <span class='id identifier rubyid_warn_coverage_fallback'>warn_coverage_fallback</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_e'>e</span><span class='period'>.</span><span class='id identifier rubyid_class'>class</span><span class='embexpr_end'>}</span><span class='tstring_content'>: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_e'>e</span><span class='period'>.</span><span class='id identifier rubyid_message'>message</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+  <span class='kw'>nil</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="execute-class_method">
+  
+    .<strong>execute</strong>(config, operator_classes)  &#x21d2; <tt>Array(<span class='object_link'><a href="AggregateResult.html" title="Mutineer::AggregateResult (class)">Mutineer::AggregateResult</a></span>, Hash&lt;String,String&gt;)</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Full daemon run: collect jobs, build the coverage map once, then execute
+serially or across N worker daemons. Fail-fast forces serial so the survivor
+set matches jobs 1.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>config</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Config.html" title="Mutineer::Config (class)">Mutineer::Config</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>run configuration (daemon set).</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>operator_classes</span>
+      
+      
+        <span class='type'>(<tt>Array&lt;Class&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>resolved operators.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array(<span class='object_link'><a href="AggregateResult.html" title="Mutineer::AggregateResult (class)">Mutineer::AggregateResult</a></span>, Hash&lt;String,String&gt;)</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>aggregate and source map.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_backend.rb', line 47</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_execute'>execute</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_operator_classes'>operator_classes</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_jobs'>jobs</span><span class='comma'>,</span> <span class='id identifier rubyid_ignored_results'>ignored_results</span><span class='comma'>,</span> <span class='id identifier rubyid_source_map'>source_map</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="Runner.html" title="Mutineer::Runner (class)">Runner</a></span></span><span class='period'>.</span><span class='id identifier rubyid_collect_jobs'><span class='object_link'><a href="Runner.html#collect_jobs-class_method" title="Mutineer::Runner.collect_jobs (method)">collect_jobs</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_operator_classes'>operator_classes</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_jobs'>jobs</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="Runner.html" title="Mutineer::Runner (class)">Runner</a></span></span><span class='period'>.</span><span class='id identifier rubyid_filter_since'><span class='object_link'><a href="Runner.html#filter_since-class_method" title="Mutineer::Runner.filter_since (method)">filter_since</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_jobs'>jobs</span><span class='comma'>,</span> <span class='id identifier rubyid_source_map'>source_map</span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='rparen'>)</span> <span class='kw'>if</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_since'>since</span>
+  <span class='id identifier rubyid_abs_tests'>abs_tests</span> <span class='op'>=</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_tests'>tests</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_t'>t</span><span class='op'>|</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='id identifier rubyid_t'>t</span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+
+  <span class='comment'># Nothing to mutate (`--since` matched no changed line, or every mutant is
+</span>  <span class='comment'># suppressed). Return before booting anything: the coverage daemon and the
+</span>  <span class='comment'># worker daemons below each boot the whole app, and README documents
+</span>  <span class='comment'># `--since origin/&lt;base&gt;` for PR CI, where a docs-only PR is routine.
+</span>  <span class='kw'>if</span> <span class='id identifier rubyid_jobs'>jobs</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
+    <span class='comment'># The daemon sweeps orphaned temps at boot and nothing boots here, so sweep
+</span>    <span class='comment'># tool-side. A file a hard-killed run left in app/models breaks the app&#39;s own
+</span>    <span class='comment'># Zeitwerk boot, not just Mutineer&#39;s next run.
+</span>    <span class='const'><span class='object_link'><a href="Runner.html" title="Mutineer::Runner (class)">Runner</a></span></span><span class='period'>.</span><span class='id identifier rubyid_sweep_orphans'><span class='object_link'><a href="Runner.html#sweep_orphans-class_method" title="Mutineer::Runner.sweep_orphans (method)">sweep_orphans</a></span></span><span class='lparen'>(</span><span class='const'><span class='object_link'><a href="Runner.html" title="Mutineer::Runner (class)">Runner</a></span></span><span class='period'>.</span><span class='id identifier rubyid_source_dirs'><span class='object_link'><a href="Runner.html#source_dirs-class_method" title="Mutineer::Runner.source_dirs (method)">source_dirs</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='rparen'>)</span><span class='comma'>,</span> <span class='const'><span class='object_link'><a href="#DAEMON_TEMP_GLOB-constant" title="Mutineer::DaemonBackend::DAEMON_TEMP_GLOB (constant)">DAEMON_TEMP_GLOB</a></span></span><span class='rparen'>)</span>
+    <span class='kw'>return</span> <span class='lbracket'>[</span><span class='const'><span class='object_link'><a href="AggregateResult.html" title="Mutineer::AggregateResult (class)">AggregateResult</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'><span class='object_link'><a href="AggregateResult.html#initialize-instance_method" title="Mutineer::AggregateResult#initialize (method)">new</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_ignored_results'>ignored_results</span><span class='rparen'>)</span><span class='comma'>,</span> <span class='id identifier rubyid_source_map'>source_map</span><span class='rbracket'>]</span>
+  <span class='kw'>end</span>
+
+  <span class='comment'># Build the coverage map once (app-side). nil when the build fails: runners
+</span>  <span class='comment'># fall back to the full --test set (and emit a stderr warning) rather than
+</span>  <span class='comment'># mis-scoring everything as no_coverage.
+</span>  <span class='id identifier rubyid_coverage_map'>coverage_map</span> <span class='op'>=</span> <span class='id identifier rubyid_build_coverage_map'>build_coverage_map</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='rparen'>)</span>
+
+  <span class='comment'># Worker count = resolved --jobs, capped at the job count (no idle daemons).
+</span>  <span class='comment'># &gt;1 → N concurrent daemon handles, each on its OWN worker DB (N-handles, the
+</span>  <span class='comment'># spike-proven shape). 1 → the serial single-daemon path. --fail-fast forces
+</span>  <span class='comment'># serial: parallel&#39;s stop flag fires on the first survivor by WALL-CLOCK, not
+</span>  <span class='comment'># input index, so the verdict set would diverge from serial (a different,
+</span>  <span class='comment'># non-deterministic survivor set/score). The &quot;identical to --jobs 1&quot; guarantee
+</span>  <span class='comment'># below only holds when fail-fast cannot race.
+</span>  <span class='id identifier rubyid_worker_count'>worker_count</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_jobs'>jobs</span> <span class='op'>||</span> <span class='int'>1</span><span class='comma'>,</span> <span class='int'>1</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_max'>max</span>
+  <span class='id identifier rubyid_worker_count'>worker_count</span> <span class='op'>=</span> <span class='int'>1</span> <span class='kw'>if</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_fail_fast'>fail_fast</span>
+  <span class='id identifier rubyid_worker_count'>worker_count</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='id identifier rubyid_worker_count'>worker_count</span><span class='comma'>,</span> <span class='id identifier rubyid_jobs'>jobs</span><span class='period'>.</span><span class='id identifier rubyid_size'>size</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_min'>min</span>
+
+  <span class='id identifier rubyid_results'>results</span> <span class='op'>=</span>
+    <span class='kw'>if</span> <span class='id identifier rubyid_worker_count'>worker_count</span> <span class='op'>&gt;</span> <span class='int'>1</span>
+      <span class='id identifier rubyid_run_parallel'>run_parallel</span><span class='lparen'>(</span><span class='id identifier rubyid_jobs'>jobs</span><span class='comma'>,</span> <span class='id identifier rubyid_worker_count'>worker_count</span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='comma'>,</span> <span class='id identifier rubyid_coverage_map'>coverage_map</span><span class='comma'>,</span> <span class='id identifier rubyid_source_map'>source_map</span><span class='rparen'>)</span>
+    <span class='kw'>else</span>
+      <span class='id identifier rubyid_run_serial'>run_serial</span><span class='lparen'>(</span><span class='id identifier rubyid_jobs'>jobs</span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='comma'>,</span> <span class='id identifier rubyid_coverage_map'>coverage_map</span><span class='comma'>,</span> <span class='id identifier rubyid_source_map'>source_map</span><span class='rparen'>)</span>
+    <span class='kw'>end</span>
+
+  <span class='lbracket'>[</span><span class='const'><span class='object_link'><a href="AggregateResult.html" title="Mutineer::AggregateResult (class)">AggregateResult</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'><span class='object_link'><a href="AggregateResult.html#initialize-instance_method" title="Mutineer::AggregateResult#initialize (method)">new</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_results'>results</span> <span class='op'>+</span> <span class='id identifier rubyid_ignored_results'>ignored_results</span><span class='rparen'>)</span><span class='comma'>,</span> <span class='id identifier rubyid_source_map'>source_map</span><span class='rbracket'>]</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="job_result-class_method">
+  
+    .<strong>job_result</strong>(job, req_id, client, worker, config, coverage_map, abs_tests, source_map)  &#x21d2; <tt><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span></tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Build the payload for one job, run it on the given daemon/worker, and attach
+the subject/mutation/id. Shared body of both daemon paths, so <code>--jobs 1</code> and
+<code>--jobs N</code> classify an identical fault identically.</p>
+<p>Error model, in one place because both paths call this: a crash while running
+ONE mutant is <span class='object_link'><a href="DaemonClient.html" title="Mutineer::DaemonClient (class)">Mutineer::DaemonClient</a></span>'s business: it respawns and answers <code>&quot;error&quot;</code>.
+Nothing is caught here on purpose — anything reaching this far is either
+<span class='object_link'><a href="DaemonBootError.html" title="Mutineer::DaemonBootError (class)">Mutineer::DaemonBootError</a></span>, which must end the run, or a defect, which must stay visible.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>job</span>
+      
+      
+        <span class='type'>(<tt>Array(<span class='object_link'><a href="Subject.html" title="Mutineer::Subject (class)">Mutineer::Subject</a></span>, <span class='object_link'><a href="Mutation.html" title="Mutineer::Mutation (class)">Mutineer::Mutation</a></span>, String)</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the work item.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>req_id</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>request id (echoed back for IPC ordering safety).</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>client</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="DaemonClient.html" title="Mutineer::DaemonClient (class)">Mutineer::DaemonClient</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the daemon handle to run on.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>worker</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the worker slot (→ worker DB) this daemon routes to.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the decorated result.</p></div>
+      
+    </li>
+  
+</ul>
+<p class="tag_title">Raises:</p>
+<ul class="raise">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="DaemonBootError.html" title="Mutineer::DaemonBootError (class)">Mutineer::DaemonBootError</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>when the daemon has given up; ends the run.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+241
+242
+243
+244
+245
+246
+247
+248
+249
+250
+251
+252
+253
+254
+255
+256
+257
+258
+259
+260
+261
+262
+263
+264
+265
+266</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_backend.rb', line 241</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_job_result'>job_result</span><span class='lparen'>(</span><span class='id identifier rubyid_job'>job</span><span class='comma'>,</span> <span class='id identifier rubyid_req_id'>req_id</span><span class='comma'>,</span> <span class='id identifier rubyid_client'>client</span><span class='comma'>,</span> <span class='id identifier rubyid_worker'>worker</span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_coverage_map'>coverage_map</span><span class='comma'>,</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='comma'>,</span> <span class='id identifier rubyid_source_map'>source_map</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_id'>id</span> <span class='op'>=</span> <span class='id identifier rubyid_job'>job</span>
+  <span class='id identifier rubyid_source'>source</span>  <span class='op'>=</span> <span class='id identifier rubyid_source_map'>source_map</span><span class='lbracket'>[</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span><span class='rbracket'>]</span>
+  <span class='id identifier rubyid_mutated'>mutated</span> <span class='op'>=</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_apply'>apply</span><span class='lparen'>(</span><span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span>
+  <span class='comment'># Skip an invalid mutant tool-side: never ship a payload that would fail to
+</span>  <span class='comment'># load and read as a false `killed`.
+</span>  <span class='comment'># Narrow to covering tests (shared with the in-process path via
+</span>  <span class='comment'># Runner.coverage_selection, so scores match). :verdict = no_coverage/uncapturable,
+</span>  <span class='comment'># no fork. No map (build failed) → run the full --test set (fallback, not
+</span>  <span class='comment'># narrowed).
+</span>  <span class='id identifier rubyid_sel'>sel</span> <span class='op'>=</span> <span class='id identifier rubyid_coverage_map'>coverage_map</span> <span class='op'>&amp;&amp;</span> <span class='const'><span class='object_link'><a href="Runner.html" title="Mutineer::Runner (class)">Runner</a></span></span><span class='period'>.</span><span class='id identifier rubyid_coverage_selection'><span class='object_link'><a href="Runner.html#coverage_selection-class_method" title="Mutineer::Runner.coverage_selection (method)">coverage_selection</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_coverage_map'>coverage_map</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_r'>r</span> <span class='op'>=</span>
+    <span class='kw'>if</span> <span class='const'><span class='object_link'><a href="Parser.html" title="Mutineer::Parser (class)">Parser</a></span></span><span class='period'>.</span><span class='id identifier rubyid_parse_string'><span class='object_link'><a href="Parser.html#parse_string-class_method" title="Mutineer::Parser.parse_string (method)">parse_string</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_mutated'>mutated</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_errors'>errors</span><span class='period'>.</span><span class='id identifier rubyid_any?'>any?</span>
+      <span class='const'><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Result</a></span></span><span class='period'>.</span><span class='id identifier rubyid_skipped'><span class='object_link'><a href="Result.html#skipped-class_method" title="Mutineer::Result.skipped (method)">skipped</a></span></span>
+    <span class='kw'>elsif</span> <span class='id identifier rubyid_sel'>sel</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_sel'>sel</span><span class='lbracket'>[</span><span class='int'>0</span><span class='rbracket'>]</span> <span class='op'>==</span> <span class='symbol'>:verdict</span>
+      <span class='id identifier rubyid_sel'>sel</span><span class='lbracket'>[</span><span class='int'>1</span><span class='rbracket'>]</span>
+    <span class='kw'>else</span>
+      <span class='id identifier rubyid_verdict'>verdict</span> <span class='op'>=</span> <span class='id identifier rubyid_client'>client</span><span class='period'>.</span><span class='id identifier rubyid_request'>request</span><span class='lparen'>(</span>
+        <span class='label'>id:</span> <span class='id identifier rubyid_req_id'>req_id</span><span class='comma'>,</span> <span class='label'>worker:</span> <span class='id identifier rubyid_worker'>worker</span><span class='comma'>,</span> <span class='label'>timeout:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_daemon_timeout'>daemon_timeout</span> <span class='op'>||</span> <span class='const'><span class='object_link'><a href="#DEFAULT_TIMEOUT-constant" title="Mutineer::DaemonBackend::DEFAULT_TIMEOUT (constant)">DEFAULT_TIMEOUT</a></span></span><span class='comma'>,</span>
+        <span class='label'>payload:</span> <span class='lbrace'>{</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>code</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='id identifier rubyid_mutated'>mutated</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>source_file</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span> <span class='rbrace'>}</span><span class='comma'>,</span>
+        <span class='label'>tests:</span> <span class='id identifier rubyid_sel'>sel</span> <span class='op'>?</span> <span class='id identifier rubyid_sel'>sel</span><span class='lbracket'>[</span><span class='int'>1</span><span class='rbracket'>]</span> <span class='op'>:</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span>
+      <span class='rparen'>)</span>
+      <span class='id identifier rubyid_result_for'>result_for</span><span class='lparen'>(</span><span class='id identifier rubyid_verdict'>verdict</span><span class='rparen'>)</span>
+    <span class='kw'>end</span>
+  <span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_with'>with</span><span class='lparen'>(</span><span class='label'>subject:</span> <span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='label'>mutation:</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='label'>id:</span> <span class='id identifier rubyid_id'>id</span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="result_for-class_method">
+  
+    .<strong>result_for</strong>(verdict)  &#x21d2; <tt><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span></tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Map a daemon verdict string to a Result. The daemon reports the four
+run-time states it can decide; pre-fork states (skipped/no_coverage/…) are
+resolved tool-side before a request is ever sent.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>verdict</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the daemon's verdict word.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the matching result.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+317
+318
+319
+320
+321
+322
+323
+324</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_backend.rb', line 317</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_result_for'>result_for</span><span class='lparen'>(</span><span class='id identifier rubyid_verdict'>verdict</span><span class='rparen'>)</span>
+  <span class='kw'>case</span> <span class='id identifier rubyid_verdict'>verdict</span>
+  <span class='kw'>when</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>survived</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>then</span> <span class='const'><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Result</a></span></span><span class='period'>.</span><span class='id identifier rubyid_survived'><span class='object_link'><a href="Result.html#survived-class_method" title="Mutineer::Result.survived (method)">survived</a></span></span>
+  <span class='kw'>when</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>killed</span><span class='tstring_end'>&quot;</span></span>   <span class='kw'>then</span> <span class='const'><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Result</a></span></span><span class='period'>.</span><span class='id identifier rubyid_killed'><span class='object_link'><a href="Result.html#killed-class_method" title="Mutineer::Result.killed (method)">killed</a></span></span>
+  <span class='kw'>when</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>timeout</span><span class='tstring_end'>&quot;</span></span>  <span class='kw'>then</span> <span class='const'><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Result</a></span></span><span class='period'>.</span><span class='id identifier rubyid_timeout'><span class='object_link'><a href="Result.html#timeout-class_method" title="Mutineer::Result.timeout (method)">timeout</a></span></span>
+  <span class='kw'>else</span> <span class='const'><span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Result</a></span></span><span class='period'>.</span><span class='id identifier rubyid_error'><span class='object_link'><a href="Result.html#error-class_method" title="Mutineer::Result.error (method)">error</a></span></span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>daemon verdict: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_verdict'>verdict</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+  <span class='kw'>end</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="run_parallel-class_method">
+  
+    .<strong>run_parallel</strong>(jobs, worker_count, config, abs_tests, coverage_map, source_map)  &#x21d2; <tt>Array&lt;<span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span>&gt;</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Parallel path: N daemon handles, each pinned to its own worker slot (own DB).
+A shared queue of job indices feeds N tool-side threads; results are placed by
+input index so the verdict set matches serial. Callers must not pass fail_fast
+here (<span class='object_link'><a href="#execute-class_method" title="Mutineer::DaemonBackend.execute (method)">execute</a></span> forces serial for fail-fast). Per-mutant crashes are classified
+in <span class='object_link'><a href="#job_result-class_method" title="Mutineer::DaemonBackend.job_result (method)">job_result</a></span>, shared with the serial path; a <span class='object_link'><a href="DaemonBootError.html" title="Mutineer::DaemonBootError (class)">Mutineer::DaemonBootError</a></span> ends the run
+here rather than scoring the remainder against a daemon that has given up.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array&lt;<span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span>&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>one result per input job, in input order.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+175
+176
+177
+178
+179
+180
+181
+182
+183
+184
+185
+186
+187
+188
+189
+190
+191
+192
+193
+194
+195
+196
+197
+198
+199
+200
+201
+202
+203
+204
+205
+206
+207
+208
+209
+210
+211
+212
+213
+214
+215
+216
+217
+218
+219
+220
+221
+222
+223</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_backend.rb', line 175</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_run_parallel'>run_parallel</span><span class='lparen'>(</span><span class='id identifier rubyid_jobs'>jobs</span><span class='comma'>,</span> <span class='id identifier rubyid_worker_count'>worker_count</span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='comma'>,</span> <span class='id identifier rubyid_coverage_map'>coverage_map</span><span class='comma'>,</span> <span class='id identifier rubyid_source_map'>source_map</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_results'>results</span>  <span class='op'>=</span> <span class='const'>Array</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span><span class='lparen'>(</span><span class='id identifier rubyid_jobs'>jobs</span><span class='period'>.</span><span class='id identifier rubyid_size'>size</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_progress'>progress</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="Progress.html" title="Mutineer::Progress (class)">Progress</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'><span class='object_link'><a href="Progress.html#initialize-instance_method" title="Mutineer::Progress#initialize (method)">new</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_jobs'>jobs</span><span class='period'>.</span><span class='id identifier rubyid_size'>size</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_queue'>queue</span>    <span class='op'>=</span> <span class='const'>Queue</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span>
+  <span class='id identifier rubyid_jobs'>jobs</span><span class='period'>.</span><span class='id identifier rubyid_each_index'>each_index</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_i'>i</span><span class='op'>|</span> <span class='id identifier rubyid_queue'>queue</span> <span class='op'>&lt;&lt;</span> <span class='id identifier rubyid_i'>i</span> <span class='rbrace'>}</span>
+
+  <span class='comment'># Built one at a time so a refused spawn part-way (EMFILE under a high --jobs)
+</span>  <span class='comment'># can still quit the daemons already up. Array.new would lose every reference.
+</span>  <span class='id identifier rubyid_clients'>clients</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
+  <span class='kw'>begin</span>
+    <span class='id identifier rubyid_worker_count'>worker_count</span><span class='period'>.</span><span class='id identifier rubyid_times'>times</span> <span class='kw'>do</span>
+      <span class='id identifier rubyid_clients'>clients</span> <span class='op'>&lt;&lt;</span> <span class='const'><span class='object_link'><a href="DaemonClient.html" title="Mutineer::DaemonClient (class)">DaemonClient</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'><span class='object_link'><a href="DaemonClient.html#initialize-instance_method" title="Mutineer::DaemonClient#initialize (method)">new</a></span></span><span class='lparen'>(</span><span class='label'>boot:</span> <span class='id identifier rubyid_boot_config'>boot_config</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='rparen'>)</span><span class='comma'>,</span>
+                                  <span class='label'>app_root:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_start'><span class='object_link'><a href="DaemonClient.html#start-instance_method" title="Mutineer::DaemonClient#start (method)">start</a></span></span>
+    <span class='kw'>end</span>
+  <span class='kw'>rescue</span> <span class='const'>StandardError</span>
+    <span class='id identifier rubyid_clients'>clients</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:quit</span><span class='rparen'>)</span>
+    <span class='id identifier rubyid_raise'>raise</span>
+  <span class='kw'>end</span>
+
+  <span class='id identifier rubyid_clients'>clients</span><span class='period'>.</span><span class='id identifier rubyid_each_with_index'>each_with_index</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_client'>client</span><span class='comma'>,</span> <span class='id identifier rubyid_worker'>worker</span><span class='op'>|</span>
+    <span class='const'>Thread</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span> <span class='kw'>do</span>
+      <span class='comment'># The abort below is re-raised by join and reported once there; without
+</span>      <span class='comment'># this Ruby also dumps the thread&#39;s backtrace, which the serial path never
+</span>      <span class='comment'># does. Same fault, same output, whatever --jobs is set to.
+</span>      <span class='const'>Thread</span><span class='period'>.</span><span class='id identifier rubyid_current'>current</span><span class='period'>.</span><span class='id identifier rubyid_report_on_exception'>report_on_exception</span> <span class='op'>=</span> <span class='kw'>false</span>
+      <span class='id identifier rubyid_loop'>loop</span> <span class='kw'>do</span>
+        <span class='id identifier rubyid_i'>i</span> <span class='op'>=</span> <span class='kw'>begin</span>
+          <span class='id identifier rubyid_queue'>queue</span><span class='period'>.</span><span class='id identifier rubyid_pop'>pop</span><span class='lparen'>(</span><span class='kw'>true</span><span class='rparen'>)</span>
+        <span class='kw'>rescue</span> <span class='const'>ThreadError</span>
+          <span class='kw'>break</span>
+        <span class='kw'>end</span>
+        <span class='id identifier rubyid_results'>results</span><span class='lbracket'>[</span><span class='id identifier rubyid_i'>i</span><span class='rbracket'>]</span> <span class='op'>=</span> <span class='id identifier rubyid_job_result'>job_result</span><span class='lparen'>(</span><span class='id identifier rubyid_jobs'>jobs</span><span class='lbracket'>[</span><span class='id identifier rubyid_i'>i</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_i'>i</span><span class='comma'>,</span> <span class='id identifier rubyid_client'>client</span><span class='comma'>,</span> <span class='id identifier rubyid_worker'>worker</span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_coverage_map'>coverage_map</span><span class='comma'>,</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='comma'>,</span> <span class='id identifier rubyid_source_map'>source_map</span><span class='rparen'>)</span>
+        <span class='id identifier rubyid_progress'>progress</span><span class='period'>.</span><span class='id identifier rubyid_tick'>tick</span>
+      <span class='kw'>end</span>
+    <span class='kw'>rescue</span> <span class='const'><span class='object_link'><a href="DaemonBootError.html" title="Mutineer::DaemonBootError (class)">DaemonBootError</a></span></span>
+      <span class='comment'># The daemon gave up for good. Stop feeding the other workers rather
+</span>      <span class='comment'># than letting them score the rest of the run against a dead client;
+</span>      <span class='comment'># Thread#join re-raises this and ends the run.
+</span>      <span class='id identifier rubyid_queue'>queue</span><span class='period'>.</span><span class='id identifier rubyid_clear'>clear</span>
+      <span class='id identifier rubyid_raise'>raise</span>
+    <span class='kw'>ensure</span>
+      <span class='id identifier rubyid_client'>client</span><span class='period'>.</span><span class='id identifier rubyid_quit'>quit</span>
+    <span class='kw'>end</span>
+  <span class='kw'>end</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:join</span><span class='rparen'>)</span>
+
+  <span class='comment'># Every job was popped by some worker and every pop assigns, so no slot can
+</span>  <span class='comment'># be nil here: an escaping exception aborts the run via join instead.
+</span>  <span class='id identifier rubyid_results'>results</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="run_serial-class_method">
+  
+    .<strong>run_serial</strong>(jobs, config, abs_tests, coverage_map, source_map)  &#x21d2; <tt>Array&lt;<span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span>&gt;</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Serial path: one daemon (worker 0), one mutant at a time. Honors --fail-fast
+(stop at the first survivor).</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array&lt;<span class='object_link'><a href="Result.html" title="Mutineer::Result (class)">Mutineer::Result</a></span>&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>results in input order.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+148
+149
+150
+151
+152
+153
+154
+155
+156
+157
+158
+159
+160
+161
+162
+163
+164</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_backend.rb', line 148</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_run_serial'>run_serial</span><span class='lparen'>(</span><span class='id identifier rubyid_jobs'>jobs</span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='comma'>,</span> <span class='id identifier rubyid_coverage_map'>coverage_map</span><span class='comma'>,</span> <span class='id identifier rubyid_source_map'>source_map</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_client'>client</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="DaemonClient.html" title="Mutineer::DaemonClient (class)">DaemonClient</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'><span class='object_link'><a href="DaemonClient.html#initialize-instance_method" title="Mutineer::DaemonClient#initialize (method)">new</a></span></span><span class='lparen'>(</span><span class='label'>boot:</span> <span class='id identifier rubyid_boot_config'>boot_config</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='rparen'>)</span><span class='comma'>,</span>
+                            <span class='label'>app_root:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_start'><span class='object_link'><a href="DaemonClient.html#start-instance_method" title="Mutineer::DaemonClient#start (method)">start</a></span></span>
+  <span class='id identifier rubyid_results'>results</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
+  <span class='id identifier rubyid_progress'>progress</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="Progress.html" title="Mutineer::Progress (class)">Progress</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'><span class='object_link'><a href="Progress.html#initialize-instance_method" title="Mutineer::Progress#initialize (method)">new</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_jobs'>jobs</span><span class='period'>.</span><span class='id identifier rubyid_size'>size</span><span class='rparen'>)</span>
+  <span class='kw'>begin</span>
+    <span class='id identifier rubyid_jobs'>jobs</span><span class='period'>.</span><span class='id identifier rubyid_each_with_index'>each_with_index</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_job'>job</span><span class='comma'>,</span> <span class='id identifier rubyid_i'>i</span><span class='op'>|</span>
+      <span class='id identifier rubyid_r'>r</span> <span class='op'>=</span> <span class='id identifier rubyid_job_result'>job_result</span><span class='lparen'>(</span><span class='id identifier rubyid_job'>job</span><span class='comma'>,</span> <span class='id identifier rubyid_i'>i</span><span class='comma'>,</span> <span class='id identifier rubyid_client'>client</span><span class='comma'>,</span> <span class='int'>0</span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='comma'>,</span> <span class='id identifier rubyid_coverage_map'>coverage_map</span><span class='comma'>,</span> <span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='comma'>,</span> <span class='id identifier rubyid_source_map'>source_map</span><span class='rparen'>)</span>
+      <span class='id identifier rubyid_results'>results</span> <span class='op'>&lt;&lt;</span> <span class='id identifier rubyid_r'>r</span>
+      <span class='id identifier rubyid_progress'>progress</span><span class='period'>.</span><span class='id identifier rubyid_tick'>tick</span>
+      <span class='kw'>break</span> <span class='kw'>if</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_fail_fast'>fail_fast</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_survived?'>survived?</span>
+    <span class='kw'>end</span>
+  <span class='kw'>ensure</span>
+    <span class='id identifier rubyid_client'>client</span><span class='period'>.</span><span class='id identifier rubyid_quit'>quit</span>
+  <span class='kw'>end</span>
+  <span class='id identifier rubyid_results'>results</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="schema_path-class_method">
+  
+    .<strong>schema_path</strong>(config)  &#x21d2; <tt>String</tt><sup>?</sup>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p>Absolute path to the app's <code>db/schema.rb</code> if it exists, else nil. Used by the
+daemon to schema-load each fork's isolated worker database. Only <code>schema.rb</code>
+is supported this pass; <code>structure.sql</code> apps get nil and fall back to
+whatever the worker DB already holds.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>config</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Config.html" title="Mutineer::Config (class)">Mutineer::Config</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the run config.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>String</tt>, <tt>nil</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>absolute schema path or nil.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+305
+306
+307
+308</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_backend.rb', line 305</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_schema_path'>schema_path</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_path'>path</span> <span class='op'>=</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>db/schema.rb</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span>
+  <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_exist?'>exist?</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span> <span class='op'>?</span> <span class='id identifier rubyid_path'>path</span> <span class='op'>:</span> <span class='kw'>nil</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="warn_coverage_fallback-class_method">
+  
+    .<strong>warn_coverage_fallback</strong>(reason = &quot;unknown&quot;)  &#x21d2; <tt>void</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+<p class="note returns_void">This method returns an undefined value.</p><p>Stderr note when daemon coverage is unavailable (full --test set per mutant).</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>reason</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>&quot;unknown&quot;</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>short cause (boot error message, empty map, …).</p></div>
+      
+    </li>
+  
+</ul>
+
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+137
+138
+139
+140</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_backend.rb', line 137</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_warn_coverage_fallback'>warn_coverage_fallback</span><span class='lparen'>(</span><span class='id identifier rubyid_reason'>reason</span> <span class='op'>=</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>unknown</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_warn'>warn</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>[mutineer] daemon coverage map unavailable (</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_reason'>reason</span><span class='embexpr_end'>}</span><span class='tstring_content'>); running every </span><span class='tstring_end'>&quot;</span></span> \
+       <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>mutant against the full --test set (score not comparable to an in-process run).</span><span class='tstring_end'>&quot;</span></span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+  </div>
+
+</div>
+
+      <div id="footer">
+  Generated on DATE by
+  <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
+  0.9.45 (ruby-3.4.10).
+</div>
+
+    </div>
+  </body>
+</html>

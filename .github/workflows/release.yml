@@ -46,6 +46,8 @@ jobs:
 
       - name: Tests
         run: bundle exec rake test
+      - name: Published API docs match this checkout
+        run: bundle exec rake yard:pages:check
 
       # Exchanges the workflow's OIDC token for short-lived RubyGems credentials.
       # Requires a one-time Trusted Publisher entry on rubygems.org for this repo

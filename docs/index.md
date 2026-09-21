@@ -86,6 +86,7 @@ Tier 2 (off until `--operators`): `return_nil`, `literal_mutation`, `condition_n
 
 - [Agent & CI guide](https://davidteren.github.io/mutineer/agentic-coding.html) · [Markdown](https://davidteren.github.io/mutineer/agentic-coding.md)
 - [JSON report schema](https://davidteren.github.io/mutineer/json-schema.html) · [Markdown](https://davidteren.github.io/mutineer/json-schema.md)
+- [Ruby API (YARD)](https://davidteren.github.io/mutineer/api/)
 - [Sample HTML report](https://davidteren.github.io/mutineer/sample-report.html)
 - [Full docs (`llms-full.txt`)](https://davidteren.github.io/mutineer/llms-full.txt)
 - [Agent skill](https://davidteren.github.io/mutineer/skill.md)
