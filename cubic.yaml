@@ -1,0 +1,86 @@
+# yaml-language-server: $schema=https://cubic.dev/schema/cubic-repository-config.schema.json
+version: 1
+
+reviews:
+  enabled: true
+  sensitivity: high
+  incremental_commits: true
+  check_drafts: false
+  architecture_diagrams: true
+  resolve_threads_when_addressed: true
+  external_contributors_require_manual_review: false
+  senior_reviewers: [davidteren]
+  auto_approve_behavior: disabled
+  auto_approve: disabled
+  ultrareview: automatic
+  auto_ultrareview: high_risk_only
+  auto_ultrareview_file_patterns:
+    - 'lib/**'
+    - '.github/workflows/**'
+  custom_instructions: |
+    This is the Mutineer Ruby gem (mutation testing CLI + GitHub Action).
+    Prioritize: CLI contract stability (exit codes, flags, JSON report shape),
+    false-negative mutation results, and CI Action input compatibility.
+    Treat CHANGELOG, README, and docs/fragments contracts as part of the public API.
+    Prefer minimal diffs; flag accidental public-API or Action input changes.
+
+  ignore:
+    files:
+      - 'docs/api/**'
+      - 'doc/**'
+      - '**/.yardoc/**'
+      - '**/yardoc/**'
+      - '**/coverage/**'
+      - 'pkg/**'
+      - 'Gemfile.lock'
+      - '**/Gemfile.lock'
+      - '**/*.gem'
+      - 'tmp/**'
+      - 'vendor/**'
+      - '**/fixtures/**'
+      - '**/cassettes/**'
+    pr_labels:
+      - skip-review
+      - wip
+      - draft
+      - docs-only
+    max_changed_lines: 5000
+
+  custom_rules:
+    - name: Gem public API / changelog
+      description: >
+        Flag changes to public CLI flags, exit codes, report JSON shape, or Action
+        inputs without CHANGELOG notes. Flag breaking defaults without a major bump path.
+      include:
+        - 'lib/**'
+        - 'exe/**'
+        - 'bin/**'
+        - '*.gemspec'
+        - 'action.yml'
+    - name: Mutation honesty
+      description: >
+        Flag configs or code that silently skip mutants, weaken thresholds, hide
+        survivors, or make the unmutated suite look green without testing product code.
+      include:
+        - 'lib/**'
+        - '**/.mutineer.yml'
+        - '.github/workflows/**'
+        - 'action.yml'
+    - name: Security and secrets
+      description: >
+        Flag hardcoded secrets, unsafe shell interpolation, and path traversal in
+        file handling or CI Action inputs.
+
+pr_descriptions:
+  generate: true
+  skip_if_author_description: true
+  cubic_review_link: true
+  instructions: |
+    Keep What / Why / How. Mention risk and test plan briefly.
+
+issues:
+  fix_with_cubic_buttons: true
+  pr_comment_fixes: true
+  fix_commits_to_pr: true
+  auto_fix_sign_commits: false
+  coding_agent_provider: cubic
