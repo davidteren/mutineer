@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-21
+
 ### Added
 - **AI-readable docs wiring**: HTML pages with Markdown twins now advertise
   `rel="alternate" type="text/markdown"`, `index.md` is the landing/CLI
@@ -416,6 +418,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.0.2]: https://github.com/davidteren/mutineer/releases/tag/v1.0.2
 [1.0.1]: https://github.com/davidteren/mutineer/releases/tag/v1.0.1
 [1.0.0]: https://github.com/davidteren/mutineer/releases/tag/v1.0.0
 [0.11.4]: https://github.com/davidteren/mutineer/releases/tag/v0.11.4
