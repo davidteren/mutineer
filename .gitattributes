@@ -1,0 +1,6 @@
+# Cubic / GitHub: skip generated YARD HTML and lockfile noise in AI review
+# (hand-written Markdown under docs/ stays reviewable)
+docs/api/** linguist-generated=true
+doc/** linguist-generated=true
+**/.yardoc/** linguist-generated=true
+Gemfile.lock linguist-generated=true
