@@ -64,6 +64,22 @@
 <a href="https://keepachangelog.com/">Keep a Changelog</a>, and this project adheres to
 <a href="https://semver.org/">Semantic Versioning</a>.</p>
 <h2 id="_Unreleased_">[Unreleased]</h2>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong>Tests that reopen <code>$stdout</code></strong> (Minitest's <code>capture_subprocess_io</code>,
+RSpec's <code>to_stdout_from_any_process</code>) no longer make a green suite
+&quot;not green&quot; or count as false kills.</li>
+<li><strong>Test or source files that print while they load</strong> no longer make coverage
+capture fail with <code>invalid coverage output</code>. The capture subprocess now
+sends its result over a separate pipe, not over stdout.</li>
+</ul>
+<h3 id="Changed">Changed</h3>
+<ul>
+<li><strong>Stderr of tests and specs is visible</strong> in the in-process and <code>--daemon</code>
+runs. Mutineer silences stdout once per child process and no longer hides
+stderr, so its own child diagnostics always reach you. <code>--test-command</code>
+runs still capture stderr with stdout and show it under <code>--verbose</code>.</li>
+</ul>
 <h2 id="_1_0_2____2026_09_21"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.0.2">1.0.2</a> - 2026-09-21</h2>
 <h3 id="Added">Added</h3>
 <ul>

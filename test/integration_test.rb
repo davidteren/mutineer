@@ -77,6 +77,59 @@ class IntegrationTest < Minitest::Test
     refute result.surviving_mutants.any? { |r| r.subject.name.to_s == "divide" }
   end
 
+  # A test that reopens $stdout (Minitest's capture_subprocess_io) must see the
+  # same verdicts as the plain weak suite: no "not green" abort, no false kills.
+  def test_suite_that_reopens_stdout_scores_like_weak_suite
+    result = run_mutineer(sources: ["test/fixtures/calculator.rb"],
+                        tests: ["test/fixtures/calculator_subprocess_io_test.rb"])
+
+    assert_equal 2, result.survived_count
+    assert_equal 4, result.killed_count
+    assert_equal %w[add subtract], result.surviving_mutants.map { |r| r.subject.name.to_s }.sort
+  end
+
+  # A warm cache re-checks the clean suite in a separate script; that check must
+  # also keep $stdout a real IO.
+  def test_suite_that_reopens_stdout_scores_like_weak_suite_on_warm_cache
+    cache = Dir.mktmpdir("mutineer-cache")
+    run = lambda do
+      config = Mutineer::Config.new(
+        sources: ["test/fixtures/calculator.rb"],
+        tests: ["test/fixtures/calculator_subprocess_io_test.rb"],
+        cache_dir: cache, project_root: ROOT
+      )
+      Mutineer::Runner.execute(config).first
+    end
+
+    run.call
+    assert File.exist?(File.join(cache, "coverage.json")), "first run must leave a cache for the second"
+    result = run.call
+
+    assert_equal 2, result.survived_count
+    assert_equal 4, result.killed_count
+  end
+
+  # A test file that leaves $stdout as a StringIO (at load time and inside a
+  # test) must not break the silencing that the reopen fix added.
+  def test_suite_that_swaps_stdout_for_a_stringio_scores_like_weak_suite
+    result = run_mutineer(sources: ["test/fixtures/calculator.rb"],
+                        tests: ["test/fixtures/calculator_stdout_swap_test.rb"])
+
+    assert_equal 2, result.survived_count
+    assert_equal 4, result.killed_count
+  end
+
+  # A test file that prints at load time must not corrupt the coverage result
+  # that the capture subprocess sends back, so no mutant becomes unscoreable.
+  def test_suite_that_prints_at_load_time_scores_like_weak_suite
+    result = run_mutineer(sources: ["test/fixtures/calculator.rb"],
+                        tests: ["test/fixtures/calculator_load_time_puts_test.rb"])
+
+    assert_equal 2, result.survived_count
+    assert_equal 4, result.killed_count
+    assert_equal %w[add subtract], result.surviving_mutants.map { |r| r.subject.name.to_s }.sort
+  end
+
   # #97: changing only a required helper must not leave a stale no_coverage
   # verdict. Cached and fresh runs report the same survivor.
   def test_helper_change_matches_fresh_coverage

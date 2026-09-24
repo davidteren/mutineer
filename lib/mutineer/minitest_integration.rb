@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "stringio"
-
 module Mutineer
   # Child-process-only: loads a test file in the current process and runs it
   # programmatically, returning an exit status integer (0 = all passed,
@@ -47,13 +45,9 @@ module Mutineer
       Minitest::Runnable.reset
       Array(test_files).each { |f| load f }
 
-      orig = $stdout
-      # Silence the child's test output; the parent only cares about pass/fail.
-      $stdout = StringIO.new
-      passed = Minitest.run([])
-      $stdout = orig
-
-      passed ? 0 : 1
+      # No silencing here: the fork boundary that calls this method has already
+      # pointed stdout at File::NULL (see ChildStdout).
+      Minitest.run([]) ? 0 : 1
     end
   end
 end

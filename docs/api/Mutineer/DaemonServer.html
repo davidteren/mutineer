@@ -428,17 +428,17 @@ reload (whole file) and redefine (wrapped snippet).</p>
       <pre class="lines">
 
 
-258
 259
 260
 261
 262
 263
 264
-265</pre>
+265
+266</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 258</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 259</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_apply_payload'>apply_payload</span><span class='lparen'>(</span><span class='id identifier rubyid_payload'>payload</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_dir'>dir</span> <span class='op'>=</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_dirname'>dirname</span><span class='lparen'>(</span><span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='id identifier rubyid_payload'>payload</span><span class='period'>.</span><span class='id identifier rubyid_fetch'>fetch</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>source_file</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span><span class='rparen'>)</span><span class='rparen'>)</span>
@@ -478,7 +478,6 @@ and inherited by every fork. Never requires mutineer.</p>
       <pre class="lines">
 
 
-96
 97
 98
 99
@@ -503,10 +502,11 @@ and inherited by every fork. Never requires mutineer.</p>
 118
 119
 120
-121</pre>
+121
+122</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 96</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 97</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_boot!'>boot!</span><span class='lparen'>(</span><span class='id identifier rubyid_cfg'>cfg</span><span class='rparen'>)</span>
   <span class='ivar'>@cfg</span> <span class='op'>=</span> <span class='id identifier rubyid_cfg'>cfg</span>
@@ -567,7 +567,6 @@ full test set rather than mis-scoring everything as no_coverage.</p>
       <pre class="lines">
 
 
-145
 146
 147
 148
@@ -580,10 +579,11 @@ full test set rather than mis-scoring everything as no_coverage.</p>
 155
 156
 157
-158</pre>
+158
+159</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 145</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 146</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_build_coverage_map'>build_coverage_map</span>
   <span class='id identifier rubyid_require_relative'>require_relative</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>coverage_map</span><span class='tstring_end'>&quot;</span></span>
@@ -630,15 +630,15 @@ the app has no worker-DB adapter (non-Rails). Capture then runs as before.</p>
       <pre class="lines">
 
 
-163
 164
 165
 166
 167
-168</pre>
+168
+169</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 163</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 164</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_coverage_after_fork'>coverage_after_fork</span>
   <span class='kw'>return</span> <span class='kw'>nil</span> <span class='kw'>unless</span> <span class='ivar'>@worker_db</span>
@@ -727,7 +727,6 @@ the app has no worker-DB adapter (non-Rails). Capture then runs as before.</p>
       <pre class="lines">
 
 
-54
 55
 56
 57
@@ -763,10 +762,11 @@ the app has no worker-DB adapter (non-Rails). Capture then runs as before.</p>
 87
 88
 89
-90</pre>
+90
+91</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 54</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 55</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_run'>run</span><span class='lparen'>(</span><span class='label'>input:</span> <span class='gvar'>$stdin</span><span class='comma'>,</span> <span class='label'>output:</span> <span class='gvar'>$stdout</span><span class='comma'>,</span> <span class='label'>errio:</span> <span class='gvar'>$stderr</span><span class='rparen'>)</span>
   <span class='ivar'>@errio</span> <span class='op'>=</span> <span class='id identifier rubyid_errio'>errio</span>
@@ -834,7 +834,6 @@ the app has no worker-DB adapter (non-Rails). Capture then runs as before.</p>
       <pre class="lines">
 
 
-171
 172
 173
 174
@@ -866,10 +865,11 @@ the app has no worker-DB adapter (non-Rails). Capture then runs as before.</p>
 200
 201
 202
-203</pre>
+203
+204</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 171</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 172</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_run_mutant'>run_mutant</span><span class='lparen'>(</span><span class='id identifier rubyid_req'>req</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_timeout'>timeout</span> <span class='op'>=</span> <span class='id identifier rubyid_req'>req</span><span class='period'>.</span><span class='id identifier rubyid_fetch'>fetch</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>timeout</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='int'>30</span><span class='rparen'>)</span>
@@ -880,9 +880,9 @@ the app has no worker-DB adapter (non-Rails). Capture then runs as before.</p>
     <span class='comment'># New process group so a per-fork timeout can SIGKILL the whole subtree,
 </span>    <span class='comment'># and silence the child&#39;s stdout so test output never corrupts the IPC pipe.
 </span>    <span class='const'>Process</span><span class='period'>.</span><span class='id identifier rubyid_setpgid'>setpgid</span><span class='lparen'>(</span><span class='int'>0</span><span class='comma'>,</span> <span class='int'>0</span><span class='rparen'>)</span> <span class='kw'>rescue</span> <span class='kw'>nil</span> <span class='comment'># rubocop:disable Style/RescueModifier
-</span>    <span class='gvar'>$stdout</span><span class='period'>.</span><span class='id identifier rubyid_reopen'>reopen</span><span class='lparen'>(</span><span class='const'>File</span><span class='op'>::</span><span class='const'>NULL</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>w</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
-    <span class='id identifier rubyid_code'>code</span> <span class='op'>=</span>
+</span>    <span class='id identifier rubyid_code'>code</span> <span class='op'>=</span>
       <span class='kw'>begin</span>
+        <span class='const'><span class='object_link'><a href="ChildStdout.html" title="Mutineer::ChildStdout (module)">ChildStdout</a></span></span><span class='period'>.</span><span class='id identifier rubyid_silence'><span class='object_link'><a href="ChildStdout.html#silence-class_method" title="Mutineer::ChildStdout.silence (method)">silence</a></span></span>
         <span class='comment'># Route THIS fork at its own worker database before any test loads.
 </span>        <span class='comment'># A routing failure raises here and is scored `error`, never a false verdict.
 </span>        <span class='ivar'>@worker_db</span><span class='op'>&amp;.</span><span class='id identifier rubyid_after_fork'>after_fork</span><span class='lparen'>(</span><span class='id identifier rubyid_worker'>worker</span><span class='comma'>,</span> <span class='id identifier rubyid_schema_for_fork'>schema_for_fork</span><span class='rparen'>)</span>
@@ -934,17 +934,17 @@ the app has no worker-DB adapter (non-Rails). Capture then runs as before.</p>
       <pre class="lines">
 
 
-269
 270
 271
 272
 273
 274
 275
-276</pre>
+276
+277</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 269</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 270</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_run_tests'>run_tests</span><span class='lparen'>(</span><span class='id identifier rubyid_tests'>tests</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_raise'>raise</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>unsupported framework </span><span class='embexpr_beg'>#{</span><span class='ivar'>@framework</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>unless</span> <span class='ivar'>@framework</span> <span class='op'>==</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>minitest</span><span class='tstring_end'>&quot;</span></span>
@@ -987,7 +987,6 @@ raises in the fork and reads as <code>error</code>, never a mis-routed verdict.<
       <pre class="lines">
 
 
-128
 129
 130
 131
@@ -997,10 +996,11 @@ raises in the fork and reads as <code>error</code>, never a mis-routed verdict.<
 135
 136
 137
-138</pre>
+138
+139</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 128</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 129</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_setup_worker_db'>setup_worker_db</span><span class='lparen'>(</span><span class='id identifier rubyid_cfg'>cfg</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_require_relative'>require_relative</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>rails_worker_db</span><span class='tstring_end'>&quot;</span></span>
@@ -1043,16 +1043,16 @@ SIGKILL path cannot run the child's ensure). Mirrors Runner.sweep_orphans.</p>
       <pre class="lines">
 
 
-207
 208
 209
 210
 211
 212
-213</pre>
+213
+214</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 207</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 208</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_sweep_temps'>sweep_temps</span>
   <span class='ivar'>@source_dirs</span><span class='period'>.</span><span class='id identifier rubyid_to_a'>to_a</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_dir'>dir</span><span class='op'>|</span>
@@ -1096,7 +1096,6 @@ SIGKILL the child's process group past the deadline; a signalled child
       <pre class="lines">
 
 
-222
 223
 224
 225
@@ -1121,10 +1120,11 @@ SIGKILL the child's process group past the deadline; a signalled child
 244
 245
 246
-247</pre>
+247
+248</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 222</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/daemon_server.rb', line 223</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_wait_verdict'>wait_verdict</span><span class='lparen'>(</span><span class='id identifier rubyid_pid'>pid</span><span class='comma'>,</span> <span class='id identifier rubyid_timeout'>timeout</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_deadline'>deadline</span> <span class='op'>=</span> <span class='const'>Process</span><span class='period'>.</span><span class='id identifier rubyid_clock_gettime'>clock_gettime</span><span class='lparen'>(</span><span class='const'>Process</span><span class='op'>::</span><span class='const'>CLOCK_MONOTONIC</span><span class='rparen'>)</span> <span class='op'>+</span> <span class='id identifier rubyid_timeout'>timeout</span>

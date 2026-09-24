@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "stringio"
 
 class IsolationTest < Minitest::Test
   def test_exit_zero_is_survived
@@ -24,6 +25,76 @@ class IsolationTest < Minitest::Test
     capture_subprocess_io do
       assert_predicate(Mutineer::Isolation.run { raise "boom" }, :error?)
     end
+  end
+
+  # --- stdout silencing at the fork boundary ------------------------------
+  # The test runners do not silence output; Isolation.run does it once, right
+  # after fork. These cases replace the runner-level silencing tests.
+
+  NOISY_MINITEST = File.expand_path("fixtures/noisy_minitest_test.rb", __dir__)
+
+  def test_child_stdout_is_silenced
+    out, = capture_subprocess_io do
+      Mutineer::Isolation.run do
+        puts "RUBY-LEVEL"
+        STDOUT.write("FD-LEVEL\n")
+        system("echo SUBPROCESS")
+        0
+      end
+    end
+    assert_empty out
+  end
+
+  def test_minitest_output_is_silenced
+    result = nil
+    out, = capture_subprocess_io do
+      result = Mutineer::Isolation.run { Mutineer::TestRunners::Minitest.run([NOISY_MINITEST]) }
+    end
+    assert_predicate result, :survived?
+    assert_empty out, "test output should be silenced"
+  end
+
+  # The parent may hold a StringIO in $stdout (here: capture_io). The child must
+  # still give the test a real IO, or `$stdout.reopen` raises TypeError.
+  def test_child_stdout_is_a_real_io_when_parent_stdout_is_a_stringio
+    result = nil
+    capture_io do
+      result = Mutineer::Isolation.run do
+        $stdout.reopen(File::NULL)
+        $stdout.equal?(STDOUT) ? 0 : 1
+      end
+    end
+    assert_predicate result, :survived?
+  end
+
+  # Nothing in the parent changes: its stdout still reaches fd 1 after the run.
+  def test_parent_stdout_is_untouched
+    out, = capture_subprocess_io do
+      Mutineer::Isolation.run { puts "CHILD"; 0 }
+      $stdout.puts "AFTER-RUN"
+    end
+    assert_equal "AFTER-RUN\n", out
+  end
+
+  # Stderr stays open in the child.
+  def test_child_stderr_passes_through
+    _, err = capture_subprocess_io { Mutineer::Isolation.run { STDERR.puts "CHILD-ERR"; 0 } }
+    assert_includes err, "CHILD-ERR"
+  end
+
+  # The child's own diagnostic goes to fd 2, also when the block left $stderr
+  # (and $stdout) as a StringIO.
+  def test_error_diagnostic_reaches_stderr_after_block_swaps_streams
+    result = nil
+    _, err = capture_subprocess_io do
+      result = Mutineer::Isolation.run do
+        $stdout = StringIO.new
+        $stderr = StringIO.new
+        raise "boom"
+      end
+    end
+    assert_predicate result, :error?
+    assert_includes err, "[mutineer-child] RuntimeError: boom"
   end
 
   def test_runaway_child_times_out

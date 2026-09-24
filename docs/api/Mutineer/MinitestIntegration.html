@@ -229,6 +229,8 @@ Minitest.run.</p>
       <pre class="lines">
 
 
+26
+27
 28
 29
 30
@@ -252,16 +254,10 @@ Minitest.run.</p>
 48
 49
 50
-51
-52
-53
-54
-55
-56
-57</pre>
+51</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration.rb', line 28</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration.rb', line 26</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_run'>run</span><span class='lparen'>(</span><span class='id identifier rubyid_test_files'>test_files</span><span class='rparen'>)</span>
   <span class='kw'>begin</span>
@@ -285,13 +281,9 @@ Minitest.run.</p>
 </span>  <span class='const'>Minitest</span><span class='op'>::</span><span class='const'>Runnable</span><span class='period'>.</span><span class='id identifier rubyid_reset'>reset</span>
   <span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_test_files'>test_files</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_f'>f</span><span class='op'>|</span> <span class='id identifier rubyid_load'>load</span> <span class='id identifier rubyid_f'>f</span> <span class='rbrace'>}</span>
 
-  <span class='id identifier rubyid_orig'>orig</span> <span class='op'>=</span> <span class='gvar'>$stdout</span>
-  <span class='comment'># Silence the child&#39;s test output; the parent only cares about pass/fail.
-</span>  <span class='gvar'>$stdout</span> <span class='op'>=</span> <span class='const'>StringIO</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span>
-  <span class='id identifier rubyid_passed'>passed</span> <span class='op'>=</span> <span class='const'>Minitest</span><span class='period'>.</span><span class='id identifier rubyid_run'>run</span><span class='lparen'>(</span><span class='lbracket'>[</span><span class='rbracket'>]</span><span class='rparen'>)</span>
-  <span class='gvar'>$stdout</span> <span class='op'>=</span> <span class='id identifier rubyid_orig'>orig</span>
-
-  <span class='id identifier rubyid_passed'>passed</span> <span class='op'>?</span> <span class='int'>0</span> <span class='op'>:</span> <span class='int'>1</span>
+  <span class='comment'># No silencing here: the fork boundary that calls this method has already
+</span>  <span class='comment'># pointed stdout at File::NULL (see ChildStdout).
+</span>  <span class='const'>Minitest</span><span class='period'>.</span><span class='id identifier rubyid_run'>run</span><span class='lparen'>(</span><span class='lbracket'>[</span><span class='rbracket'>]</span><span class='rparen'>)</span> <span class='op'>?</span> <span class='int'>0</span> <span class='op'>:</span> <span class='int'>1</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>

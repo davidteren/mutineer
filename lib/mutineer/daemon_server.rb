@@ -2,6 +2,7 @@
 
 require "json"
 require "tempfile"
+require_relative "child_stdout"
 
 module Mutineer
   # App-side daemon (persistent worker).
@@ -177,9 +178,9 @@ module Mutineer
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
           # and silence the child's stdout so test output never corrupts the IPC pipe.
           Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
-          $stdout.reopen(File::NULL, "w")
           code =
             begin
+              ChildStdout.silence
               # Route THIS fork at its own worker database before any test loads.
               # A routing failure raises here and is scored `error`, never a false verdict.
               @worker_db&.after_fork(worker, schema_for_fork)
