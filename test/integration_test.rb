@@ -42,6 +42,22 @@ class IntegrationTest < Minitest::Test
     assert_equal ">", s.mutation.replacement
   end
 
+  def test_safe_navigation_survivor
+    result = run_mutineer(sources: ["test/fixtures/greeting.rb"],
+                          tests: ["test/fixtures/greeting_test.rb"],
+                          operators: ["safe_navigation"])
+
+    assert_equal 1, result.survived_count,
+                 "Expected exactly 1 survivor from greeting.rb + greeting_test.rb"
+    assert_equal 0.0, result.mutation_score
+
+    s = result.surviving_mutants.first
+    assert_equal "name_of", s.subject.name.to_s
+    assert_equal :safe_navigation, s.mutation.operator
+    assert_equal "&.", source_token(s)
+    assert_equal ".", s.mutation.replacement
+  end
+
   # Scenario B — calculator + strong, perfect score (R10)
   def test_calculator_strong_kills_all
     result = run_mutineer(sources: ["test/fixtures/calculator.rb"],

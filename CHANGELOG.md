@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **Safe-navigation operator** (Tier-2, opt-in via `--operators`):
+  `safe_navigation` replaces `&.` with `.`. The mutant survives when no test
+  passes `nil` to the call.
+
 ## [1.0.2] - 2026-09-21
 
 ### Added
