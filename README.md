@@ -82,7 +82,7 @@ Run `mutineer --list-operators` to see them. Default (Tier 1): `arithmetic`,
 `comparison`, `boolean_connector`, `boolean_literal`, `statement_removal`.
 Available but off by default (Tier 2, enable via `--operators`): `return_nil`,
 `literal_mutation`, `condition_negation`, `string_literal`, `regex`,
-`collection_method`.
+`collection_method`, `safe_navigation`, `range`, `negation_removal`.
 
 ## Rails apps
 

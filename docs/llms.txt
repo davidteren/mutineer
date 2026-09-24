@@ -12,7 +12,7 @@ AI-generated code and tests are weakest (tests that execute and pass but assert 
 
 Key facts:
 - **Zero runtime dependencies** — Prism + stdlib only. No `eval`, no monkey-patching.
-- **One mutation per mutant**, validity-checked by re-parsing; 11 mutation operators.
+- **One mutation per mutant**, validity-checked by re-parsing; 14 mutation operators.
 - **Fork-isolated, parallel** execution (Linux + macOS); coverage-guided per-line test selection.
 - **Programmatic**: versioned JSON contract, structured exit codes (0 pass / 1 weak-tests / 2 misinvocation), `--since` diff-scoped runs, `--threshold` hard gate, `--baseline` delta gating.
 - **Rails**: `--daemon` boots the app once and forks per mutant with per-worker DB isolation so `--jobs N` is parallel-safe.

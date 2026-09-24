@@ -75,7 +75,7 @@
       </div>
       <div class="badges" aria-label="Tool facts">
         <span class="badge"><b>00</b> runtime dependencies</span>
-        <span class="badge"><b>11</b> mutation operators</span>
+        <span class="badge"><b>14</b> mutation operators</span>
         <span class="badge"><b>01</b> change per mutant</span>
         <span class="badge"><b>JSON</b> evidence for your pipeline</span>
       </div>
@@ -172,8 +172,8 @@
     <div class="wrap">
       <div class="sec-head">
         <div class="kicker">Operators</div>
-        <h2>Eleven ways to break your code.</h2>
-        <p>Five run by default. Six Tier-2 operators are off until you ask for them with <code>--operators</code> or <code>.mutineer.yml</code> — they're noisier, but they catch deeper gaps.</p>
+        <h2>Fourteen ways to break your code.</h2>
+        <p>Five run by default. Nine Tier-2 operators are off until you ask for them with <code>--operators</code> or <code>.mutineer.yml</code> — they're noisier, but they catch deeper gaps.</p>
       </div>
       <div class="table-wrap" tabindex="0" role="region" aria-label="Reference table">
         <table>
@@ -193,6 +193,9 @@
             <tr><td class="op">string_literal</td><td class="rule">non-empty string → "" ; "" → "mutineer"</td><td><span class="pill t2">tier 2</span></td></tr>
             <tr><td class="op">regex</td><td class="rule">drop ^ / $ anchors ; + ↔ *</td><td><span class="pill t2">tier 2</span></td></tr>
             <tr><td class="op">collection_method</td><td class="rule">map ↔ each , all? ↔ any? , first ↔ last , min ↔ max , select ↔ reject</td><td><span class="pill t2">tier 2</span></td></tr>
+            <tr><td class="op">safe_navigation</td><td class="rule">&amp;. → .</td><td><span class="pill t2">tier 2</span></td></tr>
+            <tr><td class="op">range</td><td class="rule">.. ↔ ...</td><td><span class="pill t2">tier 2</span></td></tr>
+            <tr><td class="op">negation_removal</td><td class="rule">!x , not x → x</td><td><span class="pill t2">tier 2</span></td></tr>
           </tbody>
         </table>
       </div>

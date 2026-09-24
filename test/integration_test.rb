@@ -25,6 +25,21 @@ class IntegrationTest < Minitest::Test
     src[result.mutation.start_offset...result.mutation.end_offset]
   end
 
+  # One operator, one fixture pair, and exactly one survivor that nothing kills.
+  def assert_sole_survivor(source:, test:, operator:, subject:, token:, replacement:)
+    result = run_mutineer(sources: [source], tests: [test], operators: [operator.to_s])
+
+    assert_equal 1, result.survived_count,
+                 "Expected exactly 1 survivor from #{File.basename(source)} + #{File.basename(test)}"
+    assert_equal 0.0, result.mutation_score
+
+    s = result.surviving_mutants.first
+    assert_equal subject, s.subject.name.to_s
+    assert_equal operator, s.mutation.operator
+    assert_equal token, source_token(s)
+    assert_equal replacement, s.mutation.replacement
+  end
+
   # Scenario A — pricing boundary survivor (R9)
   def test_pricing_boundary_survivor
     result = run_mutineer(sources: ["test/fixtures/pricing.rb"],
@@ -40,6 +55,21 @@ class IntegrationTest < Minitest::Test
     assert_equal :comparison, s.mutation.operator
     assert_equal ">=", source_token(s)
     assert_equal ">", s.mutation.replacement
+  end
+
+  def test_safe_navigation_survivor
+    assert_sole_survivor(source: "test/fixtures/greeting.rb", test: "test/fixtures/greeting_test.rb",
+                         operator: :safe_navigation, subject: "name_of", token: "&.", replacement: ".")
+  end
+
+  def test_range_survivor
+    assert_sole_survivor(source: "test/fixtures/steps.rb", test: "test/fixtures/steps_test.rb",
+                         operator: :range, subject: "upto", token: "..", replacement: "...")
+  end
+
+  def test_negation_removal_survivor
+    assert_sole_survivor(source: "test/fixtures/access.rb", test: "test/fixtures/access_test.rb",
+                         operator: :negation_removal, subject: "guest?", token: "!", replacement: "")
   end
 
   # Scenario B — calculator + strong, perfect score (R10)
