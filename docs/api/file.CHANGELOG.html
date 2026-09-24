@@ -64,6 +64,16 @@
 <a href="https://keepachangelog.com/">Keep a Changelog</a>, and this project adheres to
 <a href="https://semver.org/">Semantic Versioning</a>.</p>
 <h2 id="_Unreleased_">[Unreleased]</h2>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong>Safe-navigation operator</strong> (Tier-2, opt-in via <code>--operators</code>):
+<code>safe_navigation</code> replaces <code>&amp;.</code> with <code>.</code>. The mutant survives when no test
+passes <code>nil</code> to the call.</li>
+<li><strong>Range operator</strong> (Tier-2, opt-in via <code>--operators</code>): <code>range</code> replaces
+<code>..</code> with <code>...</code> and <code>...</code> with <code>..</code>. The <code>..</code> -&gt; <code>...</code> mutant survives when
+no test checks the last element of the range. Endless ranges (<code>1..</code>) are
+skipped, because <code>(1..)</code> and <code>(1...)</code> behave the same.</li>
+</ul>
 <h2 id="_1_0_2____2026_09_21"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.0.2">1.0.2</a> - 2026-09-21</h2>
 <h3 id="Added">Added</h3>
 <ul>
