@@ -1436,15 +1436,15 @@ error degrades safe to false -&gt; caller clears (existing behaviour).</p>
       <pre class="lines">
 
 
-464
 465
 466
 467
 468
-469</pre>
+469
+470</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 464</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 465</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_fixture_transaction_open?'>fixture_transaction_open?</span><span class='lparen'>(</span><span class='id identifier rubyid_base'>base</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_pool'>pool</span> <span class='op'>=</span> <span class='id identifier rubyid_base'>base</span><span class='period'>.</span><span class='id identifier rubyid_connection_pool'>connection_pool</span>
@@ -1485,7 +1485,6 @@ error degrades safe to false -&gt; caller clears (existing behaviour).</p>
       <pre class="lines">
 
 
-445
 446
 447
 448
@@ -1497,10 +1496,11 @@ error degrades safe to false -&gt; caller clears (existing behaviour).</p>
 454
 455
 456
-457</pre>
+457
+458</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 445</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 446</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_reconnect_active_record'>reconnect_active_record</span>
   <span class='kw'>return</span> <span class='kw'>unless</span> <span class='kw'>defined?</span><span class='lparen'>(</span><span class='const'>ActiveRecord</span><span class='op'>::</span><span class='const'>Base</span><span class='rparen'>)</span>
@@ -1716,7 +1716,8 @@ error degrades safe to false -&gt; caller clears (existing behaviour).</p>
 436
 437
 438
-439</pre>
+439
+440</pre>
     </td>
     <td>
       <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 411</span>
@@ -1747,7 +1748,8 @@ error degrades safe to false -&gt; caller clears (existing behaviour).</p>
     <span class='kw'>else</span>
       <span class='const'><span class='object_link'><a href="Isolation.html" title="Mutineer::Isolation (class)">Isolation</a></span></span><span class='period'>.</span><span class='id identifier rubyid_apply_whole_file'><span class='object_link'><a href="Isolation.html#apply_whole_file-class_method" title="Mutineer::Isolation.apply_whole_file (method)">apply_whole_file</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_mutated'>mutated</span><span class='comma'>,</span> <span class='id identifier rubyid_source_file'>source_file</span><span class='rparen'>)</span>
     <span class='kw'>end</span>
-    <span class='const'><span class='object_link'><a href="TestRunners.html" title="Mutineer::TestRunners (module)">TestRunners</a></span></span><span class='period'>.</span><span class='id identifier rubyid_for'><span class='object_link'><a href="TestRunners.html#for-class_method" title="Mutineer::TestRunners.for (method)">for</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_framework'>framework</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_run'>run</span><span class='lparen'>(</span><span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='rparen'>)</span>
+    <span class='comment'># One failing test already kills the mutant, so the child stops there.
+</span>    <span class='const'><span class='object_link'><a href="TestRunners.html" title="Mutineer::TestRunners (module)">TestRunners</a></span></span><span class='period'>.</span><span class='id identifier rubyid_for'><span class='object_link'><a href="TestRunners.html#for-class_method" title="Mutineer::TestRunners.for (method)">for</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_framework'>framework</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_run'>run</span><span class='lparen'>(</span><span class='id identifier rubyid_abs_tests'>abs_tests</span><span class='comma'>,</span> <span class='label'>stop_at_first_failure:</span> <span class='kw'>true</span><span class='rparen'>)</span>
   <span class='kw'>end</span>
 <span class='kw'>end</span></pre>
     </td>

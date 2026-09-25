@@ -13,6 +13,8 @@ testing anything.
 - **One mutation per mutant**, validity-checked by re-parsing.
 - **Fork-isolated**, parallel execution (Linux + macOS).
 - **Coverage-guided** — each mutant runs only the test files that cover its line.
+- **Stops at the first failing test** — in-process runs (not `--daemon` or
+  `--test-command`) stop a mutant's test run at the first failure.
 
 📖 **[mutineer.github.io →](https://davidteren.github.io/mutineer/)** — overview, operators, and usage.
 

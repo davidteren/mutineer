@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../test_helper"
+require "tmpdir"
 
 # The RSpec runner mirrors the Minitest runner's contract: 0 = all passed,
 # 1 = any failure, output silenced, and RSpec state reset between runs so
@@ -12,6 +13,7 @@ class TestRunnersRSpecTest < Minitest::Test
   FIX  = File.expand_path("../fixtures/rspec", __dir__)
   PASS = File.join(FIX, "passing_spec.rb")
   FAIL = File.join(FIX, "failing_spec.rb")
+  STOP = File.join(FIX, "stop_at_first_failure_spec.rb")
 
   # Returns [exitstatus, captured_real_stdout]. The block runs in the child and
   # returns the integer exit code.
@@ -41,6 +43,39 @@ class TestRunnersRSpecTest < Minitest::Test
   def test_failing_spec_returns_one
     code, = in_fork { Mutineer::TestRunners::RSpec.run([FAIL]) }
     assert_equal 1, code
+  end
+
+  # Runs the stop fixture in a fork. Returns [exit status, marker written?].
+  def run_stop_fixture(first, **kwargs)
+    Dir.mktmpdir("mutineer-stop") do |dir|
+      marker = File.join(dir, "marker")
+      code, = in_fork do
+        ENV["MUTINEER_FIXTURE_FIRST"] = first
+        ENV["MUTINEER_FIXTURE_MARKER"] = marker
+        Mutineer::TestRunners::RSpec.run([STOP], **kwargs)
+      end
+      [code, File.exist?(marker)]
+    end
+  end
+
+  def test_stop_at_first_failure_skips_the_examples_after_a_failure
+    assert_equal [1, false], run_stop_fixture("fail", stop_at_first_failure: true)
+  end
+
+  def test_skip_does_not_stop_the_run
+    assert_equal [0, true], run_stop_fixture("skip", stop_at_first_failure: true)
+  end
+
+  def test_pending_does_not_stop_the_run
+    assert_equal [0, true], run_stop_fixture("pending", stop_at_first_failure: true)
+  end
+
+  def test_passing_run_is_the_same_with_stop_at_first_failure
+    assert_equal [0, true], run_stop_fixture("pass", stop_at_first_failure: true)
+  end
+
+  def test_default_runs_every_example_after_a_failure
+    assert_equal [1, true], run_stop_fixture("fail")
   end
 
   # Run two different specs sequentially in ONE process; RSpec.reset (inside the

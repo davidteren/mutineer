@@ -72,6 +72,8 @@ testing anything.</p>
 <li><strong>One mutation per mutant</strong>, validity-checked by re-parsing.</li>
 <li><strong>Fork-isolated</strong>, parallel execution (Linux + macOS).</li>
 <li><strong>Coverage-guided</strong> — each mutant runs only the test files that cover its line.</li>
+<li><strong>Stops at the first failing test</strong> — in-process runs (not <code>--daemon</code> or
+<code>--test-command</code>) stop a mutant's test run at the first failure.</li>
 </ul>
 <p>📖 <strong><a href="https://davidteren.github.io/mutineer/">mutineer.github.io →</a></strong> — overview, operators, and usage.</p>
 <h2 id="Install">Install</h2>

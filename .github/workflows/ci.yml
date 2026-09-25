@@ -27,6 +27,22 @@ jobs:
       - name: Build gem
         run: gem build mutineer.gemspec
 
+  test-minitest6:
+    name: test (ruby 3.4, minitest 6)
+    runs-on: ubuntu-latest
+    # The default Gemfile keeps Minitest 5. The stop at the first failure has
+    # separate hooks for Minitest 5 and 6, so each major version needs a run.
+    env:
+      BUNDLE_GEMFILE: gemfiles/minitest6.gemfile
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - name: Run tests
+        run: bundle exec rake test
+
   docs:
     name: yard strict (ruby 3.4)
     runs-on: ubuntu-latest

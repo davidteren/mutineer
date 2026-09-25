@@ -6,8 +6,9 @@ require_relative "test_runners/rspec"
 module Mutineer
   # Picks the test-framework runner.
   #
-  # Each runner responds to `.run(files) -> 0/1` (0 = all passed, 1 = any
-  # failure) and is called only inside a forked child.
+  # Each runner responds to `.run(files, stop_at_first_failure: false) -> 0/1`
+  # (0 = all passed, 1 = any failure) and is called only inside a forked child.
+  # Only the mutant path passes `stop_at_first_failure: true`.
   module TestRunners
     # Returns the runner module for a framework name.
     #

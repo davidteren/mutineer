@@ -434,7 +434,8 @@ module Mutineer
         else
           Isolation.apply_whole_file(mutated, source_file)
         end
-        TestRunners.for(framework).run(abs_tests)
+        # One failing test already kills the mutant, so the child stops there.
+        TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
       end
     end
 

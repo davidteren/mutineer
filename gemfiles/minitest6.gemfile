@@ -1,0 +1,15 @@
+# frozen_string_literal: true
+
+# CI runs the suite on Minitest 6 with this Gemfile. The default Gemfile keeps
+# Minitest 5. The stop at the first failure has separate hooks for each major
+# version, so each one needs a run.
+source "https://rubygems.org"
+
+gemspec path: ".."
+
+group :test do
+  gem "minitest", "~> 6.0"
+  # Minitest 6 ships `minitest/mock` as a separate gem.
+  gem "minitest-mock"
+  gem "rspec", "~> 3.0"
+end

@@ -64,6 +64,50 @@
 <a href="https://keepachangelog.com/">Keep a Changelog</a>, and this project adheres to
 <a href="https://semver.org/">Semantic Versioning</a>.</p>
 <h2 id="_Unreleased_">[Unreleased]</h2>
+<h3 id="Changed">Changed</h3>
+<ul>
+<li><strong>A mutant's test run stops at the first failing test</strong> — one failure
+already kills the mutant, so the forked child does not run the tests that
+remain. Killed mutants cost less time, and survived mutants cost the same.
+Under Minitest, when the outer reporter of the run records a failure or an
+error (a skip does not count), each remaining test and each remaining test
+class returns before it starts. A skipped class does not start its
+class-level hooks. The run does not unwind: a class that is running
+finishes normally, so its <code>after_all</code> hooks and a class-level
+<code>transaction { super; raise ActiveRecord::Rollback }</code> still run. RSpec runs
+with <code>--fail-fast</code>. This applies to the in-process backend only: coverage
+capture and the clean checks still run every test, and the <code>--daemon</code> and
+<code>--test-command</code> backends do not change. The CLI <code>--fail-fast</code> flag keeps
+its meaning. On rack's <code>lib/rack/utils.rb</code> (<code>--jobs 1</code>), a full run takes
+about 35–41 s instead of about 86–89 s. With the same coverage map, the
+verdicts are the same.</li>
+<li><strong>The mutant run uses a fixed Minitest seed</strong> — with the stop, the test
+order can decide the verdict, so the child runs Minitest with seed <code>1</code>
+unless the environment sets <code>SEED</code>. The same code then gives the same
+verdict on each run. Coverage capture and the clean checks keep the random
+seed, so the clean check runs the tests in a random order while each mutant
+run uses the fixed order. RSpec keeps its configured order: a suite configured with
+<code>config.order = :random</code> can still get a different verdict on each run for
+the case below. In an order-dependent Minitest suite, the fixed seed makes
+a false <code>killed</code> happen on every run or on no run, not on some runs.</li>
+<li><strong>A mutant whose failing test runs before a hanging test is now <code>killed</code>,
+not <code>timeout</code></strong> — the run stops at the failure, before the hang. The tests
+did detect the mutation, so <code>killed</code> is the correct verdict. If the hanging
+test runs first in the fixed order, the verdict stays <code>timeout</code>. Compared
+with a baseline from an earlier version, the score usually goes up. In an
+order-dependent suite it can also go down: a mutant that a random order
+killed on some runs can survive on every run in the fixed order. A change
+to the tests can change the fixed order, so a later run can move such a
+mutant from <code>killed</code> to <code>timeout</code>, and a <code>--baseline</code> gate then reports a
+score drop.</li>
+<li><strong>Some runs still run most tests</strong> — Minitest <code>parallelize_me!</code>, and Rails
+<code>parallelize</code> above its threshold (by default more than 50 tests in the
+child, or at any test count when <code>PARALLEL_WORKERS</code> is 2 or more in the
+environment), queue their tests before the first result comes back, so the
+queued tests still run. The verdict is the same as before. Below the
+Rails threshold, the tests run one after the other in the child, and the
+stop works.</li>
+</ul>
 <h2 id="_1_0_2____2026_09_21"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.0.2">1.0.2</a> - 2026-09-21</h2>
 <h3 id="Added">Added</h3>
 <ul>

@@ -96,7 +96,9 @@
   
   <dl>
     <dt>Defined in:</dt>
-    <dd>lib/mutineer/minitest_integration.rb
+    <dd>lib/mutineer/minitest_integration.rb<span class="defines">,<br>
+  lib/mutineer/minitest_integration/stop_at_first_failure.rb</span>
+
 </dd>
   </dl>
   
@@ -120,7 +122,44 @@ second exit-2 path and break this method's 0/1 return contract.</p>
 <div class="tags">
   
 
+</div><h2>Defined Under Namespace</h2>
+<p class="children">
+  
+    
+      <strong class="modules">Modules:</strong> <span class='object_link'><a href="MinitestIntegration/StopAtFirstFailure.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure (module)">StopAtFirstFailure</a></span>
+    
+  
+    
+  
+</p>
+
+  
+    <h2>
+      Constant Summary
+      <small><a href="#" class="constants_summary_toggle">collapse</a></small>
+    </h2>
+
+    <dl class="constants">
+      
+        <dt id="STOP_AT_FIRST_FAILURE_SEED-constant" class="">STOP_AT_FIRST_FAILURE_SEED =
+          <div class="docstring">
+  <div class="discussion">
+    <p>The seed of a run that stops at the first failure, unless <code>SEED</code> is set.
+With the stop, the test order can decide <code>killed</code> vs <code>timeout</code>; a fixed
+order keeps the verdict stable for a <code>--baseline</code> gate.</p>
+
+  </div>
 </div>
+<div class="tags">
+  
+
+</div>
+        </dt>
+        <dd><pre class="code"><span class='int'>1</span></pre></dd>
+      
+    </dl>
+  
+
 
 
 
@@ -138,7 +177,7 @@ second exit-2 path and break this method's 0/1 return contract.</p>
         <li class="public ">
   <span class="summary_signature">
     
-      <a href="#run-class_method" title="run (class method)">.<strong>run</strong>(test_files)  &#x21d2; Integer </a>
+      <a href="#run-class_method" title="run (class method)">.<strong>run</strong>(test_files, stop_at_first_failure: false)  &#x21d2; Integer </a>
     
 
     
@@ -170,7 +209,7 @@ second exit-2 path and break this method's 0/1 return contract.</p>
       <div class="method_details first">
   <h3 class="signature first" id="run-class_method">
   
-    .<strong>run</strong>(test_files)  &#x21d2; <tt>Integer</tt> 
+    .<strong>run</strong>(test_files, stop_at_first_failure: false)  &#x21d2; <tt>Integer</tt> 
   
 
   
@@ -204,6 +243,23 @@ Minitest.run.</p>
       
     </li>
   
+    <li>
+      
+        <span class='name'>stop_at_first_failure</span>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>false</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>end the run at the first failing
+test. Only the mutant path passes true.</p></div>
+      
+    </li>
+  
 </ul>
 
 <p class="tag_title">Returns:</p>
@@ -229,14 +285,6 @@ Minitest.run.</p>
       <pre class="lines">
 
 
-28
-29
-30
-31
-32
-33
-34
-35
 36
 37
 38
@@ -258,12 +306,28 @@ Minitest.run.</p>
 54
 55
 56
-57</pre>
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration.rb', line 28</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration.rb', line 36</span>
 
-<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_run'>run</span><span class='lparen'>(</span><span class='id identifier rubyid_test_files'>test_files</span><span class='rparen'>)</span>
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_run'>run</span><span class='lparen'>(</span><span class='id identifier rubyid_test_files'>test_files</span><span class='comma'>,</span> <span class='label'>stop_at_first_failure:</span> <span class='kw'>false</span><span class='rparen'>)</span>
   <span class='kw'>begin</span>
     <span class='id identifier rubyid_require'>require</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>minitest</span><span class='tstring_end'>&quot;</span></span>
   <span class='kw'>rescue</span> <span class='const'>LoadError</span>
@@ -285,13 +349,21 @@ Minitest.run.</p>
 </span>  <span class='const'>Minitest</span><span class='op'>::</span><span class='const'>Runnable</span><span class='period'>.</span><span class='id identifier rubyid_reset'>reset</span>
   <span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_test_files'>test_files</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_f'>f</span><span class='op'>|</span> <span class='id identifier rubyid_load'>load</span> <span class='id identifier rubyid_f'>f</span> <span class='rbrace'>}</span>
 
+  <span class='id identifier rubyid_args'>args</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
+  <span class='kw'>if</span> <span class='id identifier rubyid_stop_at_first_failure'>stop_at_first_failure</span>
+    <span class='const'><span class='object_link'><a href="MinitestIntegration/StopAtFirstFailure.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure (module)">StopAtFirstFailure</a></span></span><span class='period'>.</span><span class='id identifier rubyid_arm!'><span class='object_link'><a href="MinitestIntegration/StopAtFirstFailure.html#arm!-class_method" title="Mutineer::MinitestIntegration::StopAtFirstFailure.arm! (method)">arm!</a></span></span><span class='lparen'>(</span><span class='const'>Minitest</span><span class='op'>::</span><span class='const'>Runnable</span><span class='period'>.</span><span class='id identifier rubyid_runnables'>runnables</span><span class='rparen'>)</span>
+    <span class='id identifier rubyid_args'>args</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>--seed</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='const'><span class='object_link'><a href="#STOP_AT_FIRST_FAILURE_SEED-constant" title="Mutineer::MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED (constant)">STOP_AT_FIRST_FAILURE_SEED</a></span></span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='rbracket'>]</span> <span class='kw'>unless</span> <span class='const'>ENV</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>SEED</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span>
+  <span class='kw'>end</span>
   <span class='id identifier rubyid_orig'>orig</span> <span class='op'>=</span> <span class='gvar'>$stdout</span>
   <span class='comment'># Silence the child&#39;s test output; the parent only cares about pass/fail.
 </span>  <span class='gvar'>$stdout</span> <span class='op'>=</span> <span class='const'>StringIO</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span>
-  <span class='id identifier rubyid_passed'>passed</span> <span class='op'>=</span> <span class='const'>Minitest</span><span class='period'>.</span><span class='id identifier rubyid_run'>run</span><span class='lparen'>(</span><span class='lbracket'>[</span><span class='rbracket'>]</span><span class='rparen'>)</span>
-  <span class='gvar'>$stdout</span> <span class='op'>=</span> <span class='id identifier rubyid_orig'>orig</span>
+  <span class='id identifier rubyid_passed'>passed</span> <span class='op'>=</span> <span class='const'>Minitest</span><span class='period'>.</span><span class='id identifier rubyid_run'>run</span><span class='lparen'>(</span><span class='id identifier rubyid_args'>args</span><span class='rparen'>)</span>
 
-  <span class='id identifier rubyid_passed'>passed</span> <span class='op'>?</span> <span class='int'>0</span> <span class='op'>:</span> <span class='int'>1</span>
+  <span class='comment'># A plugin can replace the summary reporter, so a stop decides by itself.
+</span>  <span class='id identifier rubyid_passed'>passed</span> <span class='op'>&amp;&amp;</span> <span class='op'>!</span><span class='const'><span class='object_link'><a href="MinitestIntegration/StopAtFirstFailure.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure (module)">StopAtFirstFailure</a></span></span><span class='period'>.</span><span class='id identifier rubyid_stopped_here?'><span class='object_link'><a href="MinitestIntegration/StopAtFirstFailure.html#stopped_here%3F-class_method" title="Mutineer::MinitestIntegration::StopAtFirstFailure.stopped_here? (method)">stopped_here?</a></span></span> <span class='op'>?</span> <span class='int'>0</span> <span class='op'>:</span> <span class='int'>1</span>
+<span class='kw'>ensure</span>
+  <span class='gvar'>$stdout</span> <span class='op'>=</span> <span class='id identifier rubyid_orig'>orig</span> <span class='kw'>if</span> <span class='id identifier rubyid_orig'>orig</span>
+  <span class='const'><span class='object_link'><a href="MinitestIntegration/StopAtFirstFailure.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure (module)">StopAtFirstFailure</a></span></span><span class='period'>.</span><span class='id identifier rubyid_disarm!'><span class='object_link'><a href="MinitestIntegration/StopAtFirstFailure.html#disarm!-class_method" title="Mutineer::MinitestIntegration::StopAtFirstFailure.disarm! (method)">disarm!</a></span></span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>

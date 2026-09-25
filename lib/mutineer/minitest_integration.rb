@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "stringio"
+require_relative "minitest_integration/stop_at_first_failure"
 
 module Mutineer
   # Child-process-only: loads a test file in the current process and runs it
@@ -16,6 +17,11 @@ module Mutineer
   # boundary for unexpected errors. Swallowing those here would create a
   # second exit-2 path and break this method's 0/1 return contract.
   class MinitestIntegration
+    # The seed of a run that stops at the first failure, unless `SEED` is set.
+    # With the stop, the test order can decide `killed` vs `timeout`; a fixed
+    # order keeps the verdict stable for a `--baseline` gate.
+    STOP_AT_FIRST_FAILURE_SEED = 1
+
     # Tested via runner_test.rb, not in isolation — a direct unit test
     # would require forking and duplicate isolation_test's coverage.
     #
@@ -24,8 +30,10 @@ module Mutineer
     # Minitest.run.
     #
     # @param test_files [String, Array<String>] one file or many files.
+    # @param stop_at_first_failure [Boolean] end the run at the first failing
+    #   test. Only the mutant path passes true.
     # @return [Integer] 0 on success, 1 on failure.
-    def self.run(test_files)
+    def self.run(test_files, stop_at_first_failure: false)
       begin
         require "minitest"
       rescue LoadError
@@ -47,13 +55,21 @@ module Mutineer
       Minitest::Runnable.reset
       Array(test_files).each { |f| load f }
 
+      args = []
+      if stop_at_first_failure
+        StopAtFirstFailure.arm!(Minitest::Runnable.runnables)
+        args = ["--seed", STOP_AT_FIRST_FAILURE_SEED.to_s] unless ENV["SEED"]
+      end
       orig = $stdout
       # Silence the child's test output; the parent only cares about pass/fail.
       $stdout = StringIO.new
-      passed = Minitest.run([])
-      $stdout = orig
+      passed = Minitest.run(args)
 
-      passed ? 0 : 1
+      # A plugin can replace the summary reporter, so a stop decides by itself.
+      passed && !StopAtFirstFailure.stopped_here? ? 0 : 1
+    ensure
+      $stdout = orig if orig
+      StopAtFirstFailure.disarm!
     end
   end
 end

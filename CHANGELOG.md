@@ -6,6 +6,49 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **A mutant's test run stops at the first failing test** — one failure
+  already kills the mutant, so the forked child does not run the tests that
+  remain. Killed mutants cost less time, and survived mutants cost the same.
+  Under Minitest, when the outer reporter of the run records a failure or an
+  error (a skip does not count), each remaining test and each remaining test
+  class returns before it starts. A skipped class does not start its
+  class-level hooks. The run does not unwind: a class that is running
+  finishes normally, so its `after_all` hooks and a class-level
+  `transaction { super; raise ActiveRecord::Rollback }` still run. RSpec runs
+  with `--fail-fast`. This applies to the in-process backend only: coverage
+  capture and the clean checks still run every test, and the `--daemon` and
+  `--test-command` backends do not change. The CLI `--fail-fast` flag keeps
+  its meaning. On rack's `lib/rack/utils.rb` (`--jobs 1`), a full run takes
+  about 35–41 s instead of about 86–89 s. With the same coverage map, the
+  verdicts are the same.
+- **The mutant run uses a fixed Minitest seed** — with the stop, the test
+  order can decide the verdict, so the child runs Minitest with seed `1`
+  unless the environment sets `SEED`. The same code then gives the same
+  verdict on each run. Coverage capture and the clean checks keep the random
+  seed, so the clean check runs the tests in a random order while each mutant
+  run uses the fixed order. RSpec keeps its configured order: a suite configured with
+  `config.order = :random` can still get a different verdict on each run for
+  the case below. In an order-dependent Minitest suite, the fixed seed makes
+  a false `killed` happen on every run or on no run, not on some runs.
+- **A mutant whose failing test runs before a hanging test is now `killed`,
+  not `timeout`** — the run stops at the failure, before the hang. The tests
+  did detect the mutation, so `killed` is the correct verdict. If the hanging
+  test runs first in the fixed order, the verdict stays `timeout`. Compared
+  with a baseline from an earlier version, the score usually goes up. In an
+  order-dependent suite it can also go down: a mutant that a random order
+  killed on some runs can survive on every run in the fixed order. A change
+  to the tests can change the fixed order, so a later run can move such a
+  mutant from `killed` to `timeout`, and a `--baseline` gate then reports a
+  score drop.
+- **Some runs still run most tests** — Minitest `parallelize_me!`, and Rails
+  `parallelize` above its threshold (by default more than 50 tests in the
+  child, or at any test count when `PARALLEL_WORKERS` is 2 or more in the
+  environment), queue their tests before the first result comes back, so the
+  queued tests still run. The verdict is the same as before. Below the
+  Rails threshold, the tests run one after the other in the child, and the
+  stop works.
+
 ## [1.0.2] - 2026-09-21
 
 ### Added
