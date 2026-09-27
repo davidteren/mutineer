@@ -39,8 +39,12 @@ class MutatorRegistryTest < Minitest::Test
                  Mutineer::MutatorRegistry.resolve(%w[string_literal regex collection_method])
   end
 
+  def test_chain_link_resolvable
+    assert_equal [M::ChainLink], Mutineer::MutatorRegistry.resolve(%w[chain_link])
+  end
+
   def test_new_operators_are_tier2_and_not_default
-    %w[string_literal regex collection_method].each do |name|
+    %w[string_literal regex collection_method chain_link].each do |name|
       assert_equal 2, Mutineer::MutatorRegistry.tier(name), "#{name} should be tier 2"
       refute Mutineer::MutatorRegistry.default?(name), "#{name} should not be default"
       assert Mutineer::MutatorRegistry::DESCRIPTIONS.key?(name), "#{name} needs a description"

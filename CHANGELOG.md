@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **Chain-link operator** (Tier-2, opt-in via `--operators`):
+  `chain_link` drops one call from a chain, with its arguments and block
+  (`user.account.name` -> `user.name`). The mutant survives when no test tells
+  the chain apart from the same chain without that step. Conversions and copies
+  (`to_s`, `to_a`, `dup`, `freeze`, ...) and `new` are never dropped.
+
 ## [1.0.2] - 2026-09-21
 
 ### Added

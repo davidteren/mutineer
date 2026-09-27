@@ -42,6 +42,22 @@ class IntegrationTest < Minitest::Test
     assert_equal ">", s.mutation.replacement
   end
 
+  def test_chain_link_survivor
+    result = run_mutineer(sources: ["test/fixtures/roster.rb"],
+                          tests: ["test/fixtures/roster_test.rb"],
+                          operators: ["chain_link"])
+
+    assert_equal 1, result.survived_count,
+                 "Expected exactly 1 survivor from roster.rb + roster_test.rb"
+    assert_equal 50.0, result.mutation_score
+
+    s = result.surviving_mutants.first
+    assert_equal "active_names", s.subject.name.to_s
+    assert_equal :chain_link, s.mutation.operator
+    assert_equal ".select(&:active)", source_token(s)
+    assert_equal "", s.mutation.replacement
+  end
+
   # Scenario B — calculator + strong, perfect score (R10)
   def test_calculator_strong_kills_all
     result = run_mutineer(sources: ["test/fixtures/calculator.rb"],
