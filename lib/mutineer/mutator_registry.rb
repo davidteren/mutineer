@@ -11,12 +11,13 @@ require_relative "mutators/condition_negation"
 require_relative "mutators/string_literal"
 require_relative "mutators/regex_literal"
 require_relative "mutators/collection_method"
+require_relative "mutators/condition_forcing"
 
 module Mutineer
   # Maps operator names to operator classes.
   #
   # DEFAULT_NAMES is the v1 default set (Tier-1 plus statement-removal).
-  # The six Tier-2 operators live in ALL but are OFF by default — they only
+  # The Tier-2 operators live in ALL but are OFF by default — they only
   # run when named via `--operators` or `operators:` in `.mutineer.yml`.
   # Keeping DEFAULT_NAMES an explicit subset (not ALL.keys) is what keeps
   # the default survivor set unchanged.
@@ -33,13 +34,16 @@ module Mutineer
       "condition_negation" => Mutators::ConditionNegation,
       "string_literal"     => Mutators::StringLiteral,
       "regex"              => Mutators::RegexLiteral,
-      "collection_method"  => Mutators::CollectionMethod
+      "collection_method"  => Mutators::CollectionMethod,
+      "condition_true"     => Mutators::ConditionTrue,
+      "condition_false"    => Mutators::ConditionFalse
     }.freeze
 
     # The default Tier-1 operator set.
     DEFAULT_NAMES = %w[arithmetic comparison boolean_connector boolean_literal statement_removal].freeze
     # Tier-2 operators that remain opt-in.
-    TIER2_NAMES   = %w[return_nil literal_mutation condition_negation string_literal regex collection_method].freeze
+    TIER2_NAMES   = %w[return_nil literal_mutation condition_negation string_literal regex collection_method
+                       condition_true condition_false].freeze
 
     # Short human-readable descriptions for each operator.
     DESCRIPTIONS = {
@@ -53,7 +57,9 @@ module Mutineer
       "condition_negation" => "wrap if/unless/ternary condition in !( ... )",
       "string_literal"     => "non-empty string -> \"\", empty string -> \"mutineer\"",
       "regex"              => "drop leading ^ / trailing $, swap + <-> *",
-      "collection_method"  => "map<->each, all?<->any?, first<->last, min<->max, select<->reject"
+      "collection_method"  => "map<->each, all?<->any?, first<->last, min<->max, select<->reject",
+      "condition_true"     => "replace if/unless/ternary/guard condition with true",
+      "condition_false"    => "replace if/unless/ternary/guard condition with false"
     }.freeze
 
     # Resolves operator names to classes.

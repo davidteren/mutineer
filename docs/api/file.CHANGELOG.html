@@ -64,6 +64,16 @@
 <a href="https://keepachangelog.com/">Keep a Changelog</a>, and this project adheres to
 <a href="https://semver.org/">Semantic Versioning</a>.</p>
 <h2 id="_Unreleased_">[Unreleased]</h2>
+<h3 id="Added">Added</h3>
+<ul>
+<li><strong>Condition-forcing operators</strong> (Tier-2, opt-in via <code>--operators</code>):
+<code>condition_true</code> and <code>condition_false</code> replace an <code>if</code>/<code>elsif</code>/<code>unless</code>,
+ternary, modifier or <code>case</code>/<code>in</code> guard condition with <code>true</code> or <code>false</code>, so
+its branch always runs or never runs. A survivor means no test covers the
+other side of that condition. A literal condition, and the never-runs side of
+an else-less conditional that <code>statement_removal</code> or <code>return_nil</code> already
+replaces with <code>nil</code>, make no mutant.</li>
+</ul>
 <h2 id="_1_0_2____2026_09_21"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.0.2">1.0.2</a> - 2026-09-21</h2>
 <h3 id="Added">Added</h3>
 <ul>

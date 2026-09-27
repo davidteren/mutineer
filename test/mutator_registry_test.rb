@@ -39,8 +39,13 @@ class MutatorRegistryTest < Minitest::Test
                  Mutineer::MutatorRegistry.resolve(%w[string_literal regex collection_method])
   end
 
+  def test_condition_forcing_resolvable
+    assert_equal [M::ConditionTrue, M::ConditionFalse],
+                 Mutineer::MutatorRegistry.resolve(%w[condition_true condition_false])
+  end
+
   def test_new_operators_are_tier2_and_not_default
-    %w[string_literal regex collection_method].each do |name|
+    %w[string_literal regex collection_method condition_true condition_false].each do |name|
       assert_equal 2, Mutineer::MutatorRegistry.tier(name), "#{name} should be tier 2"
       refute Mutineer::MutatorRegistry.default?(name), "#{name} should not be default"
       assert Mutineer::MutatorRegistry::DESCRIPTIONS.key?(name), "#{name} needs a description"

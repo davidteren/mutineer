@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **Condition-forcing operators** (Tier-2, opt-in via `--operators`):
+  `condition_true` and `condition_false` replace an `if`/`elsif`/`unless`,
+  ternary, modifier or `case`/`in` guard condition with `true` or `false`, so
+  its branch always runs or never runs. A survivor means no test covers the
+  other side of that condition. A literal condition, and the never-runs side of
+  an else-less conditional that `statement_removal` or `return_nil` already
+  replaces with `nil`, make no mutant.
+
 ## [1.0.2] - 2026-09-21
 
 ### Added
