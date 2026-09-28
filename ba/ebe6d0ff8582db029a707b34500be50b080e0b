@@ -1,0 +1,168 @@
+test/pairing_test.rb
+  s_1d8e859ed0d041::t_ecd2f0a9392a2c 46-69
+lib/mutineer/pairing.rb
+  s_1d8e859ed0d041::t_ecd2f0a9392a2c 8-10,71-72,81-85
+test/coverage_map_test.rb
+  s_1d8e859ed0d041::t_ecd2f0a9392a2c 809-837
+  s_1d8e859ed0d041::t_36145e7ef6ee6a 808
+CHANGELOG.md
+  s_1d8e859ed0d041::t_ecd2f0a9392a2c 34-38
+lib/mutineer/coverage_map.rb
+  s_1d8e859ed0d041::t_ecd2f0a9392a2c 99,145-146,148-155
+docs/api/Mutineer.html
+  s_1d8e859ed0d041::t_83c3ef9d04ec78 154
+docs/api/Mutineer/AggregateResult.html
+  s_1d8e859ed0d041::t_b205a8364eca60 1388
+docs/api/Mutineer/Baseline.html
+  s_1d8e859ed0d041::t_e159a52def0a94 683
+docs/api/Mutineer/Baseline/Delta.html
+  s_1d8e859ed0d041::t_fd63bf4b725b05 743
+docs/api/Mutineer/CLI.html
+  s_1d8e859ed0d041::t_c63a207766d2bc 2142
+docs/api/Mutineer/ChangedLines.html
+  s_1d8e859ed0d041::t_19508919a5a9b3 988
+docs/api/Mutineer/ChildStdout.html
+  s_1d8e859ed0d041::t_736e9159c5aa33 209
+docs/api/Mutineer/ConcurrentRunError.html
+  s_1d8e859ed0d041::t_7722bc38e8f370 229
+docs/api/Mutineer/Config.html
+  s_1d8e859ed0d041::t_6cc81164f1b436 3251
+docs/api/Mutineer/ConfigError.html
+  s_1d8e859ed0d041::t_89c8494edeb5ea 132
+docs/api/Mutineer/CoverageMap.html
+  s_1d8e859ed0d041::t_3af56bd32abfa5 759,1399,1986,1989,2037,2040,2110-2113,2116,2197-2204,2207,2255-2257,2260,2402,2405,2504-2511,2514,2573-2580,2583,2650-2657,2660,2741-2743,2746,2784-2791,2794,2910-2917,2920,2998-3005,3008,3118-3125,3128,3208-3213,3216,3240-3241,3256-3263,3269-3276,3345-3348,3351,3433-3440,3443,3604-3611,3614,3702-3709,3712,3771-3775,3778,3849-3855,3858,4045-4052,4055,4155-4162,4165,4238-4242,4245,4301-4307,4310,4383-4385,4388,4430-4437,4440,4512-4519,4522,4605-4612,4615,4690-4692,4695,4752-4754,4757,4829-4836,4839,4941-4948,4951,5021-5028,5031,5096-5103,5106,5168-5175,5178,5236-5243,5246,5369-5376,5379,5469-5472,5475,5548-5550,5553,5618,5730-5737,5740,5813-5820,5823,5867-5874,5877,5920-5923,5926,5997-5999,6002,6019
+docs/api/Mutineer/DaemonBackend.html
+  s_1d8e859ed0d041::t_d0f1c72e3ebf8d 1500
+docs/api/Mutineer/DaemonBootError.html
+  s_1d8e859ed0d041::t_13e75b11138ff9 135
+docs/api/Mutineer/DaemonClient.html
+  s_1d8e859ed0d041::t_4af8a4654ed0f8 1308
+docs/api/Mutineer/DaemonServer.html
+  s_1d8e859ed0d041::t_78d9474d839366 1167
+docs/api/Mutineer/ExternalBackend.html
+  s_1d8e859ed0d041::t_d9468e88bc8276 1542
+docs/api/Mutineer/FileSwap.html
+  s_1d8e859ed0d041::t_372b1c521ee7b3 1146
+docs/api/Mutineer/FrameworkUnavailable.html
+  s_1d8e859ed0d041::t_ae511317dc0520 132
+docs/api/Mutineer/Isolation.html
+  s_1d8e859ed0d041::t_8d1aff9b60bac1 1104
+docs/api/Mutineer/MinitestIntegration.html
+  s_1d8e859ed0d041::t_26168b9d8b8289 378
+docs/api/Mutineer/MinitestIntegration/StopAtFirstFailure.html
+  s_1d8e859ed0d041::t_885f9c727c2147 907
+docs/api/Mutineer/MinitestIntegration/StopAtFirstFailure/OuterReporter5.html
+  s_1d8e859ed0d041::t_f6c79be9e57da2 241
+docs/api/Mutineer/MinitestIntegration/StopAtFirstFailure/OuterReporter6.html
+  s_1d8e859ed0d041::t_64b0703b8d5e89 242
+docs/api/Mutineer/MinitestIntegration/StopAtFirstFailure/RecordFailure.html
+  s_1d8e859ed0d041::t_c7c46991e2cf83 221
+docs/api/Mutineer/MinitestIntegration/StopAtFirstFailure/SkipAfterStop5.html
+  s_1d8e859ed0d041::t_fc2e05ed58caba 372
+docs/api/Mutineer/MinitestIntegration/StopAtFirstFailure/SkipAfterStop6.html
+  s_1d8e859ed0d041::t_c23961ddb79be5 372
+docs/api/Mutineer/MutantId.html
+  s_1d8e859ed0d041::t_97568e09f8555a 946
+docs/api/Mutineer/Mutation.html
+  s_1d8e859ed0d041::t_66e0ba5ea832e0 687
+docs/api/Mutineer/MutatorRegistry.html
+  s_1d8e859ed0d041::t_15388e18f5cd99 551
+docs/api/Mutineer/Mutators.html
+  s_1d8e859ed0d041::t_1f16260a3128ff 124
+docs/api/Mutineer/Mutators/Arithmetic.html
+  s_1d8e859ed0d041::t_7fe65673a4254b 290
+docs/api/Mutineer/Mutators/ArrayLiteral.html
+  s_1d8e859ed0d041::t_7314becac88dce 419
+docs/api/Mutineer/Mutators/Base.html
+  s_1d8e859ed0d041::t_889c1412ec00a9 373
+docs/api/Mutineer/Mutators/BooleanConnector.html
+  s_1d8e859ed0d041::t_bdb9f71618d03e 448
+docs/api/Mutineer/Mutators/BooleanLiteral.html
+  s_1d8e859ed0d041::t_db6295ea65d834 512
+docs/api/Mutineer/Mutators/ChainLink.html
+  s_1d8e859ed0d041::t_fd21c9101dfc94 1078
+docs/api/Mutineer/Mutators/CollectionMethod.html
+  s_1d8e859ed0d041::t_25dd40bcc587df 298
+docs/api/Mutineer/Mutators/Comparison.html
+  s_1d8e859ed0d041::t_11fb1e8abddbf3 290
+docs/api/Mutineer/Mutators/ConditionNegation.html
+  s_1d8e859ed0d041::t_438aef849c0327 423
+docs/api/Mutineer/Mutators/LiteralMutation.html
+  s_1d8e859ed0d041::t_93fdc954575589 439
+docs/api/Mutineer/Mutators/NegationRemoval.html
+  s_1d8e859ed0d041::t_bfda83ec619b82 344
+docs/api/Mutineer/Mutators/OperandRemoval.html
+  s_1d8e859ed0d041::t_93894d158bcfdd 530
+docs/api/Mutineer/Mutators/RangeLiteral.html
+  s_1d8e859ed0d041::t_5201283293914f 458
+docs/api/Mutineer/Mutators/RegexLiteral.html
+  s_1d8e859ed0d041::t_59211e98d964ae 581
+docs/api/Mutineer/Mutators/ReturnNil.html
+  s_1d8e859ed0d041::t_ba8c242ae62a62 634
+docs/api/Mutineer/Mutators/SafeNavigation.html
+  s_1d8e859ed0d041::t_40285572f0aa0a 665
+docs/api/Mutineer/Mutators/StatementRemoval.html
+  s_1d8e859ed0d041::t_af4daea9d6ad4e 269
+docs/api/Mutineer/Mutators/StringLiteral.html
+  s_1d8e859ed0d041::t_c835f5f6d4c6c5 269
+docs/api/Mutineer/Pairing.html
+  s_1d8e859ed0d041::t_010fd174801ddd 95-97,140,238,330-331,412-417,425-429,763-764,845-850,858-862,1186
+docs/api/Mutineer/ParseError.html
+  s_1d8e859ed0d041::t_ae1822cbac0b76 132
+docs/api/Mutineer/Parser.html
+  s_1d8e859ed0d041::t_9b33bb9d7956f5 359
+docs/api/Mutineer/Progress.html
+  s_1d8e859ed0d041::t_826ff46e62d167 351
+docs/api/Mutineer/Project.html
+  s_1d8e859ed0d041::t_70bc90e144331f 282
+docs/api/Mutineer/Project/SubjectVisitor.html
+  s_1d8e859ed0d041::t_0b29385fe57a26 969
+docs/api/Mutineer/RailsWorkerDb.html
+  s_1d8e859ed0d041::t_6c127b878459bb 884
+docs/api/Mutineer/Reporter.html
+  s_1d8e859ed0d041::t_3ef0d86d303362 3364
+docs/api/Mutineer/Result.html
+  s_1d8e859ed0d041::t_a4b8fbfcec62d3 1844
+docs/api/Mutineer/Runner.html
+  s_1d8e859ed0d041::t_94ec369a2ffb97 2189
+docs/api/Mutineer/SmokeCheckError.html
+  s_1d8e859ed0d041::t_25c5761bc83979 133
+docs/api/Mutineer/Subject.html
+  s_1d8e859ed0d041::t_cff51e10178439 725
+docs/api/Mutineer/TestRunners.html
+  s_1d8e859ed0d041::t_b6e834f72af917 267
+docs/api/Mutineer/TestRunners/Minitest.html
+  s_1d8e859ed0d041::t_701d79f72c76a0 242
+docs/api/Mutineer/TestRunners/RSpec.html
+  s_1d8e859ed0d041::t_3a3cab757274e2 343
+docs/api/Mutineer/WorkerPool.html
+  s_1d8e859ed0d041::t_d8c7b3b47d920a 765
+docs/api/_index.html
+  s_1d8e859ed0d041::t_22e26497b9cfab 674
+docs/api/file.CHANGELOG.html
+  s_1d8e859ed0d041::t_ba29fa29226297 83-102,608
+docs/api/file.README.html
+  s_1d8e859ed0d041::t_aa12e577dd0f92 397
+docs/api/index.html
+  s_1d8e859ed0d041::t_a9fd33aa3b6d12 397
+docs/api/method_list.html
+  s_1d8e859ed0d041::t_300cdfdd266b21 380,388,548-549,556-557,668-669,676-677,820-821,836-837,1004-1005,1036-1037,1116,1124,1212,1220,1228-1229,1236-1237,1244-1245,1260-1261,1268-1269,1276-1277,1284-1285,1292-1293,1300-1301,1420,1428,1660,1668,1852-1853,1860-1861,2044-2045,2052-2053,2060-2061,2068-2069,2076-2077,2084-2085,2092-2093,2100-2101,2108-2109,2116-2117,2876-2877,2884-2885,2900-2901,2908-2909,2924-2925,2932-2933,2940-2941,2964-2965,2972-2973,2988-2989,2996-2997,3004-3005,3012-3013,3020-3021,3068-3069,3076-3077,3124-3125,3132-3133
+docs/api/top-level-namespace.html
+  s_1d8e859ed0d041::t_18a3a31139e2d2 107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "baebe6d0ff8582db029a707b34500be50b080e0b",
+  "prompts": {},
+  "sessions": {
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
