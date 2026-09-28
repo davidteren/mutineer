@@ -789,6 +789,16 @@ class CoverageMapTest < Minitest::Test
   def test_failing_test_prefix_file_marks_its_source_uncapturable
     bad = File.join(Dir.mktmpdir, "test_calculator.rb")
     File.write(bad, "require 'does/not/exist'\n")
-    assert build([bad]).uncapturable_source?(CALC)
+    map = nil
+    capture_subprocess_io { map = build([bad]) }
+    assert map.uncapturable_source?(CALC)
+  end
+
+  def test_failing_test_with_both_affixes_pairs_by_its_suffix
+    bad = File.join(Dir.mktmpdir, "test_calculator_test.rb") # pairs with test_calculator.rb
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io { map = build([bad]) }
+    refute map.uncapturable_source?(CALC)
   end
 end

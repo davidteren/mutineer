@@ -142,10 +142,13 @@ module Mutineer
       @map.keys.map { |k| k.rpartition(":").first }.to_set
     end
 
-    # Basenames of failed test files with _test/_spec, test_ and .rb stripped,
-    # i.e. the source basenames they would have covered by convention.
+    # Basenames of the sources that failed test files pair with by convention:
+    # a trailing _test/_spec is stripped first, as pairing tries that form first.
     def failed_test_targets
-      @failed_test_files.map { |t| File.basename(t, ".rb").sub(/_(test|spec)\z/, "").delete_prefix("test_") }.to_set
+      @failed_test_files.map do |t|
+        name = File.basename(t, ".rb")
+        name.match?(/_(test|spec)\z/) ? name.sub(/_(test|spec)\z/, "") : name.delete_prefix("test_")
+      end.to_set
     end
 
     # Shared cache dance for both build paths: hit the digest-keyed cache, else

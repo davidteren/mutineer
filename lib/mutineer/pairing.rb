@@ -78,9 +78,11 @@ module Mutineer
     def candidates(base, lib, prefer)
       minitest = ["test/#{base}_test.rb"]
       minitest << "test/lib/#{base}_test.rb" if lib
-      prefixed = base.sub(%r{[^/]+\z}) { |name| "test_#{name}" }
-      minitest << "test/#{prefixed}.rb"
-      minitest << "test/lib/#{prefixed}.rb" if lib
+      unless File.basename(base) == "helper" # test/test_helper.rb is Minitest's support file, not a test
+        prefixed = base.sub(%r{[^/]+\z}) { |name| "test_#{name}" }
+        minitest << "test/#{prefixed}.rb"
+        minitest << "test/lib/#{prefixed}.rb" if lib
+      end
       rspec = ["spec/#{base}_spec.rb"]
       rspec << "spec/lib/#{base}_spec.rb" if lib
       prefer == "rspec" ? rspec + minitest : minitest + rspec

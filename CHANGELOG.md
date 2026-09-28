@@ -8,7 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 - **Sources also pair with Minitest's `test/**/test_*.rb` files** — after the
-  `_test.rb` forms, so existing projects pair as before (#120).
+  `_test.rb` forms, so existing projects pair as before. `lib/helper.rb` does
+  not pair with the `test/test_helper.rb` support file. A failed capture of a
+  `test_<name>.rb` file now marks `<name>.rb` uncapturable, as `<name>_test.rb`
+  does (#120).
 
 ## [1.1.0] - 2026-09-28
 

@@ -67,7 +67,10 @@
 <h3 id="Added">Added</h3>
 <ul>
 <li><strong>Sources also pair with Minitest's <code>test/**/test_*.rb</code> files</strong> — after the
-<code>_test.rb</code> forms, so existing projects pair as before (#120).</li>
+<code>_test.rb</code> forms, so existing projects pair as before. <code>lib/helper.rb</code> does
+not pair with the <code>test/test_helper.rb</code> support file. A failed capture of a
+<code>test_&lt;name&gt;.rb</code> file now marks <code>&lt;name&gt;.rb</code> uncapturable, as <code>&lt;name&gt;_test.rb</code>
+does (#120).</li>
 </ul>
 <h2 id="_1_1_0____2026_09_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.1.0">1.1.0</a> - 2026-09-28</h2>
 <h3 id="Added">Added</h3>
