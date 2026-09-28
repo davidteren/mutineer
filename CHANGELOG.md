@@ -15,6 +15,11 @@ All notable changes to this project are documented here. The format is based on
   parse in a value context. It never removes an operand that holds a heredoc,
   because the heredoc body stays behind as code. It skips nested method
   definitions, because mutineer mutates each one as its own method.
+- **Array-literal operator** (Tier-2, opt-in via `--operators`):
+  `array_literal` replaces a non-empty array literal, such as `[a, b]` or
+  `%i[a b]`, with `[]`. The mutant survives when no test checks the contents
+  of the array. The operator skips an implicit array (`x = 1, 2`), an array
+  that holds a heredoc, and nested method definitions.
 
 ### Fixed
 - **`reload` loads the mutant by an absolute path** — a relative source path

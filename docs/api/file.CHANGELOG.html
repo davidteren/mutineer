@@ -74,6 +74,11 @@ operand that the mutant removes. The operator never keeps a jump operand
 parse in a value context. It never removes an operand that holds a heredoc,
 because the heredoc body stays behind as code. It skips nested method
 definitions, because mutineer mutates each one as its own method.</li>
+<li><strong>Array-literal operator</strong> (Tier-2, opt-in via <code>--operators</code>):
+<code>array_literal</code> replaces a non-empty array literal, such as <code>[a, b]</code> or
+<code>%i[a b]</code>, with <code>[]</code>. The mutant survives when no test checks the contents
+of the array. The operator skips an implicit array (<code>x = 1, 2</code>), an array
+that holds a heredoc, and nested method definitions.</li>
 </ul>
 <h3 id="Fixed">Fixed</h3>
 <ul>
