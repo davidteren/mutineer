@@ -469,7 +469,8 @@ module Mutineer
         exit 2
       end
 
-      aggregate, source_map = Runner.execute(config)
+      aggregate, source_map, extras = Runner.execute(config)
+      warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
       reporter = Reporter.new(aggregate, source_map)
 
       # Diff the current run against the baseline (preflighted above) by the
@@ -523,6 +524,21 @@ module Mutineer
         "enable with --operators <list>."
     end
 
+    # Warns once per old-format `ignore:` entry (#126), naming the new ids it
+    # matched. mutineer cannot tell a full run from a narrowed one, so the text
+    # always says the list covers only this run's mutants.
+    #
+    # @param matches [Hash{String => Array<String>}] old-format entry => new ids.
+    # @return [void]
+    def self.warn_legacy_ignore_matches(matches)
+      matches.each do |old, new_ids|
+        warn "[mutineer] ignore entry #{old} uses the old id format, which did not include the " \
+             "file path. It matched these new ids: #{new_ids.join(', ')}. This list covers only " \
+             "mutants in this run's sources and operators; a run over every source gives the " \
+             "complete replacement. Replace #{old} with the new ids in your ignore list."
+      end
+    end
+
     # Runs dry-run mode. Reuses Runner.collect_jobs (+ filter_since) so the
     # candidate list cannot drift from a real run's job selection.
     #
@@ -530,7 +546,8 @@ module Mutineer
     # @return [void]
     def self.dry_run(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
-      jobs, ignored_results, source_map = Runner.collect_jobs(config, operator_classes)
+      jobs, ignored_results, source_map, extras = Runner.collect_jobs(config, operator_classes)
+      warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
       # Narrow jobs and ignored the same way so the summary matches the printed list.
       if config.since
         jobs = Runner.filter_since(jobs, source_map, config)

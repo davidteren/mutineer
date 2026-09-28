@@ -46,18 +46,95 @@ class EquivalentMutantTest < Minitest::Test
 
   def test_suppressed_scope_matches_only_listed_operator
     disabled = { 2 => Set[:comparison] }
-    refute Mutineer::Runner.suppressed?(:arithmetic, 2, "id", disabled, Set.new)
-    assert Mutineer::Runner.suppressed?(:comparison, 2, "id", disabled, Set.new)
+    refute Mutineer::Runner.suppressed?(:arithmetic, 2, %w[id old], disabled, Set.new)
+    assert Mutineer::Runner.suppressed?(:comparison, 2, %w[id old], disabled, Set.new)
   end
 
   def test_suppressed_bare_disables_every_operator
     disabled = { 4 => :all }
-    assert Mutineer::Runner.suppressed?(:arithmetic, 4, "id", disabled, Set.new)
+    assert Mutineer::Runner.suppressed?(:arithmetic, 4, %w[id old], disabled, Set.new)
   end
 
   def test_suppressed_by_ignore_id
-    assert Mutineer::Runner.suppressed?(:arithmetic, 1, "abc123", {}, Set["abc123"])
-    refute Mutineer::Runner.suppressed?(:arithmetic, 1, "abc123", {}, Set["other"])
+    assert Mutineer::Runner.suppressed?(:arithmetic, 1, %w[abc123 old], {}, Set["abc123"])
+    refute Mutineer::Runner.suppressed?(:arithmetic, 1, %w[abc123 old], {}, Set["other"])
+  end
+
+  def test_suppressed_by_legacy_ignore_id
+    assert Mutineer::Runner.suppressed?(:arithmetic, 1, %w[abc123 old], {}, Set["old"])
+  end
+
+  # --- #126: old-format ignore entries keep working, reported as data ---
+
+  # One method in a class reopened in two files: the old id formula ignores the
+  # path, so both files' first mutant share one old-format id.
+  COLLIDING = "class Shared\n  def f(a) = a + 1\nend\n"
+
+  def test_new_format_entry_suppresses_one_mutant_without_legacy_match
+    with_colliding_files do |root|
+      new_a = new_id(root, "a.rb")
+      _, ignored, _, extras = collect(root, %w[a.rb b.rb], ignore: [new_a])
+      assert_equal [new_a], ignored.map(&:id)
+      assert_empty extras[:legacy_ignore_matches]
+    end
+  end
+
+  def test_old_format_entry_suppresses_its_mutant_and_reports_the_new_id
+    with_colliding_files do |root|
+      old = legacy_id(root, "a.rb")
+      _, ignored, _, extras = collect(root, %w[a.rb], ignore: [old])
+      assert_equal [new_id(root, "a.rb")], ignored.map(&:id)
+      assert_equal({ old => [new_id(root, "a.rb")] }, extras[:legacy_ignore_matches])
+    end
+  end
+
+  def test_colliding_old_format_entry_suppresses_both_and_lists_both_new_ids
+    with_colliding_files do |root|
+      old = legacy_id(root, "a.rb")
+      assert_equal old, legacy_id(root, "b.rb"), "precondition: the old ids collide"
+      expected = [new_id(root, "a.rb"), new_id(root, "b.rb")]
+      refute_equal expected[0], expected[1]
+
+      _, ignored, _, extras = collect(root, %w[a.rb b.rb], ignore: [old])
+      assert_equal expected, ignored.map(&:id)
+      assert_equal({ old => expected }, extras[:legacy_ignore_matches])
+    end
+  end
+
+  def test_entry_matching_nothing_is_not_a_legacy_match
+    with_colliding_files do |root|
+      jobs, ignored, _, extras = collect(root, %w[a.rb b.rb], ignore: ["0123456789ab"])
+      assert_empty ignored
+      refute_empty jobs
+      assert_empty extras[:legacy_ignore_matches]
+    end
+  end
+
+  def test_id_map_maps_every_new_id_to_its_legacy_id
+    with_colliding_files do |root|
+      old = legacy_id(root, "a.rb")
+      jobs, ignored, _, extras = collect(root, %w[a.rb b.rb], ignore: [old])
+      ids = jobs.map { |j| j[2] } + ignored.map(&:id)
+      assert_equal ids.sort, extras[:id_map].keys.sort
+      assert_equal old, extras[:id_map][new_id(root, "b.rb")]
+    end
+  end
+
+  def test_collect_jobs_prints_nothing
+    with_colliding_files do |root|
+      assert_output("", "") { collect(root, %w[a.rb b.rb], ignore: [legacy_id(root, "a.rb")]) }
+    end
+  end
+
+  # The in-process backend reports exactly the ids collect_jobs computed.
+  def test_in_process_run_carries_the_collect_jobs_ids
+    sources = ["test/fixtures/calculator.rb"]
+    config = Mutineer::Config.new(sources: sources, tests: [], project_root: ROOT)
+    jobs, ignored, = Mutineer::Runner.collect_jobs(
+      config, Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::DEFAULT_NAMES)
+    )
+    agg, = run_mutineer(sources: sources, tests: ["test/fixtures/calculator_weak_test.rb"])
+    assert_equal (jobs.map { |j| j[2] } + ignored.map(&:id)).sort, agg.results.map(&:id).sort
   end
 
   # --- Acceptance 1: inline disable-line ---
@@ -135,6 +212,35 @@ class EquivalentMutantTest < Minitest::Test
   end
 
   private
+
+  def with_colliding_files
+    Dir.mktmpdir("mutineer-ids") do |root|
+      %w[a.rb b.rb].each { |f| File.write(File.join(root, f), COLLIDING) }
+      yield root
+    end
+  end
+
+  def collect(root, files, ignore: [])
+    config = Mutineer::Config.new(sources: files.map { |f| File.join(root, f) }, ignore: ignore,
+                                  project_root: root)
+    Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(["arithmetic"]))
+  end
+
+  # The first arithmetic mutant of `file`, as [subject, mutation, source].
+  def first_mutant(root, file)
+    path = File.join(root, file)
+    source = File.read(path)
+    subject = Mutineer::Project.discover([path]).first
+    [subject, Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source).first, source]
+  end
+
+  def legacy_id(root, file)
+    Mutineer::MutantId.legacy_for(*first_mutant(root, file))
+  end
+
+  def new_id(root, file)
+    Mutineer::MutantId.for(*first_mutant(root, file), path: file)
+  end
 
   def render_json(agg, source_map)
     out = StringIO.new

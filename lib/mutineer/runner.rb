@@ -32,15 +32,17 @@ module Mutineer
   class Runner
     # Full orchestration: resolve operators, discover subjects, build the
     # coverage map, run every mutation, and aggregate. Returns
-    # [AggregateResult, source_map]. The CLI then reports + applies the exit code;
-    # the integration test asserts directly on the AggregateResult.
+    # [AggregateResult, source_map, extras] (extras: see {.run_extras}). The CLI
+    # then reports + applies the exit code; the integration test asserts directly
+    # on the AggregateResult.
     #
     # The parent process `require`s each source file so its classes exist; forked
     # children inherit them, so a covering test file's own require_relative of the
     # source is a no-op and does not clobber the mutated `load` (spec §7).
     #
     # @param config [Mutineer::Config] run configuration.
-    # @return [Array(Mutineer::AggregateResult, Hash<String, String>)] aggregate and source map.
+    # @return [Array(Mutineer::AggregateResult, Hash<String, String>, Hash)] aggregate,
+    #   source map, and run extras.
     def self.execute(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
 
@@ -110,7 +112,7 @@ module Mutineer
       abort_if_unclean!(coverage_map)
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
-      jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
+      jobs, ignored_results, source_map, extras = collect_jobs(config, operator_classes)
 
       jobs = filter_since(jobs, source_map, config) if config.since
 
@@ -145,7 +147,16 @@ module Mutineer
           sweep_orphans(dirs)
         end
 
-      [AggregateResult.new(results + ignored_results), source_map]
+      [AggregateResult.new(results + ignored_results), source_map, run_extras(extras)]
+    end
+
+    # The part of {.collect_jobs}' extras a backend hands back to the CLI: the
+    # old-format ignore matches, which the CLI prints as warnings.
+    #
+    # @param extras [Hash] the extras {.collect_jobs} returned.
+    # @return [Hash{Symbol => Object}] `{legacy_ignore_matches: Hash<String, Array<String>>}`.
+    def self.run_extras(extras)
+      extras.slice(:legacy_ignore_matches)
     end
 
     # Collect every (subject, mutation, id) up front so a backend can run them.
@@ -156,7 +167,16 @@ module Mutineer
     # on the file path relative to config.project_root, and carried on every job so the parent can reattach it after the run. Shared by
     # the in-process, external, and daemon backends so job selection can never drift.
     #
-    # @return [Array(Array, Array<Result>, Hash<String,String>)] jobs, ignored, source_map.
+    # Each mutant also gets its old-format id ({MutantId.legacy_for}), so an ignore
+    # entry stored before ids carried the path still suppresses it. Prints nothing:
+    # the extras hash returns, as data, `legacy_ignore_matches` (each old-format
+    # entry that matched only through an old-format id => the new ids it matched,
+    # in collection order) and `id_map` (every new id => its old-format id).
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @param operator_classes [Array<Class>] resolved operators.
+    # @return [Array(Array, Array<Result>, Hash<String,String>, Hash{Symbol => Hash})]
+    #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`, `:id_map`).
     def self.collect_jobs(config, operator_classes)
       source_map = {}
       disabled_map = {}
@@ -164,23 +184,31 @@ module Mutineer
       ignore_set = config.ignore.to_set
       jobs = []
       ignored_results = []
+      legacy_ignore_matches = {}
+      id_map = {}
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
         mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
         id_path = (id_paths[subject.file] ||= ProjectPath.relative(subject.file, config.project_root))
         ids = MutantId.for_subject(subject, source, mutations, path: id_path)
+        legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
         mutations.each_with_index do |mutation, i|
           id = ids[i]
+          legacy = legacy_ids[i]
+          id_map[id] = legacy
+          if ignore_set.include?(legacy) && !ignore_set.include?(id)
+            (legacy_ignore_matches[legacy] ||= []) << id
+          end
           line = source.byteslice(0, mutation.start_offset).count("\n") + 1
-          if suppressed?(mutation.operator, line, id, disabled, ignore_set)
+          if suppressed?(mutation.operator, line, [id, legacy], disabled, ignore_set)
             ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id)
           else
             jobs << [subject, mutation, id]
           end
         end
       end
-      [jobs, ignored_results, source_map]
+      [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map }]
     end
 
     # External backend orchestration. Runs each mutant's whole-file mutation on
@@ -192,7 +220,8 @@ module Mutineer
     #
     # @param config [Mutineer::Config] run configuration (test_command set).
     # @param operator_classes [Array<Class>] resolved operators.
-    # @return [Array(Mutineer::AggregateResult, Hash<String,String>)] aggregate and source map.
+    # @return [Array(Mutineer::AggregateResult, Hash<String,String>, Hash)] aggregate,
+    #   source map, and run extras (see {.run_extras}).
     def self.execute_external(config, operator_classes)
       abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
       sources   = config.sources.map { |s| FileSwap.canonical_path(File.expand_path(s, config.project_root)) }
@@ -208,12 +237,12 @@ module Mutineer
         # source. Heal first, then discover jobs from the clean tree.
         FileSwap.restore_orphans(dirs)
 
-        jobs, ignored_results, source_map = collect_jobs(config, operator_classes)
+        jobs, ignored_results, source_map, extras = collect_jobs(config, operator_classes)
         jobs = filter_since(jobs, source_map, config) if config.since
 
         # Nothing to mutate: return before the smoke check, which runs the whole
         # --test set to calibrate a timeout no mutant would use (#76).
-        next [AggregateResult.new(ignored_results), source_map] if jobs.empty?
+        next [AggregateResult.new(ignored_results), source_map, run_extras(extras)] if jobs.empty?
 
         # Calibrate the per-mutant timeout from the clean run (a real suite far
         # outlasts the 10s in-process fork budget), and abort if it is not green.
@@ -237,7 +266,7 @@ module Mutineer
           FileSwap.restore_orphans(dirs)
         end
 
-        [AggregateResult.new(results + ignored_results), source_map]
+        [AggregateResult.new(results + ignored_results), source_map, run_extras(extras)]
       end
     end
 
@@ -334,10 +363,13 @@ module Mutineer
     end
 
     # True when this mutant is suppressed: its line bears a disable-line marker
-    # (bare, or scoped to its operator), OR its stable id is in the config ignore
-    # list. Checked at job-build time so a suppressed mutant is never forked.
-    def self.suppressed?(operator, line, id, disabled, ignore_set)
-      return true if ignore_set.include?(id)
+    # (bare, or scoped to its operator), OR its new or old-format id is in the
+    # config ignore list. Checked at job-build time so a suppressed mutant is
+    # never forked.
+    #
+    # @param ids [Array<String>] the mutant's new id and its old-format id.
+    def self.suppressed?(operator, line, ids, disabled, ignore_set)
+      return true if ids.any? { |id| ignore_set.include?(id) }
 
       case (entry = disabled[line])
       when :all then true

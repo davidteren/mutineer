@@ -19,6 +19,21 @@ class CliTest < Minitest::Test
 
   # An isolated project dir with the calculator fixtures copied in, so the run is
   # real but the .mutineer cache lands in the temp dir, never the repo.
+  # The [mutineer] old-format ignore warnings in a stderr capture.
+  def legacy_warnings(err)
+    err.lines.grep(/\A\[mutineer\] ignore entry/)
+  end
+
+  # [old-format id, new id] of the first arithmetic mutant in proj/calculator.rb.
+  def calculator_ids(proj)
+    path = File.join(proj, "calculator.rb")
+    source = File.read(path)
+    subject = Mutineer::Project.discover([path]).find { |s| Mutineer::Mutators::Arithmetic.new.mutations_for(s, source).any? }
+    mutation = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source).first
+    [Mutineer::MutantId.legacy_for(subject, mutation, source),
+     Mutineer::MutantId.for(subject, mutation, source, path: "calculator.rb")]
+  end
+
   def with_project
     Dir.mktmpdir("mutineer-proj") do |proj|
       %w[calculator.rb calculator_strong_test.rb calculator_weak_test.rb].each do |f|
@@ -280,6 +295,57 @@ class CliTest < Minitest::Test
     assert_match(/ignored \(suppressed\)/, out)
     refute_match(/Equivalent#add/, out, "the disable-line'd add mutation must not be listed")
     assert_match(/Equivalent#double/, out, "the non-suppressed mutation is still listed")
+  end
+
+  # #126: an old-format ignore entry still suppresses its mutant, and the run
+  # warns once, naming the new id and scoping the list to this run.
+  def test_old_format_ignore_entry_warns_with_the_new_id
+    with_project do |proj|
+      old, new = calculator_ids(proj)
+      File.write(File.join(proj, ".mutineer.yml"), "ignore:\n  - #{old}\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--operators", "arithmetic", "--jobs", "1", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      warnings = legacy_warnings(err)
+      assert_equal 1, warnings.size, err
+      assert_includes warnings.first, old
+      assert_includes warnings.first, new
+      assert_match(/only mutants in this run's sources and operators/, warnings.first)
+      assert_match(/every source/, warnings.first)
+      assert_match(/[Rr]eplace/, warnings.first)
+    end
+  end
+
+  def test_new_format_ignore_entry_does_not_warn
+    with_project do |proj|
+      _, new = calculator_ids(proj)
+      File.write(File.join(proj, ".mutineer.yml"), "ignore:\n  - #{new}\n")
+      out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_match(/1 ignored/, out)
+      assert_empty legacy_warnings(err)
+    end
+  end
+
+  # --dry-run --since prints the same old-format warnings as a real run. No
+  # ignored count is compared: a real run does not narrow ignored results.
+  def test_dry_run_with_since_prints_the_same_legacy_warnings
+    with_project do |proj|
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      old, = calculator_ids(proj)
+      File.write(File.join(proj, ".mutineer.yml"), "ignore:\n  - #{old}\n")
+      _, dry_err, dry = mutineer("run", "calculator.rb", "--dry-run", "--since", "HEAD",
+                                 "--operators", "arithmetic", chdir: proj)
+      _, run_err, run = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                 "--since", "HEAD", "--operators", "arithmetic", "--jobs", "1", chdir: proj)
+      assert_equal 0, dry.exitstatus, dry_err
+      assert_equal 0, run.exitstatus, run_err
+      refute_empty legacy_warnings(dry_err)
+      assert_equal legacy_warnings(run_err), legacy_warnings(dry_err)
+    end
   end
 
   # #14: tier-2 operators are surfaced when they're not in the active set.
