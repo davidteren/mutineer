@@ -584,11 +584,17 @@ module Mutineer
       loads = Array(test_paths).map { |t| "load #{absolute(t).inspect}" }.join("\n")
       <<~RUBY
         require "minitest"
+        require "stringio"
         def Minitest.autorun; end
+        _report = StringIO.new
+        Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
+        Minitest.extensions << "mutineer_report"
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| load f }
+        #{abs_source_paths.inspect}.each { |f| require f }
         #{loads}
-        exit(Minitest.run([]) ? 0 : 1)
+        _passed = Minitest.run([])
+        $stderr.write(_report.string) unless _passed
+        exit(_passed ? 0 : 1)
       RUBY
     end
 
@@ -608,9 +614,10 @@ module Mutineer
         end
         RSpec::Core::Runner.disable_autorun!
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| load f }
+        #{abs_source_paths.inspect}.each { |f| require f }
         _sink = StringIO.new
         status = RSpec::Core::Runner.run(["--no-color", #{specs}], _sink, _sink)
+        $stderr.write(_sink.string) unless status.zero?
         exit(status.zero? ? 0 : 1)
       RUBY
     end
@@ -635,12 +642,17 @@ module Mutineer
         require "coverage"
         require "json"
         require "minitest"
+        require "stringio"
         def Minitest.autorun; end
+        _report = StringIO.new
+        Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
+        Minitest.extensions << "mutineer_report"
         Coverage.start(lines: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| load f }
+        #{abs_source_paths.inspect}.each { |f| require f }
         load #{absolute(test_path).inspect}
         _passed = Minitest.run([])
+        $stderr.write(_report.string) unless _passed
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => Coverage.result,
                                     "loaded_files" => #{loaded_files_expression})
         _result.close
@@ -648,7 +660,7 @@ module Mutineer
     end
 
     # Same coverage-JSON contract as the minitest path, but driven by RSpec:
-    # require rspec/core lazily, load the sources under Coverage, then run the
+    # require rspec/core lazily, require the sources under Coverage, then run the
     # one spec via RSpec::Core::Runner. The JSON goes to the result channel (see
     # {#spawn_script}), so spec output cannot corrupt it. A missing rspec makes
     # the script exit non-zero -> capture() records a skipped (incomplete-map)
@@ -668,9 +680,10 @@ module Mutineer
         RSpec::Core::Runner.disable_autorun!
         Coverage.start(lines: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| load f }
+        #{abs_source_paths.inspect}.each { |f| require f }
         _sink = StringIO.new
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
+        $stderr.write(_sink.string) unless _status.zero?
         _result.puts JSON.generate("passed" => _status.zero?, "coverage" => Coverage.result,
                                     "loaded_files" => #{loaded_files_expression})
         _result.close

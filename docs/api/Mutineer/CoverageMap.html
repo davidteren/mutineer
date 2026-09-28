@@ -1220,7 +1220,7 @@ the parent. Stdout stays free for test output, which goes to File::NULL.</p>
   
 
   
-    <span class="summary_desc"><div class='inline'><p>Same coverage-JSON contract as the minitest path, but driven by RSpec: require rspec/core lazily, load the sources under Coverage, then run the one spec via RSpec::Core::Runner.</p></div></span>
+    <span class="summary_desc"><div class='inline'><p>Same coverage-JSON contract as the minitest path, but driven by RSpec: require rspec/core lazily, require the sources under Coverage, then run the one spec via RSpec::Core::Runner.</p></div></span>
   
 </li>
 
@@ -1983,10 +1983,10 @@ set.</p>
       <pre class="lines">
 
 
-895</pre>
+908</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 895</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 908</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_abs_load_paths'>abs_load_paths</span>   <span class='op'>=</span> <span class='ivar'>@load_paths</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_p'>p</span><span class='op'>|</span> <span class='id identifier rubyid_absolute'>absolute</span><span class='lparen'>(</span><span class='id identifier rubyid_p'>p</span><span class='rparen'>)</span> <span class='rbrace'>}</span></pre>
     </td>
@@ -2034,10 +2034,10 @@ set.</p>
       <pre class="lines">
 
 
-890</pre>
+903</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 890</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 903</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span> <span class='op'>=</span> <span class='ivar'>@source_paths</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_p'>p</span><span class='op'>|</span> <span class='id identifier rubyid_absolute'>absolute</span><span class='lparen'>(</span><span class='id identifier rubyid_p'>p</span><span class='rparen'>)</span> <span class='rbrace'>}</span></pre>
     </td>
@@ -2107,13 +2107,13 @@ set.</p>
       <pre class="lines">
 
 
-917
-918
-919
-920</pre>
+930
+931
+932
+933</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 917</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 930</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_absolute'>absolute</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_raw'>raw</span> <span class='op'>=</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_absolute_path?'>absolute_path?</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span> <span class='op'>?</span> <span class='id identifier rubyid_path'>path</span> <span class='op'>:</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='comma'>,</span> <span class='ivar'>@project_root</span><span class='rparen'>)</span>
@@ -2252,12 +2252,12 @@ resolve it to the real file for reading, appending &quot;.rb&quot; when needed.<
       <pre class="lines">
 
 
-809
-810
-811</pre>
+822
+823
+824</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 809</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 822</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_boot_digest_path'>boot_digest_path</span>
   <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_exist?'>exist?</span><span class='lparen'>(</span><span class='id identifier rubyid_absolute'>absolute</span><span class='lparen'>(</span><span class='ivar'>@boot_path</span><span class='rparen'>)</span><span class='rparen'>)</span> <span class='op'>?</span> <span class='ivar'>@boot_path</span> <span class='op'>:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='ivar'>@boot_path</span><span class='embexpr_end'>}</span><span class='tstring_content'>.rb</span><span class='tstring_end'>&quot;</span></span>
@@ -2399,10 +2399,10 @@ never collides with a standalone one).</p>
       <pre class="lines">
 
 
-849</pre>
+862</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 849</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 862</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_cache_path'>cache_path</span> <span class='op'>=</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='ivar'>@cache_dir</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>coverage.json</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span></pre>
     </td>
@@ -2643,21 +2643,21 @@ before any source is loaded. Returns the wrapped capture payload
       <pre class="lines">
 
 
-722
-723
-724
-725
-726
-727
-728
-729
-730
-731
-732
-733</pre>
+735
+736
+737
+738
+739
+740
+741
+742
+743
+744
+745
+746</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 722</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 735</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_capture_loaded_files'>capture_loaded_files</span>
   <span class='id identifier rubyid_prefix'>prefix</span> <span class='op'>=</span> <span class='id identifier rubyid_project_root_real'>project_root_real</span>
@@ -2780,18 +2780,18 @@ accepting a stale cached map.</p>
       <pre class="lines">
 
 
-797
-798
-799
-800
-801
-802
-803
-804
-805</pre>
+810
+811
+812
+813
+814
+815
+816
+817
+818</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 797</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 810</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_compute_digest'>compute_digest</span>
   <span class='id identifier rubyid_d'>d</span> <span class='op'>=</span> <span class='const'>Digest</span><span class='op'>::</span><span class='const'>SHA256</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span>
@@ -2906,18 +2906,18 @@ match. Missing validity data is a miss (rebuild).</p>
       <pre class="lines">
 
 
-783
-784
-785
-786
-787
-788
-789
-790
-791</pre>
+796
+797
+798
+799
+800
+801
+802
+803
+804</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 783</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 796</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_dependencies_match?'>dependencies_match?</span><span class='lparen'>(</span><span class='id identifier rubyid_cached'>cached</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_deps'>deps</span> <span class='op'>=</span> <span class='id identifier rubyid_cached'>cached</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>dependencies</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span>
@@ -3110,22 +3110,22 @@ match. Missing validity data is a miss (rebuild).</p>
       <pre class="lines">
 
 
-820
-821
-822
-823
-824
-825
-826
-827
-828
-829
-830
-831
-832</pre>
+833
+834
+835
+836
+837
+838
+839
+840
+841
+842
+843
+844
+845</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 820</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 833</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_digest_group'>digest_group</span><span class='lparen'>(</span><span class='id identifier rubyid_digest'>digest</span><span class='comma'>,</span> <span class='id identifier rubyid_role'>role</span><span class='comma'>,</span> <span class='id identifier rubyid_paths'>paths</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_paths'>paths</span><span class='period'>.</span><span class='id identifier rubyid_sort'>sort</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_p'>p</span><span class='op'>|</span>
@@ -3342,13 +3342,13 @@ a trailing _test/_spec is stripped first, as pairing tries that form first.</p>
       <pre class="lines">
 
 
-772
-773
-774
-775</pre>
+785
+786
+787
+788</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 772</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 785</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_file_fingerprint'>file_fingerprint</span><span class='lparen'>(</span><span class='id identifier rubyid_abs'>abs</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_content'>content</span> <span class='op'>=</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_binread'>binread</span><span class='lparen'>(</span><span class='id identifier rubyid_abs'>abs</span><span class='rparen'>)</span>
@@ -3768,14 +3768,14 @@ Bounded by <code>@capture_timeout</code> so a hung child cannot block the CLI.</
       <pre class="lines">
 
 
-702
-703
-704
-705
-706</pre>
+715
+716
+717
+718
+719</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 702</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 715</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_loaded_files_expression'>loaded_files_expression</span>
   <span class='id identifier rubyid_root'><span class='object_link'><a href="../top-level-namespace.html" title="Top Level Namespace (root)">root</a></span></span> <span class='op'>=</span> <span class='id identifier rubyid_project_root_real'>project_root_real</span>
@@ -3846,16 +3846,16 @@ Bounded by <code>@capture_timeout</code> so a hung child cannot block the CLI.</
       <pre class="lines">
 
 
-759
-760
-761
-762
-763
-764
-765</pre>
+772
+773
+774
+775
+776
+777
+778</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 759</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 772</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_loaded_relative'>loaded_relative</span><span class='lparen'>(</span><span class='id identifier rubyid_abs'>abs</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_root'><span class='object_link'><a href="../top-level-namespace.html" title="Top Level Namespace (root)">root</a></span></span> <span class='op'>=</span> <span class='id identifier rubyid_project_root_real'>project_root_real</span>
@@ -4043,7 +4043,13 @@ standalone <span class='object_link'><a href="Runner.html#execute-class_method" 
 590
 591
 592
-593</pre>
+593
+594
+595
+596
+597
+598
+599</pre>
     </td>
     <td>
       <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 583</span>
@@ -4052,11 +4058,17 @@ standalone <span class='object_link'><a href="Runner.html#execute-class_method" 
   <span class='id identifier rubyid_loads'>loads</span> <span class='op'>=</span> <span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_test_paths'>test_paths</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_t'>t</span><span class='op'>|</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>load </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_absolute'>absolute</span><span class='lparen'>(</span><span class='id identifier rubyid_t'>t</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\n</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
   <span class='heredoc_beg'>&lt;&lt;~RUBY</span>
 <span class='tstring_content'>    require &quot;minitest&quot;
+</span><span class='tstring_content'>    require &quot;stringio&quot;
 </span><span class='tstring_content'>    def Minitest.autorun; end
+</span><span class='tstring_content'>    _report = StringIO.new
+</span><span class='tstring_content'>    Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter &lt;&lt; Minitest::SummaryReporter.new(_report, options) }
+</span><span class='tstring_content'>    Minitest.extensions &lt;&lt; &quot;mutineer_report&quot;
 </span><span class='tstring_content'>    $LOAD_PATH.unshift(*</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_load_paths'>abs_load_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>)
-</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| load f }
+</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| require f }
 </span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_loads'>loads</span><span class='embexpr_end'>}</span><span class='tstring_content'>
-</span><span class='tstring_content'>    exit(Minitest.run([]) ? 0 : 1)
+</span><span class='tstring_content'>    _passed = Minitest.run([])
+</span><span class='tstring_content'>    $stderr.write(_report.string) unless _passed
+</span><span class='tstring_content'>    exit(_passed ? 0 : 1)
 </span><span class='heredoc_end'>  RUBY
 </span><span class='kw'>end</span></pre>
     </td>
@@ -4126,13 +4138,6 @@ standalone <span class='object_link'><a href="Runner.html#execute-class_method" 
       <pre class="lines">
 
 
-632
-633
-634
-635
-636
-637
-638
 639
 640
 641
@@ -4142,10 +4147,22 @@ standalone <span class='object_link'><a href="Runner.html#execute-class_method" 
 645
 646
 647
-648</pre>
+648
+649
+650
+651
+652
+653
+654
+655
+656
+657
+658
+659
+660</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 632</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 639</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_minitest_subprocess_script'>minitest_subprocess_script</span><span class='lparen'>(</span><span class='id identifier rubyid_test_path'>test_path</span><span class='rparen'>)</span>
   <span class='heredoc_beg'>&lt;&lt;~RUBY</span>
@@ -4153,12 +4170,17 @@ standalone <span class='object_link'><a href="Runner.html#execute-class_method" 
 </span><span class='tstring_content'>    require &quot;coverage&quot;
 </span><span class='tstring_content'>    require &quot;json&quot;
 </span><span class='tstring_content'>    require &quot;minitest&quot;
+</span><span class='tstring_content'>    require &quot;stringio&quot;
 </span><span class='tstring_content'>    def Minitest.autorun; end
+</span><span class='tstring_content'>    _report = StringIO.new
+</span><span class='tstring_content'>    Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter &lt;&lt; Minitest::SummaryReporter.new(_report, options) }
+</span><span class='tstring_content'>    Minitest.extensions &lt;&lt; &quot;mutineer_report&quot;
 </span><span class='tstring_content'>    Coverage.start(lines: true)
 </span><span class='tstring_content'>    $LOAD_PATH.unshift(*</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_load_paths'>abs_load_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>)
-</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| load f }
+</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| require f }
 </span><span class='tstring_content'>    load </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_absolute'>absolute</span><span class='lparen'>(</span><span class='id identifier rubyid_test_path'>test_path</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>
 </span><span class='tstring_content'>    _passed = Minitest.run([])
+</span><span class='tstring_content'>    $stderr.write(_report.string) unless _passed
 </span><span class='tstring_content'>    _result.puts JSON.generate(&quot;passed&quot; =&gt; _passed == true, &quot;coverage&quot; =&gt; Coverage.result,
 </span><span class='tstring_content'>                                &quot;loaded_files&quot; =&gt; </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_loaded_files_expression'>loaded_files_expression</span><span class='embexpr_end'>}</span><span class='tstring_content'>)
 </span><span class='tstring_content'>    _result.close
@@ -4213,14 +4235,14 @@ standalone <span class='object_link'><a href="Runner.html#execute-class_method" 
       <pre class="lines">
 
 
-712
-713
-714
-715
-716</pre>
+725
+726
+727
+728
+729</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 712</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 725</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_project_root_real'>project_root_real</span>
   <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_realpath'>realpath</span><span class='lparen'>(</span><span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='ivar'>@project_root</span><span class='rparen'>)</span><span class='rparen'>)</span>
@@ -4276,16 +4298,16 @@ standalone <span class='object_link'><a href="Runner.html#execute-class_method" 
       <pre class="lines">
 
 
-855
-856
-857
-858
-859
-860
-861</pre>
+868
+869
+870
+871
+872
+873
+874</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 855</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 868</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_read_cache'>read_cache</span>
   <span class='kw'>return</span> <span class='kw'>nil</span> <span class='kw'>unless</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_exist?'>exist?</span><span class='lparen'>(</span><span class='id identifier rubyid_cache_path'>cache_path</span><span class='rparen'>)</span>
@@ -4358,12 +4380,12 @@ standalone <span class='object_link'><a href="Runner.html#execute-class_method" 
       <pre class="lines">
 
 
-927
-928
-929</pre>
+940
+941
+942</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 927</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 940</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_realpath_if_exists'>realpath_if_exists</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span>
   <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_exist?'>exist?</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span> <span class='op'>?</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_realpath'>realpath</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span> <span class='op'>:</span> <span class='id identifier rubyid_path'>path</span>
@@ -4399,23 +4421,23 @@ path outside the project (stdlib/gem files).</p>
       <pre class="lines">
 
 
-683
-684
-685
-686
-687
-688
-689
-690
-691
-692
-693
-694
-695
-696</pre>
+696
+697
+698
+699
+700
+701
+702
+703
+704
+705
+706
+707
+708
+709</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 683</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 696</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_record'>record</span><span class='lparen'>(</span><span class='id identifier rubyid_coverage'>coverage</span><span class='comma'>,</span> <span class='id identifier rubyid_test_path'>test_path</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_rel_test'>rel_test</span> <span class='op'>=</span> <span class='id identifier rubyid_relativize'>relativize</span><span class='lparen'>(</span><span class='id identifier rubyid_test_path'>test_path</span><span class='rparen'>)</span>
@@ -4482,22 +4504,22 @@ path outside the project (stdlib/gem files).</p>
       <pre class="lines">
 
 
-740
-741
-742
-743
-744
-745
-746
-747
-748
-749
-750
-751
-752</pre>
+753
+754
+755
+756
+757
+758
+759
+760
+761
+762
+763
+764
+765</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 740</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 753</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_record_loaded'>record_loaded</span><span class='lparen'>(</span><span class='id identifier rubyid_paths'>paths</span><span class='rparen'>)</span>
   <span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_paths'>paths</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_raw'>raw</span><span class='op'>|</span>
@@ -4579,18 +4601,18 @@ path outside the project (stdlib/gem files).</p>
       <pre class="lines">
 
 
-902
-903
-904
-905
-906
-907
-908
-909
-910</pre>
+915
+916
+917
+918
+919
+920
+921
+922
+923</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 902</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 915</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_relativize'>relativize</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_abs'>abs</span> <span class='op'>=</span> <span class='id identifier rubyid_path'>path</span><span class='period'>.</span><span class='id identifier rubyid_start_with?'>start_with?</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>/</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span> <span class='op'>?</span> <span class='id identifier rubyid_path'>path</span> <span class='op'>:</span> <span class='id identifier rubyid_absolute'>absolute</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span>
@@ -4906,12 +4928,6 @@ to the source/test digest when that capture never recorded <code>loaded_files</c
       <pre class="lines">
 
 
-600
-601
-602
-603
-604
-605
 606
 607
 608
@@ -4922,10 +4938,17 @@ to the source/test digest when that capture never recorded <code>loaded_files</c
 613
 614
 615
-616</pre>
+616
+617
+618
+619
+620
+621
+622
+623</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 600</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 606</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_rspec_clean_check_script'>rspec_clean_check_script</span><span class='lparen'>(</span><span class='id identifier rubyid_test_paths'>test_paths</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_specs'>specs</span> <span class='op'>=</span> <span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_test_paths'>test_paths</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_t'>t</span><span class='op'>|</span> <span class='id identifier rubyid_absolute'>absolute</span><span class='lparen'>(</span><span class='id identifier rubyid_t'>t</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>, </span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
@@ -4938,9 +4961,10 @@ to the source/test digest when that capture never recorded <code>loaded_files</c
 </span><span class='tstring_content'>    end
 </span><span class='tstring_content'>    RSpec::Core::Runner.disable_autorun!
 </span><span class='tstring_content'>    $LOAD_PATH.unshift(*</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_load_paths'>abs_load_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>)
-</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| load f }
+</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| require f }
 </span><span class='tstring_content'>    _sink = StringIO.new
 </span><span class='tstring_content'>    status = RSpec::Core::Runner.run([&quot;--no-color&quot;, </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_specs'>specs</span><span class='embexpr_end'>}</span><span class='tstring_content'>], _sink, _sink)
+</span><span class='tstring_content'>    $stderr.write(_sink.string) unless status.zero?
 </span><span class='tstring_content'>    exit(status.zero? ? 0 : 1)
 </span><span class='heredoc_end'>  RUBY
 </span><span class='kw'>end</span></pre>
@@ -4961,7 +4985,7 @@ to the source/test digest when that capture never recorded <code>loaded_files</c
 </h3><div class="docstring">
   <div class="discussion">
     <p>Same coverage-JSON contract as the minitest path, but driven by RSpec:
-require rspec/core lazily, load the sources under Coverage, then run the
+require rspec/core lazily, require the sources under Coverage, then run the
 one spec via RSpec::Core::Runner. The JSON goes to the result channel (see
 <span class='object_link'><a href="#spawn_script-instance_method" title="Mutineer::CoverageMap#spawn_script (method)">#spawn_script</a></span>), so spec output cannot corrupt it. A missing rspec makes
 the script exit non-zero -&gt; capture() records a skipped (incomplete-map)
@@ -4978,18 +5002,6 @@ test, with a hint.</p>
       <pre class="lines">
 
 
-656
-657
-658
-659
-660
-661
-662
-663
-664
-665
-666
-667
 668
 669
 670
@@ -5000,10 +5012,23 @@ test, with a hint.</p>
 675
 676
 677
-678</pre>
+678
+679
+680
+681
+682
+683
+684
+685
+686
+687
+688
+689
+690
+691</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 656</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 668</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_rspec_subprocess_script'>rspec_subprocess_script</span><span class='lparen'>(</span><span class='id identifier rubyid_test_path'>test_path</span><span class='rparen'>)</span>
   <span class='heredoc_beg'>&lt;&lt;~RUBY</span>
@@ -5020,9 +5045,10 @@ test, with a hint.</p>
 </span><span class='tstring_content'>    RSpec::Core::Runner.disable_autorun!
 </span><span class='tstring_content'>    Coverage.start(lines: true)
 </span><span class='tstring_content'>    $LOAD_PATH.unshift(*</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_load_paths'>abs_load_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>)
-</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| load f }
+</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| require f }
 </span><span class='tstring_content'>    _sink = StringIO.new
 </span><span class='tstring_content'>    _status = RSpec::Core::Runner.run([&quot;--no-color&quot;, </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_absolute'>absolute</span><span class='lparen'>(</span><span class='id identifier rubyid_test_path'>test_path</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>], _sink, _sink)
+</span><span class='tstring_content'>    $stderr.write(_sink.string) unless _status.zero?
 </span><span class='tstring_content'>    _result.puts JSON.generate(&quot;passed&quot; =&gt; _status.zero?, &quot;coverage&quot; =&gt; Coverage.result,
 </span><span class='tstring_content'>                                &quot;loaded_files&quot; =&gt; </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_loaded_files_expression'>loaded_files_expression</span><span class='embexpr_end'>}</span><span class='tstring_content'>)
 </span><span class='tstring_content'>    _result.close
@@ -5205,19 +5231,19 @@ and per-test isolation matters more than throughput here.</p>
       <pre class="lines">
 
 
-867
-868
-869
-870
-871
-872
-873
-874
-875
-876</pre>
+880
+881
+882
+883
+884
+885
+886
+887
+888
+889</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 867</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 880</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_save'>save</span>
   <span class='kw'>return</span> <span class='kw'>unless</span> <span class='ivar'>@failed_clean_tests</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
@@ -5519,12 +5545,12 @@ timeout.</p></div>
       <pre class="lines">
 
 
-623
-624
-625</pre>
+630
+631
+632</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 623</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 630</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_subprocess_script'>subprocess_script</span><span class='lparen'>(</span><span class='id identifier rubyid_test_path'>test_path</span><span class='rparen'>)</span>
   <span class='ivar'>@framework</span> <span class='op'>==</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>rspec</span><span class='tstring_end'>&quot;</span></span> <span class='op'>?</span> <span class='id identifier rubyid_rspec_subprocess_script'>rspec_subprocess_script</span><span class='lparen'>(</span><span class='id identifier rubyid_test_path'>test_path</span><span class='rparen'>)</span> <span class='op'>:</span> <span class='id identifier rubyid_minitest_subprocess_script'>minitest_subprocess_script</span><span class='lparen'>(</span><span class='id identifier rubyid_test_path'>test_path</span><span class='rparen'>)</span>
@@ -5838,17 +5864,17 @@ dropped (its coverage relativizes to an absolute path). Warn instead.</p>
       <pre class="lines">
 
 
-836
-837
-838
-839
-840
-841
-842
-843</pre>
+849
+850
+851
+852
+853
+854
+855
+856</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 836</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 849</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_warn_external_sources'>warn_external_sources</span>
   <span class='ivar'>@source_paths</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_p'>p</span><span class='op'>|</span>
@@ -5891,13 +5917,13 @@ dropped (its coverage relativizes to an absolute path). Warn instead.</p>
       <pre class="lines">
 
 
-882
-883
-884
-885</pre>
+895
+896
+897
+898</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 882</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/coverage_map.rb', line 895</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_warn_incomplete'>warn_incomplete</span>
   <span class='id identifier rubyid_warn'>warn</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>[mutineer] cached coverage map may be incomplete; these test files </span><span class='tstring_end'>&quot;</span></span> \
@@ -5990,7 +6016,7 @@ dropped (its coverage relativizes to an absolute path). Warn instead.</p>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.11).
+  0.9.45 (ruby-3.4.10).
 </div>
 
     </div>

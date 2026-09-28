@@ -66,11 +66,51 @@
 <h2 id="_Unreleased_">[Unreleased]</h2>
 <h3 id="Added">Added</h3>
 <ul>
+<li><strong>Operand-removal operator</strong> (Tier-2, opt-in via <code>--operators</code>):
+<code>operand_removal</code> replaces <code>a &amp;&amp; b</code> with <code>(a)</code> and with <code>(b)</code>, and does the
+same for <code>||</code>, <code>and</code> and <code>or</code>. The mutant survives when no test needs the
+operand that the mutant removes. The operator never keeps a jump operand
+(<code>return</code>, <code>break</code>, <code>next</code>, <code>redo</code>, <code>retry</code>) alone, because a jump does not
+parse in a value context. It never removes an operand that holds a heredoc,
+because the heredoc body stays behind as code. It skips nested method
+definitions, because mutineer mutates each one as its own method.</li>
+<li><strong>Array-literal operator</strong> (Tier-2, opt-in via <code>--operators</code>):
+<code>array_literal</code> replaces a non-empty array literal, such as <code>[a, b]</code> or
+<code>%i[a b]</code>, with <code>[]</code>. The mutant survives when no test checks the contents
+of the array. The operator skips an implicit array (<code>x = 1, 2</code>), an array
+that holds a heredoc, and nested method definitions.</li>
 <li><strong>Sources also pair with Minitest's <code>test/**/test_*.rb</code> files</strong> — after the
 <code>_test.rb</code> forms, so existing projects pair as before. <code>lib/helper.rb</code> does
 not pair with the <code>test/test_helper.rb</code> support file. A failed capture of a
 <code>test_&lt;name&gt;.rb</code> file now marks <code>&lt;name&gt;.rb</code> uncapturable, as <code>&lt;name&gt;_test.rb</code>
-does (#120).</li>
+does (#120). Without <code>framework:</code> set, a source with <code>spec/&lt;name&gt;_spec.rb</code>
+and <code>test/test_&lt;name&gt;.rb</code> but no <code>&lt;name&gt;_test.rb</code> now pairs with the
+Minitest file, as the &quot;Minitest first&quot; order says.</li>
+</ul>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong><code>reload</code> loads the mutant by an absolute path</strong> — a relative source path
+gave the mutant relative backtrace paths, so code that checks its own frames
+by absolute path failed for every mutant, a false kill (#123).</li>
+<li><strong><code>require &quot;test_helper&quot;</code> works without <code>RUBYOPT</code></strong> — a standalone run puts
+<code>lib</code>, then each test file's <code>test_helper.rb</code> directory, on the load path,
+as boot mode and <code>rake test</code> do. A run where no test records coverage because
+captures failed now exits 1 instead of reporting N/A (#119).</li>
+<li><strong>A disable-line marker warns about an operator it does not know</strong> — a
+reason written without <code>--</code> became part of the operator name, so the marker
+suppressed nothing and said nothing (#124). A marker followed only by spaces
+or commas, such as <code>disable-line  -- why</code>, now disables the whole line.</li>
+<li><strong>Coverage capture and the clean check run each source once</strong> — they read
+sources with <code>load</code>, so a test's own <code>require</code> ran them again: a <code>Struct</code>
+superclass raised <code>superclass mismatch</code>, and load-time code ran twice (#122).
+A mutant of such a class still errors under <code>--strategy reload</code>, which loads
+the mutated file again; <code>--strategy redefine</code> runs it.
+Code that guards itself to run once (<code>unless defined?(X)</code>) can now show as
+covered, so its mutants run where they were <code>no_coverage</code> before.</li>
+<li><strong>A red unmutated suite now shows why it failed</strong> — in a standalone run, the
+Minitest summary or RSpec output of the failing test, with its failure
+message, goes to stderr before the &quot;not green&quot; error. A passing run prints
+nothing extra. Boot mode (<code>--rails</code>, <code>--boot</code>) is unchanged (#121).</li>
 </ul>
 <h2 id="_1_1_0____2026_09_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.1.0">1.1.0</a> - 2026-09-28</h2>
 <h3 id="Added">Added</h3>
@@ -577,7 +617,7 @@ accepted as deprecated aliases.)</li>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.11).
+  0.9.45 (ruby-3.4.10).
 </div>
 
     </div>
