@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **Coverage capture and the clean check run each source once** — they read
+  sources with `load`, so a test's own `require` ran them again: a `Struct`
+  superclass raised `superclass mismatch`, and load-time code ran twice (#122).
+
 ## [1.1.0] - 2026-09-28
 
 ### Added

@@ -579,7 +579,7 @@ module Mutineer
         require "minitest"
         def Minitest.autorun; end
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| load f }
+        #{abs_source_paths.inspect}.each { |f| require f }
         #{loads}
         exit(Minitest.run([]) ? 0 : 1)
       RUBY
@@ -601,7 +601,7 @@ module Mutineer
         end
         RSpec::Core::Runner.disable_autorun!
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| load f }
+        #{abs_source_paths.inspect}.each { |f| require f }
         _sink = StringIO.new
         status = RSpec::Core::Runner.run(["--no-color", #{specs}], _sink, _sink)
         exit(status.zero? ? 0 : 1)
@@ -631,7 +631,7 @@ module Mutineer
         def Minitest.autorun; end
         Coverage.start(lines: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| load f }
+        #{abs_source_paths.inspect}.each { |f| require f }
         load #{absolute(test_path).inspect}
         _passed = Minitest.run([])
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => Coverage.result,
@@ -641,7 +641,7 @@ module Mutineer
     end
 
     # Same coverage-JSON contract as the minitest path, but driven by RSpec:
-    # require rspec/core lazily, load the sources under Coverage, then run the
+    # require rspec/core lazily, require the sources under Coverage, then run the
     # one spec via RSpec::Core::Runner. The JSON goes to the result channel (see
     # {#spawn_script}), so spec output cannot corrupt it. A missing rspec makes
     # the script exit non-zero -> capture() records a skipped (incomplete-map)
@@ -661,7 +661,7 @@ module Mutineer
         RSpec::Core::Runner.disable_autorun!
         Coverage.start(lines: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| load f }
+        #{abs_source_paths.inspect}.each { |f| require f }
         _sink = StringIO.new
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
         _result.puts JSON.generate("passed" => _status.zero?, "coverage" => Coverage.result,

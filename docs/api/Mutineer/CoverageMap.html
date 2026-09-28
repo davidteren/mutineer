@@ -1220,7 +1220,7 @@ the parent. Stdout stays free for test output, which goes to File::NULL.</p>
   
 
   
-    <span class="summary_desc"><div class='inline'><p>Same coverage-JSON contract as the minitest path, but driven by RSpec: require rspec/core lazily, load the sources under Coverage, then run the one spec via RSpec::Core::Runner.</p></div></span>
+    <span class="summary_desc"><div class='inline'><p>Same coverage-JSON contract as the minitest path, but driven by RSpec: require rspec/core lazily, require the sources under Coverage, then run the one spec via RSpec::Core::Runner.</p></div></span>
   
 </li>
 
@@ -4040,7 +4040,7 @@ standalone <span class='object_link'><a href="Runner.html#execute-class_method" 
 <span class='tstring_content'>    require &quot;minitest&quot;
 </span><span class='tstring_content'>    def Minitest.autorun; end
 </span><span class='tstring_content'>    $LOAD_PATH.unshift(*</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_load_paths'>abs_load_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>)
-</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| load f }
+</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| require f }
 </span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_loads'>loads</span><span class='embexpr_end'>}</span><span class='tstring_content'>
 </span><span class='tstring_content'>    exit(Minitest.run([]) ? 0 : 1)
 </span><span class='heredoc_end'>  RUBY
@@ -4142,7 +4142,7 @@ standalone <span class='object_link'><a href="Runner.html#execute-class_method" 
 </span><span class='tstring_content'>    def Minitest.autorun; end
 </span><span class='tstring_content'>    Coverage.start(lines: true)
 </span><span class='tstring_content'>    $LOAD_PATH.unshift(*</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_load_paths'>abs_load_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>)
-</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| load f }
+</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| require f }
 </span><span class='tstring_content'>    load </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_absolute'>absolute</span><span class='lparen'>(</span><span class='id identifier rubyid_test_path'>test_path</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>
 </span><span class='tstring_content'>    _passed = Minitest.run([])
 </span><span class='tstring_content'>    _result.puts JSON.generate(&quot;passed&quot; =&gt; _passed == true, &quot;coverage&quot; =&gt; Coverage.result,
@@ -4924,7 +4924,7 @@ to the source/test digest when that capture never recorded <code>loaded_files</c
 </span><span class='tstring_content'>    end
 </span><span class='tstring_content'>    RSpec::Core::Runner.disable_autorun!
 </span><span class='tstring_content'>    $LOAD_PATH.unshift(*</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_load_paths'>abs_load_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>)
-</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| load f }
+</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| require f }
 </span><span class='tstring_content'>    _sink = StringIO.new
 </span><span class='tstring_content'>    status = RSpec::Core::Runner.run([&quot;--no-color&quot;, </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_specs'>specs</span><span class='embexpr_end'>}</span><span class='tstring_content'>], _sink, _sink)
 </span><span class='tstring_content'>    exit(status.zero? ? 0 : 1)
@@ -4947,7 +4947,7 @@ to the source/test digest when that capture never recorded <code>loaded_files</c
 </h3><div class="docstring">
   <div class="discussion">
     <p>Same coverage-JSON contract as the minitest path, but driven by RSpec:
-require rspec/core lazily, load the sources under Coverage, then run the
+require rspec/core lazily, require the sources under Coverage, then run the
 one spec via RSpec::Core::Runner. The JSON goes to the result channel (see
 <span class='object_link'><a href="#spawn_script-instance_method" title="Mutineer::CoverageMap#spawn_script (method)">#spawn_script</a></span>), so spec output cannot corrupt it. A missing rspec makes
 the script exit non-zero -&gt; capture() records a skipped (incomplete-map)
@@ -5006,7 +5006,7 @@ test, with a hint.</p>
 </span><span class='tstring_content'>    RSpec::Core::Runner.disable_autorun!
 </span><span class='tstring_content'>    Coverage.start(lines: true)
 </span><span class='tstring_content'>    $LOAD_PATH.unshift(*</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_load_paths'>abs_load_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>)
-</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| load f }
+</span><span class='tstring_content'>    </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_abs_source_paths'>abs_source_paths</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>.each { |f| require f }
 </span><span class='tstring_content'>    _sink = StringIO.new
 </span><span class='tstring_content'>    _status = RSpec::Core::Runner.run([&quot;--no-color&quot;, </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_absolute'>absolute</span><span class='lparen'>(</span><span class='id identifier rubyid_test_path'>test_path</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'>], _sink, _sink)
 </span><span class='tstring_content'>    _result.puts JSON.generate(&quot;passed&quot; =&gt; _status.zero?, &quot;coverage&quot; =&gt; Coverage.result,
@@ -5976,7 +5976,7 @@ dropped (its coverage relativizes to an absolute path). Warn instead.</p>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.10).
+  0.9.45 (ruby-3.4.11).
 </div>
 
     </div>
