@@ -11,6 +11,21 @@ class CoverageMapTest < Minitest::Test
   CALC        = File.expand_path("fixtures/calculator.rb", __dir__)
   STRONG_TEST = File.expand_path("fixtures/calculator_strong_test.rb", __dir__)
   WEAK_TEST   = File.expand_path("fixtures/calculator_weak_test.rb", __dir__)
+  # Wraps each assertion in capture_subprocess_io, which reopens $stdout.
+  SUBPROCESS_IO_TEST = File.expand_path("fixtures/calculator_subprocess_io_test.rb", __dir__)
+  # Leaves a spawned and a forked process running for 60s after its test.
+  BACKGROUND_PROCESS_TEST = File.expand_path("fixtures/calculator_background_process_test.rb", __dir__)
+  # Leaves $stdout as a StringIO, at load time and inside a test.
+  STDOUT_SWAP_TEST = File.expand_path("fixtures/calculator_stdout_swap_test.rb", __dir__)
+  # Prints from the top level of the file, before any test runs.
+  LOAD_TIME_PUTS_TEST = File.expand_path("fixtures/calculator_load_time_puts_test.rb", __dir__)
+  RSPEC_LOAD_TIME_PUTS_SPEC = File.expand_path("fixtures/rspec/calculator_load_time_puts_spec.rb", __dir__)
+  # A source file that prints when it loads.
+  RSPEC_LOAD_TIME_BANNER = File.expand_path("fixtures/rspec/load_time_banner.rb", __dir__)
+  RSPEC_CALC = File.expand_path("fixtures/rspec/calculator.rb", __dir__)
+  RSPEC_STDOUT_SWAP_SPEC = File.expand_path("fixtures/rspec/calculator_stdout_swap_spec.rb", __dir__)
+  # Wraps each expectation in to_stdout_from_any_process, which reopens $stdout.
+  RSPEC_SUBPROCESS_IO_SPEC = File.expand_path("fixtures/rspec/calculator_subprocess_io_spec.rb", __dir__)
   # Exercises only #add, so #modulo's line is uncovered (the M4 strong suite
   # now covers every method, so it can no longer demonstrate no-coverage).
   ADD_ONLY_TEST = File.expand_path("fixtures/calculator_add_only_test.rb", __dir__)
@@ -45,6 +60,130 @@ class CoverageMapTest < Minitest::Test
     map = build([STRONG_TEST, WEAK_TEST]) # both call #add
     assert_equal %w[test/fixtures/calculator_strong_test.rb test/fixtures/calculator_weak_test.rb].sort,
                  map.tests_for(CALC, line_of("a + b")).sort
+  end
+
+  def test_capture_passes_for_test_that_reopens_stdout
+    map = build([SUBPROCESS_IO_TEST])
+    assert_empty map.failed_clean_tests
+    assert_equal ["test/fixtures/calculator_subprocess_io_test.rb"],
+                 map.tests_for(CALC, line_of("a + b"))
+  end
+
+  # A process that a test leaves running inherits the child's fds. It must not
+  # hold up the capture or the clean checks until it exits.
+  def test_build_does_not_wait_for_processes_that_a_test_leaves_running
+    pid_file = File.join(Dir.mktmpdir, "pids")
+    ENV["MUTINEER_BACKGROUND_PIDS"] = pid_file
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    cache = Dir.mktmpdir("mutineer-cache")
+    cold = build([BACKGROUND_PROCESS_TEST, WEAK_TEST], cache_dir: cache) # capture + combined check
+    warm = build([BACKGROUND_PROCESS_TEST, WEAK_TEST], cache_dir: cache) # cached clean check
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+    assert_empty cold.failed_clean_tests
+    refute warm.phase_a_ran, "second build must be a cache hit"
+    assert_empty warm.failed_clean_tests
+    assert_includes cold.tests_for(CALC, line_of("a + b")), "test/fixtures/calculator_background_process_test.rb"
+    assert_operator elapsed, :<, 30, "build waited for the leftover processes"
+  ensure
+    ENV.delete("MUTINEER_BACKGROUND_PIDS")
+    File.readlines(pid_file).each { |pid| Process.kill(:KILL, pid.to_i) rescue nil } if pid_file && File.exist?(pid_file) # rubocop:disable Style/RescueModifier
+  end
+
+  def test_warm_cache_clean_check_passes_for_test_that_reopens_stdout
+    cache = Dir.mktmpdir("mutineer-cache")
+    build([SUBPROCESS_IO_TEST], cache_dir: cache)
+    warm = build([SUBPROCESS_IO_TEST], cache_dir: cache)
+    refute warm.phase_a_ran, "second build must be a cache hit"
+    assert_empty warm.failed_clean_tests
+  end
+
+  def test_rspec_capture_and_clean_check_pass_for_spec_that_reopens_stdout
+    cache = Dir.mktmpdir("mutineer-cache")
+    build = lambda do
+      Mutineer::CoverageMap.new(
+        source_paths: [RSPEC_CALC], test_paths: [RSPEC_SUBPROCESS_IO_SPEC],
+        cache_dir: cache, project_root: ROOT, framework: "rspec"
+      ).build_or_load
+    end
+    cold = build.call
+    assert_empty cold.failed_clean_tests, "cold capture"
+    assert_empty cold.failed_test_files, "cold capture"
+    add_line = File.read(RSPEC_CALC).lines.index { |l| l.include?("a + b") } + 1
+    assert_equal ["test/fixtures/rspec/calculator_subprocess_io_spec.rb"],
+                 cold.tests_for(RSPEC_CALC, add_line)
+    warm = build.call
+    refute warm.phase_a_ran, "second build must be a cache hit"
+    assert_empty warm.failed_clean_tests, "warm-cache clean check"
+  end
+
+  # Two or more test files also run together in one clean-check script.
+  def test_combined_clean_check_passes_for_test_that_reopens_stdout
+    assert_empty build([SUBPROCESS_IO_TEST, WEAK_TEST]).failed_clean_tests
+  end
+
+  def test_rspec_combined_clean_check_passes_for_spec_that_reopens_stdout
+    map = Mutineer::CoverageMap.new(
+      source_paths: [RSPEC_CALC],
+      test_paths: [RSPEC_SUBPROCESS_IO_SPEC, File.expand_path("fixtures/rspec/calculator_weak_spec.rb", __dir__)],
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, framework: "rspec"
+    ).build_or_load
+    assert_empty map.failed_clean_tests
+  end
+
+  def test_capture_and_clean_checks_pass_for_test_that_swaps_stdout_for_a_stringio
+    cache = Dir.mktmpdir("mutineer-cache")
+    cold = build([STDOUT_SWAP_TEST], cache_dir: cache)
+    assert_empty cold.failed_test_files, "cold capture"
+    assert_empty cold.failed_clean_tests, "cold capture"
+    assert_equal ["test/fixtures/calculator_stdout_swap_test.rb"], cold.tests_for(CALC, line_of("a + b"))
+    warm = build([STDOUT_SWAP_TEST], cache_dir: cache)
+    refute warm.phase_a_ran, "second build must be a cache hit"
+    assert_empty warm.failed_clean_tests, "warm-cache clean check"
+    assert_empty build([STDOUT_SWAP_TEST, WEAK_TEST]).failed_clean_tests, "combined clean check"
+  end
+
+  def test_rspec_capture_and_clean_checks_pass_for_spec_that_swaps_stdout_for_a_stringio
+    cache = Dir.mktmpdir("mutineer-cache")
+    build = lambda do |specs, dir|
+      Mutineer::CoverageMap.new(
+        source_paths: [RSPEC_CALC], test_paths: specs,
+        cache_dir: dir, project_root: ROOT, framework: "rspec"
+      ).build_or_load
+    end
+    cold = build.call([RSPEC_STDOUT_SWAP_SPEC], cache)
+    assert_empty cold.failed_test_files, "cold capture"
+    assert_empty cold.failed_clean_tests, "cold capture"
+    warm = build.call([RSPEC_STDOUT_SWAP_SPEC], cache)
+    refute warm.phase_a_ran, "second build must be a cache hit"
+    assert_empty warm.failed_clean_tests, "warm-cache clean check"
+    weak = File.expand_path("fixtures/rspec/calculator_weak_spec.rb", __dir__)
+    assert_empty build.call([RSPEC_STDOUT_SWAP_SPEC, weak], Dir.mktmpdir("mutineer-cache")).failed_clean_tests,
+                 "combined clean check"
+  end
+
+  # Output that a test file writes at load time goes to stdout, not to the
+  # channel that carries the capture result.
+  def test_capture_succeeds_for_test_that_prints_at_load_time
+    cache = Dir.mktmpdir("mutineer-cache")
+    cold = build([LOAD_TIME_PUTS_TEST], cache_dir: cache)
+    assert_empty cold.failed_test_files, "cold capture"
+    assert_empty cold.failed_clean_tests, "cold capture"
+    assert_equal ["test/fixtures/calculator_load_time_puts_test.rb"], cold.tests_for(CALC, line_of("a + b"))
+    assert_empty build([LOAD_TIME_PUTS_TEST], cache_dir: cache).failed_clean_tests, "warm-cache clean check"
+  end
+
+  # The capture script loads sources before RSpec loads the spec, so this covers
+  # a print from each phase.
+  def test_rspec_capture_succeeds_for_spec_and_source_that_print_at_load_time
+    map = Mutineer::CoverageMap.new(
+      source_paths: [RSPEC_CALC, RSPEC_LOAD_TIME_BANNER], test_paths: [RSPEC_LOAD_TIME_PUTS_SPEC],
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, framework: "rspec"
+    ).build_or_load
+    assert_empty map.failed_test_files
+    assert_empty map.failed_clean_tests
+    add_line = File.read(RSPEC_CALC).lines.index { |l| l.include?("a + b") } + 1
+    assert_equal ["test/fixtures/rspec/calculator_load_time_puts_spec.rb"], map.tests_for(RSPEC_CALC, add_line)
   end
 
   def test_failing_test_file_is_skipped_without_aborting
@@ -306,14 +445,43 @@ class CoverageMapTest < Minitest::Test
 
   # --- R6: non-JSON / R3 timeout / Hash-format coverage --------------------
 
-  def test_non_json_subprocess_output_is_skipped_not_fatal
+  # Stdout is not the result channel, so plain output never corrupts a capture.
+  # Only bytes written to the result fd itself can.
+  def test_non_json_result_output_is_skipped_not_fatal
     bad = File.join(Dir.mktmpdir, "noisy_test.rb")
-    File.write(bad, %(puts "GARBAGE NOT JSON"\n)) # pollutes stdout before the JSON
+    File.write(bad, %(IO.for_fd(#{Mutineer::CoverageMap::RESULT_FD}, autoclose: false).syswrite("GARBAGE NOT JSON")\n))
     map = nil
     _, err = capture_subprocess_io { map = build([STRONG_TEST, bad]) }
     assert_includes map.failed_test_files.map { |f| File.basename(f) }, "noisy_test.rb"
     assert_includes err, "invalid coverage output"
     refute_empty map.tests_for(CALC, line_of("a + b")), "good test still recorded"
+  end
+
+  def test_capture_subprocess_stdout_is_silenced_and_stderr_passes_through
+    noisy = File.join(Dir.mktmpdir, "noisy_test.rb")
+    File.write(noisy, %(puts "NOISE-ON-STDOUT"\nsystem("echo NOISE-FROM-SUBPROCESS")\nwarn "NOISE-ON-STDERR"\n))
+    map = nil
+    out, err = capture_subprocess_io { map = build([STRONG_TEST, noisy]) }
+    assert_empty map.failed_test_files
+    assert_empty out
+    assert_includes err, "NOISE-ON-STDERR"
+  end
+
+  # Boot mode forks the parent instead of spawning a subprocess; the fork
+  # boundary silences stdout there.
+  def test_fork_capture_and_fork_clean_check_silence_stdout
+    Coverage.start(lines: true) unless Coverage.running?
+    noisy = File.expand_path("fixtures/noisy_minitest_test.rb", __dir__)
+    map = fork_map(noisy, verbose: true)
+    payload = clean = nil
+    out, = capture_subprocess_io do
+      payload = map.send(:fork_capture, noisy, [CALC], nil)
+      clean = map.send(:fork_clean_pass?, [noisy], nil)
+    end
+    assert_kind_of Hash, payload
+    assert payload["passed"]
+    assert clean
+    assert_empty out
   end
 
   def test_hanging_test_file_times_out_and_is_skipped

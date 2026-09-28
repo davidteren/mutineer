@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>
+  Module: Mutineer::MinitestIntegration::StopAtFirstFailure::OuterReporter5
+  
+    &mdash; Documentation by YARD 0.9.45
+  
+</title>
+
+  <link rel="stylesheet" href="../../../css/style.css" type="text/css">
+
+  <link rel="stylesheet" href="../../../css/common.css" type="text/css">
+
+<script type="text/javascript">
+  pathId = "Mutineer::MinitestIntegration::StopAtFirstFailure::OuterReporter5";
+  relpath = '../../../';
+</script>
+
+
+  <script type="text/javascript" charset="utf-8" src="../../../js/jquery.js"></script>
+
+  <script type="text/javascript" charset="utf-8" src="../../../js/app.js"></script>
+
+
+  </head>
+  <body>
+    <div id="main_progress" aria-hidden="true"></div>
+
+    <div class="nav_wrap">
+      <iframe id="nav" src="../../../class_list.html?1"></iframe>
+      <div id="resizer"></div>
+    </div>
+
+    <div id="main" tabindex="-1">
+      <div id="header">
+        <div id="menu">
+  
+    <a href="../../../_index.html">Index (O)</a> &raquo;
+    <span class='title'><span class='object_link'><a href="../../../Mutineer.html" title="Mutineer (module)">Mutineer</a></span></span> &raquo; <span class='title'><span class='object_link'><a href="../../MinitestIntegration.html" title="Mutineer::MinitestIntegration (class)">MinitestIntegration</a></span></span> &raquo; <span class='title'><span class='object_link'><a href="../StopAtFirstFailure.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure (module)">StopAtFirstFailure</a></span></span>
+     &raquo; 
+    <span class="title">OuterReporter5</span>
+  
+</div>
+
+        <div id="search">
+  
+    <a class="full_list_link" id="class_list_link"
+        href="../../../class_list.html">
+
+        <svg width="24" height="24">
+          <rect x="0" y="4" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="12" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="20" width="24" height="4" rx="1" ry="1"></rect>
+        </svg>
+    </a>
+  
+</div>
+        <div class="clear"></div>
+      </div>
+
+      <div id="content"><h1>Module: Mutineer::MinitestIntegration::StopAtFirstFailure::OuterReporter5
+  
+  
+  
+</h1>
+<div class="box_info">
+  
+
+  
+  
+  
+  
+  
+
+  
+
+  
+  <dl>
+    <dt>Defined in:</dt>
+    <dd>lib/mutineer/minitest_integration/stop_at_first_failure.rb
+</dd>
+  </dl>
+  
+</div>
+
+<h2>Overview</h2><div class="docstring">
+  <div class="discussion">
+    <p>Prepended on the <code>Minitest</code> singleton class for Minitest 5.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+
+
+
+
+
+
+  
+    <h2>
+      Instance Method Summary
+      <small><a href="#" class="summary_toggle">collapse</a></small>
+    </h2>
+
+    <ul class="summary">
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#__run-instance_method" title="#__run (instance method)">#<strong>__run</strong>(reporter, options)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>The Minitest 5 form of OuterReporter6#run_all_suites.</p></div></span>
+  
+</li>
+
+      
+    </ul>
+    
+  
+
+
+
+  <div id="instance_method_details" class="method_details_list">
+    <h2>Instance Method Details</h2>
+
+    
+      <div class="method_details first">
+  <h3 class="signature first" id="__run-instance_method">
+  
+    #<strong>__run</strong>(reporter, options)  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>The Minitest 5 form of OuterReporter6#run_all_suites.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>reporter</span>
+      
+      
+        <span class='type'>(<tt>Minitest::CompositeReporter</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the outer reporter.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>options</span>
+      
+      
+        <span class='type'>(<tt>Hash</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the Minitest options.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Object</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>whatever Minitest returns.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+54
+55
+56
+57</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration/stop_at_first_failure.rb', line 54</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid___run'>__run</span><span class='lparen'>(</span><span class='id identifier rubyid_reporter'>reporter</span><span class='comma'>,</span> <span class='id identifier rubyid_options'>options</span><span class='rparen'>)</span>
+  <span class='const'><span class='object_link'><a href="../StopAtFirstFailure.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure (module)">StopAtFirstFailure</a></span></span><span class='period'>.</span><span class='id identifier rubyid_armed_reporter'><span class='object_link'><a href="../StopAtFirstFailure.html#armed_reporter-class_method" title="Mutineer::MinitestIntegration::StopAtFirstFailure.armed_reporter (method)">armed_reporter</a></span></span> <span class='op'>||=</span> <span class='id identifier rubyid_reporter'>reporter</span> <span class='kw'>if</span> <span class='const'><span class='object_link'><a href="../StopAtFirstFailure.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure (module)">StopAtFirstFailure</a></span></span><span class='period'>.</span><span class='id identifier rubyid_armed_here?'><span class='object_link'><a href="../StopAtFirstFailure.html#armed_here%3F-class_method" title="Mutineer::MinitestIntegration::StopAtFirstFailure.armed_here? (method)">armed_here?</a></span></span>
+  <span class='kw'>super</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+  </div>
+
+</div>
+
+      <div id="footer">
+  Generated on DATE by
+  <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
+  0.9.45 (ruby-3.4.10).
+</div>
+
+    </div>
+  </body>
+</html>

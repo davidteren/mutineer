@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>
+  Module: Mutineer::MinitestIntegration::StopAtFirstFailure
+  
+    &mdash; Documentation by YARD 0.9.45
+  
+</title>
+
+  <link rel="stylesheet" href="../../css/style.css" type="text/css">
+
+  <link rel="stylesheet" href="../../css/common.css" type="text/css">
+
+<script type="text/javascript">
+  pathId = "Mutineer::MinitestIntegration::StopAtFirstFailure";
+  relpath = '../../';
+</script>
+
+
+  <script type="text/javascript" charset="utf-8" src="../../js/jquery.js"></script>
+
+  <script type="text/javascript" charset="utf-8" src="../../js/app.js"></script>
+
+
+  </head>
+  <body>
+    <div id="main_progress" aria-hidden="true"></div>
+
+    <div class="nav_wrap">
+      <iframe id="nav" src="../../class_list.html?1"></iframe>
+      <div id="resizer"></div>
+    </div>
+
+    <div id="main" tabindex="-1">
+      <div id="header">
+        <div id="menu">
+  
+    <a href="../../_index.html">Index (S)</a> &raquo;
+    <span class='title'><span class='object_link'><a href="../../Mutineer.html" title="Mutineer (module)">Mutineer</a></span></span> &raquo; <span class='title'><span class='object_link'><a href="../MinitestIntegration.html" title="Mutineer::MinitestIntegration (class)">MinitestIntegration</a></span></span>
+     &raquo; 
+    <span class="title">StopAtFirstFailure</span>
+  
+</div>
+
+        <div id="search">
+  
+    <a class="full_list_link" id="class_list_link"
+        href="../../class_list.html">
+
+        <svg width="24" height="24">
+          <rect x="0" y="4" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="12" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="20" width="24" height="4" rx="1" ry="1"></rect>
+        </svg>
+    </a>
+  
+</div>
+        <div class="clear"></div>
+      </div>
+
+      <div id="content"><h1>Module: Mutineer::MinitestIntegration::StopAtFirstFailure
+  
+  
+  
+</h1>
+<div class="box_info">
+  
+
+  
+  
+  
+  
+  
+
+  
+
+  
+  <dl>
+    <dt>Defined in:</dt>
+    <dd>lib/mutineer/minitest_integration/stop_at_first_failure.rb
+</dd>
+  </dl>
+  
+</div>
+
+<h2>Overview</h2><div class="docstring">
+  <div class="discussion">
+    <p>Stops a Minitest run at the first failing test: one failure already
+kills the mutant. Child-process only, like MinitestIntegration.</p>
+<p>It sets a flag instead of unwinding the stack, so that class-level
+wrappers (<code>after_all</code>, a block-form transaction) still finish. The
+remaining tests and classes then return before they start.</p>
+<p>Minitest 5 and 6 need different hook points. An unknown shape installs
+no hook, and the run is a full run.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><h2>Defined Under Namespace</h2>
+<p class="children">
+  
+    
+      <strong class="modules">Modules:</strong> <span class='object_link'><a href="StopAtFirstFailure/OuterReporter5.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure::OuterReporter5 (module)">OuterReporter5</a></span>, <span class='object_link'><a href="StopAtFirstFailure/OuterReporter6.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure::OuterReporter6 (module)">OuterReporter6</a></span>, <span class='object_link'><a href="StopAtFirstFailure/RecordFailure.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure::RecordFailure (module)">RecordFailure</a></span>, <span class='object_link'><a href="StopAtFirstFailure/SkipAfterStop5.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure::SkipAfterStop5 (module)">SkipAfterStop5</a></span>, <span class='object_link'><a href="StopAtFirstFailure/SkipAfterStop6.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure::SkipAfterStop6 (module)">SkipAfterStop6</a></span>
+    
+  
+    
+  
+</p>
+
+
+
+
+  <h2>Class Attribute Summary <small><a href="#" class="summary_toggle">collapse</a></small></h2>
+  <ul class="summary">
+    
+      <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#armed_pid-class_method" title="armed_pid (class method)">.<strong>armed_pid</strong>  &#x21d2; Integer<sup>?</sup> </a>
+    
+
+    
+  </span>
+  
+  
+  
+    
+    
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>The pid of the armed process.</p></div></span>
+  
+</li>
+
+    
+      <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#armed_reporter-class_method" title="armed_reporter (class method)">.<strong>armed_reporter</strong>  &#x21d2; Minitest::CompositeReporter<sup>?</sup> </a>
+    
+
+    
+  </span>
+  
+  
+  
+    
+    
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>The outer reporter of the armed run.</p></div></span>
+  
+</li>
+
+    
+      <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#stopped-class_method" title="stopped (class method)">.<strong>stopped</strong>  &#x21d2; Boolean<sup>?</sup> </a>
+    
+
+    
+  </span>
+  
+  
+  
+    
+    
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>True after the outer reporter records a failure or an error.</p></div></span>
+  
+</li>
+
+    
+  </ul>
+
+
+
+
+  
+    <h2>
+      Class Method Summary
+      <small><a href="#" class="summary_toggle">collapse</a></small>
+    </h2>
+
+    <ul class="summary">
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#arm!-class_method" title="arm! (class method)">.<strong>arm!</strong>(runnables)  &#x21d2; Boolean </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Installs the hooks and arms the stop for this process.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#armed_here%3F-class_method" title="armed_here? (class method)">.<strong>armed_here?</strong>  &#x21d2; Boolean </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>True when the run is armed in this process.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#disarm!-class_method" title="disarm! (class method)">.<strong>disarm!</strong>  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Clears the armed state.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#hooks_for_loaded_minitest-class_method" title="hooks_for_loaded_minitest (class method)">.<strong>hooks_for_loaded_minitest</strong>  &#x21d2; Array(Module, Module)<sup>?</sup> </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Picks the hook modules for the loaded Minitest.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#prepend_once-class_method" title="prepend_once (class method)">.<strong>prepend_once</strong>(target, mod)  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Prepends <code>mod</code> on <code>target</code> once.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#stopped_here%3F-class_method" title="stopped_here? (class method)">.<strong>stopped_here?</strong>  &#x21d2; Boolean </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>True when the armed run in this process has stopped.</p></div></span>
+  
+</li>
+
+      
+    </ul>
+    
+  
+
+
+  <div id="class_attr_details" class="attr_details">
+    <h2>Class Attribute Details</h2>
+    
+      
+      <span id="armed_pid=-class_method"></span>
+      <div class="method_details first">
+  <h3 class="signature first" id="armed_pid-class_method">
+  
+    .<strong>armed_pid</strong>  &#x21d2; <tt>Integer</tt><sup>?</sup> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>The pid of the armed process. Forked workers inherit the other
+state, and the pid keeps them from acting on it.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Integer</tt>, <tt>nil</tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+117
+118
+119</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration/stop_at_first_failure.rb', line 117</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_armed_pid'>armed_pid</span>
+  <span class='ivar'>@armed_pid</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      
+      <span id="armed_reporter=-class_method"></span>
+      <div class="method_details ">
+  <h3 class="signature " id="armed_reporter-class_method">
+  
+    .<strong>armed_reporter</strong>  &#x21d2; <tt>Minitest::CompositeReporter</tt><sup>?</sup> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>The outer reporter of the armed run.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Minitest::CompositeReporter</tt>, <tt>nil</tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+122
+123
+124</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration/stop_at_first_failure.rb', line 122</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_armed_reporter'>armed_reporter</span>
+  <span class='ivar'>@armed_reporter</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      
+      <span id="stopped=-class_method"></span>
+      <div class="method_details ">
+  <h3 class="signature " id="stopped-class_method">
+  
+    .<strong>stopped</strong>  &#x21d2; <tt>Boolean</tt><sup>?</sup> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>True after the outer reporter records a failure or an error.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>, <tt>nil</tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+127
+128
+129</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration/stop_at_first_failure.rb', line 127</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_stopped'>stopped</span>
+  <span class='ivar'>@stopped</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+  </div>
+
+
+  <div id="class_method_details" class="method_details_list">
+    <h2>Class Method Details</h2>
+
+    
+      <div class="method_details first">
+  <h3 class="signature first" id="arm!-class_method">
+  
+    .<strong>arm!</strong>(runnables)  &#x21d2; <tt>Boolean</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Installs the hooks and arms the stop for this process. Call it after
+the test files load, so that every test class gets its prepend.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>runnables</span>
+      
+      
+        <span class='type'>(<tt>Array&lt;Class&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the loaded test classes.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>false when the Minitest shape is unknown.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+134
+135
+136
+137
+138
+139
+140
+141
+142
+143
+144
+145</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration/stop_at_first_failure.rb', line 134</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_arm!'>arm!</span><span class='lparen'>(</span><span class='id identifier rubyid_runnables'>runnables</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_outer'>outer</span><span class='comma'>,</span> <span class='id identifier rubyid_skip'>skip</span> <span class='op'>=</span> <span class='id identifier rubyid_hooks_for_loaded_minitest'>hooks_for_loaded_minitest</span>
+  <span class='kw'>return</span> <span class='kw'>false</span> <span class='kw'>unless</span> <span class='id identifier rubyid_outer'>outer</span>
+
+  <span class='id identifier rubyid_prepend_once'>prepend_once</span><span class='lparen'>(</span><span class='op'>::</span><span class='const'>Minitest</span><span class='op'>::</span><span class='const'>CompositeReporter</span><span class='comma'>,</span> <span class='const'><span class='object_link'><a href="StopAtFirstFailure/RecordFailure.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure::RecordFailure (module)">RecordFailure</a></span></span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_prepend_once'>prepend_once</span><span class='lparen'>(</span><span class='op'>::</span><span class='const'>Minitest</span><span class='period'>.</span><span class='id identifier rubyid_singleton_class'>singleton_class</span><span class='comma'>,</span> <span class='id identifier rubyid_outer'>outer</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_runnables'>runnables</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_klass'>klass</span><span class='op'>|</span> <span class='id identifier rubyid_prepend_once'>prepend_once</span><span class='lparen'>(</span><span class='id identifier rubyid_klass'>klass</span><span class='period'>.</span><span class='id identifier rubyid_singleton_class'>singleton_class</span><span class='comma'>,</span> <span class='id identifier rubyid_skip'>skip</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+  <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_armed_pid'>armed_pid</span> <span class='op'>=</span> <span class='const'>Process</span><span class='period'>.</span><span class='id identifier rubyid_pid'>pid</span>
+  <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_armed_reporter'>armed_reporter</span> <span class='op'>=</span> <span class='kw'>nil</span>
+  <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_stopped'>stopped</span> <span class='op'>=</span> <span class='kw'>false</span>
+  <span class='kw'>true</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="armed_here?-class_method">
+  
+    .<strong>armed_here?</strong>  &#x21d2; <tt>Boolean</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>True when the run is armed in this process.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+159
+160
+161</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration/stop_at_first_failure.rb', line 159</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_armed_here?'>armed_here?</span>
+  <span class='id identifier rubyid_armed_pid'>armed_pid</span> <span class='op'>==</span> <span class='const'>Process</span><span class='period'>.</span><span class='id identifier rubyid_pid'>pid</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="disarm!-class_method">
+  
+    .<strong>disarm!</strong>  &#x21d2; <tt>void</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>Clears the armed state.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+150
+151
+152
+153
+154</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration/stop_at_first_failure.rb', line 150</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_disarm!'>disarm!</span>
+  <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_armed_pid'>armed_pid</span> <span class='op'>=</span> <span class='kw'>nil</span>
+  <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_armed_reporter'>armed_reporter</span> <span class='op'>=</span> <span class='kw'>nil</span>
+  <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_stopped'>stopped</span> <span class='op'>=</span> <span class='kw'>false</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="hooks_for_loaded_minitest-class_method">
+  
+    .<strong>hooks_for_loaded_minitest</strong>  &#x21d2; <tt>Array(Module, Module)</tt><sup>?</sup>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Picks the hook modules for the loaded Minitest.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array(Module, Module)</tt>, <tt>nil</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the outer reporter hook and the
+skip hook, or nil for an unknown shape.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+176
+177
+178
+179
+180
+181
+182
+183</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration/stop_at_first_failure.rb', line 176</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_hooks_for_loaded_minitest'>hooks_for_loaded_minitest</span>
+  <span class='id identifier rubyid_runnable'>runnable</span> <span class='op'>=</span> <span class='op'>::</span><span class='const'>Minitest</span><span class='op'>::</span><span class='const'>Runnable</span>
+  <span class='kw'>if</span> <span class='op'>::</span><span class='const'>Minitest</span><span class='period'>.</span><span class='id identifier rubyid_respond_to?'>respond_to?</span><span class='lparen'>(</span><span class='symbol'>:run_all_suites</span><span class='rparen'>)</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_runnable'>runnable</span><span class='period'>.</span><span class='id identifier rubyid_respond_to?'>respond_to?</span><span class='lparen'>(</span><span class='symbol'>:run_suite</span><span class='rparen'>)</span>
+    <span class='lbracket'>[</span><span class='const'><span class='object_link'><a href="StopAtFirstFailure/OuterReporter6.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure::OuterReporter6 (module)">OuterReporter6</a></span></span><span class='comma'>,</span> <span class='const'><span class='object_link'><a href="StopAtFirstFailure/SkipAfterStop6.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure::SkipAfterStop6 (module)">SkipAfterStop6</a></span></span><span class='rbracket'>]</span>
+  <span class='kw'>elsif</span> <span class='op'>::</span><span class='const'>Minitest</span><span class='period'>.</span><span class='id identifier rubyid_respond_to?'>respond_to?</span><span class='lparen'>(</span><span class='symbol'>:__run</span><span class='rparen'>)</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_runnable'>runnable</span><span class='period'>.</span><span class='id identifier rubyid_respond_to?'>respond_to?</span><span class='lparen'>(</span><span class='symbol'>:run_one_method</span><span class='rparen'>)</span>
+    <span class='lbracket'>[</span><span class='const'><span class='object_link'><a href="StopAtFirstFailure/OuterReporter5.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure::OuterReporter5 (module)">OuterReporter5</a></span></span><span class='comma'>,</span> <span class='const'><span class='object_link'><a href="StopAtFirstFailure/SkipAfterStop5.html" title="Mutineer::MinitestIntegration::StopAtFirstFailure::SkipAfterStop5 (module)">SkipAfterStop5</a></span></span><span class='rbracket'>]</span>
+  <span class='kw'>end</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="prepend_once-class_method">
+  
+    .<strong>prepend_once</strong>(target, mod)  &#x21d2; <tt>void</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>Prepends <code>mod</code> on <code>target</code> once. A copy on a superclass does not
+count, because it comes after the own methods of <code>target</code>.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>target</span>
+      
+      
+        <span class='type'>(<tt>Module</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the class or singleton class.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>mod</span>
+      
+      
+        <span class='type'>(<tt>Module</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the module to prepend.</p></div>
+      
+    </li>
+  
+</ul>
+
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+191
+192
+193
+194
+195</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration/stop_at_first_failure.rb', line 191</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_prepend_once'>prepend_once</span><span class='lparen'>(</span><span class='id identifier rubyid_target'>target</span><span class='comma'>,</span> <span class='id identifier rubyid_mod'>mod</span><span class='rparen'>)</span>
+  <span class='kw'>return</span> <span class='kw'>if</span> <span class='id identifier rubyid_target'>target</span><span class='period'>.</span><span class='id identifier rubyid_ancestors'>ancestors</span><span class='period'>.</span><span class='id identifier rubyid_take_while'>take_while</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_a'>a</span><span class='op'>|</span> <span class='op'>!</span><span class='id identifier rubyid_a'>a</span><span class='period'>.</span><span class='id identifier rubyid_equal?'>equal?</span><span class='lparen'>(</span><span class='id identifier rubyid_target'>target</span><span class='rparen'>)</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_mod'>mod</span><span class='rparen'>)</span>
+
+  <span class='id identifier rubyid_target'>target</span><span class='period'>.</span><span class='id identifier rubyid_prepend'>prepend</span><span class='lparen'>(</span><span class='id identifier rubyid_mod'>mod</span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="stopped_here?-class_method">
+  
+    .<strong>stopped_here?</strong>  &#x21d2; <tt>Boolean</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>True when the armed run in this process has stopped.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+166
+167
+168</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/minitest_integration/stop_at_first_failure.rb', line 166</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_stopped_here?'>stopped_here?</span>
+  <span class='id identifier rubyid_stopped'>stopped</span> <span class='op'>==</span> <span class='kw'>true</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_armed_here?'>armed_here?</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+  </div>
+
+</div>
+
+      <div id="footer">
+  Generated on DATE by
+  <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
+  0.9.45 (ruby-3.4.10).
+</div>
+
+    </div>
+  </body>
+</html>

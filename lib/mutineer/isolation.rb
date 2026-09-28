@@ -3,6 +3,7 @@
 require "tempfile"
 require_relative "result"
 require_relative "parser"
+require_relative "child_stdout"
 
 module Mutineer
   # Fork-based isolation for running one mutant. The block runs in a child
@@ -26,6 +27,9 @@ module Mutineer
     # exit code) or any explicit `exit` is honoured; an unhandled exception
     # becomes exit 2 with the cause written to STDERR.
     #
+    # The child silences its stdout (see {ChildStdout.silence}) before the
+    # block runs, so test output never reaches the user. Stderr stays open.
+    #
     # @param timeout [Integer] timeout in seconds.
     # @yieldreturn [Integer] child exit status.
     # @return [Mutineer::Result] result from the child process.
@@ -36,15 +40,17 @@ module Mutineer
         Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
         code = 0
         begin
+          ChildStdout.silence
           result = yield
           code = result.is_a?(Integer) ? result : 0
         rescue SystemExit => e
           code = e.status
         rescue Exception => e # rubocop:disable Lint/RescueException
-          warn "[mutineer-child] #{e.class}: #{e.message}"
+          # STDERR, not `warn`: a test may have left `$stderr` as a StringIO.
+          STDERR.puts "[mutineer-child] #{e.class}: #{e.message}"
           code = 2
         end
-        $stderr.flush
+        STDERR.flush
         # exit! skips at_exit handlers — critical, since a child forked from
         # inside our own Minitest suite would otherwise re-run the parent's
         # at_exit autorun hook on the way out.

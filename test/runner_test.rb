@@ -42,6 +42,48 @@ class RunnerTest < Minitest::Test
     assert_predicate result, :survived?, "expected survived, got #{result.status} (#{result.details})"
   end
 
+  # The marker of the second test shows which path ran it. The first test
+  # writes the seed, which the mutant run pins.
+  def test_mutant_run_stops_at_first_failure_but_coverage_capture_does_not
+    Dir.mktmpdir("mutineer-stop") do |dir|
+      src    = File.join(dir, "stop_calc.rb")
+      test   = File.join(dir, "stop_calc_test.rb")
+      marker = File.join(dir, "marker")
+      seed   = File.join(dir, "seed")
+      File.write(src, "class StopAtFirstFailureCalculator\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(test, <<~RUBY)
+        require "minitest/autorun"
+        require_relative "stop_calc"
+        class StopAtFirstFailureCalculatorTest < Minitest::Test
+          i_suck_and_my_tests_are_order_dependent!
+          def test_a_adds
+            File.write(#{seed.dump}, Minitest.seed.to_s)
+            assert_equal 5, StopAtFirstFailureCalculator.new.add(2, 3)
+          end
+          def test_b_writes_marker
+            File.write(#{marker.dump}, "ran")
+            pass
+          end
+        end
+      RUBY
+      map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      assert_path_exists marker, "coverage capture must run every test"
+
+      File.delete(marker)
+      require src # R5/KTD4: keep the child's require_relative from reloading it
+      plus = File.read(src).index("a + b") + 2
+      mutation = Mutineer::Mutation.new(start_offset: plus, end_offset: plus + 1,
+                                        replacement: "-", operator: :arithmetic)
+      result = Mutineer::Runner.run(mutation, source_file: src, coverage_map: map)
+
+      assert_predicate result, :killed?, "expected killed, got #{result.status} (#{result.details})"
+      refute_path_exists marker, "the mutant run must stop at the first failing test"
+      pinned = ENV["SEED"] ? ENV["SEED"].to_i % 0xFFFF : Mutineer::MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED
+      assert_equal pinned.to_s, File.read(seed)
+    end
+  end
+
   def test_syntactically_invalid_mutation_is_skipped
     # Replacing `+` with `)` makes `a ) b` — unparseable, so no fork happens.
     result = Mutineer::Runner.run(plus_mutation(replacement: ")"),
