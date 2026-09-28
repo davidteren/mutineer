@@ -1,0 +1,117 @@
+CHANGELOG.md
+  s_1d8e859ed0d041::t_7e85602a30f472 9-23,25-27
+README.md
+  s_1d8e859ed0d041::t_f02282826c7ba9 87-88
+docs/api/Mutineer.html
+  s_1d8e859ed0d041::t_637dec499474b3 84
+docs/api/Mutineer/Isolation.html
+  s_1d8e859ed0d041::t_fc56a8316cdc5b 620
+docs/api/Mutineer/MutatorRegistry.html
+  s_1d8e859ed0d041::t_f90bdf5132a976 155-157,188,217-219,373,376,460-462,465,533,536
+docs/api/Mutineer/Mutators.html
+  s_1d8e859ed0d041::t_90df1c0d17b480 84,106
+docs/api/Mutineer/Mutators/Arithmetic.html
+  s_1d8e859ed0d041::t_ede41b19d857b3 198
+docs/api/Mutineer/Mutators/ArrayLiteral.html
+  s_1d8e859ed0d041::t_289aaabfaf8a3f 1-424
+docs/api/Mutineer/Mutators/Base.html
+  s_1d8e859ed0d041::t_381dcf3e54835f 123,140-161,196-274
+docs/api/Mutineer/Mutators/BooleanConnector.html
+  s_1d8e859ed0d041::t_b0e04fdafe0023 240
+docs/api/Mutineer/Mutators/BooleanLiteral.html
+  s_1d8e859ed0d041::t_226a12764ad9ae 237
+docs/api/Mutineer/Mutators/ChainLink.html
+  s_1d8e859ed0d041::t_bf1010df068e07 411-415
+docs/api/Mutineer/Mutators/CollectionMethod.html
+  s_1d8e859ed0d041::t_8dc6d01f64c471 206
+docs/api/Mutineer/Mutators/Comparison.html
+  s_1d8e859ed0d041::t_0cdef8f3477ee8 198
+docs/api/Mutineer/Mutators/ConditionNegation.html
+  s_1d8e859ed0d041::t_f8edf6033f5378 215
+docs/api/Mutineer/Mutators/LiteralMutation.html
+  s_1d8e859ed0d041::t_305db4db935ca0 215
+docs/api/Mutineer/Mutators/NegationRemoval.html
+  s_1d8e859ed0d041::t_8d99bbb17201f4 195
+docs/api/Mutineer/Mutators/OperandRemoval.html
+  s_1d8e859ed0d041::t_b7def6a418ddd5 1-535
+docs/api/Mutineer/Mutators/RangeLiteral.html
+  s_1d8e859ed0d041::t_b429f9e069f690 245
+docs/api/Mutineer/Mutators/RegexLiteral.html
+  s_1d8e859ed0d041::t_0d0f612ce2b74b 240
+docs/api/Mutineer/Mutators/ReturnNil.html
+  s_1d8e859ed0d041::t_acd1a7b0e6f8e6 257-261
+docs/api/Mutineer/Mutators/SafeNavigation.html
+  s_1d8e859ed0d041::t_b163683b787f79 282
+docs/api/Mutineer/Mutators/StatementRemoval.html
+  s_1d8e859ed0d041::t_6e0c1c04c101cc 171
+docs/api/Mutineer/Mutators/StringLiteral.html
+  s_1d8e859ed0d041::t_6fd114795a47f1 173
+docs/api/Mutineer/Runner.html
+  s_1d8e859ed0d041::t_5976652a0bdaa3 545-546,568-569,572,825-826,829,880-881,884,1399-1400,1403,1464-1465,1468,1520-1521,1524,1740-1741,1744,1914-1915,1918,1964-1965,1968,2031-2032,2035,2116-2117,2120,2175-2176,2179
+docs/api/_index.html
+  s_1d8e859ed0d041::t_7a8f67ff70c34c 102-108,421-427
+docs/api/class_list.html
+  s_1d8e859ed0d041::t_72bdf5398a333e 49
+docs/api/file.CHANGELOG.html
+  s_1d8e859ed0d041::t_0fe4e0b089a3da 67-82,85-87
+docs/api/file.README.html
+  s_1d8e859ed0d041::t_5e9a90acbf354b 215-216
+docs/api/index.html
+  s_1d8e859ed0d041::t_c911cc98d87a59 215-216
+docs/api/method_list.html
+  s_1d8e859ed0d041::t_b0d1c17b8f10a4 691-698,706,714,722-729,1131-1138,1146,1154,1162,1170,1178,1186,1194,1202,1210,1218,1226,1234,1242,1250,1258,1266,1274,1282,1290,1298,1306,1314,1322,1330,1338,1346,1354,1362,1370,1378,1386,1394,1402,1410,1418,1426,1434,1442,1450,1458,1466,1474,1482,1490,1498,1506,1514,1522,1530,1538,1546,1554,1562,1570,1578,1586,1594,1602,1610,1618,1626,1634,1642,1650,1658,1666,1674,1682,1690,1698,1706,1714,1722,1730,1738,1746,1754,1762,1770,1778,1786,1794,1802,1810,1818,1826,1834,1842,1850,1858,1866,1874,1882,1890,1898,1906,1914,1922,1930,1938,1946,1954,1962,1970,1978,1986,1994,2002,2010,2018,2026,2034,2042,2050,2058,2066,2074,2082,2090,2098,2106,2114,2122,2130,2138,2146,2154,2162,2170,2178,2186,2194,2202,2210,2218,2226,2234,2242,2250,2258,2266,2274,2282,2290,2298,2306,2314,2322,2330,2338,2346,2354,2362,2370,2378,2386,2394,2402,2410,2418,2426,2434,2442,2450,2458,2466,2474,2482,2490,2498,2506,2514,2522,2530,2538,2546,2554,2562,2570,2578,2586,2594,2602,2610,2618,2626,2634,2642,2650,2658,2666,2674,2682,2690,2698,2706,2714,2722,2730,2738,2746,2754,2762,2770,2778,2786,2794,2802,2810,2818,2826,2834-2841,2851-2858,2866,2874,2882,2890,2898,2906,2914,2922,2930,2938,2946,2954,2962,2970,2978,2986,2994,3002,3010-3017,3019-3026,3034,3042,3050,3058,3066-3073
+docs/index.html
+  s_1d8e859ed0d041::t_f91e9f9b386558 78,175-176,200-201
+docs/index.md
+  s_1d8e859ed0d041::t_e3366e5305001e 82-83
+docs/llms-full.txt
+  s_1d8e859ed0d041::t_bcdcbfee910336 96-97
+docs/llms.txt
+  s_1d8e859ed0d041::t_a27cfc54ac0e17 15
+lib/mutineer.rb
+  s_1d8e859ed0d041::t_75d6b1b5615acb 32-33
+lib/mutineer/isolation.rb
+  s_1d8e859ed0d041::t_4be0f4af6c7b43 102
+lib/mutineer/mutator_registry.rb
+  s_1d8e859ed0d041::t_b70ac6ea3adabc 18-19,46-48,56,74-76
+lib/mutineer/mutators/array_literal.rb
+  s_1d8e859ed0d041::t_33e6bdc24ae435 1-51
+lib/mutineer/mutators/base.rb
+  s_1d8e859ed0d041::t_60f20c16c555c1 29-43
+lib/mutineer/mutators/operand_removal.rb
+  s_1d8e859ed0d041::t_b74cb0e9ce0271 1-65
+test/fixtures/discount.rb
+  s_1d8e859ed0d041::t_09ab7105b15f01 1-7
+test/fixtures/discount_test.rb
+  s_1d8e859ed0d041::t_8e4b0f7497e96e 1-16
+test/fixtures/tags.rb
+  s_1d8e859ed0d041::t_a12fd7a435c2a8 1-7
+test/fixtures/tags_test.rb
+  s_1d8e859ed0d041::t_41814a2bb4206e 1-12
+test/integration_test.rb
+  s_1d8e859ed0d041::t_d65f9a3ca03040 91-111
+test/isolation_test.rb
+  s_1d8e859ed0d041::t_649492eb8de5fa 5,136-142
+test/mutator_registry_test.rb
+  s_1d8e859ed0d041::t_2f8b1c5513ea33 60-67,69-70
+test/mutators/array_literal_test.rb
+  s_1d8e859ed0d041::t_6832d5ee8bedf2 1-66
+test/mutators/operand_removal_test.rb
+  s_1d8e859ed0d041::t_82571b19787270 1-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "da7c95e2e104ed4d9e9feab48571453038c86586",
+  "prompts": {},
+  "sessions": {
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
