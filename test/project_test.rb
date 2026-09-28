@@ -112,6 +112,9 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # The expected name follows discovery's static naming (enclosing namespace +
+  # compact path). Ruby may resolve Outer lexically to a top-level constant; a
+  # static walk cannot tell, so this pins scoping, not constant resolution.
   def test_discover_module_function_in_compact_module_nested_in_another
     src = "module A\n  module Outer::Inner\n    def v; end\n    module_function :v\n  end\nend\n"
     with_source(src) do |path|

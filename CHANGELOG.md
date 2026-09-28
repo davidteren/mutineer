@@ -12,11 +12,14 @@ All notable changes to this project are documented here. The format is based on
   method of the same name kept an instance method in Ruby, but mutineer
   named it as a class method. `--strategy redefine` then mutated a method the
   tests never call, so a killable mutant falsely survived, and
-  `--only Class#name` selected nothing (#98). A root-anchored reopening such
-  as `module ::Root` inside another module now names the top-level `Root`,
-  not `Outer::Root`. The affected methods now get
+  `--only Class#name` selected nothing (#98). The affected methods now get
   their correct names, so their mutant ids change: regenerate any ignore
   entries or baseline survivors that pointed at them.
+- **A root-anchored reopening names the top-level constant** — a
+  `module ::Root` or `class ::Solo` written inside another module now gives
+  `Root` and `Solo`, not `Outer::Root` and `Outer::Solo`. This applies to every
+  method in such a body, with or without `module_function`, so their mutant
+  ids change too.
 
 ## [1.2.0] - 2026-09-28
 
