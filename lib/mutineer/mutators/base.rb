@@ -26,6 +26,21 @@ module Mutineer
         subject.def_node.body&.accept(self)
         @mutations
       end
+
+      private
+
+      # Returns whether a node is, or contains, a heredoc.
+      #
+      # A heredoc's body lies outside its node's byte range. A mutation that
+      # deletes the node leaves the body behind as code, so the mutant
+      # always raises.
+      #
+      # @param node [Prism::Node] node to inspect.
+      # @return [Boolean] true when a heredoc is inside the node.
+      def heredoc?(node)
+        (node.respond_to?(:heredoc?) && node.heredoc?) ||
+          node.compact_child_nodes.any? { |child| heredoc?(child) }
+      end
     end
   end
 end

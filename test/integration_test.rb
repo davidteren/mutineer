@@ -88,6 +88,22 @@ class IntegrationTest < Minitest::Test
     assert_equal "", s.mutation.replacement
   end
 
+  def test_operand_removal_survivor
+    result = run_mutineer(sources: ["test/fixtures/discount.rb"],
+                          tests: ["test/fixtures/discount_test.rb"],
+                          operators: ["operand_removal"])
+
+    assert_equal 1, result.survived_count,
+                 "Expected exactly 1 survivor from discount.rb + discount_test.rb"
+    assert_equal 50.0, result.mutation_score
+
+    s = result.surviving_mutants.first
+    assert_equal "eligible?", s.subject.name.to_s
+    assert_equal :operand_removal, s.mutation.operator
+    assert_equal "member && total >= 100", source_token(s)
+    assert_equal "(member)", s.mutation.replacement
+  end
+
   # Scenario B — calculator + strong, perfect score (R10)
   def test_calculator_strong_kills_all
     result = run_mutineer(sources: ["test/fixtures/calculator.rb"],
