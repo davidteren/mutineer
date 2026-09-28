@@ -801,4 +801,18 @@ class CoverageMapTest < Minitest::Test
     capture_subprocess_io { map = build([bad]) }
     refute map.uncapturable_source?(CALC)
   end
+
+  def test_failing_test_helper_does_not_taint_a_helper_source
+    dir = Dir.mktmpdir
+    helper = File.join(dir, "helper.rb")
+    File.write(helper, "class Helper; end\n")
+    bad = File.join(dir, "test_helper.rb")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [helper], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    refute map.uncapturable_source?(helper)
+  end
 end

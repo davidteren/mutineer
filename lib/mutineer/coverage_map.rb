@@ -147,7 +147,11 @@ module Mutineer
     def failed_test_targets
       @failed_test_files.map do |t|
         name = File.basename(t, ".rb")
-        name.match?(/_(test|spec)\z/) ? name.sub(/_(test|spec)\z/, "") : name.delete_prefix("test_")
+        case name
+        when /_(test|spec)\z/ then name.sub(/_(test|spec)\z/, "")
+        when "test_helper" then name # Minitest's support file pairs with no source
+        else name.delete_prefix("test_")
+        end
       end.to_set
     end
 
