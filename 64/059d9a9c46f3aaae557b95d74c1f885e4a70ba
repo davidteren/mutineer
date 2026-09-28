@@ -1,0 +1,29 @@
+lib/mutineer/runner.rb
+  s_be14d56078e8d2::t_60ccb4e47d69be 308-310
+test/equivalent_mutant_test.rb
+  s_1d8e859ed0d041::t_2000c25b27f299 39-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "64059d9a9c46f3aaae557b95d74c1f885e4a70ba",
+  "prompts": {},
+  "sessions": {
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_be14d56078e8d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8a017ee4-da61-4a96-9a80-843bb0f41e07",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
