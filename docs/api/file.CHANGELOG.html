@@ -6,7 +6,7 @@
 <title>
   File: CHANGELOG
   
-    &mdash; Documentation by YARD 0.9.44
+    &mdash; Documentation by YARD 0.9.45
   
 </title>
 
@@ -78,7 +78,11 @@ entries or baseline survivors that pointed at them.</li>
 <code>module ::Root</code> or <code>class ::Solo</code> written inside another module now gives
 <code>Root</code> and <code>Solo</code>, not <code>Outer::Root</code> and <code>Outer::Solo</code>. This applies to every
 method in such a body, with or without <code>module_function</code>, so their mutant
-ids change too.</li>
+ids change too. <code>--strategy redefine</code> rebuilds such a body's scope as
+written (<code>module Outer</code> then <code>class ::Solo</code>), so a constant from <code>Outer</code>
+still resolves in the mutated method, as it does under <code>reload</code>. Before,
+the method raised NameError in the test, which counted as a false kill
+(#145).</li>
 </ul>
 <h2 id="_1_2_0____2026_09_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.2.0">1.2.0</a> - 2026-09-28</h2>
 <h3 id="Added">Added</h3>
@@ -634,7 +638,7 @@ accepted as deprecated aliases.)</li>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.44 (ruby-3.4.11).
+  0.9.45 (ruby-3.4.11).
 </div>
 
     </div>

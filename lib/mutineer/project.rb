@@ -36,6 +36,7 @@ module Mutineer
       def initialize(file)
         @file = file
         @namespace_stack = []
+        @lexical_stack = [] # class/module names as written, `::X` kept (#145)
         @subjects = []
         @singleton_depth = 0
         @module_function_active = false # bareword `module_function` seen in this module body
@@ -120,6 +121,7 @@ module Mutineer
         @subjects << Subject.new(
           file: @file,
           namespace: @namespace_stack.dup,
+          lexical: @lexical_stack.dup,
           name: node.name,
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node
@@ -140,13 +142,17 @@ module Mutineer
       # @return [void]
       def with_namespace(path)
         saved_stack = @namespace_stack
+        saved_lexical = @lexical_stack
         saved_active = @module_function_active
         name = extract_constant_name(path)
-        @namespace_stack = root_anchored?(path) ? [name] : saved_stack + [name]
+        root = root_anchored?(path)
+        @namespace_stack = root ? [name] : saved_stack + [name]
+        @lexical_stack = saved_lexical + [root ? "::#{name}" : name]
         @module_function_active = false
         yield
       ensure
         @namespace_stack = saved_stack
+        @lexical_stack = saved_lexical
         @module_function_active = saved_active
       end
 

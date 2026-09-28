@@ -85,14 +85,16 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # Joined namespaces make the compact and nested spellings of one module match:
+  # a def in one form is promoted by module_function called from the other.
   def test_discover_module_function_matches_compact_and_nested_namespaces
-    compact = "module A::B\n  def z; end\n  module_function :z\nend\nmodule A\n  module B\n    def w; end\n  end\nend\n"
-    with_source(compact) do |path|
-      assert_equal %w[A::B.z A::B#w], Mutineer::Project.discover([path]).map(&:qualified_name)
+    compact_def = "module A::B\n  def z; end\nend\nmodule A\n  module B\n    module_function :z\n  end\nend\n"
+    with_source(compact_def) do |path|
+      assert_equal %w[A::B.z], Mutineer::Project.discover([path]).map(&:qualified_name)
     end
-    nested = "module A\n  module B\n    def z; end\n    module_function :z\n  end\nend\nmodule A::B\n  def w; end\n  module_function :w\nend\n"
-    with_source(nested) do |path|
-      assert_equal %w[A::B.z A::B.w], Mutineer::Project.discover([path]).map(&:qualified_name)
+    nested_def = "module A\n  module B\n    def w; end\n  end\nend\nmodule A::B\n  module_function :w\nend\n"
+    with_source(nested_def) do |path|
+      assert_equal %w[A::B.w], Mutineer::Project.discover([path]).map(&:qualified_name)
     end
   end
 

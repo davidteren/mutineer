@@ -56,6 +56,18 @@ class SingletonRedefineTest < Minitest::Test
     assert_killed(agg, "--only ScopeHelper.compute")
   end
 
+  # #145: redefine must rebuild the lexical scope as written (`module RootOuter;
+  # class ::RootTop`), so a constant from the enclosing module resolves exactly
+  # as it does under reload. Otherwise the mutated method raises NameError in the
+  # test, and a mutant the weak test cannot detect is reported as a false kill.
+  def test_root_anchored_class_keeps_enclosing_lexical_scope
+    reload   = run_redefine("root_anchored.rb", "root_anchored_test.rb", strategy: "reload")
+    redefine = run_redefine("root_anchored.rb", "root_anchored_test.rb", strategy: "redefine")
+    assert_operator reload.survived_count, :>, 0, "the weak test must leave survivors under reload"
+    assert_equal reload.survived_count, redefine.survived_count, "redefine must not turn survivors into NameError kills"
+    assert_equal reload.killed_count, redefine.killed_count
+  end
+
   # Parity control — this form already worked; it must keep working.
   def test_def_self_methods_are_mutated
     assert_killed(run_redefine("def_self.rb", "def_self_test.rb"), "def self.")

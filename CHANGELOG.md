@@ -19,7 +19,11 @@ All notable changes to this project are documented here. The format is based on
   `module ::Root` or `class ::Solo` written inside another module now gives
   `Root` and `Solo`, not `Outer::Root` and `Outer::Solo`. This applies to every
   method in such a body, with or without `module_function`, so their mutant
-  ids change too.
+  ids change too. `--strategy redefine` rebuilds such a body's scope as
+  written (`module Outer` then `class ::Solo`), so a constant from `Outer`
+  still resolves in the mutated method, as it does under `reload`. Before,
+  the method raised NameError in the test, which counted as a false kill
+  (#145).
 
 ## [1.2.0] - 2026-09-28
 
