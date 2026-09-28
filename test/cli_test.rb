@@ -422,4 +422,24 @@ class CliTest < Minitest::Test
       assert_match(/missing_helper/, err)
     end
   end
+
+  # Both helper roots hold a check.rb; only test/a/check.rb asserts. A mutant
+  # run that reverses the capture's load path order loads the empty one.
+  def test_mutant_runs_keep_the_capture_load_path_order
+    Dir.mktmpdir("mutineer-order") do |proj|
+      write = ->(path, body) { FileUtils.mkdir_p(File.dirname(File.join(proj, path))); File.write(File.join(proj, path), body) }
+      write.("lib/calc.rb", "class Calc\n  def add(a, b) = a + b\nend\n")
+      %w[a b].each { |d| write.("test/#{d}/test_helper.rb", "require 'minitest/autorun'\n") }
+      write.("test/a/check.rb", "module Check\n  def check = assert_equal(3, Calc.new.add(1, 2))\nend\n")
+      write.("test/b/check.rb", "module Check\n  def check = pass\nend\n")
+      write.("test/a/calc_test.rb", "require 'test_helper'\nrequire 'calc'\nrequire 'check'\n" \
+                                    "class CalcTest < Minitest::Test\n  include Check\n  def test_add = check\nend\n")
+      write.("test/b/other_test.rb", "require 'test_helper'\nclass OtherTest < Minitest::Test\n  def test_ok = pass\nend\n")
+
+      out, _err, status = mutineer("run", "lib/calc.rb", "--test", "test/a/calc_test.rb", "--test", "test/b/other_test.rb",
+                                   "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus
+      assert_equal 100.0, JSON.parse(out).dig("summary", "score")
+    end
+  end
 end
