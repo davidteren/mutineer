@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "pathname"
 require_relative "parser"
 require_relative "project"
 require_relative "result"
@@ -93,10 +94,16 @@ module Mutineer
           verbose: config.verbose
         ).build_via_fork(after_fork: (config.rails ? -> { reconnect_active_record } : nil))
       else
+        # As in boot mode, and with lib first as `rake test` does.
+        test_roots = test_load_roots(config.tests.map { |t| File.expand_path(t, config.project_root) })
+        libs = config.load_paths.map { |p| File.expand_path(p, config.project_root) }
+        $LOAD_PATH.unshift(*(libs + test_roots).uniq.reject { |d| $LOAD_PATH.include?(d) })
+        # Relative, so the cache digest does not depend on the checkout path.
+        rel_roots = test_roots.map { |d| Pathname(d).relative_path_from(File.expand_path(config.project_root)).to_s }
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: config.cache_dir, project_root: config.project_root,
-          load_paths: config.load_paths, framework: config.framework
+          load_paths: config.load_paths + rel_roots, framework: config.framework
         ).build_or_load
       end
       abort_if_unclean!(coverage_map)
@@ -157,7 +164,7 @@ module Mutineer
       ignored_results = []
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file))
-        disabled = (disabled_map[subject.file] ||= suppress_map(source))
+        disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
         mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
         ids = MutantId.for_subject(subject, source, mutations)
         mutations.each_with_index do |mutation, i|
@@ -253,8 +260,13 @@ module Mutineer
     #
     # @param coverage_map [Mutineer::CoverageMap] the built or loaded map.
     # @return [void]
-    # @raise [Mutineer::SmokeCheckError] when any captured test failed clean.
+    # @raise [Mutineer::SmokeCheckError] when any captured test failed clean,
+    #   or when no test recorded coverage and a capture failed.
     def self.abort_if_unclean!(coverage_map)
+      if coverage_map.map.empty? && coverage_map.failed_test_files.any?
+        raise SmokeCheckError, "no test recorded coverage, and capture failed for #{coverage_map.failed_test_files.join(', ')}"
+      end
+
       files = coverage_map.failed_clean_tests
       return if files.empty?
 
@@ -299,13 +311,21 @@ module Mutineer
     # sits on the same physical line as the code it silences). A bare marker
     # disables every operator on that line; `disable-line a, b` only the listed
     # operators. Block-form disable/enable ranges are intentionally not supported.
-    def self.suppress_map(source)
+    def self.suppress_map(source, file)
       map = {}
       source.each_line.with_index(1) do |text, line|
         next unless (m = text.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
 
-        ops = m[1]
-        map[line] = ops ? ops.split(",").map { |o| o.strip.to_sym }.reject(&:empty?).to_set : :all
+        ops = m[1]&.split(",")&.map(&:strip)&.reject(&:empty?)
+        # Only spaces or commas after the marker (e.g. `disable-line  -- why`)
+        # is a bare marker, not an empty list that silences nothing.
+        ops = nil if ops&.empty?
+        unknown = ops.to_a.reject { |o| MutatorRegistry::ALL.key?(o) }
+        unknown.each do |o|
+          warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line} " \
+               "(known: #{MutatorRegistry::ALL.keys.join(', ')}); write a reason after --"
+        end
+        map[line] = ops ? ops.map(&:to_sym).to_set : :all
       end
       map
     end

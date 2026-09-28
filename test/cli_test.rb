@@ -391,4 +391,55 @@ class CliTest < Minitest::Test
       assert_includes out, "OK: no regression vs baseline"
     end
   end
+
+  def test_test_helper_require_needs_no_rubyopt
+    Dir.mktmpdir("mutineer-helper") do |proj|
+      write = ->(path, body) { FileUtils.mkdir_p(File.dirname(File.join(proj, path))); File.write(File.join(proj, path), body) }
+      write.("lib/calc.rb", "class Calc\n  def add(a, b) = a + b\nend\n")
+      write.("test/test_helper.rb", "require 'minitest/autorun'\nrequire 'calc'\n")
+      write.("test/calc_test.rb", "require 'test_helper'\n" \
+                                  "class CalcTest < Minitest::Test\n  def test_add = assert_equal(3, Calc.new.add(1, 2))\nend\n")
+      run = -> { mutineer("run", "lib/calc.rb", "--test", "test/calc_test.rb", "--format", "json", chdir: proj) }
+
+      out, _err, status = run.call
+      assert_equal 0, status.exitstatus
+      assert_equal 100.0, JSON.parse(out).dig("summary", "score")
+
+      Dir.mktmpdir("mutineer-helper-copy") do |copy|
+        FileUtils.cp_r("#{proj}/.", copy)
+        # A capture would drop this marker, so it survives only on a cache hit.
+        cache = File.join(copy, ".mutineer/coverage.json")
+        File.write(cache, JSON.parse(File.read(cache)).tap { |c| c["map"]["lib/calc.rb:99"] = ["test/calc_test.rb"] }.to_json)
+        _out, _err, status = mutineer("run", "lib/calc.rb", "--test", "test/calc_test.rb", chdir: copy)
+        assert_equal 0, status.exitstatus
+        assert JSON.parse(File.read(cache))["map"].key?("lib/calc.rb:99"), "the cache must hit from another checkout"
+      end
+
+      write.("test/calc_test.rb", "require 'missing_helper'\n")
+      _out, err, status = run.call
+      assert_equal 1, status.exitstatus
+      assert_match(/no test recorded coverage/, err)
+      assert_match(/missing_helper/, err)
+    end
+  end
+
+  # Both helper roots hold a check.rb; only test/a/check.rb asserts. A mutant
+  # run that reverses the capture's load path order loads the empty one.
+  def test_mutant_runs_keep_the_capture_load_path_order
+    Dir.mktmpdir("mutineer-order") do |proj|
+      write = ->(path, body) { FileUtils.mkdir_p(File.dirname(File.join(proj, path))); File.write(File.join(proj, path), body) }
+      write.("lib/calc.rb", "class Calc\n  def add(a, b) = a + b\nend\n")
+      %w[a b].each { |d| write.("test/#{d}/test_helper.rb", "require 'minitest/autorun'\n") }
+      write.("test/a/check.rb", "module Check\n  def check = assert_equal(3, Calc.new.add(1, 2))\nend\n")
+      write.("test/b/check.rb", "module Check\n  def check = pass\nend\n")
+      write.("test/a/calc_test.rb", "require 'test_helper'\nrequire 'calc'\nrequire 'check'\n" \
+                                    "class CalcTest < Minitest::Test\n  include Check\n  def test_add = check\nend\n")
+      write.("test/b/other_test.rb", "require 'test_helper'\nclass OtherTest < Minitest::Test\n  def test_ok = pass\nend\n")
+
+      out, _err, status = mutineer("run", "lib/calc.rb", "--test", "test/a/calc_test.rb", "--test", "test/b/other_test.rb",
+                                   "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus
+      assert_equal 100.0, JSON.parse(out).dig("summary", "score")
+    end
+  end
 end

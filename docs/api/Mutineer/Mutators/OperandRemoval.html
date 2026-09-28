@@ -4,7 +4,7 @@
     <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>
-  Class: Mutineer::Mutators::BooleanConnector
+  Class: Mutineer::Mutators::OperandRemoval
   
     &mdash; Documentation by YARD 0.9.45
   
@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="../../css/common.css" type="text/css">
 
 <script type="text/javascript">
-  pathId = "Mutineer::Mutators::BooleanConnector";
+  pathId = "Mutineer::Mutators::OperandRemoval";
   relpath = '../../';
 </script>
 
@@ -38,10 +38,10 @@
       <div id="header">
         <div id="menu">
   
-    <a href="../../_index.html">Index (B)</a> &raquo;
+    <a href="../../_index.html">Index (O)</a> &raquo;
     <span class='title'><span class='object_link'><a href="../../Mutineer.html" title="Mutineer (module)">Mutineer</a></span></span> &raquo; <span class='title'><span class='object_link'><a href="../Mutators.html" title="Mutineer::Mutators (module)">Mutators</a></span></span>
      &raquo; 
-    <span class="title">BooleanConnector</span>
+    <span class="title">OperandRemoval</span>
   
 </div>
 
@@ -61,7 +61,7 @@
         <div class="clear"></div>
       </div>
 
-      <div id="content"><h1>Class: Mutineer::Mutators::BooleanConnector
+      <div id="content"><h1>Class: Mutineer::Mutators::OperandRemoval
   
   
   
@@ -80,7 +80,7 @@
           
             <li class="next"><span class='object_link'><a href="Base.html" title="Mutineer::Mutators::Base (class)">Base</a></span></li>
           
-            <li class="next">Mutineer::Mutators::BooleanConnector</li>
+            <li class="next">Mutineer::Mutators::OperandRemoval</li>
           
         </ul>
         <a href="#" class="inheritanceTree">show all</a>
@@ -100,7 +100,7 @@
   
   <dl>
     <dt>Defined in:</dt>
-    <dd>lib/mutineer/mutators/boolean_connector.rb
+    <dd>lib/mutineer/mutators/operand_removal.rb
 </dd>
   </dl>
   
@@ -108,8 +108,11 @@
 
 <h2>Overview</h2><div class="docstring">
   <div class="discussion">
-    <p>Boolean connector mutator.</p>
-<p>Replaces symbolic and keyword connectors with their opposite form.</p>
+    <p>Operand-removal mutator (Tier-2).</p>
+<p>Replaces a boolean expression with one of its operands, two mutations
+per <code>&amp;&amp;</code>, <code>||</code>, <code>and</code> or <code>or</code>: <code>a &amp;&amp; b</code> becomes <code>(a)</code> and <code>(b)</code>. The
+parentheses keep the precedence of <code>and</code> and <code>or</code>. A surviving mutant
+shows that no test needs the operand that was removed.</p>
 
   </div>
 </div>
@@ -125,10 +128,11 @@
 
     <dl class="constants">
       
-        <dt id="REPLACEMENTS-constant" class="">REPLACEMENTS =
+        <dt id="JUMPS-constant" class="">JUMPS =
           <div class="docstring">
   <div class="discussion">
-    <p>Token replacements for boolean connectors.</p>
+    <p>Node types for jumps. A jump in a value context does not parse, so
+the operator never keeps a jump alone.</p>
 
   </div>
 </div>
@@ -137,7 +141,7 @@
 
 </div>
         </dt>
-        <dd><pre class="code"><span class='lbrace'>{</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>&amp;&amp;</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>||</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>||</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>&amp;&amp;</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>and</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>or</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>or</span><span class='tstring_end'>&quot;</span></span> <span class='op'>=&gt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>and</span><span class='tstring_end'>&quot;</span></span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_freeze'>freeze</span></pre></dd>
+        <dd><pre class="code"><span class='lbracket'>[</span><span class='const'>Prism</span><span class='op'>::</span><span class='const'>ReturnNode</span><span class='comma'>,</span> <span class='const'>Prism</span><span class='op'>::</span><span class='const'>BreakNode</span><span class='comma'>,</span> <span class='const'>Prism</span><span class='op'>::</span><span class='const'>NextNode</span><span class='comma'>,</span> <span class='const'>Prism</span><span class='op'>::</span><span class='const'>RedoNode</span><span class='comma'>,</span> <span class='const'>Prism</span><span class='op'>::</span><span class='const'>RetryNode</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_freeze'>freeze</span></pre></dd>
       
     </dl>
   
@@ -173,7 +177,7 @@
   
 
   
-    <span class="summary_desc"><div class='inline'><p>Emits a connector mutation when the token is replaceable.</p></div></span>
+    <span class="summary_desc"><div class='inline'><p>Emits one mutation that keeps the left operand, then one that keeps the right operand.</p></div></span>
   
 </li>
 
@@ -196,6 +200,28 @@
 
   
     <span class="summary_desc"><div class='inline'><p>Visits <code>and</code> nodes.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#visit_def_node-instance_method" title="#visit_def_node (instance method)">#<strong>visit_def_node</strong>(node)  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Skips a nested method definition.</p></div></span>
   
 </li>
 
@@ -256,7 +282,9 @@
   
 </h3><div class="docstring">
   <div class="discussion">
-    <p class="note returns_void">This method returns an undefined value.</p><p>Emits a connector mutation when the token is replaceable.</p>
+    <p class="note returns_void">This method returns an undefined value.</p><p>Emits one mutation that keeps the left operand, then one that keeps
+the right operand. The order is fixed, because the two mutants share
+a token and their occurrence ordinals tell them apart.</p>
 
   </div>
 </div>
@@ -269,7 +297,7 @@
         <span class='name'>node</span>
       
       
-        <span class='type'>(<tt>Prism::Node</tt>)</span>
+        <span class='type'>(<tt>Prism::AndNode</tt>, <tt>Prism::OrNode</tt>)</span>
       
       
       
@@ -287,33 +315,33 @@
       <pre class="lines">
 
 
-38
-39
-40
-41
-42
-43
-44
-45
-46
-47
-48
-49</pre>
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/mutators/boolean_connector.rb', line 38</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutators/operand_removal.rb', line 51</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_emit'>emit</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_loc'>loc</span> <span class='op'>=</span> <span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_operator_loc'>operator_loc</span>
-  <span class='id identifier rubyid_replacement'>replacement</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="#REPLACEMENTS-constant" title="Mutineer::Mutators::BooleanConnector::REPLACEMENTS (constant)">REPLACEMENTS</a></span></span><span class='lbracket'>[</span><span class='id identifier rubyid_loc'>loc</span><span class='period'>.</span><span class='id identifier rubyid_slice'>slice</span><span class='rbracket'>]</span>
-  <span class='kw'>return</span> <span class='kw'>unless</span> <span class='id identifier rubyid_replacement'>replacement</span>
+  <span class='lbracket'>[</span><span class='lbracket'>[</span><span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_left'>left</span><span class='comma'>,</span> <span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_right'>right</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='lbracket'>[</span><span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_right'>right</span><span class='comma'>,</span> <span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_left'>left</span><span class='rbracket'>]</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_kept'>kept</span><span class='comma'>,</span> <span class='id identifier rubyid_removed'>removed</span><span class='op'>|</span>
+    <span class='kw'>next</span> <span class='kw'>if</span> <span class='const'><span class='object_link'><a href="#JUMPS-constant" title="Mutineer::Mutators::OperandRemoval::JUMPS (constant)">JUMPS</a></span></span><span class='period'>.</span><span class='id identifier rubyid_any?'>any?</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_type'>type</span><span class='op'>|</span> <span class='id identifier rubyid_kept'>kept</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='id identifier rubyid_type'>type</span><span class='rparen'>)</span> <span class='rbrace'>}</span> <span class='op'>||</span> <span class='id identifier rubyid_heredoc?'>heredoc?</span><span class='lparen'>(</span><span class='id identifier rubyid_removed'>removed</span><span class='rparen'>)</span>
 
-  <span class='ivar'>@mutations</span> <span class='op'>&lt;&lt;</span> <span class='const'><span class='object_link'><a href="../Mutation.html" title="Mutineer::Mutation (class)">Mutation</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span><span class='lparen'>(</span>
-    <span class='label'>start_offset:</span> <span class='id identifier rubyid_loc'>loc</span><span class='period'>.</span><span class='id identifier rubyid_start_offset'>start_offset</span><span class='comma'>,</span>
-    <span class='label'>end_offset:</span> <span class='id identifier rubyid_loc'>loc</span><span class='period'>.</span><span class='id identifier rubyid_end_offset'>end_offset</span><span class='comma'>,</span>
-    <span class='label'>replacement:</span> <span class='id identifier rubyid_replacement'>replacement</span><span class='comma'>,</span>
-    <span class='label'>operator:</span> <span class='symbol'>:boolean_connector</span>
-  <span class='rparen'>)</span>
+    <span class='ivar'>@mutations</span> <span class='op'>&lt;&lt;</span> <span class='const'><span class='object_link'><a href="../Mutation.html" title="Mutineer::Mutation (class)">Mutation</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span><span class='lparen'>(</span>
+      <span class='label'>start_offset:</span> <span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_location'>location</span><span class='period'>.</span><span class='id identifier rubyid_start_offset'>start_offset</span><span class='comma'>,</span>
+      <span class='label'>end_offset:</span> <span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_location'>location</span><span class='period'>.</span><span class='id identifier rubyid_end_offset'>end_offset</span><span class='comma'>,</span>
+      <span class='label'>replacement:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>(</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_kept'>kept</span><span class='period'>.</span><span class='id identifier rubyid_slice'>slice</span><span class='embexpr_end'>}</span><span class='tstring_content'>)</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span>
+      <span class='label'>operator:</span> <span class='symbol'>:operand_removal</span>
+    <span class='rparen'>)</span>
+  <span class='kw'>end</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -362,18 +390,72 @@
       <pre class="lines">
 
 
-18
-19
-20
-21</pre>
+22
+23
+24
+25</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/mutators/boolean_connector.rb', line 18</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutators/operand_removal.rb', line 22</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_visit_and_node'>visit_and_node</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_emit'>emit</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='rparen'>)</span>
-  <span class='kw'>super</span>
-<span class='kw'>end</span></pre>
+  <span class='kw'>super</span> <span class='comment'># nested connectors (a &amp;&amp; b &amp;&amp; c) each get their own mutations
+</span><span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="visit_def_node-instance_method">
+  
+    #<strong>visit_def_node</strong>(node)  &#x21d2; <tt>void</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>Skips a nested method definition. The project finds it as a subject of
+its own, so a visit here counts its connectors twice.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>node</span>
+      
+      
+        <span class='type'>(<tt>Prism::DefNode</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>nested definition node.</p></div>
+      
+    </li>
+  
+</ul>
+
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+41</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutators/operand_removal.rb', line 41</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_visit_def_node'>visit_def_node</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='rparen'>)</span><span class='semicolon'>;</span> <span class='kw'>end</span></pre>
     </td>
   </tr>
 </table>
@@ -421,13 +503,13 @@
       <pre class="lines">
 
 
-27
-28
-29
-30</pre>
+31
+32
+33
+34</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/mutators/boolean_connector.rb', line 27</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutators/operand_removal.rb', line 31</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_visit_or_node'>visit_or_node</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_emit'>emit</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='rparen'>)</span>
