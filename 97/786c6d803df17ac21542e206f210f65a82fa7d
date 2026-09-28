@@ -1,0 +1,109 @@
+CHANGELOG.md
+  s_1d8e859ed0d041::t_9be5a1507d0349 9-18
+README.md
+  s_17ec21d95450c9::t_e41deeb7c6898a 87-88
+docs/api/Mutineer.html
+  s_1d8e859ed0d041::t_c3f42140b71160 84
+docs/api/Mutineer/Isolation.html
+  s_1d8e859ed0d041::t_f2850734afa73b 1104
+docs/api/Mutineer/MutatorRegistry.html
+  s_1d8e859ed0d041::t_26ca525c4a2144 155-156,187,216-217,371,374,458-460,463,531,534
+docs/api/Mutineer/Mutators.html
+  s_1d8e859ed0d041::t_b828e3368c2730 84,106
+docs/api/Mutineer/Mutators/Arithmetic.html
+  s_1d8e859ed0d041::t_42ffac810776f1 198
+docs/api/Mutineer/Mutators/Base.html
+  s_1d8e859ed0d041::t_a7ccb44d32757b 123,140-161,196-274
+docs/api/Mutineer/Mutators/BooleanConnector.html
+  s_1d8e859ed0d041::t_a03ff410465af0 240
+docs/api/Mutineer/Mutators/BooleanLiteral.html
+  s_1d8e859ed0d041::t_9820ba3439598a 237
+docs/api/Mutineer/Mutators/ChainLink.html
+  s_1d8e859ed0d041::t_f117661330412b 411-415
+docs/api/Mutineer/Mutators/CollectionMethod.html
+  s_1d8e859ed0d041::t_f795c6dc2769cf 206
+docs/api/Mutineer/Mutators/Comparison.html
+  s_1d8e859ed0d041::t_6d8d31ff107da0 198
+docs/api/Mutineer/Mutators/ConditionNegation.html
+  s_1d8e859ed0d041::t_009b9a71f5bb31 215
+docs/api/Mutineer/Mutators/LiteralMutation.html
+  s_1d8e859ed0d041::t_8a0b2988ce4f56 215
+docs/api/Mutineer/Mutators/NegationRemoval.html
+  s_1d8e859ed0d041::t_6319805f53ac75 195
+docs/api/Mutineer/Mutators/OperandRemoval.html
+  s_1d8e859ed0d041::t_33bc46e126429f 1-535
+docs/api/Mutineer/Mutators/RangeLiteral.html
+  s_1d8e859ed0d041::t_bf6413b4b39eda 245
+docs/api/Mutineer/Mutators/RegexLiteral.html
+  s_1d8e859ed0d041::t_0a01d0cff872fe 240
+docs/api/Mutineer/Mutators/ReturnNil.html
+  s_1d8e859ed0d041::t_517cb9d03269cb 257-261
+docs/api/Mutineer/Mutators/SafeNavigation.html
+  s_1d8e859ed0d041::t_9f0ffdb9c3710f 282
+docs/api/Mutineer/Mutators/StatementRemoval.html
+  s_1d8e859ed0d041::t_99e9eadf54acc5 171
+docs/api/Mutineer/Mutators/StringLiteral.html
+  s_1d8e859ed0d041::t_caf0edeb5ecf46 173
+docs/api/_index.html
+  s_1d8e859ed0d041::t_b183e340c00708 414-420
+docs/api/class_list.html
+  s_1d8e859ed0d041::t_ced6c4df32fc40 49
+docs/api/file.CHANGELOG.html
+  s_1d8e859ed0d041::t_2c3149fd41d2e7 67-77,589
+docs/api/file.README.html
+  s_1d8e859ed0d041::t_72b406fbdb5a78 215-216
+docs/api/index.html
+  s_1d8e859ed0d041::t_437cd541dab4a1 215-216
+docs/api/method_list.html
+  s_1d8e859ed0d041::t_fc2b822f668481 715-722,730,738,746,754,762,770,778,786,794,802,810,818,826,834,842,850,858,866,874,882,890,898,906,914,922,930,938,946,954,962,970,978,986,994,1002,1010,1018,1026,1034,1042,1050,1058,1066,1074,1082,1090,1098,1106,1114,1122-1129,2827-2834,2842,2850,2858,2866,2874,2882,2890,2898,2906,2914,2922,2930,2938,2946,2954,2962,2970,2978,2986,2994-3001,3043-3050,3058,3066,3074,3082,3090,3098,3106,3114,3122,3130,3138,3146,3154,3162,3170,3178,3186,3194,3202
+docs/index.html
+  s_1d8e859ed0d041::t_5861f8213d9543 78,175-176,200
+docs/index.md
+  s_17ec21d95450c9::t_3944f0523c04a9 82
+docs/llms-full.txt
+  s_17ec21d95450c9::t_77f92f15c8f563 96-97
+docs/llms.txt
+  s_17ec21d95450c9::t_d6920e4c527a7f 15
+lib/mutineer.rb
+  s_1d8e859ed0d041::t_84f09d48fe69ca 32
+lib/mutineer/mutator_registry.rb
+  s_1d8e859ed0d041::t_876935261235ea 18,45-46,54,72-73
+lib/mutineer/mutators/base.rb
+  s_1d8e859ed0d041::t_34b9e2c77a7f4d 29-43
+lib/mutineer/mutators/operand_removal.rb
+  s_1d8e859ed0d041::t_70fffc037858ac 1-65
+test/fixtures/discount.rb
+  s_1d8e859ed0d041::t_a9d6110ef03dac 1-7
+test/fixtures/discount_test.rb
+  s_1d8e859ed0d041::t_4fa433413b9c82 1-16
+test/integration_test.rb
+  s_1d8e859ed0d041::t_dbf3f8cff2861c 91-106
+test/mutator_registry_test.rb
+  s_1d8e859ed0d041::t_ff27ea959df36f 60-63,65-66
+test/mutators/operand_removal_test.rb
+  s_1d8e859ed0d041::t_a66b1e709a38b1 1-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "97786c6d803df17ac21542e206f210f65a82fa7d",
+  "prompts": {},
+  "sessions": {
+    "s_17ec21d95450c9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bae14f40-fb23-4206-8dde-6e43c3b2d3cc",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
