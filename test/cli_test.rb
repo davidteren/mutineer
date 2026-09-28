@@ -407,10 +407,12 @@ class CliTest < Minitest::Test
 
       Dir.mktmpdir("mutineer-helper-copy") do |copy|
         FileUtils.cp_r("#{proj}/.", copy)
-        FileUtils.rm_rf(File.join(copy, ".mutineer"))
-        mutineer("run", "lib/calc.rb", "--test", "test/calc_test.rb", chdir: copy)
-        digest = ->(dir) { JSON.parse(File.read(File.join(dir, ".mutineer/coverage.json")))["digest"] }
-        assert_equal digest.(proj), digest.(copy), "the cache must not depend on the checkout path"
+        # A capture would drop this marker, so it survives only on a cache hit.
+        cache = File.join(copy, ".mutineer/coverage.json")
+        File.write(cache, JSON.parse(File.read(cache)).tap { |c| c["map"]["lib/calc.rb:99"] = ["test/calc_test.rb"] }.to_json)
+        _out, _err, status = mutineer("run", "lib/calc.rb", "--test", "test/calc_test.rb", chdir: copy)
+        assert_equal 0, status.exitstatus
+        assert JSON.parse(File.read(cache))["map"].key?("lib/calc.rb:99"), "the cache must hit from another checkout"
       end
 
       write.("test/calc_test.rb", "require 'missing_helper'\n")
