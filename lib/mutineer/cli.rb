@@ -480,12 +480,17 @@ module Mutineer
       # so only the new-survivor half of the gate applies (see Baseline#diff).
       delta = if config.baseline
                 Baseline.load(config.baseline).diff(aggregate, epsilon: config.baseline_epsilon,
-                                                               scoped: !config.since.nil?)
+                                                               scoped: !config.since.nil?,
+                                                               id_map: extras[:id_map])
               end
+      warn_legacy_baseline if delta&.legacy_matches&.positive?
 
+      # ignore counts old-format entries (one warning each), not the ids they matched.
+      legacy_id_matches = { ignore: extras[:legacy_ignore_matches].size,
+                            baseline: delta ? delta.legacy_matches : 0 }
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
-                      scoped: !config.since.nil?)
+                      scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches)
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
@@ -537,6 +542,19 @@ module Mutineer
              "mutants in this run's sources and operators; a run over every source gives the " \
              "complete replacement. Replace #{old} with the new ids in your ignore list."
       end
+    end
+
+    # Warns once that the --baseline file stores old-format ids (#126), so the
+    # diff fell back to matching on them. Called only when a survivor matched
+    # through an old id alone.
+    #
+    # @return [void]
+    def self.warn_legacy_baseline
+      warn "[mutineer] the baseline uses the old id format, which did not include the file " \
+           "path, so survivors were matched on their old ids. An old id can collide with a " \
+           "survivor from another file, which can hide a new survivor. Regenerate the baseline " \
+           "(run with --format json and save the output), but only after every gate that reads " \
+           "it runs this mutineer version or later."
     end
 
     # Runs dry-run mode. Reuses Runner.collect_jobs (+ filter_since) so the

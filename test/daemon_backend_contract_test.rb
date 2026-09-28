@@ -230,7 +230,7 @@ class DaemonBackendContractTest < Minitest::Test
   end
 
   # #126: every backend suppresses by the ids collect_jobs computes and hands the
-  # old-format ignore matches back unchanged. All mutants are ignored, so neither
+  # old-format ignore matches and the new-to-old id map back unchanged. All mutants are ignored, so neither
   # backend boots or runs anything.
   def test_backends_carry_the_collect_jobs_ids_and_legacy_matches
     Dir.mktmpdir("mutineer-ids") do |root|
@@ -258,6 +258,9 @@ class DaemonBackendContractTest < Minitest::Test
       [daemon, external].each do |aggregate, _, run_extras|
         assert_equal expected_ignored.map(&:id), aggregate.results.map(&:id)
         assert_equal extras[:legacy_ignore_matches], run_extras[:legacy_ignore_matches]
+        # The --baseline diff needs every new id's old id to read an old-format baseline.
+        refute_empty extras[:id_map]
+        assert_equal extras[:id_map], run_extras[:id_map]
       end
     end
   end

@@ -26,8 +26,18 @@ module Mutineer
     #                     render them side by side. False means the score-drop
     #                     check was skipped, not that it passed.
     #   regressed       - any new survivors OR a score drop.
+    #   legacy_matches  - current survivors found in an old-format baseline
+    #                     (no `summary.id_format`) only through their old-format
+    #                     id (#126). Non-zero means the baseline should be
+    #                     regenerated; the CLI warns. Always 0 for a new-format
+    #                     baseline.
     Delta = Data.define(:new_survivors, :fixed_survivors,
-                        :score_before, :score_after, :score_drop, :score_comparable, :regressed)
+                        :score_before, :score_after, :score_drop, :score_comparable, :regressed,
+                        :legacy_matches) do
+      # @param legacy_matches [Integer] survivors matched only through an old-format id.
+      # @return [void]
+      def initialize(legacy_matches: 0, **) = super
+    end
 
     # Load a prior --format json run. Raises ConfigError (NOT exit: a data class
     # must never kill the host) on a missing/unreadable file, unparseable JSON,
@@ -73,6 +83,8 @@ module Mutineer
       # Strict literal true only: a malformed value (say the STRING "false" in a
       # hand-edited baseline) must not silently disable the score-drop gate.
       @scoped = doc.dig("summary", "scoped") == true
+      # nil for a report written before ids included the file path (#126).
+      @id_format = doc.dig("summary", "id_format")
     end
 
     # Diff a current AggregateResult against this baseline by stable survivor id.
@@ -86,16 +98,37 @@ module Mutineer
     # fine across scopes) and still reports both scores, but never sets
     # score_drop.
     #
+    # `id_map` maps each current new-format id to its old-format id (#126). A
+    # baseline without `summary.id_format` stores old-format ids, so a current
+    # survivor matches if its new OR old id is stored, and a stored id seen under
+    # either form is not fixed. Matches made only through the old id are counted
+    # on Delta#legacy_matches. The old id has no file path, so this can hide a new
+    # survivor whose old id equals a stored survivor from another file.
+    #
     # @param aggregate [Mutineer::AggregateResult] current results.
     # @param epsilon [Float] score-drop tolerance.
     # @param scoped [Boolean] current run was diff-scoped (`--since`).
+    # @param id_map [Hash{String => String}] current new id => old-format id.
     # @return [Mutineer::Baseline::Delta] delta summary.
-    def diff(aggregate, epsilon: 0.0, scoped: false)
+    def diff(aggregate, epsilon: 0.0, scoped: false, id_map: {})
       current = aggregate.surviving_mutants
-      current_ids = current.map(&:id)
-      baseline_ids = @survivors.map { |h| h["id"] }
+      baseline_ids = @survivors.map { |h| h["id"] }.to_set
+      # A new-format baseline never matches on old ids.
+      legacy = @id_format.nil? ? id_map : {}
 
-      new_survivors = current.reject { |r| baseline_ids.include?(r.id) }
+      new_survivors = []
+      legacy_matches = 0
+      current.each do |r|
+        next if baseline_ids.include?(r.id)
+
+        old = legacy[r.id]
+        if old && baseline_ids.include?(old)
+          legacy_matches += 1
+        else
+          new_survivors << r
+        end
+      end
+      current_ids = current.flat_map { |r| [r.id, legacy[r.id]] }.compact.to_set
       # Under a diff-scoped side an out-of-scope baseline survivor was never
       # re-tested, so reporting it "fixed" would be false: empty is honest.
       fixed = if scoped || @scoped
@@ -116,7 +149,7 @@ module Mutineer
       Delta.new(new_survivors: new_survivors, fixed_survivors: fixed,
                 score_before: @score, score_after: current_score,
                 score_drop: score_drop, score_comparable: comparable,
-                regressed: !new_survivors.empty? || score_drop)
+                regressed: !new_survivors.empty? || score_drop, legacy_matches: legacy_matches)
     end
   end
 end

@@ -35,11 +35,13 @@ module Mutineer
     # or to `out`. Diagnostics always go to `err`. `scoped` marks a diff-scoped
     # (`--since`) run; the JSON report records it so a consumer (or a later
     # `--baseline` load) knows the score covers only the changed-line mutants.
+    # `legacy_id_matches` (`{ignore:, baseline:}`) counts stored ids still in the
+    # old format (#126); only the JSON report records it (`summary.legacy_id_matches`).
     def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil,
-               baseline: nil, scoped: false)
+               baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 })
       rendered =
         if format == "json"
-          json_report(baseline, scoped: scoped)
+          json_report(baseline, scoped: scoped, legacy_id_matches: legacy_id_matches)
         elsif format == "html"
           html_report
         else
@@ -131,8 +133,11 @@ module Mutineer
     # @param baseline [Mutineer::Baseline::Delta, nil] baseline delta.
     # @param scoped [Boolean] the run was diff-scoped (`--since`), so its score
     #   covers only the changed-line mutants (additive `summary.scoped` key).
+    # @param legacy_id_matches [Hash{Symbol => Integer}] `{ignore:, baseline:}`:
+    #   old-format ignore entries that matched, and survivors matched in an
+    #   old-format baseline only through their old id (#126).
     # @return [String] JSON text.
-    def json_report(baseline = nil, scoped: false)
+    def json_report(baseline = nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 })
       killed = @agg.killed_count
       survived = @agg.survived_count
       # null (not 0.0) on an empty denominator, matching the nil-vs-0.0
@@ -141,7 +146,7 @@ module Mutineer
       score = @agg.mutation_score
 
       doc = {
-        schema_version: "1.3",
+        schema_version: "1.4",
         summary: {
           total: @agg.total, killed: killed, survived: survived,
           no_coverage: @agg.no_coverage_count,
@@ -155,7 +160,15 @@ module Mutineer
           # Additive: true when the run was diff-scoped (--since). The score then
           # covers only the changed-line mutants, so it is not comparable to a
           # full-run score; Baseline#diff reads this to skip the score-drop gate.
-          scoped: scoped
+          scoped: scoped,
+          # Additive (1.4, #126): ids hash the project-relative file path. A
+          # baseline without this key stores old-format ids; Baseline#diff then
+          # also matches on old ids.
+          id_format: 2,
+          # Additive (1.4, #126): stored ids still in the old format. `ignore` is
+          # the number of old-format ignore entries that matched; `baseline` the
+          # survivors matched in the baseline only through their old id.
+          legacy_id_matches: legacy_id_matches
         },
         survivors: @agg.surviving_mutants.map { |r| survivor_json(r) }
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },

@@ -32,9 +32,10 @@ module Mutineer
   class Runner
     # Full orchestration: resolve operators, discover subjects, build the
     # coverage map, run every mutation, and aggregate. Returns
-    # [AggregateResult, source_map, extras] (extras: see {.run_extras}). The CLI
-    # then reports + applies the exit code; the integration test asserts directly
-    # on the AggregateResult.
+    # [AggregateResult, source_map, extras], where extras is the hash
+    # {.collect_jobs} returns (`:legacy_ignore_matches`, `:id_map`), unchanged.
+    # The CLI then reports + applies the exit code; the integration test asserts
+    # directly on the AggregateResult.
     #
     # The parent process `require`s each source file so its classes exist; forked
     # children inherit them, so a covering test file's own require_relative of the
@@ -147,16 +148,7 @@ module Mutineer
           sweep_orphans(dirs)
         end
 
-      [AggregateResult.new(results + ignored_results), source_map, run_extras(extras)]
-    end
-
-    # The part of {.collect_jobs}' extras a backend hands back to the CLI: the
-    # old-format ignore matches, which the CLI prints as warnings.
-    #
-    # @param extras [Hash] the extras {.collect_jobs} returned.
-    # @return [Hash{Symbol => Object}] `{legacy_ignore_matches: Hash<String, Array<String>>}`.
-    def self.run_extras(extras)
-      extras.slice(:legacy_ignore_matches)
+      [AggregateResult.new(results + ignored_results), source_map, extras]
     end
 
     # Collect every (subject, mutation, id) up front so a backend can run them.
@@ -221,7 +213,7 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration (test_command set).
     # @param operator_classes [Array<Class>] resolved operators.
     # @return [Array(Mutineer::AggregateResult, Hash<String,String>, Hash)] aggregate,
-    #   source map, and run extras (see {.run_extras}).
+    #   source map, and the {.collect_jobs} extras.
     def self.execute_external(config, operator_classes)
       abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
       sources   = config.sources.map { |s| FileSwap.canonical_path(File.expand_path(s, config.project_root)) }
@@ -242,7 +234,7 @@ module Mutineer
 
         # Nothing to mutate: return before the smoke check, which runs the whole
         # --test set to calibrate a timeout no mutant would use (#76).
-        next [AggregateResult.new(ignored_results), source_map, run_extras(extras)] if jobs.empty?
+        next [AggregateResult.new(ignored_results), source_map, extras] if jobs.empty?
 
         # Calibrate the per-mutant timeout from the clean run (a real suite far
         # outlasts the 10s in-process fork budget), and abort if it is not green.
@@ -266,7 +258,7 @@ module Mutineer
           FileSwap.restore_orphans(dirs)
         end
 
-        [AggregateResult.new(results + ignored_results), source_map, run_extras(extras)]
+        [AggregateResult.new(results + ignored_results), source_map, extras]
       end
     end
 

@@ -44,7 +44,7 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration (daemon set).
     # @param operator_classes [Array<Class>] resolved operators.
     # @return [Array(Mutineer::AggregateResult, Hash<String,String>, Hash)] aggregate,
-    #   source map, and run extras (see {Runner.run_extras}).
+    #   source map, and the {Runner.collect_jobs} extras.
     def self.execute(config, operator_classes)
       jobs, ignored_results, source_map, extras = Runner.collect_jobs(config, operator_classes)
       jobs = Runner.filter_since(jobs, source_map, config) if config.since
@@ -59,7 +59,7 @@ module Mutineer
         # tool-side. A file a hard-killed run left in app/models breaks the app's own
         # Zeitwerk boot, not just Mutineer's next run.
         Runner.sweep_orphans(Runner.source_dirs(config), DAEMON_TEMP_GLOB)
-        return [AggregateResult.new(ignored_results), source_map, Runner.run_extras(extras)]
+        return [AggregateResult.new(ignored_results), source_map, extras]
       end
 
       # Build the coverage map once (app-side). nil when the build fails: runners
@@ -85,7 +85,7 @@ module Mutineer
           run_serial(jobs, config, abs_tests, coverage_map, source_map)
         end
 
-      [AggregateResult.new(results + ignored_results), source_map, Runner.run_extras(extras)]
+      [AggregateResult.new(results + ignored_results), source_map, extras]
     end
 
     # Build the coverage map via a short-lived daemon (boots the app once, captures

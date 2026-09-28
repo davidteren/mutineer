@@ -245,7 +245,7 @@ class CliTest < Minitest::Test
                               "--format", "json", "--output", "report.json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(File.read(File.join(proj, "report.json")))
-      assert_equal "1.3", doc["schema_version"]
+      assert_equal "1.4", doc["schema_version"]
       assert_equal 100.0, doc["summary"]["score"]
     end
   end
@@ -377,7 +377,7 @@ class CliTest < Minitest::Test
       out, _, status = mutineer("run", "lib", "--format", "json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(out)
-      assert_equal "1.3", doc["schema_version"]
+      assert_equal "1.4", doc["schema_version"]
       per = doc["per_source"].sort_by { |h| h["file"] }
       assert_equal ["lib/calc.rb", "lib/greeter.rb"], per.map { |h| h["file"] }
       assert_equal 100.0, per.find { |h| h["file"] == "lib/greeter.rb" }["score"]
@@ -456,6 +456,60 @@ class CliTest < Minitest::Test
       assert_equal 0, status.exitstatus
       assert_includes out, "0 new survivors vs baseline"
       assert_includes out, "OK: no regression vs baseline"
+    end
+  end
+
+  # The [mutineer] regenerate-baseline warnings in a stderr capture.
+  def baseline_warnings(err)
+    err.lines.grep(/\A\[mutineer\] the baseline/)
+  end
+
+  # Rewrites a --format json report as 1.2.0 wrote it: no summary.id_format, and
+  # each survivor stored under its old-format id (no file path in the hash).
+  def downgrade_baseline(proj, path)
+    config = Mutineer::Config.new(sources: [File.join(proj, "calculator.rb")], project_root: proj)
+    id_map = Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic])).last[:id_map]
+    doc = JSON.parse(File.read(path))
+    doc["summary"].delete("id_format")
+    doc["survivors"].each { |h| h["id"] = id_map.fetch(h["id"]) }
+    File.write(path, JSON.generate(doc))
+  end
+
+  # #126 AE3 end to end, on the in-process and the external (--test-command)
+  # backend: a baseline in the old id format gives zero new and zero fixed
+  # survivors, one warning, and legacy_id_matches.baseline in the report. The
+  # same baseline in the new format gives no warning.
+  def test_old_format_baseline_matches_on_every_backend
+    [[], ["--test-command", "true %{files}"]].each do |backend|
+      with_project do |proj|
+        run = ->(*extra) do
+          mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb", *backend,
+                   "--operators", "arithmetic", "--jobs", "1", "--format", "json", *extra, chdir: proj)
+        end
+        _, err, first = run.("--output", "base.json")
+        assert_equal 0, first.exitstatus, err
+        survived = JSON.parse(File.read(File.join(proj, "base.json")))["survivors"].size
+        refute_equal 0, survived
+
+        out, err, status = run.("--baseline", "base.json")
+        assert_equal 0, status.exitstatus, err
+        assert_empty baseline_warnings(err)
+        assert_equal({ "ignore" => 0, "baseline" => 0 }, JSON.parse(out)["summary"]["legacy_id_matches"])
+
+        downgrade_baseline(proj, File.join(proj, "base.json"))
+        out, err, status = run.("--baseline", "base.json")
+        assert_equal 0, status.exitstatus, err
+        doc = JSON.parse(out)
+        assert_empty doc["baseline"]["new_survivors"], "backend #{backend.inspect}"
+        assert_empty doc["baseline"]["fixed_survivors"], "backend #{backend.inspect}"
+        assert_equal({ "ignore" => 0, "baseline" => survived }, doc["summary"]["legacy_id_matches"])
+        warnings = baseline_warnings(err)
+        assert_equal 1, warnings.size, err
+        assert_match(/old id format/, warnings.first)
+        assert_match(/another file/, warnings.first)
+        assert_match(/--format json/, warnings.first)
+        assert_match(/every gate/, warnings.first)
+      end
     end
   end
 

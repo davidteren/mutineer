@@ -33,12 +33,12 @@ class BaselineTest < Minitest::Test
   def agg(*results) = Mutineer::AggregateResult.new(results)
 
   # A baseline doc (a prior --format json run) carrying the given survivor ids.
-  def baseline_doc(ids, score: nil, scoped: nil)
+  def baseline_doc(ids, score: nil, scoped: nil, id_format: nil)
     {
       # Deliberately an older schema: a baseline written by a prior version must
       # still be readable, per the "accept any 1.x" contract in docs/json-schema.md.
       "schema_version" => "1.1",
-      "summary" => { "score" => score, "scoped" => scoped }.compact,
+      "summary" => { "score" => score, "scoped" => scoped, "id_format" => id_format }.compact,
       "survivors" => ids.map do |id|
         { "id" => id, "subject" => "Pricing#total", "file" => FILE, "line" => 3,
           "operator" => "comparison" }
@@ -237,13 +237,101 @@ class BaselineTest < Minitest::Test
     results = [Mutineer::Result.killed, survivor("ccc")]
     doc = JSON.parse(render(results, base.diff(agg(*results)), format: "json"))
 
-    assert_equal "1.3", doc["schema_version"] # 1.3 = the additive scoped/score_comparable keys
+    assert_equal "1.4", doc["schema_version"] # 1.4 = the additive id_format/legacy_id_matches keys
     assert doc["baseline"]["regressed"]
     assert_equal 1, doc["baseline"]["new_survivors"].size
     assert_equal "ccc", doc["baseline"]["new_survivors"].first["id"]
     # Additive comparability marker: no score on this baseline doc, so the two
     # scores must not be rendered as a comparison.
     assert_equal false, doc["baseline"]["score_comparable"]
+  end
+
+  # --- #126: baselines written before ids included the file path --------------
+
+  # A second live survivor with its own mutation, so two survivors can differ.
+  def other_survivor(id) = survivor(id, token: "100", replacement: "0", operator: :literal_mutation)
+
+  # AE3: the same survivors, stored under their old-format ids, give no new and
+  # no fixed survivors. The match through the old id is counted, not printed.
+  def test_old_format_baseline_with_the_same_survivors_matches_through_legacy_ids
+    base = Mutineer::Baseline.new(baseline_doc(%w[old1]))
+    delta = nil
+    assert_silent { delta = base.diff(agg(survivor("new1")), id_map: { "new1" => "old1" }) }
+
+    assert_empty delta.new_survivors
+    assert_empty delta.fixed_survivors
+    refute delta.regressed
+    assert_equal 1, delta.legacy_matches
+  end
+
+  def test_old_format_baseline_still_reports_a_genuinely_new_survivor
+    base = Mutineer::Baseline.new(baseline_doc(%w[old1]))
+    delta = base.diff(agg(survivor("new1"), other_survivor("new2")),
+                      id_map: { "new1" => "old1", "new2" => "old2" })
+
+    assert_equal %w[new2], delta.new_survivors.map(&:id)
+    assert delta.regressed
+    assert_equal 1, delta.legacy_matches
+  end
+
+  def test_old_format_baseline_still_reports_a_fixed_survivor
+    base = Mutineer::Baseline.new(baseline_doc(%w[old1 old9]))
+    delta = base.diff(agg(survivor("new1")), id_map: { "new1" => "old1" })
+
+    assert_equal %w[old9], delta.fixed_survivors.map { |h| h["id"] }
+  end
+
+  # A survivor stored under its new id counts as a plain match, not a legacy one.
+  def test_new_id_in_an_old_format_baseline_is_not_a_legacy_match
+    base = Mutineer::Baseline.new(baseline_doc(%w[new1]))
+    delta = base.diff(agg(survivor("new1")), id_map: { "new1" => "old1" })
+
+    assert_empty delta.new_survivors
+    assert_equal 0, delta.legacy_matches
+  end
+
+  # A baseline that says it uses the new format never matches on old ids.
+  def test_new_format_baseline_matches_on_new_ids_only
+    old_ids = Mutineer::Baseline.new(baseline_doc(%w[old1], id_format: 2))
+    delta = old_ids.diff(agg(survivor("new1")), id_map: { "new1" => "old1" })
+    assert_equal %w[new1], delta.new_survivors.map(&:id)
+    assert_equal %w[old1], delta.fixed_survivors.map { |h| h["id"] }
+    assert_equal 0, delta.legacy_matches
+
+    new_ids = Mutineer::Baseline.new(baseline_doc(%w[new1], id_format: 2))
+    delta = new_ids.diff(agg(survivor("new1")), id_map: { "new1" => "old1" })
+    assert_empty delta.new_survivors
+    assert_empty delta.fixed_survivors
+    assert_equal 0, delta.legacy_matches
+  end
+
+  def test_scoped_diff_against_an_old_format_baseline_reports_no_fixed_survivors
+    base = Mutineer::Baseline.new(baseline_doc(%w[old1 old9]))
+    delta = base.diff(agg(survivor("new1")), scoped: true, id_map: { "new1" => "old1" })
+
+    assert_empty delta.fixed_survivors
+    assert_empty delta.new_survivors
+  end
+
+  # Documented limitation: the old id has no file path, so a NEW survivor in b.rb
+  # whose old id equals a stored survivor from a.rb is hidden until the baseline
+  # is regenerated. The legacy count is what makes the CLI warn about it.
+  def test_old_format_baseline_hides_a_new_survivor_whose_old_id_collides
+    base = Mutineer::Baseline.new(baseline_doc(%w[shared_old])) # stored for a.rb
+    in_b = survivor("b_new") # a new survivor in b.rb with the same old id
+    delta = base.diff(agg(in_b), id_map: { "a_new" => "shared_old", "b_new" => "shared_old" })
+
+    assert_empty delta.new_survivors, "pins the documented collision of old-format baselines"
+    assert_equal 1, delta.legacy_matches
+  end
+
+  # Baseline is side-effect free: it never prints, the CLI owns every warning.
+  def test_diff_prints_nothing
+    base = Mutineer::Baseline.new(baseline_doc(%w[aaa old1], score: 80.0))
+    assert_silent do
+      base.diff(agg(survivor("aaa")))
+      base.diff(agg(survivor("new1")), id_map: { "new1" => "old1" })
+    end
   end
 
   # Schema-safety: with no baseline, the doc has no `baseline` key (additive only).
