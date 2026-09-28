@@ -260,7 +260,8 @@ module Mutineer
     #
     # @param coverage_map [Mutineer::CoverageMap] the built or loaded map.
     # @return [void]
-    # @raise [Mutineer::SmokeCheckError] when any captured test failed clean.
+    # @raise [Mutineer::SmokeCheckError] when any captured test failed clean,
+    #   or when no test recorded coverage and a capture failed.
     def self.abort_if_unclean!(coverage_map)
       if coverage_map.map.empty? && coverage_map.failed_test_files.any?
         raise SmokeCheckError, "no test recorded coverage, and capture failed for #{coverage_map.failed_test_files.join(', ')}"
