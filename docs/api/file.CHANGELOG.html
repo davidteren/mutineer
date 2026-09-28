@@ -66,9 +66,10 @@
 <h2 id="_Unreleased_">[Unreleased]</h2>
 <h3 id="Fixed">Fixed</h3>
 <ul>
-<li><strong>A red unmutated suite now shows why it failed</strong> — the report of the failing
-test (Minitest) or spec (RSpec), with its exception and backtrace, goes to
-stderr before the &quot;not green&quot; error. A passing run prints nothing extra (#121).</li>
+<li><strong>A red unmutated suite now shows why it failed</strong> — in a standalone run, the
+Minitest summary or RSpec output of the failing test, with its failure
+message, goes to stderr before the &quot;not green&quot; error. A passing run prints
+nothing extra. Boot mode (<code>--rails</code>, <code>--boot</code>) is unchanged (#121).</li>
 </ul>
 <h2 id="_1_1_0____2026_09_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.1.0">1.1.0</a> - 2026-09-28</h2>
 <h3 id="Added">Added</h3>
