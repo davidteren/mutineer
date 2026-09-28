@@ -35,7 +35,7 @@ class EquivalentMutantTest < Minitest::Test
 
   def test_suppress_map_warns_on_an_unknown_operator
     _, err = capture_io { Mutineer::Runner.suppress_map("a # mutineer:disable-line comparison because\n", "x.rb") }
-    assert_match(/unknown operator "comparison because" in x.rb:1/, err)
+    assert_match(/unknown operator "comparison because" in x.rb:1 \(known: .*\bcomparison\b/, err)
   end
 
   def test_suppressed_scope_matches_only_listed_operator

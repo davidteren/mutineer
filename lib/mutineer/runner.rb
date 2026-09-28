@@ -306,7 +306,10 @@ module Mutineer
 
         ops = m[1]&.split(",")&.map(&:strip)&.reject(&:empty?)
         unknown = ops.to_a.reject { |o| MutatorRegistry::ALL.key?(o) }
-        unknown.each { |o| warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line}; write a reason after --" }
+        unknown.each do |o|
+          warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line} " \
+               "(known: #{MutatorRegistry::ALL.keys.join(', ')}); write a reason after --"
+        end
         map[line] = ops ? ops.map(&:to_sym).to_set : :all
       end
       map
