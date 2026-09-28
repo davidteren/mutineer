@@ -12,6 +12,8 @@ All notable changes to this project are documented here. The format is based on
   superclass raised `superclass mismatch`, and load-time code ran twice (#122).
   A mutant of such a class still errors under `--strategy reload`, which loads
   the mutated file again; `--strategy redefine` runs it.
+  Code that guards itself to run once (`unless defined?(X)`) can now show as
+  covered, so its mutants run where they were `no_coverage` before.
 
 ## [1.1.0] - 2026-09-28
 
