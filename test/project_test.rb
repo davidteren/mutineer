@@ -103,6 +103,22 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # `module ::X` inside another module reopens the top-level X, so its namespace
+  # restarts at X — for subject names and for module_function scoping alike.
+  def test_discover_root_anchored_reopen_restarts_the_namespace
+    src = "module Root\n  def compute; end\nend\nmodule Outer\n  module ::Root\n    module_function :compute\n    def extra; end\n  end\n  class ::Solo\n    def x; end\n  end\nend\n"
+    with_source(src) do |path|
+      assert_equal %w[Root.compute Root#extra Solo#x], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
+  def test_discover_module_function_in_compact_module_nested_in_another
+    src = "module A\n  module Outer::Inner\n    def v; end\n    module_function :v\n  end\nend\n"
+    with_source(src) do |path|
+      assert_equal %w[A::Outer::Inner.v], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   def test_discover_module_function_does_not_leak_into_nested_class
     with_source("module M\n  module_function\n  def a; end\n  class Inner\n    def b; end\n  end\nend\n") do |path|
       subjects = Mutineer::Project.discover([path])

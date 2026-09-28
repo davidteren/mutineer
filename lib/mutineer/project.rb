@@ -62,12 +62,12 @@ module Mutineer
       # @param node [Prism::ClassNode] class node.
       # @return [void]
       def visit_class_node(node)
-        @namespace_stack.push(extract_constant_name(node.constant_path))
-        saved = @module_function_active
-        @module_function_active = false # module_function state does not cross a class boundary
-        super
-        @module_function_active = saved
-        @namespace_stack.pop
+        with_namespace(node.constant_path) do
+          saved = @module_function_active
+          @module_function_active = false # module_function state does not cross a class boundary
+          super
+          @module_function_active = saved
+        end
       end
 
       # Visits module nodes and tracks namespace nesting.
@@ -75,12 +75,12 @@ module Mutineer
       # @param node [Prism::ModuleNode] module node.
       # @return [void]
       def visit_module_node(node)
-        @namespace_stack.push(extract_constant_name(node.constant_path))
-        saved = @module_function_active
-        @module_function_active = false # each module body starts without module_function active
-        super
-        @module_function_active = saved
-        @namespace_stack.pop
+        with_namespace(node.constant_path) do
+          saved = @module_function_active
+          @module_function_active = false # each module body starts without module_function active
+          super
+          @module_function_active = saved
+        end
       end
 
       # Track `module_function` so its methods are recorded as singletons (#20) —
@@ -138,6 +138,31 @@ module Mutineer
       end
 
       private
+
+      # Runs the block with `path` pushed as the current namespace. A
+      # root-anchored path (`module ::X` / `class ::X`) names the top-level X,
+      # not X nested in the enclosing scope, so the namespace restarts there.
+      #
+      # @param path [Prism::Node] the class/module constant path.
+      # @yield the class or module body visit.
+      # @return [void]
+      def with_namespace(path)
+        saved = @namespace_stack
+        name = extract_constant_name(path)
+        @namespace_stack = root_anchored?(path) ? [name] : saved + [name]
+        yield
+      ensure
+        @namespace_stack = saved
+      end
+
+      # True when a constant path starts with `::` (e.g. `::X` or `::A::B`).
+      #
+      # @param node [Prism::Node] constant path node.
+      # @return [Boolean]
+      def root_anchored?(node)
+        node = node.parent while node.is_a?(Prism::ConstantPathNode) && node.parent
+        node.is_a?(Prism::ConstantPathNode)
+      end
 
       # Extracts a constant name from a Prism constant node.
       #

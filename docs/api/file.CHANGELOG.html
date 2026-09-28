@@ -71,7 +71,9 @@ their own module's methods</strong> — a class or module in the same file with 
 method of the same name kept an instance method in Ruby, but mutineer
 named it as a class method. <code>--strategy redefine</code> then mutated a method the
 tests never call, so a killable mutant falsely survived, and
-<code>--only Class#name</code> selected nothing (#98). The affected methods now get
+<code>--only Class#name</code> selected nothing (#98). A root-anchored reopening such
+as <code>module ::Root</code> inside another module now names the top-level <code>Root</code>,
+not <code>Outer::Root</code>. The affected methods now get
 their correct names, so their mutant ids change: regenerate any ignore
 entries or baseline survivors that pointed at them.</li>
 </ul>

@@ -50,6 +50,10 @@ class SingletonRedefineTest < Minitest::Test
     agg = run_redefine("module_func_scope.rb", "module_func_scope_test.rb", only: "ScopeCalculator#compute")
     assert_operator agg.total, :>, 0, "--only ScopeCalculator#compute must select the instance method"
     assert_killed(agg, "--only ScopeCalculator#compute")
+
+    agg = run_redefine("module_func_scope.rb", "module_func_scope_test.rb", only: "ScopeHelper.compute")
+    assert_operator agg.total, :>, 0, "--only ScopeHelper.compute must select the promoted module function"
+    assert_killed(agg, "--only ScopeHelper.compute")
   end
 
   # Parity control — this form already worked; it must keep working.
