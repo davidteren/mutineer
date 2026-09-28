@@ -1,0 +1,23 @@
+docs/api/Mutineer.html
+  s_1d8e859ed0d041::t_9688c0a0dee14d 84
+docs/api/class_list.html
+  s_1d8e859ed0d041::t_da6aa64c279e39 49
+docs/api/method_list.html
+  s_1d8e859ed0d041::t_d854aeb2a98e81 627-634,642,650,658,666,674,682-689,2803-2810,2818,2826,2834,2842,2850,2858,2866,2874,2882,2890,2898,2906,2914,2922,2930,2938,2946
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "182c4508e93875419c8da1b6924f4fd5fcd1820c",
+  "prompts": {},
+  "sessions": {
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
