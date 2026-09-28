@@ -1,0 +1,91 @@
+.github/workflows/ci.yml
+  s_1d8e859ed0d041::t_97b40e8f5d8f73 36
+CHANGELOG.md
+  s_1d8e859ed0d041::t_aa762fb1ebfd3a 9-16,18-21
+docs/api/Mutineer.html
+  s_1d8e859ed0d041::t_4101bfb69ecdcf 84,107
+docs/api/Mutineer/ChildStdout.html
+  s_1d8e859ed0d041::t_7959ae6c4dd92e 1-214
+docs/api/Mutineer/CoverageMap.html
+  s_1d8e859ed0d041::t_4d22d2cd2b9c4d 142-156,1121-1164,1223,1297-1318,1559-1563,1566,1623-1625,1628,1664-1666,1669,1705-1707,1710,1746-1748,1751,1787-1789,1792,1918-1922,1925,1986,1989,2037,2040,2110-2113,2116,2189-2197,2204,2207,2255-2257,2260,2295-2298,2301,2341-2344,2347,2402,2405,2507-2511,2514,2580,2583,2586-2587,2646-2657,2660,2741-2743,2746,2783-2791,2794,2834-2836,2839,2909-2917,2920,3000-3005,3008,3113-3125,3128,3208-3213,3216,3254-3256,3259,3331-3334,3337,3421-3426,3429,3442,3563-3597,3600,3610,3688-3695,3698,3757-3761,3764,3835-3841,3844,3937-3941,3944,4022-4032,4035,4115-4131,4134,4138-4139,4148-4150,4202-4206,4209,4265-4271,4274,4347-4349,4352,4388-4401,4404,4471-4483,4486,4568-4576,4579,4593-4728,4778-4786,4800,4803,4895-4911,4914,4951-4954,4967-4989,4992,4996-4997,5012-5014,5059-5063,5066,5131-5135,5138,5194-5203,5206,5221-5367,5429-5432,5435,5438-5439,5508-5510,5513,5549-5551,5554,5614-5618,5621,5685-5693,5697,5700,5769-5777,5780,5783,5827-5834,5837,5880-5883,5886,5957-5959,5962
+docs/api/Mutineer/DaemonServer.html
+  s_1d8e859ed0d041::t_651a2c08931d79 437-438,441,505-506,509,582-583,586,637-638,641,765-766,769,868-869,872,883,885,943-944,947,999-1000,1003,1051-1052,1055,1123-1124,1127
+docs/api/Mutineer/Isolation.html
+  s_1d8e859ed0d041::t_edbb9773a413a1 453-459,462,608-614,617,694-700,703,794-800,803,885-891,894,922-923,1031-1037,1040,1049,1055-1056,1059
+docs/api/Mutineer/MinitestIntegration.html
+  s_1d8e859ed0d041::t_0f3dee86b2b2dc 288,324,327,352-355,357-359
+docs/api/Mutineer/TestRunners.html
+  s_1d8e859ed0d041::t_3943c25e691ccf 96-97,241-242,245
+docs/api/Mutineer/TestRunners/RSpec.html
+  s_1d8e859ed0d041::t_e5cd3a4a217f26 197-203,206,310,321-324,327
+docs/api/_index.html
+  s_1d8e859ed0d041::t_f045a90d2487a0 159-165
+docs/api/class_list.html
+  s_1d8e859ed0d041::t_51eefd765a3d33 49
+docs/api/file.CHANGELOG.html
+  s_1d8e859ed0d041::t_bc2efe68b5fb4a 67-75,78-81
+docs/api/method_list.html
+  s_1d8e859ed0d041::t_ef70ea83d31072 1811-1818,1826,1834,1842,1850,1858,1866,1874,1882,1890,1898-1905,2211-2218,2226,2234,2242,2250,2258,2266,2274,2282,2290,2298-2305
+lib/mutineer/child_stdout.rb
+  s_1d8e859ed0d041::t_dbdeb5b8e3b38d 1-35
+lib/mutineer/coverage_map.rb
+  s_1d8e859ed0d041::t_49a9f76e4926ab 11,25-28,239,301-302,436-476,478-501,519,627,637-639,645-648,651,667-669
+lib/mutineer/daemon_server.rb
+  s_1d8e859ed0d041::t_447bf858921073 5,183
+lib/mutineer/isolation.rb
+  s_1d8e859ed0d041::t_29ac12f655a597 6,30-32,43,49-50,53
+lib/mutineer/minitest_integration.rb
+  s_1d8e859ed0d041::t_e6c4bba7df5fb9 58-60,63-64
+lib/mutineer/test_runners.rb
+  s_1d8e859ed0d041::t_e07d0f1586c2bb 11-12
+lib/mutineer/test_runners/rspec.rb
+  s_1d8e859ed0d041::t_e1c4ae23aa6c31 28-30,34
+test/coverage_map_test.rb
+  s_1d8e859ed0d041::t_0a1a116edc0fff 14-28,65-188,448-450,452,460-486
+test/fixtures/calculator_background_process_test.rb
+  s_1d8e859ed0d041::t_691d56e029ba7f 1-19
+test/fixtures/calculator_load_time_puts_test.rb
+  s_1d8e859ed0d041::t_3aea5d9f757e74 1-34
+test/fixtures/calculator_stdout_swap_test.rb
+  s_1d8e859ed0d041::t_fce98fd444a011 1-37
+test/fixtures/calculator_subprocess_io_test.rb
+  s_1d8e859ed0d041::t_c58fb1e8db7716 1-33
+test/fixtures/noisy_minitest_test.rb
+  s_1d8e859ed0d041::t_d1e4e77e3abfa4 1-12
+test/fixtures/rspec/calculator_load_time_puts_spec.rb
+  s_1d8e859ed0d041::t_3962a0a730c21c 1-18
+test/fixtures/rspec/calculator_stdout_swap_spec.rb
+  s_1d8e859ed0d041::t_521226c0b5f0fe 1-21
+test/fixtures/rspec/calculator_subprocess_io_spec.rb
+  s_1d8e859ed0d041::t_cd868224997b4a 1-16
+test/fixtures/rspec/load_time_banner.rb
+  s_1d8e859ed0d041::t_b8a27cfd76ed9c 1-8
+test/fixtures/rspec/noisy_spec.rb
+  s_1d8e859ed0d041::t_642386f5430ad1 1-11
+test/integration_test.rb
+  s_1d8e859ed0d041::t_4adb193f0911eb 80-132
+test/isolation_test.rb
+  s_1d8e859ed0d041::t_009260450fce95 4,30-99
+test/rspec_integration_test.rb
+  s_1d8e859ed0d041::t_ee923516f0688e 12,14,37-69
+test/test_runners/minitest_test.rb
+  s_1d8e859ed0d041::t_c8f45157f373db 22-29,32,66-73
+test/test_runners/rspec_test.rb
+  s_1d8e859ed0d041::t_bfab54d1f6156c 7-9,12-14,20-24,26-27,30,33,35,38,40,44-45,47,49,51,98-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f401f8765f5c06d5c676417feffe4291c37c8fce",
+  "prompts": {},
+  "sessions": {
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
