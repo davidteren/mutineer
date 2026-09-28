@@ -1,0 +1,42 @@
+lib/mutineer/runner.rb
+  s_1d8e859ed0d041::t_93e1428df1f91c 151,216,237,261
+  s_1d8e859ed0d041::t_873868a5cbc159 35-38
+lib/mutineer/baseline.rb
+  s_1d8e859ed0d041::t_b91e681c6b3555 29-33,35-40,86-87,101-107,111,113,115-117,119-131,152
+test/equivalent_mutant_test.rb
+  s_1d8e859ed0d041::t_99f2fcc9db64fe 197
+lib/mutineer/daemon_backend.rb
+  s_1d8e859ed0d041::t_93e1428df1f91c 47,62,88
+test/baseline_test.rb
+  s_1d8e859ed0d041::t_99f2fcc9db64fe 36,41,240,249-335
+  s_1d8e859ed0d041::t_102a0a659c7736 336
+test/json_reporter_test.rb
+  s_1d8e859ed0d041::t_e3fafc608f01ea 45-63
+  s_1d8e859ed0d041::t_99f2fcc9db64fe 37
+lib/mutineer/reporter.rb
+  s_1d8e859ed0d041::t_873868a5cbc159 38-39,41,44,136-138,140,149,163-171
+test/daemon_backend_contract_test.rb
+  s_1d8e859ed0d041::t_1761eeb1e148a6 233,261-263
+test/cli_test.rb
+  s_1d8e859ed0d041::t_99f2fcc9db64fe 248,380
+  s_1d8e859ed0d041::t_1761eeb1e148a6 462-515
+lib/mutineer/cli.rb
+  s_1d8e859ed0d041::t_5843c99fa4942b 483-484,486,488-490,493,547-557
+  s_1d8e859ed0d041::t_c9f2643ccf41e3 558-559
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ebad84a025803e790fe0e932ecb0b1178274d85e",
+  "prompts": {},
+  "sessions": {
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
