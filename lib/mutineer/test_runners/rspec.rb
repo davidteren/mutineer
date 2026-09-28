@@ -16,8 +16,10 @@ module Mutineer
       # Runs the given RSpec files.
       #
       # @param spec_files [String, Array<String>] one file or many files.
+      # @param stop_at_first_failure [Boolean] when true, the run ends at the
+      #   first failing example (RSpec `--fail-fast`).
       # @return [Integer] 0 on success, 1 on failure.
-      def self.run(spec_files)
+      def self.run(spec_files, stop_at_first_failure: false)
         require_rspec!
 
         ::RSpec::Core::Runner.disable_autorun!
@@ -27,7 +29,9 @@ module Mutineer
         # silenced here: the fork boundary that calls this method has already
         # pointed stdout at File::NULL (see ChildStdout).
         sink = StringIO.new
-        status = ::RSpec::Core::Runner.run(["--no-color", *Array(spec_files)], sink, sink)
+        args = ["--no-color"]
+        args << "--fail-fast" if stop_at_first_failure
+        status = ::RSpec::Core::Runner.run([*args, *Array(spec_files)], sink, sink)
 
         status.zero? ? 0 : 1
       end

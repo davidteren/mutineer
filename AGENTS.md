@@ -20,6 +20,14 @@ ruby -Ilib -e 'require "mutineer"'             # load smoke
 bundle exec rake yard:strict                    # 100% documented — see below
 ```
 
+The default `Gemfile` pins Minitest 5. For changes to the Minitest
+integration, also run the suite on Minitest 6:
+
+```sh
+BUNDLE_GEMFILE=gemfiles/minitest6.gemfile bundle install
+BUNDLE_GEMFILE=gemfiles/minitest6.gemfile bundle exec rake test
+```
+
 - **`yard:strict` requires 100% documentation, including private methods AND
   constants.** Every new method and constant needs a YARD docstring / `#` comment
   or CI fails.
@@ -47,7 +55,7 @@ independent of Node and Playwright. CI runs these checks in `website browser tes
 
 ## CI gates that block merge
 
-`yard:strict` · `test` (×2 OS) · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
+`yard:strict` · `test` (×2 OS) · `test (minitest 6)` · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
 
 ## PR review gate (before any merge — never skip)
 

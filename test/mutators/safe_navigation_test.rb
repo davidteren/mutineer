@@ -33,6 +33,8 @@ class SafeNavigationTest < Minitest::Test
     mutations, source = run_mutator("user&.address&.city")
     assert_equal 2, mutations.size
     mutations.each { |m| assert m.valid?(source), "mutated source should re-parse" }
+    assert_equal ["user&.address.city", "user.address&.city"],
+                 mutations.map { |m| m.apply(source)[/user\S*/] }.sort
   end
 
   def test_compound_writes_and_for_target_each_yield_one
