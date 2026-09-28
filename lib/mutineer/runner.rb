@@ -97,7 +97,7 @@ module Mutineer
         # As in boot mode, and with lib first as `rake test` does.
         test_roots = test_load_roots(config.tests.map { |t| File.expand_path(t, config.project_root) })
         libs = config.load_paths.map { |p| File.expand_path(p, config.project_root) }
-        (test_roots + libs).each { |d| $LOAD_PATH.unshift(d) unless $LOAD_PATH.include?(d) }
+        $LOAD_PATH.unshift(*(libs + test_roots).uniq.reject { |d| $LOAD_PATH.include?(d) })
         # Relative, so the cache digest does not depend on the checkout path.
         rel_roots = test_roots.map { |d| Pathname(d).relative_path_from(File.expand_path(config.project_root)).to_s }
         coverage_map = CoverageMap.new(
