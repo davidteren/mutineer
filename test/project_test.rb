@@ -61,6 +61,48 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #98: a named module_function promotes only its own module's methods.
+  def test_discover_module_function_symbol_does_not_promote_unrelated_class_method
+    src = "module AuditHelper\n  def compute(a, b); a + b; end\n  module_function :compute\nend\n" \
+          "class AuditCalculator\n  def compute(a, b); a + b; end\nend\n"
+    with_source(src) do |path|
+      names = Mutineer::Project.discover([path]).map(&:qualified_name)
+      assert_equal %w[AuditHelper.compute AuditCalculator#compute], names
+    end
+  end
+
+  def test_discover_module_function_symbol_scoped_to_sibling_module
+    src = "module A\n  def x; end\n  module_function :x\nend\nmodule B\n  def x; end\nend\n"
+    with_source(src) do |path|
+      assert_equal %w[A.x B#x], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
+  def test_discover_inline_module_function_def_does_not_promote_nested_class
+    src = "module A\n  module_function def y; end\n  class C\n    def y; end\n  end\nend\n"
+    with_source(src) do |path|
+      assert_equal %w[A.y A::C#y], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
+  def test_discover_module_function_matches_compact_and_nested_namespaces
+    compact = "module A::B\n  def z; end\n  module_function :z\nend\nmodule A\n  module B\n    def w; end\n  end\nend\n"
+    with_source(compact) do |path|
+      assert_equal %w[A::B.z A::B#w], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+    nested = "module A\n  module B\n    def z; end\n    module_function :z\n  end\nend\nmodule A::B\n  def w; end\n  module_function :w\nend\n"
+    with_source(nested) do |path|
+      assert_equal %w[A::B.z A::B.w], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
+  def test_discover_module_function_in_reopened_module_promotes_earlier_def
+    src = "module M\n  def m; end\nend\nclass K\n  def m; end\nend\nmodule M\n  module_function :m\nend\n"
+    with_source(src) do |path|
+      assert_equal %w[M.m K#m], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   def test_discover_module_function_does_not_leak_into_nested_class
     with_source("module M\n  module_function\n  def a; end\n  class Inner\n    def b; end\n  end\nend\n") do |path|
       subjects = Mutineer::Project.discover([path])

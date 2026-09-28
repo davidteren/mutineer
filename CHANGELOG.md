@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **`module_function :name` and `module_function def name` promote only
+  their own module's methods** — a class or module in the same file with a
+  method of the same name kept an instance method in Ruby, but mutineer
+  named it as a class method. `--strategy redefine` then mutated a method the
+  tests never call, so a killable mutant falsely survived, and
+  `--only Class#name` selected nothing (#98). The affected methods now get
+  their correct names, so their mutant ids change: regenerate any ignore
+  entries or baseline survivors that pointed at them.
+
 ## [1.2.0] - 2026-09-28
 
 ### Added

@@ -6,7 +6,7 @@
 <title>
   File: CHANGELOG
   
-    &mdash; Documentation by YARD 0.9.45
+    &mdash; Documentation by YARD 0.9.44
   
 </title>
 
@@ -64,6 +64,17 @@
 <a href="https://keepachangelog.com/">Keep a Changelog</a>, and this project adheres to
 <a href="https://semver.org/">Semantic Versioning</a>.</p>
 <h2 id="_Unreleased_">[Unreleased]</h2>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong><code>module_function :name</code> and <code>module_function def name</code> promote only
+their own module's methods</strong> — a class or module in the same file with a
+method of the same name kept an instance method in Ruby, but mutineer
+named it as a class method. <code>--strategy redefine</code> then mutated a method the
+tests never call, so a killable mutant falsely survived, and
+<code>--only Class#name</code> selected nothing (#98). The affected methods now get
+their correct names, so their mutant ids change: regenerate any ignore
+entries or baseline survivors that pointed at them.</li>
+</ul>
 <h2 id="_1_2_0____2026_09_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.2.0">1.2.0</a> - 2026-09-28</h2>
 <h3 id="Added">Added</h3>
 <ul>
@@ -618,7 +629,7 @@ accepted as deprecated aliases.)</li>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.10).
+  0.9.44 (ruby-3.4.11).
 </div>
 
     </div>

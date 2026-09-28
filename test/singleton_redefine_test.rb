@@ -11,11 +11,11 @@ require "tmpdir"
 class SingletonRedefineTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
-  def run_redefine(source, test)
+  def run_redefine(source, test, strategy: "redefine", only: nil)
     config = Mutineer::Config.new(
       sources: ["test/fixtures/singleton/#{source}"],
       tests: ["test/fixtures/singleton/#{test}"],
-      strategy: "redefine",
+      strategy: strategy, only: only,
       cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
     )
     Mutineer::Runner.execute(config).first
@@ -34,6 +34,22 @@ class SingletonRedefineTest < Minitest::Test
 
   def test_module_function_methods_are_mutated
     assert_killed(run_redefine("module_func.rb", "module_func_test.rb"), "module_function")
+  end
+
+  # #98: `module_function :compute` in one module must not turn an unrelated
+  # class's `compute` into a singleton subject. Before the fix, redefine wrote a
+  # class method the tests never call, so a killable mutant falsely survived.
+  def test_module_function_scope_gives_same_verdict_under_reload_and_redefine
+    %w[redefine reload].each do |strategy|
+      assert_killed(run_redefine("module_func_scope.rb", "module_func_scope_test.rb", strategy: strategy),
+                    "module_function scope (#{strategy})")
+    end
+  end
+
+  def test_only_selects_the_unpromoted_instance_method
+    agg = run_redefine("module_func_scope.rb", "module_func_scope_test.rb", only: "ScopeCalculator#compute")
+    assert_operator agg.total, :>, 0, "--only ScopeCalculator#compute must select the instance method"
+    assert_killed(agg, "--only ScopeCalculator#compute")
   end
 
   # Parity control — this form already worked; it must keep working.

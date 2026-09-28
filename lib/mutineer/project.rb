@@ -39,20 +39,22 @@ module Mutineer
         @subjects = []
         @singleton_depth = 0
         @module_function_active = false # bareword `module_function` seen in this module body
-        @module_function_names = []     # names from `module_function :a, :b` / `module_function def`
+        @module_function_names = []     # [namespace, name] from `module_function :a` / `module_function def` (#98)
         super()
       end
 
       # Promote `module_function :name` / `module_function def name` subjects to
       # singleton after the full walk — the naming call may appear before or after
-      # the def, so it can't be decided at visit_def_node time (#20).
+      # the def, so it can't be decided at visit_def_node time (#20). Only methods
+      # of the module that made the call are promoted (#98); namespaces compare
+      # joined, since `module A::B` and nested `module A; module B` differ as arrays.
       #
       # @return [void]
       def promote_module_functions!
         return if @module_function_names.empty?
 
-        names = @module_function_names.to_set
-        @subjects.each { |s| s.singleton = true if names.include?(s.name) }
+        named = @module_function_names.to_set
+        @subjects.each { |s| s.singleton = true if named.include?([s.namespace.join("::"), s.name]) }
       end
 
       # Visits class nodes and tracks namespace nesting.
@@ -94,9 +96,10 @@ module Mutineer
           if args.empty?
             @module_function_active = true
           else
+            scope = @namespace_stack.join("::")
             args.each do |arg|
-              @module_function_names << arg.value.to_sym if arg.is_a?(Prism::SymbolNode)
-              @module_function_names << arg.name if arg.is_a?(Prism::DefNode)
+              @module_function_names << [scope, arg.value.to_sym] if arg.is_a?(Prism::SymbolNode)
+              @module_function_names << [scope, arg.name] if arg.is_a?(Prism::DefNode)
             end
           end
         end
