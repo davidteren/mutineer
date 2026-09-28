@@ -15,6 +15,7 @@ cat > "$SCRATCH/report.json" <<'JSON'
 {"schema_version":"1.2","summary":{"total":10,"killed":6,"survived":2,"no_coverage":1,"uncapturable":0,"skipped_invalid":0,"errored":0,"timeout":0,"ignored":1,"attempted":8,"no_verdict":0,"score":75.0,"scoped":false},"survivors":[{"subject":"Calc#add","file":"lib/we,ird:name.rb","line":12,"operator":"arithmetic","id":"abc123def456","token":"+","diff":"d"},{"subject":"Calc#sub","file":"lib/calc.rb","line":20,"operator":"comparison","id":"fff000111222","token":"<\n100%","diff":"d"}],"baseline":{"regressed":true,"score_before":80.0,"score_after":75.0,"score_dropped":true,"score_comparable":true,"new_survivors":[{"subject":"Calc#add","file":"lib/calc.rb","line":12,"operator":"arithmetic","id":"abc123def456","token":"+"}],"fixed_survivors":[]}}
 JSON
 sed 's/"scoped":false/"scoped":true/; s/"score_comparable":true/"score_comparable":false/' "$SCRATCH/report.json" > "$SCRATCH/report-scoped.json"
+sed 's/"scoped":false/"scoped":false,"id_format":2,"legacy_id_matches":{"ignore":2,"baseline":3}/' "$SCRATCH/report.json" > "$SCRATCH/report-legacy.json"
 
 mkdir -p "$SCRATCH/bin"
 cat > "$SCRATCH/bin/mutineer" <<STUB
@@ -110,3 +111,9 @@ mkdir -p "$SCRATCH/case9"
 run_step case9 STUB_EXIT=0 OUTPUT="$SCRATCH/case9/out.json"
 [ -s "$SCRATCH/case9/out.json" ] && echo "  OK: caller output delivered" || echo "  FAIL: caller output missing"
 grep -A1 'report<<' "$SCRATCH/case9/gh-output.txt" | grep -q "case9/out.json" && echo "  OK: report output names caller path" || echo "  FAIL: report output wrong"
+
+echo; echo "== 10: report counts old-format id matches (expects one old-format id warning) =="
+run_step case10 STUB_REPORT="$SCRATCH/report-legacy.json"
+grep 'title=Old-format mutant ids' "$SCRATCH/case10/stdout.txt"
+[ "$(grep -c 'title=Old-format mutant ids' "$SCRATCH/case10/stdout.txt")" = "1" ] && echo "  OK: one old-format id warning" || echo "  FAIL: expected exactly one old-format id warning"
+grep -q 'title=Old-format mutant ids' "$SCRATCH/case1/stdout.txt" && echo "  FAIL: old-format id warning without legacy_id_matches" || echo "  OK: no old-format id warning when the report has no counts"

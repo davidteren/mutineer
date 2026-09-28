@@ -214,10 +214,36 @@ Some mutants are equivalent (behaviour-identical) and survive forever — keepin
 file off 100%. Suppress them so the score and `--threshold` gate stay meaningful:
 
 - **Inline:** `some_line # mutineer:disable-line` (or scope it: `# mutineer:disable-line comparison`). Put a reason after `--`: `# mutineer:disable-line comparison -- the test checks only 20`.
-- **Config:** a `.mutineer.yml` `ignore:` list of stable mutant ids. Each survivor's
+- **Config:** a `.mutineer.yml` `ignore:` list of mutant ids. Each survivor's
   `id` is printed in the JSON report, so copy it straight into `ignore:`.
 
 Suppressed mutants are excluded from the score (so 100% becomes reachable).
+
+## Mutant ids
+
+A mutant id is 12 hex characters. It hashes the file path (relative to the
+project root), the method, the operator and the mutated code. An edit outside
+the method does not change the id. Moving or renaming the file does.
+
+- The project root is the directory mutineer runs from (in the Action, the
+  `working-directory`). Run from the same root to get the same ids.
+- A source outside the project root uses its absolute path, so its ids differ
+  between machines.
+
+**Migrating from ids without the file path.** Before 1.3, ids did not include
+the file path, so two files could share an id (#126). Old-format ids keep
+working until 2.0, with a warning:
+
+- **`ignore:`** An old entry still suppresses its mutants. The run prints the
+  new ids for each old entry. Replace the entry with those ids. The list covers
+  only the sources in that run, so run over every source for the full list.
+- **`--baseline`** An old baseline still matches, and the run tells you to
+  regenerate it. Regenerate it with `--format json`, but only after every gate
+  that reads it runs 1.3 or later (the Action's `version:` pin, your CI
+  `Gemfile.lock`). An older version treats every new-format survivor as new.
+
+The JSON report's `summary.id_format` is `2` for the new format, and
+`summary.legacy_id_matches` counts the old ids a run matched.
 
 ## CI gating
 
@@ -228,7 +254,7 @@ worse:
 mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
 ```
 
-`--baseline` reports which survivors are new (by stable id) and any score drop. It
+`--baseline` reports which survivors are new (by [mutant id](#mutant-ids)) and any score drop. It
 combines with `--threshold` (the worse of the two sets the exit code). Pass a
 directory (or several sources) to audit a whole layer in one boot — tests are
 auto-paired by convention and the report breaks down per source.
@@ -267,7 +293,7 @@ the format.
 
 ## For AI agents & pipelines
 
-Mutineer is built for programmatic use — versioned JSON, stable mutant ids,
+Mutineer is built for programmatic use — versioned JSON, [mutant ids](#mutant-ids) that survive unrelated edits,
 structured exit codes, and diff-scoped runs. See:
 
 - **AI agents & CI recipes** — the agent inner-loop and CI-gate recipes (and how

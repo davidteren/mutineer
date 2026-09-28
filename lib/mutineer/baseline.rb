@@ -6,13 +6,13 @@ require_relative "config" # for Mutineer::ConfigError
 module Mutineer
   # CI baseline/delta gating. A baseline is a prior
   # `mutineer run --format json` document (no bespoke format to version).
-  # Diff the current run against it by the stable survivor id: a NEW survivor
+  # Diff the current run against it by survivor id: a NEW survivor
   # (id present now, absent in the baseline) OR a score drop is a regression the
   # CLI turns into exit 1. Pure data, stdlib `json` only, no fork, no Rails, so
   # it is testable in isolation from a canned JSON + a hand-built AggregateResult.
   class Baseline
     # The verdict of diffing a current run against the baseline.
-    #   new_survivors   - current Result objects whose stable id is absent from
+    #   new_survivors   - current Result objects whose id is absent from
     #                     the baseline (the regressions to name).
     #   fixed_survivors - baseline survivor hashes absent from the current run
     #                     (informational, never gates). Empty when either side
@@ -87,14 +87,14 @@ module Mutineer
       @id_format = doc.dig("summary", "id_format")
     end
 
-    # Diff a current AggregateResult against this baseline by stable survivor id.
+    # Diff a current AggregateResult against this baseline by survivor id.
     # `epsilon` tolerates float jitter on the score (default 0.0 = any drop
     # gates).
     #
     # `scoped: true` marks the current run as diff-scoped (`--since`): its score
     # is computed over only the changed-line mutants, a different denominator
     # from a full-run baseline, so comparing the two scores manufactures false
-    # regressions. A scoped diff keeps the new-survivor gate (stable ids compare
+    # regressions. A scoped diff keeps the new-survivor gate (ids compare
     # fine across scopes) and still reports both scores, but never sets
     # score_drop.
     #

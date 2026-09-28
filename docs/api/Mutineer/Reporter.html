@@ -6,7 +6,7 @@
 <title>
   Class: Mutineer::Reporter
   
-    &mdash; Documentation by YARD 0.9.45
+    &mdash; Documentation by YARD 0.9.44
   
 </title>
 
@@ -466,7 +466,7 @@ workflow, so one bad mutant never fails the gate on its own, at any size.</p>
         <li class="private ">
   <span class="summary_signature">
     
-      <a href="#json_report-instance_method" title="#json_report (instance method)">#<strong>json_report</strong>(baseline = nil, scoped: false)  &#x21d2; String </a>
+      <a href="#json_report-instance_method" title="#json_report (instance method)">#<strong>json_report</strong>(baseline = nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 })  &#x21d2; String </a>
     
 
     
@@ -642,7 +642,7 @@ workflow, so one bad mutant never fails the gate on its own, at any size.</p>
         <li class="public ">
   <span class="summary_signature">
     
-      <a href="#report-instance_method" title="#report (instance method)">#<strong>report</strong>(out: $stdout, err: $stderr, threshold: 0.0, format: &quot;human&quot;, output: nil, baseline: nil, scoped: false)  &#x21d2; Object </a>
+      <a href="#report-instance_method" title="#report (instance method)">#<strong>report</strong>(out: $stdout, err: $stderr, threshold: 0.0, format: &quot;human&quot;, output: nil, baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 })  &#x21d2; Object </a>
     
 
     
@@ -942,12 +942,12 @@ what little ran; that is our operator misbehaving and wants its own signal.</p>
       <pre class="lines">
 
 
-527
-528
-529</pre>
+540
+541
+542</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 527</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 540</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_attempted_count'>attempted_count</span>
   <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_killed_count'>killed_count</span> <span class='op'>+</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_survived_count'>survived_count</span> <span class='op'>+</span> <span class='id identifier rubyid_no_verdict_count'>no_verdict_count</span>
@@ -983,27 +983,27 @@ byte-stably so output does not depend on --jobs finish order.</p>
       <pre class="lines">
 
 
-312
-313
-314
-315
-316
-317
-318
-319
-320
-321
-322
-323
-324
 325
 326
 327
 328
-329</pre>
+329
+330
+331
+332
+333
+334
+335
+336
+337
+338
+339
+340
+341
+342</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 312</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 325</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_baseline_json'>baseline_json</span><span class='lparen'>(</span><span class='id identifier rubyid_delta'>delta</span><span class='rparen'>)</span>
   <span class='lbrace'>{</span>
@@ -1054,28 +1054,28 @@ then a one-line REGRESSION/OK verdict so CI logs show which gate fired.</p>
       <pre class="lines">
 
 
-579
-580
-581
-582
-583
-584
-585
-586
-587
-588
-589
-590
-591
 592
 593
 594
 595
 596
-597</pre>
+597
+598
+599
+600
+601
+602
+603
+604
+605
+606
+607
+608
+609
+610</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 579</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 592</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_baseline_section'>baseline_section</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='id identifier rubyid_delta'>delta</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span>
@@ -1143,16 +1143,16 @@ the nil-score message and the completeness gate, so they agree.</p>
       <pre class="lines">
 
 
-547
-548
-549
-550
-551
-552
-553</pre>
+560
+561
+562
+563
+564
+565
+566</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 547</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 560</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_broken_counts_detail'>broken_counts_detail</span>
   <span class='id identifier rubyid_parts'>parts</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
@@ -1207,13 +1207,13 @@ the nil-score message and the completeness gate, so they agree.</p>
       <pre class="lines">
 
 
-491
-492
-493
-494</pre>
+504
+505
+506
+507</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 491</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 504</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_broken_nil_score?'>broken_nil_score?</span>
   <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_total'>total</span><span class='period'>.</span><span class='id identifier rubyid_positive?'>positive?</span> <span class='op'>&amp;&amp;</span>
@@ -1270,14 +1270,14 @@ to gate on. A few flaky mutants in a large run stay under it.</p>
       <pre class="lines">
 
 
-502
-503
-504
-505
-506</pre>
+515
+516
+517
+518
+519</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 502</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 515</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_broken_share_exceeded?'>broken_share_exceeded?</span>
   <span class='id identifier rubyid_attempted'>attempted</span> <span class='op'>=</span> <span class='id identifier rubyid_attempted_count'>attempted_count</span>
@@ -1316,23 +1316,23 @@ spliced mutated block, and a single-line token label for the header.</p>
       <pre class="lines">
 
 
-390
-391
-392
-393
-394
-395
-396
-397
-398
-399
-400
-401
-402
-403</pre>
+403
+404
+405
+406
+407
+408
+409
+410
+411
+412
+413
+414
+415
+416</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 390</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 403</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_diff_for'>diff_for</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span>
   <span class='comment'># Byte math: Prism offsets are byte offsets; byteindex/byterindex/
@@ -1377,10 +1377,10 @@ spliced mutated block, and a single-line token label for the header.</p>
       <pre class="lines">
 
 
-307</pre>
+320</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 307</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 320</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_esc'>esc</span><span class='lparen'>(</span><span class='id identifier rubyid_text'>text</span><span class='rparen'>)</span> <span class='op'>=</span> <span class='const'>CGI</span><span class='period'>.</span><span class='id identifier rubyid_escapeHTML'>escapeHTML</span><span class='lparen'>(</span><span class='id identifier rubyid_text'>text</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='rparen'>)</span></pre>
     </td>
@@ -1416,8 +1416,6 @@ cannot green CI under --threshold.</p>
       <pre class="lines">
 
 
-105
-106
 107
 108
 109
@@ -1433,10 +1431,12 @@ cannot green CI under --threshold.</p>
 119
 120
 121
-122</pre>
+122
+123
+124</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 105</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 107</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_exit_code'>exit_code</span><span class='lparen'>(</span><span class='label'>threshold:</span><span class='rparen'>)</span>
   <span class='kw'>return</span> <span class='int'>0</span> <span class='kw'>if</span> <span class='id identifier rubyid_threshold'>threshold</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span> <span class='op'>||</span> <span class='id identifier rubyid_threshold'>threshold</span> <span class='op'>&lt;=</span> <span class='int'>0</span>
@@ -1490,19 +1490,6 @@ of --format.</p>
       <pre class="lines">
 
 
-204
-205
-206
-207
-208
-209
-210
-211
-212
-213
-214
-215
-216
 217
 218
 219
@@ -1536,10 +1523,23 @@ of --format.</p>
 247
 248
 249
-250</pre>
+250
+251
+252
+253
+254
+255
+256
+257
+258
+259
+260
+261
+262
+263</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 204</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 217</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_html_report'>html_report</span>
   <span class='id identifier rubyid_score'>score</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_mutation_score'>mutation_score</span>
@@ -1663,8 +1663,6 @@ of --format.</p>
       <pre class="lines">
 
 
-81
-82
 83
 84
 85
@@ -1680,10 +1678,12 @@ of --format.</p>
 95
 96
 97
-98</pre>
+98
+99
+100</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 81</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 83</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_human_report'>human_report</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='id identifier rubyid_err'>err</span><span class='comma'>,</span> <span class='id identifier rubyid_threshold'>threshold</span><span class='rparen'>)</span>
   <span class='kw'>if</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_total'>total</span><span class='period'>.</span><span class='id identifier rubyid_zero?'>zero?</span>
@@ -1732,23 +1732,23 @@ of --format.</p>
       <pre class="lines">
 
 
-371
-372
-373
-374
-375
-376
-377
-378
-379
-380
-381
-382
-383
-384</pre>
+384
+385
+386
+387
+388
+389
+390
+391
+392
+393
+394
+395
+396
+397</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 371</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 384</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_ignored_json'>ignored_json</span><span class='lparen'>(</span><span class='id identifier rubyid_result'>result</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_m'>m</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span>
@@ -1772,7 +1772,7 @@ of --format.</p>
       <div class="method_details ">
   <h3 class="signature " id="json_report-instance_method">
   
-    #<strong>json_report</strong>(baseline = nil, scoped: false)  &#x21d2; <tt>String</tt>  <span class="extras">(private)</span>
+    #<strong>json_report</strong>(baseline = nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 })  &#x21d2; <tt>String</tt>  <span class="extras">(private)</span>
   
 
   
@@ -1827,6 +1827,24 @@ covers only the changed-line mutants (additive <code>summary.scoped</code> key).
       
     </li>
   
+    <li>
+      
+        <span class='name'>legacy_id_matches</span>
+      
+      
+        <span class='type'>(<tt>Hash{Symbol =&gt; Integer}</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>{ ignore: 0, baseline: 0 }</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p><code>{ignore:, baseline:}</code>:
+old-format ignore entries that matched, and survivors matched in an
+old-format baseline only through their old id (#126).</p></div>
+      
+    </li>
+  
 </ul>
 
 <p class="tag_title">Returns:</p>
@@ -1852,11 +1870,6 @@ covers only the changed-line mutants (additive <code>summary.scoped</code> key).
       <pre class="lines">
 
 
-135
-136
-137
-138
-139
 140
 141
 142
@@ -1913,12 +1926,25 @@ covers only the changed-line mutants (additive <code>summary.scoped</code> key).
 193
 194
 195
-196</pre>
+196
+197
+198
+199
+200
+201
+202
+203
+204
+205
+206
+207
+208
+209</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 135</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 140</span>
 
-<span class='kw'>def</span> <span class='id identifier rubyid_json_report'>json_report</span><span class='lparen'>(</span><span class='id identifier rubyid_baseline'>baseline</span> <span class='op'>=</span> <span class='kw'>nil</span><span class='comma'>,</span> <span class='label'>scoped:</span> <span class='kw'>false</span><span class='rparen'>)</span>
+<span class='kw'>def</span> <span class='id identifier rubyid_json_report'>json_report</span><span class='lparen'>(</span><span class='id identifier rubyid_baseline'>baseline</span> <span class='op'>=</span> <span class='kw'>nil</span><span class='comma'>,</span> <span class='label'>scoped:</span> <span class='kw'>false</span><span class='comma'>,</span> <span class='label'>legacy_id_matches:</span> <span class='lbrace'>{</span> <span class='label'>ignore:</span> <span class='int'>0</span><span class='comma'>,</span> <span class='label'>baseline:</span> <span class='int'>0</span> <span class='rbrace'>}</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_killed'>killed</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_killed_count'>killed_count</span>
   <span class='id identifier rubyid_survived'>survived</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_survived_count'>survived_count</span>
   <span class='comment'># null (not 0.0) on an empty denominator, matching the nil-vs-0.0
@@ -1927,7 +1953,7 @@ covers only the changed-line mutants (additive <code>summary.scoped</code> key).
 </span>  <span class='id identifier rubyid_score'>score</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_mutation_score'>mutation_score</span>
 
   <span class='id identifier rubyid_doc'>doc</span> <span class='op'>=</span> <span class='lbrace'>{</span>
-    <span class='label'>schema_version:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>1.3</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span>
+    <span class='label'>schema_version:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>1.4</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span>
     <span class='label'>summary:</span> <span class='lbrace'>{</span>
       <span class='label'>total:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_total'>total</span><span class='comma'>,</span> <span class='label'>killed:</span> <span class='id identifier rubyid_killed'>killed</span><span class='comma'>,</span> <span class='label'>survived:</span> <span class='id identifier rubyid_survived'>survived</span><span class='comma'>,</span>
       <span class='label'>no_coverage:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_no_coverage_count'>no_coverage_count</span><span class='comma'>,</span>
@@ -1941,7 +1967,15 @@ covers only the changed-line mutants (additive <code>summary.scoped</code> key).
       <span class='comment'># Additive: true when the run was diff-scoped (--since). The score then
 </span>      <span class='comment'># covers only the changed-line mutants, so it is not comparable to a
 </span>      <span class='comment'># full-run score; Baseline#diff reads this to skip the score-drop gate.
-</span>      <span class='label'>scoped:</span> <span class='id identifier rubyid_scoped'>scoped</span>
+</span>      <span class='label'>scoped:</span> <span class='id identifier rubyid_scoped'>scoped</span><span class='comma'>,</span>
+      <span class='comment'># Additive (1.4, #126): ids hash the project-relative file path. A
+</span>      <span class='comment'># baseline without this key stores old-format ids; Baseline#diff then
+</span>      <span class='comment'># also matches on old ids.
+</span>      <span class='label'>id_format:</span> <span class='int'>2</span><span class='comma'>,</span>
+      <span class='comment'># Additive (1.4, #126): stored ids still in the old format. `ignore` is
+</span>      <span class='comment'># the number of old-format ignore entries that matched; `baseline` the
+</span>      <span class='comment'># survivors matched in the baseline only through their old id.
+</span>      <span class='label'>legacy_id_matches:</span> <span class='id identifier rubyid_legacy_id_matches'>legacy_id_matches</span>
     <span class='rbrace'>}</span><span class='comma'>,</span>
     <span class='label'>survivors:</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_surviving_mutants'>surviving_mutants</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_survivor_json'>survivor_json</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
                    <span class='period'>.</span><span class='id identifier rubyid_sort_by'>sort_by</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='lbracket'>[</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:line</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:operator</span><span class='rbracket'>]</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='comma'>,</span>
@@ -2047,19 +2081,19 @@ covers only the changed-line mutants (additive <code>summary.scoped</code> key).
       <pre class="lines">
 
 
-410
-411
-412
-413
-414
-415
-416
-417
-418
-419</pre>
+423
+424
+425
+426
+427
+428
+429
+430
+431
+432</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 410</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 423</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_no_coverage_json'>no_coverage_json</span><span class='lparen'>(</span><span class='id identifier rubyid_result'>result</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_m'>m</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span>
@@ -2120,12 +2154,12 @@ covers only the changed-line mutants (additive <code>summary.scoped</code> key).
       <pre class="lines">
 
 
-512
-513
-514</pre>
+525
+526
+527</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 512</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 525</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_no_verdict_count'>no_verdict_count</span>
   <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_errored_count'>errored_count</span> <span class='op'>+</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_timeout_count'>timeout_count</span> <span class='op'>+</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_uncapturable_count'>uncapturable_count</span>
@@ -2200,25 +2234,25 @@ nulls rather than dropping the entry — the count must still reconcile with
       <pre class="lines">
 
 
-429
-430
-431
-432
-433
-434
-435
-436
-437
-438
-439
-440
-441
 442
 443
-444</pre>
+444
+445
+446
+447
+448
+449
+450
+451
+452
+453
+454
+455
+456
+457</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 429</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 442</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_no_verdict_json'>no_verdict_json</span><span class='lparen'>(</span><span class='id identifier rubyid_result'>result</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_file'>file</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='op'>&amp;.</span><span class='id identifier rubyid_file'>file</span>
@@ -2286,14 +2320,14 @@ user cannot read one number in the report and a different one beside it.</p>
       <pre class="lines">
 
 
-536
-537
-538
-539
-540</pre>
+549
+550
+551
+552
+553</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 536</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 549</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_no_verdict_ratio'>no_verdict_ratio</span>
   <span class='id identifier rubyid_pct'>pct</span> <span class='op'>=</span> <span class='lparen'>(</span><span class='id identifier rubyid_no_verdict_count'>no_verdict_count</span> <span class='op'>*</span> <span class='float'>100.0</span> <span class='op'>/</span> <span class='id identifier rubyid_attempted_count'>attempted_count</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_round'>round</span><span class='lparen'>(</span><span class='int'>1</span><span class='rparen'>)</span>
@@ -2349,23 +2383,23 @@ already says everything (no redundant one-line block).</p>
       <pre class="lines">
 
 
-561
-562
-563
-564
-565
-566
-567
-568
-569
-570
-571
-572
-573
-574</pre>
+574
+575
+576
+577
+578
+579
+580
+581
+582
+583
+584
+585
+586
+587</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 561</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 574</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_per_source'>per_source</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_sources'>sources</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_by_source'>by_source</span>
@@ -2410,26 +2444,26 @@ already says everything (no redundant one-line block).</p>
       <pre class="lines">
 
 
-266
-267
-268
-269
-270
-271
-272
-273
-274
-275
-276
-277
-278
 279
 280
 281
-282</pre>
+282
+283
+284
+285
+286
+287
+288
+289
+290
+291
+292
+293
+294
+295</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 266</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 279</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_per_source_html'>per_source_html</span><span class='lparen'>(</span><span class='id identifier rubyid_per_source'>per_source</span><span class='rparen'>)</span>
   <span class='kw'>return</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='id identifier rubyid_per_source'>per_source</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
@@ -2529,16 +2563,16 @@ already says everything (no redundant one-line block).</p>
       <pre class="lines">
 
 
-337
-338
-339
-340
-341
-342
-343</pre>
+350
+351
+352
+353
+354
+355
+356</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 337</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 350</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_per_source_json'>per_source_json</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_agg'>agg</span><span class='rparen'>)</span>
   <span class='lbrace'>{</span>
@@ -2555,7 +2589,7 @@ already says everything (no redundant one-line block).</p>
       <div class="method_details ">
   <h3 class="signature " id="report-instance_method">
   
-    #<strong>report</strong>(out: $stdout, err: $stderr, threshold: 0.0, format: &quot;human&quot;, output: nil, baseline: nil, scoped: false)  &#x21d2; <tt>Object</tt> 
+    #<strong>report</strong>(out: $stdout, err: $stderr, threshold: 0.0, format: &quot;human&quot;, output: nil, baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 })  &#x21d2; <tt>Object</tt> 
   
 
   
@@ -2567,7 +2601,9 @@ already says everything (no redundant one-line block).</p>
 routes the rendered report to <code>output</code> (a file, with a stderr confirmation)
 or to <code>out</code>. Diagnostics always go to <code>err</code>. <code>scoped</code> marks a diff-scoped
 (<code>--since</code>) run; the JSON report records it so a consumer (or a later
-<code>--baseline</code> load) knows the score covers only the changed-line mutants.</p>
+<code>--baseline</code> load) knows the score covers only the changed-line mutants.
+<code>legacy_id_matches</code> (<code>{ignore:, baseline:}</code>) counts stored ids still in the
+old format (#126); only the JSON report records it (<code>summary.legacy_id_matches</code>).</p>
 
   </div>
 </div>
@@ -2580,8 +2616,6 @@ or to <code>out</code>. Diagnostics always go to <code>err</code>. <code>scoped<
       <pre class="lines">
 
 
-38
-39
 40
 41
 42
@@ -2615,16 +2649,18 @@ or to <code>out</code>. Diagnostics always go to <code>err</code>. <code>scoped<
 70
 71
 72
-73</pre>
+73
+74
+75</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 38</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 40</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_report'>report</span><span class='lparen'>(</span><span class='label'>out:</span> <span class='gvar'>$stdout</span><span class='comma'>,</span> <span class='label'>err:</span> <span class='gvar'>$stderr</span><span class='comma'>,</span> <span class='label'>threshold:</span> <span class='float'>0.0</span><span class='comma'>,</span> <span class='label'>format:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>human</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span> <span class='label'>output:</span> <span class='kw'>nil</span><span class='comma'>,</span>
-           <span class='label'>baseline:</span> <span class='kw'>nil</span><span class='comma'>,</span> <span class='label'>scoped:</span> <span class='kw'>false</span><span class='rparen'>)</span>
+           <span class='label'>baseline:</span> <span class='kw'>nil</span><span class='comma'>,</span> <span class='label'>scoped:</span> <span class='kw'>false</span><span class='comma'>,</span> <span class='label'>legacy_id_matches:</span> <span class='lbrace'>{</span> <span class='label'>ignore:</span> <span class='int'>0</span><span class='comma'>,</span> <span class='label'>baseline:</span> <span class='int'>0</span> <span class='rbrace'>}</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_rendered'>rendered</span> <span class='op'>=</span>
     <span class='kw'>if</span> <span class='id identifier rubyid_format'>format</span> <span class='op'>==</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>json</span><span class='tstring_end'>&quot;</span></span>
-      <span class='id identifier rubyid_json_report'>json_report</span><span class='lparen'>(</span><span class='id identifier rubyid_baseline'>baseline</span><span class='comma'>,</span> <span class='label'>scoped:</span> <span class='id identifier rubyid_scoped'>scoped</span><span class='rparen'>)</span>
+      <span class='id identifier rubyid_json_report'>json_report</span><span class='lparen'>(</span><span class='id identifier rubyid_baseline'>baseline</span><span class='comma'>,</span> <span class='label'>scoped:</span> <span class='id identifier rubyid_scoped'>scoped</span><span class='comma'>,</span> <span class='label'>legacy_id_matches:</span> <span class='id identifier rubyid_legacy_id_matches'>legacy_id_matches</span><span class='rparen'>)</span>
     <span class='kw'>elsif</span> <span class='id identifier rubyid_format'>format</span> <span class='op'>==</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>html</span><span class='tstring_end'>&quot;</span></span>
       <span class='id identifier rubyid_html_report'>html_report</span>
     <span class='kw'>else</span>
@@ -2717,27 +2753,27 @@ or to <code>out</code>. Diagnostics always go to <code>err</code>. <code>scoped<
       <pre class="lines">
 
 
-468
-469
-470
-471
-472
-473
-474
-475
-476
-477
-478
-479
-480
 481
 482
 483
 484
-485</pre>
+485
+486
+487
+488
+489
+490
+491
+492
+493
+494
+495
+496
+497
+498</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 468</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 481</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_score_line'>score_line</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='id identifier rubyid_err'>err</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_score'>score</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_mutation_score'>mutation_score</span>
@@ -2804,21 +2840,21 @@ or to <code>out</code>. Diagnostics always go to <code>err</code>. <code>scoped<
       <pre class="lines">
 
 
-450
-451
-452
-453
-454
-455
-456
-457
-458
-459
-460
-461</pre>
+463
+464
+465
+466
+467
+468
+469
+470
+471
+472
+473
+474</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 450</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 463</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_summary'>summary</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_out'>out</span><span class='period'>.</span><span class='id identifier rubyid_puts'>puts</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Summary</span><span class='tstring_end'>&quot;</span></span>
@@ -2861,20 +2897,20 @@ or to <code>out</code>. Diagnostics always go to <code>err</code>. <code>scoped<
       <pre class="lines">
 
 
-253
-254
-255
-256
-257
-258
-259
-260
-261
-262
-263</pre>
+266
+267
+268
+269
+270
+271
+272
+273
+274
+275
+276</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 253</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 266</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_summary_html'>summary_html</span>
   <span class='id identifier rubyid_counts'>counts</span> <span class='op'>=</span> <span class='lbrace'>{</span>
@@ -2962,19 +2998,19 @@ or to <code>out</code>. Diagnostics always go to <code>err</code>. <code>scoped<
       <pre class="lines">
 
 
-623
-624
-625
-626
-627
-628
-629
-630
-631
-632</pre>
+636
+637
+638
+639
+640
+641
+642
+643
+644
+645</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 623</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 636</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_survivor'>survivor</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_result'>result</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_m'>m</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span>
@@ -3053,28 +3089,28 @@ or to <code>out</code>. Diagnostics always go to <code>err</code>. <code>scoped<
       <pre class="lines">
 
 
-350
-351
-352
-353
-354
-355
-356
-357
-358
-359
-360
-361
-362
 363
 364
 365
 366
 367
-368</pre>
+368
+369
+370
+371
+372
+373
+374
+375
+376
+377
+378
+379
+380
+381</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 350</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 363</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_survivor_json'>survivor_json</span><span class='lparen'>(</span><span class='id identifier rubyid_result'>result</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_m'>m</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_mutation'>mutation</span>
@@ -3142,22 +3178,22 @@ or to <code>out</code>. Diagnostics always go to <code>err</code>. <code>scoped<
       <pre class="lines">
 
 
-603
-604
-605
-606
-607
-608
-609
-610
-611
-612
-613
-614
-615</pre>
+616
+617
+618
+619
+620
+621
+622
+623
+624
+625
+626
+627
+628</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 603</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 616</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_survivors'>survivors</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_mutants'>mutants</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_surviving_mutants'>surviving_mutants</span>
@@ -3202,28 +3238,28 @@ id, and a colorized diff. All text is HTML-escaped.</p>
       <pre class="lines">
 
 
-286
-287
-288
-289
-290
-291
-292
-293
-294
-295
-296
-297
-298
 299
 300
 301
 302
 303
-304</pre>
+304
+305
+306
+307
+308
+309
+310
+311
+312
+313
+314
+315
+316
+317</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 286</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 299</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_survivors_html'>survivors_html</span><span class='lparen'>(</span><span class='id identifier rubyid_survivors'>survivors</span><span class='rparen'>)</span>
   <span class='kw'>return</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>&lt;h2&gt;Surviving Mutants&lt;/h2&gt;\n&lt;p&gt;None — every covered mutant was killed.&lt;/p&gt;</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='id identifier rubyid_survivors'>survivors</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
@@ -3305,29 +3341,29 @@ id, and a colorized diff. All text is HTML-escaped.</p>
       <pre class="lines">
 
 
-639
-640
-641
-642
-643
-644
-645
-646
-647
-648
-649
-650
-651
 652
 653
 654
 655
 656
 657
-658</pre>
+658
+659
+660
+661
+662
+663
+664
+665
+666
+667
+668
+669
+670
+671</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 639</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/reporter.rb', line 652</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_verdict'>verdict</span><span class='lparen'>(</span><span class='id identifier rubyid_out'>out</span><span class='comma'>,</span> <span class='id identifier rubyid_threshold'>threshold</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_score'>score</span> <span class='op'>=</span> <span class='ivar'>@agg</span><span class='period'>.</span><span class='id identifier rubyid_mutation_score'>mutation_score</span>
@@ -3361,7 +3397,7 @@ id, and a colorized diff. All text is HTML-escaped.</p>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.10).
+  0.9.44 (ruby-3.4.11).
 </div>
 
     </div>

@@ -155,9 +155,10 @@ module Mutineer
     # A mutant the user marked known-equivalent (inline disable-line comment or
     # .mutineer.yml ignore id) is classified :ignored here and NEVER run. It is
     # removed from the killed+survived denominator so a strong file reaches 100%.
-    # The stable id is computed per subject (occurrence needs the full list), keyed
-    # on the file path relative to config.project_root, and carried on every job so the parent can reattach it after the run. Shared by
-    # the in-process, external, and daemon backends so job selection can never drift.
+    # The id is computed per subject (occurrence needs the full list), keyed on
+    # the file path relative to config.project_root, and carried on every job so
+    # the parent can reattach it after the run. Shared by the in-process,
+    # external, and daemon backends so job selection can never drift.
     #
     # Each mutant also gets its old-format id ({MutantId.legacy_for}), so an ignore
     # entry stored before ids carried the path still suppresses it. Prints nothing:

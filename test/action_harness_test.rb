@@ -8,8 +8,8 @@ require "open3"
 # (bash -e -o pipefail) against a stub mutineer binary. Scenarios cover the
 # PR-base resolution chain (event-payload sha, branch-tip fallback,
 # pull_request_target guard, since: none), report freshness vs staleness,
-# summary/annotation rendering (workflow-command escaping included), and the
-# extra-args --format/--output guard.
+# summary/annotation rendering (workflow-command escaping included), the
+# extra-args --format/--output guard, and the old-format id warning (#126).
 class ActionHarnessTest < Minitest::Test
   HARNESS = File.expand_path("fixtures/action_harness.sh", __dir__)
 
@@ -22,7 +22,8 @@ class ActionHarnessTest < Minitest::Test
     refute_match(/FAIL:/, out, "harness reported failures:\n#{out}")
 
     { "case1" => 1, "case2" => 0, "case3" => 1, "case3b" => 1, "case4" => 1,
-      "case5" => 1, "case6" => 2, "case7" => 1, "case8" => 2, "case8b" => 2, "case9" => 0 }.each do |c, code|
+      "case5" => 1, "case6" => 2, "case7" => 1, "case8" => 2, "case8b" => 2, "case9" => 0,
+      "case10" => 1 }.each do |c, code|
       assert_includes out, "#{c}: exit=#{code}", "#{c} exit code drifted:\n#{out}"
     end
     assert_includes out, "OK: abbreviation rejected"
@@ -33,6 +34,10 @@ class ActionHarnessTest < Minitest::Test
     assert_includes out, "OK: rejected before running"
     assert_includes out, "OK: passing-run warnings"
     assert_includes out, "OK: no errors on passing run"
+    assert_includes out, "OK: one old-format id warning"
+    assert_includes out, "OK: no old-format id warning when the report has no counts"
+    assert_includes out, "Old ignore entries matched: 2.", "old-format ignore count missing"
+    assert_includes out, "Baseline survivors matched only by an old id: 3.", "old-format baseline count missing"
     assert_includes out, "::error file=lib/we%2Cird%3Aname.rb", "property escaping regressed"
     assert_includes out, "100%25", "msg percent-escaping of the survivor token regressed"
     refute_match(/::(?:error|warning)[^\n]*<\n/, out, "msg must collapse newlines in the survivor token")

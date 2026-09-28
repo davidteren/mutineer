@@ -6,7 +6,7 @@
 <title>
   Class: Mutineer::Result
   
-    &mdash; Documentation by YARD 0.9.45
+    &mdash; Documentation by YARD 0.9.44
   
 </title>
 
@@ -132,8 +132,8 @@ denominator.</p>
 <p><code>subject</code>, <code>mutation</code>, and <code>id</code> are nil when the Result is built by
 Isolation/Runner (which only know the outcome); the orchestrator attaches
 them afterwards via <code>result.with(subject:, mutation:, id:)</code> so the Reporter
-can render survivor diffs and emit the stable id. <code>id</code> is the content-based
-MutantId.</p>
+can render survivor diffs and emit the id. <code>id</code> is the content-based
+MutantId (it includes the project-relative file path).</p>
 
   </div>
 </div>
@@ -1841,7 +1841,7 @@ MutantId.</p>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.10).
+  0.9.44 (ruby-3.4.11).
 </div>
 
     </div>

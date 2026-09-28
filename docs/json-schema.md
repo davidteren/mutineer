@@ -7,7 +7,7 @@ worker finish order, so two runs of the same inputs produce byte-identical outpu
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.3"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.4"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -20,7 +20,7 @@ A consumer should accept any `1.x` document and read only the keys it knows.
 
 ```jsonc
 {
-  "schema_version": "1.3",
+  "schema_version": "1.4",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
@@ -49,6 +49,8 @@ A consumer should accept any `1.x` document and read only the keys it knows.
 | `no_verdict` | int | Attempted mutants that produced no verdict: `errored + timeout + uncapturable`. The completeness gate is `no_verdict / attempted`. |
 | `score` | float \| null | `killed / (killed + survived) * 100`, rounded. **`null`** when the denominator is empty (no covered mutants) — never `0.0`. |
 | `scoped` | bool | `true` when the run was diff-scoped (`--since`): the score covers only the changed-line mutants, so it is not comparable to a full-run score. A scoped CURRENT run skips `--baseline`'s score-drop check (new-survivor detection still applies); a scoped report is REFUSED as a baseline (exit 2) because survivors outside its diff would read as new regressions. Additive key (absent in reports from older versions; treat absent as `false`). |
+| `id_format` | int | The mutant id format. `2` means ids include the project-relative file path (1.3 and later). **Read this key, not `schema_version`, to learn the id format.** Absent in older reports: treat absent as the old format, whose ids did not include the path and can collide across files. Additive key (schema `1.4`). |
+| `legacy_id_matches` | object | `{ ignore, baseline }`, two ints. `ignore` counts `.mutineer.yml` `ignore:` entries in the old id format that matched this run (replace them with the new ids the run prints). `baseline` counts survivors that matched an old-format `--baseline` only through their old id (regenerate the baseline). Both are `0` when nothing old matched. Old-format matching is removed in 2.0. Additive key (schema `1.4`). |
 
 ### `survivors[]` (array of object)
 
@@ -60,7 +62,7 @@ Each surviving mutant — the records an agent or reviewer acts on:
 | `file` | string | Source file path (as passed to the run). |
 | `line` | int | 1-based line of the mutation. |
 | `operator` | string | Operator name, e.g. `arithmetic`, `comparison`. |
-| `id` | string | **Stable, offset-free id** (12 hex chars). Survives edits elsewhere in the file. Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
+| `id` | string | **Offset-free id** (12 hex chars). Includes the file path relative to the project root, so moving or renaming the file changes it. Survives edits elsewhere in the file. Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
 | `token` | string | The exact code being mutated (whitespace-collapsed), e.g. `a + b`. |
 | `diff` | string | A unified diff (`@@ -line +line @@` with `-original` / `+mutant`). Ready to hand to an agent as "write a test that fails under this change." |
 
@@ -98,7 +100,7 @@ Per-file roll-up: `{ file, total, killed, survived, no_coverage, score }` (`scor
 
 ### `baseline` (object, only with `--baseline`)
 
-The delta versus the prior `--format json` report, matched by stable `id`:
+The delta versus the prior `--format json` report, matched by `id`. A baseline without `summary.id_format` also matches on old-format ids (counted in `summary.legacy_id_matches.baseline`):
 
 | Key | Type | Meaning |
 |-----|------|---------|

@@ -6,7 +6,7 @@
 <title>
   File: CHANGELOG
   
-    &mdash; Documentation by YARD 0.9.45
+    &mdash; Documentation by YARD 0.9.44
   
 </title>
 
@@ -64,6 +64,47 @@
 <a href="https://keepachangelog.com/">Keep a Changelog</a>, and this project adheres to
 <a href="https://semver.org/">Semantic Versioning</a>.</p>
 <h2 id="_Unreleased_">[Unreleased]</h2>
+<h3 id="Changed">Changed</h3>
+<ul>
+<li>
+<strong>Mutant ids now include the project-relative file path</strong> (#126). Before, two
+mutants with the same method name, operator and token in different files got
+the same id. That happened with a top-level <code>def</code> or block in two files, and
+with a class reopened in another file. One <code>ignore:</code> entry then suppressed
+both mutants, and <code>--baseline</code> could hide a new survivor behind an old one.
+<ul>
+<li>Every survivor id changes once in this release. This affects any external
+tool that tracks survivors by id.</li>
+<li>Moving or renaming a file now changes its ids.</li>
+<li>Ids follow the project root: the directory mutineer runs from, or the
+Action's <code>working-directory</code>. A run from a different root gives different ids.</li>
+<li>A source outside the project root uses its absolute path, so its ids differ
+between machines.</li>
+</ul>
+</li>
+<li><strong>The JSON report marks its id format</strong> (schema <code>1.4</code>, additive).
+<code>summary.id_format</code> is <code>2</code> for ids that include the file path.
+<code>summary.legacy_id_matches</code> counts old-format <code>ignore:</code> entries (<code>ignore</code>) and
+survivors matched only through an old-format baseline id (<code>baseline</code>). The
+GitHub Action shows one warning annotation when either count is not zero.</li>
+</ul>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong>Old-format ids keep working, with a warning</strong> (#126). An old-format
+<code>ignore:</code> entry still suppresses the mutants it matched before. The run prints
+one <code>[mutineer]</code> warning per entry with the new ids to use. A <code>--baseline</code>
+file without <code>summary.id_format</code> matches on new or old ids, so no survivor
+reads as new or fixed only because its id changed. The run prints one
+<code>[mutineer]</code> warning to regenerate the baseline.</li>
+</ul>
+<h3 id="Deprecated">Deprecated</h3>
+<ul>
+<li><strong>Old-format ids in <code>ignore:</code> and in baselines.</strong> Matching on them is removed
+in 2.0. Replace each old <code>ignore:</code> entry with the new ids from the warning.
+Regenerate a baseline (<code>--format json</code>) only after every gate that reads it
+runs this version or later (the Action's <code>version:</code> pin, your CI
+<code>Gemfile.lock</code>). An older version treats every new-format survivor as new.</li>
+</ul>
 <h2 id="_1_2_0____2026_09_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.2.0">1.2.0</a> - 2026-09-28</h2>
 <h3 id="Added">Added</h3>
 <ul>
@@ -618,7 +659,7 @@ accepted as deprecated aliases.)</li>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.10).
+  0.9.44 (ruby-3.4.11).
 </div>
 
     </div>

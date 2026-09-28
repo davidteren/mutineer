@@ -6,6 +6,40 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **Mutant ids now include the project-relative file path** (#126). Before, two
+  mutants with the same method name, operator and token in different files got
+  the same id. That happened with a top-level `def` or block in two files, and
+  with a class reopened in another file. One `ignore:` entry then suppressed
+  both mutants, and `--baseline` could hide a new survivor behind an old one.
+  - Every survivor id changes once in this release. This affects any external
+    tool that tracks survivors by id.
+  - Moving or renaming a file now changes its ids.
+  - Ids follow the project root: the directory mutineer runs from, or the
+    Action's `working-directory`. A run from a different root gives different ids.
+  - A source outside the project root uses its absolute path, so its ids differ
+    between machines.
+- **The JSON report marks its id format** (schema `1.4`, additive).
+  `summary.id_format` is `2` for ids that include the file path.
+  `summary.legacy_id_matches` counts old-format `ignore:` entries (`ignore`) and
+  survivors matched only through an old-format baseline id (`baseline`). The
+  GitHub Action shows one warning annotation when either count is not zero.
+
+### Fixed
+- **Old-format ids keep working, with a warning** (#126). An old-format
+  `ignore:` entry still suppresses the mutants it matched before. The run prints
+  one `[mutineer]` warning per entry with the new ids to use. A `--baseline`
+  file without `summary.id_format` matches on new or old ids, so no survivor
+  reads as new or fixed only because its id changed. The run prints one
+  `[mutineer]` warning to regenerate the baseline.
+
+### Deprecated
+- **Old-format ids in `ignore:` and in baselines.** Matching on them is removed
+  in 2.0. Replace each old `ignore:` entry with the new ids from the warning.
+  Regenerate a baseline (`--format json`) only after every gate that reads it
+  runs this version or later (the Action's `version:` pin, your CI
+  `Gemfile.lock`). An older version treats every new-format survivor as new.
+
 ## [1.2.0] - 2026-09-28
 
 ### Added

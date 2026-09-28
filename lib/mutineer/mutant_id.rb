@@ -3,16 +3,17 @@
 require "digest"
 
 module Mutineer
-  # Content-based stable id for a mutant — NOT byte offsets. Pure function, reused
+  # Content-based id for a mutant — NOT byte offsets. Pure function, reused
   # by the Runner (matching the ignore list), the Reporter (emitting a copy-
   # pasteable id per survivor), and #13 baseline gating (diffing id-sets run to
   # run). `digest` is stdlib, so zero new deps.
   #
-  # Offset-free by design: keyed on the subject's normalized file path +
-  # qualified_name (a method, not a byte position) + operator + the normalized mutated token + an occurrence
-  # ordinal among same-(operator, token) twins WITHIN the subject. So it survives
-  # any edit outside the subject method — where raw start/end offsets shift on
-  # every edit earlier in the file and would silently stop matching.
+  # Offset-free by design: keyed on the subject's project-relative file path +
+  # qualified_name (a method, not a byte position) + operator + the normalized
+  # mutated token + an occurrence ordinal among same-(operator, token) twins
+  # WITHIN the subject. So it survives any edit outside the subject method,
+  # where raw start/end offsets shift on every edit earlier in the file and
+  # would silently stop matching. Moving or renaming the file changes the id.
   module MutantId
     module_function
 
