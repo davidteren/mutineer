@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **`reload` loads the mutant by an absolute path** — a relative source path
+  gave the mutant relative backtrace paths, so code that checks its own frames
+  by absolute path failed for every mutant, a false kill (#123).
+
 ## [1.1.0] - 2026-09-28
 
 ### Added

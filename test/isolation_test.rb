@@ -132,4 +132,11 @@ class IsolationTest < Minitest::Test
     # there are no unreaped children.
     assert_raises(Errno::ECHILD) { Process.wait(-1, Process::WNOHANG) }
   end
+
+  def test_apply_whole_file_loads_by_absolute_path
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) { Dir.mkdir("lib"); Mutineer::Isolation.apply_whole_file("$loaded_from = __FILE__\n", "lib/x.rb") }
+      assert_equal File.join(File.realpath(dir), "lib"), File.dirname($loaded_from)
+    end
+  end
 end
