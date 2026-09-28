@@ -157,7 +157,7 @@ module Mutineer
       ignored_results = []
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file))
-        disabled = (disabled_map[subject.file] ||= suppress_map(source))
+        disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
         mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
         ids = MutantId.for_subject(subject, source, mutations)
         mutations.each_with_index do |mutation, i|
@@ -299,13 +299,15 @@ module Mutineer
     # sits on the same physical line as the code it silences). A bare marker
     # disables every operator on that line; `disable-line a, b` only the listed
     # operators. Block-form disable/enable ranges are intentionally not supported.
-    def self.suppress_map(source)
+    def self.suppress_map(source, file)
       map = {}
       source.each_line.with_index(1) do |text, line|
         next unless (m = text.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
 
-        ops = m[1]
-        map[line] = ops ? ops.split(",").map { |o| o.strip.to_sym }.reject(&:empty?).to_set : :all
+        ops = m[1]&.split(",")&.map(&:strip)&.reject(&:empty?)
+        unknown = ops.to_a.reject { |o| MutatorRegistry::ALL.key?(o) }
+        unknown.each { |o| warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line}; write a reason after --" }
+        map[line] = ops ? ops.map(&:to_sym).to_set : :all
       end
       map
     end

@@ -400,7 +400,7 @@ exactly the covering test files run in the child.</p>
         <li class="public ">
   <span class="summary_signature">
     
-      <a href="#suppress_map-class_method" title="suppress_map (class method)">.<strong>suppress_map</strong>(source)  &#x21d2; Object </a>
+      <a href="#suppress_map-class_method" title="suppress_map (class method)">.<strong>suppress_map</strong>(source, file)  &#x21d2; Object </a>
     
 
     
@@ -660,7 +660,7 @@ the in-process, external, and daemon backends so job selection can never drift.<
   <span class='id identifier rubyid_ignored_results'>ignored_results</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
   <span class='const'><span class='object_link'><a href="Project.html" title="Mutineer::Project (class)">Project</a></span></span><span class='period'>.</span><span class='id identifier rubyid_discover'><span class='object_link'><a href="Project.html#discover-class_method" title="Mutineer::Project.discover (method)">discover</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_sources'>sources</span><span class='comma'>,</span> <span class='label'>only:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_only'>only</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_subject'>subject</span><span class='op'>|</span>
     <span class='id identifier rubyid_source'>source</span> <span class='op'>=</span> <span class='lparen'>(</span><span class='id identifier rubyid_source_map'>source_map</span><span class='lbracket'>[</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span><span class='rbracket'>]</span> <span class='op'>||=</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_read'>read</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span><span class='rparen'>)</span>
-    <span class='id identifier rubyid_disabled'>disabled</span> <span class='op'>=</span> <span class='lparen'>(</span><span class='id identifier rubyid_disabled_map'>disabled_map</span><span class='lbracket'>[</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span><span class='rbracket'>]</span> <span class='op'>||=</span> <span class='id identifier rubyid_suppress_map'>suppress_map</span><span class='lparen'>(</span><span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span><span class='rparen'>)</span>
+    <span class='id identifier rubyid_disabled'>disabled</span> <span class='op'>=</span> <span class='lparen'>(</span><span class='id identifier rubyid_disabled_map'>disabled_map</span><span class='lbracket'>[</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span><span class='rbracket'>]</span> <span class='op'>||=</span> <span class='id identifier rubyid_suppress_map'>suppress_map</span><span class='lparen'>(</span><span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span><span class='rparen'>)</span>
     <span class='id identifier rubyid_mutations'>mutations</span> <span class='op'>=</span> <span class='id identifier rubyid_operator_classes'>operator_classes</span><span class='period'>.</span><span class='id identifier rubyid_flat_map'>flat_map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_klass'>klass</span><span class='op'>|</span> <span class='id identifier rubyid_klass'>klass</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span><span class='period'>.</span><span class='id identifier rubyid_mutations_for'>mutations_for</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
     <span class='id identifier rubyid_ids'>ids</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="MutantId.html" title="Mutineer::MutantId (module)">MutantId</a></span></span><span class='period'>.</span><span class='id identifier rubyid_for_subject'><span class='object_link'><a href="MutantId.html#for_subject-class_method" title="Mutineer::MutantId.for_subject (method)">for_subject</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_mutations'>mutations</span><span class='rparen'>)</span>
     <span class='id identifier rubyid_mutations'>mutations</span><span class='period'>.</span><span class='id identifier rubyid_each_with_index'>each_with_index</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_i'>i</span><span class='op'>|</span>
@@ -863,16 +863,16 @@ An explicitly-set RAILS_ENV is always respected.</p>
       <pre class="lines">
 
 
-366
-367
 368
 369
 370
 371
-372</pre>
+372
+373
+374</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 366</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 368</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_ensure_rails_env'>ensure_rails_env</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='rparen'>)</span>
   <span class='kw'>return</span> <span class='kw'>unless</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_rails'>rails</span>
@@ -1367,8 +1367,6 @@ exactly as Runner.run does, from the already-read source in source_map.</p>
       <pre class="lines">
 
 
-331
-332
 333
 334
 335
@@ -1376,10 +1374,12 @@ exactly as Runner.run does, from the already-read source in source_map.</p>
 337
 338
 339
-340</pre>
+340
+341
+342</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 331</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 333</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_filter_since'>filter_since</span><span class='lparen'>(</span><span class='id identifier rubyid_jobs'>jobs</span><span class='comma'>,</span> <span class='id identifier rubyid_source_map'>source_map</span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_changed'>changed</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="ChangedLines.html" title="Mutineer::ChangedLines (module)">ChangedLines</a></span></span><span class='period'>.</span><span class='id identifier rubyid_for'><span class='object_link'><a href="ChangedLines.html#for-class_method" title="Mutineer::ChangedLines.for (method)">for</a></span></span><span class='lparen'>(</span><span class='label'>ref:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_since'>since</span><span class='comma'>,</span> <span class='label'>files:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_sources'>sources</span><span class='comma'>,</span>
@@ -1436,15 +1436,15 @@ error degrades safe to false -&gt; caller clears (existing behaviour).</p>
       <pre class="lines">
 
 
-465
-466
 467
 468
 469
-470</pre>
+470
+471
+472</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 465</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 467</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_fixture_transaction_open?'>fixture_transaction_open?</span><span class='lparen'>(</span><span class='id identifier rubyid_base'>base</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_pool'>pool</span> <span class='op'>=</span> <span class='id identifier rubyid_base'>base</span><span class='period'>.</span><span class='id identifier rubyid_connection_pool'>connection_pool</span>
@@ -1485,8 +1485,6 @@ error degrades safe to false -&gt; caller clears (existing behaviour).</p>
       <pre class="lines">
 
 
-446
-447
 448
 449
 450
@@ -1497,10 +1495,12 @@ error degrades safe to false -&gt; caller clears (existing behaviour).</p>
 455
 456
 457
-458</pre>
+458
+459
+460</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 446</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 448</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_reconnect_active_record'>reconnect_active_record</span>
   <span class='kw'>return</span> <span class='kw'>unless</span> <span class='kw'>defined?</span><span class='lparen'>(</span><span class='const'>ActiveRecord</span><span class='op'>::</span><span class='const'>Base</span><span class='rparen'>)</span>
@@ -1688,8 +1688,6 @@ error degrades safe to false -&gt; caller clears (existing behaviour).</p>
       <pre class="lines">
 
 
-411
-412
 413
 414
 415
@@ -1717,10 +1715,12 @@ error degrades safe to false -&gt; caller clears (existing behaviour).</p>
 437
 438
 439
-440</pre>
+440
+441
+442</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 411</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 413</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_run'>run</span><span class='lparen'>(</span><span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='label'>source_file:</span><span class='comma'>,</span> <span class='label'>coverage_map:</span> <span class='kw'>nil</span><span class='comma'>,</span> <span class='label'>subject:</span> <span class='kw'>nil</span><span class='comma'>,</span> <span class='label'>strategy:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>reload</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span>
              <span class='label'>timeout:</span> <span class='const'><span class='object_link'><a href="Isolation.html" title="Mutineer::Isolation (class)">Isolation</a></span></span><span class='op'>::</span><span class='const'><span class='object_link'><a href="Isolation.html#DEFAULT_TIMEOUT-constant" title="Mutineer::Isolation::DEFAULT_TIMEOUT (constant)">DEFAULT_TIMEOUT</a></span></span><span class='comma'>,</span> <span class='label'>rails:</span> <span class='kw'>false</span><span class='comma'>,</span> <span class='label'>framework:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>minitest</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
@@ -1889,12 +1889,12 @@ Shared so the path-expansion rule cannot drift between the paths.</p>
       <pre class="lines">
 
 
-381
-382
-383</pre>
+383
+384
+385</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 381</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 383</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_source_dirs'>source_dirs</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_sources'>sources</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_f'>f</span><span class='op'>|</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_dirname'>dirname</span><span class='lparen'>(</span><span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='id identifier rubyid_f'>f</span><span class='comma'>,</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span><span class='rparen'>)</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_uniq'>uniq</span>
@@ -1907,7 +1907,7 @@ Shared so the path-expansion rule cannot drift between the paths.</p>
       <div class="method_details ">
   <h3 class="signature " id="suppress_map-class_method">
   
-    .<strong>suppress_map</strong>(source)  &#x21d2; <tt>Object</tt> 
+    .<strong>suppress_map</strong>(source, file)  &#x21d2; <tt>Object</tt> 
   
 
   
@@ -1941,18 +1941,22 @@ operators. Block-form disable/enable ranges are intentionally not supported.</p>
 308
 309
 310
-311</pre>
+311
+312
+313</pre>
     </td>
     <td>
       <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 302</span>
 
-<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_suppress_map'>suppress_map</span><span class='lparen'>(</span><span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span>
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_suppress_map'>suppress_map</span><span class='lparen'>(</span><span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_map'>map</span> <span class='op'>=</span> <span class='lbrace'>{</span><span class='rbrace'>}</span>
   <span class='id identifier rubyid_source'>source</span><span class='period'>.</span><span class='id identifier rubyid_each_line'>each_line</span><span class='period'>.</span><span class='id identifier rubyid_with_index'>with_index</span><span class='lparen'>(</span><span class='int'>1</span><span class='rparen'>)</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_text'>text</span><span class='comma'>,</span> <span class='id identifier rubyid_line'>line</span><span class='op'>|</span>
     <span class='kw'>next</span> <span class='kw'>unless</span> <span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span> <span class='op'>=</span> <span class='id identifier rubyid_text'>text</span><span class='period'>.</span><span class='id identifier rubyid_match'>match</span><span class='lparen'>(</span><span class='tstring'><span class='regexp_beg'>/</span><span class='tstring_content'>#\s*mutineer:disable-line(?:\s+([\w,\s]+))?</span><span class='regexp_end'>/</span></span><span class='rparen'>)</span><span class='rparen'>)</span>
 
-    <span class='id identifier rubyid_ops'>ops</span> <span class='op'>=</span> <span class='id identifier rubyid_m'>m</span><span class='lbracket'>[</span><span class='int'>1</span><span class='rbracket'>]</span>
-    <span class='id identifier rubyid_map'>map</span><span class='lbracket'>[</span><span class='id identifier rubyid_line'>line</span><span class='rbracket'>]</span> <span class='op'>=</span> <span class='id identifier rubyid_ops'>ops</span> <span class='op'>?</span> <span class='id identifier rubyid_ops'>ops</span><span class='period'>.</span><span class='id identifier rubyid_split'>split</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>,</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_o'>o</span><span class='op'>|</span> <span class='id identifier rubyid_o'>o</span><span class='period'>.</span><span class='id identifier rubyid_strip'>strip</span><span class='period'>.</span><span class='id identifier rubyid_to_sym'>to_sym</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_reject'>reject</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:empty?</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_to_set'>to_set</span> <span class='op'>:</span> <span class='symbol'>:all</span>
+    <span class='id identifier rubyid_ops'>ops</span> <span class='op'>=</span> <span class='id identifier rubyid_m'>m</span><span class='lbracket'>[</span><span class='int'>1</span><span class='rbracket'>]</span><span class='op'>&amp;.</span><span class='id identifier rubyid_split'>split</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>,</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span><span class='op'>&amp;.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:strip</span><span class='rparen'>)</span><span class='op'>&amp;.</span><span class='id identifier rubyid_reject'>reject</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:empty?</span><span class='rparen'>)</span>
+    <span class='id identifier rubyid_unknown'>unknown</span> <span class='op'>=</span> <span class='id identifier rubyid_ops'>ops</span><span class='period'>.</span><span class='id identifier rubyid_to_a'>to_a</span><span class='period'>.</span><span class='id identifier rubyid_reject'>reject</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_o'>o</span><span class='op'>|</span> <span class='const'><span class='object_link'><a href="MutatorRegistry.html" title="Mutineer::MutatorRegistry (class)">MutatorRegistry</a></span></span><span class='op'>::</span><span class='const'><span class='object_link'><a href="MutatorRegistry.html#ALL-constant" title="Mutineer::MutatorRegistry::ALL (constant)">ALL</a></span></span><span class='period'>.</span><span class='id identifier rubyid_key?'>key?</span><span class='lparen'>(</span><span class='id identifier rubyid_o'>o</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+    <span class='id identifier rubyid_unknown'>unknown</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_o'>o</span><span class='op'>|</span> <span class='id identifier rubyid_warn'>warn</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>mutineer: unknown operator </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_o'>o</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_content'> in </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_file'>file</span><span class='embexpr_end'>}</span><span class='tstring_content'>:</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_line'>line</span><span class='embexpr_end'>}</span><span class='tstring_content'>; write a reason after --</span><span class='tstring_end'>&quot;</span></span> <span class='rbrace'>}</span>
+    <span class='id identifier rubyid_map'>map</span><span class='lbracket'>[</span><span class='id identifier rubyid_line'>line</span><span class='rbracket'>]</span> <span class='op'>=</span> <span class='id identifier rubyid_ops'>ops</span> <span class='op'>?</span> <span class='id identifier rubyid_ops'>ops</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:to_sym</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_to_set'>to_set</span> <span class='op'>:</span> <span class='symbol'>:all</span>
   <span class='kw'>end</span>
   <span class='id identifier rubyid_map'>map</span>
 <span class='kw'>end</span></pre>
@@ -2000,18 +2004,18 @@ list. Checked at job-build time so a suppressed mutant is never forked.</p>
       <pre class="lines">
 
 
-316
-317
 318
 319
 320
 321
 322
 323
-324</pre>
+324
+325
+326</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 316</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 318</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_suppressed?'>suppressed?</span><span class='lparen'>(</span><span class='id identifier rubyid_operator'>operator</span><span class='comma'>,</span> <span class='id identifier rubyid_line'>line</span><span class='comma'>,</span> <span class='id identifier rubyid_id'>id</span><span class='comma'>,</span> <span class='id identifier rubyid_disabled'>disabled</span><span class='comma'>,</span> <span class='id identifier rubyid_ignore_set'>ignore_set</span><span class='rparen'>)</span>
   <span class='kw'>return</span> <span class='kw'>true</span> <span class='kw'>if</span> <span class='id identifier rubyid_ignore_set'>ignore_set</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_id'>id</span><span class='rparen'>)</span>
@@ -2087,16 +2091,16 @@ tool-side (nothing boots on an empty run, so the daemon's own sweep never runs).
       <pre class="lines">
 
 
-392
-393
 394
 395
 396
 397
-398</pre>
+398
+399
+400</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 392</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 394</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_sweep_orphans'>sweep_orphans</span><span class='lparen'>(</span><span class='id identifier rubyid_dirs'>dirs</span><span class='comma'>,</span> <span class='id identifier rubyid_glob'>glob</span> <span class='op'>=</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>mutineer_mutant*.rb</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
   <span class='id identifier rubyid_dirs'>dirs</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_dir'>dir</span><span class='op'>|</span>
@@ -2136,8 +2140,6 @@ holding that helper, plus the file's own dir as a fallback.</p>
       <pre class="lines">
 
 
-345
-346
 347
 348
 349
@@ -2152,10 +2154,12 @@ holding that helper, plus the file's own dir as a fallback.</p>
 358
 359
 360
-361</pre>
+361
+362
+363</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 345</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/runner.rb', line 347</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_test_load_roots'>test_load_roots</span><span class='lparen'>(</span><span class='id identifier rubyid_test_files'>test_files</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_test_files'>test_files</span><span class='period'>.</span><span class='id identifier rubyid_flat_map'>flat_map</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_f'>f</span><span class='op'>|</span>
@@ -2186,7 +2190,7 @@ holding that helper, plus the file's own dir as a fallback.</p>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.10).
+  0.9.45 (ruby-3.4.11).
 </div>
 
     </div>

@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **A disable-line marker warns about an operator it does not know** — a
+  reason written without `--` became part of the operator name, so the marker
+  suppressed nothing and said nothing (#124).
+
 ## [1.1.0] - 2026-09-28
 
 ### Added

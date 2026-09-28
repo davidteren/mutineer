@@ -64,6 +64,12 @@
 <a href="https://keepachangelog.com/">Keep a Changelog</a>, and this project adheres to
 <a href="https://semver.org/">Semantic Versioning</a>.</p>
 <h2 id="_Unreleased_">[Unreleased]</h2>
+<h3 id="Fixed">Fixed</h3>
+<ul>
+<li><strong>A disable-line marker warns about an operator it does not know</strong> — a
+reason written without <code>--</code> became part of the operator name, so the marker
+suppressed nothing and said nothing (#124).</li>
+</ul>
 <h2 id="_1_1_0____2026_09_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.1.0">1.1.0</a> - 2026-09-28</h2>
 <h3 id="Added">Added</h3>
 <ul>
@@ -569,7 +575,7 @@ accepted as deprecated aliases.)</li>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.10).
+  0.9.45 (ruby-3.4.11).
 </div>
 
     </div>
