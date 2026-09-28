@@ -175,6 +175,18 @@ class RunnerTest < Minitest::Test
     refute fto?(boom)
   end
 
+  def test_abort_if_unclean_raises_when_no_test_recorded_coverage
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["test/calc_test.rb"], project_root: ROOT)
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::Runner.abort_if_unclean!(map) }
+    assert_match(%r{capture failed for test/calc_test\.rb}, err.message)
+  end
+
+  def test_abort_if_unclean_passes_when_another_test_recorded_coverage
+    map = Mutineer::CoverageMap.from_data(map: { "lib/calc.rb:2" => ["test/ok_test.rb"] },
+                                          failed_test_files: ["test/calc_test.rb"], project_root: ROOT)
+    assert_nil Mutineer::Runner.abort_if_unclean!(map)
+  end
+
   private
 
   def with_rails_env(value)

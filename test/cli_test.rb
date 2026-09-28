@@ -391,4 +391,33 @@ class CliTest < Minitest::Test
       assert_includes out, "OK: no regression vs baseline"
     end
   end
+
+  def test_test_helper_require_needs_no_rubyopt
+    Dir.mktmpdir("mutineer-helper") do |proj|
+      write = ->(path, body) { FileUtils.mkdir_p(File.dirname(File.join(proj, path))); File.write(File.join(proj, path), body) }
+      write.("lib/calc.rb", "class Calc\n  def add(a, b) = a + b\nend\n")
+      write.("test/test_helper.rb", "require 'minitest/autorun'\nrequire 'calc'\n")
+      write.("test/calc_test.rb", "require 'test_helper'\n" \
+                                  "class CalcTest < Minitest::Test\n  def test_add = assert_equal(3, Calc.new.add(1, 2))\nend\n")
+      run = -> { mutineer("run", "lib/calc.rb", "--test", "test/calc_test.rb", "--format", "json", chdir: proj) }
+
+      out, _err, status = run.call
+      assert_equal 0, status.exitstatus
+      assert_equal 100.0, JSON.parse(out).dig("summary", "score")
+
+      Dir.mktmpdir("mutineer-helper-copy") do |copy|
+        FileUtils.cp_r("#{proj}/.", copy)
+        FileUtils.rm_rf(File.join(copy, ".mutineer"))
+        mutineer("run", "lib/calc.rb", "--test", "test/calc_test.rb", chdir: copy)
+        digest = ->(dir) { JSON.parse(File.read(File.join(dir, ".mutineer/coverage.json")))["digest"] }
+        assert_equal digest.(proj), digest.(copy), "the cache must not depend on the checkout path"
+      end
+
+      write.("test/calc_test.rb", "require 'missing_helper'\n")
+      _out, err, status = run.call
+      assert_equal 1, status.exitstatus
+      assert_match(/no test recorded coverage/, err)
+      assert_match(/missing_helper/, err)
+    end
+  end
 end

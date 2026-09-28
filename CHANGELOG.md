@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **`require "test_helper"` works without `RUBYOPT`** — a standalone run puts
+  `lib`, then each test file's `test_helper.rb` directory, on the load path,
+  as boot mode and `rake test` do. A run where no test records coverage because
+  captures failed now exits 1 instead of reporting N/A (#119).
+
 ## [1.1.0] - 2026-09-28
 
 ### Added
