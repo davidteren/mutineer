@@ -1,0 +1,123 @@
+CHANGELOG.md
+  s_1d8e859ed0d041::t_9bf2e0b2112028 9-23,25-31,34-35
+README.md
+  s_1d8e859ed0d041::t_74519f53c26b73 87-88
+docs/index.html
+  s_1d8e859ed0d041::t_aaeb939d291b98 78,175-176,200-201
+docs/index.md
+  s_1d8e859ed0d041::t_004294d6f3f553 82-83
+docs/llms-full.txt
+  s_1d8e859ed0d041::t_67334a616796c9 96-97
+docs/llms.txt
+  s_1d8e859ed0d041::t_f91dd90e604993 15
+lib/mutineer.rb
+  s_1d8e859ed0d041::t_fe161242cd71e0 32-33
+lib/mutineer/isolation.rb
+  s_1d8e859ed0d041::t_70a6da17a2020c 102
+lib/mutineer/mutator_registry.rb
+  s_1d8e859ed0d041::t_5f2c7762e4ff51 18-19,46-48,56,74-76
+lib/mutineer/mutators/array_literal.rb
+  s_1d8e859ed0d041::t_ae7cd77b27c79f 1-51
+lib/mutineer/mutators/base.rb
+  s_1d8e859ed0d041::t_0c6fb6657446a9 29-43
+lib/mutineer/mutators/operand_removal.rb
+  s_1d8e859ed0d041::t_fb1246e50b3654 1-65
+lib/mutineer/runner.rb
+  s_1d8e859ed0d041::t_50420f2e6f2c85 3,97-102,106,263-264,266-269
+test/cli_test.rb
+  s_1d8e859ed0d041::t_f9dccff9b26e6c 394-444
+test/fixtures/discount.rb
+  s_1d8e859ed0d041::t_5dfeceeb91c0ad 1-7
+test/fixtures/discount_test.rb
+  s_1d8e859ed0d041::t_c787d76c9a3dac 1-16
+test/fixtures/tags.rb
+  s_1d8e859ed0d041::t_e79ac36c8ab4d0 1-7
+test/fixtures/tags_test.rb
+  s_1d8e859ed0d041::t_27ec6c5f711fb0 1-12
+test/integration_test.rb
+  s_1d8e859ed0d041::t_369dde8c3ac7fb 91-111
+test/isolation_test.rb
+  s_1d8e859ed0d041::t_6e212f7d97ff0e 5,136-142
+test/mutator_registry_test.rb
+  s_1d8e859ed0d041::t_aba79acf5b20dc 60-67,69-70
+test/mutators/array_literal_test.rb
+  s_1d8e859ed0d041::t_10ed5bb3714eaa 1-66
+test/mutators/operand_removal_test.rb
+  s_1d8e859ed0d041::t_72e08e07cc18a4 1-96
+test/runner_test.rb
+  s_1d8e859ed0d041::t_fc319531cb1ef6 178-189
+docs/api/Mutineer.html
+  s_1d8e859ed0d041::t_21df7fb708360b 84
+docs/api/Mutineer/Isolation.html
+  s_1d8e859ed0d041::t_2147ff261ae1d5 620
+docs/api/Mutineer/MutatorRegistry.html
+  s_1d8e859ed0d041::t_e35d1e72cb643a 155-157,188,217-219,373,376,460-462,465,533,536
+docs/api/Mutineer/Mutators.html
+  s_1d8e859ed0d041::t_db8f360e9b1442 84,106
+docs/api/Mutineer/Mutators/Arithmetic.html
+  s_1d8e859ed0d041::t_96a281897db608 198
+docs/api/Mutineer/Mutators/ArrayLiteral.html
+  s_1d8e859ed0d041::t_e148ec27bc69b1 1-424
+docs/api/Mutineer/Mutators/Base.html
+  s_1d8e859ed0d041::t_5b7c3b3c5a9e4d 123,140-161,196-274
+docs/api/Mutineer/Mutators/BooleanConnector.html
+  s_1d8e859ed0d041::t_245f7b30beb01d 240
+docs/api/Mutineer/Mutators/BooleanLiteral.html
+  s_1d8e859ed0d041::t_366332319cba7a 237
+docs/api/Mutineer/Mutators/ChainLink.html
+  s_1d8e859ed0d041::t_a75d2d9b5fdc91 411-415
+docs/api/Mutineer/Mutators/CollectionMethod.html
+  s_1d8e859ed0d041::t_c73302caf252f8 206
+docs/api/Mutineer/Mutators/Comparison.html
+  s_1d8e859ed0d041::t_1d803671c1c943 198
+docs/api/Mutineer/Mutators/ConditionNegation.html
+  s_1d8e859ed0d041::t_9f268cca3dca16 215
+docs/api/Mutineer/Mutators/LiteralMutation.html
+  s_1d8e859ed0d041::t_123fd0bc53dabe 215
+docs/api/Mutineer/Mutators/NegationRemoval.html
+  s_1d8e859ed0d041::t_ce44947486b9b8 195
+docs/api/Mutineer/Mutators/OperandRemoval.html
+  s_1d8e859ed0d041::t_a3ee0a19b51a89 1-535
+docs/api/Mutineer/Mutators/RangeLiteral.html
+  s_1d8e859ed0d041::t_47a691ec6b112e 245
+docs/api/Mutineer/Mutators/RegexLiteral.html
+  s_1d8e859ed0d041::t_deb09d030b9338 240
+docs/api/Mutineer/Mutators/ReturnNil.html
+  s_1d8e859ed0d041::t_d08736d43635fa 257-261
+docs/api/Mutineer/Mutators/SafeNavigation.html
+  s_1d8e859ed0d041::t_5bb323e54e0eed 282
+docs/api/Mutineer/Mutators/StatementRemoval.html
+  s_1d8e859ed0d041::t_e8964dace38839 171
+docs/api/Mutineer/Mutators/StringLiteral.html
+  s_1d8e859ed0d041::t_74087def6330ee 173
+docs/api/Mutineer/Runner.html
+  s_1d8e859ed0d041::t_0245b6f0743b6a 545-546,558-569,572,575-578,652-659,662,814-826,829,875-881,884,1060-1067,1070,1126-1131,1135,1299-1306,1309,1391-1400,1403,1460-1465,1468,1509-1521,1524,1726-1741,1744,1826-1833,1836,1913-1915,1918,1958-1973,1976,1984-1986,2040-2048,2051,2127-2133,2136,2177-2192,2195
+docs/api/_index.html
+  s_1d8e859ed0d041::t_55d291b8224122 102-108,421-427
+docs/api/class_list.html
+  s_1d8e859ed0d041::t_e6c74276ca30a2 49
+docs/api/file.CHANGELOG.html
+  s_1d8e859ed0d041::t_07c48071113b20 67-82,85-91,94-95,602
+docs/api/file.README.html
+  s_1d8e859ed0d041::t_38ca120ad75912 215-216,397
+docs/api/index.html
+  s_1d8e859ed0d041::t_2a55750820aa8a 215-216,397
+docs/api/method_list.html
+  s_1d8e859ed0d041::t_962d7dc685ac9a 691-698,706,714,722-729,1131-1138,1146,1154,1162,1170,1178,1186,1194,1202,1210,1218,1226,1234,1242,1250,1258,1266,1274,1282,1290,1298,1306,1314,1322,1330,1338,1346,1354,1362,1370,1378,1386,1394,1402,1410,1418,1426,1434,1442,1450,1458,1466,1474,1482,1490,1498,1506,1514,1522,1530,1538,1546,1554,1562,1570,1578,1586,1594,1602,1610,1618,1626,1634,1642,1650,1658,1666,1674,1682,1690,1698,1706,1714,1722,1730,1738,1746,1754,1762,1770,1778,1786,1794,1802,1810,1818,1826,1834,1842,1850,1858,1866,1874,1882,1890,1898,1906,1914,1922,1930,1938,1946,1954,1962,1970,1978,1986,1994,2002,2010,2018,2026,2034,2042,2050,2058,2066,2074,2082,2090,2098,2106,2114,2122,2130,2138,2146,2154,2162,2170,2178,2186,2194,2202,2210,2218,2226,2234,2242,2250,2258,2266,2274,2282,2290,2298,2306,2314,2322,2330,2338,2346,2354,2362,2370,2378,2386,2394,2402,2410,2418,2426,2434,2442,2450,2458,2466,2474,2482,2490,2498,2506,2514,2522,2530,2538,2546,2554,2562,2570,2578,2586,2594,2602,2610,2618,2626,2634,2642,2650,2658,2666,2674,2682,2690,2698,2706,2714,2722,2730,2738,2746,2754,2762,2770,2778,2786,2794,2802,2810,2818,2826,2834-2841,2851-2858,2866,2874,2882,2890,2898,2906,2914,2922,2930,2938,2946,2954,2962,2970,2978,2986,2994,3002,3010-3017,3019-3026,3034,3042,3050,3058,3066-3073
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "071c9c8c4ed03f155ade7ca42cf5382e4562fca2",
+  "prompts": {},
+  "sessions": {
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
