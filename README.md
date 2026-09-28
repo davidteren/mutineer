@@ -212,7 +212,7 @@ Tradeoffs — this path is correct but not free:
 Some mutants are equivalent (behaviour-identical) and survive forever — keeping a
 file off 100%. Suppress them so the score and `--threshold` gate stay meaningful:
 
-- **Inline:** `some_line # mutineer:disable-line` (or scope it: `# mutineer:disable-line comparison`).
+- **Inline:** `some_line # mutineer:disable-line` (or scope it: `# mutineer:disable-line comparison`). Put a reason after `--`: `# mutineer:disable-line comparison -- the test checks only 20`.
 - **Config:** a `.mutineer.yml` `ignore:` list of stable mutant ids. Each survivor's
   `id` is printed in the JSON report, so copy it straight into `ignore:`.
 
