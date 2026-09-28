@@ -38,6 +38,12 @@ class EquivalentMutantTest < Minitest::Test
     assert_match(/unknown operator "comparison because" in x.rb:1 \(known: .*\bcomparison\b/, err)
   end
 
+  def test_suppress_map_treats_an_empty_operator_list_as_bare
+    src = "a # mutineer:disable-line \nb # mutineer:disable-line  -- why\nc # mutineer:disable-line , \n"
+    map = Mutineer::Runner.suppress_map(src, "x.rb")
+    assert_equal({ 1 => :all, 2 => :all, 3 => :all }, map)
+  end
+
   def test_suppressed_scope_matches_only_listed_operator
     disabled = { 2 => Set[:comparison] }
     refute Mutineer::Runner.suppressed?(:arithmetic, 2, "id", disabled, Set.new)

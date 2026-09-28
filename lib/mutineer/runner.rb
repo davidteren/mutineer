@@ -305,6 +305,9 @@ module Mutineer
         next unless (m = text.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
 
         ops = m[1]&.split(",")&.map(&:strip)&.reject(&:empty?)
+        # Only spaces or commas after the marker (e.g. `disable-line  -- why`)
+        # is a bare marker, not an empty list that silences nothing.
+        ops = nil if ops&.empty?
         unknown = ops.to_a.reject { |o| MutatorRegistry::ALL.key?(o) }
         unknown.each do |o|
           warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line} " \
