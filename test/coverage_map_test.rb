@@ -795,9 +795,11 @@ class CoverageMapTest < Minitest::Test
       File.write(File.join(dir, "once_spec.rb"), "require_relative 'once'\n" \
                  "RSpec.describe(Once) { it { expect($loads).to eq(1) } }\n")
       { "minitest" => "once_test.rb", "rspec" => "once_spec.rb" }.each do |framework, test|
-        2.times do # the first run captures coverage, the second hits the cache and runs the clean check
+        2.times do |run| # the first run captures coverage, the second hits the cache and runs the clean check
           map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [File.join(dir, test)], framework: framework,
                                           cache_dir: File.join(dir, "cache-#{framework}"), project_root: dir).build_or_load
+          assert_equal run.zero?, map.phase_a_ran, framework
+          assert_empty map.failed_test_files, framework
           assert_empty map.failed_clean_tests, framework
         end
       end
