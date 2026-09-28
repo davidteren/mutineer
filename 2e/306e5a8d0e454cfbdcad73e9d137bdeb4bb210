@@ -1,0 +1,21 @@
+.gitignore
+  s_74907f46c32c88::t_47f45595c5058d 11-13
+.pr_agent.toml
+  s_74907f46c32c88::t_31b36f395f15a2 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2e306e5a8d0e454cfbdcad73e9d137bdeb4bb210",
+  "prompts": {},
+  "sessions": {
+    "s_74907f46c32c88": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85cc10a6-0224-41bc-8491-87ef2153d9a3",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
