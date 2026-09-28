@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "stringio"
+require "tmpdir"
 
 class IsolationTest < Minitest::Test
   def test_exit_zero_is_survived
