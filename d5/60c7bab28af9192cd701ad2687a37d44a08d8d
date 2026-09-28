@@ -1,0 +1,34 @@
+lib/mutineer/mutant_id.rb
+  s_1d8e859ed0d041::t_616985f078a352 11-12
+  s_1d8e859ed0d041::t_9d988e1a076c1b 103
+  s_1d8e859ed0d041::t_0dd6268034deb4 23-25,33-34,36-38,48,50-86,92,96-102
+test/mutant_id_test.rb
+  s_1d8e859ed0d041::t_8a9450a7ac5bb3 4-5,9,25,30,39,44-45,51-52,58,67-68,79,83-192
+lib/mutineer/runner.rb
+  s_1d8e859ed0d041::t_616985f078a352 155-156,163,171-172
+  s_1d8e859ed0d041::t_eada894328dfa8 16
+lib/mutineer/project_path.rb
+  s_1d8e859ed0d041::t_583aac4d452bed 1-55
+test/mutators/chain_link_test.rb
+  s_1d8e859ed0d041::t_616985f078a352 84
+lib/mutineer/coverage_map.rb
+  s_1d8e859ed0d041::t_9336e9bc28235f 12,726,907,911-912,914,919
+test/mutators/operand_removal_test.rb
+  s_1d8e859ed0d041::t_616985f078a352 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d560c7bab28af9192cd701ad2687a37d44a08d8d",
+  "prompts": {},
+  "sessions": {
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
