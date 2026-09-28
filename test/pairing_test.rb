@@ -43,6 +43,18 @@ class PairingTest < Minitest::Test
     end
   end
 
+  def test_source_maps_to_test_prefix_file
+    with_tree("lib/foo/bar.rb", "test/foo/test_bar.rb") do |root|
+      assert_equal "test/foo/test_bar.rb", infer("lib/foo/bar.rb", root)
+    end
+  end
+
+  def test_suffix_file_wins_over_prefix_file
+    with_tree("lib/calc.rb", "test/calc_test.rb", "test/test_calc.rb") do |root|
+      assert_equal "test/calc_test.rb", infer("lib/calc.rb", root)
+    end
+  end
+
   def test_rspec_preference
     with_tree("app/foo/bar.rb", "spec/foo/bar_spec.rb") do |root|
       assert_equal "spec/foo/bar_spec.rb", infer("app/foo/bar.rb", root, prefer: "rspec")

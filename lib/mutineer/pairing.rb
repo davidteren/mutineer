@@ -5,9 +5,9 @@ module Mutineer
   # no Rails, no class loading, no process. Two jobs:
   #   * expand_sources — a directory argument becomes its sorted **/*.rb files.
   #   * infer_test     — a source's test file by convention (app/ and lib/
-  #                     sources map to test/.../_test.rb or spec/.../_spec.rb),
-  #                     preserving namespaced subdirectories. First EXISTING
-  #                     candidate wins.
+  #                     sources map to test/.../_test.rb, test/.../test_*.rb
+  #                     or spec/.../_spec.rb), preserving namespaced
+  #                     subdirectories. First EXISTING candidate wins.
   #
   # Independently unit-testable: every method is pure in/out over the
   # filesystem, so the pairing contract is exercised with plain fixtures, no
@@ -68,8 +68,8 @@ module Mutineer
       end
     end
 
-    # Ordered candidate test paths. lib/ sources also get test/lib/... and
-    # spec/lib/... (Rails apps put lib tests under either layout).
+    # Ordered candidate test paths: _test.rb, then Minitest's test_*.rb, then
+    # _spec.rb. lib/ sources also get the test/lib/... and spec/lib/... layouts.
     #
     # @param base [String] logical source path without extension.
     # @param lib [Boolean] whether the source originated from lib/.
@@ -78,6 +78,9 @@ module Mutineer
     def candidates(base, lib, prefer)
       minitest = ["test/#{base}_test.rb"]
       minitest << "test/lib/#{base}_test.rb" if lib
+      prefixed = base.sub(%r{[^/]+\z}) { |name| "test_#{name}" }
+      minitest << "test/#{prefixed}.rb"
+      minitest << "test/lib/#{prefixed}.rb" if lib
       rspec = ["spec/#{base}_spec.rb"]
       rspec << "spec/lib/#{base}_spec.rb" if lib
       prefer == "rspec" ? rspec + minitest : minitest + rspec

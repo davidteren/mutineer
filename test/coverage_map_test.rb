@@ -785,4 +785,10 @@ class CoverageMapTest < Minitest::Test
       assert_includes map.failed_clean_tests, "combined suite"
     end
   end
+
+  def test_failing_test_prefix_file_marks_its_source_uncapturable
+    bad = File.join(Dir.mktmpdir, "test_calculator.rb")
+    File.write(bad, "require 'does/not/exist'\n")
+    assert build([bad]).uncapturable_source?(CALC)
+  end
 end

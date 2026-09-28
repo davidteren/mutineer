@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **Sources also pair with Minitest's `test/**/test_*.rb` files** — after the
+  `_test.rb` forms, so existing projects pair as before (#120).
+
 ## [1.1.0] - 2026-09-28
 
 ### Added

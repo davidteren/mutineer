@@ -96,7 +96,7 @@ module Mutineer
     # Is this source file's empty coverage the result of an *errored* capture
     # rather than a genuine coverage gap? True iff some capture failed this run
     # AND this file got zero coverage from any successful capture AND a failed
-    # test file maps to it by the standard _test/_spec naming convention. Derived
+    # test file maps to it by the _test/_spec/test_ naming convention. Derived
     # purely from already-persisted state (@map keys + @failed_test_files); no
     # rerun, no new cached field, no digest change.
     #
@@ -142,10 +142,10 @@ module Mutineer
       @map.keys.map { |k| k.rpartition(":").first }.to_set
     end
 
-    # Basenames of failed test files with a trailing _test/_spec (and .rb) stripped,
+    # Basenames of failed test files with _test/_spec, test_ and .rb stripped,
     # i.e. the source basenames they would have covered by convention.
     def failed_test_targets
-      @failed_test_files.map { |t| File.basename(t, ".rb").sub(/_(test|spec)\z/, "") }.to_set
+      @failed_test_files.map { |t| File.basename(t, ".rb").sub(/_(test|spec)\z/, "").delete_prefix("test_") }.to_set
     end
 
     # Shared cache dance for both build paths: hit the digest-keyed cache, else
