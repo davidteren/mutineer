@@ -785,4 +785,54 @@ class CoverageMapTest < Minitest::Test
       assert_includes map.failed_clean_tests, "combined suite"
     end
   end
+
+  def test_failing_test_prefix_file_marks_its_source_uncapturable
+    bad = File.join(Dir.mktmpdir, "test_calculator.rb")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io { map = build([bad]) }
+    assert map.uncapturable_source?(CALC)
+  end
+
+  def test_failing_test_with_both_affixes_pairs_by_its_suffix
+    bad = File.join(Dir.mktmpdir, "test_calculator_test.rb") # pairs with test_calculator.rb
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io { map = build([bad]) }
+    refute map.uncapturable_source?(CALC)
+  end
+
+  def test_failing_test_helper_does_not_taint_a_helper_source
+    dir = Dir.mktmpdir
+    helper = File.join(dir, "helper.rb")
+    File.write(helper, "class Helper; end\n")
+    bad = File.join(dir, "test_helper.rb")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [helper], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    refute map.uncapturable_source?(helper)
+  end
+
+  def test_capture_and_clean_check_run_a_source_once
+    Dir.mktmpdir do |dir|
+      src = File.join(dir, "once.rb")
+      File.write(src, "$loads = ($loads || 0) + 1\nclass Once\n  def one = 1\nend\n")
+      File.write(File.join(dir, "once_test.rb"), "require 'minitest/autorun'\nrequire_relative 'once'\n" \
+                 "class OnceTest < Minitest::Test\n  def test_once = assert_equal(1, $loads)\nend\n")
+      File.write(File.join(dir, "once_spec.rb"), "require_relative 'once'\n" \
+                 "RSpec.describe(Once) { it { expect($loads).to eq(1) } }\n")
+      { "minitest" => "once_test.rb", "rspec" => "once_spec.rb" }.each do |framework, test|
+        2.times do |run| # the first run captures coverage, the second hits the cache and runs the clean check
+          map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [File.join(dir, test)], framework: framework,
+                                          cache_dir: File.join(dir, "cache-#{framework}"), project_root: dir).build_or_load
+          assert_equal run.zero?, map.phase_a_ran, framework
+          assert_empty map.failed_test_files, framework
+          assert_empty map.failed_clean_tests, framework
+        end
+      end
+    end
+  end
 end

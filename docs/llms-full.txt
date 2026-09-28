@@ -94,7 +94,7 @@ Run `mutineer --list-operators` to see them. Default (Tier 1): `arithmetic`,
 Available but off by default (Tier 2, enable via `--operators`): `return_nil`,
 `literal_mutation`, `condition_negation`, `string_literal`, `regex`,
 `collection_method`, `safe_navigation`, `range`, `negation_removal`, `chain_link`,
-`operand_removal`.
+`operand_removal`, `array_literal`.
 
 ## Rails apps
 
@@ -222,7 +222,7 @@ Tradeoffs — this path is correct but not free:
 Some mutants are equivalent (behaviour-identical) and survive forever — keeping a
 file off 100%. Suppress them so the score and `--threshold` gate stay meaningful:
 
-- **Inline:** `some_line # mutineer:disable-line` (or scope it: `# mutineer:disable-line comparison`).
+- **Inline:** `some_line # mutineer:disable-line` (or scope it: `# mutineer:disable-line comparison`). Put a reason after `--`: `# mutineer:disable-line comparison -- the test checks only 20`.
 - **Config:** a `.mutineer.yml` `ignore:` list of stable mutant ids. Each survivor's
   `id` is printed in the JSON report, so copy it straight into `ignore:`.
 

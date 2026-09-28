@@ -153,7 +153,8 @@ the default survivor set unchanged.</p>
   <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>range</span><span class='tstring_end'>&quot;</span></span>              <span class='op'>=&gt;</span> <span class='const'><span class='object_link'><a href="Mutators.html" title="Mutineer::Mutators (module)">Mutators</a></span></span><span class='op'>::</span><span class='const'><span class='object_link'><a href="Mutators/RangeLiteral.html" title="Mutineer::Mutators::RangeLiteral (class)">RangeLiteral</a></span></span><span class='comma'>,</span>
   <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>negation_removal</span><span class='tstring_end'>&quot;</span></span>   <span class='op'>=&gt;</span> <span class='const'><span class='object_link'><a href="Mutators.html" title="Mutineer::Mutators (module)">Mutators</a></span></span><span class='op'>::</span><span class='const'><span class='object_link'><a href="Mutators/NegationRemoval.html" title="Mutineer::Mutators::NegationRemoval (class)">NegationRemoval</a></span></span><span class='comma'>,</span>
   <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>chain_link</span><span class='tstring_end'>&quot;</span></span>         <span class='op'>=&gt;</span> <span class='const'><span class='object_link'><a href="Mutators.html" title="Mutineer::Mutators (module)">Mutators</a></span></span><span class='op'>::</span><span class='const'><span class='object_link'><a href="Mutators/ChainLink.html" title="Mutineer::Mutators::ChainLink (class)">ChainLink</a></span></span><span class='comma'>,</span>
-  <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>operand_removal</span><span class='tstring_end'>&quot;</span></span>    <span class='op'>=&gt;</span> <span class='const'><span class='object_link'><a href="Mutators.html" title="Mutineer::Mutators (module)">Mutators</a></span></span><span class='op'>::</span><span class='const'><span class='object_link'><a href="Mutators/OperandRemoval.html" title="Mutineer::Mutators::OperandRemoval (class)">OperandRemoval</a></span></span>
+  <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>operand_removal</span><span class='tstring_end'>&quot;</span></span>    <span class='op'>=&gt;</span> <span class='const'><span class='object_link'><a href="Mutators.html" title="Mutineer::Mutators (module)">Mutators</a></span></span><span class='op'>::</span><span class='const'><span class='object_link'><a href="Mutators/OperandRemoval.html" title="Mutineer::Mutators::OperandRemoval (class)">OperandRemoval</a></span></span><span class='comma'>,</span>
+  <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>array_literal</span><span class='tstring_end'>&quot;</span></span>      <span class='op'>=&gt;</span> <span class='const'><span class='object_link'><a href="Mutators.html" title="Mutineer::Mutators (module)">Mutators</a></span></span><span class='op'>::</span><span class='const'><span class='object_link'><a href="Mutators/ArrayLiteral.html" title="Mutineer::Mutators::ArrayLiteral (class)">ArrayLiteral</a></span></span>
 <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_freeze'>freeze</span></pre></dd>
       
         <dt id="DEFAULT_NAMES-constant" class="">DEFAULT_NAMES =
@@ -184,7 +185,7 @@ the default survivor set unchanged.</p>
         </dt>
         <dd><pre class="code"><span class='qwords_beg'>%w[</span><span class='tstring_content'>return_nil</span><span class='words_sep'> </span><span class='tstring_content'>literal_mutation</span><span class='words_sep'> </span><span class='tstring_content'>condition_negation</span><span class='words_sep'> </span><span class='tstring_content'>string_literal</span><span class='words_sep'> </span><span class='tstring_content'>regex</span><span class='words_sep'> </span><span class='tstring_content'>collection_method</span><span class='words_sep'>
 </span><span class='tstring_content'>safe_navigation</span><span class='words_sep'> </span><span class='tstring_content'>range</span><span class='words_sep'> </span><span class='tstring_content'>negation_removal</span><span class='words_sep'>
-</span><span class='tstring_content'>chain_link</span><span class='words_sep'> </span><span class='tstring_content'>operand_removal</span><span class='tstring_end'>]</span></span><span class='period'>.</span><span class='id identifier rubyid_freeze'>freeze</span></pre></dd>
+</span><span class='tstring_content'>chain_link</span><span class='words_sep'> </span><span class='tstring_content'>operand_removal</span><span class='words_sep'> </span><span class='tstring_content'>array_literal</span><span class='tstring_end'>]</span></span><span class='period'>.</span><span class='id identifier rubyid_freeze'>freeze</span></pre></dd>
       
         <dt id="DESCRIPTIONS-constant" class="">DESCRIPTIONS =
           <div class="docstring">
@@ -214,7 +215,8 @@ the default survivor set unchanged.</p>
   <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>range</span><span class='tstring_end'>&quot;</span></span>              <span class='op'>=&gt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>.. &lt;-&gt; ...</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span>
   <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>negation_removal</span><span class='tstring_end'>&quot;</span></span>   <span class='op'>=&gt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>!x, not x -&gt; x</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span>
   <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>chain_link</span><span class='tstring_end'>&quot;</span></span>         <span class='op'>=&gt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>drop one call from a chain: a.b.c -&gt; a.c</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span>
-  <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>operand_removal</span><span class='tstring_end'>&quot;</span></span>    <span class='op'>=&gt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>a &amp;&amp; b -&gt; a, b</span><span class='tstring_end'>&quot;</span></span>
+  <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>operand_removal</span><span class='tstring_end'>&quot;</span></span>    <span class='op'>=&gt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>a &amp;&amp; b -&gt; a, b</span><span class='tstring_end'>&quot;</span></span><span class='comma'>,</span>
+  <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>array_literal</span><span class='tstring_end'>&quot;</span></span>      <span class='op'>=&gt;</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>[a, b] -&gt; []</span><span class='tstring_end'>&quot;</span></span>
 <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_freeze'>freeze</span></pre></dd>
       
     </dl>
@@ -368,10 +370,10 @@ the default survivor set unchanged.</p>
       <pre class="lines">
 
 
-89</pre>
+92</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/mutator_registry.rb', line 89</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutator_registry.rb', line 92</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_default?'>default?</span><span class='lparen'>(</span><span class='id identifier rubyid_name'>name</span><span class='rparen'>)</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="#DEFAULT_NAMES-constant" title="Mutineer::MutatorRegistry::DEFAULT_NAMES (constant)">DEFAULT_NAMES</a></span></span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_name'>name</span><span class='rparen'>)</span></pre>
     </td>
@@ -455,12 +457,12 @@ the default survivor set unchanged.</p>
       <pre class="lines">
 
 
-81
-82
-83</pre>
+84
+85
+86</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/mutator_registry.rb', line 81</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutator_registry.rb', line 84</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_resolve'>resolve</span><span class='lparen'>(</span><span class='id identifier rubyid_names'>names</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="#DEFAULT_NAMES-constant" title="Mutineer::MutatorRegistry::DEFAULT_NAMES (constant)">DEFAULT_NAMES</a></span></span><span class='rparen'>)</span>
   <span class='id identifier rubyid_names'>names</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_n'>n</span><span class='op'>|</span> <span class='const'><span class='object_link'><a href="#ALL-constant" title="Mutineer::MutatorRegistry::ALL (constant)">ALL</a></span></span><span class='period'>.</span><span class='id identifier rubyid_fetch'>fetch</span><span class='lparen'>(</span><span class='id identifier rubyid_n'>n</span><span class='rparen'>)</span> <span class='lbrace'>{</span> <span class='id identifier rubyid_raise'>raise</span> <span class='const'>ArgumentError</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Unknown operator: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_n'>n</span><span class='period'>.</span><span class='id identifier rubyid_inspect'>inspect</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span> <span class='rbrace'>}</span> <span class='rbrace'>}</span>
@@ -528,10 +530,10 @@ the default survivor set unchanged.</p>
       <pre class="lines">
 
 
-95</pre>
+98</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/mutator_registry.rb', line 95</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutator_registry.rb', line 98</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_tier'>tier</span><span class='lparen'>(</span><span class='id identifier rubyid_name'>name</span><span class='rparen'>)</span>     <span class='op'>=</span> <span class='const'><span class='object_link'><a href="#TIER2_NAMES-constant" title="Mutineer::MutatorRegistry::TIER2_NAMES (constant)">TIER2_NAMES</a></span></span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_name'>name</span><span class='rparen'>)</span> <span class='op'>?</span> <span class='int'>2</span> <span class='op'>:</span> <span class='int'>1</span></pre>
     </td>
@@ -546,7 +548,7 @@ the default survivor set unchanged.</p>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.11).
+  0.9.45 (ruby-3.4.10).
 </div>
 
     </div>

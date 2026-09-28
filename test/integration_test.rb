@@ -104,6 +104,11 @@ class IntegrationTest < Minitest::Test
     assert_equal "(member)", s.mutation.replacement
   end
 
+  def test_array_literal_survivor
+    assert_sole_survivor(source: "test/fixtures/tags.rb", test: "test/fixtures/tags_test.rb",
+                         operator: :array_literal, subject: "defaults", token: "%w[ruby rails]", replacement: "[]")
+  end
+
   # Scenario B — calculator + strong, perfect score (R10)
   def test_calculator_strong_kills_all
     result = run_mutineer(sources: ["test/fixtures/calculator.rb"],

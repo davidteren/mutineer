@@ -27,10 +27,21 @@ class EquivalentMutantTest < Minitest::Test
     src = "a + b # mutineer:disable-line\n" \
           "c - d # mutineer:disable-line arithmetic, comparison\n" \
           "e * f\n"
-    map = Mutineer::Runner.suppress_map(src)
+    map = Mutineer::Runner.suppress_map(src, "x.rb")
     assert_equal :all, map[1]
     assert_equal Set[:arithmetic, :comparison], map[2]
     assert_nil map[3]
+  end
+
+  def test_suppress_map_warns_on_an_unknown_operator
+    _, err = capture_io { Mutineer::Runner.suppress_map("a # mutineer:disable-line comparison because\n", "x.rb") }
+    assert_match(/unknown operator "comparison because" in x.rb:1 \(known: .*\bcomparison\b/, err)
+  end
+
+  def test_suppress_map_treats_an_empty_operator_list_as_bare
+    src = "a # mutineer:disable-line \nb # mutineer:disable-line  -- why\nc # mutineer:disable-line , \n"
+    map = Mutineer::Runner.suppress_map(src, "x.rb")
+    assert_equal({ 1 => :all, 2 => :all, 3 => :all }, map)
   end
 
   def test_suppressed_scope_matches_only_listed_operator

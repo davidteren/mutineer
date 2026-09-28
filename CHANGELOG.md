@@ -17,6 +17,42 @@ All notable changes to this project are documented here. The format is based on
   parse in a value context. It never removes an operand that holds a heredoc,
   because the heredoc body stays behind as code. It skips nested method
   definitions, because mutineer mutates each one as its own method.
+- **Array-literal operator** (Tier-2, opt-in via `--operators`):
+  `array_literal` replaces a non-empty array literal, such as `[a, b]` or
+  `%i[a b]`, with `[]`. The mutant survives when no test checks the contents
+  of the array. The operator skips an implicit array (`x = 1, 2`), an array
+  that holds a heredoc, and nested method definitions.
+- **Sources also pair with Minitest's `test/**/test_*.rb` files** — after the
+  `_test.rb` forms, so existing projects pair as before. `lib/helper.rb` does
+  not pair with the `test/test_helper.rb` support file. A failed capture of a
+  `test_<name>.rb` file now marks `<name>.rb` uncapturable, as `<name>_test.rb`
+  does (#120). Without `framework:` set, a source with `spec/<name>_spec.rb`
+  and `test/test_<name>.rb` but no `<name>_test.rb` now pairs with the
+  Minitest file, as the "Minitest first" order says.
+
+### Fixed
+- **`reload` loads the mutant by an absolute path** — a relative source path
+  gave the mutant relative backtrace paths, so code that checks its own frames
+  by absolute path failed for every mutant, a false kill (#123).
+- **`require "test_helper"` works without `RUBYOPT`** — a standalone run puts
+  `lib`, then each test file's `test_helper.rb` directory, on the load path,
+  as boot mode and `rake test` do. A run where no test records coverage because
+  captures failed now exits 1 instead of reporting N/A (#119).
+- **A disable-line marker warns about an operator it does not know** — a
+  reason written without `--` became part of the operator name, so the marker
+  suppressed nothing and said nothing (#124). A marker followed only by spaces
+  or commas, such as `disable-line  -- why`, now disables the whole line.
+- **Coverage capture and the clean check run each source once** — they read
+  sources with `load`, so a test's own `require` ran them again: a `Struct`
+  superclass raised `superclass mismatch`, and load-time code ran twice (#122).
+  A mutant of such a class still errors under `--strategy reload`, which loads
+  the mutated file again; `--strategy redefine` runs it.
+  Code that guards itself to run once (`unless defined?(X)`) can now show as
+  covered, so its mutants run where they were `no_coverage` before.
+- **A red unmutated suite now shows why it failed** — in a standalone run, the
+  Minitest summary or RSpec output of the failing test, with its failure
+  message, goes to stderr before the "not green" error. A passing run prints
+  nothing extra. Boot mode (`--rails`, `--boot`) is unchanged (#121).
 
 ## [1.1.0] - 2026-09-28
 

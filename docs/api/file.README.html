@@ -213,7 +213,7 @@ mutation score drops below 90%:</p>
 Available but off by default (Tier 2, enable via <code>--operators</code>): <code>return_nil</code>,
 <code>literal_mutation</code>, <code>condition_negation</code>, <code>string_literal</code>, <code>regex</code>,
 <code>collection_method</code>, <code>safe_navigation</code>, <code>range</code>, <code>negation_removal</code>, <code>chain_link</code>,
-<code>operand_removal</code>.</p>
+<code>operand_removal</code>, <code>array_literal</code>.</p>
 <h2 id="Rails_apps">Rails apps</h2>
 <p>Rails code needs its environment booted before the suite runs, so point Mutineer
 at your app with <code>--rails</code> and run it inside the project's bundle:</p>
@@ -316,7 +316,7 @@ safe parallelism instead (see <a href="#faster-parallel-safe-rails-the---daemon-
 <p>Some mutants are equivalent (behaviour-identical) and survive forever — keeping a
 file off 100%. Suppress them so the score and <code>--threshold</code> gate stay meaningful:</p>
 <ul>
-<li><strong>Inline:</strong> <code>some_line # mutineer:disable-line</code> (or scope it: <code># mutineer:disable-line comparison</code>).</li>
+<li><strong>Inline:</strong> <code>some_line # mutineer:disable-line</code> (or scope it: <code># mutineer:disable-line comparison</code>). Put a reason after <code>--</code>: <code># mutineer:disable-line comparison -- the test checks only 20</code>.</li>
 <li><strong>Config:</strong> a <code>.mutineer.yml</code> <code>ignore:</code> list of stable mutant ids. Each survivor's
 <code>id</code> is printed in the JSON report, so copy it straight into <code>ignore:</code>.</li>
 </ul>
@@ -394,7 +394,7 @@ automatically when sources change). Add <code>.mutineer/</code> to your <code>.g
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.11).
+  0.9.45 (ruby-3.4.10).
 </div>
 
     </div>
