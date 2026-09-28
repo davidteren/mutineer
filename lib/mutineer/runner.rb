@@ -13,6 +13,7 @@ require_relative "mutator_registry"
 require_relative "worker_pool"
 require_relative "progress"
 require_relative "mutant_id"
+require_relative "project_path"
 require_relative "file_swap"
 require_relative "external_backend"
 require_relative "daemon_backend"
@@ -151,14 +152,15 @@ module Mutineer
     # A mutant the user marked known-equivalent (inline disable-line comment or
     # .mutineer.yml ignore id) is classified :ignored here and NEVER run. It is
     # removed from the killed+survived denominator so a strong file reaches 100%.
-    # The stable id is computed per subject (occurrence needs the full list) and
-    # carried on every job so the parent can reattach it after the run. Shared by
+    # The stable id is computed per subject (occurrence needs the full list), keyed
+    # on the file path relative to config.project_root, and carried on every job so the parent can reattach it after the run. Shared by
     # the in-process, external, and daemon backends so job selection can never drift.
     #
     # @return [Array(Array, Array<Result>, Hash<String,String>)] jobs, ignored, source_map.
     def self.collect_jobs(config, operator_classes)
       source_map = {}
       disabled_map = {}
+      id_paths = {}
       ignore_set = config.ignore.to_set
       jobs = []
       ignored_results = []
@@ -166,7 +168,8 @@ module Mutineer
         source = (source_map[subject.file] ||= File.read(subject.file))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
         mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
-        ids = MutantId.for_subject(subject, source, mutations)
+        id_path = (id_paths[subject.file] ||= ProjectPath.relative(subject.file, config.project_root))
+        ids = MutantId.for_subject(subject, source, mutations, path: id_path)
         mutations.each_with_index do |mutation, i|
           id = ids[i]
           line = source.byteslice(0, mutation.start_offset).count("\n") + 1
