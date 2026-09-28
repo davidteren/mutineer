@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-28
+
 ### Added
 - **Safe-navigation operator** (Tier-2, opt-in via `--operators`):
   `safe_navigation` replaces `&.` with `.`. The mutant survives when no test
@@ -441,6 +443,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.1.0]: https://github.com/davidteren/mutineer/releases/tag/v1.1.0
 [1.0.2]: https://github.com/davidteren/mutineer/releases/tag/v1.0.2
 [1.0.1]: https://github.com/davidteren/mutineer/releases/tag/v1.0.1
 [1.0.0]: https://github.com/davidteren/mutineer/releases/tag/v1.0.0
