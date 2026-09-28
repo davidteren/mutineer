@@ -99,7 +99,7 @@ module Mutineer
     # @param source_file [String] original source file path.
     # @return [Object] whatever `load` returns.
     def self.apply_whole_file(mutated, source_file)
-      Tempfile.create(["mutineer_mutant", ".rb"], File.dirname(source_file)) do |f|
+      Tempfile.create(["mutineer_mutant", ".rb"], File.dirname(File.expand_path(source_file))) do |f|
         f.write(mutated)
         f.flush
         load f.path
