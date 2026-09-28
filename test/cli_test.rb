@@ -170,6 +170,7 @@ class CliTest < Minitest::Test
       )
       assert_equal 1, status.exitstatus
       assert_match(/unmutated suite is not green/, err)
+      assert_match(/CalculatorStrongTest#test_unrelated/, err)
       refute_match(/"score": 100\.0/, out)
     end
   end

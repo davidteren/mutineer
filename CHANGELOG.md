@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **A red unmutated suite now shows why it failed** — the report of the failing
+  test (Minitest) or spec (RSpec), with its exception and backtrace, goes to
+  stderr before the "not green" error. A passing run prints nothing extra (#121).
+
 ## [1.1.0] - 2026-09-28
 
 ### Added
