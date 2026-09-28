@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "pathname"
 require_relative "parser"
 require_relative "project"
 require_relative "result"
@@ -93,10 +94,16 @@ module Mutineer
           verbose: config.verbose
         ).build_via_fork(after_fork: (config.rails ? -> { reconnect_active_record } : nil))
       else
+        # As in boot mode, and with lib first as `rake test` does.
+        test_roots = test_load_roots(config.tests.map { |t| File.expand_path(t, config.project_root) })
+        libs = config.load_paths.map { |p| File.expand_path(p, config.project_root) }
+        $LOAD_PATH.unshift(*(libs + test_roots).uniq.reject { |d| $LOAD_PATH.include?(d) })
+        # Relative, so the cache digest does not depend on the checkout path.
+        rel_roots = test_roots.map { |d| Pathname(d).relative_path_from(File.expand_path(config.project_root)).to_s }
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: config.cache_dir, project_root: config.project_root,
-          load_paths: config.load_paths, framework: config.framework
+          load_paths: config.load_paths + rel_roots, framework: config.framework
         ).build_or_load
       end
       abort_if_unclean!(coverage_map)
@@ -253,8 +260,13 @@ module Mutineer
     #
     # @param coverage_map [Mutineer::CoverageMap] the built or loaded map.
     # @return [void]
-    # @raise [Mutineer::SmokeCheckError] when any captured test failed clean.
+    # @raise [Mutineer::SmokeCheckError] when any captured test failed clean,
+    #   or when no test recorded coverage and a capture failed.
     def self.abort_if_unclean!(coverage_map)
+      if coverage_map.map.empty? && coverage_map.failed_test_files.any?
+        raise SmokeCheckError, "no test recorded coverage, and capture failed for #{coverage_map.failed_test_files.join(', ')}"
+      end
+
       files = coverage_map.failed_clean_tests
       return if files.empty?
 
