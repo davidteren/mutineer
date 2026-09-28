@@ -1,0 +1,113 @@
+.github/workflows/ci.yml
+  s_1d8e859ed0d041::t_23835334cbb049 30-49
+.gitignore
+  s_1d8e859ed0d041::t_f7df4e3acd61e3 2
+AGENTS.md
+  s_1d8e859ed0d041::t_389103e1771d8d 23-30,58
+CHANGELOG.md
+  s_1d8e859ed0d041::t_7c1591a02c6a8a 28-68
+Gemfile
+  s_1d8e859ed0d041::t_ef5bf10e8bbe9f 11-13
+README.md
+  s_1d8e859ed0d041::t_4452d7fc3c5932 16-17
+docs/llms-full.txt
+  s_1d8e859ed0d041::t_34425627cf42d8 25-26
+gemfiles/minitest6.gemfile
+  s_1d8e859ed0d041::t_4a13be0c7fda92 1-15
+lib/mutineer/minitest_integration.rb
+  s_1d8e859ed0d041::t_1d0e0495c94994 3-4,19-23,32-33,35,57-62,65-70
+lib/mutineer/minitest_integration/stop_at_first_failure.rb
+  s_1d8e859ed0d041::t_19a2eadb03228f 1-199
+lib/mutineer/runner.rb
+  s_1d8e859ed0d041::t_07c085d50f4586 437-438
+lib/mutineer/test_runners.rb
+  s_1d8e859ed0d041::t_0d77b787109008 9-11
+lib/mutineer/test_runners/minitest.rb
+  s_1d8e859ed0d041::t_70846297504932 12-13,15-17
+lib/mutineer/test_runners/rspec.rb
+  s_1d8e859ed0d041::t_143fbf60e01013 19-20,22,32-34
+test/fixtures/rspec/stop_at_first_failure_spec.rb
+  s_1d8e859ed0d041::t_cc553c6c9d82ff 1-20
+test/fixtures/stop_at_first_failure_cleanup_test.rb
+  s_1d8e859ed0d041::t_3ed8e7a4d71889 1-33
+test/fixtures/stop_at_first_failure_fiber_test.rb
+  s_1d8e859ed0d041::t_0587ff6ce4013f 1-32
+test/fixtures/stop_at_first_failure_later_class_test.rb
+  s_1d8e859ed0d041::t_e07692b69c89db 1-32
+test/fixtures/stop_at_first_failure_nested_run_test.rb
+  s_1d8e859ed0d041::t_dee6fa789de119 1-37
+test/fixtures/stop_at_first_failure_parallel_test.rb
+  s_1d8e859ed0d041::t_79afb0836c4f4c 1-17
+test/fixtures/stop_at_first_failure_reporter_test.rb
+  s_1d8e859ed0d041::t_5626a3bb5dfa14 1-26
+test/fixtures/stop_at_first_failure_seed_test.rb
+  s_1d8e859ed0d041::t_fa9a32490a6e58 1-11
+test/fixtures/stop_at_first_failure_test.rb
+  s_1d8e859ed0d041::t_d74d1470252de8 1-23
+test/runner_test.rb
+  s_1d8e859ed0d041::t_657ac560dfcfa8 45-86
+test/test_runners/minitest_test.rb
+  s_1d8e859ed0d041::t_7a9822351c7e8e 4,10-21,28-29,33-38,44-61,77-199
+test/test_runners/rspec_test.rb
+  s_1d8e859ed0d041::t_aff3830eb6cb23 4,19,65-97
+docs/api/Mutineer.html
+  s_3b8524c20eebc3::t_a40fd9d8733305 84
+docs/api/Mutineer/MinitestIntegration.html
+  s_3b8524c20eebc3::t_363c3e16b9dee4 99-101,125-151,153-162,180,212,246-262,304-324,327,329,351-356,359-364
+docs/api/Mutineer/MinitestIntegration/StopAtFirstFailure.html
+  s_3b8524c20eebc3::t_ff0f4bb19a202e 1-912
+docs/api/Mutineer/MinitestIntegration/StopAtFirstFailure/OuterReporter5.html
+  s_3b8524c20eebc3::t_ab482ed0924be1 1-246
+docs/api/Mutineer/MinitestIntegration/StopAtFirstFailure/OuterReporter6.html
+  s_3b8524c20eebc3::t_5dc469a987c47f 1-247
+docs/api/Mutineer/MinitestIntegration/StopAtFirstFailure/RecordFailure.html
+  s_3b8524c20eebc3::t_15e60867930575 1-226
+docs/api/Mutineer/MinitestIntegration/StopAtFirstFailure/SkipAfterStop5.html
+  s_3b8524c20eebc3::t_2502c286158083 1-377
+docs/api/Mutineer/MinitestIntegration/StopAtFirstFailure/SkipAfterStop6.html
+  s_3b8524c20eebc3::t_6314eab6e8fd83 1-377
+docs/api/Mutineer/Runner.html
+  s_3b8524c20eebc3::t_e31c088ccedf91 1443-1444,1447,1499-1500,1503,1719-1720,1751-1752
+docs/api/Mutineer/TestRunners.html
+  s_3b8524c20eebc3::t_7cacb6ebf8ba32 94-96,241-242,245
+docs/api/Mutineer/TestRunners/Minitest.html
+  s_3b8524c20eebc3::t_793d24ac4c9540 116,148,178-194,220-222,225,227-229
+docs/api/Mutineer/TestRunners/RSpec.html
+  s_3b8524c20eebc3::t_2d1ba3c8ce4190 140,199-203,206,223,253-269,306-310,313,315,325-327
+docs/api/_index.html
+  s_3b8524c20eebc3::t_b546ed618d72fd 403-424,493-499,550-563,578-584,625-627
+docs/api/class_list.html
+  s_3b8524c20eebc3::t_729e53627f8ffa 49
+docs/api/file.CHANGELOG.html
+  s_3b8524c20eebc3::t_0a767c914381da 75-76,88-128
+docs/api/file.README.html
+  s_3b8524c20eebc3::t_896339e38cffa5 75-76
+docs/api/index.html
+  s_3b8524c20eebc3::t_afbb8092b71370 75-76
+docs/api/method_list.html
+  s_3b8524c20eebc3::t_373a342530f583 51-58,66,74,82,90,98,106,114,122,130,138,146,154-161,164-165,172-189,196-197,627-634,642,650,658,666,674,682,690,698,706-713,1091-1098,1106,1114,1122,1130,1138,1146,1154,1162,1170,1178,1186,1194,1202,1210,1218,1226,1234,1242,1250,1258,1266,1274,1282,1290,1298,1306,1314,1322,1330,1338,1346,1354,1362,1370,1378,1386,1394,1402,1410,1418,1426,1434,1442,1450,1458,1466,1474,1482,1490,1498,1506,1514,1522,1530,1538,1546,1554,1562,1570,1578,1586,1594,1602,1610,1618,1626,1634,1642,1650,1658,1666,1674,1682,1690-1697,1803-1810,1818,1826,1834,1842,1850,1858,1866,1874,1882,1890,1898,1906,1914,1922,1930,1938,1946,1954,1962,1970,1978,1986,1994,2002,2010,2018,2026,2034,2042,2050,2058-2081,2099-2106,2114,2122,2130,2138-2145,2370-2385,2827-2834,2842,2850,2858,2866,2874,2882,2890,2898,2906,2914,2922,2930,2938,2946,2954,2962,2970,2978,2986,2994,3002,3010,3018,3026,3034,3042,3050,3058,3066,3074,3082
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c63510853d9abd25c92b234f0bef1acf41ea0114",
+  "prompts": {},
+  "sessions": {
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_3b8524c20eebc3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d91c67c-3e96-4257-800a-f3e3526833a8",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
