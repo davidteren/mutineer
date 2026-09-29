@@ -97,13 +97,64 @@ class CliTest < Minitest::Test
   def test_jobs_zero_exits_two
     _, err, status = mutineer("run", "x.rb", "--jobs", "0")
     assert_equal 2, status.exitstatus
-    assert_includes err, "--jobs requires a positive integer"
+    assert_includes err, "--jobs must be a positive integer"
+  end
+
+  # #105: a fractional or non-integer --jobs is a usage error, never rounded down.
+  def test_fractional_jobs_exits_two
+    _, err, status = mutineer("run", "x.rb", "--jobs", "1.9")
+    assert_equal 2, status.exitstatus
+    assert_includes err, %(--jobs must be a positive integer (got: "1.9"))
+  end
+
+  # #105: the same rule applies to a .mutineer.yml `jobs:` key, with the file named.
+  def test_config_file_bad_jobs_exits_two_without_backtrace
+    ["1.9", "true", "0"].each do |bad|
+      with_project do |proj|
+        File.write(File.join(proj, ".mutineer.yml"), "jobs: #{bad}\n")
+        _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+        assert_equal 2, status.exitstatus, "jobs: #{bad}"
+        assert_includes err, ".mutineer.yml: jobs must be a positive integer"
+        refute_match(/\.rb:\d+:in /, err, "no backtrace for jobs: #{bad}")
+      end
+    end
+  end
+
+  def test_config_file_integer_jobs_runs
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "jobs: 2\n")
+      _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus
+    end
+  end
+
+  # #105: a bad --baseline-epsilon fails at parse time, before any test runs.
+  def test_bad_baseline_epsilon_exits_two_before_running
+    ["abc", "-1", "NaN", "Infinity"].each do |bad|
+      with_project do |proj|
+        _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--baseline-epsilon", bad, chdir: proj)
+        assert_equal 2, status.exitstatus, bad
+        assert_includes err, "--baseline-epsilon must be a finite number, 0 or greater"
+        refute_includes err, "[mutineer] 1/", "tests ran for #{bad}"
+      end
+    end
+  end
+
+  def test_valid_baseline_epsilon_runs
+    %w[0 0.5].each do |ok|
+      with_project do |proj|
+        _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--baseline-epsilon", ok, chdir: proj)
+        assert_equal 0, status.exitstatus, ok
+      end
+    end
   end
 
   def test_non_numeric_threshold_exits_two
     _, err, status = mutineer("run", "x.rb", "--threshold", "abc")
     assert_equal 2, status.exitstatus
-    assert_includes err, "--threshold requires a number"
+    assert_includes err, "--threshold must be a number between 0 and 100"
   end
 
   def test_unknown_format_exits_two

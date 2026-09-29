@@ -82,8 +82,8 @@ class CliDaemonTest < Minitest::Test
   # --daemon is settable in .mutineer.yml (KNOWN_KEYS) with boolean coercion.
   def test_daemon_is_a_known_config_key_with_boolean_coercion
     assert_includes Mutineer::KNOWN_KEYS, "daemon"
-    assert_equal true,  Mutineer::Config.coerce("daemon", true, "f")
-    assert_equal true,  Mutineer::Config.coerce("daemon", "true", "f")
-    assert_equal false, Mutineer::Config.coerce("daemon", false, "f")
+    assert_equal true,  Mutineer::Config.parse(:daemon, true, file: "f")
+    assert_equal true,  Mutineer::Config.parse(:daemon, "true", file: "f")
+    assert_equal false, Mutineer::Config.parse(:daemon, false, file: "f")
   end
 end

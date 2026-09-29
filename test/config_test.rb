@@ -57,8 +57,85 @@ class ConfigTest < Minitest::Test
   def test_from_file_rejects_non_numeric_threshold
     with_config("threshold: abc\n") do |path|
       err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
-      assert_match(/threshold must be a number/, err.message)
+      assert_match(/\.mutineer\.yml: threshold must be a number/, err.message)
     end
+  end
+
+  # --- Config.parse: one strict parse at the boundary (#105) ---
+
+  def parse_error(field, value, file: nil)
+    assert_raises(Mutineer::ConfigError) { Config.parse(field, value, file: file) }.message
+  end
+
+  def test_parse_positive_int_accepts_integers_and_integer_strings
+    assert_equal 4, Config.parse(:jobs, 4)
+    assert_equal 4, Config.parse(:jobs, "4")
+  end
+
+  def test_parse_positive_int_rejects_everything_else_naming_the_origin
+    ["1.9", 1.9, true, 0, "0", -1, "abc", "", nil, "1e3"].each do |bad|
+      assert_match(/\A--jobs must be a positive integer \(got: /, parse_error(:jobs, bad), bad.inspect)
+      assert_match(/\A\.mutineer\.yml: jobs must be a positive integer/, parse_error(:jobs, bad, file: ".mutineer.yml"))
+    end
+  end
+
+  def test_parse_percent_bounds
+    assert_equal 0.0, Config.parse(:threshold, "0")
+    assert_equal 100.0, Config.parse(:threshold, 100)
+    ["101", -1, "abc", true, Float::NAN, Float::INFINITY, "NaN"].each do |bad|
+      assert_match(/\A--threshold must be a number between 0 and 100/, parse_error(:threshold, bad), bad.inspect)
+    end
+  end
+
+  def test_parse_nonneg_float_rejects_negative_and_non_finite
+    assert_equal 0.0, Config.parse(:baseline_epsilon, "0")
+    assert_equal 0.5, Config.parse(:baseline_epsilon, "0.5")
+    ["abc", "-1", -0.1, Float::NAN, Float::INFINITY, "Infinity", true, nil].each do |bad|
+      assert_match(/\A--baseline-epsilon must be a finite number, 0 or greater/,
+                   parse_error(:baseline_epsilon, bad), bad.inspect)
+    end
+  end
+
+  def test_parse_bool_accepts_only_true_and_false
+    assert_equal true, Config.parse(:rails, true)
+    assert_equal false, Config.parse(:rails, "false")
+    assert_equal true, Config.parse(:rails, "true")
+    ["yes", "1", 1, nil, "TRUE"].each do |bad|
+      assert_match(/\.mutineer\.yml: rails must be true or false/, parse_error(:rails, bad, file: ".mutineer.yml"))
+    end
+  end
+
+  def test_parse_enum_normalizes_strategy_aliases_and_rejects_unknown_values
+    assert_equal "reload", Config.parse(:strategy, "7a")
+    assert_equal "redefine", Config.parse(:strategy, "7b")
+    assert_equal "json", Config.parse(:format, "json")
+    assert_includes parse_error(:format, "csv"), %(unknown format "csv". Expected: human, json, html)
+    assert_includes parse_error(:framework, "junit", file: ".mutineer.yml"),
+                    %(.mutineer.yml: unknown framework "junit")
+  end
+
+  def test_parse_since_maps_false_and_empty_to_nil
+    assert_nil Config.parse(:since, nil)
+    assert_nil Config.parse(:since, false)
+    assert_nil Config.parse(:since, "")
+    assert_equal "main", Config.parse(:since, "main")
+  end
+
+  def test_from_file_rejects_bad_jobs_and_bad_booleans
+    with_config("jobs: 1.9\n") do |path|
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_match(/\.mutineer\.yml: jobs must be a positive integer \(got: 1\.9\)/, err.message)
+    end
+    with_config("jobs: true\n") do |path|
+      assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+    end
+    with_config("rails: \"yes\"\n") do |path|
+      assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+    end
+  end
+
+  def test_known_keys_come_from_the_schema
+    assert_equal Mutineer::CONFIG_OPTIONS.filter_map(&:yaml_key), Mutineer::KNOWN_KEYS
   end
 
   def test_from_file_warns_on_unknown_operator_and_drops_it
@@ -197,13 +274,13 @@ class ConfigTest < Minitest::Test
   end
 
   def test_resolve_rails_forces_serial_even_when_jobs_explicit
-    cfg = Config.resolve({ rails: true, jobs: "4" }, {}, Set[:jobs])
+    cfg = Config.resolve({ rails: true, jobs: 4 }, {}, Set[:jobs])
     assert_equal 1, cfg.jobs
   end
 
   def test_resolve_rails_daemon_keeps_explicit_jobs
-    cfg = Config.resolve({ rails: true, daemon: true, jobs: "4" }, {}, Set[:jobs])
-    assert_equal "4", cfg.jobs
+    cfg = Config.resolve({ rails: true, daemon: true, jobs: 4 }, {}, Set[:jobs])
+    assert_equal 4, cfg.jobs
   end
 
   def test_resolve_auto_detects_rspec_from_spec_test_names

@@ -8,6 +8,47 @@ module Mutineer
   # never kill the host process. The CLI rescues this and maps it to exit 2.
   class ConfigError < StandardError; end
 
+  # One row of the option schema: how a Config field is parsed and where the
+  # user can set it. `yaml_key` is nil for CLI-only options; `flag` is nil for
+  # YAML-only ones. `values`/`aliases` apply to the :enum type.
+  #
+  # @api private
+  ConfigOption = Struct.new(:field, :type, :yaml_key, :flag, :values, :aliases, keyword_init: true)
+
+  # Deprecated internal strategy names, mapped to their canonical equivalents.
+  STRATEGY_ALIASES = { "7a" => "reload", "7b" => "redefine" }.freeze
+
+  # The option schema. Config.parse is the only place that turns a raw value
+  # (a CLI string or a YAML scalar) into a typed one, so a value is checked once,
+  # at the boundary, whichever layer wrote it. Row order fixes the order of
+  # KNOWN_KEYS in warnings.
+  #
+  # @api private
+  CONFIG_OPTIONS = [
+    ConfigOption.new(field: :operators, type: :string_list, yaml_key: "operators", flag: "--operators"),
+    ConfigOption.new(field: :jobs, type: :positive_int, yaml_key: "jobs", flag: "--jobs"),
+    ConfigOption.new(field: :threshold, type: :percent, yaml_key: "threshold", flag: "--threshold"),
+    ConfigOption.new(field: :only, type: :string, yaml_key: "only", flag: "--only"),
+    ConfigOption.new(field: :require_paths, type: :string_list, yaml_key: "require"),
+    ConfigOption.new(field: :boot, type: :string, yaml_key: "boot", flag: "--boot"),
+    ConfigOption.new(field: :rails, type: :bool, yaml_key: "rails", flag: "--rails"),
+    ConfigOption.new(field: :since, type: :since, yaml_key: "since", flag: "--since"),
+    ConfigOption.new(field: :framework, type: :enum, yaml_key: "framework", flag: "--framework",
+                     values: %w[minitest rspec]),
+    ConfigOption.new(field: :verbose, type: :bool, yaml_key: "verbose", flag: "--verbose"),
+    ConfigOption.new(field: :ignore, type: :string_list, yaml_key: "ignore"),
+    ConfigOption.new(field: :baseline, type: :string, yaml_key: "baseline", flag: "--baseline"),
+    ConfigOption.new(field: :fail_fast, type: :bool, yaml_key: "fail_fast", flag: "--fail-fast"),
+    ConfigOption.new(field: :test_command, type: :string, yaml_key: "test_command", flag: "--test-command"),
+    ConfigOption.new(field: :daemon, type: :bool, yaml_key: "daemon", flag: "--daemon"),
+    ConfigOption.new(field: :format, type: :enum, flag: "--format", values: %w[human json html]),
+    ConfigOption.new(field: :strategy, type: :enum, flag: "--strategy", values: %w[reload redefine],
+                     aliases: STRATEGY_ALIASES),
+    ConfigOption.new(field: :output, type: :string, flag: "--output"),
+    ConfigOption.new(field: :baseline_epsilon, type: :nonneg_float, flag: "--baseline-epsilon"),
+    ConfigOption.new(field: :dry_run, type: :bool, flag: "--dry-run")
+  ].freeze
+
   # Plain run configuration, populated by the CLI (or directly by the
   # integration test). `operators` nil means "all default operators";
   # `threshold` 0.0 means the CI gate is off (spec §10).
@@ -33,8 +74,9 @@ module Mutineer
   ) do
     # Config file name.
     CONFIG_FILE = ".mutineer.yml"
-    # Keys accepted in .mutineer.yml. `require` maps to the :require_paths field.
-    KNOWN_KEYS = %w[operators jobs threshold only require boot rails since framework verbose ignore baseline fail_fast test_command daemon].freeze
+    # Keys accepted in .mutineer.yml, derived from the schema. `require` maps to the
+    # :require_paths field.
+    KNOWN_KEYS = CONFIG_OPTIONS.filter_map(&:yaml_key).freeze
 
     def initialize(**kwargs)
       super
@@ -96,7 +138,10 @@ module Mutineer
                "(known: #{KNOWN_KEYS.join(', ')}); ignored"
           next
         end
-        out[field_for(ks)] = coerce(ks, value, name)
+        field = field_for(ks)
+        parsed = parse(field, value, file: name)
+        parsed = filter_operators(parsed, name) if field == :operators
+        out[field] = parsed
       end
       out
     rescue Psych::SyntaxError => e
@@ -155,40 +200,70 @@ module Mutineer
       known_key == "require" ? :require_paths : known_key.to_sym
     end
 
-    # Coerces a config value to its target type.
+    # Parses one raw value into the typed value for `field`. A value that does
+    # not fit its type raises ConfigError naming where it came from, so the CLI
+    # and .mutineer.yml report the same mistake in the same way. `nil` and
+    # `false` are valid results for some fields (`since: nil` means "no scoping").
     #
-    # @param known_key [String] config key.
-    # @param value [Object] raw YAML value.
-    # @param file_name [String] config file name for warnings.
-    # @return [Object] coerced value.
-    def self.coerce(known_key, value, file_name)
-      case known_key
-      when "operators" then filter_operators(Array(value).map(&:to_s), file_name)
-      when "jobs"      then value.to_i
-      when "threshold"
-        f = Float(value, exception: false)
-        if f.nil?
-          raise ConfigError, "#{file_name}: threshold must be a number between 0 and 100 " \
-                             "(got: #{value.inspect})"
-        end
+    # @param field [Symbol] Config field name (a row of the option schema).
+    # @param value [Object] raw CLI string or YAML value.
+    # @param file [String, nil] config file name when the value came from it;
+    #   nil when it came from the command line.
+    # @return [Object] the typed value.
+    # @raise [Mutineer::ConfigError] when the value does not fit the field's type.
+    def self.parse(field, value, file: nil)
+      opt = CONFIG_OPTIONS.find { |o| o.field == field } or raise ArgumentError, "unknown option #{field.inspect}"
+      origin = file ? "#{file}: #{opt.yaml_key}" : opt.flag
+      got = "(got: #{value.inspect})"
+      case opt.type
+      when :positive_int
+        n = value.is_a?(Integer) ? value : (value.to_i if value.is_a?(String) && value.match?(/\A\d+\z/))
+        raise ConfigError, "#{origin} must be a positive integer #{got}" if n.nil? || n < 1
+
+        n
+      when :percent
+        f = finite_float(value)
+        raise ConfigError, "#{origin} must be a number between 0 and 100 #{got}" unless f && (0.0..100.0).cover?(f)
+
         f
-      when "require"   then Array(value).map(&:to_s)
-      when "boot"      then value.to_s
-      when "framework" then value.to_s
-      when "rails"     then value == true || value.to_s == "true"
-      when "daemon"    then value == true || value.to_s == "true"
-      when "verbose"   then value == true || value.to_s == "true"
-      when "fail_fast" then value == true || value.to_s == "true"
-      when "ignore"    then Array(value).map(&:to_s)
-      when "baseline"  then value.to_s
-      when "test_command" then value.to_s
-      when "since"
+      when :nonneg_float
+        f = finite_float(value)
+        raise ConfigError, "#{origin} must be a finite number, 0 or greater #{got}" unless f && f >= 0.0
+
+        f
+      when :bool
+        return value if [true, false].include?(value)
+        return value == "true" if %w[true false].include?(value)
+
+        raise ConfigError, "#{origin} must be true or false #{got}"
+      when :enum
+        name = opt.aliases&.fetch(value, nil) || value
+        return name if opt.values.include?(name)
+
+        prefix = file ? "#{file}: " : ""
+        raise ConfigError, "#{prefix}unknown #{field} #{value.to_s.inspect}. Expected: #{opt.values.join(', ')}"
+      when :string_list then Array(value).map(&:to_s)
+      when :string then value.to_s
+      when :since
         # false / empty normalize to nil ("no scoping"), so every consumer's
         # nil-check (runner scoping, the report's scoped marker) agrees. A
         # false left raw would skip scoping but still mark the report scoped.
-        value == false || value.to_s.empty? ? nil : value.to_s
-      else value
+        value.nil? || value == false || value.to_s.empty? ? nil : value.to_s
       end
+    end
+
+    # Reads a finite Float from a number or a numeric string. Rejects booleans,
+    # NaN and Infinity: `Float(true)` is an error, but a YAML `.nan` is a Float.
+    #
+    # @api private
+    # @param value [Object] raw value.
+    # @return [Float, nil] the number, or nil when it is not a finite number.
+    def self.finite_float(value)
+      f = case value
+          when Integer, Float then value.to_f
+          when String then Float(value, exception: false)
+          end
+      f if f&.finite?
     end
 
     # Drop (with a warning) operator names the registry does not know.

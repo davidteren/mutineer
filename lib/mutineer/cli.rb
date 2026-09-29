@@ -70,9 +70,6 @@ module Mutineer
     # Field symbols whose config-file value is suppressed when the flag is typed.
     PRECEDENCE_FLAGS = %i[operators jobs threshold only].freeze
 
-    # Deprecated internal strategy names, mapped to their canonical equivalents.
-    STRATEGY_ALIASES = { "7a" => "reload", "7b" => "redefine" }.freeze
-
     # Parses arguments, executes the command, and exits.
     #
     # @param argv [Array<String>] raw command-line arguments.
@@ -93,48 +90,43 @@ module Mutineer
           exit 0
         end
         o.on("--list-operators") { show_operators = true }
-        o.on("--dry-run") { opts[:dry_run] = true }
-        o.on("--fail-fast") { opts[:fail_fast] = true; explicit << :fail_fast }
-        o.on("--only NAME") { |v| opts[:only] = v; explicit << :only }
-        o.on("--since REF") { |v| opts[:since] = v; explicit << :since }
+        o.on("--dry-run") { opts[:dry_run] = Config.parse(:dry_run, true) }
+        o.on("--fail-fast") { opts[:fail_fast] = Config.parse(:fail_fast, true); explicit << :fail_fast }
+        o.on("--only NAME") { |v| opts[:only] = Config.parse(:only, v); explicit << :only }
+        o.on("--since REF") { |v| opts[:since] = Config.parse(:since, v); explicit << :since }
         # A typed "no" must beat a .mutineer.yml `since:` key (CLI-over-config
         # precedence): marking :since explicit with a nil value blocks the fill.
-        o.on("--no-since") { opts[:since] = nil; explicit << :since }
+        o.on("--no-since") { opts[:since] = Config.parse(:since, nil); explicit << :since }
         o.on("--test FILE") { |v| (opts[:tests] ||= []) << v }
-        o.on("--operators LIST") { |v| opts[:operators] = v.split(",").map(&:strip); explicit << :operators }
-        o.on("--threshold FLOAT") do |v|
-          f = Float(v, exception: false)
-          if f.nil?
-            warn "mutineer: --threshold requires a number between 0 and 100 (got: #{v.inspect})"
-            exit 2
-          end
-          opts[:threshold] = f
-          explicit << :threshold
+        o.on("--operators LIST") do |v|
+          opts[:operators] = Config.parse(:operators, v.split(",").map(&:strip))
+          explicit << :operators
         end
-        o.on("--jobs N") { |v| opts[:jobs] = v; explicit << :jobs }
-        o.on("--strategy STRAT") { |v| opts[:strategy] = v; explicit << :strategy }
-        o.on("--framework NAME") { |v| opts[:framework] = v; explicit << :framework }
-        o.on("--boot FILE") { |v| opts[:boot] = v; explicit << :boot }
-        o.on("--rails") { opts[:rails] = true }
-        o.on("--verbose") { opts[:verbose] = true }
-        o.on("--debug") { opts[:verbose] = true } # alias of --verbose
-        o.on("--format FORMAT") { |v| opts[:format] = v }
-        o.on("--output FILE") { |v| opts[:output] = v }
+        o.on("--threshold FLOAT") { |v| opts[:threshold] = Config.parse(:threshold, v); explicit << :threshold }
+        o.on("--jobs N") { |v| opts[:jobs] = Config.parse(:jobs, v); explicit << :jobs }
+        o.on("--strategy STRAT") { |v| opts[:strategy] = Config.parse(:strategy, v); explicit << :strategy }
+        o.on("--framework NAME") { |v| opts[:framework] = Config.parse(:framework, v); explicit << :framework }
+        o.on("--boot FILE") { |v| opts[:boot] = Config.parse(:boot, v); explicit << :boot }
+        o.on("--rails") { opts[:rails] = Config.parse(:rails, true) }
+        o.on("--verbose") { opts[:verbose] = Config.parse(:verbose, true) }
+        o.on("--debug") { opts[:verbose] = Config.parse(:verbose, true) } # alias of --verbose
+        o.on("--format FORMAT") { |v| opts[:format] = Config.parse(:format, v) }
+        o.on("--output FILE") { |v| opts[:output] = Config.parse(:output, v) }
         # --baseline is also a .mutineer.yml key, so mark it explicit when typed
         # (CLI wins over the file). --baseline-epsilon is CLI-only.
-        o.on("--baseline FILE") { |v| opts[:baseline] = v; explicit << :baseline }
-        o.on("--baseline-epsilon FLOAT") { |v| opts[:baseline_epsilon] = v.to_f }
+        o.on("--baseline FILE") { |v| opts[:baseline] = Config.parse(:baseline, v); explicit << :baseline }
+        o.on("--baseline-epsilon FLOAT") { |v| opts[:baseline_epsilon] = Config.parse(:baseline_epsilon, v) }
         # Run the target suite as a subprocess in the app's OWN runtime so
         # mutineer (Ruby >= 3.4) can mutation-test apps pinned to an older Ruby.
-        o.on("--test-command CMD") { |v| opts[:test_command] = v; explicit << :test_command }
+        o.on("--test-command CMD") { |v| opts[:test_command] = Config.parse(:test_command, v); explicit << :test_command }
         # Boot the app ONCE in a persistent daemon and fork per mutant, with
         # per-worker DB isolation so --jobs N is safe under Rails.
-        o.on("--daemon") { opts[:daemon] = true; explicit << :daemon }
+        o.on("--daemon") { opts[:daemon] = Config.parse(:daemon, true); explicit << :daemon }
       end
 
       begin
         parser.parse!(argv)
-      rescue OptionParser::InvalidOption, OptionParser::MissingArgument => e
+      rescue OptionParser::InvalidOption, OptionParser::MissingArgument, Mutineer::ConfigError => e
         warn "mutineer: #{e.message}"
         exit 2
       end
@@ -239,36 +231,6 @@ module Mutineer
     # @param explicit [Set<Symbol>] explicit CLI fields.
     # @return [void]
     def self.validate!(config, explicit = Set.new)
-      unless (0.0..100.0).cover?(config.threshold)
-        warn "mutineer: --threshold must be between 0 and 100"
-        exit 2
-      end
-
-      jobs = Integer(config.jobs.to_s, exception: false)
-      if jobs.nil? || jobs < 1
-        warn "mutineer: --jobs requires a positive integer (got: #{config.jobs})"
-        exit 2
-      end
-      config.jobs = jobs
-
-      unless %w[human json html].include?(config.format)
-        warn %(mutineer: unknown format "#{config.format}". Expected: human, json, html)
-        exit 2
-      end
-
-      # Canonical strategies are reload|redefine; 7a/7b are accepted as deprecated
-      # aliases. Normalize to canonical so the rest of the pipeline sees one name.
-      config.strategy = STRATEGY_ALIASES.fetch(config.strategy, config.strategy)
-      unless %w[reload redefine].include?(config.strategy)
-        warn %(mutineer: unknown strategy "#{config.strategy}". Expected: reload, redefine)
-        exit 2
-      end
-
-      unless %w[minitest rspec].include?(config.framework)
-        warn %(mutineer: unknown framework "#{config.framework}". Expected: minitest, rspec)
-        exit 2
-      end
-
       validate_test_command!(config) if config.test_command
 
       validate_since!(config) if config.since
