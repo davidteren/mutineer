@@ -47,10 +47,13 @@ module SiteBuild
       target = File.expand_path(dest)
       root = File.expand_path("..", __dir__)
       docs = File.join(root, "docs")
-      # Compare directories, not path text: a symlinked parent, or other
-      # letter case on a case-insensitive volume, names the same directory.
-      covers_root = path_and_parents(root).any? { |dir| File.identical?(dir, target) }
-      in_docs = path_and_parents(target).any? { |dir| File.identical?(dir, docs) }
+      # File.identical? is false when stat fails, so fail here, not open.
+      [root, docs].each { |dir| File.stat(dir) }
+      # Compare path text, and also directories: a symlinked parent, or
+      # other letter case on a case-insensitive volume, names the same one.
+      same = ->(a, b) { a == b || File.identical?(a, b) }
+      covers_root = path_and_parents(root).any? { |dir| same.(dir, target) }
+      in_docs = path_and_parents(target).any? { |dir| same.(dir, docs) }
       raise ArgumentError, "site:build: refusing to replace #{target}" if covers_root || in_docs
     end
 
