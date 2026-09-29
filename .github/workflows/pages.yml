@@ -1,8 +1,8 @@
 name: Pages
 
-# Manual only while Pages is a branch build (main:/docs): until the Pages
-# source is "GitHub Actions", a deploy from a push would fail.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

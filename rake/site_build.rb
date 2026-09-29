@@ -4,6 +4,7 @@ require "fileutils"
 require_relative "yard_pages"
 require_relative "site_docs"
 require_relative "docs_contract"
+require_relative "../lib/mutineer/version"
 
 # Assemble the published GitHub Pages tree into one output directory: the
 # hand-written docs/ files copied as-is, plus the generated ones (YARD HTML,
@@ -29,13 +30,36 @@ module SiteBuild
       FileUtils.rm_rf(dest)
       FileUtils.mkdir_p(dest)
       copy_docs_tree!(dest)
-      YardPages.generate!(File.join(dest, "api"))
+      api = File.join(dest, "api")
+      YardPages.generate!(api)
+      verify_api!(api)
       write!(File.join(dest, "llms-full.txt"), DocsContract.llms_full_txt)
       write!(File.join(dest, "json-schema.html"), DocsContract.json_schema_html)
       write!(File.join(dest, "sitemap.xml"), MutineerSiteDocs.sitemap_xml)
     end
 
     private
+
+    # Fail loudly if the YARD build did not produce a usable `api/`. CI's
+    # docs and site jobs run `site:build`, so this fails CI when the build
+    # names the wrong VERSION or is missing its Jekyll opt-out markers.
+    #
+    # @param api [String]
+    # @return [void]
+    def verify_api!(api)
+      index = File.join(api, "index.html")
+      raise "site:build: #{index} is missing" unless File.file?(index)
+
+      stamped = [File.join(api, "_index.html"), File.join(api, "Mutineer.html")]
+        .select { |p| File.file?(p) }
+        .any? { |p| File.read(p).include?(Mutineer::VERSION) }
+      raise "site:build: api/_index.html and api/Mutineer.html do not mention " \
+            "Mutineer::VERSION (#{Mutineer::VERSION})" unless stamped
+
+      unless YardPages.published_markers?(api)
+        raise "site:build: #{api} is missing the .nojekyll markers"
+      end
+    end
 
     # Copy every tracked docs/ file except the entries this task regenerates.
     #

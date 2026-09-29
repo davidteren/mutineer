@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **The docs site is built in CI** — a Pages workflow runs `rake site:build`
+  and deploys the result, so the YARD HTML under `/api/`, `llms-full.txt`,
+  `json-schema.html` and `sitemap.xml` are no longer committed. CI checks
+  that the site builds, in place of `rake yard:pages:check`. The site keeps
+  its URLs (#153).
+
 ## [1.3.0] - 2026-09-29
 
 ### Changed

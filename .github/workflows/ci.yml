@@ -58,8 +58,8 @@ jobs:
           bundler-cache: true
       - name: Enforce 100% YARD documentation
         run: bundle exec rake yard:strict
-      - name: Published API docs match this checkout
-        run: bundle exec rake yard:pages:check
+      - name: Pages site builds
+        run: bundle exec rake "site:build[${{ runner.temp }}/site]"
 
   rails-integration:
     name: rails dogfood (ruby 3.4)
@@ -88,11 +88,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: test/browser/package-lock.json
+      # These tests read the published tree; docs/ no longer carries the
+      # generated files (YARD API docs, sitemap, llms-full.txt).
+      - name: Build site
+        run: bundle exec rake site:build
       - name: Check theme and copy logic
         run: node --test test/site_test.js
       - name: Install browser test tools

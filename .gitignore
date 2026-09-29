@@ -14,3 +14,9 @@ doc/
 
 # rake site:build output (Pages is built by CI, not committed)
 /_site/
+
+# Pages build artifacts — `rake site:build` regenerates these; see rake/site_build.rb
+/docs/api/
+/docs/llms-full.txt
+/docs/json-schema.html
+/docs/sitemap.xml

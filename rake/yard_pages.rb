@@ -1,19 +1,16 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require "tmpdir"
 
-# Publish YARD HTML under `docs/api/` so GitHub Pages tracks the shipped gem.
+# Generate YARD HTML for the Pages `/api/` URL. `SiteBuild.generate!` calls
+# this with `<dest>/api` (see rake/site_build.rb).
 module YardPages
-  # Pages output directory (the `/api/` URL on GitHub Pages).
-  OUTPUT = "docs/api"
-
   class << self
     # Generate YARD HTML into `output_dir` and disable Jekyll on the site.
     #
     # @param output_dir [String] where the API HTML lands (the `/api/` URL)
     # @return [void]
-    def generate!(output_dir = OUTPUT)
+    def generate!(output_dir)
       FileUtils.rm_rf(output_dir)
       ok = system("bundle", "exec", "yard", "doc", "--output-dir", output_dir)
       raise "yard doc failed" unless ok
@@ -29,33 +26,17 @@ module YardPages
     #
     # @param output_dir [String]
     # @return [Boolean]
-    def published_markers?(output_dir = OUTPUT)
+    def published_markers?(output_dir)
       File.directory?(output_dir) &&
         File.file?(File.join(File.dirname(output_dir), ".nojekyll")) &&
         File.file?(File.join(output_dir, ".nojekyll"))
     end
 
-    # True when committed `docs/api` matches a fresh YARD build.
-    #
-    # Generation timestamps, the YARD gem version, and the footer Ruby
-    # patch are ignored so the Linux `rake yard:pages:check` gate stays
-    # stable. Do not call this from the default minitest suite — a full
-    # rebuild is slow and still OS-sensitive (file list / template drift).
-    #
-    # @return [Boolean]
-    def current?
-      return false unless published_markers?
-
-      Dir.mktmpdir("yard-pages") do |tmp|
-        ok = system("bundle", "exec", "yard", "doc", "--output-dir", tmp)
-        raise "yard doc failed" unless ok
-
-        FileUtils.touch(File.join(tmp, ".nojekyll"))
-        equivalent?(OUTPUT, tmp)
-      end
-    end
-
     # Compare two YARD trees after stripping the "Generated on" stamp.
+    #
+    # Ignores generation timestamps, the YARD gem version, and the footer
+    # Ruby patch so a same-content rebuild on a different machine still
+    # compares equal.
     #
     # @param left [String]
     # @param right [String]
@@ -92,7 +73,7 @@ module YardPages
     #
     # @param output_dir [String]
     # @return [void]
-    def stabilize_html!(output_dir = OUTPUT)
+    def stabilize_html!(output_dir)
       Dir.glob(File.join(output_dir, "**/*.html")).each do |path|
         File.write(path, File.read(path).gsub(/Generated on .+ by/, "Generated on DATE by"))
       end

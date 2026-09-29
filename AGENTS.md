@@ -42,11 +42,16 @@ BUNDLE_GEMFILE=gemfiles/minitest6.gemfile bundle exec rake test
 For changes to the GitHub Pages site or its tests, also run:
 
 ```sh
+bundle exec rake site:build
 node --test test/site_test.js
 npm ci --prefix test/browser
 npx --prefix test/browser playwright install chromium
 npm test --prefix test/browser
 ```
+
+`rake site:build` writes the published tree to `_site/` — the YARD API docs,
+`sitemap.xml`, and `llms-full.txt` are build artifacts, not committed files
+under `docs/`. The checks above read `_site/`, so build first.
 
 These development-only checks require Node.js 22+, npm, and Python 3.
 Playwright starts a local server on port 8766; keep that port free so the

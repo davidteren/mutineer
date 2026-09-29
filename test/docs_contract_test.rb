@@ -5,18 +5,29 @@ require_relative "../rake/docs_contract"
 require_relative "../rake/site_docs"
 
 # #82: one contract file, generated copies, CI fails when they drift.
+#
+# docs/json-schema.html and docs/llms-full.txt are Pages build artifacts
+# (`rake site:build`), not committed files — tests read those two from a
+# fresh render (`DocsContract.json_schema_html` / `.llms_full_txt`) instead
+# of disk.
 class DocsContractTest < Minitest::Test
-  SURFACES = %w[
+  # Committed Markdown/README surfaces, read straight from disk.
+  DISK_SURFACES = %w[
     README.md
     docs/json-schema.md
-    docs/json-schema.html
-    docs/llms-full.txt
     docs/agentic-coding.md
   ].freeze
 
+  # Build-artifact surfaces, rendered fresh instead of read from disk.
+  RENDERED_SURFACES = {
+    "docs/json-schema.html" => -> { DocsContract.json_schema_html },
+    "docs/llms-full.txt" => -> { DocsContract.llms_full_txt }
+  }.freeze
+
   def test_every_contract_surface_carries_the_same_exit_codes
-    SURFACES.each do |path|
-      text = File.read(path)
+    surfaces = DISK_SURFACES.to_h { |path| [path, -> { File.read(path) }] }.merge(RENDERED_SURFACES)
+    surfaces.each do |path, render|
+      text = render.call
       %w[0 1 2].each do |code|
         assert_includes text, code
         assert_includes plain(text), plain(DocsContract.meaning_plain(code)),
@@ -25,16 +36,15 @@ class DocsContractTest < Minitest::Test
     end
   end
 
-  def test_llms_full_matches_a_fresh_concat_of_the_markdown_sources
-    assert_equal "#{DocsContract.llms_full_txt.rstrip}\n", File.read("docs/llms-full.txt")
-  end
-
-  def test_json_schema_html_matches_a_fresh_render_of_the_markdown
-    assert_equal DocsContract.json_schema_html, File.read("docs/json-schema.html")
+  def test_llms_full_concatenates_the_readme_agentic_and_schema_sources
+    text = DocsContract.llms_full_txt
+    assert_includes text, "# README"
+    assert_includes text, File.read("docs/agentic-coding.md").lines.first.chomp
+    assert_includes text, File.read("docs/json-schema.md").lines.first.chomp
   end
 
   def test_json_schema_html_keeps_playwright_summary_region_and_markdown_alternate
-    html = File.read("docs/json-schema.html")
+    html = DocsContract.json_schema_html
     assert_includes html, 'aria-label="Summary fields"'
     assert_includes html, 'rel="alternate" type="text/markdown"'
     assert_includes html, "https://davidteren.github.io/mutineer/json-schema.md"
@@ -82,7 +92,7 @@ class DocsContractTest < Minitest::Test
 
   def test_json_schema_html_carries_markdown_source_content
     md = File.read("docs/json-schema.md")
-    html = File.read("docs/json-schema.html")
+    html = DocsContract.json_schema_html
     assert_includes html, 'id="exit-codes"'
     assert_includes html, 'aria-label="Exit codes"'
     assert_includes html, "schema_version"
