@@ -1,0 +1,23 @@
+lib/mutineer/project_path.rb
+  s_1d8e859ed0d041::t_3e3b5e79dd5670 36-41
+test/project_path_test.rb
+  s_1d8e859ed0d041::t_14fd55c899b22b 32-38
+docs/api/Mutineer/ProjectPath.html
+  s_1d8e859ed0d041::t_81e509908df79f 347-352,361-366,532-536,539,635-640,649-654,820-824,827
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "52c5a2a1703e3842e0593f8fe09e7991eb299c4c",
+  "prompts": {},
+  "sessions": {
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
