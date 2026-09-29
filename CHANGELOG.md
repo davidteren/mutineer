@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-29
+
 ### Fixed
 - **`module_function :name` and `module_function def name` promote only
   their own module's methods** — a class or module in the same file with a
@@ -565,6 +567,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.2.1]: https://github.com/davidteren/mutineer/releases/tag/v1.2.1
 [1.2.0]: https://github.com/davidteren/mutineer/releases/tag/v1.2.0
 [1.1.0]: https://github.com/davidteren/mutineer/releases/tag/v1.1.0
 [1.0.2]: https://github.com/davidteren/mutineer/releases/tag/v1.0.2
