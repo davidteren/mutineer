@@ -219,7 +219,7 @@ jobs:
             git push -u origin "$branch"
           fi
 
-          notes="$(git log --pretty='- %h %s' "${latest_tag}..HEAD" | grep -E ' (feat|fix)(\(|!|:)' || true)"
+          notes="$(git log --pretty='- %h %s' "${latest_tag}..HEAD" | grep -E '^- [0-9a-f]+ (feat|fix)(\(|!|:)' || true)"
           bump="$([ "$feats" -gt 0 ] && echo minor || echo patch)"
           body="$(printf '## What / Why / How\n\n**What.** Cut release **v%s**.\n\n**Why.** feat:/fix: commits have landed on `main` since `%s` (auto-detected). This bumps the version + dates the CHANGELOG so a tag can publish — closing the release-drift gap automatically.\n\n**How.** Review, merge, then `git tag v%s && git push origin v%s` — release.yml tests and publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_%s and rebuilt from `main` on each weekly (or manual) run. When `main` moves, the next run replaces this PR with a fresh one, so comments and approvals stay on the closed PR: review and merge promptly, and put notes in comments only on the current PR. Closing it only snoozes it: the next run re-opens it._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes" "$RELEASE_PR_MARKER")"
 
@@ -244,6 +244,11 @@ jobs:
           while read -r num old; do
             [ -n "$num" ] || continue
             version_lt "${old#release/v}" "$next" || continue
+            # Deleting a branch closes every PR on it: never delete one a person also uses.
+            if [ -n "$(hand_opened_prs "$old")" ]; then
+              echo "::warning::Not superseding #$num ($old): a PR this workflow did not open uses that branch."
+              continue
+            fi
             old_sha="$(git rev-parse -q --verify "refs/remotes/origin/$old" || true)"
             if [ -n "$old_sha" ] && has_human_commits "$old"; then
               echo "::warning::Not superseding #$num ($old): it has commits this workflow did not make. Merge or close it by hand."

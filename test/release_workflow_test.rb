@@ -104,7 +104,7 @@ class ReleaseWorkflowTest < Minitest::Test
     result = human_work_on_release_branch? do |dir, git|
       commit(git, dir, BOT_ENV, "release: v1.2.4")
     end
-    assert_equal "no", result
+    refute result
   end
 
   def test_human_commit_counts_as_human_work
@@ -112,7 +112,7 @@ class ReleaseWorkflowTest < Minitest::Test
       commit(git, dir, BOT_ENV, "release: v1.2.4")
       commit(git, dir, HUMAN_ENV, "fix typo in changelog")
     end
-    assert_equal "yes", result
+    assert result
   end
 
   def test_bot_commit_amended_by_a_human_counts_as_human_work
@@ -120,7 +120,7 @@ class ReleaseWorkflowTest < Minitest::Test
     result = human_work_on_release_branch? do |dir, git|
       commit(git, dir, amended, "release: v1.2.4")
     end
-    assert_equal "yes", result
+    assert result
   end
 
   # GitHub's "Update branch" merges main into the release branch as a person.
@@ -134,7 +134,7 @@ class ReleaseWorkflowTest < Minitest::Test
              "main", chdir: dir, exception: true)
       git.call("push", "-q", "origin", "release/v1.2.4")
     end
-    assert_equal "yes", result
+    assert result
   end
 
   def test_version_guard_proceeds_when_version_is_the_latest_tag
@@ -203,7 +203,7 @@ class ReleaseWorkflowTest < Minitest::Test
   #
   # @yieldparam dir [String] clone path (on release/v1.2.4).
   # @yieldparam git [Proc] runs git in the clone.
-  # @return [String] "yes" or "no".
+  # @return [Boolean] true when has_human_commits reports human work.
   def human_work_on_release_branch?
     root = Dir.mktmpdir("mutineer-release-helpers")
     origin = File.join(root, "origin.git")
@@ -224,7 +224,7 @@ class ReleaseWorkflowTest < Minitest::Test
     yield dir, git
     git.call("switch", "-q", "main")
     git.call("fetch", "-q", "origin", "+refs/heads/release/*:refs/remotes/origin/release/*")
-    run_helpers("has_human_commits release/v1.2.4 && echo yes || echo no", dir: dir)
+    run_helpers("has_human_commits release/v1.2.4 && echo yes || echo no", dir: dir) == "yes"
   ensure
     FileUtils.rm_rf(root) if root # rm_rf: Dir.mktmpdir's cleanup can raise ENOTEMPTY under load
   end
@@ -243,7 +243,8 @@ class ReleaseWorkflowTest < Minitest::Test
   # @param extra_message [String] subject of the follow-up commit.
   # @yieldparam dir [String] repository path.
   def with_history(tags:, extra_message:)
-    Dir.mktmpdir("mutineer-release-calc") do |dir|
+    dir = Dir.mktmpdir("mutineer-release-calc")
+    begin
       git = lambda do |*args|
         system("git", "-c", "core.hooksPath=/dev/null", *args, chdir: dir, exception: true)
       end
@@ -258,6 +259,8 @@ class ReleaseWorkflowTest < Minitest::Test
       git.call("add", "README")
       git.call("commit", "-qm", extra_message)
       yield dir
+    ensure
+      FileUtils.rm_rf(dir) # rm_rf: Dir.mktmpdir's block cleanup can raise ENOTEMPTY under load
     end
   end
 end
