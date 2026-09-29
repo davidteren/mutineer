@@ -75,6 +75,9 @@ class ReleaseWorkflowTest < Minitest::Test
     assert_includes text, "git push --force", "a rebuilt release branch replaces the old one"
     assert_includes text, "gh pr edit", "an open release PR for the same version is refreshed"
     assert_includes text, "gh pr close", "an older open release PR is superseded"
+    assert_includes text, "has_human_commits", "a branch with someone else's commits is never rebuilt or deleted"
+    assert_includes text, "token: ${{ secrets.RELEASE_PR_TOKEN", "git push must use the PAT so the rebuilt head gets CI"
+    assert_equal "release-pr", YAML.load_file(WORKFLOW).dig("concurrency", "group"), "runs must not overlap"
   end
 
   def test_workflow_markers_wrap_the_live_calculation
