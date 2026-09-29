@@ -150,8 +150,10 @@ jobs:
           built=0
           if git rev-parse -q --verify "$remote" >/dev/null; then
             if has_human_commits "$branch"; then
-              echo "::error::$branch has commits this workflow did not make; a rebuild would discard them. Merge or close that PR (and delete the branch), then re-run."
-              exit 1
+              # Someone is working on this release PR: leave it alone (no rebuild, no
+              # close), and say so. A failure here would repeat every week.
+              echo "::warning::$branch has commits this workflow did not make, so it is left as is. Merge that release PR, or close it and delete the branch, to let the next run rebuild it."
+              exit 0
             fi
             [ "$(git rev-parse "$remote^")" = "$(git rev-parse HEAD)" ] && built=1
           fi
@@ -169,14 +171,16 @@ jobs:
               open_num="$(gh pr list --state open --head "$branch" --json number,isCrossRepository,body \
                 --jq '[.[] | select(.isCrossRepository | not)
                            | select(.body | contains("Auto-opened by `release-pr.yml`"))][0].number // empty')"
-              # Delete first, under the lease; only then retire the PR, so a failed delete
-              # never leaves an open branch without its PR.
+              # Explain first (deleting the head branch closes the PR, and a closed PR's
+              # close-comment is skipped), then delete under the lease, then make sure the
+              # PR is closed. A failed delete leaves the PR open with only the comment.
+              if [ -n "$open_num" ]; then
+                gh pr comment "$open_num" --body "main moved: rebuilding the v${next} release PR from main as a fresh PR."
+              fi
               git push --force-with-lease="refs/heads/${branch}:${old_sha}" origin ":refs/heads/${branch}" \
                 || { echo "::error::$branch changed after it was checked; not replacing it. Re-run after reviewing it."; exit 1; }
-              if [ -n "$open_num" ]; then
-                # Deleting the head branch usually closes the PR already; the comment still explains why.
-                gh pr close "$open_num" --comment "main moved: rebuilt the v${next} release PR from main as a fresh PR." \
-                  || gh pr comment "$open_num" --body "main moved: rebuilt the v${next} release PR from main as a fresh PR."
+              if [ -n "$open_num" ] && [ "$(gh pr view "$open_num" --json state --jq .state)" = "OPEN" ]; then
+                gh pr close "$open_num"
               fi
             fi
             git switch -C "$branch"
@@ -188,9 +192,12 @@ jobs:
           bump="$([ "$feats" -gt 0 ] && echo minor || echo patch)"
           body="$(printf '## What / Why / How\n\n**What.** Cut release **v%s**.\n\n**Why.** feat:/fix: commits have landed on `main` since `%s` (auto-detected). This bumps the version + dates the CHANGELOG so a tag can publish — closing the release-drift gap automatically.\n\n**How.** Review, merge, then `git tag v%s && git push origin v%s` — release.yml tests and publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_Auto-opened by `release-pr.yml` and rebuilt from `main` on each weekly (or manual) run. Closing it only snoozes it: the next run re-opens it. The next run also rewrites this description, so put notes in comments._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes")"
 
-          if [ -n "$(gh pr list --state open --head "$branch" --json number --jq '.[0].number // empty')" ]; then
-            gh pr edit "$branch" --body "$body"
-            echo "Refreshed the open release PR for $branch."
+          own_num="$(gh pr list --state open --head "$branch" --json number,isCrossRepository,body \
+            --jq '[.[] | select(.isCrossRepository | not)
+                           | select(.body | contains("Auto-opened by `release-pr.yml`"))][0].number // empty')"
+          if [ -n "$own_num" ]; then
+            gh pr edit "$own_num" --body "$body"
+            echo "Refreshed the open release PR #$own_num for $branch."
           else
             gh pr create --base main --head "$branch" --title "release: v${next}" --body "$body"
           fi
@@ -213,7 +220,14 @@ jobs:
               echo "::error::Not closing #$num ($old): it has commits this workflow did not make."; failed=1; continue
             fi
             echo "Superseding #$num ($old) with $branch."
-            gh pr close "$num" --delete-branch --comment "Superseded by the v${next} release PR, rebuilt from main." \
-              || { echo "::error::Could not close #$num ($old)."; failed=1; }
+            old_ref="refs/remotes/origin/$old"
+            old_sha="$(git rev-parse -q --verify "$old_ref" || true)"
+            gh pr close "$num" --comment "Superseded by the v${next} release PR, rebuilt from main." \
+              || { echo "::error::Could not close #$num ($old)."; failed=1; continue; }
+            # Delete its branch under a lease on the SHA checked above.
+            if [ -n "$old_sha" ]; then
+              git push --force-with-lease="refs/heads/${old}:${old_sha}" origin ":refs/heads/${old}" \
+                || { echo "::error::$old changed after it was checked; left in place."; failed=1; }
+            fi
           done <<< "$olds"
           exit "$failed"
