@@ -227,6 +227,28 @@ it is testable in isolation from a canned JSON + a hand-built AggregateResult.</
 </li>
 
       
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#foreign_file%3F-instance_method" title="#foreign_file? (instance method)">#<strong>foreign_file?</strong>(file, file_key)  &#x21d2; Boolean </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>True when a stored survivor's <code>file</code> is absolute and still absolute after normalizing against the project root, so it lies outside this checkout.</p></div></span>
+  
+</li>
+
+      
         <li class="public ">
   <span class="summary_signature">
     
@@ -541,7 +563,9 @@ either form is not fixed. Matches made only through the old id are counted
 on Delta#legacy_matches. The old id has no file path, so an old-id match
 must also come from the same file (the stored survivor's <code>file</code>, normalized
 against <code>project_root</code>): an equal old id from another file is a different
-mutant and stays new.</p>
+mutant and stays new. A stored <code>file</code> that is absolute and outside
+<code>project_root</code> (a baseline written on another machine) can never equal a
+current file, so that survivor matches on its old id alone, as before #126.</p>
 
   </div>
 </div>
@@ -652,8 +676,6 @@ mutant and stays new.</p>
       <pre class="lines">
 
 
-118
-119
 120
 121
 122
@@ -698,10 +720,17 @@ mutant and stays new.</p>
 161
 162
 163
-164</pre>
+164
+165
+166
+167
+168
+169
+170
+171</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 118</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 120</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_diff'>diff</span><span class='lparen'>(</span><span class='id identifier rubyid_aggregate'>aggregate</span><span class='comma'>,</span> <span class='label'>epsilon:</span> <span class='float'>0.0</span><span class='comma'>,</span> <span class='label'>scoped:</span> <span class='kw'>false</span><span class='comma'>,</span> <span class='label'>id_map:</span> <span class='lbrace'>{</span><span class='rbrace'>}</span><span class='comma'>,</span> <span class='label'>project_root:</span> <span class='const'>Dir</span><span class='period'>.</span><span class='id identifier rubyid_pwd'>pwd</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_current'>current</span> <span class='op'>=</span> <span class='id identifier rubyid_aggregate'>aggregate</span><span class='period'>.</span><span class='id identifier rubyid_surviving_mutants'>surviving_mutants</span>
@@ -711,6 +740,9 @@ mutant and stays new.</p>
   <span class='id identifier rubyid_file_key'>file_key</span> <span class='op'>=</span> <span class='tlambda'>-&gt;</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span> <span class='tlambeg'>{</span> <span class='id identifier rubyid_path'>path</span> <span class='op'>&amp;&amp;</span> <span class='const'><span class='object_link'><a href="ProjectPath.html" title="Mutineer::ProjectPath (module)">ProjectPath</a></span></span><span class='period'>.</span><span class='id identifier rubyid_relative'><span class='object_link'><a href="ProjectPath.html#relative-class_method" title="Mutineer::ProjectPath.relative (method)">relative</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='comma'>,</span> <span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
   <span class='comment'># [old id, file] for each stored survivor: an old id alone is ambiguous.
 </span>  <span class='id identifier rubyid_baseline_pairs'>baseline_pairs</span> <span class='op'>=</span> <span class='ivar'>@survivors</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='lbracket'>[</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>id</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_file_key'>file_key</span><span class='period'>.</span><span class='id identifier rubyid_call'>call</span><span class='lparen'>(</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>file</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='rparen'>)</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_to_set'>to_set</span>
+  <span class='comment'># Old ids stored with a file from another machine: matched on the id alone.
+</span>  <span class='id identifier rubyid_foreign'>foreign</span> <span class='op'>=</span> <span class='ivar'>@survivors</span><span class='period'>.</span><span class='id identifier rubyid_select'>select</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='id identifier rubyid_foreign_file?'>foreign_file?</span><span class='lparen'>(</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>file</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_file_key'>file_key</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+  <span class='id identifier rubyid_foreign_ids'>foreign_ids</span> <span class='op'>=</span> <span class='id identifier rubyid_foreign'>foreign</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>id</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_to_set'>to_set</span>
   <span class='id identifier rubyid_legacy_pair'>legacy_pair</span> <span class='op'>=</span> <span class='tlambda'>-&gt;</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='rparen'>)</span> <span class='tlambeg'>{</span> <span class='lbracket'>[</span><span class='id identifier rubyid_legacy'>legacy</span><span class='lbracket'>[</span><span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_id'>id</span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_file_key'>file_key</span><span class='period'>.</span><span class='id identifier rubyid_call'>call</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_subject'>subject</span><span class='op'>&amp;.</span><span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
 
   <span class='id identifier rubyid_new_survivors'>new_survivors</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
@@ -718,7 +750,7 @@ mutant and stays new.</p>
   <span class='id identifier rubyid_current'>current</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span>
     <span class='kw'>next</span> <span class='kw'>if</span> <span class='id identifier rubyid_baseline_ids'>baseline_ids</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_id'>id</span><span class='rparen'>)</span>
 
-    <span class='kw'>if</span> <span class='id identifier rubyid_legacy'>legacy</span><span class='lbracket'>[</span><span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_id'>id</span><span class='rbracket'>]</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_baseline_pairs'>baseline_pairs</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_legacy_pair'>legacy_pair</span><span class='period'>.</span><span class='id identifier rubyid_call'>call</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='rparen'>)</span><span class='rparen'>)</span>
+    <span class='kw'>if</span> <span class='id identifier rubyid_legacy'>legacy</span><span class='lbracket'>[</span><span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_id'>id</span><span class='rbracket'>]</span> <span class='op'>&amp;&amp;</span> <span class='lparen'>(</span><span class='id identifier rubyid_baseline_pairs'>baseline_pairs</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_legacy_pair'>legacy_pair</span><span class='period'>.</span><span class='id identifier rubyid_call'>call</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='rparen'>)</span><span class='rparen'>)</span> <span class='op'>||</span> <span class='id identifier rubyid_foreign_ids'>foreign_ids</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_legacy'>legacy</span><span class='lbracket'>[</span><span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_id'>id</span><span class='rbracket'>]</span><span class='rparen'>)</span><span class='rparen'>)</span>
       <span class='id identifier rubyid_legacy_matches'>legacy_matches</span> <span class='op'>+=</span> <span class='int'>1</span>
     <span class='kw'>else</span>
       <span class='id identifier rubyid_new_survivors'>new_survivors</span> <span class='op'>&lt;&lt;</span> <span class='id identifier rubyid_r'>r</span>
@@ -726,13 +758,15 @@ mutant and stays new.</p>
   <span class='kw'>end</span>
   <span class='id identifier rubyid_current_ids'>current_ids</span> <span class='op'>=</span> <span class='id identifier rubyid_current'>current</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:id</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_to_set'>to_set</span>
   <span class='id identifier rubyid_current_pairs'>current_pairs</span> <span class='op'>=</span> <span class='id identifier rubyid_current'>current</span><span class='period'>.</span><span class='id identifier rubyid_select'>select</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_legacy'>legacy</span><span class='lbracket'>[</span><span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_id'>id</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_legacy_pair'>legacy_pair</span><span class='period'>.</span><span class='id identifier rubyid_call'>call</span><span class='lparen'>(</span><span class='id identifier rubyid_r'>r</span><span class='rparen'>)</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_to_set'>to_set</span>
+  <span class='id identifier rubyid_current_legacy_ids'>current_legacy_ids</span> <span class='op'>=</span> <span class='id identifier rubyid_current'>current</span><span class='period'>.</span><span class='id identifier rubyid_filter_map'>filter_map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_legacy'>legacy</span><span class='lbracket'>[</span><span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_id'>id</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_to_set'>to_set</span>
   <span class='comment'># Under a diff-scoped side an out-of-scope baseline survivor was never
 </span>  <span class='comment'># re-tested, so reporting it &quot;fixed&quot; would be false: empty is honest.
 </span>  <span class='id identifier rubyid_fixed'>fixed</span> <span class='op'>=</span> <span class='kw'>if</span> <span class='id identifier rubyid_scoped'>scoped</span> <span class='op'>||</span> <span class='ivar'>@scoped</span>
             <span class='lbracket'>[</span><span class='rbracket'>]</span>
           <span class='kw'>else</span>
             <span class='ivar'>@survivors</span><span class='period'>.</span><span class='id identifier rubyid_reject'>reject</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span>
-              <span class='id identifier rubyid_current_ids'>current_ids</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>id</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='rparen'>)</span> <span class='op'>||</span> <span class='id identifier rubyid_current_pairs'>current_pairs</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='lbracket'>[</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>id</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_file_key'>file_key</span><span class='period'>.</span><span class='id identifier rubyid_call'>call</span><span class='lparen'>(</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>file</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='rparen'>)</span><span class='rbracket'>]</span><span class='rparen'>)</span>
+              <span class='id identifier rubyid_current_ids'>current_ids</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>id</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='rparen'>)</span> <span class='op'>||</span> <span class='id identifier rubyid_current_pairs'>current_pairs</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='lbracket'>[</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>id</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='comma'>,</span> <span class='id identifier rubyid_file_key'>file_key</span><span class='period'>.</span><span class='id identifier rubyid_call'>call</span><span class='lparen'>(</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>file</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='rparen'>)</span><span class='rbracket'>]</span><span class='rparen'>)</span> <span class='op'>||</span>
+                <span class='lparen'>(</span><span class='id identifier rubyid_foreign'>foreign</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_h'>h</span><span class='rparen'>)</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_current_legacy_ids'>current_legacy_ids</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>id</span><span class='tstring_end'>&quot;</span></span><span class='rbracket'>]</span><span class='rparen'>)</span><span class='rparen'>)</span>
             <span class='kw'>end</span>
           <span class='kw'>end</span>
 
@@ -749,6 +783,94 @@ mutant and stays new.</p>
             <span class='label'>score_before:</span> <span class='ivar'>@score</span><span class='comma'>,</span> <span class='label'>score_after:</span> <span class='id identifier rubyid_current_score'>current_score</span><span class='comma'>,</span>
             <span class='label'>score_drop:</span> <span class='id identifier rubyid_score_drop'>score_drop</span><span class='comma'>,</span> <span class='label'>score_comparable:</span> <span class='id identifier rubyid_comparable'>comparable</span><span class='comma'>,</span>
             <span class='label'>regressed:</span> <span class='op'>!</span><span class='id identifier rubyid_new_survivors'>new_survivors</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span> <span class='op'>||</span> <span class='id identifier rubyid_score_drop'>score_drop</span><span class='comma'>,</span> <span class='label'>legacy_matches:</span> <span class='id identifier rubyid_legacy_matches'>legacy_matches</span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="foreign_file?-instance_method">
+  
+    #<strong>foreign_file?</strong>(file, file_key)  &#x21d2; <tt>Boolean</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>True when a stored survivor's <code>file</code> is absolute and still absolute after
+normalizing against the project root, so it lies outside this checkout.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>file</span>
+      
+      
+        <span class='type'>(<tt>String</tt>, <tt>nil</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the stored survivor's <code>file</code>.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>file_key</span>
+      
+      
+        <span class='type'>(<tt>Proc</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>normalizes a path against the project root.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>whether the file can never equal a current file.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+181
+182
+183</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 181</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_foreign_file?'>foreign_file?</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='comma'>,</span> <span class='id identifier rubyid_file_key'>file_key</span><span class='rparen'>)</span>
+  <span class='op'>!</span><span class='id identifier rubyid_file'>file</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span> <span class='op'>&amp;&amp;</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_absolute_path?'>absolute_path?</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span> <span class='op'>&amp;&amp;</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_absolute_path?'>absolute_path?</span><span class='lparen'>(</span><span class='id identifier rubyid_file_key'>file_key</span><span class='period'>.</span><span class='id identifier rubyid_call'>call</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span><span class='rparen'>)</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>

@@ -107,7 +107,9 @@ module Mutineer
     # on Delta#legacy_matches. The old id has no file path, so an old-id match
     # must also come from the same file (the stored survivor's `file`, normalized
     # against `project_root`): an equal old id from another file is a different
-    # mutant and stays new.
+    # mutant and stays new. A stored `file` that is absolute and outside
+    # `project_root` (a baseline written on another machine) can never equal a
+    # current file, so that survivor matches on its old id alone, as before #126.
     #
     # @param aggregate [Mutineer::AggregateResult] current results.
     # @param epsilon [Float] score-drop tolerance.
@@ -123,6 +125,9 @@ module Mutineer
       file_key = ->(path) { path && ProjectPath.relative(path, project_root) }
       # [old id, file] for each stored survivor: an old id alone is ambiguous.
       baseline_pairs = @survivors.map { |h| [h["id"], file_key.call(h["file"])] }.to_set
+      # Old ids stored with a file from another machine: matched on the id alone.
+      foreign = @survivors.select { |h| foreign_file?(h["file"], file_key) }
+      foreign_ids = foreign.map { |h| h["id"] }.to_set
       legacy_pair = ->(r) { [legacy[r.id], file_key.call(r.subject&.file)] }
 
       new_survivors = []
@@ -130,7 +135,7 @@ module Mutineer
       current.each do |r|
         next if baseline_ids.include?(r.id)
 
-        if legacy[r.id] && baseline_pairs.include?(legacy_pair.call(r))
+        if legacy[r.id] && (baseline_pairs.include?(legacy_pair.call(r)) || foreign_ids.include?(legacy[r.id]))
           legacy_matches += 1
         else
           new_survivors << r
@@ -138,13 +143,15 @@ module Mutineer
       end
       current_ids = current.map(&:id).to_set
       current_pairs = current.select { |r| legacy[r.id] }.map { |r| legacy_pair.call(r) }.to_set
+      current_legacy_ids = current.filter_map { |r| legacy[r.id] }.to_set
       # Under a diff-scoped side an out-of-scope baseline survivor was never
       # re-tested, so reporting it "fixed" would be false: empty is honest.
       fixed = if scoped || @scoped
                 []
               else
                 @survivors.reject do |h|
-                  current_ids.include?(h["id"]) || current_pairs.include?([h["id"], file_key.call(h["file"])])
+                  current_ids.include?(h["id"]) || current_pairs.include?([h["id"], file_key.call(h["file"])]) ||
+                    (foreign.include?(h) && current_legacy_ids.include?(h["id"]))
                 end
               end
 
@@ -161,6 +168,18 @@ module Mutineer
                 score_before: @score, score_after: current_score,
                 score_drop: score_drop, score_comparable: comparable,
                 regressed: !new_survivors.empty? || score_drop, legacy_matches: legacy_matches)
+    end
+
+    private
+
+    # True when a stored survivor's `file` is absolute and still absolute after
+    # normalizing against the project root, so it lies outside this checkout.
+    #
+    # @param file [String, nil] the stored survivor's `file`.
+    # @param file_key [Proc] normalizes a path against the project root.
+    # @return [Boolean] whether the file can never equal a current file.
+    def foreign_file?(file, file_key)
+      !file.nil? && File.absolute_path?(file) && File.absolute_path?(file_key.call(file))
     end
   end
 end

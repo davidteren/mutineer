@@ -550,18 +550,29 @@ module Mutineer
            "#{config_dir} will not match this run. Run mutineer from #{config_dir}."
     end
 
-    # Warns once per old-format `ignore:` entry (#126), naming the new ids it
-    # matched. mutineer cannot tell a full run from a narrowed one, so the text
-    # always says the list covers only this run's mutants.
+    # Warns once per old-format `ignore:` entry (#126), naming each new id it
+    # matched with that mutant's file and subject. mutineer cannot tell a full
+    # run from a narrowed one, so the text always says the list covers only this
+    # run's mutants. An entry that matched mutants in more than one file
+    # over-matched: the old id could not tell those files apart, so replacing it
+    # with every new id would keep suppressing the mutants it hid by accident.
     #
-    # @param matches [Hash{String => Array<String>}] old-format entry => new ids.
+    # @param matches [Hash{String => Array<Hash{Symbol => String}>}] old-format
+    #   entry => one `{id:, file:, subject:}` hash per matched mutant.
     # @return [void]
     def self.warn_legacy_ignore_matches(matches)
-      matches.each do |old, new_ids|
+      matches.each do |old, hits|
+        listed = hits.map { |h| "#{h[:id]} (#{h[:file]}, #{h[:subject]})" }.join(", ")
+        advice = if hits.map { |h| h[:file] }.uniq.size > 1
+                   "#{old} over-matched across files: the old format could not tell them apart. " \
+                     "Replace #{old} and keep only the ids for the mutant you meant to ignore, not all of them."
+                 else
+                   "Replace #{old} with the new ids in your ignore list."
+                 end
         warn "[mutineer] ignore entry #{old} uses the old id format, which did not include the " \
-             "file path. It matched these new ids: #{new_ids.join(', ')}. This list covers only " \
-             "mutants in this run's sources and operators; a run over every source gives the " \
-             "complete replacement. Replace #{old} with the new ids in your ignore list."
+             "file path. It matched these new ids: #{listed}. This list covers only mutants in " \
+             "this run's sources and operators; a run over every source gives the complete " \
+             "replacement. #{advice}"
       end
     end
 

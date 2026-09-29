@@ -190,4 +190,34 @@ class MutantIdTest < Minitest::Test
       refute_equal ids_for(root, "lib/x.rb", :total), ids_for(File.join(root, "lib"), "x.rb", :total)
     end
   end
+
+  # Pinned from this formula before subject_ordinal existed: a subject whose
+  # name is unique in its file (ordinal 0) must keep exactly this id.
+  def test_subject_ordinal_zero_keeps_the_id
+    src = "def total(a, b)\n  a + b\nend\n"
+    m = mutation(src, "+")
+    assert_equal "e4ac641aa693", ID.for(subject, m, src, path: PATH)
+    assert_equal "e4ac641aa693", ID.for(subject, m, src, path: PATH, subject_ordinal: 0)
+    assert_equal %w[e4ac641aa693 5af122e61d4f], ID.for_subject(subject, src, [m, m], path: PATH, subject_ordinal: 0)
+    refute_equal "e4ac641aa693", ID.for(subject, m, src, path: PATH, subject_ordinal: 1)
+    assert_equal ID.for(subject, m, src, path: PATH, subject_ordinal: 1),
+                 ID.for_subject(subject, src, [m], path: PATH, subject_ordinal: 1).first
+  end
+
+  # Two owner-less `def index` in two DSL blocks of ONE file share the path and
+  # the qualified name "#index"; the per-file subject ordinal tells them apart.
+  def test_same_name_subjects_in_one_file_get_distinct_ids
+    Dir.mktmpdir do |root|
+      body = "describe 'a' do\n  def index(a, b)\n    a + b\n  end\nend\n" \
+             "describe 'b' do\n  def index(a, b)\n    a + b\n  end\nend\n"
+      write(root, "spec/r.rb", body)
+      config = Mutineer::Config.new(sources: [File.join(root, "spec/r.rb")], project_root: root)
+      jobs, = Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic]))
+      assert_equal 2, jobs.size
+      assert_equal ["#index"], jobs.map { |j| j[0].qualified_name }.uniq
+      assert_equal 2, jobs.map { |j| j[2] }.uniq.size
+      # The first subject keeps the id it has without an ordinal.
+      assert_equal ids_for(root, "spec/r.rb", :index), [jobs.first[2]]
+    end
+  end
 end

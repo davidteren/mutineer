@@ -33,14 +33,14 @@ class BaselineTest < Minitest::Test
   def agg(*results) = Mutineer::AggregateResult.new(results)
 
   # A baseline doc (a prior --format json run) carrying the given survivor ids.
-  def baseline_doc(ids, score: nil, scoped: nil, id_format: nil)
+  def baseline_doc(ids, score: nil, scoped: nil, id_format: nil, file: FILE)
     {
       # Deliberately an older schema: a baseline written by a prior version must
       # still be readable, per the "accept any 1.x" contract in docs/json-schema.md.
       "schema_version" => "1.1",
       "summary" => { "score" => score, "scoped" => scoped, "id_format" => id_format }.compact,
       "survivors" => ids.map do |id|
-        { "id" => id, "subject" => "Pricing#total", "file" => FILE, "line" => 3,
+        { "id" => id, "subject" => "Pricing#total", "file" => file, "line" => 3,
           "operator" => "comparison" }
       end
     }
@@ -330,6 +330,19 @@ class BaselineTest < Minitest::Test
     base = Mutineer::Baseline.new(baseline_doc(%w[shared_old])) # stored as FILE
     same = survivor("a_new", file: "./#{FILE}")
     delta = base.diff(agg(same), id_map: { "a_new" => "shared_old" })
+
+    assert_empty delta.new_survivors
+    assert_equal 1, delta.legacy_matches
+    assert_empty delta.fixed_survivors
+  end
+
+  # An old baseline written on another machine stores an absolute file outside
+  # this project root, which can never equal the current relative file. It falls
+  # back to matching on the old id alone (the pre-#126 behavior), so an unchanged
+  # survivor is not a false regression.
+  def test_old_format_baseline_with_a_foreign_absolute_file_matches_on_the_old_id
+    base = Mutineer::Baseline.new(baseline_doc(%w[shared_old], file: "/other/checkout/pricing.rb"))
+    delta = base.diff(agg(survivor("a_new")), id_map: { "a_new" => "shared_old" })
 
     assert_empty delta.new_survivors
     assert_equal 1, delta.legacy_matches

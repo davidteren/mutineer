@@ -21,6 +21,10 @@ All notable changes to this project are documented here. The format is based on
     prints one `[mutineer]` warning that the loaded ignore ids will not match.
   - A source outside the project root uses its absolute path, so its ids differ
     between machines.
+  - Two methods with the same qualified name in one file (for example two
+    top-level `def index` in two DSL blocks) now get different ids. The second
+    and later ones hash their position among those methods; the first keeps its
+    id.
 - **The JSON report marks its id format** (schema `1.4`, additive).
   `summary.id_format` is `2` for ids that include the file path.
   `summary.legacy_id_matches` counts old-format `ignore:` entries (`ignore`) and
@@ -30,14 +34,19 @@ All notable changes to this project are documented here. The format is based on
 ### Fixed
 - **Old-format ids keep working, with a warning** (#126). An old-format
   `ignore:` entry still suppresses the mutants it matched before. The run prints
-  one `[mutineer]` warning per entry with the new ids to use. A `--baseline`
-  file without `summary.id_format` matches on new ids, or on old ids from the
-  same file, so no survivor reads as new or fixed only because its id changed. The run prints one
+  one `[mutineer]` warning per entry with each new id, its file and its method.
+  When the entry matched mutants in more than one file, the warning says it
+  over-matched and to keep only the ids for the mutant you meant to ignore. A
+  `--baseline` file without `summary.id_format` matches on new ids, or on old
+  ids from the same file, so no survivor reads as new or fixed only because its
+  id changed. A stored file outside the project root (a baseline written on
+  another machine) matches on the old id alone. The run prints one
   `[mutineer]` warning to regenerate the baseline.
 
 ### Deprecated
 - **Old-format ids in `ignore:` and in baselines.** Matching on them is removed
-  in 2.0. Replace each old `ignore:` entry with the new ids from the warning.
+  in 2.0. Replace each old `ignore:` entry with the new ids from the warning
+  (only the intended ones when it over-matched across files).
   Regenerate a baseline (`--format json`) only after every gate that reads it
   runs this version or later (the Action's `version:` pin, your CI
   `Gemfile.lock`). An older version treats every new-format survivor as new.

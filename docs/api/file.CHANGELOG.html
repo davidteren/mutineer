@@ -82,6 +82,10 @@ mutineer finds <code>.mutineer.yml</code> by walking up, so a run from a subdire
 prints one <code>[mutineer]</code> warning that the loaded ignore ids will not match.</li>
 <li>A source outside the project root uses its absolute path, so its ids differ
 between machines.</li>
+<li>Two methods with the same qualified name in one file (for example two
+top-level <code>def index</code> in two DSL blocks) now get different ids. The second
+and later ones hash their position among those methods; the first keeps its
+id.</li>
 </ul>
 </li>
 <li><strong>The JSON report marks its id format</strong> (schema <code>1.4</code>, additive).
@@ -94,15 +98,20 @@ GitHub Action shows one warning annotation when either count is not zero.</li>
 <ul>
 <li><strong>Old-format ids keep working, with a warning</strong> (#126). An old-format
 <code>ignore:</code> entry still suppresses the mutants it matched before. The run prints
-one <code>[mutineer]</code> warning per entry with the new ids to use. A <code>--baseline</code>
-file without <code>summary.id_format</code> matches on new ids, or on old ids from the
-same file, so no survivor reads as new or fixed only because its id changed. The run prints one
+one <code>[mutineer]</code> warning per entry with each new id, its file and its method.
+When the entry matched mutants in more than one file, the warning says it
+over-matched and to keep only the ids for the mutant you meant to ignore. A
+<code>--baseline</code> file without <code>summary.id_format</code> matches on new ids, or on old
+ids from the same file, so no survivor reads as new or fixed only because its
+id changed. A stored file outside the project root (a baseline written on
+another machine) matches on the old id alone. The run prints one
 <code>[mutineer]</code> warning to regenerate the baseline.</li>
 </ul>
 <h3 id="Deprecated">Deprecated</h3>
 <ul>
 <li><strong>Old-format ids in <code>ignore:</code> and in baselines.</strong> Matching on them is removed
-in 2.0. Replace each old <code>ignore:</code> entry with the new ids from the warning.
+in 2.0. Replace each old <code>ignore:</code> entry with the new ids from the warning
+(only the intended ones when it over-matched across files).
 Regenerate a baseline (<code>--format json</code>) only after every gate that reads it
 runs this version or later (the Action's <code>version:</code> pin, your CI
 <code>Gemfile.lock</code>). An older version treats every new-format survivor as new.</li>

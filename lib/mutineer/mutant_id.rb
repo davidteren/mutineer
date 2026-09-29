@@ -11,7 +11,8 @@ module Mutineer
   # Offset-free by design: keyed on the subject's project-relative file path +
   # qualified_name (a method, not a byte position) + operator + the normalized
   # mutated token + an occurrence ordinal among same-(operator, token) twins
-  # WITHIN the subject. So it survives any edit outside the subject method,
+  # WITHIN the subject + (only when positive) the subject's ordinal among
+  # same-named subjects in its file. So it survives any edit outside the subject method,
   # where raw start/end offsets shift on every edit earlier in the file and
   # would silently stop matching. Moving or renaming the file changes the id.
   module MutantId
@@ -33,10 +34,15 @@ module Mutineer
     #   (operator, token) within the subject, disambiguating otherwise-identical mutants.
     # @param path [String] the subject's file, normalized with {ProjectPath.relative}
     #   against the project root (an absolute real path when outside the root).
+    # @param subject_ordinal [Integer] 0-based ordinal among subjects in the same
+    #   file sharing this qualified name (two owner-less `def index` in two DSL
+    #   blocks). Hashed only when positive, so a subject whose name is unique in
+    #   its file keeps the id it had without it.
     # @return [String] a 12-character hex id, stable across edits outside the subject.
-    def for(subject, mutation, source, occurrence = 0, path:)
-      digest([path, subject.qualified_name, mutation.operator,
-              normalized_token(mutation, source), occurrence])
+    def for(subject, mutation, source, occurrence = 0, path:, subject_ordinal: 0)
+      parts = [path, subject.qualified_name, mutation.operator, normalized_token(mutation, source), occurrence]
+      parts << subject_ordinal if subject_ordinal.positive?
+      digest(parts)
     end
 
     # Computes ids for a subject's full mutation list, in input order, assigning
@@ -47,9 +53,13 @@ module Mutineer
     # @param source [String] the full, unmutated source for token normalization.
     # @param mutations [Array<Mutineer::Mutation>] the subject's mutations, in order.
     # @param path [String] the subject's normalized file path (see {.for}).
+    # @param subject_ordinal [Integer] the subject's ordinal among same-named
+    #   subjects in its file (see {.for}).
     # @return [Array<String>] one 12-character id per mutation, positionally aligned.
-    def for_subject(subject, source, mutations, path:)
-      with_occurrences(mutations, source) { |m, occ| self.for(subject, m, source, occ, path: path) }
+    def for_subject(subject, source, mutations, path:, subject_ordinal: 0)
+      with_occurrences(mutations, source) do |m, occ|
+        self.for(subject, m, source, occ, path: path, subject_ordinal: subject_ordinal)
+      end
     end
 
     # The pre-1.3 id: the {.for} formula without the path, so it collides across

@@ -470,7 +470,9 @@ comes back as its absolute real path.</p>
   
 </h3><div class="docstring">
   <div class="discussion">
-    <p>Canonical project root (<code>/var</code> vs <code>/private/var</code>).</p>
+    <p>Canonical project root (<code>/var</code> vs <code>/private/var</code>). Any file system error
+(missing, unreadable, a symlink loop) falls back to the expanded path, so
+a caller such as the CLI's run-root warning never crashes on it.</p>
 
   </div>
 </div>
@@ -517,18 +519,18 @@ comes back as its absolute real path.</p>
       <pre class="lines">
 
 
-44
-45
 46
 47
-48</pre>
+48
+49
+50</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/project_path.rb', line 44</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/project_path.rb', line 46</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_root_real'>root_real</span><span class='lparen'>(</span><span class='id identifier rubyid_root'><span class='object_link'><a href="../top-level-namespace.html" title="Top Level Namespace (root)">root</a></span></span><span class='rparen'>)</span>
   <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_realpath'>realpath</span><span class='lparen'>(</span><span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='id identifier rubyid_root'><span class='object_link'><a href="../top-level-namespace.html" title="Top Level Namespace (root)">root</a></span></span><span class='rparen'>)</span><span class='rparen'>)</span>
-<span class='kw'>rescue</span> <span class='const'>Errno</span><span class='op'>::</span><span class='const'>ENOENT</span>
+<span class='kw'>rescue</span> <span class='const'>SystemCallError</span>
   <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='id identifier rubyid_root'><span class='object_link'><a href="../top-level-namespace.html" title="Top Level Namespace (root)">root</a></span></span><span class='rparen'>)</span>
 <span class='kw'>end</span></pre>
     </td>
@@ -746,7 +748,9 @@ comes back as its absolute real path.</p>
   
 </h3><div class="docstring">
   <div class="discussion">
-    <p>Canonical project root (<code>/var</code> vs <code>/private/var</code>).</p>
+    <p>Canonical project root (<code>/var</code> vs <code>/private/var</code>). Any file system error
+(missing, unreadable, a symlink loop) falls back to the expanded path, so
+a caller such as the CLI's run-root warning never crashes on it.</p>
 
   </div>
 </div>
@@ -793,18 +797,18 @@ comes back as its absolute real path.</p>
       <pre class="lines">
 
 
-44
-45
 46
 47
-48</pre>
+48
+49
+50</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/project_path.rb', line 44</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/project_path.rb', line 46</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_root_real'>root_real</span><span class='lparen'>(</span><span class='id identifier rubyid_root'><span class='object_link'><a href="../top-level-namespace.html" title="Top Level Namespace (root)">root</a></span></span><span class='rparen'>)</span>
   <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_realpath'>realpath</span><span class='lparen'>(</span><span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='id identifier rubyid_root'><span class='object_link'><a href="../top-level-namespace.html" title="Top Level Namespace (root)">root</a></span></span><span class='rparen'>)</span><span class='rparen'>)</span>
-<span class='kw'>rescue</span> <span class='const'>Errno</span><span class='op'>::</span><span class='const'>ENOENT</span>
+<span class='kw'>rescue</span> <span class='const'>SystemCallError</span>
   <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='id identifier rubyid_root'><span class='object_link'><a href="../top-level-namespace.html" title="Top Level Namespace (root)">root</a></span></span><span class='rparen'>)</span>
 <span class='kw'>end</span></pre>
     </td>

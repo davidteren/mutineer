@@ -390,7 +390,7 @@ runs:
             | (.summary.legacy_id_matches.baseline // 0) as $b
             | if $i > 0 or $b > 0 then
                 "::warning title=Old-format mutant ids::mutineer: mutant ids now include the file path (#126), and this run still matched ids in the old format."
-                + " Old ignore entries matched: \($i). Replace each one with the new ids printed in the log."
+                + " Old ignore entries matched: \($i). Replace each one as the log explains: it names each new id with its file and subject, and says when an old entry over-matched across files."
                 + " Baseline survivors matched only by an old id: \($b). Regenerate the baseline with --format json, but only after every gate that reads it runs this mutineer version or later."
                 + " Old-format ids stop working in 2.0. See https://github.com/davidteren/mutineer#mutant-ids"
               else empty end
@@ -399,7 +399,7 @@ runs:
         elif [ "$FORMAT" = "json" ] && report_ok; then
           # A completed report must not lose its documented surfaces silently:
           # this branch only reaches when jq is absent (self-hosted runner).
-          echo "::notice::mutineer: jq not found on this runner; skipping the step summary and survivor annotations (the JSON report and exit code are unaffected)."
+          echo "::notice::mutineer: jq not found on this runner; skipping the step summary, survivor annotations, and the old-format mutant id warning (the JSON report and exit code are unaffected)."
         elif [ "$FORMAT" = "json" ] && ! report_ok && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
           # The run died before writing a report (e.g. a usage error): say so in
           # the summary instead of leaving the documented surface silently blank.

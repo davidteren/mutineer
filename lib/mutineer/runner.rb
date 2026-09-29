@@ -163,10 +163,15 @@ module Mutineer
     # Each mutant also gets its old-format id ({MutantId.legacy_for}), so an ignore
     # entry stored before ids carried the path still suppresses it. Prints nothing:
     # the extras hash returns, as data, `legacy_ignore_matches` (each old-format
-    # ignore entry that matched a mutant through its old-format id => the new ids
-    # it matched, in collection order; recorded even when a new id is also
-    # listed, since the old entry still over-matches other files) and `id_map`
-    # (every new id => its old-format id).
+    # ignore entry that matched a mutant through its old-format id => one
+    # `{id:, file:, subject:}` hash per matched mutant, in collection order: its
+    # new id, its project-relative file and its subject's qualified name;
+    # recorded even when a new id is also listed, since the old entry still
+    # over-matches other files) and `id_map` (every new id => its old-format id).
+    #
+    # Subjects sharing a qualified name in one file (two owner-less `def index`
+    # in two DSL blocks) get a per-file ordinal in discovery order, so their ids
+    # differ; the first one's ordinal is 0 and leaves its id unchanged.
     #
     # @param config [Mutineer::Config] run configuration.
     # @param operator_classes [Array<Class>] resolved operators.
@@ -176,6 +181,7 @@ module Mutineer
       source_map = {}
       disabled_map = {}
       id_paths = {}
+      name_counts = Hash.new(0) # [file, qualified_name] => subjects seen so far
       ignore_set = config.ignore.to_set
       jobs = []
       ignored_results = []
@@ -186,7 +192,9 @@ module Mutineer
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
         mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
         id_path = (id_paths[subject.file] ||= ProjectPath.relative(subject.file, config.project_root))
-        ids = MutantId.for_subject(subject, source, mutations, path: id_path)
+        ordinal = name_counts[[id_path, subject.qualified_name]]
+        name_counts[[id_path, subject.qualified_name]] += 1
+        ids = MutantId.for_subject(subject, source, mutations, path: id_path, subject_ordinal: ordinal)
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
         mutations.each_with_index do |mutation, i|
           id = ids[i]
@@ -194,7 +202,9 @@ module Mutineer
           id_map[id] = legacy
           # An old entry still over-matches other files even when the new id is
           # listed too, so every old-entry match is reported for migration.
-          (legacy_ignore_matches[legacy] ||= []) << id if ignore_set.include?(legacy)
+          if ignore_set.include?(legacy)
+            (legacy_ignore_matches[legacy] ||= []) << { id: id, file: id_path, subject: subject.qualified_name }
+          end
           line = source.byteslice(0, mutation.start_offset).count("\n") + 1
           if suppressed?(mutation.operator, line, [id, legacy], disabled, ignore_set)
             ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id)

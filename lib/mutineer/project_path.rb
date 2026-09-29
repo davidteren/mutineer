@@ -37,13 +37,15 @@ module Mutineer
       File.exist?(raw) ? File.realpath(raw) : File.expand_path(raw)
     end
 
-    # Canonical project root (`/var` vs `/private/var`).
+    # Canonical project root (`/var` vs `/private/var`). Any file system error
+    # (missing, unreadable, a symlink loop) falls back to the expanded path, so
+    # a caller such as the CLI's run-root warning never crashes on it.
     #
     # @param root [String] project root.
     # @return [String] realpath of the root when it exists, else its expanded path.
     def root_real(root)
       File.realpath(File.expand_path(root))
-    rescue Errno::ENOENT
+    rescue SystemCallError
       File.expand_path(root)
     end
   end

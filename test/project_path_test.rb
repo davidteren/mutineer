@@ -32,4 +32,12 @@ class ProjectPathTest < Minitest::Test
   def test_missing_root_falls_back_to_the_expanded_path
     assert_equal File.expand_path("/no/such/root"), Mutineer::ProjectPath.root_real("/no/such/root")
   end
+
+  # The run-root warning calls root_real; a root it cannot resolve (EACCES,
+  # ELOOP) must fall back to the expanded path, not crash the CLI.
+  def test_root_real_falls_back_on_any_system_call_error
+    File.stub(:realpath, ->(*) { raise Errno::EACCES, "denied" }) do
+      assert_equal File.expand_path("some/root"), Mutineer::ProjectPath.root_real("some/root")
+    end
+  end
 end

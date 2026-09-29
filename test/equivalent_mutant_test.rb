@@ -84,7 +84,7 @@ class EquivalentMutantTest < Minitest::Test
       old = legacy_id(root, "a.rb")
       _, ignored, _, extras = collect(root, %w[a.rb], ignore: [old])
       assert_equal [new_id(root, "a.rb")], ignored.map(&:id)
-      assert_equal({ old => [new_id(root, "a.rb")] }, extras[:legacy_ignore_matches])
+      assert_equal({ old => [match(root, "a.rb")] }, extras[:legacy_ignore_matches])
     end
   end
 
@@ -97,7 +97,7 @@ class EquivalentMutantTest < Minitest::Test
 
       _, ignored, _, extras = collect(root, %w[a.rb b.rb], ignore: [old])
       assert_equal expected, ignored.map(&:id)
-      assert_equal({ old => expected }, extras[:legacy_ignore_matches])
+      assert_equal({ old => [match(root, "a.rb"), match(root, "b.rb")] }, extras[:legacy_ignore_matches])
     end
   end
 
@@ -109,7 +109,7 @@ class EquivalentMutantTest < Minitest::Test
       new_a = new_id(root, "a.rb")
       _, ignored, _, extras = collect(root, %w[a.rb b.rb], ignore: [new_a, old])
       assert_equal [new_a, new_id(root, "b.rb")], ignored.map(&:id)
-      assert_equal({ old => [new_a, new_id(root, "b.rb")] }, extras[:legacy_ignore_matches])
+      assert_equal({ old => [match(root, "a.rb"), match(root, "b.rb")] }, extras[:legacy_ignore_matches])
     end
   end
 
@@ -133,6 +133,33 @@ class EquivalentMutantTest < Minitest::Test
       ids = jobs.map { |j| j[2] } + ignored.map(&:id)
       assert_equal ids.sort, extras[:id_map].keys.sort
       assert_equal old, extras[:id_map][new_id(root, "b.rb")]
+    end
+  end
+
+  # An old entry that matched mutants in two files over-matched: the warning
+  # names each new id with its file and subject, and says to keep only the ids
+  # of the mutant that was meant to be ignored.
+  def test_warning_for_an_entry_matching_two_files_names_both_and_warns_of_over_match
+    with_colliding_files do |root|
+      old = legacy_id(root, "a.rb")
+      _, _, _, extras = collect(root, %w[a.rb b.rb], ignore: [old])
+      _, err = capture_io { Mutineer::CLI.warn_legacy_ignore_matches(extras[:legacy_ignore_matches]) }
+      assert_includes err, "#{new_id(root, 'a.rb')} (a.rb, Shared#f)"
+      assert_includes err, "#{new_id(root, 'b.rb')} (b.rb, Shared#f)"
+      assert_match(/over-matched across files/, err)
+      assert_match(/keep only the ids for the mutant you meant to ignore/, err)
+      refute_match(/Replace #{old} with the new ids/, err)
+    end
+  end
+
+  def test_warning_for_an_entry_matching_one_file_has_no_over_match_wording
+    with_colliding_files do |root|
+      old = legacy_id(root, "a.rb")
+      _, _, _, extras = collect(root, %w[a.rb], ignore: [old])
+      _, err = capture_io { Mutineer::CLI.warn_legacy_ignore_matches(extras[:legacy_ignore_matches]) }
+      assert_includes err, "#{new_id(root, 'a.rb')} (a.rb, Shared#f)"
+      refute_match(/over-match/, err)
+      assert_match(/Replace #{old} with the new ids/, err)
     end
   end
 
@@ -256,6 +283,11 @@ class EquivalentMutantTest < Minitest::Test
 
   def new_id(root, file)
     Mutineer::MutantId.for(*first_mutant(root, file), path: file)
+  end
+
+  # The legacy_ignore_matches entry for the first mutant of `file`.
+  def match(root, file)
+    { id: new_id(root, file), file: file, subject: "Shared#f" }
   end
 
   def render_json(agg, source_map)

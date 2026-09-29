@@ -232,9 +232,14 @@ Suppressed mutants are excluded from the score (so 100% becomes reachable).
 
 A mutant id is 12 hex characters. It hashes the file path (relative to the
 project root), the method's qualified name, the operator, the mutated code, and
-the mutant's position among identical mutants in that method. An edit outside
-the method does not change the id. Moving or renaming the file, renaming the
-method or its class, or adding an identical mutant earlier in the method does.
+the mutant's position among identical mutants in that method. When one file has
+two methods with the same qualified name (for example two top-level `def index`
+in two DSL blocks), the second and later ones also hash their position among
+those methods, so their ids differ. The first one's id does not change. An edit
+outside the method does not change the id. Moving or renaming the file,
+renaming the method or its class, or adding an identical mutant earlier in the
+method does. Adding a method with the same name earlier in the same file also
+does.
 
 - The project root is the directory mutineer runs from (in the Action, the
   `working-directory`). Run from the same root to get the same ids.
@@ -246,12 +251,17 @@ the file path, so two files could share an id (#126). Old-format ids keep
 working until 2.0, with a warning:
 
 - **`ignore:`** An old entry still suppresses its mutants. The run prints the
-  new ids for each old entry. Replace the entry with those ids. The list covers
-  only the sources and operators in that run, so run over every source with
-  every operator set you use (for example your Tier-2 `--operators`) for the
-  full list.
+  new ids for each old entry, each with its file and method. When all of them
+  are in one file, replace the entry with those ids. When they are in more than
+  one file, the old entry over-matched: it also hid mutants you did not mean to
+  ignore. The warning says so. Keep only the ids for the mutant you meant to
+  ignore, not all of them. The list covers only the sources and operators in
+  that run, so run over every source with every operator set you use (for
+  example your Tier-2 `--operators`) for the full list.
 - **`--baseline`** An old baseline still matches: a survivor matches a stored
-  one with the same old id in the same file. The run tells you to
+  one with the same old id in the same file. A stored file that is an absolute
+  path outside the project root (a baseline written on another machine)
+  matches on the old id alone. The run tells you to
   regenerate it. Regenerate it with `--format json`, but only after every gate
   that reads it runs 1.3 or later (the Action's `version:` pin, your CI
   `Gemfile.lock`). An older version treats every new-format survivor as new.
