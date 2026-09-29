@@ -1,0 +1,21 @@
+docs/api/Mutineer.html
+  s_1d8e859ed0d041::t_5f4b39e5511d04 9,136,154
+docs/api/file.CHANGELOG.html
+  s_1d8e859ed0d041::t_f95a7925ce5676 9,67,692
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e744383e494e75227b12afb63b0b6f23e0165f04",
+  "prompts": {},
+  "sessions": {
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
