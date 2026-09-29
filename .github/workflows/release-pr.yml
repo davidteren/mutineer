@@ -1,10 +1,13 @@
 name: Release PR
 
-# When shippable work (feat:/fix: commits) lands on main past the latest tag, open
-# (or leave open) a release PR that bumps Mutineer::VERSION and dates the CHANGELOG
-# (including the reference-link def that's easy to forget). You review + merge, then
-# push the vX.Y.Z tag — release.yml tests and publishes. Replaces the old nag-only
-# release-drift workflow: the PR is the actionable nag.
+# Releases are batched: this runs weekly (and on demand), not on every push. When
+# shippable work (feat:/fix: commits) is on main past the latest tag, it opens a
+# release PR that bumps Mutineer::VERSION and dates the CHANGELOG (including the
+# reference-link def that's easy to forget). Each run REBUILDS that PR from the
+# current main, so it always covers every change since the last tag: a newer
+# version replaces an older open release PR, and the same version is refreshed in
+# place. You review + merge, then push the vX.Y.Z tag — release.yml tests and
+# publishes. Cut a release early with: gh workflow run release-pr.yml
 #
 # Note: a PR opened with the default GITHUB_TOKEN does NOT trigger other workflows
 # (GitHub's recursion guard), so CI won't auto-run on it. To get CI on the release
@@ -12,11 +15,9 @@ name: Release PR
 # uses it when present and falls back to GITHUB_TOKEN otherwise. Either way, merging
 # to main and tagging still run release.yml.
 on:
-  push:
-    branches: [main]
   schedule:
-    - cron: "0 8 * * 1" # Monday 08:00 UTC — weekly backstop
-  workflow_dispatch:
+    - cron: "0 8 * * 1" # Monday 08:00 UTC — the weekly release batch
+  workflow_dispatch: # cut a release now: gh workflow run release-pr.yml
 
 permissions:
   contents: write
@@ -79,22 +80,19 @@ jobs:
           echo "latest_tag=$latest_tag  feats=$feats  fixes=$fixes  ->  v$next"
           # MUTINEER_VERSION_CALC_END
 
-          # Idempotent: don't duplicate an already-open release PR for this version.
-          if [ -n "$(gh pr list --state open --head "$branch" --json number --jq '.[0].number // empty')" ]; then
-            echo "Release PR for $branch is already open."; exit 0
-          fi
-
-          # A stale branch from a PREVIOUSLY CLOSED release PR would make `git push` below
-          # fail. Detect it and stop with an actionable message rather than erroring.
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            echo "Stale release branch $branch exists (from a closed PR?). Delete it to re-open: git push origin --delete $branch"; exit 0
-          fi
-
           # If VERSION is already this value, the bump merged and only the tag is missing.
           cur="$(ruby -r ./lib/mutineer/version -e 'print Mutineer::VERSION')"
           if [ "$cur" = "$next" ]; then
             echo "VERSION is already $next (bump merged, awaiting tag). Push it: git tag v$next && git push origin v$next"; exit 0
           fi
+
+          # An open release PR for an OLDER version (for example v1.2.1 when a feat:
+          # has since made this v1.3.0) is superseded: close it and delete its branch.
+          while IFS= read -r old; do
+            if [ -z "$old" ] || [ "$old" = "$branch" ]; then continue; fi
+            echo "Superseding $old with $branch."
+            gh pr close "$old" --delete-branch --comment "Superseded by the v${next} release PR, rebuilt from main." || true
+          done < <(gh pr list --state open --json headRefName --jq '.[].headRefName | select(startswith("release/v"))')
 
           date="$(date -u +%Y-%m-%d)"
           url="https://github.com/${GITHUB_REPOSITORY}"
@@ -115,12 +113,19 @@ jobs:
           # 4) branch, commit, push, open the PR
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "$branch"
+          # The release branch is generated, never hand-edited: rebuild it from main
+          # on every run so the PR always includes every change since the last tag.
+          git switch -C "$branch"
           git commit -aqm "release: v${next}"
-          git push -u origin "$branch"
+          git push --force -u origin "$branch"
 
           notes="$(git log --pretty='- %h %s' "${latest_tag}..HEAD" | grep -E ' (feat|fix)(\(|!|:)' || true)"
           bump="$([ "$feats" -gt 0 ] && echo minor || echo patch)"
-          body="$(printf '## What / Why / How\n\n**What.** Cut release **v%s**.\n\n**Why.** feat:/fix: commits have landed on `main` since `%s` (auto-detected). This bumps the version + dates the CHANGELOG so a tag can publish — closing the release-drift gap automatically.\n\n**How.** Review, merge, then `git tag v%s && git push origin v%s` — release.yml tests and publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_Auto-opened by `release-pr.yml`. Close to decline; it re-opens on the next qualifying push._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes")"
+          body="$(printf '## What / Why / How\n\n**What.** Cut release **v%s**.\n\n**Why.** feat:/fix: commits have landed on `main` since `%s` (auto-detected). This bumps the version + dates the CHANGELOG so a tag can publish — closing the release-drift gap automatically.\n\n**How.** Review, merge, then `git tag v%s && git push origin v%s` — release.yml tests and publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_Auto-opened by `release-pr.yml` and rebuilt from `main` on each weekly (or manual) run. Close to decline; the next run re-opens it._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes")"
 
-          gh pr create --base main --head "$branch" --title "release: v${next}" --body "$body"
+          if [ -n "$(gh pr list --state open --head "$branch" --json number --jq '.[0].number // empty')" ]; then
+            gh pr edit "$branch" --body "$body"
+            echo "Refreshed the open release PR for $branch."
+          else
+            gh pr create --base main --head "$branch" --title "release: v${next}" --body "$body"
+          fi

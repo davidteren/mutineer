@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "yaml"
 require "open3"
 require "tmpdir"
 require "fileutils"
@@ -62,6 +63,18 @@ class ReleaseWorkflowTest < Minitest::Test
       assert_equal 0, status.exitstatus, "stderr:#{err}\nstdout:#{out}"
       assert_match(/nothing to release/, out)
     end
+  end
+
+  # Releases are batched (weekly + on demand): a merge to main must not open a
+  # release PR by itself, and each run rebuilds the release branch from main.
+  def test_release_prs_are_batched_not_opened_per_push
+    triggers = YAML.load_file(WORKFLOW).then { |y| y[true] || y["on"] }
+    assert_equal %w[schedule workflow_dispatch], triggers.keys.sort
+    text = File.read(WORKFLOW)
+    assert_includes text, 'git switch -C "$branch"', "the release branch must be rebuilt from main"
+    assert_includes text, "git push --force", "a rebuilt release branch replaces the old one"
+    assert_includes text, "gh pr edit", "an open release PR for the same version is refreshed"
+    assert_includes text, "gh pr close", "an older open release PR is superseded"
   end
 
   def test_workflow_markers_wrap_the_live_calculation

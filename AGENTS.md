@@ -108,11 +108,16 @@ default flip must never reach them without opting in.
 
 Safety nets:
 - The **tag must equal `Mutineer::VERSION`** or the release aborts.
-- `.github/workflows/release-pr.yml` **auto-opens a release PR** (bumps `version.rb`,
-  dates the CHANGELOG + adds its reference-link def) when `feat:`/`fix:` commits sit on
-  `main` past the latest tag — so a merge without a release can't slip by. Review + merge
-  it, then push the `vX.Y.Z` tag. (To get CI on that auto-PR, add a `RELEASE_PR_TOKEN`
-  PAT secret — a PR opened by the default `GITHUB_TOKEN` doesn't trigger other workflows.)
+- **Releases are batched, not cut per merge.** `.github/workflows/release-pr.yml` runs
+  weekly (Monday 08:00 UTC) and on demand (`gh workflow run release-pr.yml`). When
+  `feat:`/`fix:` commits sit on `main` past the latest tag, it opens a release PR (bumps
+  `version.rb`, dates the CHANGELOG + adds its reference-link def). Each run rebuilds that
+  PR from the current `main`, so it always covers every change since the last tag; a
+  newer version supersedes an older open release PR. Review + merge it, then push the
+  `vX.Y.Z` tag. Every release moves the floating `v1` tag, so Action users get it at once:
+  batch changes rather than releasing after each merge. (To get CI on that auto-PR, add a
+  `RELEASE_PR_TOKEN` PAT secret — a PR opened by the default `GITHUB_TOKEN` doesn't
+  trigger other workflows.)
 
 **One-time setup (required for the publish to work):** register a Trusted Publisher
 on <https://rubygems.org/gems/mutineer> → owner `davidteren`, repo `mutineer`,
