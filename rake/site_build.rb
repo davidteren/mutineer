@@ -27,6 +27,7 @@ module SiteBuild
     # @return [void]
     def generate!(dest = nil)
       dest ||= ENV["SITE_BUILD_DEST"] || DEFAULT_DEST
+      check_dest!(dest)
       FileUtils.rm_rf(dest)
       FileUtils.mkdir_p(dest)
       copy_docs_tree!(dest)
@@ -36,6 +37,22 @@ module SiteBuild
       write!(File.join(dest, "llms-full.txt"), DocsContract.llms_full_txt)
       write!(File.join(dest, "json-schema.html"), DocsContract.json_schema_html)
       write!(File.join(dest, "sitemap.xml"), MutineerSiteDocs.sitemap_xml)
+    end
+
+    # The build starts with rm_rf, so refuse a destination whose removal
+    # deletes the checkout or the docs/ sources.
+    #
+    # @param dest [String]
+    # @return [void]
+    # @raise [ArgumentError] when `dest` is the checkout, one of its
+    #   ancestors, or inside docs/
+    def check_dest!(dest)
+      abs = File.expand_path(dest)
+      root = File.expand_path("..", __dir__)
+      docs = File.join(root, "docs")
+      ancestor = "#{root}/".start_with?("#{abs.chomp('/')}/")
+      inside_docs = abs == docs || abs.start_with?("#{docs}/")
+      raise ArgumentError, "site:build: refusing to replace #{abs}" if ancestor || inside_docs
     end
 
     private
@@ -75,11 +92,19 @@ module SiteBuild
       end
     end
 
-    # Git-tracked paths under docs/, relative to docs/.
+    # Git-tracked paths under docs/, relative to docs/. Raises when git
+    # fails or finds nothing, so a build outside a checkout does not deploy
+    # a site without its pages.
     #
     # @return [Array<String>]
     def tracked_docs_paths
-      `git ls-files docs`.lines.map(&:chomp).map { |p| p.delete_prefix("docs/") }
+      out = `git ls-files docs`
+      raise "site:build: `git ls-files docs` failed" unless $?.success?
+
+      paths = out.lines.map(&:chomp).map { |p| p.delete_prefix("docs/") }
+      raise "site:build: git tracks no files under docs/" if paths.empty?
+
+      paths
     end
 
     # Write + trailing newline.
