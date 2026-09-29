@@ -533,7 +533,8 @@ module Mutineer
     # Warns once when the loaded .mutineer.yml sits outside the run directory
     # (#126). Mutant ids hash each file's path relative to the run directory,
     # but the config is found by walking up, so a run from a subdirectory loads
-    # the same ignore list while its ids no longer match.
+    # the same ignore list while its ids no longer match. A config in the home
+    # directory is a personal default, not a project root, so it never warns.
     #
     # @param file_path [String] the .mutineer.yml that was loaded.
     # @param project_root [String] the run directory ids are relative to.
@@ -541,6 +542,7 @@ module Mutineer
     def self.warn_config_root_mismatch(file_path, project_root)
       config_dir = ProjectPath.root_real(File.dirname(file_path))
       return if config_dir == ProjectPath.root_real(project_root)
+      return if config_dir == ProjectPath.root_real(Dir.home)
 
       warn "[mutineer] loaded #{file_path}, but mutant ids are relative to the run directory " \
            "#{project_root}, not to #{config_dir}. Ignore ids and baselines written from " \

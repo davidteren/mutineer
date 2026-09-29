@@ -43,6 +43,19 @@ class CliTest < Minitest::Test
     end
   end
 
+  # A ~/.mutineer.yml is a personal default, not a project root: running from
+  # any project below home must not warn to "run from home".
+  def test_home_level_config_does_not_warn
+    Dir.mktmpdir("mutineer-home") do |home|
+      File.write(File.join(home, ".mutineer.yml"), "threshold: 0\n")
+      proj = File.join(home, "proj")
+      FileUtils.mkdir_p(proj)
+      _out, err, = Open3.capture3({ "HOME" => home }, RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", BIN,
+                                  "run", "--dry-run", "nothing.rb", chdir: proj)
+      assert_empty root_warnings(err), "a home-level config must not warn, got: #{err}"
+    end
+  end
+
   def test_run_from_the_config_directory_does_not_warn
     Dir.mktmpdir("mutineer-root") do |proj|
       File.write(File.join(proj, ".mutineer.yml"), "threshold: 0\n")

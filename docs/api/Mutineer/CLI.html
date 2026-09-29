@@ -767,8 +767,6 @@ candidate list cannot drift from a real run's job selection.</p>
       <pre class="lines">
 
 
-583
-584
 585
 586
 587
@@ -802,10 +800,12 @@ candidate list cannot drift from a real run's job selection.</p>
 615
 616
 617
-618</pre>
+618
+619
+620</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 583</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 585</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_dry_run'>dry_run</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_operator_classes'>operator_classes</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="MutatorRegistry.html" title="Mutineer::MutatorRegistry (class)">MutatorRegistry</a></span></span><span class='period'>.</span><span class='id identifier rubyid_resolve'><span class='object_link'><a href="MutatorRegistry.html#resolve-class_method" title="Mutineer::MutatorRegistry.resolve (method)">resolve</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_operators'>operators</span> <span class='op'>||</span> <span class='const'><span class='object_link'><a href="MutatorRegistry.html" title="Mutineer::MutatorRegistry (class)">MutatorRegistry</a></span></span><span class='op'>::</span><span class='const'><span class='object_link'><a href="MutatorRegistry.html#DEFAULT_NAMES-constant" title="Mutineer::MutatorRegistry::DEFAULT_NAMES (constant)">DEFAULT_NAMES</a></span></span><span class='rparen'>)</span>
@@ -2228,7 +2228,8 @@ explicit --jobs N is forced to 1 rather than honored.</p>
     <p class="note returns_void">This method returns an undefined value.</p><p>Warns once when the loaded .mutineer.yml sits outside the run directory
 (#126). Mutant ids hash each file's path relative to the run directory,
 but the config is found by walking up, so a run from a subdirectory loads
-the same ignore list while its ids no longer match.</p>
+the same ignore list while its ids no longer match. A config in the home
+directory is a personal default, not a project root, so it never warns.</p>
 
   </div>
 </div>
@@ -2273,21 +2274,23 @@ the same ignore list while its ids no longer match.</p>
       <pre class="lines">
 
 
-541
 542
 543
 544
 545
 546
 547
-548</pre>
+548
+549
+550</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 541</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 542</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_warn_config_root_mismatch'>warn_config_root_mismatch</span><span class='lparen'>(</span><span class='id identifier rubyid_file_path'>file_path</span><span class='comma'>,</span> <span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_config_dir'>config_dir</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="ProjectPath.html" title="Mutineer::ProjectPath (module)">ProjectPath</a></span></span><span class='period'>.</span><span class='id identifier rubyid_root_real'><span class='object_link'><a href="ProjectPath.html#root_real-class_method" title="Mutineer::ProjectPath.root_real (method)">root_real</a></span></span><span class='lparen'>(</span><span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_dirname'>dirname</span><span class='lparen'>(</span><span class='id identifier rubyid_file_path'>file_path</span><span class='rparen'>)</span><span class='rparen'>)</span>
   <span class='kw'>return</span> <span class='kw'>if</span> <span class='id identifier rubyid_config_dir'>config_dir</span> <span class='op'>==</span> <span class='const'><span class='object_link'><a href="ProjectPath.html" title="Mutineer::ProjectPath (module)">ProjectPath</a></span></span><span class='period'>.</span><span class='id identifier rubyid_root_real'><span class='object_link'><a href="ProjectPath.html#root_real-class_method" title="Mutineer::ProjectPath.root_real (method)">root_real</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span>
+  <span class='kw'>return</span> <span class='kw'>if</span> <span class='id identifier rubyid_config_dir'>config_dir</span> <span class='op'>==</span> <span class='const'><span class='object_link'><a href="ProjectPath.html" title="Mutineer::ProjectPath (module)">ProjectPath</a></span></span><span class='period'>.</span><span class='id identifier rubyid_root_real'><span class='object_link'><a href="ProjectPath.html#root_real-class_method" title="Mutineer::ProjectPath.root_real (method)">root_real</a></span></span><span class='lparen'>(</span><span class='const'>Dir</span><span class='period'>.</span><span class='id identifier rubyid_home'>home</span><span class='rparen'>)</span>
 
   <span class='id identifier rubyid_warn'>warn</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>[mutineer] loaded </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_file_path'>file_path</span><span class='embexpr_end'>}</span><span class='tstring_content'>, but mutant ids are relative to the run directory </span><span class='tstring_end'>&quot;</span></span> \
        <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_project_root'>project_root</span><span class='embexpr_end'>}</span><span class='tstring_content'>, not to </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_config_dir'>config_dir</span><span class='embexpr_end'>}</span><span class='tstring_content'>. Ignore ids and baselines written from </span><span class='tstring_end'>&quot;</span></span> \
@@ -2324,16 +2327,16 @@ through an old id alone.</p>
       <pre class="lines">
 
 
-570
-571
 572
 573
 574
 575
-576</pre>
+576
+577
+578</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 570</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 572</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_warn_legacy_baseline'>warn_legacy_baseline</span>
   <span class='id identifier rubyid_warn'>warn</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>[mutineer] the baseline uses the old id format, which did not include the file </span><span class='tstring_end'>&quot;</span></span> \
@@ -2391,17 +2394,17 @@ always says the list covers only this run's mutants.</p>
       <pre class="lines">
 
 
-556
-557
 558
 559
 560
 561
 562
-563</pre>
+563
+564
+565</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 556</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 558</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_warn_legacy_ignore_matches'>warn_legacy_ignore_matches</span><span class='lparen'>(</span><span class='id identifier rubyid_matches'>matches</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_matches'>matches</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_old'>old</span><span class='comma'>,</span> <span class='id identifier rubyid_new_ids'>new_ids</span><span class='op'>|</span>
