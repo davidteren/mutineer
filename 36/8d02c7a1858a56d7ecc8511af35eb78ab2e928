@@ -1,0 +1,21 @@
+.github/workflows/release-pr.yml
+  s_1d8e859ed0d041::t_7b1ec5e71049f9 101-110
+test/release_workflow_test.rb
+  s_1d8e859ed0d041::t_29f1a408b385d0 78-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "368d02c7a1858a56d7ecc8511af35eb78ab2e928",
+  "prompts": {},
+  "sessions": {
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
