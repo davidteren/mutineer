@@ -37,8 +37,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history + tags for git describe/log
-          # git push must use the PAT too: a push made with GITHUB_TOKEN starts no CI,
-          # so each rebuilt release PR head would be untested.
+          # git push must use the PAT too: GitHub's recursion guard starts no workflow
+          # for a push (or PR) made with GITHUB_TOKEN, so the release PR head would get
+          # no CI. Falls back to GITHUB_TOKEN when the secret is absent.
           token: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
       - uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601 # v1
         with:
@@ -139,10 +140,11 @@ jobs:
           # always includes every change since the last tag. A branch that holds someone
           # else's commits is never force-pushed over or deleted.
           git fetch --quiet origin '+refs/heads/release/*:refs/remotes/origin/release/*'
-          # True when origin/<branch> has a non-merge commit this workflow did not make.
+          # True when origin/<branch> has a non-merge commit this workflow did not make:
+          # checks author AND committer, so a bot commit a human amended or rebased counts.
           # (grep without -q reads all input, so pipefail never sees a SIGPIPE from git log.)
           has_human_commits() {
-            git log --no-merges --format='%ae' "HEAD..refs/remotes/origin/$1" | grep -vxF "$bot" >/dev/null
+            git log --no-merges --format='%ae%n%ce' "HEAD..refs/remotes/origin/$1" | grep -vxF "$bot" >/dev/null
           }
           remote="refs/remotes/origin/$branch"
           built=0
@@ -163,12 +165,19 @@ jobs:
             # it fail loudly instead of being lost.
             if git rev-parse -q --verify "$remote" >/dev/null; then
               old_sha="$(git rev-parse "$remote")"
-              open_num="$(gh pr list --state open --head "$branch" --json number --jq '.[0].number // empty')"
-              if [ -n "$open_num" ]; then
-                gh pr close "$open_num" --comment "main moved: rebuilding the v${next} release PR from main as a fresh PR."
-              fi
+              # Only this workflow's own PR on this branch (same repo, body marker).
+              open_num="$(gh pr list --state open --head "$branch" --json number,isCrossRepository,body \
+                --jq '[.[] | select(.isCrossRepository | not)
+                           | select(.body | contains("Auto-opened by `release-pr.yml`"))][0].number // empty')"
+              # Delete first, under the lease; only then retire the PR, so a failed delete
+              # never leaves an open branch without its PR.
               git push --force-with-lease="refs/heads/${branch}:${old_sha}" origin ":refs/heads/${branch}" \
                 || { echo "::error::$branch changed after it was checked; not replacing it. Re-run after reviewing it."; exit 1; }
+              if [ -n "$open_num" ]; then
+                # Deleting the head branch usually closes the PR already; the comment still explains why.
+                gh pr close "$open_num" --comment "main moved: rebuilt the v${next} release PR from main as a fresh PR." \
+                  || gh pr comment "$open_num" --body "main moved: rebuilt the v${next} release PR from main as a fresh PR."
+              fi
             fi
             git switch -C "$branch"
             git commit -aqm "release: v${next}"
