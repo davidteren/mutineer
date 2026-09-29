@@ -121,6 +121,12 @@ class ConfigTest < Minitest::Test
     assert_equal "main", Config.parse(:since, "main")
   end
 
+  # An empty `only:` in the file is nil, not "": "" would filter out every subject.
+  def test_parse_string_keeps_nil
+    assert_nil Config.parse(:only, nil)
+    assert_equal "5", Config.parse(:only, 5)
+  end
+
   def test_from_file_rejects_bad_jobs_and_bad_booleans
     with_config("jobs: 1.9\n") do |path|
       err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
@@ -154,7 +160,7 @@ class ConfigTest < Minitest::Test
       assert_empty err
       assert_equal({ boot: "config/environment", rails: true }, @hash)
 
-      cfg = Config.resolve({}, @hash, Set.new)
+      cfg = Config.resolve({}, @hash)
       assert_equal "config/environment", cfg.boot
       assert_equal true, cfg.rails
       assert_equal "redefine", cfg.strategy # --rails sugar, no explicit --strategy
@@ -169,7 +175,7 @@ class ConfigTest < Minitest::Test
       assert_empty err
       assert_equal({ since: "origin/main" }, @hash)
 
-      cfg = Config.resolve({}, @hash, Set.new)
+      cfg = Config.resolve({}, @hash)
       assert_equal "origin/main", cfg.since
     end
   end
@@ -182,13 +188,13 @@ class ConfigTest < Minitest::Test
       assert_empty out
       assert_empty err
       assert_equal({ ignore: %w[a1b2c3d4e5f6 0011223344ff] }, @hash)
-      assert_equal %w[a1b2c3d4e5f6 0011223344ff], Config.resolve({}, @hash, Set.new).ignore
+      assert_equal %w[a1b2c3d4e5f6 0011223344ff], Config.resolve({}, @hash).ignore
     end
   end
 
   def test_ignore_defaults_to_empty_array
     assert_equal [], Config.new.ignore
-    assert_equal [], Config.resolve({}, {}, Set.new).ignore
+    assert_equal [], Config.resolve({}, {}).ignore
   end
 
   # #27: test_command is accepted from the config file (snake_case key) and
@@ -199,14 +205,14 @@ class ConfigTest < Minitest::Test
       assert_empty out
       assert_empty err
       assert_equal({ test_command: "bundle exec rails test %{files}" }, @hash)
-      assert_equal "bundle exec rails test %{files}", Config.resolve({}, @hash, Set.new).test_command
+      assert_equal "bundle exec rails test %{files}", Config.resolve({}, @hash).test_command
     end
   end
 
   def test_cli_test_command_overrides_file
     with_config("test_command: from_file %{files}\n") do |path|
       capture_io { @hash = Config.from_file(path) }
-      cfg = Config.resolve({ test_command: "from_cli %{files}" }, @hash, Set.new(%i[test_command]))
+      cfg = Config.resolve({ test_command: "from_cli %{files}" }, @hash)
       assert_equal "from_cli %{files}", cfg.test_command
     end
   end
@@ -216,8 +222,8 @@ class ConfigTest < Minitest::Test
   def test_no_since_beats_file_since
     with_config("since: origin/main\n") do |path|
       capture_io { @hash = Config.from_file(path) }
-      assert_nil Config.resolve({ since: nil }, @hash, Set.new(%i[since])).since
-      assert_equal "origin/main", Config.resolve({}, @hash, Set.new).since, "without the flag the file still wins"
+      assert_nil Config.resolve({ since: nil }, @hash).since
+      assert_equal "origin/main", Config.resolve({}, @hash).since, "without the flag the file still wins"
     end
   end
 
@@ -227,11 +233,11 @@ class ConfigTest < Minitest::Test
   def test_since_false_and_empty_normalize_to_nil
     with_config("since: false\n") do |path|
       capture_io { @hash = Config.from_file(path) }
-      assert_nil Config.resolve({}, @hash, Set.new).since
+      assert_nil Config.resolve({}, @hash).since
     end
     with_config("since: \"\"\n") do |path|
       capture_io { @hash = Config.from_file(path) }
-      assert_nil Config.resolve({}, @hash, Set.new).since
+      assert_nil Config.resolve({}, @hash).since
     end
   end
 
@@ -243,7 +249,7 @@ class ConfigTest < Minitest::Test
       assert_empty out
       assert_empty err
       assert_equal({ framework: "rspec" }, @hash)
-      cfg = Config.resolve({}, @hash, Set.new)
+      cfg = Config.resolve({}, @hash)
       assert_equal "rspec", cfg.framework
     end
   end
@@ -255,52 +261,52 @@ class ConfigTest < Minitest::Test
       assert_empty out
       assert_empty err
       assert_equal({ verbose: true }, @hash)
-      assert_equal true, Config.resolve({}, @hash, Set.new).verbose
+      assert_equal true, Config.resolve({}, @hash).verbose
     end
   end
 
   def test_verbose_defaults_to_false
     assert_equal false, Config.new.verbose
-    assert_equal false, Config.resolve({}, {}, Set.new).verbose
+    assert_equal false, Config.resolve({}, {}).verbose
   end
 
   def test_resolve_verbose_from_cli
-    assert_equal true, Config.resolve({ verbose: true }, {}, Set.new).verbose
+    assert_equal true, Config.resolve({ verbose: true }, {}).verbose
   end
 
   # In-process --rails shares one DB; always serial. --daemon may use --jobs N.
   def test_resolve_rails_defaults_jobs_to_one
-    assert_equal 1, Config.resolve({ rails: true }, {}, Set.new).jobs
+    assert_equal 1, Config.resolve({ rails: true }, {}).jobs
   end
 
   def test_resolve_rails_forces_serial_even_when_jobs_explicit
-    cfg = Config.resolve({ rails: true, jobs: 4 }, {}, Set[:jobs])
+    cfg = Config.resolve({ rails: true, jobs: 4 }, {})
     assert_equal 1, cfg.jobs
   end
 
   def test_resolve_rails_daemon_keeps_explicit_jobs
-    cfg = Config.resolve({ rails: true, daemon: true, jobs: 4 }, {}, Set[:jobs])
+    cfg = Config.resolve({ rails: true, daemon: true, jobs: 4 }, {})
     assert_equal 4, cfg.jobs
   end
 
   def test_resolve_auto_detects_rspec_from_spec_test_names
-    cfg = Config.resolve({ tests: ["foo_spec.rb", "bar_spec.rb"] }, {}, Set.new)
+    cfg = Config.resolve({ tests: ["foo_spec.rb", "bar_spec.rb"] }, {})
     assert_equal "rspec", cfg.framework
   end
 
   def test_resolve_defaults_minitest_for_test_names
-    cfg = Config.resolve({ tests: ["foo_test.rb", "bar_test.rb"] }, {}, Set.new)
+    cfg = Config.resolve({ tests: ["foo_test.rb", "bar_test.rb"] }, {})
     assert_equal "minitest", cfg.framework
   end
 
   def test_resolve_defaults_minitest_when_ambiguous_or_empty
-    assert_equal "minitest", Config.resolve({}, {}, Set.new).framework
+    assert_equal "minitest", Config.resolve({}, {}).framework
     # tie (1 spec, 1 test) is not a majority -> minitest
-    assert_equal "minitest", Config.resolve({ tests: ["a_spec.rb", "b_test.rb"] }, {}, Set.new).framework
+    assert_equal "minitest", Config.resolve({ tests: ["a_spec.rb", "b_test.rb"] }, {}).framework
   end
 
   def test_explicit_framework_wins_over_autodetect
-    cfg = Config.resolve({ framework: "minitest", tests: ["a_spec.rb", "b_spec.rb"] }, {}, Set[:framework])
+    cfg = Config.resolve({ framework: "minitest", tests: ["a_spec.rb", "b_spec.rb"] }, {})
     assert_equal "minitest", cfg.framework
   end
 
@@ -312,23 +318,91 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  # --- provenance is derived from the layers, not tracked by hand (#103) ---
+
+  def test_explicit_reports_keys_from_either_layer_including_false_and_nil
+    cfg = Config.resolve({ since: nil }, { rails: false, jobs: 2 })
+    %i[since rails jobs].each { |k| assert cfg.explicit?(k), k }
+    refute cfg.explicit?(:framework)
+    refute cfg.explicit?(:strategy)
+  end
+
+  def test_programmatic_config_new_has_no_explicit_keys
+    refute Config.new(jobs: 2).explicit?(:jobs)
+  end
+
+  def test_rails_sugar_keeps_a_strategy_the_file_wrote
+    cfg = Config.resolve({ rails: true }, { strategy: "reload" })
+    assert_equal "reload", cfg.strategy
+  end
+
+  def test_rails_sugar_redefines_strategy_when_nobody_wrote_one
+    assert_equal "redefine", Config.resolve({ rails: true }, {}).strategy
+  end
+
+  # Every option that has a YAML key: a value typed on the command line beats
+  # the file's value. A new option without a row here fails the coverage check,
+  # so a forgotten precedence rule shows up as a red test instead of a bug report.
+  LAYER_SAMPLES = {
+    operators: [%w[arithmetic], %w[comparison]],
+    jobs: [3, 5],
+    threshold: [70.0, 80.0],
+    only: ["a", "b"],
+    require_paths: [%w[a.rb], %w[b.rb]],
+    boot: ["a", "b"],
+    rails: [false, true],
+    since: ["main", nil],
+    framework: %w[minitest rspec],
+    verbose: [false, true],
+    ignore: [%w[aaaaaaaaaaaa], %w[bbbbbbbbbbbb]],
+    baseline: ["a.json", "b.json"],
+    fail_fast: [false, true],
+    test_command: ["a %{files}", "b %{files}"],
+    daemon: [false, true]
+  }.freeze
+
+  def test_every_option_with_a_yaml_key_has_a_layer_sample
+    fields = Mutineer::CONFIG_OPTIONS.select(&:yaml_key).map(&:field)
+    assert_equal fields.sort, LAYER_SAMPLES.keys.sort
+  end
+
+  def test_cli_value_beats_file_value_for_every_yaml_option
+    LAYER_SAMPLES.each do |field, (file_value, cli_value)|
+      cfg = Config.resolve({ field => cli_value }, { field => file_value })
+      got = cfg.public_send(field)
+      if cli_value.nil?
+        assert_nil got, "CLI nil lost for #{field}"
+      else
+        assert_equal cli_value, got, "CLI value lost for #{field}"
+      end
+      assert cfg.explicit?(field), "#{field} not reported as explicit"
+    end
+  end
+
+  def test_file_value_applies_when_the_cli_is_silent_for_every_yaml_option
+    LAYER_SAMPLES.each do |field, (file_value, _)|
+      cfg = Config.resolve({}, { field => file_value })
+      assert_equal file_value, cfg.public_send(field), "file value lost for #{field}"
+      assert cfg.explicit?(field), "#{field} not reported as explicit"
+    end
+  end
+
   # --- resolve precedence (KTD3) ---
 
   def test_resolve_cli_wins_over_file
-    explicit = Set.new(%i[operators])
-    cfg = Config.resolve({ operators: ["comparison"] }, { operators: ["arithmetic"], jobs: 8 }, explicit)
+    cfg = Config.resolve({ operators: ["comparison"] }, { operators: ["arithmetic"], jobs: 8 })
     assert_equal ["comparison"], cfg.operators # CLI typed
     assert_equal 8, cfg.jobs                    # filled from file
   end
 
   def test_resolve_file_fills_gaps
-    cfg = Config.resolve({}, { operators: ["arithmetic"], threshold: 70.0 }, Set.new)
+    cfg = Config.resolve({}, { operators: ["arithmetic"], threshold: 70.0 })
     assert_equal ["arithmetic"], cfg.operators
     assert_equal 70.0, cfg.threshold
   end
 
   def test_resolve_defaults_when_neither
-    cfg = Config.resolve({}, {}, Set.new)
+    cfg = Config.resolve({}, {})
     assert_nil cfg.operators            # nil => Runner uses DEFAULT_NAMES
     assert_equal "reload", cfg.strategy
     assert_equal "human", cfg.format

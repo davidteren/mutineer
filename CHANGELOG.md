@@ -6,7 +6,31 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **A typed `--rails`, `--verbose` or `--debug` beats `rails: false` and
+  `verbose: false` in `.mutineer.yml`** (#103). The flag was dropped, so the
+  run went on without Rails boot or verbose output. The config layers now keep
+  only the keys the user wrote, and "did the user write this" comes from those
+  keys, not from a hand-kept list.
+- **`framework: rspec` in `.mutineer.yml` survives test pairing** (#103).
+  Pairing re-detected the framework from the test file names, so an RSpec
+  suite in `test/calc_test.rb` ran under Minitest.
+- **A bad number is an error, not a rounded value** (#105). `--jobs 1.9` and
+  `--baseline-epsilon abc` no longer become `1` and `0.0`. One option schema
+  parses each value once, where it enters, for both the command line and
+  `.mutineer.yml`.
+
 ### Changed
+- **These now exit 2 with a message that names the option**: `jobs: 1.9` or
+  `jobs: true` in `.mutineer.yml` (before: `1`, or a crash); a bad, negative
+  or non-finite `--baseline-epsilon` (before: `0.0`); a boolean key in
+  `.mutineer.yml` that is not `true` or `false`, such as the string `"yes"`
+  (before: `false`).
+- **`--jobs` takes plain digits only.** `0x2`, `+2`, `" 2"` and `1_0` exit 2.
+  Before, `Integer()` read them as 2, 2, 2 and 10.
+- **Config file errors start with the file and key**, for example
+  `.mutineer.yml: threshold must be a number between 0 and 100`, where they
+  started with `--threshold`.
 - **The docs site is built in CI** — a Pages workflow runs `rake site:build`
   and deploys the result, so the YARD HTML under `/api/`, `llms-full.txt`,
   `json-schema.html` and `sitemap.xml` are no longer committed. CI checks

@@ -55,7 +55,8 @@ module Mutineer
   #
   # Also holds: jobs (parallel workers), format (human|json), output (report
   # file), strategy (reload|redefine), require_paths (extra files to load).
-  # Config loading and the CLI > file > default precedence merge live here.
+  # Config loading and the CLI > file > default precedence merge live here; each
+  # layer holds only the keys the user wrote, and Config#explicit? reports them.
   #
   # Boot mode adds: boot (a file to require ONCE in the parent so the app env,
   # e.g. Rails, is booted before forking; sources are then NOT manually required)
@@ -78,8 +79,11 @@ module Mutineer
     # :require_paths field.
     KNOWN_KEYS = CONFIG_OPTIONS.filter_map(&:yaml_key).freeze
 
-    def initialize(**kwargs)
-      super
+    # @param explicit [Array<Symbol>] fields the user wrote (CLI or file). Derived
+    #   values fill only the others; a programmatic Config.new writes none.
+    def initialize(explicit: [], **kwargs)
+      super(**kwargs)
+      @explicit = explicit.to_a.dup.freeze
       self.sources       ||= []
       self.tests         ||= []
       self.threshold     ||= 0.0
@@ -97,6 +101,17 @@ module Mutineer
       self.baseline_epsilon ||= 0.0
       self.fail_fast     = false if fail_fast.nil?
       self.daemon        = false if daemon.nil?
+    end
+
+    # True when the user wrote `key`, on the command line or in the config
+    # file, whatever the value (`false` and `nil` count). The answer comes from
+    # which keys the layers held, so a new option needs no bookkeeping to be
+    # covered.
+    #
+    # @param key [Symbol] Config field name.
+    # @return [Boolean]
+    def explicit?(key)
+      @explicit.include?(key)
     end
 
     # Walk from `start` toward `home`, returning the first .mutineer.yml path found
@@ -148,21 +163,24 @@ module Mutineer
       raise ConfigError, "#{File.basename(path)} parse error: #{e.message}"
     end
 
-    # Apply precedence: start from the CLI-provided values, then fill in a
-    # config-file value only for keys the user did NOT type on the command line.
-    # `explicit` is a Set of field symbols the CLI saw with a value; a Set (not
-    # nil-sentinels) is used because some valid values are zero/false.
-    def self.resolve(cli_opts, file_hash, explicit)
-      merged = cli_opts.dup
-      file_hash.each { |k, v| merged[k] = v unless explicit.include?(k) }
-      config = new(**merged)
+    # Merges the two user layers, CLI over file, then derives what neither wrote.
+    # A layer is a Hash of only the keys the user set, so precedence is `merge`
+    # and "did the user write this" is whether the key exists. Nothing tracks
+    # provenance by hand, and `false`/`nil` are ordinary values.
+    #
+    # @param cli_opts [Hash{Symbol => Object}] parsed command-line fields.
+    # @param file_hash [Hash{Symbol => Object}] parsed .mutineer.yml fields.
+    # @return [Mutineer::Config]
+    def self.resolve(cli_opts, file_hash)
+      user = file_hash.merge(cli_opts)
+      config = new(**user, explicit: user.keys)
 
       # --rails sugar: boot config/environment. Prefer redefine only for the
       # in-process path (daemon is whole-file reload only). In-process --rails
       # shares one test database, so force serial unless --daemon.
       if config.rails
         config.boot ||= "config/environment"
-        unless config.daemon || explicit.include?(:strategy)
+        unless config.daemon || config.explicit?(:strategy)
           config.strategy = "redefine"
         end
         unless config.daemon
@@ -174,9 +192,9 @@ module Mutineer
         end
       end
 
-      # Auto-detect the framework only when neither CLI nor config file set it
-      # (explicit value, from either source, is already on config.framework and
-      # always wins). Default minitest unless the test files clearly look RSpec.
+      # Auto-detect the framework only when the user wrote none: a value from
+      # either layer is already on config.framework and always wins. Default
+      # minitest unless the test files clearly look RSpec.
       config.framework ||= detect_framework(config.tests)
       config
     end
@@ -243,7 +261,7 @@ module Mutineer
         prefix = file ? "#{file}: " : ""
         raise ConfigError, "#{prefix}unknown #{field} #{value.to_s.inspect}. Expected: #{opt.values.join(', ')}"
       when :string_list then Array(value).map(&:to_s)
-      when :string then value.to_s
+      when :string then value&.to_s
       when :since
         # false / empty normalize to nil ("no scoping"), so every consumer's
         # nil-check (runner scoping, the report's scoped marker) agrees. A

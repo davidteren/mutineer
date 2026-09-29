@@ -244,6 +244,14 @@ class CliTest < Minitest::Test
     assert_includes err, "unknown git ref: definitely-not-a-ref-xyz"
   end
 
+  # An empty --since is an error, not "no scoping": `--since "$REF"` with an
+  # unset variable must not turn into a full run.
+  def test_since_empty_ref_exits_two
+    _, err, status = mutineer("run", "lib/mutineer/version.rb", "--since", "", chdir: ROOT)
+    assert_equal 2, status.exitstatus
+    assert_includes err, "unknown git ref"
+  end
+
   # --- happy paths driven through bin/mutineer -----------------------------
 
   def test_successful_run_exits_zero
@@ -516,6 +524,101 @@ class CliTest < Minitest::Test
       refute_includes err, "no test found by convention"
       files = JSON.parse(out)["per_source"].map { |h| h["file"] }
       assert_equal ["lib/calc.rb"], files
+    end
+  end
+
+  # --- a typed flag beats the config file, whatever the file holds (#103) ---
+
+  # Runs Mutineer::CLI.start in-process inside `proj` and returns the Config it
+  # would have run, without running it.
+  def config_resolved_by_cli(proj, *argv)
+    captured = nil
+    cli = Mutineer::CLI.singleton_class
+    original = Mutineer::CLI.method(:run)
+    cli.send(:define_method, :run) { |config| captured = config }
+    begin
+      Dir.chdir(proj) { Mutineer::CLI.start(argv) }
+    ensure
+      cli.send(:define_method, :run, original)
+    end
+    captured
+  end
+
+  def test_typed_rails_beats_config_file_rails_false
+    Dir.mktmpdir("mutineer-proj") do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "rails: false\n")
+      src = File.join(FIXTURES, "boot", "widget.rb")
+      # rails on means boot mode, whose own check fires; rails off would instead
+      # report that no test was found by convention.
+      _, err, status = mutineer("run", src, "--rails", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "--boot/--rails requires at least one --test file"
+    end
+  end
+
+  def test_typed_verbose_and_debug_beat_config_file_verbose_false
+    Dir.mktmpdir("mutineer-proj") do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "verbose: false\n")
+      %w[--verbose --debug].each do |flag|
+        assert config_resolved_by_cli(proj, "run", "x.rb", flag).verbose, flag
+      end
+      refute config_resolved_by_cli(proj, "run", "x.rb").verbose
+    end
+  end
+
+  def rspec_project
+    with_autopair_project do |proj|
+      File.write(File.join(proj, "test", "calc_test.rb"), <<~RUBY)
+        require_relative "../lib/calc"
+
+        RSpec.describe Calc do
+          it "adds" do
+            expect(Calc.new.add(2, 3)).to eq(5)
+          end
+        end
+      RUBY
+      yield proj
+    end
+  end
+
+  # An RSpec file that autopair finds under test/calc_test.rb looks like minitest
+  # by name. The file's framework: rspec must survive autopair's re-detection;
+  # the minitest runner cannot even load this file.
+  def test_config_file_framework_survives_autopair
+    rspec_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "framework: rspec\n")
+      config = config_resolved_by_cli(proj, "run", "lib/calc.rb")
+      Mutineer::CLI.autopair!(config)
+      assert_equal "rspec", config.framework
+      assert_equal ["test/calc_test.rb"], config.tests
+
+      out, err, status = mutineer("run", "lib/calc.rb", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      summary = JSON.parse(out)["summary"]
+      assert_equal 1, summary["killed"], "the RSpec runner must have run the spec"
+    end
+  end
+
+  def test_cli_framework_beats_config_file_framework
+    rspec_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "framework: minitest\n")
+      out, err, status = mutineer("run", "lib/calc.rb", "--framework", "rspec", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, JSON.parse(out)["summary"]["killed"]
+    end
+  end
+
+  def test_framework_is_detected_from_names_when_nobody_wrote_one
+    with_autopair_project do |proj|
+      config = config_resolved_by_cli(proj, "run", "lib/calc.rb")
+      Mutineer::CLI.autopair!(config)
+      assert_equal "minitest", config.framework
+      refute config.explicit?(:framework)
+      FileUtils.mkdir_p(File.join(proj, "spec"))
+      FileUtils.mv(File.join(proj, "test", "calc_test.rb"), File.join(proj, "spec", "calc_spec.rb"))
+      config = config_resolved_by_cli(proj, "run", "lib/calc.rb")
+      Mutineer::CLI.autopair!(config)
+      assert_equal "rspec", config.framework
     end
   end
 
