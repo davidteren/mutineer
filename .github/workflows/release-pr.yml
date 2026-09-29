@@ -98,6 +98,16 @@ jobs:
           if [ "$cur" = "$next" ]; then
             echo "VERSION is already $next (bump merged, awaiting tag). Push it: git tag v$next && git push origin v$next"; exit 0
           fi
+          # A manual bump past the computed version (for example a major release)
+          # must never be undone by a weekly run that would set VERSION lower.
+          if [ "$(printf '%s\n%s\n' "$cur" "$next" | sort -V | tail -n1)" = "$cur" ]; then
+            echo "VERSION $cur on main is already ahead of the computed v$next (manual bump?). Tag it: git tag v$cur && git push origin v$cur"; exit 0
+          fi
+          # The computed tag must not exist anywhere yet (for example pushed from a branch).
+          if git ls-remote --exit-code --tags origin "refs/tags/v${next}" >/dev/null 2>&1; then
+            echo "Tag v${next} already exists on origin but is not an ancestor of main. Resolve it by hand before cutting a release." >&2
+            exit 1
+          fi
 
           date="$(date -u +%Y-%m-%d)"
           url="https://github.com/${GITHUB_REPOSITORY}"
