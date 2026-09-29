@@ -32,6 +32,8 @@ jobs:
 
   deploy:
     needs: build
+    # A manual run may pick any branch; only main replaces the site.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # Only this job can deploy, so the build steps never hold these.
     permissions:
