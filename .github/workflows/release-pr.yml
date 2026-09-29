@@ -101,7 +101,12 @@ jobs:
           # A manual bump past the computed version (for example a major release)
           # must never be undone by a weekly run that would set VERSION lower.
           if [ "$(printf '%s\n%s\n' "$cur" "$next" | sort -V | tail -n1)" = "$cur" ]; then
-            echo "VERSION $cur on main is already ahead of the computed v$next (manual bump?). Tag it: git tag v$cur && git push origin v$cur"; exit 0
+            echo "VERSION $cur on main is already ahead of the computed v$next (manual bump?). Tag it: git tag v$cur && git push origin v$cur"
+            open_release="$(gh pr list --state open --json number,headRefName --jq '.[] | select(.headRefName | startswith("release/v")) | "#\(.number) \(.headRefName)"')"
+            if [ -n "$open_release" ]; then
+              echo "::warning::Open release PRs predate the manual VERSION bump; close them before merging anything: ${open_release//$'\n'/, }"
+            fi
+            exit 0
           fi
           # The computed tag must not exist anywhere yet (for example pushed from a branch).
           if git ls-remote --exit-code --tags origin "refs/tags/v${next}" >/dev/null 2>&1; then
@@ -157,7 +162,7 @@ jobs:
 
           notes="$(git log --pretty='- %h %s' "${latest_tag}..HEAD" | grep -E ' (feat|fix)(\(|!|:)' || true)"
           bump="$([ "$feats" -gt 0 ] && echo minor || echo patch)"
-          body="$(printf '## What / Why / How\n\n**What.** Cut release **v%s**.\n\n**Why.** feat:/fix: commits have landed on `main` since `%s` (auto-detected). This bumps the version + dates the CHANGELOG so a tag can publish — closing the release-drift gap automatically.\n\n**How.** Review, merge, then `git tag v%s && git push origin v%s` — release.yml tests and publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_Auto-opened by `release-pr.yml` and rebuilt from `main` on each weekly (or manual) run. Closing it only snoozes it: the next run re-opens it._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes")"
+          body="$(printf '## What / Why / How\n\n**What.** Cut release **v%s**.\n\n**Why.** feat:/fix: commits have landed on `main` since `%s` (auto-detected). This bumps the version + dates the CHANGELOG so a tag can publish — closing the release-drift gap automatically.\n\n**How.** Review, merge, then `git tag v%s && git push origin v%s` — release.yml tests and publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_Auto-opened by `release-pr.yml` and rebuilt from `main` on each weekly (or manual) run. Closing it only snoozes it: the next run re-opens it. The next run also rewrites this description, so put notes in comments._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes")"
 
           if [ -n "$(gh pr list --state open --head "$branch" --json number --jq '.[0].number // empty')" ]; then
             gh pr edit "$branch" --body "$body"
