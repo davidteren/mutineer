@@ -30,8 +30,11 @@ module Mutineer
     # @param root [String] project root.
     # @return [String] absolute path.
     def absolute(path, root)
-      raw = File.absolute_path?(path) ? path : File.expand_path(path, root)
-      realpath_if_exists(raw)
+      # Join, don't expand: File.expand_path collapses `..` textually, before any
+      # symlink is followed, so `link/../x.rb` would name the wrong file. The file
+      # system resolves `..` physically in File.realpath.
+      raw = File.absolute_path?(path) ? path : File.join(File.expand_path(root), path)
+      File.exist?(raw) ? File.realpath(raw) : File.expand_path(raw)
     end
 
     # Canonical project root (`/var` vs `/private/var`).
@@ -42,14 +45,6 @@ module Mutineer
       File.realpath(File.expand_path(root))
     rescue Errno::ENOENT
       File.expand_path(root)
-    end
-
-    # Real path when the file exists, otherwise `path` unchanged.
-    #
-    # @param path [String] absolute or relative path.
-    # @return [String]
-    def realpath_if_exists(path)
-      File.exist?(path) ? File.realpath(path) : path
     end
   end
 end

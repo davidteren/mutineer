@@ -95,8 +95,8 @@ GitHub Action shows one warning annotation when either count is not zero.</li>
 <li><strong>Old-format ids keep working, with a warning</strong> (#126). An old-format
 <code>ignore:</code> entry still suppresses the mutants it matched before. The run prints
 one <code>[mutineer]</code> warning per entry with the new ids to use. A <code>--baseline</code>
-file without <code>summary.id_format</code> matches on new or old ids, so no survivor
-reads as new or fixed only because its id changed. The run prints one
+file without <code>summary.id_format</code> matches on new ids, or on old ids from the
+same file, so no survivor reads as new or fixed only because its id changed. The run prints one
 <code>[mutineer]</code> warning to regenerate the baseline.</li>
 </ul>
 <h3 id="Deprecated">Deprecated</h3>

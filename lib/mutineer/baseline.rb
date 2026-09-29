@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require "json"
+require "set"
 require_relative "config" # for Mutineer::ConfigError
+require_relative "project_path"
 
 module Mutineer
   # CI baseline/delta gating. A baseline is a prior
@@ -102,39 +104,48 @@ module Mutineer
     # baseline without `summary.id_format` stores old-format ids, so a current
     # survivor matches if its new OR old id is stored, and a stored id seen under
     # either form is not fixed. Matches made only through the old id are counted
-    # on Delta#legacy_matches. The old id has no file path, so this can hide a new
-    # survivor whose old id equals a stored survivor from another file.
+    # on Delta#legacy_matches. The old id has no file path, so an old-id match
+    # must also come from the same file (the stored survivor's `file`, normalized
+    # against `project_root`): an equal old id from another file is a different
+    # mutant and stays new.
     #
     # @param aggregate [Mutineer::AggregateResult] current results.
     # @param epsilon [Float] score-drop tolerance.
     # @param scoped [Boolean] current run was diff-scoped (`--since`).
     # @param id_map [Hash{String => String}] current new id => old-format id.
+    # @param project_root [String] root that survivor `file` paths resolve against.
     # @return [Mutineer::Baseline::Delta] delta summary.
-    def diff(aggregate, epsilon: 0.0, scoped: false, id_map: {})
+    def diff(aggregate, epsilon: 0.0, scoped: false, id_map: {}, project_root: Dir.pwd)
       current = aggregate.surviving_mutants
       baseline_ids = @survivors.map { |h| h["id"] }.to_set
       # A new-format baseline never matches on old ids.
       legacy = @id_format.nil? ? id_map : {}
+      file_key = ->(path) { path && ProjectPath.relative(path, project_root) }
+      # [old id, file] for each stored survivor: an old id alone is ambiguous.
+      baseline_pairs = @survivors.map { |h| [h["id"], file_key.call(h["file"])] }.to_set
+      legacy_pair = ->(r) { [legacy[r.id], file_key.call(r.subject&.file)] }
 
       new_survivors = []
       legacy_matches = 0
       current.each do |r|
         next if baseline_ids.include?(r.id)
 
-        old = legacy[r.id]
-        if old && baseline_ids.include?(old)
+        if legacy[r.id] && baseline_pairs.include?(legacy_pair.call(r))
           legacy_matches += 1
         else
           new_survivors << r
         end
       end
-      current_ids = current.flat_map { |r| [r.id, legacy[r.id]] }.compact.to_set
+      current_ids = current.map(&:id).to_set
+      current_pairs = current.select { |r| legacy[r.id] }.map { |r| legacy_pair.call(r) }.to_set
       # Under a diff-scoped side an out-of-scope baseline survivor was never
       # re-tested, so reporting it "fixed" would be false: empty is honest.
       fixed = if scoped || @scoped
                 []
               else
-                @survivors.reject { |h| current_ids.include?(h["id"]) }
+                @survivors.reject do |h|
+                  current_ids.include?(h["id"]) || current_pairs.include?([h["id"], file_key.call(h["file"])])
+                end
               end
 
       current_score = aggregate.mutation_score

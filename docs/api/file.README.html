@@ -323,8 +323,10 @@ file off 100%. Suppress them so the score and <code>--threshold</code> gate stay
 <p>Suppressed mutants are excluded from the score (so 100% becomes reachable).</p>
 <h2 id="Mutant_ids">Mutant ids</h2>
 <p>A mutant id is 12 hex characters. It hashes the file path (relative to the
-project root), the method, the operator and the mutated code. An edit outside
-the method does not change the id. Moving or renaming the file does.</p>
+project root), the method's qualified name, the operator, the mutated code, and
+the mutant's position among identical mutants in that method. An edit outside
+the method does not change the id. Moving or renaming the file, renaming the
+method or its class, or adding an identical mutant earlier in the method does.</p>
 <ul>
 <li>The project root is the directory mutineer runs from (in the Action, the
 <code>working-directory</code>). Run from the same root to get the same ids.</li>
@@ -337,8 +339,11 @@ working until 2.0, with a warning:</p>
 <ul>
 <li><strong><code>ignore:</code></strong> An old entry still suppresses its mutants. The run prints the
 new ids for each old entry. Replace the entry with those ids. The list covers
-only the sources in that run, so run over every source for the full list.</li>
-<li><strong><code>--baseline</code></strong> An old baseline still matches, and the run tells you to
+only the sources and operators in that run, so run over every source with
+every operator set you use (for example your Tier-2 <code>--operators</code>) for the
+full list.</li>
+<li><strong><code>--baseline</code></strong> An old baseline still matches: a survivor matches a stored
+one with the same old id in the same file. The run tells you to
 regenerate it. Regenerate it with <code>--format json</code>, but only after every gate
 that reads it runs 1.3 or later (the Action's <code>version:</code> pin, your CI
 <code>Gemfile.lock</code>). An older version treats every new-format survivor as new.</li>
@@ -348,8 +353,9 @@ that reads it runs 1.3 or later (the Action's <code>version:</code> pin, your CI
 matched, and <code>summary.legacy_id_matches.baseline</code> counts the survivors matched
 only through an old baseline id.</p>
 <p>Ids are relative to the directory you run mutineer from. mutineer finds
-<code>.mutineer.yml</code> by walking up, so if you run from a subdirectory it warns that
-the loaded ignore ids will not match, and tells you which directory to run from.</p>
+<code>.mutineer.yml</code> by walking up. When the file it loads is in a parent directory
+(other than your home directory), it warns that the ignore ids will not match
+and tells you which directory to run from.</p>
 <h2 id="CI_gating">CI gating</h2>
 <p>Store a JSON run as a baseline, then fail the build only when a PR makes things
 worse:</p>

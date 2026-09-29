@@ -940,7 +940,8 @@ candidate list cannot drift from a real run's job selection.</p>
 514
 515
 516
-517</pre>
+517
+518</pre>
     </td>
     <td>
       <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 467</span>
@@ -963,7 +964,8 @@ candidate list cannot drift from a real run's job selection.</p>
 </span>  <span class='id identifier rubyid_delta'>delta</span> <span class='op'>=</span> <span class='kw'>if</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_baseline'>baseline</span>
             <span class='const'><span class='object_link'><a href="Baseline.html" title="Mutineer::Baseline (class)">Baseline</a></span></span><span class='period'>.</span><span class='id identifier rubyid_load'><span class='object_link'><a href="Baseline.html#load-class_method" title="Mutineer::Baseline.load (method)">load</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_baseline'>baseline</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_diff'><span class='object_link'><a href="Baseline.html#diff-instance_method" title="Mutineer::Baseline#diff (method)">diff</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_aggregate'>aggregate</span><span class='comma'>,</span> <span class='label'>epsilon:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_baseline_epsilon'>baseline_epsilon</span><span class='comma'>,</span>
                                                            <span class='label'>scoped:</span> <span class='op'>!</span><span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_since'>since</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span><span class='comma'>,</span>
-                                                           <span class='label'>id_map:</span> <span class='id identifier rubyid_extras'>extras</span><span class='lbracket'>[</span><span class='symbol'>:id_map</span><span class='rbracket'>]</span><span class='rparen'>)</span>
+                                                           <span class='label'>id_map:</span> <span class='id identifier rubyid_extras'>extras</span><span class='lbracket'>[</span><span class='symbol'>:id_map</span><span class='rbracket'>]</span><span class='comma'>,</span>
+                                                           <span class='label'>project_root:</span> <span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span>
           <span class='kw'>end</span>
   <span class='id identifier rubyid_warn_legacy_baseline'>warn_legacy_baseline</span> <span class='kw'>if</span> <span class='id identifier rubyid_delta'>delta</span><span class='op'>&amp;.</span><span class='id identifier rubyid_legacy_matches'>legacy_matches</span><span class='op'>&amp;.</span><span class='id identifier rubyid_positive?'>positive?</span>
 
@@ -1638,17 +1640,17 @@ they are all already enabled). <code>active</code> nil means the default (Tier-1
       <pre class="lines">
 
 
-524
 525
 526
 527
 528
 529
 530
-531</pre>
+531
+532</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 524</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 525</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_tier2_hint'>tier2_hint</span><span class='lparen'>(</span><span class='id identifier rubyid_active'>active</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_active'>active</span> <span class='op'>||=</span> <span class='const'><span class='object_link'><a href="MutatorRegistry.html" title="Mutineer::MutatorRegistry (class)">MutatorRegistry</a></span></span><span class='op'>::</span><span class='const'><span class='object_link'><a href="MutatorRegistry.html#DEFAULT_NAMES-constant" title="Mutineer::MutatorRegistry::DEFAULT_NAMES (constant)">DEFAULT_NAMES</a></span></span>
@@ -2274,7 +2276,6 @@ directory is a personal default, not a project root, so it never warns.</p>
       <pre class="lines">
 
 
-542
 543
 544
 545
@@ -2282,10 +2283,11 @@ directory is a personal default, not a project root, so it never warns.</p>
 547
 548
 549
-550</pre>
+550
+551</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 542</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 543</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_warn_config_root_mismatch'>warn_config_root_mismatch</span><span class='lparen'>(</span><span class='id identifier rubyid_file_path'>file_path</span><span class='comma'>,</span> <span class='id identifier rubyid_project_root'>project_root</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_config_dir'>config_dir</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="ProjectPath.html" title="Mutineer::ProjectPath (module)">ProjectPath</a></span></span><span class='period'>.</span><span class='id identifier rubyid_root_real'><span class='object_link'><a href="ProjectPath.html#root_real-class_method" title="Mutineer::ProjectPath.root_real (method)">root_real</a></span></span><span class='lparen'>(</span><span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_dirname'>dirname</span><span class='lparen'>(</span><span class='id identifier rubyid_file_path'>file_path</span><span class='rparen'>)</span><span class='rparen'>)</span>
@@ -2327,7 +2329,6 @@ through an old id alone.</p>
       <pre class="lines">
 
 
-572
 573
 574
 575
@@ -2336,12 +2337,11 @@ through an old id alone.</p>
 578</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 572</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 573</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_warn_legacy_baseline'>warn_legacy_baseline</span>
   <span class='id identifier rubyid_warn'>warn</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>[mutineer] the baseline uses the old id format, which did not include the file </span><span class='tstring_end'>&quot;</span></span> \
-       <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>path, so survivors were matched on their old ids. An old id can collide with a </span><span class='tstring_end'>&quot;</span></span> \
-       <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>survivor from another file, which can hide a new survivor. Regenerate the baseline </span><span class='tstring_end'>&quot;</span></span> \
+       <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>path, so survivors were matched on their old ids and files. Regenerate the baseline </span><span class='tstring_end'>&quot;</span></span> \
        <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>(run with --format json and save the output), but only after every gate that reads </span><span class='tstring_end'>&quot;</span></span> \
        <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>it runs this mutineer version or later.</span><span class='tstring_end'>&quot;</span></span>
 <span class='kw'>end</span></pre>
@@ -2394,17 +2394,17 @@ always says the list covers only this run's mutants.</p>
       <pre class="lines">
 
 
-558
 559
 560
 561
 562
 563
 564
-565</pre>
+565
+566</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 558</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 559</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_warn_legacy_ignore_matches'>warn_legacy_ignore_matches</span><span class='lparen'>(</span><span class='id identifier rubyid_matches'>matches</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_matches'>matches</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_old'>old</span><span class='comma'>,</span> <span class='id identifier rubyid_new_ids'>new_ids</span><span class='op'>|</span>

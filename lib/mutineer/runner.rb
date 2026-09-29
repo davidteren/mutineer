@@ -190,9 +190,9 @@ module Mutineer
           id = ids[i]
           legacy = legacy_ids[i]
           id_map[id] = legacy
-          if ignore_set.include?(legacy) && !ignore_set.include?(id)
-            (legacy_ignore_matches[legacy] ||= []) << id
-          end
+          # An old entry still over-matches other files even when the new id is
+          # listed too, so every old-entry match is reported for migration.
+          (legacy_ignore_matches[legacy] ||= []) << id if ignore_set.include?(legacy)
           line = source.byteslice(0, mutation.start_offset).count("\n") + 1
           if suppressed?(mutation.operator, line, [id, legacy], disabled, ignore_set)
             ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id)
@@ -360,9 +360,10 @@ module Mutineer
     # config ignore list. Checked at job-build time so a suppressed mutant is
     # never forked.
     #
-    # @param ids [Array<String>] the mutant's new id and its old-format id.
+    # @param ids [Array<String>, String] the mutant's new id and its old-format
+    #   id, or a single id (the pre-#126 call shape).
     def self.suppressed?(operator, line, ids, disabled, ignore_set)
-      return true if ids.any? { |id| ignore_set.include?(id) }
+      return true if Array(ids).any? { |id| ignore_set.include?(id) }
 
       case (entry = disabled[line])
       when :all then true

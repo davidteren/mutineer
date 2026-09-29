@@ -553,7 +553,7 @@ class CliTest < Minitest::Test
         warnings = baseline_warnings(err)
         assert_equal 1, warnings.size, err
         assert_match(/old id format/, warnings.first)
-        assert_match(/another file/, warnings.first)
+        assert_match(/old ids and files/, warnings.first)
         assert_match(/--format json/, warnings.first)
         assert_match(/every gate/, warnings.first)
       end

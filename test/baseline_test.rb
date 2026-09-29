@@ -17,16 +17,16 @@ class BaselineTest < Minitest::Test
                            replacement: replacement, operator: operator)
   end
 
-  def subject
+  def subject(file = FILE)
     def_node = Mutineer::Parser.parse_string(SRC).value.statements.body.first.body.body.first
-    Mutineer::Subject.new(file: FILE, namespace: ["Pricing"], name: :total,
+    Mutineer::Subject.new(file: file, namespace: ["Pricing"], name: :total,
                           singleton: false, def_node: def_node)
   end
 
   # A live survivor carrying the #10 stable id (the runner attaches it; here we set
   # it explicitly — same `Result.survived.with(...)` pattern as json_reporter_test).
-  def survivor(id, token: ">=", replacement: ">", operator: :comparison)
-    Mutineer::Result.survived.with(subject: subject,
+  def survivor(id, token: ">=", replacement: ">", operator: :comparison, file: FILE)
+    Mutineer::Result.survived.with(subject: subject(file),
                                    mutation: mutation_at(token, replacement, operator), id: id)
   end
 
@@ -313,16 +313,27 @@ class BaselineTest < Minitest::Test
     assert_empty delta.new_survivors
   end
 
-  # Documented limitation: the old id has no file path, so a NEW survivor in b.rb
-  # whose old id equals a stored survivor from a.rb is hidden until the baseline
-  # is regenerated. The legacy count is what makes the CLI warn about it.
-  def test_old_format_baseline_hides_a_new_survivor_whose_old_id_collides
-    base = Mutineer::Baseline.new(baseline_doc(%w[shared_old])) # stored for a.rb
-    in_b = survivor("b_new") # a new survivor in b.rb with the same old id
-    delta = base.diff(agg(in_b), id_map: { "a_new" => "shared_old", "b_new" => "shared_old" })
+  # The old id has no file path, so an old-id match must also come from the same
+  # file: a survivor in b.rb whose old id equals a stored survivor from FILE is a
+  # different mutant and must be reported as new, not hidden.
+  def test_old_format_baseline_does_not_match_an_old_id_from_another_file
+    base = Mutineer::Baseline.new(baseline_doc(%w[shared_old])) # stored for FILE
+    in_b = survivor("b_new", file: "lib/other.rb")
+    delta = base.diff(agg(in_b), id_map: { "b_new" => "shared_old" })
 
-    assert_empty delta.new_survivors, "pins the documented collision of old-format baselines"
+    assert_equal ["b_new"], delta.new_survivors.map(&:id)
+    assert_equal 0, delta.legacy_matches
+    assert_equal ["shared_old"], delta.fixed_survivors.map { |h| h["id"] }
+  end
+
+  def test_old_format_baseline_matches_the_same_file_under_another_spelling
+    base = Mutineer::Baseline.new(baseline_doc(%w[shared_old])) # stored as FILE
+    same = survivor("a_new", file: "./#{FILE}")
+    delta = base.diff(agg(same), id_map: { "a_new" => "shared_old" })
+
+    assert_empty delta.new_survivors
     assert_equal 1, delta.legacy_matches
+    assert_empty delta.fixed_survivors
   end
 
   # Baseline is side-effect free: it never prints, the CLI owns every warning.

@@ -482,7 +482,8 @@ module Mutineer
       delta = if config.baseline
                 Baseline.load(config.baseline).diff(aggregate, epsilon: config.baseline_epsilon,
                                                                scoped: !config.since.nil?,
-                                                               id_map: extras[:id_map])
+                                                               id_map: extras[:id_map],
+                                                               project_root: config.project_root)
               end
       warn_legacy_baseline if delta&.legacy_matches&.positive?
 
@@ -571,8 +572,7 @@ module Mutineer
     # @return [void]
     def self.warn_legacy_baseline
       warn "[mutineer] the baseline uses the old id format, which did not include the file " \
-           "path, so survivors were matched on their old ids. An old id can collide with a " \
-           "survivor from another file, which can hide a new survivor. Regenerate the baseline " \
+           "path, so survivors were matched on their old ids and files. Regenerate the baseline " \
            "(run with --format json and save the output), but only after every gate that reads " \
            "it runs this mutineer version or later."
     end

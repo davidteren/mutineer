@@ -101,6 +101,22 @@ class EquivalentMutantTest < Minitest::Test
     end
   end
 
+  # The old entry still over-matches b.rb even when a.rb's new id is listed, so
+  # it must be reported for migration, not silently kept.
+  def test_old_entry_listed_beside_its_new_id_is_still_reported
+    with_colliding_files do |root|
+      old = legacy_id(root, "a.rb")
+      new_a = new_id(root, "a.rb")
+      _, ignored, _, extras = collect(root, %w[a.rb b.rb], ignore: [new_a, old])
+      assert_equal [new_a, new_id(root, "b.rb")], ignored.map(&:id)
+      assert_equal({ old => [new_a, new_id(root, "b.rb")] }, extras[:legacy_ignore_matches])
+    end
+  end
+
+  def test_suppressed_accepts_a_single_id
+    assert Mutineer::Runner.suppressed?(:arithmetic, 1, "abc123", {}, Set["abc123"])
+  end
+
   def test_entry_matching_nothing_is_not_a_legacy_match
     with_colliding_files do |root|
       jobs, ignored, _, extras = collect(root, %w[a.rb b.rb], ignore: ["0123456789ab"])

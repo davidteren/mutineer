@@ -31,8 +31,8 @@ All notable changes to this project are documented here. The format is based on
 - **Old-format ids keep working, with a warning** (#126). An old-format
   `ignore:` entry still suppresses the mutants it matched before. The run prints
   one `[mutineer]` warning per entry with the new ids to use. A `--baseline`
-  file without `summary.id_format` matches on new or old ids, so no survivor
-  reads as new or fixed only because its id changed. The run prints one
+  file without `summary.id_format` matches on new ids, or on old ids from the
+  same file, so no survivor reads as new or fixed only because its id changed. The run prints one
   `[mutineer]` warning to regenerate the baseline.
 
 ### Deprecated

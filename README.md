@@ -222,8 +222,10 @@ Suppressed mutants are excluded from the score (so 100% becomes reachable).
 ## Mutant ids
 
 A mutant id is 12 hex characters. It hashes the file path (relative to the
-project root), the method, the operator and the mutated code. An edit outside
-the method does not change the id. Moving or renaming the file does.
+project root), the method's qualified name, the operator, the mutated code, and
+the mutant's position among identical mutants in that method. An edit outside
+the method does not change the id. Moving or renaming the file, renaming the
+method or its class, or adding an identical mutant earlier in the method does.
 
 - The project root is the directory mutineer runs from (in the Action, the
   `working-directory`). Run from the same root to get the same ids.
@@ -236,8 +238,11 @@ working until 2.0, with a warning:
 
 - **`ignore:`** An old entry still suppresses its mutants. The run prints the
   new ids for each old entry. Replace the entry with those ids. The list covers
-  only the sources in that run, so run over every source for the full list.
-- **`--baseline`** An old baseline still matches, and the run tells you to
+  only the sources and operators in that run, so run over every source with
+  every operator set you use (for example your Tier-2 `--operators`) for the
+  full list.
+- **`--baseline`** An old baseline still matches: a survivor matches a stored
+  one with the same old id in the same file. The run tells you to
   regenerate it. Regenerate it with `--format json`, but only after every gate
   that reads it runs 1.3 or later (the Action's `version:` pin, your CI
   `Gemfile.lock`). An older version treats every new-format survivor as new.
@@ -248,8 +253,9 @@ matched, and `summary.legacy_id_matches.baseline` counts the survivors matched
 only through an old baseline id.
 
 Ids are relative to the directory you run mutineer from. mutineer finds
-`.mutineer.yml` by walking up, so if you run from a subdirectory it warns that
-the loaded ignore ids will not match, and tells you which directory to run from.
+`.mutineer.yml` by walking up. When the file it loads is in a parent directory
+(other than your home directory), it warns that the ignore ids will not match
+and tells you which directory to run from.
 
 ## CI gating
 
