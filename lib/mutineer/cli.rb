@@ -162,6 +162,7 @@ module Mutineer
 
       case argv.first
       when "run"
+        warn_config_root_mismatch(file_path, config.project_root) if file_path
         # A directory source expands to its **/*.rb files; literal files pass
         # through. Test inference (when --test is omitted) happens in validate!.
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
@@ -527,6 +528,23 @@ module Mutineer
 
       "#{unused.size} tier-2 operators available (#{unused.join(', ')}) — " \
         "enable with --operators <list>."
+    end
+
+    # Warns once when the loaded .mutineer.yml sits outside the run directory
+    # (#126). Mutant ids hash each file's path relative to the run directory,
+    # but the config is found by walking up, so a run from a subdirectory loads
+    # the same ignore list while its ids no longer match.
+    #
+    # @param file_path [String] the .mutineer.yml that was loaded.
+    # @param project_root [String] the run directory ids are relative to.
+    # @return [void]
+    def self.warn_config_root_mismatch(file_path, project_root)
+      config_dir = ProjectPath.root_real(File.dirname(file_path))
+      return if config_dir == ProjectPath.root_real(project_root)
+
+      warn "[mutineer] loaded #{file_path}, but mutant ids are relative to the run directory " \
+           "#{project_root}, not to #{config_dir}. Ignore ids and baselines written from " \
+           "#{config_dir} will not match this run. Run mutineer from #{config_dir}."
     end
 
     # Warns once per old-format `ignore:` entry (#126), naming the new ids it

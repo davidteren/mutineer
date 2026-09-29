@@ -77,7 +77,9 @@ both mutants, and <code>--baseline</code> could hide a new survivor behind an ol
 tool that tracks survivors by id.</li>
 <li>Moving or renaming a file now changes its ids.</li>
 <li>Ids follow the project root: the directory mutineer runs from, or the
-Action's <code>working-directory</code>. A run from a different root gives different ids.</li>
+Action's <code>working-directory</code>. A run from a different root gives different ids.
+mutineer finds <code>.mutineer.yml</code> by walking up, so a run from a subdirectory
+prints one <code>[mutineer]</code> warning that the loaded ignore ids will not match.</li>
 <li>A source outside the project root uses its absolute path, so its ids differ
 between machines.</li>
 </ul>

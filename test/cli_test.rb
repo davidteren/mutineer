@@ -24,6 +24,33 @@ class CliTest < Minitest::Test
     err.lines.grep(/\A\[mutineer\] ignore entry/)
   end
 
+  # The [mutineer] run-root mismatch warning in a stderr capture.
+  def root_warnings(err)
+    err.lines.grep(/\A\[mutineer\] loaded .*\.mutineer\.yml/)
+  end
+
+  # Ids are relative to the run directory (#126). A run from a subdirectory
+  # still finds the parent's .mutineer.yml by walking up, so its ignore ids
+  # would silently stop matching; the CLI must say so once.
+  def test_run_from_a_subdirectory_of_the_config_warns_once
+    Dir.mktmpdir("mutineer-root") do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "threshold: 0\n")
+      sub = File.join(proj, "sub")
+      FileUtils.mkdir_p(sub)
+      _out, err, = mutineer("run", "--dry-run", "nothing.rb", chdir: sub)
+      assert_equal 1, root_warnings(err).size, "expected one run-root warning, got: #{err}"
+      assert_includes err, File.realpath(proj)
+    end
+  end
+
+  def test_run_from_the_config_directory_does_not_warn
+    Dir.mktmpdir("mutineer-root") do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "threshold: 0\n")
+      _out, err, = mutineer("run", "--dry-run", "nothing.rb", chdir: proj)
+      assert_empty root_warnings(err), "no run-root warning expected, got: #{err}"
+    end
+  end
+
   # [old-format id, new id] of the first arithmetic mutant in proj/calculator.rb.
   def calculator_ids(proj)
     path = File.join(proj, "calculator.rb")

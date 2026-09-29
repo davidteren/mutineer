@@ -251,8 +251,14 @@ working until 2.0, with a warning:
   that reads it runs 1.3 or later (the Action's `version:` pin, your CI
   `Gemfile.lock`). An older version treats every new-format survivor as new.
 
-The JSON report's `summary.id_format` is `2` for the new format, and
-`summary.legacy_id_matches` counts the old ids a run matched.
+The JSON report's `summary.id_format` is `2` for the new format.
+`summary.legacy_id_matches.ignore` counts the old-format ignore entries a run
+matched, and `summary.legacy_id_matches.baseline` counts the survivors matched
+only through an old baseline id.
+
+Ids are relative to the directory you run mutineer from. mutineer finds
+`.mutineer.yml` by walking up, so if you run from a subdirectory it warns that
+the loaded ignore ids will not match, and tells you which directory to run from.
 
 ## CI gating
 

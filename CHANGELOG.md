@@ -17,6 +17,8 @@ All notable changes to this project are documented here. The format is based on
   - Moving or renaming a file now changes its ids.
   - Ids follow the project root: the directory mutineer runs from, or the
     Action's `working-directory`. A run from a different root gives different ids.
+    mutineer finds `.mutineer.yml` by walking up, so a run from a subdirectory
+    prints one `[mutineer]` warning that the loaded ignore ids will not match.
   - A source outside the project root uses its absolute path, so its ids differ
     between machines.
 - **The JSON report marks its id format** (schema `1.4`, additive).

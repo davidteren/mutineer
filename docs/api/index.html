@@ -343,8 +343,13 @@ regenerate it. Regenerate it with <code>--format json</code>, but only after eve
 that reads it runs 1.3 or later (the Action's <code>version:</code> pin, your CI
 <code>Gemfile.lock</code>). An older version treats every new-format survivor as new.</li>
 </ul>
-<p>The JSON report's <code>summary.id_format</code> is <code>2</code> for the new format, and
-<code>summary.legacy_id_matches</code> counts the old ids a run matched.</p>
+<p>The JSON report's <code>summary.id_format</code> is <code>2</code> for the new format.
+<code>summary.legacy_id_matches.ignore</code> counts the old-format ignore entries a run
+matched, and <code>summary.legacy_id_matches.baseline</code> counts the survivors matched
+only through an old baseline id.</p>
+<p>Ids are relative to the directory you run mutineer from. mutineer finds
+<code>.mutineer.yml</code> by walking up, so if you run from a subdirectory it warns that
+the loaded ignore ids will not match, and tells you which directory to run from.</p>
 <h2 id="CI_gating">CI gating</h2>
 <p>Store a JSON run as a baseline, then fail the build only when a PR makes things
 worse:</p>
