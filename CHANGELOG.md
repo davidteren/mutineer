@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-29
+
 ### Changed
 - **Mutant ids now include the project-relative file path** (#126). Before, two
   mutants with the same method name, operator and token in different files got
@@ -609,6 +611,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.3.0]: https://github.com/davidteren/mutineer/releases/tag/v1.3.0
 [1.2.0]: https://github.com/davidteren/mutineer/releases/tag/v1.2.0
 [1.1.0]: https://github.com/davidteren/mutineer/releases/tag/v1.1.0
 [1.0.2]: https://github.com/davidteren/mutineer/releases/tag/v1.0.2
