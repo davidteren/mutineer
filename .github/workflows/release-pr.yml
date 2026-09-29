@@ -76,6 +76,22 @@ jobs:
           }
           # MUTINEER_RELEASE_HELPERS_END
 
+          # Warns and returns 0 when VERSION on main is a merged but untagged bump (the
+          # last release PR, or a manual major): it must be tagged first, and an open
+          # release PR must not be merged over it. Returns 1 when VERSION is tagged.
+          stop_if_untagged_bump() {
+            local cur
+            cur="$(ruby -r ./lib/mutineer/version -e 'print Mutineer::VERSION')"
+            untagged_bump "$cur" "$1" || return 1
+            echo "::warning::VERSION $cur on main is not tagged yet (latest tag $1). Tag it: git tag v$cur && git push origin v$cur"
+            local open_release
+            open_release="$(gh pr list --state open --json number,headRefName --jq '.[] | select(.headRefName | startswith("release/v")) | "#\(.number) \(.headRefName)"')"
+            if [ -n "$open_release" ]; then
+              echo "::warning::Open release PRs; close any that predate the VERSION bump before merging anything: ${open_release//$'\n'/, }"
+            fi
+            return 0
+          }
+
           # MUTINEER_VERSION_CALC_START
           # Complete vMAJOR.MINOR.PATCH tags only. git describe --tags --abbrev=0
           # also matches the floating major tag (v1) and then splits it into
@@ -95,6 +111,8 @@ jobs:
           feats="$(printf '%s\n' "$log" | grep -Ec '^feat(\(|!|:)' || true)"
           fixes="$(printf '%s\n' "$log" | grep -Ec '^fix(\(|!|:)'  || true)"
           if [ "$feats" -eq 0 ] && [ "$fixes" -eq 0 ]; then
+            # A manual bump with no feat:/fix: subject must still be flagged as untagged.
+            if [ -f lib/mutineer/version.rb ]; then stop_if_untagged_bump "$latest_tag" || true; fi
             echo "No feat:/fix: commits since ${latest_tag} — nothing to release."; exit 0
           fi
 
@@ -125,17 +143,9 @@ jobs:
             *) echo "::error::Could not check origin for tag v${next} (git ls-remote exit $tag_rc)."; exit 1 ;;
           esac
 
-          # A merged but untagged bump (the last release PR, or a manual major) must be
-          # tagged first; a new release PR would otherwise undo or stack on it.
-          cur="$(ruby -r ./lib/mutineer/version -e 'print Mutineer::VERSION')"
-          if untagged_bump "$cur" "$latest_tag"; then
-            echo "::warning::VERSION $cur on main is not tagged yet (latest tag $latest_tag). Tag it: git tag v$cur && git push origin v$cur"
-            open_release="$(gh pr list --state open --json number,headRefName --jq '.[] | select(.headRefName | startswith("release/v")) | "#\(.number) \(.headRefName)"')"
-            if [ -n "$open_release" ]; then
-              echo "::warning::Open release PRs; close any that predate the VERSION bump before merging anything: ${open_release//$'\n'/, }"
-            fi
-            exit 0
-          fi
+          # A merged but untagged bump must be tagged first; a new release PR would
+          # otherwise undo or stack on it.
+          if stop_if_untagged_bump "$latest_tag"; then exit 0; fi
 
           # Only this workflow's own PRs carry this marker in the body (see the footer).
           export RELEASE_PR_MARKER='Auto-opened by `release-pr.yml`'

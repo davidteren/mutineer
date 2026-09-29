@@ -120,7 +120,7 @@ Safety nets:
   warning), and it never closes a release PR it did not open. A merge commit counts as
   someone else's commit: GitHub's "Update branch" button on the release PR pauses the
   automation until that PR is merged or its branch is deleted. Review + merge it, then push the
-  `vX.Y.Z` tag. Every release moves the floating `v1` tag, so Action users get it at once:
+  `vX.Y.Z` tag. Every release moves the floating major tag (`v1` today), so Action users get it at once:
   batch changes rather than releasing after each merge. (To get CI on that auto-PR, add a
   `RELEASE_PR_TOKEN` PAT secret — a PR opened by the default `GITHUB_TOKEN` doesn't
   trigger other workflows.)
