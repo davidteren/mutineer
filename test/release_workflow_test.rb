@@ -72,7 +72,8 @@ class ReleaseWorkflowTest < Minitest::Test
     assert_equal %w[schedule workflow_dispatch], triggers.keys.sort
     text = File.read(WORKFLOW)
     assert_includes text, 'git switch -C "$branch"', "the release branch must be rebuilt from main"
-    assert_includes text, "git push --force", "a rebuilt release branch replaces the old one"
+    refute_match(/git push --force(?!-with-lease)/, text, "never force-push the release branch (GITHUB_TOKEN may not)")
+    assert_includes text, "--force-with-lease=", "the old release branch is deleted under a lease, never clobbered"
     assert_includes text, "gh pr edit", "an open release PR for the same version is refreshed"
     assert_includes text, "gh pr close", "an older open release PR is superseded"
     assert_includes text, "sort -V", "a manual VERSION bump ahead of the computed one is never undone"

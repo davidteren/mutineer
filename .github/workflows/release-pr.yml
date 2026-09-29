@@ -5,9 +5,10 @@ name: Release PR
 # release PR that bumps Mutineer::VERSION and dates the CHANGELOG (including the
 # reference-link def that's easy to forget). Each run REBUILDS that PR from the
 # current main, so it always covers every change since the last tag: a newer
-# version replaces an older open release PR, and the same version is refreshed in
-# place. You review + merge, then push the vX.Y.Z tag — release.yml tests and
-# publishes. Cut a release early with: gh workflow run release-pr.yml
+# version replaces an older open release PR, and when main moved the same version
+# is re-opened fresh (the old branch is deleted, never force-pushed). You review +
+# merge, then push the vX.Y.Z tag — release.yml tests and publishes. Cut a release
+# early with: gh workflow run release-pr.yml
 #
 # Note: a PR opened with the default GITHUB_TOKEN does NOT trigger other workflows
 # (GitHub's recursion guard), so CI won't auto-run on it. To get CI on the release
@@ -155,9 +156,23 @@ jobs:
           if [ "$built" = 1 ]; then
             echo "$branch is already built on the current main; not rebuilding it."
           else
+            # main moved: replace the old release branch instead of force-pushing it.
+            # A force-push onto a branch whose new commits include workflow-file changes
+            # is refused for the default GITHUB_TOKEN; creating a branch works. The delete
+            # carries a lease on the SHA checked above, so a commit pushed since then makes
+            # it fail loudly instead of being lost.
+            if git rev-parse -q --verify "$remote" >/dev/null; then
+              old_sha="$(git rev-parse "$remote")"
+              open_num="$(gh pr list --state open --head "$branch" --json number --jq '.[0].number // empty')"
+              if [ -n "$open_num" ]; then
+                gh pr close "$open_num" --comment "main moved: rebuilding the v${next} release PR from main as a fresh PR."
+              fi
+              git push --force-with-lease="refs/heads/${branch}:${old_sha}" origin ":refs/heads/${branch}" \
+                || { echo "::error::$branch changed after it was checked; not replacing it. Re-run after reviewing it."; exit 1; }
+            fi
             git switch -C "$branch"
             git commit -aqm "release: v${next}"
-            git push --force -u origin "$branch"
+            git push -u origin "$branch"
           fi
 
           notes="$(git log --pretty='- %h %s' "${latest_tag}..HEAD" | grep -E ' (feat|fix)(\(|!|:)' || true)"

@@ -113,9 +113,10 @@ Safety nets:
   `feat:`/`fix:` commits sit on `main` past the latest tag, it opens a release PR (bumps
   `version.rb`, dates the CHANGELOG + adds its reference-link def). Each run rebuilds that
   PR from the current `main`, so it always covers every change since the last tag; a
-  newer version supersedes an older open release PR. The run never force-pushes over or
-  deletes a release branch that holds someone else's commits (it fails instead), and it
-  never closes a release PR it did not open. Review + merge it, then push the
+  newer version supersedes an older open release PR, and when `main` moved the same
+  version is re-opened fresh (the old branch is deleted under a lease, never
+  force-pushed). The run never replaces a release branch that holds someone else's
+  commits (it fails instead), and it never closes a release PR it did not open. Review + merge it, then push the
   `vX.Y.Z` tag. Every release moves the floating `v1` tag, so Action users get it at once:
   batch changes rather than releasing after each merge. (To get CI on that auto-PR, add a
   `RELEASE_PR_TOKEN` PAT secret — a PR opened by the default `GITHUB_TOKEN` doesn't
