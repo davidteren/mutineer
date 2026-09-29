@@ -28,8 +28,8 @@ module Mutineer
   # `subject`, `mutation`, and `id` are nil when the Result is built by
   # Isolation/Runner (which only know the outcome); the orchestrator attaches
   # them afterwards via `result.with(subject:, mutation:, id:)` so the Reporter
-  # can render survivor diffs and emit the stable id. `id` is the content-based
-  # MutantId.
+  # can render survivor diffs and emit the id. `id` is the content-based
+  # MutantId (it includes the project-relative file path).
   Result = Data.define(:status, :details, :subject, :mutation, :id) do
     # Builds a killed result.
     #

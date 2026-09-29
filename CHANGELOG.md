@@ -6,6 +6,39 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **Mutant ids now include the project-relative file path** (#126). Before, two
+  mutants with the same method name, operator and token in different files got
+  the same id. That happened with a top-level `def` or block in two files, and
+  with a class reopened in another file. One `ignore:` entry then suppressed
+  both mutants, and `--baseline` could hide a new survivor behind an old one.
+  - Every survivor id changes once in this release. This affects any external
+    tool that tracks survivors by id.
+  - Moving or renaming a file now changes its ids.
+  - Ids follow the project root: the directory mutineer runs from, or the
+    Action's `working-directory`. A run from a different root gives different ids.
+    mutineer finds `.mutineer.yml` by walking up, so a run from a subdirectory
+    prints one `[mutineer]` warning that the loaded ignore ids will not match.
+  - A source outside the project root uses its absolute path, so its ids differ
+    between machines.
+  - Two methods with the same qualified name in one file (for example two
+    top-level `def index` in two DSL blocks) now get different ids. The second
+    and later ones hash their position among those methods; the first keeps its
+    id.
+- **The JSON report marks its id format** (schema `1.4`, additive).
+  `summary.id_format` is `2` for ids that include the file path.
+  `summary.legacy_id_matches` counts old-format `ignore:` entries (`ignore`) and
+  survivors matched only through an old-format baseline id (`baseline`). The
+  GitHub Action shows one warning annotation when either count is not zero.
+
+### Deprecated
+- **Old-format ids in `ignore:` and in baselines.** Matching on them is removed
+  in 2.0. Replace each old `ignore:` entry with the new ids from the warning
+  (only the intended ones when it over-matched several mutants).
+  Regenerate a baseline (`--format json`) only after every gate that reads it
+  runs this version or later (the Action's `version:` pin, your CI
+  `Gemfile.lock`). An older version treats every new-format survivor as new.
+
 ### Fixed
 - **`module_function :name` and `module_function def name` promote only
   their own module's methods** — a class or module in the same file with a
@@ -24,6 +57,17 @@ All notable changes to this project are documented here. The format is based on
   still resolves in the mutated method, as it does under `reload`. Before,
   the method raised NameError in the test, which counted as a false kill
   (#145).
+- **Old-format ids keep working, with a warning** (#126). An old-format
+  `ignore:` entry still suppresses the mutants it matched before. The run prints
+  one `[mutineer]` warning per entry with each new id, its file and its method.
+  When the entry matched several mutants (in different files, or same-named
+  methods in one file), the warning says it
+  over-matched and to keep only the ids for the mutant you meant to ignore. A
+  `--baseline` file without `summary.id_format` matches on new ids, or on old
+  ids from the same file, so no survivor reads as new or fixed only because its
+  id changed. A stored file outside the project root (a baseline written on
+  another machine) matches on the old id alone. The run prints one
+  `[mutineer]` warning to regenerate the baseline.
 
 ## [1.2.0] - 2026-09-28
 

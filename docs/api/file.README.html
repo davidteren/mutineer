@@ -6,7 +6,7 @@
 <title>
   File: README
   
-    &mdash; Documentation by YARD 0.9.45
+    &mdash; Documentation by YARD 0.9.44
   
 </title>
 
@@ -317,16 +317,61 @@ safe parallelism instead (see <a href="#faster-parallel-safe-rails-the---daemon-
 file off 100%. Suppress them so the score and <code>--threshold</code> gate stay meaningful:</p>
 <ul>
 <li><strong>Inline:</strong> <code>some_line # mutineer:disable-line</code> (or scope it: <code># mutineer:disable-line comparison</code>). Put a reason after <code>--</code>: <code># mutineer:disable-line comparison -- the test checks only 20</code>.</li>
-<li><strong>Config:</strong> a <code>.mutineer.yml</code> <code>ignore:</code> list of stable mutant ids. Each survivor's
+<li><strong>Config:</strong> a <code>.mutineer.yml</code> <code>ignore:</code> list of mutant ids. Each survivor's
 <code>id</code> is printed in the JSON report, so copy it straight into <code>ignore:</code>.</li>
 </ul>
 <p>Suppressed mutants are excluded from the score (so 100% becomes reachable).</p>
+<h2 id="Mutant_ids">Mutant ids</h2>
+<p>A mutant id is 12 hex characters. It hashes the file path (relative to the
+project root), the method's qualified name, the operator, the mutated code, and
+the mutant's position among identical mutants in that method. When one file has
+two methods with the same qualified name (for example two top-level <code>def index</code>
+in two DSL blocks), the second and later ones also hash their position among
+those methods, so their ids differ. The first one's id does not change. An edit
+outside the method does not change the id. Moving or renaming the file,
+renaming the method or its class, or adding an identical mutant earlier in the
+method does. Adding a method with the same name earlier in the same file also
+does.</p>
+<ul>
+<li>The project root is the directory mutineer runs from (in the Action, the
+<code>working-directory</code>). Run from the same root to get the same ids.</li>
+<li>A source outside the project root uses its absolute path, so its ids differ
+between machines.</li>
+</ul>
+<p><strong>Migrating from ids without the file path.</strong> Before 1.3, ids did not include
+the file path, so two files could share an id (#126). Old-format ids keep
+working until 2.0, with a warning:</p>
+<ul>
+<li><strong><code>ignore:</code></strong> An old entry still suppresses its mutants. The run prints the
+new ids for each old entry, each with its file and method. When it names one
+mutant, replace the entry with that id. When it names several (in different
+files, or same-named methods in one file), the old entry over-matched: it also
+hid mutants you did not mean to ignore. The warning says so. Keep only the ids for the mutant you meant to
+ignore, not all of them. The list covers only the sources and operators in
+that run, so run over every source with every operator set you use (for
+example your Tier-2 <code>--operators</code>) for the full list.</li>
+<li><strong><code>--baseline</code></strong> An old baseline still matches: a survivor matches a stored
+one with the same old id in the same file. A stored file that is an absolute
+path outside the project root (a baseline written on another machine)
+matches on the old id alone. The run tells you to
+regenerate it. Regenerate it with <code>--format json</code>, but only after every gate
+that reads it runs 1.3 or later (the Action's <code>version:</code> pin, your CI
+<code>Gemfile.lock</code>). An older version treats every new-format survivor as new.</li>
+</ul>
+<p>The JSON report's <code>summary.id_format</code> is <code>2</code> for the new format.
+<code>summary.legacy_id_matches.ignore</code> counts the old-format ignore entries a run
+matched, and <code>summary.legacy_id_matches.baseline</code> counts the survivors matched
+only through an old baseline id.</p>
+<p>Ids are relative to the directory you run mutineer from. mutineer finds
+<code>.mutineer.yml</code> by walking up. When the file it loads is in a parent directory
+(other than your home directory), it warns that the ignore ids will not match
+and tells you which directory to run from.</p>
 <h2 id="CI_gating">CI gating</h2>
 <p>Store a JSON run as a baseline, then fail the build only when a PR makes things
 worse:</p>
 <pre class="code sh"><code class="sh">mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
 </code></pre>
-<p><code>--baseline</code> reports which survivors are new (by stable id) and any score drop. It
+<p><code>--baseline</code> reports which survivors are new (by <a href="#mutant-ids">mutant id</a>) and any score drop. It
 combines with <code>--threshold</code> (the worse of the two sets the exit code). Pass a
 directory (or several sources) to audit a whole layer in one boot — tests are
 auto-paired by convention and the report breaks down per source.</p>
@@ -357,7 +402,7 @@ gate failed, <code>warning</code> when it passed);</li>
 <p>The CLI prints a progress line to the log at every 10% of the run, whatever
 the format.</p>
 <h2 id="For_AI_agents___pipelines">For AI agents &amp; pipelines</h2>
-<p>Mutineer is built for programmatic use — versioned JSON, stable mutant ids,
+<p>Mutineer is built for programmatic use — versioned JSON, <a href="#mutant-ids">mutant ids</a> that survive unrelated edits,
 structured exit codes, and diff-scoped runs. See:</p>
 <ul>
 <li><strong>AI agents &amp; CI recipes</strong> — the agent inner-loop and CI-gate recipes (and how
@@ -394,7 +439,7 @@ automatically when sources change). Add <code>.mutineer/</code> to your <code>.g
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.10).
+  0.9.44 (ruby-3.4.11).
 </div>
 
     </div>

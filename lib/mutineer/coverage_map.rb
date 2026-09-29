@@ -9,6 +9,7 @@ require "set"
 require_relative "minitest_integration"
 require_relative "test_runners"
 require_relative "child_stdout"
+require_relative "project_path"
 
 module Mutineer
   # Maps `(source_file, line) -> [test_files]` so each mutant runs only against
@@ -722,11 +723,7 @@ module Mutineer
     #
     # @api private
     # @return [String] realpath of the project root when it exists.
-    def project_root_real
-      File.realpath(File.expand_path(@project_root))
-    rescue Errno::ENOENT
-      File.expand_path(@project_root)
-    end
+    def project_root_real = ProjectPath.root_real(@project_root)
 
     # Project-local `.rb` files loaded in this process at capture time.
     #
@@ -907,38 +904,18 @@ module Mutineer
     # @return [Array<String>] absolute load paths.
     def abs_load_paths   = @load_paths.map { |p| absolute(p) }
 
-    # Relativizes a path against the project root.
+    # Relativizes a path against the project root (see {ProjectPath.relative}).
     #
     # @api private
     # @param path [String] path to relativize.
-    # @return [String] relative path.
-    def relativize(path)
-      abs = path.start_with?("/") ? path : absolute(path)
-      abs = realpath_if_exists(abs)
-      root = project_root_real
-      prefix = root.end_with?("/") ? root : "#{root}/"
-      return abs unless abs.start_with?(prefix)
+    # @return [String] relative path, or an absolute path when outside the root.
+    def relativize(path) = ProjectPath.relative(path, @project_root)
 
-      abs.delete_prefix(prefix)
-    end
-
-    # Expands a path relative to the project root.
+    # Expands a path relative to the project root (see {ProjectPath.absolute}).
     #
     # @api private
     # @param path [String] path to expand.
     # @return [String] absolute path.
-    def absolute(path)
-      raw = File.absolute_path?(path) ? path : File.expand_path(path, @project_root)
-      realpath_if_exists(raw)
-    end
-
-    # Real path when the file exists, otherwise `path` unchanged.
-    #
-    # @api private
-    # @param path [String] absolute or relative path.
-    # @return [String]
-    def realpath_if_exists(path)
-      File.exist?(path) ? File.realpath(path) : path
-    end
+    def absolute(path) = ProjectPath.absolute(path, @project_root)
   end
 end

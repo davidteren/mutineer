@@ -223,10 +223,58 @@ Some mutants are equivalent (behaviour-identical) and survive forever — keepin
 file off 100%. Suppress them so the score and `--threshold` gate stay meaningful:
 
 - **Inline:** `some_line # mutineer:disable-line` (or scope it: `# mutineer:disable-line comparison`). Put a reason after `--`: `# mutineer:disable-line comparison -- the test checks only 20`.
-- **Config:** a `.mutineer.yml` `ignore:` list of stable mutant ids. Each survivor's
+- **Config:** a `.mutineer.yml` `ignore:` list of mutant ids. Each survivor's
   `id` is printed in the JSON report, so copy it straight into `ignore:`.
 
 Suppressed mutants are excluded from the score (so 100% becomes reachable).
+
+## Mutant ids
+
+A mutant id is 12 hex characters. It hashes the file path (relative to the
+project root), the method's qualified name, the operator, the mutated code, and
+the mutant's position among identical mutants in that method. When one file has
+two methods with the same qualified name (for example two top-level `def index`
+in two DSL blocks), the second and later ones also hash their position among
+those methods, so their ids differ. The first one's id does not change. An edit
+outside the method does not change the id. Moving or renaming the file,
+renaming the method or its class, or adding an identical mutant earlier in the
+method does. Adding a method with the same name earlier in the same file also
+does.
+
+- The project root is the directory mutineer runs from (in the Action, the
+  `working-directory`). Run from the same root to get the same ids.
+- A source outside the project root uses its absolute path, so its ids differ
+  between machines.
+
+**Migrating from ids without the file path.** Before 1.3, ids did not include
+the file path, so two files could share an id (#126). Old-format ids keep
+working until 2.0, with a warning:
+
+- **`ignore:`** An old entry still suppresses its mutants. The run prints the
+  new ids for each old entry, each with its file and method. When it names one
+  mutant, replace the entry with that id. When it names several (in different
+  files, or same-named methods in one file), the old entry over-matched: it also
+  hid mutants you did not mean to ignore. The warning says so. Keep only the ids for the mutant you meant to
+  ignore, not all of them. The list covers only the sources and operators in
+  that run, so run over every source with every operator set you use (for
+  example your Tier-2 `--operators`) for the full list.
+- **`--baseline`** An old baseline still matches: a survivor matches a stored
+  one with the same old id in the same file. A stored file that is an absolute
+  path outside the project root (a baseline written on another machine)
+  matches on the old id alone. The run tells you to
+  regenerate it. Regenerate it with `--format json`, but only after every gate
+  that reads it runs 1.3 or later (the Action's `version:` pin, your CI
+  `Gemfile.lock`). An older version treats every new-format survivor as new.
+
+The JSON report's `summary.id_format` is `2` for the new format.
+`summary.legacy_id_matches.ignore` counts the old-format ignore entries a run
+matched, and `summary.legacy_id_matches.baseline` counts the survivors matched
+only through an old baseline id.
+
+Ids are relative to the directory you run mutineer from. mutineer finds
+`.mutineer.yml` by walking up. When the file it loads is in a parent directory
+(other than your home directory), it warns that the ignore ids will not match
+and tells you which directory to run from.
 
 ## CI gating
 
@@ -237,7 +285,7 @@ worse:
 mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
 ```
 
-`--baseline` reports which survivors are new (by stable id) and any score drop. It
+`--baseline` reports which survivors are new (by [mutant id](#mutant-ids)) and any score drop. It
 combines with `--threshold` (the worse of the two sets the exit code). Pass a
 directory (or several sources) to audit a whole layer in one boot — tests are
 auto-paired by convention and the report breaks down per source.
@@ -276,7 +324,7 @@ the format.
 
 ## For AI agents & pipelines
 
-Mutineer is built for programmatic use — versioned JSON, stable mutant ids,
+Mutineer is built for programmatic use — versioned JSON, [mutant ids](#mutant-ids) that survive unrelated edits,
 structured exit codes, and diff-scoped runs. See:
 
 - **AI agents & CI recipes** — the agent inner-loop and CI-gate recipes (and how
@@ -343,7 +391,7 @@ oracle, closing the loop with a concrete stopping condition:
    mutineer run app/ --since origin/main --format json --output .mutineer/run.json
    ```
 
-3. Parse `survivors[]`. Each entry carries a ready-made `diff` and a stable `id`. For each survivor, feed
+3. Parse `survivors[]`. Each entry carries a ready-made `diff` and an `id` (stable across edits outside the method; moving or renaming the file changes it). For each survivor, feed
    the agent a prompt like:
 
    > This change to `{subject}` (`{file}:{line}`) was **not** caught by any test:
@@ -374,7 +422,7 @@ mutineer run app/ --no-since --format json --output .mutineer/baseline.json
 mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json
 ```
 
-`--baseline` exits `1` on any **new** survivor (matched by stable `id`, so it survives unrelated edits) or
+`--baseline` exits `1` on any **new** survivor (matched by `id`, so it survives unrelated edits, but not a file move or rename) or
 a **score drop** (`--baseline-epsilon` tolerates float jitter); under `--since` the score-drop half is
 skipped, because a diff-scoped score covers a different denominator — new-survivor detection still gates.
 Combine with `--threshold` to enforce an absolute floor too — the worse of the two gates wins.
@@ -437,7 +485,7 @@ Some mutants are semantically identical to the original and can **never** be kil
 unattended agent loop these would never clear, so suppress them explicitly:
 
 - **Inline:** `# mutineer:disable-line [operators]` on the offending source line.
-- **Config:** add the survivor's stable `id` (printed in the JSON report) to `.mutineer.yml`:
+- **Config:** add the survivor's `id` (printed in the JSON report; it includes the file path) to `.mutineer.yml`:
 
   ```yaml
   ignore:
@@ -472,7 +520,7 @@ worker finish order, so two runs of the same inputs produce byte-identical outpu
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.3"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.4"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -481,11 +529,16 @@ The top-level `schema_version` (a string, e.g. `"1.3"`) follows these rules:
 
 A consumer should accept any `1.x` document and read only the keys it knows.
 
+Mutant `id` values are opaque identifiers. How an id is derived is versioned by
+`summary.id_format`, not by `schema_version`: when `id_format` changes, every id
+value can change while the key keeps its type and meaning. Compare ids only
+between reports with the same `id_format` (a missing key is the old format).
+
 ## Top-level shape
 
 ```jsonc
 {
-  "schema_version": "1.3",
+  "schema_version": "1.4",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
@@ -514,6 +567,8 @@ A consumer should accept any `1.x` document and read only the keys it knows.
 | `no_verdict` | int | Attempted mutants that produced no verdict: `errored + timeout + uncapturable`. The completeness gate is `no_verdict / attempted`. |
 | `score` | float \| null | `killed / (killed + survived) * 100`, rounded. **`null`** when the denominator is empty (no covered mutants) — never `0.0`. |
 | `scoped` | bool | `true` when the run was diff-scoped (`--since`): the score covers only the changed-line mutants, so it is not comparable to a full-run score. A scoped CURRENT run skips `--baseline`'s score-drop check (new-survivor detection still applies); a scoped report is REFUSED as a baseline (exit 2) because survivors outside its diff would read as new regressions. Additive key (absent in reports from older versions; treat absent as `false`). |
+| `id_format` | int | The mutant id format. `2` means ids include the project-relative file path (1.3 and later). **Read this key, not `schema_version`, to learn the id format.** Absent in older reports: treat absent as the old format, whose ids did not include the path and can collide across files. Additive key (schema `1.4`). |
+| `legacy_id_matches` | object | `{ ignore, baseline }`, two ints. `ignore` counts `.mutineer.yml` `ignore:` entries in the old id format that matched this run (replace them with the new ids the run prints). `baseline` counts survivors that matched an old-format `--baseline` only through their old id (regenerate the baseline). Both are `0` when nothing old matched. Old-format matching is removed in 2.0. Additive key (schema `1.4`). |
 
 ### `survivors[]` (array of object)
 
@@ -525,7 +580,7 @@ Each surviving mutant — the records an agent or reviewer acts on:
 | `file` | string | Source file path (as passed to the run). |
 | `line` | int | 1-based line of the mutation. |
 | `operator` | string | Operator name, e.g. `arithmetic`, `comparison`. |
-| `id` | string | **Stable, offset-free id** (12 hex chars). Survives edits elsewhere in the file. Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
+| `id` | string | **Offset-free id** (12 hex chars). Includes the file path relative to the project root (a source outside the root uses its absolute real path, so its ids differ between machines), so moving or renaming the file changes it. Survives edits elsewhere in the file. Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
 | `token` | string | The exact code being mutated (whitespace-collapsed), e.g. `a + b`. |
 | `diff` | string | A unified diff (`@@ -line +line @@` with `-original` / `+mutant`). Ready to hand to an agent as "write a test that fails under this change." |
 
@@ -563,7 +618,7 @@ Per-file roll-up: `{ file, total, killed, survived, no_coverage, score }` (`scor
 
 ### `baseline` (object, only with `--baseline`)
 
-The delta versus the prior `--format json` report, matched by stable `id`:
+The delta versus the prior `--format json` report, matched by `id`. A baseline without `summary.id_format` also matches on old-format ids (counted in `summary.legacy_id_matches.baseline`):
 
 | Key | Type | Meaning |
 |-----|------|---------|

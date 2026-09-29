@@ -214,10 +214,58 @@ Some mutants are equivalent (behaviour-identical) and survive forever — keepin
 file off 100%. Suppress them so the score and `--threshold` gate stay meaningful:
 
 - **Inline:** `some_line # mutineer:disable-line` (or scope it: `# mutineer:disable-line comparison`). Put a reason after `--`: `# mutineer:disable-line comparison -- the test checks only 20`.
-- **Config:** a `.mutineer.yml` `ignore:` list of stable mutant ids. Each survivor's
+- **Config:** a `.mutineer.yml` `ignore:` list of mutant ids. Each survivor's
   `id` is printed in the JSON report, so copy it straight into `ignore:`.
 
 Suppressed mutants are excluded from the score (so 100% becomes reachable).
+
+## Mutant ids
+
+A mutant id is 12 hex characters. It hashes the file path (relative to the
+project root), the method's qualified name, the operator, the mutated code, and
+the mutant's position among identical mutants in that method. When one file has
+two methods with the same qualified name (for example two top-level `def index`
+in two DSL blocks), the second and later ones also hash their position among
+those methods, so their ids differ. The first one's id does not change. An edit
+outside the method does not change the id. Moving or renaming the file,
+renaming the method or its class, or adding an identical mutant earlier in the
+method does. Adding a method with the same name earlier in the same file also
+does.
+
+- The project root is the directory mutineer runs from (in the Action, the
+  `working-directory`). Run from the same root to get the same ids.
+- A source outside the project root uses its absolute path, so its ids differ
+  between machines.
+
+**Migrating from ids without the file path.** Before 1.3, ids did not include
+the file path, so two files could share an id (#126). Old-format ids keep
+working until 2.0, with a warning:
+
+- **`ignore:`** An old entry still suppresses its mutants. The run prints the
+  new ids for each old entry, each with its file and method. When it names one
+  mutant, replace the entry with that id. When it names several (in different
+  files, or same-named methods in one file), the old entry over-matched: it also
+  hid mutants you did not mean to ignore. The warning says so. Keep only the ids for the mutant you meant to
+  ignore, not all of them. The list covers only the sources and operators in
+  that run, so run over every source with every operator set you use (for
+  example your Tier-2 `--operators`) for the full list.
+- **`--baseline`** An old baseline still matches: a survivor matches a stored
+  one with the same old id in the same file. A stored file that is an absolute
+  path outside the project root (a baseline written on another machine)
+  matches on the old id alone. The run tells you to
+  regenerate it. Regenerate it with `--format json`, but only after every gate
+  that reads it runs 1.3 or later (the Action's `version:` pin, your CI
+  `Gemfile.lock`). An older version treats every new-format survivor as new.
+
+The JSON report's `summary.id_format` is `2` for the new format.
+`summary.legacy_id_matches.ignore` counts the old-format ignore entries a run
+matched, and `summary.legacy_id_matches.baseline` counts the survivors matched
+only through an old baseline id.
+
+Ids are relative to the directory you run mutineer from. mutineer finds
+`.mutineer.yml` by walking up. When the file it loads is in a parent directory
+(other than your home directory), it warns that the ignore ids will not match
+and tells you which directory to run from.
 
 ## CI gating
 
@@ -228,7 +276,7 @@ worse:
 mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
 ```
 
-`--baseline` reports which survivors are new (by stable id) and any score drop. It
+`--baseline` reports which survivors are new (by [mutant id](#mutant-ids)) and any score drop. It
 combines with `--threshold` (the worse of the two sets the exit code). Pass a
 directory (or several sources) to audit a whole layer in one boot — tests are
 auto-paired by convention and the report breaks down per source.
@@ -267,7 +315,7 @@ the format.
 
 ## For AI agents & pipelines
 
-Mutineer is built for programmatic use — versioned JSON, stable mutant ids,
+Mutineer is built for programmatic use — versioned JSON, [mutant ids](#mutant-ids) that survive unrelated edits,
 structured exit codes, and diff-scoped runs. See:
 
 - **AI agents & CI recipes** — the agent inner-loop and CI-gate recipes (and how

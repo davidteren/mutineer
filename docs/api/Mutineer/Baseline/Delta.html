@@ -6,7 +6,7 @@
 <title>
   Class: Mutineer::Baseline::Delta
   
-    &mdash; Documentation by YARD 0.9.45
+    &mdash; Documentation by YARD 0.9.44
   
 </title>
 
@@ -107,7 +107,7 @@
 <h2>Overview</h2><div class="docstring">
   <div class="discussion">
     <p>The verdict of diffing a current run against the baseline.
-new_survivors   - current Result objects whose stable id is absent from
+new_survivors   - current Result objects whose id is absent from
 the baseline (the regressions to name).
 fixed_survivors - baseline survivor hashes absent from the current run
 (informational, never gates). Empty when either side
@@ -120,7 +120,12 @@ score_comparable - the two scores share a denominator (neither side was
 diff-scoped and both are non-nil), so a consumer may
 render them side by side. False means the score-drop
 check was skipped, not that it passed.
-regressed       - any new survivors OR a score drop.</p>
+regressed       - any new survivors OR a score drop.
+legacy_matches  - current survivors found in an old-format baseline
+(no <code>summary.id_format</code>) only through their old-format
+id (#126). Non-zero means the baseline should be
+regenerated; the CLI warns. Always 0 for a new-format
+baseline.</p>
 
   </div>
 </div>
@@ -157,6 +162,33 @@ regressed       - any new survivors OR a score drop.</p>
 
   
     <span class="summary_desc"><div class='inline'><p>Returns the value of attribute fixed_survivors.</p></div></span>
+  
+</li>
+
+    
+      <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#legacy_matches-instance_method" title="#legacy_matches (instance method)">#<strong>legacy_matches</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+    
+      <span class="note title readonly">readonly</span>
+    
+    
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Returns the value of attribute legacy_matches.</p></div></span>
   
 </li>
 
@@ -328,8 +360,103 @@ regressed       - any new survivors OR a score drop.</p>
 
 
 
+  
+    <h2>
+      Instance Method Summary
+      <small><a href="#" class="summary_toggle">collapse</a></small>
+    </h2>
+
+    <ul class="summary">
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#initialize-instance_method" title="#initialize (instance method)">#<strong>initialize</strong>(legacy_matches: 0)  &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+    <span class="note title constructor">constructor</span>
+  
+  
+  
+  
+  
+  
 
   
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+    </ul>
+    
+  
+
+
+  <div id="constructor_details" class="method_details_list">
+  <h2>Constructor Details</h2>
+  
+    <div class="method_details first">
+  <h3 class="signature first" id="initialize-instance_method">
+  
+    #<strong>initialize</strong>(legacy_matches: 0)  &#x21d2; <tt>void</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>legacy_matches</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>0</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>survivors matched only through an old-format id.</p></div>
+      
+    </li>
+  
+</ul>
+
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+41</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 41</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_initialize'>initialize</span><span class='lparen'>(</span><span class='label'>legacy_matches:</span> <span class='int'>0</span><span class='comma'>,</span> <span class='op'>**</span><span class='rparen'>)</span> <span class='op'>=</span> <span class='kw'>super</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+  
+</div>
+
   <div id="instance_attr_details" class="attr_details">
     <h2>Instance Attribute Details</h2>
     
@@ -375,15 +502,72 @@ regressed       - any new survivors OR a score drop.</p>
       <pre class="lines">
 
 
-29
-30
-31</pre>
+36
+37
+38</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 29</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 36</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_fixed_survivors'>fixed_survivors</span>
   <span class='ivar'>@fixed_survivors</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      
+      <span id=""></span>
+      <div class="method_details ">
+  <h3 class="signature " id="legacy_matches-instance_method">
+  
+    #<strong>legacy_matches</strong>  &#x21d2; <tt>Object</tt>  <span class="extras">(readonly)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Returns the value of attribute legacy_matches</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Object</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the current value of legacy_matches</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+36
+37
+38</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 36</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_legacy_matches'>legacy_matches</span>
+  <span class='ivar'>@legacy_matches</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -432,12 +616,12 @@ regressed       - any new survivors OR a score drop.</p>
       <pre class="lines">
 
 
-29
-30
-31</pre>
+36
+37
+38</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 29</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 36</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_new_survivors'>new_survivors</span>
   <span class='ivar'>@new_survivors</span>
@@ -489,12 +673,12 @@ regressed       - any new survivors OR a score drop.</p>
       <pre class="lines">
 
 
-29
-30
-31</pre>
+36
+37
+38</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 29</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 36</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_regressed'>regressed</span>
   <span class='ivar'>@regressed</span>
@@ -546,12 +730,12 @@ regressed       - any new survivors OR a score drop.</p>
       <pre class="lines">
 
 
-29
-30
-31</pre>
+36
+37
+38</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 29</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 36</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_score_after'>score_after</span>
   <span class='ivar'>@score_after</span>
@@ -603,12 +787,12 @@ regressed       - any new survivors OR a score drop.</p>
       <pre class="lines">
 
 
-29
-30
-31</pre>
+36
+37
+38</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 29</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 36</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_score_before'>score_before</span>
   <span class='ivar'>@score_before</span>
@@ -660,12 +844,12 @@ regressed       - any new survivors OR a score drop.</p>
       <pre class="lines">
 
 
-29
-30
-31</pre>
+36
+37
+38</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 29</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 36</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_score_comparable'>score_comparable</span>
   <span class='ivar'>@score_comparable</span>
@@ -717,12 +901,12 @@ regressed       - any new survivors OR a score drop.</p>
       <pre class="lines">
 
 
-29
-30
-31</pre>
+36
+37
+38</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 29</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/baseline.rb', line 36</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_score_drop'>score_drop</span>
   <span class='ivar'>@score_drop</span>
@@ -740,7 +924,7 @@ regressed       - any new survivors OR a score drop.</p>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.10).
+  0.9.44 (ruby-3.4.11).
 </div>
 
     </div>

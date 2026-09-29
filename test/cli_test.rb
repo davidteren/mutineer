@@ -19,6 +19,61 @@ class CliTest < Minitest::Test
 
   # An isolated project dir with the calculator fixtures copied in, so the run is
   # real but the .mutineer cache lands in the temp dir, never the repo.
+  # The [mutineer] old-format ignore warnings in a stderr capture.
+  def legacy_warnings(err)
+    err.lines.grep(/\A\[mutineer\] ignore entry/)
+  end
+
+  # The [mutineer] run-root mismatch warning in a stderr capture.
+  def root_warnings(err)
+    err.lines.grep(/\A\[mutineer\] loaded .*\.mutineer\.yml/)
+  end
+
+  # Ids are relative to the run directory (#126). A run from a subdirectory
+  # still finds the parent's .mutineer.yml by walking up, so its ignore ids
+  # would silently stop matching; the CLI must say so once.
+  def test_run_from_a_subdirectory_of_the_config_warns_once
+    Dir.mktmpdir("mutineer-root") do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "threshold: 0\n")
+      sub = File.join(proj, "sub")
+      FileUtils.mkdir_p(sub)
+      _out, err, = mutineer("run", "--dry-run", "nothing.rb", chdir: sub)
+      assert_equal 1, root_warnings(err).size, "expected one run-root warning, got: #{err}"
+      assert_includes err, File.realpath(proj)
+    end
+  end
+
+  # A ~/.mutineer.yml is a personal default, not a project root: running from
+  # any project below home must not warn to "run from home".
+  def test_home_level_config_does_not_warn
+    Dir.mktmpdir("mutineer-home") do |home|
+      File.write(File.join(home, ".mutineer.yml"), "threshold: 0\n")
+      proj = File.join(home, "proj")
+      FileUtils.mkdir_p(proj)
+      _out, err, = Open3.capture3({ "HOME" => home }, RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", BIN,
+                                  "run", "--dry-run", "nothing.rb", chdir: proj)
+      assert_empty root_warnings(err), "a home-level config must not warn, got: #{err}"
+    end
+  end
+
+  def test_run_from_the_config_directory_does_not_warn
+    Dir.mktmpdir("mutineer-root") do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "threshold: 0\n")
+      _out, err, = mutineer("run", "--dry-run", "nothing.rb", chdir: proj)
+      assert_empty root_warnings(err), "no run-root warning expected, got: #{err}"
+    end
+  end
+
+  # [old-format id, new id] of the first arithmetic mutant in proj/calculator.rb.
+  def calculator_ids(proj)
+    path = File.join(proj, "calculator.rb")
+    source = File.read(path)
+    subject = Mutineer::Project.discover([path]).find { |s| Mutineer::Mutators::Arithmetic.new.mutations_for(s, source).any? }
+    mutation = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source).first
+    [Mutineer::MutantId.legacy_for(subject, mutation, source),
+     Mutineer::MutantId.for(subject, mutation, source, path: "calculator.rb")]
+  end
+
   def with_project
     Dir.mktmpdir("mutineer-proj") do |proj|
       %w[calculator.rb calculator_strong_test.rb calculator_weak_test.rb].each do |f|
@@ -230,7 +285,7 @@ class CliTest < Minitest::Test
                               "--format", "json", "--output", "report.json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(File.read(File.join(proj, "report.json")))
-      assert_equal "1.3", doc["schema_version"]
+      assert_equal "1.4", doc["schema_version"]
       assert_equal 100.0, doc["summary"]["score"]
     end
   end
@@ -282,6 +337,64 @@ class CliTest < Minitest::Test
     assert_match(/Equivalent#double/, out, "the non-suppressed mutation is still listed")
   end
 
+  # #126: an old-format ignore entry still suppresses its mutant, and the run
+  # warns once, naming the new id and scoping the list to this run.
+  def test_old_format_ignore_entry_warns_with_the_new_id
+    with_project do |proj|
+      old, new = calculator_ids(proj)
+      File.write(File.join(proj, ".mutineer.yml"), "ignore:\n  - #{old}\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--operators", "arithmetic", "--jobs", "1", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      warnings = legacy_warnings(err)
+      assert_equal 1, warnings.size, err
+      assert_includes warnings.first, old
+      assert_includes warnings.first, new
+      assert_match(/only mutants in this run's sources and operators/, warnings.first)
+      assert_match(/every source/, warnings.first)
+      assert_match(/[Rr]eplace/, warnings.first)
+
+      # The JSON report counts the entry, so the Action can annotate it.
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--operators", "arithmetic", "--jobs", "1", "--format", "json",
+                                  chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal({ "ignore" => 1, "baseline" => 0 }, JSON.parse(out)["summary"]["legacy_id_matches"])
+    end
+  end
+
+  def test_new_format_ignore_entry_does_not_warn
+    with_project do |proj|
+      _, new = calculator_ids(proj)
+      File.write(File.join(proj, ".mutineer.yml"), "ignore:\n  - #{new}\n")
+      out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_match(/1 ignored/, out)
+      assert_empty legacy_warnings(err)
+    end
+  end
+
+  # --dry-run --since prints the same old-format warnings as a real run. No
+  # ignored count is compared: a real run does not narrow ignored results.
+  def test_dry_run_with_since_prints_the_same_legacy_warnings
+    with_project do |proj|
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      old, = calculator_ids(proj)
+      File.write(File.join(proj, ".mutineer.yml"), "ignore:\n  - #{old}\n")
+      _, dry_err, dry = mutineer("run", "calculator.rb", "--dry-run", "--since", "HEAD",
+                                 "--operators", "arithmetic", chdir: proj)
+      _, run_err, run = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                 "--since", "HEAD", "--operators", "arithmetic", "--jobs", "1", chdir: proj)
+      assert_equal 0, dry.exitstatus, dry_err
+      assert_equal 0, run.exitstatus, run_err
+      refute_empty legacy_warnings(dry_err)
+      assert_equal legacy_warnings(run_err), legacy_warnings(dry_err)
+    end
+  end
+
   # #14: tier-2 operators are surfaced when they're not in the active set.
   def test_tier2_hint_lists_unused_tier2_operators
     hint = Mutineer::CLI.tier2_hint(nil) # nil => default (Tier-1) set
@@ -311,7 +424,7 @@ class CliTest < Minitest::Test
       out, _, status = mutineer("run", "lib", "--format", "json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(out)
-      assert_equal "1.3", doc["schema_version"]
+      assert_equal "1.4", doc["schema_version"]
       per = doc["per_source"].sort_by { |h| h["file"] }
       assert_equal ["lib/calc.rb", "lib/greeter.rb"], per.map { |h| h["file"] }
       assert_equal 100.0, per.find { |h| h["file"] == "lib/greeter.rb" }["score"]
@@ -390,6 +503,60 @@ class CliTest < Minitest::Test
       assert_equal 0, status.exitstatus
       assert_includes out, "0 new survivors vs baseline"
       assert_includes out, "OK: no regression vs baseline"
+    end
+  end
+
+  # The [mutineer] regenerate-baseline warnings in a stderr capture.
+  def baseline_warnings(err)
+    err.lines.grep(/\A\[mutineer\] the baseline/)
+  end
+
+  # Rewrites a --format json report as 1.2.0 wrote it: no summary.id_format, and
+  # each survivor stored under its old-format id (no file path in the hash).
+  def downgrade_baseline(proj, path)
+    config = Mutineer::Config.new(sources: [File.join(proj, "calculator.rb")], project_root: proj)
+    id_map = Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic])).last[:id_map]
+    doc = JSON.parse(File.read(path))
+    doc["summary"].delete("id_format")
+    doc["survivors"].each { |h| h["id"] = id_map.fetch(h["id"]) }
+    File.write(path, JSON.generate(doc))
+  end
+
+  # #126 AE3 end to end, on the in-process and the external (--test-command)
+  # backend: a baseline in the old id format gives zero new and zero fixed
+  # survivors, one warning, and legacy_id_matches.baseline in the report. The
+  # same baseline in the new format gives no warning.
+  def test_old_format_baseline_matches_on_every_backend
+    [[], ["--test-command", "true %{files}"]].each do |backend|
+      with_project do |proj|
+        run = ->(*extra) do
+          mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb", *backend,
+                   "--operators", "arithmetic", "--jobs", "1", "--format", "json", *extra, chdir: proj)
+        end
+        _, err, first = run.("--output", "base.json")
+        assert_equal 0, first.exitstatus, err
+        survived = JSON.parse(File.read(File.join(proj, "base.json")))["survivors"].size
+        refute_equal 0, survived
+
+        out, err, status = run.("--baseline", "base.json")
+        assert_equal 0, status.exitstatus, err
+        assert_empty baseline_warnings(err)
+        assert_equal({ "ignore" => 0, "baseline" => 0 }, JSON.parse(out)["summary"]["legacy_id_matches"])
+
+        downgrade_baseline(proj, File.join(proj, "base.json"))
+        out, err, status = run.("--baseline", "base.json")
+        assert_equal 0, status.exitstatus, err
+        doc = JSON.parse(out)
+        assert_empty doc["baseline"]["new_survivors"], "backend #{backend.inspect}"
+        assert_empty doc["baseline"]["fixed_survivors"], "backend #{backend.inspect}"
+        assert_equal({ "ignore" => 0, "baseline" => survived }, doc["summary"]["legacy_id_matches"])
+        warnings = baseline_warnings(err)
+        assert_equal 1, warnings.size, err
+        assert_match(/old id format/, warnings.first)
+        assert_match(/old ids and files/, warnings.first)
+        assert_match(/--format json/, warnings.first)
+        assert_match(/every gate/, warnings.first)
+      end
     end
   end
 

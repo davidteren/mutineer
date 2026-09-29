@@ -27,7 +27,7 @@ class OperandRemovalTest < Minitest::Test
     source = "def m\n  a && b\nend\n"
     subject = subject_for(source)
     mutations = Mutineer::Mutators::OperandRemoval.new.mutations_for(subject, source)
-    ids = Mutineer::MutantId.for_subject(subject, source, mutations)
+    ids = Mutineer::MutantId.for_subject(subject, source, mutations, path: "snippet.rb")
     assert_equal 2, ids.uniq.size
   end
 

@@ -22,7 +22,7 @@ oracle, closing the loop with a concrete stopping condition:
    mutineer run app/ --since origin/main --format json --output .mutineer/run.json
    ```
 
-3. Parse `survivors[]`. Each entry carries a ready-made `diff` and a stable `id`. For each survivor, feed
+3. Parse `survivors[]`. Each entry carries a ready-made `diff` and an `id` (stable across edits outside the method; moving or renaming the file changes it). For each survivor, feed
    the agent a prompt like:
 
    > This change to `{subject}` (`{file}:{line}`) was **not** caught by any test:
@@ -53,7 +53,7 @@ mutineer run app/ --no-since --format json --output .mutineer/baseline.json
 mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json
 ```
 
-`--baseline` exits `1` on any **new** survivor (matched by stable `id`, so it survives unrelated edits) or
+`--baseline` exits `1` on any **new** survivor (matched by `id`, so it survives unrelated edits, but not a file move or rename) or
 a **score drop** (`--baseline-epsilon` tolerates float jitter); under `--since` the score-drop half is
 skipped, because a diff-scoped score covers a different denominator — new-survivor detection still gates.
 Combine with `--threshold` to enforce an absolute floor too — the worse of the two gates wins.
@@ -116,7 +116,7 @@ Some mutants are semantically identical to the original and can **never** be kil
 unattended agent loop these would never clear, so suppress them explicitly:
 
 - **Inline:** `# mutineer:disable-line [operators]` on the offending source line.
-- **Config:** add the survivor's stable `id` (printed in the JSON report) to `.mutineer.yml`:
+- **Config:** add the survivor's `id` (printed in the JSON report; it includes the file path) to `.mutineer.yml`:
 
   ```yaml
   ignore:

@@ -6,7 +6,7 @@
 <title>
   Module: Mutineer::MutantId
   
-    &mdash; Documentation by YARD 0.9.45
+    &mdash; Documentation by YARD 0.9.44
   
 </title>
 
@@ -88,15 +88,17 @@
 
 <h2>Overview</h2><div class="docstring">
   <div class="discussion">
-    <p>Content-based stable id for a mutant — NOT byte offsets. Pure function, reused
+    <p>Content-based id for a mutant — NOT byte offsets. Pure function, reused
 by the Runner (matching the ignore list), the Reporter (emitting a copy-
 pasteable id per survivor), and #13 baseline gating (diffing id-sets run to
 run). <code>digest</code> is stdlib, so zero new deps.</p>
-<p>Offset-free by design: keyed on the subject's qualified_name (a method, not a
-byte position) + operator + the normalized mutated token + an occurrence
-ordinal among same-(operator, token) twins WITHIN the subject. So it survives
-any edit outside the subject method — where raw start/end offsets shift on
-every edit earlier in the file and would silently stop matching.</p>
+<p>Offset-free by design: keyed on the subject's project-relative file path +
+qualified_name (a method, not a byte position) + operator + the normalized
+mutated token + an occurrence ordinal among same-(operator, token) twins
+WITHIN the subject + (only when positive) the subject's ordinal among
+same-named subjects in its file. So it survives any edit outside the subject method,
+where raw start/end offsets shift on every edit earlier in the file and
+would silently stop matching. Moving or renaming the file changes the id.</p>
 
   </div>
 </div>
@@ -121,7 +123,29 @@ every edit earlier in the file and would silently stop matching.</p>
         <li class="public ">
   <span class="summary_signature">
     
-      <a href="#for-class_method" title="for (class method)">.<strong>for</strong>(subject, mutation, source, occurrence = 0)  &#x21d2; String </a>
+      <a href="#digest-class_method" title="digest (class method)">.<strong>digest</strong>(parts)  &#x21d2; String </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>NUL-joins the id parts and returns the first 12 hex chars of their SHA256.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#for-class_method" title="for (class method)">.<strong>for</strong>(subject, mutation, source, occurrence = 0, path:, subject_ordinal: 0)  &#x21d2; String </a>
     
 
     
@@ -143,7 +167,7 @@ every edit earlier in the file and would silently stop matching.</p>
         <li class="public ">
   <span class="summary_signature">
     
-      <a href="#for_subject-class_method" title="for_subject (class method)">.<strong>for_subject</strong>(subject, source, mutations)  &#x21d2; Array&lt;String&gt; </a>
+      <a href="#for_subject-class_method" title="for_subject (class method)">.<strong>for_subject</strong>(subject, source, mutations, path:, subject_ordinal: 0)  &#x21d2; Array&lt;String&gt; </a>
     
 
     
@@ -158,6 +182,50 @@ every edit earlier in the file and would silently stop matching.</p>
 
   
     <span class="summary_desc"><div class='inline'><p>Computes ids for a subject's full mutation list, in input order, assigning each its 0-based occurrence among twins sharing the same (operator, token).</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#legacy_for-class_method" title="legacy_for (class method)">.<strong>legacy_for</strong>(subject, mutation, source, occurrence = 0)  &#x21d2; String </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>The pre-1.3 id: the <span class='object_link'><a href="#for-class_method" title="Mutineer::MutantId.for (method)">MutantId.for</a></span> formula without the path, so it collides across files.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#legacy_for_subject-class_method" title="legacy_for_subject (class method)">.<strong>legacy_for_subject</strong>(subject, source, mutations)  &#x21d2; Array&lt;String&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p><span class='object_link'><a href="#for_subject-class_method" title="Mutineer::MutantId.for_subject (method)">MutantId.for_subject</a></span> for the pre-1.3 id format (see <span class='object_link'><a href="#legacy_for-class_method" title="Mutineer::MutantId.legacy_for (method)">MutantId.legacy_for</a></span>).</p></div></span>
   
 </li>
 
@@ -184,6 +252,28 @@ every edit earlier in the file and would silently stop matching.</p>
 </li>
 
       
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#with_occurrences-class_method" title="with_occurrences (class method)">.<strong>with_occurrences</strong>(mutations, source) {|mutation, occurrence| ... } &#x21d2; Array </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Maps each mutation to the block's result, passing its 0-based occurrence among earlier mutations with the same (operator, token).</p></div></span>
+  
+</li>
+
+      
     </ul>
     
   
@@ -197,7 +287,29 @@ every edit earlier in the file and would silently stop matching.</p>
         <li class="private ">
   <span class="summary_signature">
     
-      <a href="#for-instance_method" title="#for (instance method)">#<strong>for</strong>(subject, mutation, source, occurrence = 0)  &#x21d2; String </a>
+      <a href="#digest-instance_method" title="#digest (instance method)">#<strong>digest</strong>(parts)  &#x21d2; String </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>NUL-joins the id parts and returns the first 12 hex chars of their SHA256.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#for-instance_method" title="#for (instance method)">#<strong>for</strong>(subject, mutation, source, occurrence = 0, path:, subject_ordinal: 0)  &#x21d2; String </a>
     
 
     
@@ -219,7 +331,7 @@ every edit earlier in the file and would silently stop matching.</p>
         <li class="private ">
   <span class="summary_signature">
     
-      <a href="#for_subject-instance_method" title="#for_subject (instance method)">#<strong>for_subject</strong>(subject, source, mutations)  &#x21d2; Array&lt;String&gt; </a>
+      <a href="#for_subject-instance_method" title="#for_subject (instance method)">#<strong>for_subject</strong>(subject, source, mutations, path:, subject_ordinal: 0)  &#x21d2; Array&lt;String&gt; </a>
     
 
     
@@ -234,6 +346,50 @@ every edit earlier in the file and would silently stop matching.</p>
 
   
     <span class="summary_desc"><div class='inline'><p>Computes ids for a subject's full mutation list, in input order, assigning each its 0-based occurrence among twins sharing the same (operator, token).</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#legacy_for-instance_method" title="#legacy_for (instance method)">#<strong>legacy_for</strong>(subject, mutation, source, occurrence = 0)  &#x21d2; String </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>The pre-1.3 id: the <span class='object_link'><a href="#for-class_method" title="Mutineer::MutantId.for (method)">MutantId.for</a></span> formula without the path, so it collides across files.</p></div></span>
+  
+</li>
+
+      
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#legacy_for_subject-instance_method" title="#legacy_for_subject (instance method)">#<strong>legacy_for_subject</strong>(subject, source, mutations)  &#x21d2; Array&lt;String&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p><span class='object_link'><a href="#for_subject-class_method" title="Mutineer::MutantId.for_subject (method)">MutantId.for_subject</a></span> for the pre-1.3 id format (see <span class='object_link'><a href="#legacy_for-class_method" title="Mutineer::MutantId.legacy_for (method)">MutantId.legacy_for</a></span>).</p></div></span>
   
 </li>
 
@@ -260,6 +416,28 @@ every edit earlier in the file and would silently stop matching.</p>
 </li>
 
       
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#with_occurrences-instance_method" title="#with_occurrences (instance method)">#<strong>with_occurrences</strong>(mutations, source) {|mutation, occurrence| ... } &#x21d2; Array </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Maps each mutation to the block's result, passing its 0-based occurrence among earlier mutations with the same (operator, token).</p></div></span>
+  
+</li>
+
+      
     </ul>
     
   
@@ -271,9 +449,82 @@ every edit earlier in the file and would silently stop matching.</p>
 
     
       <div class="method_details first">
-  <h3 class="signature first" id="for-class_method">
+  <h3 class="signature first" id="digest-class_method">
   
-    .<strong>for</strong>(subject, mutation, source, occurrence = 0)  &#x21d2; <tt>String</tt> 
+    .<strong>digest</strong>(parts)  &#x21d2; <tt>String</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>NUL-joins the id parts and returns the first 12 hex chars of their SHA256.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>parts</span>
+      
+      
+        <span class='type'>(<tt>Array</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the values that make up the id.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>a 12-character hex id.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+111
+112
+113</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 111</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_digest'>digest</span><span class='lparen'>(</span><span class='id identifier rubyid_parts'>parts</span><span class='rparen'>)</span>
+  <span class='const'>Digest</span><span class='op'>::</span><span class='const'>SHA256</span><span class='period'>.</span><span class='id identifier rubyid_hexdigest'>hexdigest</span><span class='lparen'>(</span><span class='id identifier rubyid_parts'>parts</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\x00</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span><span class='rparen'>)</span><span class='lbracket'>[</span><span class='int'>0</span><span class='comma'>,</span> <span class='int'>12</span><span class='rbracket'>]</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="for-class_method">
+  
+    .<strong>for</strong>(subject, mutation, source, occurrence = 0, path:, subject_ordinal: 0)  &#x21d2; <tt>String</tt> 
   
 
   
@@ -283,7 +534,10 @@ every edit earlier in the file and would silently stop matching.</p>
   <div class="discussion">
     <p>Computes the stable id for a single mutant.</p>
 <p>NUL-joined so token delimiters (<code>||=</code>, spaces, <code>::</code>, <code>#</code>) can never collide
-with the separator; <code>SHA256[0,12]</code> gives a fixed-length, copy-pasteable key.</p>
+with the separator; <code>SHA256[0,12]</code> gives a fixed-length, copy-pasteable key.
+The file path is part of the key, so the same qualified name in two files
+(an owner-less <code>def</code>, or a class reopened elsewhere) cannot collide. <code>path</code>
+is required so no caller can get the colliding legacy id by accident.</p>
 
   </div>
 </div>
@@ -351,6 +605,40 @@ its <code>qualified_name</code> anchors the id to a method rather than a byte po
       
     </li>
   
+    <li>
+      
+        <span class='name'>path</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject's file, normalized with <span class='object_link'><a href="ProjectPath.html#relative-class_method" title="Mutineer::ProjectPath.relative (method)">ProjectPath.relative</a></span>
+against the project root (an absolute real path when outside the root).</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>subject_ordinal</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>0</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>0-based ordinal among subjects in the same
+file sharing this qualified name (two owner-less <code>def index</code> in two DSL
+blocks). Hashed only when positive, so a subject whose name is unique in
+its file keeps the id it had without it.</p></div>
+      
+    </li>
+  
 </ul>
 
 <p class="tag_title">Returns:</p>
@@ -376,21 +664,19 @@ its <code>qualified_name</code> anchors the id to a method rather than a byte po
       <pre class="lines">
 
 
-31
-32
-33
-34
-35
-36</pre>
+42
+43
+44
+45
+46</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 31</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 42</span>
 
-<span class='kw'>def</span> <span class='kw'>for</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_occurrence'>occurrence</span> <span class='op'>=</span> <span class='int'>0</span><span class='rparen'>)</span>
-  <span class='const'>Digest</span><span class='op'>::</span><span class='const'>SHA256</span><span class='period'>.</span><span class='id identifier rubyid_hexdigest'>hexdigest</span><span class='lparen'>(</span>
-    <span class='lbracket'>[</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_qualified_name'>qualified_name</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='comma'>,</span>
-     <span class='id identifier rubyid_normalized_token'>normalized_token</span><span class='lparen'>(</span><span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span><span class='comma'>,</span> <span class='id identifier rubyid_occurrence'>occurrence</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\x00</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
-  <span class='rparen'>)</span><span class='lbracket'>[</span><span class='int'>0</span><span class='comma'>,</span> <span class='int'>12</span><span class='rbracket'>]</span>
+<span class='kw'>def</span> <span class='kw'>for</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_occurrence'>occurrence</span> <span class='op'>=</span> <span class='int'>0</span><span class='comma'>,</span> <span class='label'>path:</span><span class='comma'>,</span> <span class='label'>subject_ordinal:</span> <span class='int'>0</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_parts'>parts</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='id identifier rubyid_path'>path</span><span class='comma'>,</span> <span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_qualified_name'>qualified_name</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='comma'>,</span> <span class='id identifier rubyid_normalized_token'>normalized_token</span><span class='lparen'>(</span><span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span><span class='comma'>,</span> <span class='id identifier rubyid_occurrence'>occurrence</span><span class='rbracket'>]</span>
+  <span class='id identifier rubyid_parts'>parts</span> <span class='op'>&lt;&lt;</span> <span class='id identifier rubyid_subject_ordinal'>subject_ordinal</span> <span class='kw'>if</span> <span class='id identifier rubyid_subject_ordinal'>subject_ordinal</span><span class='period'>.</span><span class='id identifier rubyid_positive?'>positive?</span>
+  <span class='id identifier rubyid_digest'>digest</span><span class='lparen'>(</span><span class='id identifier rubyid_parts'>parts</span><span class='rparen'>)</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -400,7 +686,7 @@ its <code>qualified_name</code> anchors the id to a method rather than a byte po
       <div class="method_details ">
   <h3 class="signature " id="for_subject-class_method">
   
-    .<strong>for_subject</strong>(subject, source, mutations)  &#x21d2; <tt>Array&lt;String&gt;</tt> 
+    .<strong>for_subject</strong>(subject, source, mutations, path:, subject_ordinal: 0)  &#x21d2; <tt>Array&lt;String&gt;</tt> 
   
 
   
@@ -411,6 +697,263 @@ its <code>qualified_name</code> anchors the id to a method rather than a byte po
     <p>Computes ids for a subject's full mutation list, in input order, assigning
 each its 0-based occurrence among twins sharing the same (operator, token).
 This is what disambiguates <code>a + b + c</code>'s two <code>+</code> mutants without an offset.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>subject</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Subject.html" title="Mutineer::Subject (class)">Mutineer::Subject</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject the mutations belong to.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>source</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the full, unmutated source for token normalization.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>mutations</span>
+      
+      
+        <span class='type'>(<tt>Array&lt;<span class='object_link'><a href="Mutation.html" title="Mutineer::Mutation (class)">Mutineer::Mutation</a></span>&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject's mutations, in order.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>path</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject's normalized file path (see <span class='object_link'><a href="#for-class_method" title="Mutineer::MutantId.for (method)">for</a></span>).</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>subject_ordinal</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>0</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject's ordinal among same-named
+subjects in its file (see <span class='object_link'><a href="#for-class_method" title="Mutineer::MutantId.for (method)">for</a></span>).</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array&lt;String&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>one 12-character id per mutation, positionally aligned.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+59
+60
+61
+62
+63</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 59</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_for_subject'>for_subject</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_mutations'>mutations</span><span class='comma'>,</span> <span class='label'>path:</span><span class='comma'>,</span> <span class='label'>subject_ordinal:</span> <span class='int'>0</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_with_occurrences'>with_occurrences</span><span class='lparen'>(</span><span class='id identifier rubyid_mutations'>mutations</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_occ'>occ</span><span class='op'>|</span>
+    <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_for'>for</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_occ'>occ</span><span class='comma'>,</span> <span class='label'>path:</span> <span class='id identifier rubyid_path'>path</span><span class='comma'>,</span> <span class='label'>subject_ordinal:</span> <span class='id identifier rubyid_subject_ordinal'>subject_ordinal</span><span class='rparen'>)</span>
+  <span class='kw'>end</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="legacy_for-class_method">
+  
+    .<strong>legacy_for</strong>(subject, mutation, source, occurrence = 0)  &#x21d2; <tt>String</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>The pre-1.3 id: the <span class='object_link'><a href="#for-class_method" title="Mutineer::MutantId.for (method)">for</a></span> formula without the path, so it collides across
+files. Kept only to match ignore entries and baselines stored in the old
+format; removed in 2.0.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>subject</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Subject.html" title="Mutineer::Subject (class)">Mutineer::Subject</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject (method) the mutant lives in.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>mutation</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Mutation.html" title="Mutineer::Mutation (class)">Mutineer::Mutation</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the atomic edit whose operator is hashed.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>source</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the full, unmutated source the mutation indexes into.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>occurrence</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>0</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>0-based ordinal among same-(operator, token) twins.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>a 12-character hex id in the old format.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+74
+75
+76
+77</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 74</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_legacy_for'>legacy_for</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_occurrence'>occurrence</span> <span class='op'>=</span> <span class='int'>0</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_digest'>digest</span><span class='lparen'>(</span><span class='lbracket'>[</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_qualified_name'>qualified_name</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='comma'>,</span>
+          <span class='id identifier rubyid_normalized_token'>normalized_token</span><span class='lparen'>(</span><span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span><span class='comma'>,</span> <span class='id identifier rubyid_occurrence'>occurrence</span><span class='rbracket'>]</span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="legacy_for_subject-class_method">
+  
+    .<strong>legacy_for_subject</strong>(subject, source, mutations)  &#x21d2; <tt>Array&lt;String&gt;</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p><span class='object_link'><a href="#for_subject-class_method" title="Mutineer::MutantId.for_subject (method)">for_subject</a></span> for the pre-1.3 id format (see <span class='object_link'><a href="#legacy_for-class_method" title="Mutineer::MutantId.legacy_for (method)">legacy_for</a></span>).</p>
 
   </div>
 </div>
@@ -473,7 +1016,7 @@ This is what disambiguates <code>a + b + c</code>'s two <code>+</code> mutants w
       
       
         &mdash;
-        <div class='inline'><p>one 12-character id per mutation, positionally aligned.</p></div>
+        <div class='inline'><p>one old-format id per mutation, positionally aligned.</p></div>
       
     </li>
   
@@ -485,27 +1028,15 @@ This is what disambiguates <code>a + b + c</code>'s two <code>+</code> mutants w
       <pre class="lines">
 
 
-46
-47
-48
-49
-50
-51
-52
-53
-54</pre>
+85
+86
+87</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 46</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 85</span>
 
-<span class='kw'>def</span> <span class='id identifier rubyid_for_subject'>for_subject</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_mutations'>mutations</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_seen'>seen</span> <span class='op'>=</span> <span class='const'>Hash</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span><span class='lparen'>(</span><span class='int'>0</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_mutations'>mutations</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_m'>m</span><span class='op'>|</span>
-    <span class='id identifier rubyid_key'>key</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='comma'>,</span> <span class='id identifier rubyid_normalized_token'>normalized_token</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span><span class='rbracket'>]</span>
-    <span class='id identifier rubyid_occ'>occ</span> <span class='op'>=</span> <span class='id identifier rubyid_seen'>seen</span><span class='lbracket'>[</span><span class='id identifier rubyid_key'>key</span><span class='rbracket'>]</span>
-    <span class='id identifier rubyid_seen'>seen</span><span class='lbracket'>[</span><span class='id identifier rubyid_key'>key</span><span class='rbracket'>]</span> <span class='op'>+=</span> <span class='int'>1</span>
-    <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_for'>for</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_occ'>occ</span><span class='rparen'>)</span>
-  <span class='kw'>end</span>
+<span class='kw'>def</span> <span class='id identifier rubyid_legacy_for_subject'>legacy_for_subject</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_mutations'>mutations</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_with_occurrences'>with_occurrences</span><span class='lparen'>(</span><span class='id identifier rubyid_mutations'>mutations</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_occ'>occ</span><span class='op'>|</span> <span class='id identifier rubyid_legacy_for'>legacy_for</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_occ'>occ</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -585,15 +1116,147 @@ normalization the Reporter's <code>diff_for</code> uses for its token label.</p>
       <pre class="lines">
 
 
-62
-63
-64</pre>
+121
+122
+123</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 62</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 121</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_normalized_token'>normalized_token</span><span class='lparen'>(</span><span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_source'>source</span><span class='period'>.</span><span class='id identifier rubyid_byteslice'>byteslice</span><span class='lparen'>(</span><span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_start_offset'>start_offset</span><span class='op'>...</span><span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_end_offset'>end_offset</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_gsub'>gsub</span><span class='lparen'>(</span><span class='tstring'><span class='regexp_beg'>/</span><span class='tstring_content'>\s+</span><span class='regexp_end'>/</span></span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'> </span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_strip'>strip</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="with_occurrences-class_method">
+  
+    .<strong>with_occurrences</strong>(mutations, source) {|mutation, occurrence| ... } &#x21d2; <tt>Array</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Maps each mutation to the block's result, passing its 0-based occurrence
+among earlier mutations with the same (operator, token).</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>mutations</span>
+      
+      
+        <span class='type'>(<tt>Array&lt;<span class='object_link'><a href="Mutation.html" title="Mutineer::Mutation (class)">Mutineer::Mutation</a></span>&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject's mutations, in order.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>source</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the full, unmutated source for token normalization.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Yield Parameters:</p>
+<ul class="yieldparam">
+  
+    <li>
+      
+        <span class='name'>mutation</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Mutation.html" title="Mutineer::Mutation (class)">Mutineer::Mutation</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the current mutation.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>occurrence</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>its ordinal among same-(operator, token) twins.</p></div>
+      
+    </li>
+  
+</ul>
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the block's results, positionally aligned.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+97
+98
+99
+100
+101
+102
+103
+104
+105</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 97</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_with_occurrences'>with_occurrences</span><span class='lparen'>(</span><span class='id identifier rubyid_mutations'>mutations</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_seen'>seen</span> <span class='op'>=</span> <span class='const'>Hash</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span><span class='lparen'>(</span><span class='int'>0</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_mutations'>mutations</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_m'>m</span><span class='op'>|</span>
+    <span class='id identifier rubyid_key'>key</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='comma'>,</span> <span class='id identifier rubyid_normalized_token'>normalized_token</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span><span class='rbracket'>]</span>
+    <span class='id identifier rubyid_occ'>occ</span> <span class='op'>=</span> <span class='id identifier rubyid_seen'>seen</span><span class='lbracket'>[</span><span class='id identifier rubyid_key'>key</span><span class='rbracket'>]</span>
+    <span class='id identifier rubyid_seen'>seen</span><span class='lbracket'>[</span><span class='id identifier rubyid_key'>key</span><span class='rbracket'>]</span> <span class='op'>+=</span> <span class='int'>1</span>
+    <span class='kw'>yield</span> <span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_occ'>occ</span>
+  <span class='kw'>end</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -607,9 +1270,82 @@ normalization the Reporter's <code>diff_for</code> uses for its token label.</p>
 
     
       <div class="method_details first">
-  <h3 class="signature first" id="for-instance_method">
+  <h3 class="signature first" id="digest-instance_method">
   
-    #<strong>for</strong>(subject, mutation, source, occurrence = 0)  &#x21d2; <tt>String</tt>  <span class="extras">(private)</span>
+    #<strong>digest</strong>(parts)  &#x21d2; <tt>String</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>NUL-joins the id parts and returns the first 12 hex chars of their SHA256.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>parts</span>
+      
+      
+        <span class='type'>(<tt>Array</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the values that make up the id.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>a 12-character hex id.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+111
+112
+113</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 111</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_digest'>digest</span><span class='lparen'>(</span><span class='id identifier rubyid_parts'>parts</span><span class='rparen'>)</span>
+  <span class='const'>Digest</span><span class='op'>::</span><span class='const'>SHA256</span><span class='period'>.</span><span class='id identifier rubyid_hexdigest'>hexdigest</span><span class='lparen'>(</span><span class='id identifier rubyid_parts'>parts</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\x00</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span><span class='rparen'>)</span><span class='lbracket'>[</span><span class='int'>0</span><span class='comma'>,</span> <span class='int'>12</span><span class='rbracket'>]</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="for-instance_method">
+  
+    #<strong>for</strong>(subject, mutation, source, occurrence = 0, path:, subject_ordinal: 0)  &#x21d2; <tt>String</tt>  <span class="extras">(private)</span>
   
 
   
@@ -619,7 +1355,10 @@ normalization the Reporter's <code>diff_for</code> uses for its token label.</p>
   <div class="discussion">
     <p>Computes the stable id for a single mutant.</p>
 <p>NUL-joined so token delimiters (<code>||=</code>, spaces, <code>::</code>, <code>#</code>) can never collide
-with the separator; <code>SHA256[0,12]</code> gives a fixed-length, copy-pasteable key.</p>
+with the separator; <code>SHA256[0,12]</code> gives a fixed-length, copy-pasteable key.
+The file path is part of the key, so the same qualified name in two files
+(an owner-less <code>def</code>, or a class reopened elsewhere) cannot collide. <code>path</code>
+is required so no caller can get the colliding legacy id by accident.</p>
 
   </div>
 </div>
@@ -687,6 +1426,40 @@ its <code>qualified_name</code> anchors the id to a method rather than a byte po
       
     </li>
   
+    <li>
+      
+        <span class='name'>path</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject's file, normalized with <span class='object_link'><a href="ProjectPath.html#relative-class_method" title="Mutineer::ProjectPath.relative (method)">ProjectPath.relative</a></span>
+against the project root (an absolute real path when outside the root).</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>subject_ordinal</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>0</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>0-based ordinal among subjects in the same
+file sharing this qualified name (two owner-less <code>def index</code> in two DSL
+blocks). Hashed only when positive, so a subject whose name is unique in
+its file keeps the id it had without it.</p></div>
+      
+    </li>
+  
 </ul>
 
 <p class="tag_title">Returns:</p>
@@ -712,21 +1485,19 @@ its <code>qualified_name</code> anchors the id to a method rather than a byte po
       <pre class="lines">
 
 
-31
-32
-33
-34
-35
-36</pre>
+42
+43
+44
+45
+46</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 31</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 42</span>
 
-<span class='kw'>def</span> <span class='kw'>for</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_occurrence'>occurrence</span> <span class='op'>=</span> <span class='int'>0</span><span class='rparen'>)</span>
-  <span class='const'>Digest</span><span class='op'>::</span><span class='const'>SHA256</span><span class='period'>.</span><span class='id identifier rubyid_hexdigest'>hexdigest</span><span class='lparen'>(</span>
-    <span class='lbracket'>[</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_qualified_name'>qualified_name</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='comma'>,</span>
-     <span class='id identifier rubyid_normalized_token'>normalized_token</span><span class='lparen'>(</span><span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span><span class='comma'>,</span> <span class='id identifier rubyid_occurrence'>occurrence</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>\x00</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
-  <span class='rparen'>)</span><span class='lbracket'>[</span><span class='int'>0</span><span class='comma'>,</span> <span class='int'>12</span><span class='rbracket'>]</span>
+<span class='kw'>def</span> <span class='kw'>for</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_occurrence'>occurrence</span> <span class='op'>=</span> <span class='int'>0</span><span class='comma'>,</span> <span class='label'>path:</span><span class='comma'>,</span> <span class='label'>subject_ordinal:</span> <span class='int'>0</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_parts'>parts</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='id identifier rubyid_path'>path</span><span class='comma'>,</span> <span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_qualified_name'>qualified_name</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='comma'>,</span> <span class='id identifier rubyid_normalized_token'>normalized_token</span><span class='lparen'>(</span><span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span><span class='comma'>,</span> <span class='id identifier rubyid_occurrence'>occurrence</span><span class='rbracket'>]</span>
+  <span class='id identifier rubyid_parts'>parts</span> <span class='op'>&lt;&lt;</span> <span class='id identifier rubyid_subject_ordinal'>subject_ordinal</span> <span class='kw'>if</span> <span class='id identifier rubyid_subject_ordinal'>subject_ordinal</span><span class='period'>.</span><span class='id identifier rubyid_positive?'>positive?</span>
+  <span class='id identifier rubyid_digest'>digest</span><span class='lparen'>(</span><span class='id identifier rubyid_parts'>parts</span><span class='rparen'>)</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -736,7 +1507,7 @@ its <code>qualified_name</code> anchors the id to a method rather than a byte po
       <div class="method_details ">
   <h3 class="signature " id="for_subject-instance_method">
   
-    #<strong>for_subject</strong>(subject, source, mutations)  &#x21d2; <tt>Array&lt;String&gt;</tt>  <span class="extras">(private)</span>
+    #<strong>for_subject</strong>(subject, source, mutations, path:, subject_ordinal: 0)  &#x21d2; <tt>Array&lt;String&gt;</tt>  <span class="extras">(private)</span>
   
 
   
@@ -747,6 +1518,263 @@ its <code>qualified_name</code> anchors the id to a method rather than a byte po
     <p>Computes ids for a subject's full mutation list, in input order, assigning
 each its 0-based occurrence among twins sharing the same (operator, token).
 This is what disambiguates <code>a + b + c</code>'s two <code>+</code> mutants without an offset.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>subject</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Subject.html" title="Mutineer::Subject (class)">Mutineer::Subject</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject the mutations belong to.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>source</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the full, unmutated source for token normalization.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>mutations</span>
+      
+      
+        <span class='type'>(<tt>Array&lt;<span class='object_link'><a href="Mutation.html" title="Mutineer::Mutation (class)">Mutineer::Mutation</a></span>&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject's mutations, in order.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>path</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject's normalized file path (see <span class='object_link'><a href="#for-class_method" title="Mutineer::MutantId.for (method)">for</a></span>).</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>subject_ordinal</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>0</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject's ordinal among same-named
+subjects in its file (see <span class='object_link'><a href="#for-class_method" title="Mutineer::MutantId.for (method)">for</a></span>).</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array&lt;String&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>one 12-character id per mutation, positionally aligned.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+59
+60
+61
+62
+63</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 59</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_for_subject'>for_subject</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_mutations'>mutations</span><span class='comma'>,</span> <span class='label'>path:</span><span class='comma'>,</span> <span class='label'>subject_ordinal:</span> <span class='int'>0</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_with_occurrences'>with_occurrences</span><span class='lparen'>(</span><span class='id identifier rubyid_mutations'>mutations</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_occ'>occ</span><span class='op'>|</span>
+    <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_for'>for</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_occ'>occ</span><span class='comma'>,</span> <span class='label'>path:</span> <span class='id identifier rubyid_path'>path</span><span class='comma'>,</span> <span class='label'>subject_ordinal:</span> <span class='id identifier rubyid_subject_ordinal'>subject_ordinal</span><span class='rparen'>)</span>
+  <span class='kw'>end</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="legacy_for-instance_method">
+  
+    #<strong>legacy_for</strong>(subject, mutation, source, occurrence = 0)  &#x21d2; <tt>String</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>The pre-1.3 id: the <span class='object_link'><a href="#for-class_method" title="Mutineer::MutantId.for (method)">for</a></span> formula without the path, so it collides across
+files. Kept only to match ignore entries and baselines stored in the old
+format; removed in 2.0.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>subject</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Subject.html" title="Mutineer::Subject (class)">Mutineer::Subject</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject (method) the mutant lives in.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>mutation</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Mutation.html" title="Mutineer::Mutation (class)">Mutineer::Mutation</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the atomic edit whose operator is hashed.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>source</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the full, unmutated source the mutation indexes into.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>occurrence</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+        <em class="default">(defaults to: <tt>0</tt>)</em>
+      
+      
+        &mdash;
+        <div class='inline'><p>0-based ordinal among same-(operator, token) twins.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>a 12-character hex id in the old format.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+74
+75
+76
+77</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 74</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_legacy_for'>legacy_for</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_occurrence'>occurrence</span> <span class='op'>=</span> <span class='int'>0</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_digest'>digest</span><span class='lparen'>(</span><span class='lbracket'>[</span><span class='id identifier rubyid_subject'>subject</span><span class='period'>.</span><span class='id identifier rubyid_qualified_name'>qualified_name</span><span class='comma'>,</span> <span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='comma'>,</span>
+          <span class='id identifier rubyid_normalized_token'>normalized_token</span><span class='lparen'>(</span><span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span><span class='comma'>,</span> <span class='id identifier rubyid_occurrence'>occurrence</span><span class='rbracket'>]</span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="legacy_for_subject-instance_method">
+  
+    #<strong>legacy_for_subject</strong>(subject, source, mutations)  &#x21d2; <tt>Array&lt;String&gt;</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p><span class='object_link'><a href="#for_subject-class_method" title="Mutineer::MutantId.for_subject (method)">for_subject</a></span> for the pre-1.3 id format (see <span class='object_link'><a href="#legacy_for-class_method" title="Mutineer::MutantId.legacy_for (method)">legacy_for</a></span>).</p>
 
   </div>
 </div>
@@ -809,7 +1837,7 @@ This is what disambiguates <code>a + b + c</code>'s two <code>+</code> mutants w
       
       
         &mdash;
-        <div class='inline'><p>one 12-character id per mutation, positionally aligned.</p></div>
+        <div class='inline'><p>one old-format id per mutation, positionally aligned.</p></div>
       
     </li>
   
@@ -821,27 +1849,15 @@ This is what disambiguates <code>a + b + c</code>'s two <code>+</code> mutants w
       <pre class="lines">
 
 
-46
-47
-48
-49
-50
-51
-52
-53
-54</pre>
+85
+86
+87</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 46</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 85</span>
 
-<span class='kw'>def</span> <span class='id identifier rubyid_for_subject'>for_subject</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_mutations'>mutations</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_seen'>seen</span> <span class='op'>=</span> <span class='const'>Hash</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span><span class='lparen'>(</span><span class='int'>0</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_mutations'>mutations</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_m'>m</span><span class='op'>|</span>
-    <span class='id identifier rubyid_key'>key</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='comma'>,</span> <span class='id identifier rubyid_normalized_token'>normalized_token</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span><span class='rbracket'>]</span>
-    <span class='id identifier rubyid_occ'>occ</span> <span class='op'>=</span> <span class='id identifier rubyid_seen'>seen</span><span class='lbracket'>[</span><span class='id identifier rubyid_key'>key</span><span class='rbracket'>]</span>
-    <span class='id identifier rubyid_seen'>seen</span><span class='lbracket'>[</span><span class='id identifier rubyid_key'>key</span><span class='rbracket'>]</span> <span class='op'>+=</span> <span class='int'>1</span>
-    <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_for'>for</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_occ'>occ</span><span class='rparen'>)</span>
-  <span class='kw'>end</span>
+<span class='kw'>def</span> <span class='id identifier rubyid_legacy_for_subject'>legacy_for_subject</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_mutations'>mutations</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_with_occurrences'>with_occurrences</span><span class='lparen'>(</span><span class='id identifier rubyid_mutations'>mutations</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_occ'>occ</span><span class='op'>|</span> <span class='id identifier rubyid_legacy_for'>legacy_for</span><span class='lparen'>(</span><span class='id identifier rubyid_subject'>subject</span><span class='comma'>,</span> <span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='comma'>,</span> <span class='id identifier rubyid_occ'>occ</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -921,15 +1937,147 @@ normalization the Reporter's <code>diff_for</code> uses for its token label.</p>
       <pre class="lines">
 
 
-62
-63
-64</pre>
+121
+122
+123</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 62</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 121</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_normalized_token'>normalized_token</span><span class='lparen'>(</span><span class='id identifier rubyid_mutation'>mutation</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_source'>source</span><span class='period'>.</span><span class='id identifier rubyid_byteslice'>byteslice</span><span class='lparen'>(</span><span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_start_offset'>start_offset</span><span class='op'>...</span><span class='id identifier rubyid_mutation'>mutation</span><span class='period'>.</span><span class='id identifier rubyid_end_offset'>end_offset</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_gsub'>gsub</span><span class='lparen'>(</span><span class='tstring'><span class='regexp_beg'>/</span><span class='tstring_content'>\s+</span><span class='regexp_end'>/</span></span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'> </span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_strip'>strip</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="with_occurrences-instance_method">
+  
+    #<strong>with_occurrences</strong>(mutations, source) {|mutation, occurrence| ... } &#x21d2; <tt>Array</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Maps each mutation to the block's result, passing its 0-based occurrence
+among earlier mutations with the same (operator, token).</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>mutations</span>
+      
+      
+        <span class='type'>(<tt>Array&lt;<span class='object_link'><a href="Mutation.html" title="Mutineer::Mutation (class)">Mutineer::Mutation</a></span>&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the subject's mutations, in order.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>source</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the full, unmutated source for token normalization.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Yield Parameters:</p>
+<ul class="yieldparam">
+  
+    <li>
+      
+        <span class='name'>mutation</span>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="Mutation.html" title="Mutineer::Mutation (class)">Mutineer::Mutation</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the current mutation.</p></div>
+      
+    </li>
+  
+    <li>
+      
+        <span class='name'>occurrence</span>
+      
+      
+        <span class='type'>(<tt>Integer</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>its ordinal among same-(operator, token) twins.</p></div>
+      
+    </li>
+  
+</ul>
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the block's results, positionally aligned.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+97
+98
+99
+100
+101
+102
+103
+104
+105</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/mutant_id.rb', line 97</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_with_occurrences'>with_occurrences</span><span class='lparen'>(</span><span class='id identifier rubyid_mutations'>mutations</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_seen'>seen</span> <span class='op'>=</span> <span class='const'>Hash</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span><span class='lparen'>(</span><span class='int'>0</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_mutations'>mutations</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_m'>m</span><span class='op'>|</span>
+    <span class='id identifier rubyid_key'>key</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_operator'>operator</span><span class='comma'>,</span> <span class='id identifier rubyid_normalized_token'>normalized_token</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_source'>source</span><span class='rparen'>)</span><span class='rbracket'>]</span>
+    <span class='id identifier rubyid_occ'>occ</span> <span class='op'>=</span> <span class='id identifier rubyid_seen'>seen</span><span class='lbracket'>[</span><span class='id identifier rubyid_key'>key</span><span class='rbracket'>]</span>
+    <span class='id identifier rubyid_seen'>seen</span><span class='lbracket'>[</span><span class='id identifier rubyid_key'>key</span><span class='rbracket'>]</span> <span class='op'>+=</span> <span class='int'>1</span>
+    <span class='kw'>yield</span> <span class='id identifier rubyid_m'>m</span><span class='comma'>,</span> <span class='id identifier rubyid_occ'>occ</span>
+  <span class='kw'>end</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -943,7 +2091,7 @@ normalization the Reporter's <code>diff_for</code> uses for its token label.</p>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.10).
+  0.9.44 (ruby-3.4.11).
 </div>
 
     </div>
