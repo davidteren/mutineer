@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "minitest/mock"
 require "tmpdir"
 require_relative "test_helper"
 require_relative "../rake/site_build"
@@ -11,6 +12,14 @@ class SiteBuildTest < Minitest::Test
   def test_check_dest_refuses_the_checkout_its_ancestors_and_docs
     [ROOT, File.dirname(ROOT), "/", File.join(ROOT, "docs"), File.join(ROOT, "docs/assets")].each do |dest|
       assert_raises(ArgumentError, dest) { SiteBuild.check_dest!(dest) }
+    end
+  end
+
+  def test_check_dest_refuses_by_path_when_file_identity_is_unknown
+    File.stub(:identical?, false) do
+      [ROOT, File.join(ROOT, "docs")].each do |dest|
+        assert_raises(ArgumentError, dest) { SiteBuild.check_dest!(dest) }
+      end
     end
   end
 
