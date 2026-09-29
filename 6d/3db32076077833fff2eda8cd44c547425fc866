@@ -1,0 +1,27 @@
+docs/json-schema.md
+  s_1d8e859ed0d041::t_8a26bb833e7183 19-23
+docs/json-schema.html
+  s_1d8e859ed0d041::t_8a26bb833e7183 77
+lib/mutineer/runner.rb
+  s_1d8e859ed0d041::t_8a26bb833e7183 166-169
+docs/llms-full.txt
+  s_1d8e859ed0d041::t_8a26bb833e7183 522-526
+docs/api/Mutineer/Runner.html
+  s_1d8e859ed0d041::t_757bc7d30a392b 567-569,572,613-616,707-709,712,884-886,889,939-941,944,1368-1370,1373,1462-1464,1467,1527-1529,1532,1583-1585,1588,1803-1805,1808,1895-1897,1900,1977-1979,1982,2035-2037,2040,2130-2132,2135,2215-2217,2220,2274-2276,2279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6d3db32076077833fff2eda8cd44c547425fc866",
+  "prompts": {},
+  "sessions": {
+    "s_1d8e859ed0d041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8106a84d-9a19-4be8-8e84-bc8cd1791757",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
