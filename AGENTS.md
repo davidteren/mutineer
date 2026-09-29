@@ -50,8 +50,8 @@ npm test --prefix test/browser
 ```
 
 `rake site:build` writes the published tree to `_site/` — the YARD API docs,
-`sitemap.xml`, and `llms-full.txt` are build artifacts, not committed files
-under `docs/`. The checks above read `_site/`, so build first.
+`sitemap.xml`, `llms-full.txt`, and `json-schema.html` are build artifacts, not
+committed files under `docs/`. The checks above read `_site/`, so build first.
 
 These development-only checks require Node.js 22+, npm, and Python 3.
 Playwright starts a local server on port 8766; keep that port free so the
