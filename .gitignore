@@ -8,3 +8,6 @@ doc/
 
 # throwaway #26/#27 Phase 2 spike (not shipped)
 /spike/
+
+# linked git worktrees
+.worktrees/
