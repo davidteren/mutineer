@@ -313,6 +313,13 @@ class CliTest < Minitest::Test
       assert_match(/only mutants in this run's sources and operators/, warnings.first)
       assert_match(/every source/, warnings.first)
       assert_match(/[Rr]eplace/, warnings.first)
+
+      # The JSON report counts the entry, so the Action can annotate it.
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--operators", "arithmetic", "--jobs", "1", "--format", "json",
+                                  chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal({ "ignore" => 1, "baseline" => 0 }, JSON.parse(out)["summary"]["legacy_id_matches"])
     end
   end
 
