@@ -74,6 +74,7 @@
       <p>The top-level <code>schema_version</code> (a string, e.g. <code>&quot;1.4&quot;</code>) follows these rules:</p>
       <ul><li><strong>Additive changes</strong> (new keys on existing objects, new top-level keys) bump the <strong>minor</strong> version (<code>1.0</code> → <code>1.1</code>). Existing keys keep their meaning. Consumers MUST ignore unknown keys.</li><li><strong>Breaking changes</strong> (renaming/removing a key, changing a value&#39;s type or meaning) bump the <strong>major</strong> version (<code>1.x</code> → <code>2.0</code>).</li></ul>
       <div class="callout"><span class="ico" aria-hidden="true">!</span><p>A consumer should accept any <code>1.x</code> document and read only the keys it knows.</p></div>
+      <p>Mutant <code>id</code> values are opaque identifiers. How an id is derived is versioned by <code>summary.id_format</code>, not by <code>schema_version</code>: when <code>id_format</code> changes, every id value can change while the key keeps its type and meaning. Compare ids only between reports with the same <code>id_format</code> (a missing key is the old format).</p>
       <h2 id="shape">Top-level shape</h2>
       <pre><code>{
   &quot;schema_version&quot;: &quot;1.4&quot;,

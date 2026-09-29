@@ -519,6 +519,11 @@ The top-level `schema_version` (a string, e.g. `"1.4"`) follows these rules:
 
 A consumer should accept any `1.x` document and read only the keys it knows.
 
+Mutant `id` values are opaque identifiers. How an id is derived is versioned by
+`summary.id_format`, not by `schema_version`: when `id_format` changes, every id
+value can change while the key keeps its type and meaning. Compare ids only
+between reports with the same `id_format` (a missing key is the old format).
+
 ## Top-level shape
 
 ```jsonc

@@ -163,8 +163,10 @@ module Mutineer
     # Each mutant also gets its old-format id ({MutantId.legacy_for}), so an ignore
     # entry stored before ids carried the path still suppresses it. Prints nothing:
     # the extras hash returns, as data, `legacy_ignore_matches` (each old-format
-    # entry that matched only through an old-format id => the new ids it matched,
-    # in collection order) and `id_map` (every new id => its old-format id).
+    # ignore entry that matched a mutant through its old-format id => the new ids
+    # it matched, in collection order; recorded even when a new id is also
+    # listed, since the old entry still over-matches other files) and `id_map`
+    # (every new id => its old-format id).
     #
     # @param config [Mutineer::Config] run configuration.
     # @param operator_classes [Array<Class>] resolved operators.
