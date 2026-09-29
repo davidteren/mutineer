@@ -33,7 +33,12 @@ module Mutineer
       # Join, don't expand: File.expand_path collapses `..` textually, before any
       # symlink is followed, so `link/../x.rb` would name the wrong file. The file
       # system resolves `..` physically in File.realpath.
-      raw = File.absolute_path?(path) ? path : File.join(File.expand_path(root), path)
+      # A leading `~` names the home directory (as File.expand_path reads it), so
+      # expand it rather than joining it under the root.
+      raw = if File.absolute_path?(path) then path
+            elsif path.start_with?("~") then File.expand_path(path)
+            else File.join(File.expand_path(root), path)
+            end
       File.exist?(raw) ? File.realpath(raw) : File.expand_path(raw)
     end
 

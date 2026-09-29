@@ -29,6 +29,13 @@ class ProjectPathTest < Minitest::Test
     end
   end
 
+  # A `~/` path (quoted on the command line or in .mutineer.yml) names a file in
+  # the home directory, as File.expand_path reads it, not `<root>/~/...`.
+  def test_tilde_path_expands_to_the_home_directory
+    assert_equal File.expand_path("~/no-such-mutineer-file.rb"),
+                 Mutineer::ProjectPath.absolute("~/no-such-mutineer-file.rb", "/some/project")
+  end
+
   def test_missing_root_falls_back_to_the_expanded_path
     assert_equal File.expand_path("/no/such/root"), Mutineer::ProjectPath.root_real("/no/such/root")
   end
