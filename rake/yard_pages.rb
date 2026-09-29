@@ -9,28 +9,30 @@ module YardPages
   OUTPUT = "docs/api"
 
   class << self
-    # Generate YARD HTML into `docs/api/` and disable Jekyll on the site.
+    # Generate YARD HTML into `output_dir` and disable Jekyll on the site.
     #
+    # @param output_dir [String] where the API HTML lands (the `/api/` URL)
     # @return [void]
-    def generate!
-      FileUtils.rm_rf(OUTPUT)
-      ok = system("bundle", "exec", "yard", "doc", "--output-dir", OUTPUT)
+    def generate!(output_dir = OUTPUT)
+      FileUtils.rm_rf(output_dir)
+      ok = system("bundle", "exec", "yard", "doc", "--output-dir", output_dir)
       raise "yard doc failed" unless ok
 
-      FileUtils.touch(File.join(OUTPUT, ".nojekyll"))
-      FileUtils.touch("docs/.nojekyll")
-      stabilize_html!
+      FileUtils.touch(File.join(output_dir, ".nojekyll"))
+      FileUtils.touch(File.join(File.dirname(output_dir), ".nojekyll"))
+      stabilize_html!(output_dir)
     end
 
-    # True when the site-root Jekyll opt-out and `docs/api/.nojekyll` exist.
+    # True when the site-root Jekyll opt-out and `output_dir/.nojekyll` exist.
     #
     # Without the root marker, Pages runs Jekyll and omits `_index.html`.
     #
+    # @param output_dir [String]
     # @return [Boolean]
-    def published_markers?
-      File.directory?(OUTPUT) &&
-        File.file?("docs/.nojekyll") &&
-        File.file?(File.join(OUTPUT, ".nojekyll"))
+    def published_markers?(output_dir = OUTPUT)
+      File.directory?(output_dir) &&
+        File.file?(File.join(File.dirname(output_dir), ".nojekyll")) &&
+        File.file?(File.join(output_dir, ".nojekyll"))
     end
 
     # True when committed `docs/api` matches a fresh YARD build.
@@ -88,9 +90,10 @@ module YardPages
 
     # Pin the YARD footer stamp so a regenerate does not rewrite every page.
     #
+    # @param output_dir [String]
     # @return [void]
-    def stabilize_html!
-      Dir.glob(File.join(OUTPUT, "**/*.html")).each do |path|
+    def stabilize_html!(output_dir = OUTPUT)
+      Dir.glob(File.join(output_dir, "**/*.html")).each do |path|
         File.write(path, File.read(path).gsub(/Generated on .+ by/, "Generated on DATE by"))
       end
     end

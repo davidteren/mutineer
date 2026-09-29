@@ -1,0 +1,43 @@
+name: Pages
+
+# Manual only while Pages is a branch build (main:/docs): until the Pages
+# source is "GitHub Actions", a deploy from a push would fail.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - name: Build site
+        run: bundle exec rake site:build
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+          # .nojekyll and docs/.well-known are dotfiles the artifact tar
+          # drops by default; both are on the served site today.
+          include-hidden-files: true
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

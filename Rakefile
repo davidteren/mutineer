@@ -82,4 +82,12 @@ namespace :docs do
   end
 end
 
+namespace :site do
+  desc "Build the published GitHub Pages tree (rake site:build[DEST], default _site)"
+  task :build, [:dest] do |_, args|
+    require_relative "rake/site_build"
+    SiteBuild.generate!(args[:dest])
+  end
+end
+
 task default: :test

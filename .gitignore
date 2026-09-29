@@ -11,3 +11,6 @@ doc/
 
 # linked git worktrees
 .worktrees/
+
+# rake site:build output (Pages is built by CI, not committed)
+/_site/
