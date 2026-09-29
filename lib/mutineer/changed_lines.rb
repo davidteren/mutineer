@@ -56,6 +56,8 @@ module Mutineer
     end
 
     # Returns the stdout of `git -C <root> diff --unified=0 <ref> -- <file>`.
+    # A file that git does not track has no diff, so `untracked_diff` supplies
+    # one that marks every line new.
     #
     # A failure is warned, never silent: an empty result means "no changed
     # lines", which under `--since` removes every mutant for the file — a green
@@ -78,10 +80,11 @@ module Mutineer
       ""
     end
 
-    # Returns a diff that marks a file git does not know as entirely new, or
-    # `""` when git tracks it. An untracked file has no diff but every line is
-    # new; read as "unchanged", `--since` would score nothing and a positive
-    # threshold would still exit 0.
+    # Returns a diff that marks a file git does not know as entirely new. It
+    # returns `""` when git tracks the file, when the file is empty, or when
+    # the file cannot be read (after a warning). An untracked file has no diff
+    # but every line is new; read as "unchanged", `--since` would score nothing
+    # and a positive threshold would still exit 0.
     #
     # @param abs_file [String] absolute path of the file being diffed.
     # @param project_root [String] repository root for `git -C`.
@@ -94,6 +97,9 @@ module Mutineer
 
       count = File.foreach(abs_file).count
       count.zero? ? "" : "@@ -0,0 +1,#{count} @@\n"
+    rescue SystemCallError => e
+      warn "[mutineer] cannot read #{abs_file} (#{e.class}); its lines will not be mutated (--since)"
+      ""
     end
   end
 end

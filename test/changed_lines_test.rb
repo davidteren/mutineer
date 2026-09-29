@@ -116,6 +116,17 @@ class ChangedLinesTest < Minitest::Test
     end
   end
 
+  def test_git_diff_unreadable_untracked_file_warns_about_the_read
+    in_repo do |root|
+      dir = File.join(root, "dir.rb")
+      Dir.mkdir(dir)
+      result = nil
+      _out, err = capture_io { result = CL.git_diff("HEAD", dir, root) }
+      assert_equal "", result
+      assert_match(/cannot read .*dir\.rb \(Errno::EISDIR\)/, err)
+    end
+  end
+
   private
 
   def in_repo
