@@ -279,6 +279,22 @@ class CliTest < Minitest::Test
     end
   end
 
+  # An untracked source has no git diff. --since must still mutate it, or a
+  # weak suite passes the threshold with zero mutants scored.
+  def test_since_keeps_untracked_source_and_fails_a_weak_suite
+    with_project do |proj|
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add calculator_weak_test.rb], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                              "--since", "HEAD", "--threshold", "90", "--format", "json",
+                              "--output", "r.json", chdir: proj)
+      assert_equal 1, status.exitstatus
+      assert_operator JSON.parse(File.read(File.join(proj, "r.json")))["summary"]["total"], :>, 0
+    end
+  end
+
   def test_json_output_round_trips_to_file
     with_project do |proj|
       _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",

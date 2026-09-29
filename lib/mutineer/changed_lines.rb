@@ -69,13 +69,31 @@ module Mutineer
       out, _err, status = Open3.capture3(
         "git", "-C", project_root, "diff", "--unified=0", ref, "--", abs_file
       )
-      return out if status.success?
+      return(out.empty? ? untracked_diff(abs_file, project_root) : out) if status.success?
 
       warn "[mutineer] git diff failed for #{abs_file}; its lines will not be mutated (--since)"
       ""
     rescue StandardError => e
       warn "[mutineer] git diff failed for #{abs_file} (#{e.class}); its lines will not be mutated (--since)"
       ""
+    end
+
+    # Returns a diff that marks a file git does not know as entirely new, or
+    # `""` when git tracks it. An untracked file has no diff but every line is
+    # new; read as "unchanged", `--since` would score nothing and a positive
+    # threshold would still exit 0.
+    #
+    # @param abs_file [String] absolute path of the file being diffed.
+    # @param project_root [String] repository root for `git -C`.
+    # @return [String] a one-hunk diff header, or `""`.
+    def untracked_diff(abs_file, project_root)
+      _out, _err, known = Open3.capture3(
+        "git", "-C", project_root, "ls-files", "--error-unmatch", "--", abs_file
+      )
+      return "" if known.success?
+
+      count = File.foreach(abs_file).count
+      count.zero? ? "" : "@@ -0,0 +1,#{count} @@\n"
     end
   end
 end

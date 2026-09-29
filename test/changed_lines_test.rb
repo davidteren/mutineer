@@ -86,4 +86,45 @@ class ChangedLinesTest < Minitest::Test
     result = CL.for(ref: "main", files: ["lib/x.rb"], project_root: "/proj", runner: runner)
     assert_equal Set.new, result["/proj/lib/x.rb"]
   end
+
+  # An untracked file has no git diff but every line is new. Read as "no changed
+  # lines" it would leave --since with no mutants and a passing gate.
+  def test_git_diff_untracked_file_marks_every_line_changed
+    in_repo do |root|
+      File.write(File.join(root, "new.rb"), "a\nb\nc\n")
+      assert_equal Set[1, 2, 3], CL.parse(CL.git_diff("HEAD", File.join(root, "new.rb"), root))
+    end
+  end
+
+  def test_git_diff_tracked_unchanged_file_has_no_changed_lines
+    in_repo do |root|
+      assert_equal Set.new, CL.parse(CL.git_diff("HEAD", File.join(root, "old.rb"), root))
+    end
+  end
+
+  def test_git_diff_tracked_modified_file_reports_only_changed_lines
+    in_repo do |root|
+      File.write(File.join(root, "old.rb"), "1\n2 changed\n3\n")
+      assert_equal Set[2], CL.parse(CL.git_diff("HEAD", File.join(root, "old.rb"), root))
+    end
+  end
+
+  def test_git_diff_empty_untracked_file_has_no_changed_lines
+    in_repo do |root|
+      File.write(File.join(root, "empty.rb"), "")
+      assert_equal "", CL.git_diff("HEAD", File.join(root, "empty.rb"), root)
+    end
+  end
+
+  private
+
+  def in_repo
+    Dir.mktmpdir do |root|
+      File.write(File.join(root, "old.rb"), "1\n2\n3\n")
+      [%w[init -q], %w[add old.rb], %w[-c user.name=t -c user.email=t@t commit -qm base]].each do |args|
+        assert system("git", "-C", root, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      yield root
+    end
+  end
 end

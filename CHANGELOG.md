@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **`--since` keeps a source file that git does not track yet** (#156). Before,
+  such a file counted as unchanged. The run scored no mutants, and a positive
+  `--threshold` still exited 0. The file is now new in full, so all its
+  mutants run.
+
 ### Changed
 - **The docs site is built in CI** — a Pages workflow runs `rake site:build`
   and deploys the result, so the YARD HTML under `/api/`, `llms-full.txt`,
