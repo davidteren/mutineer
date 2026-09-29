@@ -116,12 +116,22 @@ Safety nets:
   newer version supersedes an older open release PR, and when `main` moved the same
   version is re-opened fresh (the old branch is deleted under a lease, never
   force-pushed). The run never replaces a release branch that holds someone else's
-  commits (it leaves that branch alone with a warning), and it never closes a release
-  PR it did not open. Review + merge it, then push the
+  commits, or that has a PR it did not open (it leaves that branch alone with a
+  warning), and it never closes a release PR it did not open. A merge commit counts as
+  someone else's commit: GitHub's "Update branch" button on the release PR pauses the
+  automation until that PR is merged or its branch is deleted. Review + merge it, then push the
   `vX.Y.Z` tag. Every release moves the floating `v1` tag, so Action users get it at once:
   batch changes rather than releasing after each merge. (To get CI on that auto-PR, add a
   `RELEASE_PR_TOKEN` PAT secret — a PR opened by the default `GITHUB_TOKEN` doesn't
   trigger other workflows.)
+- **The release-PR run stops (and opens nothing) in two cases.** If `VERSION` on `main`
+  differs from the latest tag, a bump is merged but not tagged: it warns you to push
+  that tag first. If the computed `vX.Y.Z` tag already exists on origin (for example
+  pushed from a branch), it fails and you resolve it by hand.
+- **GitHub disables scheduled workflows in a public repo after 60 days without
+  activity.** If no release PR appears on a Monday while unreleased `feat:`/`fix:`
+  work sits on `main`, check `gh workflow view release-pr.yml` and re-enable it with
+  `gh workflow enable release-pr.yml`.
 
 **One-time setup (required for the publish to work):** register a Trusted Publisher
 on <https://rubygems.org/gems/mutineer> → owner `davidteren`, repo `mutineer`,
