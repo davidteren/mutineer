@@ -47,19 +47,22 @@ module SiteBuild
     # @raise [ArgumentError] when `dest` is the checkout, one of its
     #   ancestors, or inside docs/
     def check_dest!(dest)
-      abs = File.expand_path(dest)
+      target = File.expand_path(dest)
       root = File.expand_path("..", __dir__)
       docs = File.join(root, "docs")
-      ancestor = "#{root}/".start_with?("#{abs.chomp('/')}/")
-      inside_docs = abs == docs || abs.start_with?("#{docs}/")
-      raise ArgumentError, "site:build: refusing to replace #{abs}" if ancestor || inside_docs
+      # Compare directories, not path text: a symlinked parent, or other
+      # letter case on a case-insensitive volume, names the same directory.
+      covers_root = path_and_parents(root).any? { |dir| File.identical?(dir, target) }
+      in_docs = path_and_parents(target).any? { |dir| File.identical?(dir, docs) }
+      raise ArgumentError, "site:build: refusing to replace #{target}" if covers_root || in_docs
     end
 
     private
 
     # Fail loudly if the YARD build did not produce a usable `api/`. CI's
-    # docs and site jobs run `site:build`, so this fails CI when the build
-    # names the wrong VERSION or is missing its Jekyll opt-out markers.
+    # site job and the release workflow run `site:build`, so this fails them
+    # when the build names the wrong VERSION or lacks its Jekyll opt-out
+    # markers.
     #
     # @param api [String]
     # @return [void]
@@ -76,6 +79,16 @@ module SiteBuild
       unless YardPages.published_markers?(api)
         raise "site:build: #{api} is missing the .nojekyll markers"
       end
+    end
+
+    # `path` and each parent directory up to the filesystem root.
+    #
+    # @param path [String] absolute path
+    # @return [Array<String>]
+    def path_and_parents(path)
+      dirs = [path]
+      dirs << File.dirname(dirs.last) until File.dirname(dirs.last) == dirs.last
+      dirs
     end
 
     # Copy every tracked docs/ file except the entries this task regenerates.
