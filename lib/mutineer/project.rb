@@ -36,23 +36,26 @@ module Mutineer
       def initialize(file)
         @file = file
         @namespace_stack = []
+        @lexical_stack = [] # class/module names as written, `::X` kept (#145)
         @subjects = []
         @singleton_depth = 0
         @module_function_active = false # bareword `module_function` seen in this module body
-        @module_function_names = []     # names from `module_function :a, :b` / `module_function def`
+        @module_function_names = []     # [namespace, name] from `module_function :a` / `module_function def` (#98)
         super()
       end
 
       # Promote `module_function :name` / `module_function def name` subjects to
       # singleton after the full walk — the naming call may appear before or after
-      # the def, so it can't be decided at visit_def_node time (#20).
+      # the def, so it can't be decided at visit_def_node time (#20). Only methods
+      # of the module that made the call are promoted (#98); namespaces compare
+      # joined, since `module A::B` and nested `module A; module B` differ as arrays.
       #
       # @return [void]
       def promote_module_functions!
         return if @module_function_names.empty?
 
-        names = @module_function_names.to_set
-        @subjects.each { |s| s.singleton = true if names.include?(s.name) }
+        named = @module_function_names.to_set
+        @subjects.each { |s| s.singleton = true if named.include?([s.namespace.join("::"), s.name]) }
       end
 
       # Visits class nodes and tracks namespace nesting.
@@ -60,12 +63,7 @@ module Mutineer
       # @param node [Prism::ClassNode] class node.
       # @return [void]
       def visit_class_node(node)
-        @namespace_stack.push(extract_constant_name(node.constant_path))
-        saved = @module_function_active
-        @module_function_active = false # module_function state does not cross a class boundary
-        super
-        @module_function_active = saved
-        @namespace_stack.pop
+        with_namespace(node.constant_path) { super }
       end
 
       # Visits module nodes and tracks namespace nesting.
@@ -73,12 +71,7 @@ module Mutineer
       # @param node [Prism::ModuleNode] module node.
       # @return [void]
       def visit_module_node(node)
-        @namespace_stack.push(extract_constant_name(node.constant_path))
-        saved = @module_function_active
-        @module_function_active = false # each module body starts without module_function active
-        super
-        @module_function_active = saved
-        @namespace_stack.pop
+        with_namespace(node.constant_path) { super }
       end
 
       # Track `module_function` so its methods are recorded as singletons (#20) —
@@ -94,9 +87,10 @@ module Mutineer
           if args.empty?
             @module_function_active = true
           else
+            namespace = @namespace_stack.join("::")
             args.each do |arg|
-              @module_function_names << arg.value.to_sym if arg.is_a?(Prism::SymbolNode)
-              @module_function_names << arg.name if arg.is_a?(Prism::DefNode)
+              @module_function_names << [namespace, arg.value.to_sym] if arg.is_a?(Prism::SymbolNode)
+              @module_function_names << [namespace, arg.name] if arg.is_a?(Prism::DefNode)
             end
           end
         end
@@ -127,6 +121,7 @@ module Mutineer
         @subjects << Subject.new(
           file: @file,
           namespace: @namespace_stack.dup,
+          lexical: @lexical_stack.dup,
           name: node.name,
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node
@@ -135,6 +130,40 @@ module Mutineer
       end
 
       private
+
+      # Runs the block with `path` pushed as the current namespace. A
+      # root-anchored path (`module ::X` / `class ::X`) names the top-level X,
+      # not X nested in the enclosing scope, so the namespace restarts there.
+      # Bareword `module_function` state does not cross a class or module
+      # boundary: each body starts without it, and the outer state returns after.
+      #
+      # @param path [Prism::Node] the class/module constant path.
+      # @yield the class or module body visit.
+      # @return [void]
+      def with_namespace(path)
+        saved_stack = @namespace_stack
+        saved_lexical = @lexical_stack
+        saved_active = @module_function_active
+        name = extract_constant_name(path)
+        root = root_anchored?(path)
+        @namespace_stack = root ? [name] : saved_stack + [name]
+        @lexical_stack = saved_lexical + [root ? "::#{name}" : name]
+        @module_function_active = false
+        yield
+      ensure
+        @namespace_stack = saved_stack
+        @lexical_stack = saved_lexical
+        @module_function_active = saved_active
+      end
+
+      # True when a constant path starts with `::` (e.g. `::X` or `::A::B`).
+      #
+      # @param node [Prism::Node] constant path node.
+      # @return [Boolean]
+      def root_anchored?(node)
+        node = node.parent while node.is_a?(Prism::ConstantPathNode) && node.parent
+        node.is_a?(Prism::ConstantPathNode)
+      end
 
       # Extracts a constant name from a Prism constant node.
       #

@@ -146,7 +146,7 @@ class EquivalentMutantTest < Minitest::Test
       _, err = capture_io { Mutineer::CLI.warn_legacy_ignore_matches(extras[:legacy_ignore_matches]) }
       assert_includes err, "#{new_id(root, 'a.rb')} (a.rb, Shared#f)"
       assert_includes err, "#{new_id(root, 'b.rb')} (b.rb, Shared#f)"
-      assert_match(/over-matched across files/, err)
+      assert_match(/over-matched: the old format could not tell these mutants apart/, err)
       assert_match(/keep only the ids for the mutant you meant to ignore/, err)
       refute_match(/Replace #{old} with the new ids/, err)
     end
@@ -252,6 +252,36 @@ class EquivalentMutantTest < Minitest::Test
     assert_equal 2, doc2["summary"]["ignored"]
     assert_equal ids.sort, doc2["ignored"].map { |s| s["id"] }.sort
     assert_equal [], doc2["survivors"]
+  end
+
+  # Two owner-less `def index` in one file share an old id but get distinct new
+  # ids (per-file ordinal). The same file passed twice under two spellings must
+  # still give each declaration ONE id, not a second ordinal.
+  SAME_FILE_TWICE = "describe 'a' do\n  def index(a) = a + 1\nend\n" \
+                    "describe 'b' do\n  def index(a) = a + 1\nend\n"
+
+  def test_same_file_under_two_spellings_keeps_one_id_per_declaration
+    Dir.mktmpdir("mutineer-ids") do |root|
+      File.write(File.join(root, "dsl.rb"), SAME_FILE_TWICE)
+      once_jobs, = collect(root, %w[dsl.rb])
+      twice_jobs, = collect(root, ["dsl.rb", "./dsl.rb"])
+      assert_equal once_jobs.map(&:last).uniq.sort, twice_jobs.map(&:last).uniq.sort
+    end
+  end
+
+  def test_same_file_collision_gets_the_keep_only_what_you_meant_advice
+    Dir.mktmpdir("mutineer-ids") do |root|
+      File.write(File.join(root, "dsl.rb"), SAME_FILE_TWICE)
+      path = File.join(root, "dsl.rb")
+      subject = Mutineer::Project.discover([path]).first
+      source = File.read(path)
+      old = Mutineer::MutantId.legacy_for(subject, Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source).first, source)
+      _, _, _, extras = collect(root, %w[dsl.rb], ignore: [old])
+      assert_equal 2, extras[:legacy_ignore_matches][old].map { |h| h[:id] }.uniq.size
+      _, err = capture_io { Mutineer::CLI.warn_legacy_ignore_matches(extras[:legacy_ignore_matches]) }
+      assert_match(/over-matched/, err)
+      assert_match(/keep only the ids for the mutant you meant/, err)
+    end
   end
 
   private

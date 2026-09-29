@@ -132,7 +132,7 @@ module Mutineer
       # namespace constants resolve exactly as the reload strategy would. A
       # bare redefinition on the owner would collapse Module.nesting to [owner]
       # and raise NameError on such constants (C2 scope-collapse).
-      keywords = nesting_keywords(subject.namespace)
+      keywords = nesting_keywords(subject.lexical_namespace)
       prefix   = keywords.map { |kw, name| "#{kw} #{name}" }.join("\n")
       prefix  += "\n" unless prefix.empty?
 
@@ -188,13 +188,18 @@ module Mutineer
     # Foo], so an unqualified constant defined only in Foo would resolve under
     # redefine but not reload — a strategy disagreement.
     #
+    # A root-anchored element (`::Top`, #145) resolves from Object and keeps its
+    # `::` in the wrapper, so `module Outer; class ::Top` rebuilds nesting
+    # [Top, Outer] exactly as the source does.
+    #
     # @api private
-    # @param namespace [Array<String>] namespace components.
+    # @param namespace [Array<String>] class/module chain as written.
     # @return [Array<[String, String]>] wrapper keywords and names.
     def self.nesting_keywords(namespace)
       mod = Object
       namespace.map do |name|
-        mod = mod.const_get(name) # const_get resolves a compact "Foo::Bar" too
+        # const_get resolves a compact "Foo::Bar" too
+        mod = name.start_with?("::") ? Object.const_get(name.delete_prefix("::")) : mod.const_get(name)
         [mod.is_a?(Class) ? "class" : "module", name]
       end
     end

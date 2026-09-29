@@ -6,7 +6,7 @@
 <title>
   Class: Mutineer::Subject
   
-    &mdash; Documentation by YARD 0.9.45
+    &mdash; Documentation by YARD 0.9.44
   
 </title>
 
@@ -108,7 +108,10 @@
   <div class="discussion">
     <p>One discoverable method and its AST node.</p>
 <p>Location, namespace context, and the live Prism::DefNode are kept together
-because mutators walk the def node directly.</p>
+because mutators walk the def node directly. <code>namespace</code> names the owner
+(<code>module ::X</code> inside <code>Outer</code> owns into <code>X</code>); <code>lexical</code> is the class/module
+chain as written (<code>[&quot;Outer&quot;, &quot;::X&quot;]</code>), which the redefine strategy needs to
+rebuild the same Module.nesting as a whole-file reload (#145).</p>
 
   </div>
 </div>
@@ -168,6 +171,31 @@ because mutators walk the def node directly.</p>
 
   
     <span class="summary_desc"><div class='inline'><p>Returns the value of attribute file.</p></div></span>
+  
+</li>
+
+    
+      <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#lexical-instance_method" title="#lexical (instance method)">#<strong>lexical</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+    
+    
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Returns the value of attribute lexical.</p></div></span>
   
 </li>
 
@@ -285,6 +313,28 @@ because mutators walk the def node directly.</p>
         <li class="public ">
   <span class="summary_signature">
     
+      <a href="#lexical_namespace-instance_method" title="#lexical_namespace (instance method)">#<strong>lexical_namespace</strong>  &#x21d2; Array&lt;String&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Class/module chain as written in the source, for textual wrappers.</p></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
       <a href="#qualified_name-instance_method" title="#qualified_name (instance method)">#<strong>qualified_name</strong>  &#x21d2; String </a>
     
 
@@ -355,12 +405,12 @@ because mutators walk the def node directly.</p>
       <pre class="lines">
 
 
-8
-9
-10</pre>
+11
+12
+13</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 8</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 11</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_def_node'>def_node</span>
   <span class='ivar'>@def_node</span>
@@ -412,15 +462,72 @@ because mutators walk the def node directly.</p>
       <pre class="lines">
 
 
-8
-9
-10</pre>
+11
+12
+13</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 8</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 11</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_file'>file</span>
   <span class='ivar'>@file</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      
+      <span id="lexical=-instance_method"></span>
+      <div class="method_details ">
+  <h3 class="signature " id="lexical-instance_method">
+  
+    #<strong>lexical</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Returns the value of attribute lexical</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Object</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the current value of lexical</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+11
+12
+13</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 11</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_lexical'>lexical</span>
+  <span class='ivar'>@lexical</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -469,12 +576,12 @@ because mutators walk the def node directly.</p>
       <pre class="lines">
 
 
-8
-9
-10</pre>
+11
+12
+13</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 8</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 11</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_name'>name</span>
   <span class='ivar'>@name</span>
@@ -526,12 +633,12 @@ because mutators walk the def node directly.</p>
       <pre class="lines">
 
 
-8
-9
-10</pre>
+11
+12
+13</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 8</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 11</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_namespace'>namespace</span>
   <span class='ivar'>@namespace</span>
@@ -583,12 +690,12 @@ because mutators walk the def node directly.</p>
       <pre class="lines">
 
 
-8
-9
-10</pre>
+11
+12
+13</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 8</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 11</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_singleton'>singleton</span>
   <span class='ivar'>@singleton</span>
@@ -645,15 +752,71 @@ because mutators walk the def node directly.</p>
       <pre class="lines">
 
 
-19
-20
-21</pre>
+30
+31
+32</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 19</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 30</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_body_loc'>body_loc</span>
   <span class='id identifier rubyid_def_node'>def_node</span><span class='period'>.</span><span class='id identifier rubyid_body'>body</span><span class='op'>&amp;.</span><span class='id identifier rubyid_location'>location</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="lexical_namespace-instance_method">
+  
+    #<strong>lexical_namespace</strong>  &#x21d2; <tt>Array&lt;String&gt;</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>Class/module chain as written in the source, for textual wrappers. Falls
+back to <code>namespace</code> for subjects built without one.</p>
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array&lt;String&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>names; a root-anchored element keeps its <code>::</code>.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+23
+24
+25</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 23</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_lexical_namespace'>lexical_namespace</span>
+  <span class='id identifier rubyid_lexical'>lexical</span> <span class='op'>||</span> <span class='id identifier rubyid_namespace'>namespace</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -700,12 +863,12 @@ because mutators walk the def node directly.</p>
       <pre class="lines">
 
 
-12
-13
-14</pre>
+15
+16
+17</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 12</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/subject.rb', line 15</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_qualified_name'>qualified_name</span>
   <span class='id identifier rubyid_namespace'>namespace</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>::</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span> <span class='op'>+</span> <span class='lparen'>(</span><span class='id identifier rubyid_singleton'>singleton</span> <span class='op'>?</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>.</span><span class='tstring_end'>&quot;</span></span> <span class='op'>:</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>#</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span> <span class='op'>+</span> <span class='id identifier rubyid_name'>name</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span>
@@ -722,7 +885,7 @@ because mutators walk the def node directly.</p>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.10).
+  0.9.44 (ruby-3.4.11).
 </div>
 
     </div>

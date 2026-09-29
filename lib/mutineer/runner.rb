@@ -181,7 +181,10 @@ module Mutineer
       source_map = {}
       disabled_map = {}
       id_paths = {}
-      name_counts = Hash.new(0) # [file, qualified_name] => subjects seen so far
+      # [file, qualified_name] => { declaration offset => ordinal }: keyed by the
+      # declaration, so the same file discovered twice (two path spellings) reuses
+      # its ordinal instead of minting a second id for the same mutant.
+      name_decls = Hash.new { |h, k| h[k] = {} }
       ignore_set = config.ignore.to_set
       jobs = []
       ignored_results = []
@@ -192,8 +195,8 @@ module Mutineer
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
         mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
         id_path = (id_paths[subject.file] ||= ProjectPath.relative(subject.file, config.project_root))
-        ordinal = name_counts[[id_path, subject.qualified_name]]
-        name_counts[[id_path, subject.qualified_name]] += 1
+        decls = name_decls[[id_path, subject.qualified_name]]
+        ordinal = (decls[subject.def_node.location.start_offset] ||= decls.size)
         ids = MutantId.for_subject(subject, source, mutations, path: id_path, subject_ordinal: ordinal)
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
         mutations.each_with_index do |mutation, i|

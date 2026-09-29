@@ -126,7 +126,7 @@ module Mutineer
       # [old id, file] for each stored survivor: an old id alone is ambiguous.
       baseline_pairs = @survivors.map { |h| [h["id"], file_key.call(h["file"])] }.to_set
       # Old ids stored with a file from another machine: matched on the id alone.
-      foreign = @survivors.select { |h| foreign_file?(h["file"], file_key) }
+      foreign = @survivors.select { |h| foreign_file?(h["file"], file_key) }.to_set
       foreign_ids = foreign.map { |h| h["id"] }.to_set
       legacy_pair = ->(r) { [legacy[r.id], file_key.call(r.subject&.file)] }
 

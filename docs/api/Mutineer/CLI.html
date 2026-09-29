@@ -767,7 +767,6 @@ candidate list cannot drift from a real run's job selection.</p>
       <pre class="lines">
 
 
-596
 597
 598
 599
@@ -802,10 +801,11 @@ candidate list cannot drift from a real run's job selection.</p>
 628
 629
 630
-631</pre>
+631
+632</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 596</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 597</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_dry_run'>dry_run</span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_operator_classes'>operator_classes</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="MutatorRegistry.html" title="Mutineer::MutatorRegistry (class)">MutatorRegistry</a></span></span><span class='period'>.</span><span class='id identifier rubyid_resolve'><span class='object_link'><a href="MutatorRegistry.html#resolve-class_method" title="Mutineer::MutatorRegistry.resolve (method)">resolve</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_config'>config</span><span class='period'>.</span><span class='id identifier rubyid_operators'>operators</span> <span class='op'>||</span> <span class='const'><span class='object_link'><a href="MutatorRegistry.html" title="Mutineer::MutatorRegistry (class)">MutatorRegistry</a></span></span><span class='op'>::</span><span class='const'><span class='object_link'><a href="MutatorRegistry.html#DEFAULT_NAMES-constant" title="Mutineer::MutatorRegistry::DEFAULT_NAMES (constant)">DEFAULT_NAMES</a></span></span><span class='rparen'>)</span>
@@ -2329,15 +2329,15 @@ through an old id alone.</p>
       <pre class="lines">
 
 
-584
 585
 586
 587
 588
-589</pre>
+589
+590</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 584</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 585</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_warn_legacy_baseline'>warn_legacy_baseline</span>
   <span class='id identifier rubyid_warn'>warn</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>[mutineer] the baseline uses the old id format, which did not include the file </span><span class='tstring_end'>&quot;</span></span> \
@@ -2364,9 +2364,10 @@ through an old id alone.</p>
     <p class="note returns_void">This method returns an undefined value.</p><p>Warns once per old-format <code>ignore:</code> entry (#126), naming each new id it
 matched with that mutant's file and subject. mutineer cannot tell a full
 run from a narrowed one, so the text always says the list covers only this
-run's mutants. An entry that matched mutants in more than one file
-over-matched: the old id could not tell those files apart, so replacing it
-with every new id would keep suppressing the mutants it hid by accident.</p>
+run's mutants. An entry that matched more than one distinct mutant (in
+other files, or same-named methods in one file) over-matched: the old id
+could not tell them apart, so replacing it with every new id would keep
+suppressing the mutants it hid by accident.</p>
 
   </div>
 </div>
@@ -2398,7 +2399,6 @@ entry =&gt; one <code>{id:, file:, subject:}</code> hash per matched mutant.</p>
       <pre class="lines">
 
 
-563
 564
 565
 566
@@ -2412,16 +2412,17 @@ entry =&gt; one <code>{id:, file:, subject:}</code> hash per matched mutant.</p>
 574
 575
 576
-577</pre>
+577
+578</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 563</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/cli.rb', line 564</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_warn_legacy_ignore_matches'>warn_legacy_ignore_matches</span><span class='lparen'>(</span><span class='id identifier rubyid_matches'>matches</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_matches'>matches</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_old'>old</span><span class='comma'>,</span> <span class='id identifier rubyid_hits'>hits</span><span class='op'>|</span>
     <span class='id identifier rubyid_listed'>listed</span> <span class='op'>=</span> <span class='id identifier rubyid_hits'>hits</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:id</span><span class='rbracket'>]</span><span class='embexpr_end'>}</span><span class='tstring_content'> (</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span><span class='embexpr_end'>}</span><span class='tstring_content'>, </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:subject</span><span class='rbracket'>]</span><span class='embexpr_end'>}</span><span class='tstring_content'>)</span><span class='tstring_end'>&quot;</span></span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>, </span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
-    <span class='id identifier rubyid_advice'>advice</span> <span class='op'>=</span> <span class='kw'>if</span> <span class='id identifier rubyid_hits'>hits</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:file</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_uniq'>uniq</span><span class='period'>.</span><span class='id identifier rubyid_size'>size</span> <span class='op'>&gt;</span> <span class='int'>1</span>
-               <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_old'>old</span><span class='embexpr_end'>}</span><span class='tstring_content'> over-matched across files: the old format could not tell them apart. </span><span class='tstring_end'>&quot;</span></span> \
+    <span class='id identifier rubyid_advice'>advice</span> <span class='op'>=</span> <span class='kw'>if</span> <span class='id identifier rubyid_hits'>hits</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_h'>h</span><span class='op'>|</span> <span class='id identifier rubyid_h'>h</span><span class='lbracket'>[</span><span class='symbol'>:id</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_uniq'>uniq</span><span class='period'>.</span><span class='id identifier rubyid_size'>size</span> <span class='op'>&gt;</span> <span class='int'>1</span>
+               <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_old'>old</span><span class='embexpr_end'>}</span><span class='tstring_content'> over-matched: the old format could not tell these mutants apart. </span><span class='tstring_end'>&quot;</span></span> \
                  <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Replace </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_old'>old</span><span class='embexpr_end'>}</span><span class='tstring_content'> and keep only the ids for the mutant you meant to ignore, not all of them.</span><span class='tstring_end'>&quot;</span></span>
              <span class='kw'>else</span>
                <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Replace </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_old'>old</span><span class='embexpr_end'>}</span><span class='tstring_content'> with the new ids in your ignore list.</span><span class='tstring_end'>&quot;</span></span>

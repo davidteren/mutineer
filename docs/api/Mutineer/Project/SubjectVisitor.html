@@ -6,7 +6,7 @@
 <title>
   Class: Mutineer::Project::SubjectVisitor
   
-    &mdash; Documentation by YARD 0.9.45
+    &mdash; Documentation by YARD 0.9.44
   
 </title>
 
@@ -229,6 +229,28 @@ Nested inside Project to signal its private role.</p>
 </li>
 
       
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#root_anchored%3F-instance_method" title="#root_anchored? (instance method)">#<strong>root_anchored?</strong>(node)  &#x21d2; Boolean </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>True when a constant path starts with <code>::</code> (e.g. <code>::X</code> or <code>::A::B</code>).</p></div></span>
+  
+</li>
+
+      
         <li class="public ">
   <span class="summary_signature">
     
@@ -339,6 +361,28 @@ Nested inside Project to signal its private role.</p>
 </li>
 
       
+        <li class="private ">
+  <span class="summary_signature">
+    
+      <a href="#with_namespace-instance_method" title="#with_namespace (instance method)">#<strong>with_namespace</strong>(path) { ... } &#x21d2; void </a>
+    
+
+    
+  </span>
+  
+  
+  
+  <span class="note title private">private</span>
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'><p>Runs the block with <code>path</code> pushed as the current namespace.</p></div></span>
+  
+</li>
+
+      
     </ul>
     
   
@@ -397,7 +441,8 @@ Nested inside Project to signal its private role.</p>
 41
 42
 43
-44</pre>
+44
+45</pre>
     </td>
     <td>
       <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 36</span>
@@ -405,10 +450,11 @@ Nested inside Project to signal its private role.</p>
 <span class='kw'>def</span> <span class='id identifier rubyid_initialize'>initialize</span><span class='lparen'>(</span><span class='id identifier rubyid_file'>file</span><span class='rparen'>)</span>
   <span class='ivar'>@file</span> <span class='op'>=</span> <span class='id identifier rubyid_file'>file</span>
   <span class='ivar'>@namespace_stack</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
-  <span class='ivar'>@subjects</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
+  <span class='ivar'>@lexical_stack</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span> <span class='comment'># class/module names as written, `::X` kept (#145)
+</span>  <span class='ivar'>@subjects</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
   <span class='ivar'>@singleton_depth</span> <span class='op'>=</span> <span class='int'>0</span>
   <span class='ivar'>@module_function_active</span> <span class='op'>=</span> <span class='kw'>false</span> <span class='comment'># bareword `module_function` seen in this module body
-</span>  <span class='ivar'>@module_function_names</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>     <span class='comment'># names from `module_function :a, :b` / `module_function def`
+</span>  <span class='ivar'>@module_function_names</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>     <span class='comment'># [namespace, name] from `module_function :a` / `module_function def` (#98)
 </span>  <span class='kw'>super</span><span class='lparen'>(</span><span class='rparen'>)</span>
 <span class='kw'>end</span></pre>
     </td>
@@ -531,17 +577,17 @@ Nested inside Project to signal its private role.</p>
       <pre class="lines">
 
 
-144
-145
-146
-147
-148
-149
-150
-151</pre>
+173
+174
+175
+176
+177
+178
+179
+180</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 144</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 173</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_extract_constant_name'>extract_constant_name</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='rparen'>)</span>
   <span class='kw'>case</span> <span class='id identifier rubyid_node'>node</span>
@@ -569,7 +615,9 @@ Nested inside Project to signal its private role.</p>
   <div class="discussion">
     <p class="note returns_void">This method returns an undefined value.</p><p>Promote <code>module_function :name</code> / <code>module_function def name</code> subjects to
 singleton after the full walk — the naming call may appear before or after
-the def, so it can't be decided at visit_def_node time (#20).</p>
+the def, so it can't be decided at visit_def_node time (#20). Only methods
+of the module that made the call are promoted (#98); namespaces compare
+joined, since <code>module A::B</code> and nested <code>module A; module B</code> differ as arrays.</p>
 
   </div>
 </div>
@@ -582,21 +630,93 @@ the def, so it can't be decided at visit_def_node time (#20).</p>
       <pre class="lines">
 
 
-51
-52
-53
 54
 55
-56</pre>
+56
+57
+58
+59</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 51</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 54</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_promote_module_functions!'>promote_module_functions!</span>
   <span class='kw'>return</span> <span class='kw'>if</span> <span class='ivar'>@module_function_names</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
 
-  <span class='id identifier rubyid_names'>names</span> <span class='op'>=</span> <span class='ivar'>@module_function_names</span><span class='period'>.</span><span class='id identifier rubyid_to_set'>to_set</span>
-  <span class='ivar'>@subjects</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_s'>s</span><span class='op'>|</span> <span class='id identifier rubyid_s'>s</span><span class='period'>.</span><span class='id identifier rubyid_singleton'>singleton</span> <span class='op'>=</span> <span class='kw'>true</span> <span class='kw'>if</span> <span class='id identifier rubyid_names'>names</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_s'>s</span><span class='period'>.</span><span class='id identifier rubyid_name'>name</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+  <span class='id identifier rubyid_named'>named</span> <span class='op'>=</span> <span class='ivar'>@module_function_names</span><span class='period'>.</span><span class='id identifier rubyid_to_set'>to_set</span>
+  <span class='ivar'>@subjects</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_s'>s</span><span class='op'>|</span> <span class='id identifier rubyid_s'>s</span><span class='period'>.</span><span class='id identifier rubyid_singleton'>singleton</span> <span class='op'>=</span> <span class='kw'>true</span> <span class='kw'>if</span> <span class='id identifier rubyid_named'>named</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='lbracket'>[</span><span class='id identifier rubyid_s'>s</span><span class='period'>.</span><span class='id identifier rubyid_namespace'>namespace</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>::</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span><span class='comma'>,</span> <span class='id identifier rubyid_s'>s</span><span class='period'>.</span><span class='id identifier rubyid_name'>name</span><span class='rbracket'>]</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="root_anchored?-instance_method">
+  
+    #<strong>root_anchored?</strong>(node)  &#x21d2; <tt>Boolean</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p>True when a constant path starts with <code>::</code> (e.g. <code>::X</code> or <code>::A::B</code>).</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>node</span>
+      
+      
+        <span class='type'>(<tt>Prism::Node</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>constant path node.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Boolean</tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+163
+164
+165
+166</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 163</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_root_anchored?'>root_anchored?</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_node'>node</span> <span class='op'>=</span> <span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_parent'>parent</span> <span class='kw'>while</span> <span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Prism</span><span class='op'>::</span><span class='const'>ConstantPathNode</span><span class='rparen'>)</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_parent'>parent</span>
+  <span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Prism</span><span class='op'>::</span><span class='const'>ConstantPathNode</span><span class='rparen'>)</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -648,6 +768,13 @@ forms (<code>:sym</code>, <code>def</code>) name methods promoted after the walk
       <pre class="lines">
 
 
+84
+85
+86
+87
+88
+89
+90
 91
 92
 93
@@ -655,16 +782,10 @@ forms (<code>:sym</code>, <code>def</code>) name methods promoted after the walk
 95
 96
 97
-98
-99
-100
-101
-102
-103
-104</pre>
+98</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 91</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 84</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_visit_call_node'>visit_call_node</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='rparen'>)</span>
   <span class='kw'>if</span> <span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_name'>name</span> <span class='op'>==</span> <span class='symbol'>:module_function</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_receiver'>receiver</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span>
@@ -672,9 +793,10 @@ forms (<code>:sym</code>, <code>def</code>) name methods promoted after the walk
     <span class='kw'>if</span> <span class='id identifier rubyid_args'>args</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
       <span class='ivar'>@module_function_active</span> <span class='op'>=</span> <span class='kw'>true</span>
     <span class='kw'>else</span>
+      <span class='id identifier rubyid_namespace'>namespace</span> <span class='op'>=</span> <span class='ivar'>@namespace_stack</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>::</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
       <span class='id identifier rubyid_args'>args</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_arg'>arg</span><span class='op'>|</span>
-        <span class='ivar'>@module_function_names</span> <span class='op'>&lt;&lt;</span> <span class='id identifier rubyid_arg'>arg</span><span class='period'>.</span><span class='id identifier rubyid_value'>value</span><span class='period'>.</span><span class='id identifier rubyid_to_sym'>to_sym</span> <span class='kw'>if</span> <span class='id identifier rubyid_arg'>arg</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Prism</span><span class='op'>::</span><span class='const'>SymbolNode</span><span class='rparen'>)</span>
-        <span class='ivar'>@module_function_names</span> <span class='op'>&lt;&lt;</span> <span class='id identifier rubyid_arg'>arg</span><span class='period'>.</span><span class='id identifier rubyid_name'>name</span> <span class='kw'>if</span> <span class='id identifier rubyid_arg'>arg</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Prism</span><span class='op'>::</span><span class='const'>DefNode</span><span class='rparen'>)</span>
+        <span class='ivar'>@module_function_names</span> <span class='op'>&lt;&lt;</span> <span class='lbracket'>[</span><span class='id identifier rubyid_namespace'>namespace</span><span class='comma'>,</span> <span class='id identifier rubyid_arg'>arg</span><span class='period'>.</span><span class='id identifier rubyid_value'>value</span><span class='period'>.</span><span class='id identifier rubyid_to_sym'>to_sym</span><span class='rbracket'>]</span> <span class='kw'>if</span> <span class='id identifier rubyid_arg'>arg</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Prism</span><span class='op'>::</span><span class='const'>SymbolNode</span><span class='rparen'>)</span>
+        <span class='ivar'>@module_function_names</span> <span class='op'>&lt;&lt;</span> <span class='lbracket'>[</span><span class='id identifier rubyid_namespace'>namespace</span><span class='comma'>,</span> <span class='id identifier rubyid_arg'>arg</span><span class='period'>.</span><span class='id identifier rubyid_name'>name</span><span class='rbracket'>]</span> <span class='kw'>if</span> <span class='id identifier rubyid_arg'>arg</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Prism</span><span class='op'>::</span><span class='const'>DefNode</span><span class='rparen'>)</span>
       <span class='kw'>end</span>
     <span class='kw'>end</span>
   <span class='kw'>end</span>
@@ -727,25 +849,15 @@ forms (<code>:sym</code>, <code>def</code>) name methods promoted after the walk
       <pre class="lines">
 
 
-62
-63
-64
 65
 66
-67
-68
-69</pre>
+67</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 62</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 65</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_visit_class_node'>visit_class_node</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='rparen'>)</span>
-  <span class='ivar'>@namespace_stack</span><span class='period'>.</span><span class='id identifier rubyid_push'>push</span><span class='lparen'>(</span><span class='id identifier rubyid_extract_constant_name'>extract_constant_name</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_constant_path'>constant_path</span><span class='rparen'>)</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_saved'>saved</span> <span class='op'>=</span> <span class='ivar'>@module_function_active</span>
-  <span class='ivar'>@module_function_active</span> <span class='op'>=</span> <span class='kw'>false</span> <span class='comment'># module_function state does not cross a class boundary
-</span>  <span class='kw'>super</span>
-  <span class='ivar'>@module_function_active</span> <span class='op'>=</span> <span class='id identifier rubyid_saved'>saved</span>
-  <span class='ivar'>@namespace_stack</span><span class='period'>.</span><span class='id identifier rubyid_pop'>pop</span>
+  <span class='id identifier rubyid_with_namespace'>with_namespace</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_constant_path'>constant_path</span><span class='rparen'>)</span> <span class='lbrace'>{</span> <span class='kw'>super</span> <span class='rbrace'>}</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -794,24 +906,26 @@ forms (<code>:sym</code>, <code>def</code>) name methods promoted after the walk
       <pre class="lines">
 
 
+120
+121
+122
+123
+124
+125
 126
 127
 128
 129
-130
-131
-132
-133
-134
-135</pre>
+130</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 126</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 120</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_visit_def_node'>visit_def_node</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='rparen'>)</span>
   <span class='ivar'>@subjects</span> <span class='op'>&lt;&lt;</span> <span class='const'><span class='object_link'><a href="../Subject.html" title="Mutineer::Subject (class)">Subject</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span><span class='lparen'>(</span>
     <span class='label'>file:</span> <span class='ivar'>@file</span><span class='comma'>,</span>
     <span class='label'>namespace:</span> <span class='ivar'>@namespace_stack</span><span class='period'>.</span><span class='id identifier rubyid_dup'>dup</span><span class='comma'>,</span>
+    <span class='label'>lexical:</span> <span class='ivar'>@lexical_stack</span><span class='period'>.</span><span class='id identifier rubyid_dup'>dup</span><span class='comma'>,</span>
     <span class='label'>name:</span> <span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_name'>name</span><span class='comma'>,</span>
     <span class='label'>singleton:</span> <span class='op'>!</span><span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_receiver'>receiver</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span> <span class='op'>||</span> <span class='ivar'>@singleton_depth</span><span class='period'>.</span><span class='id identifier rubyid_positive?'>positive?</span> <span class='op'>||</span> <span class='ivar'>@module_function_active</span><span class='comma'>,</span>
     <span class='label'>def_node:</span> <span class='id identifier rubyid_node'>node</span>
@@ -865,25 +979,15 @@ forms (<code>:sym</code>, <code>def</code>) name methods promoted after the walk
       <pre class="lines">
 
 
-75
-76
-77
-78
-79
-80
-81
-82</pre>
+73
+74
+75</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 75</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 73</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_visit_module_node'>visit_module_node</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='rparen'>)</span>
-  <span class='ivar'>@namespace_stack</span><span class='period'>.</span><span class='id identifier rubyid_push'>push</span><span class='lparen'>(</span><span class='id identifier rubyid_extract_constant_name'>extract_constant_name</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_constant_path'>constant_path</span><span class='rparen'>)</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_saved'>saved</span> <span class='op'>=</span> <span class='ivar'>@module_function_active</span>
-  <span class='ivar'>@module_function_active</span> <span class='op'>=</span> <span class='kw'>false</span> <span class='comment'># each module body starts without module_function active
-</span>  <span class='kw'>super</span>
-  <span class='ivar'>@module_function_active</span> <span class='op'>=</span> <span class='id identifier rubyid_saved'>saved</span>
-  <span class='ivar'>@namespace_stack</span><span class='period'>.</span><span class='id identifier rubyid_pop'>pop</span>
+  <span class='id identifier rubyid_with_namespace'>with_namespace</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_constant_path'>constant_path</span><span class='rparen'>)</span> <span class='lbrace'>{</span> <span class='kw'>super</span> <span class='rbrace'>}</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -936,16 +1040,16 @@ represented against the namespace, so its defs are skipped (not recursed).</p>
       <pre class="lines">
 
 
-114
-115
-116
-117
-118
-119
-120</pre>
+108
+109
+110
+111
+112
+113
+114</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 114</span>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 108</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_visit_singleton_class_node'>visit_singleton_class_node</span><span class='lparen'>(</span><span class='id identifier rubyid_node'>node</span><span class='rparen'>)</span>
   <span class='kw'>return</span> <span class='kw'>unless</span> <span class='id identifier rubyid_node'>node</span><span class='period'>.</span><span class='id identifier rubyid_expression'>expression</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Prism</span><span class='op'>::</span><span class='const'>SelfNode</span><span class='rparen'>)</span>
@@ -959,6 +1063,107 @@ represented against the namespace, so its defs are skipped (not recursed).</p>
 </table>
 </div>
     
+      <div class="method_details ">
+  <h3 class="signature " id="with_namespace-instance_method">
+  
+    #<strong>with_namespace</strong>(path) { ... } &#x21d2; <tt>void</tt>  <span class="extras">(private)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note returns_void">This method returns an undefined value.</p><p>Runs the block with <code>path</code> pushed as the current namespace. A
+root-anchored path (<code>module ::X</code> / <code>class ::X</code>) names the top-level X,
+not X nested in the enclosing scope, so the namespace restarts there.
+Bareword <code>module_function</code> state does not cross a class or module
+boundary: each body starts without it, and the outer state returns after.</p>
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>path</span>
+      
+      
+        <span class='type'>(<tt>Prism::Node</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'><p>the class/module constant path.</p></div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Yields:</p>
+<ul class="yield">
+  
+    <li>
+      
+      
+        <span class='type'></span>
+      
+      
+      
+        
+        <div class='inline'><p>the class or module body visit.</p></div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+143
+144
+145
+146
+147
+148
+149
+150
+151
+152
+153
+154
+155
+156
+157</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/mutineer/project.rb', line 143</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_with_namespace'>with_namespace</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_saved_stack'>saved_stack</span> <span class='op'>=</span> <span class='ivar'>@namespace_stack</span>
+  <span class='id identifier rubyid_saved_lexical'>saved_lexical</span> <span class='op'>=</span> <span class='ivar'>@lexical_stack</span>
+  <span class='id identifier rubyid_saved_active'>saved_active</span> <span class='op'>=</span> <span class='ivar'>@module_function_active</span>
+  <span class='id identifier rubyid_name'>name</span> <span class='op'>=</span> <span class='id identifier rubyid_extract_constant_name'>extract_constant_name</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_root'><span class='object_link'><a href="../../top-level-namespace.html" title="Top Level Namespace (root)">root</a></span></span> <span class='op'>=</span> <span class='id identifier rubyid_root_anchored?'>root_anchored?</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span>
+  <span class='ivar'>@namespace_stack</span> <span class='op'>=</span> <span class='id identifier rubyid_root'><span class='object_link'><a href="../../top-level-namespace.html" title="Top Level Namespace (root)">root</a></span></span> <span class='op'>?</span> <span class='lbracket'>[</span><span class='id identifier rubyid_name'>name</span><span class='rbracket'>]</span> <span class='op'>:</span> <span class='id identifier rubyid_saved_stack'>saved_stack</span> <span class='op'>+</span> <span class='lbracket'>[</span><span class='id identifier rubyid_name'>name</span><span class='rbracket'>]</span>
+  <span class='ivar'>@lexical_stack</span> <span class='op'>=</span> <span class='id identifier rubyid_saved_lexical'>saved_lexical</span> <span class='op'>+</span> <span class='lbracket'>[</span><span class='id identifier rubyid_root'><span class='object_link'><a href="../../top-level-namespace.html" title="Top Level Namespace (root)">root</a></span></span> <span class='op'>?</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>::</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_name'>name</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span> <span class='op'>:</span> <span class='id identifier rubyid_name'>name</span><span class='rbracket'>]</span>
+  <span class='ivar'>@module_function_active</span> <span class='op'>=</span> <span class='kw'>false</span>
+  <span class='kw'>yield</span>
+<span class='kw'>ensure</span>
+  <span class='ivar'>@namespace_stack</span> <span class='op'>=</span> <span class='id identifier rubyid_saved_stack'>saved_stack</span>
+  <span class='ivar'>@lexical_stack</span> <span class='op'>=</span> <span class='id identifier rubyid_saved_lexical'>saved_lexical</span>
+  <span class='ivar'>@module_function_active</span> <span class='op'>=</span> <span class='id identifier rubyid_saved_active'>saved_active</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
   </div>
 
 </div>
@@ -966,7 +1171,7 @@ represented against the namespace, so its defs are skipped (not recursed).</p>
       <div id="footer">
   Generated on DATE by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.45 (ruby-3.4.10).
+  0.9.44 (ruby-3.4.11).
 </div>
 
     </div>

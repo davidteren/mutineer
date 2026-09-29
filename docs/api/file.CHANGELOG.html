@@ -94,27 +94,45 @@ id.</li>
 survivors matched only through an old-format baseline id (<code>baseline</code>). The
 GitHub Action shows one warning annotation when either count is not zero.</li>
 </ul>
+<h3 id="Deprecated">Deprecated</h3>
+<ul>
+<li><strong>Old-format ids in <code>ignore:</code> and in baselines.</strong> Matching on them is removed
+in 2.0. Replace each old <code>ignore:</code> entry with the new ids from the warning
+(only the intended ones when it over-matched several mutants).
+Regenerate a baseline (<code>--format json</code>) only after every gate that reads it
+runs this version or later (the Action's <code>version:</code> pin, your CI
+<code>Gemfile.lock</code>). An older version treats every new-format survivor as new.</li>
+</ul>
 <h3 id="Fixed">Fixed</h3>
 <ul>
+<li><strong><code>module_function :name</code> and <code>module_function def name</code> promote only
+their own module's methods</strong> — a class or module in the same file with a
+method of the same name kept an instance method in Ruby, but mutineer
+named it as a class method. <code>--strategy redefine</code> then mutated a method the
+tests never call, so a killable mutant falsely survived, and
+<code>--only Class#name</code> selected nothing (#98). The affected methods now get
+their correct names, so their mutant ids change: regenerate any ignore
+entries or baseline survivors that pointed at them.</li>
+<li><strong>A root-anchored reopening names the top-level constant</strong> — a
+<code>module ::Root</code> or <code>class ::Solo</code> written inside another module now gives
+<code>Root</code> and <code>Solo</code>, not <code>Outer::Root</code> and <code>Outer::Solo</code>. This applies to every
+method in such a body, with or without <code>module_function</code>, so their mutant
+ids change too. <code>--strategy redefine</code> rebuilds such a body's scope as
+written (<code>module Outer</code> then <code>class ::Solo</code>), so a constant from <code>Outer</code>
+still resolves in the mutated method, as it does under <code>reload</code>. Before,
+the method raised NameError in the test, which counted as a false kill
+(#145).</li>
 <li><strong>Old-format ids keep working, with a warning</strong> (#126). An old-format
 <code>ignore:</code> entry still suppresses the mutants it matched before. The run prints
 one <code>[mutineer]</code> warning per entry with each new id, its file and its method.
-When the entry matched mutants in more than one file, the warning says it
+When the entry matched several mutants (in different files, or same-named
+methods in one file), the warning says it
 over-matched and to keep only the ids for the mutant you meant to ignore. A
 <code>--baseline</code> file without <code>summary.id_format</code> matches on new ids, or on old
 ids from the same file, so no survivor reads as new or fixed only because its
 id changed. A stored file outside the project root (a baseline written on
 another machine) matches on the old id alone. The run prints one
 <code>[mutineer]</code> warning to regenerate the baseline.</li>
-</ul>
-<h3 id="Deprecated">Deprecated</h3>
-<ul>
-<li><strong>Old-format ids in <code>ignore:</code> and in baselines.</strong> Matching on them is removed
-in 2.0. Replace each old <code>ignore:</code> entry with the new ids from the warning
-(only the intended ones when it over-matched across files).
-Regenerate a baseline (<code>--format json</code>) only after every gate that reads it
-runs this version or later (the Action's <code>version:</code> pin, your CI
-<code>Gemfile.lock</code>). An older version treats every new-format survivor as new.</li>
 </ul>
 <h2 id="_1_2_0____2026_09_28"><a href="https://github.com/davidteren/mutineer/releases/tag/v1.2.0">1.2.0</a> - 2026-09-28</h2>
 <h3 id="Added">Added</h3>

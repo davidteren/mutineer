@@ -553,9 +553,10 @@ module Mutineer
     # Warns once per old-format `ignore:` entry (#126), naming each new id it
     # matched with that mutant's file and subject. mutineer cannot tell a full
     # run from a narrowed one, so the text always says the list covers only this
-    # run's mutants. An entry that matched mutants in more than one file
-    # over-matched: the old id could not tell those files apart, so replacing it
-    # with every new id would keep suppressing the mutants it hid by accident.
+    # run's mutants. An entry that matched more than one distinct mutant (in
+    # other files, or same-named methods in one file) over-matched: the old id
+    # could not tell them apart, so replacing it with every new id would keep
+    # suppressing the mutants it hid by accident.
     #
     # @param matches [Hash{String => Array<Hash{Symbol => String}>}] old-format
     #   entry => one `{id:, file:, subject:}` hash per matched mutant.
@@ -563,8 +564,8 @@ module Mutineer
     def self.warn_legacy_ignore_matches(matches)
       matches.each do |old, hits|
         listed = hits.map { |h| "#{h[:id]} (#{h[:file]}, #{h[:subject]})" }.join(", ")
-        advice = if hits.map { |h| h[:file] }.uniq.size > 1
-                   "#{old} over-matched across files: the old format could not tell them apart. " \
+        advice = if hits.map { |h| h[:id] }.uniq.size > 1
+                   "#{old} over-matched: the old format could not tell these mutants apart. " \
                      "Replace #{old} and keep only the ids for the mutant you meant to ignore, not all of them."
                  else
                    "Replace #{old} with the new ids in your ignore list."

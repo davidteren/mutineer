@@ -343,10 +343,10 @@ the file path, so two files could share an id (#126). Old-format ids keep
 working until 2.0, with a warning:</p>
 <ul>
 <li><strong><code>ignore:</code></strong> An old entry still suppresses its mutants. The run prints the
-new ids for each old entry, each with its file and method. When all of them
-are in one file, replace the entry with those ids. When they are in more than
-one file, the old entry over-matched: it also hid mutants you did not mean to
-ignore. The warning says so. Keep only the ids for the mutant you meant to
+new ids for each old entry, each with its file and method. When it names one
+mutant, replace the entry with that id. When it names several (in different
+files, or same-named methods in one file), the old entry over-matched: it also
+hid mutants you did not mean to ignore. The warning says so. Keep only the ids for the mutant you meant to
 ignore, not all of them. The list covers only the sources and operators in
 that run, so run over every source with every operator set you use (for
 example your Tier-2 <code>--operators</code>) for the full list.</li>
