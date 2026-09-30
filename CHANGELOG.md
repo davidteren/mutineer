@@ -85,6 +85,11 @@ All notable changes to this project are documented here. The format is based on
   that the site builds, in place of `rake yard:pages:check`. The site keeps
   its URLs (#153).
 
+### Fixed
+- A `public`, `private` or `protected` written without arguments now ends
+  `module_function` mode, so later `def`s in the module body are named as
+  instance methods, not singleton methods (#144).
+
 ## [1.3.0] - 2026-09-29
 
 ### Changed
