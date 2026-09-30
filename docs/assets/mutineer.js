@@ -126,16 +126,25 @@
       progress();
 
       var install = document.querySelector('#install .codeblock .typed-text');
-      ['.sec-head', '.step', '.usecase', '.card', '.evidence-strip', '.cta', '.table-wrap tbody tr', '#install .codeblock', '#install .sub'].forEach(function (sel) {
+      ['.sec-head', '.step', '.usecase', '.card', '.evidence-strip', '.cta', '#install .codeblock', '#install .sub'].forEach(function (sel) {
         document.querySelectorAll(sel).forEach(function (el) {
           // The hero already animates in on load; hiding it again would flicker.
           if (el.closest('.hero')) return;
-          var row = el.tagName === 'TR';
           var i = Array.prototype.indexOf.call(el.parentElement.children, el);
-          el.style.setProperty('--d', Math.min(i, row ? 20 : 6) * (row ? 28 : 80) + 'ms');
+          el.style.setProperty('--d', Math.min(i, 6) * 80 + 'ms');
           el.classList.add('reveal');
-          once(el, function (x) { x.classList.add('is-in'); }, row ? 0.1 : 0.2);
+          once(el, function (x) { x.classList.add('is-in'); });
         });
+      });
+      // Table rows cascade as one group when the table first shows, so a row
+      // scrolled into view later is not held back by its position.
+      document.querySelectorAll('.table-wrap tbody').forEach(function (body) {
+        var rows = Array.prototype.slice.call(body.rows);
+        rows.forEach(function (row, i) {
+          row.style.setProperty('--d', Math.min(i, 20) * 28 + 'ms');
+          row.classList.add('reveal');
+        });
+        once(body, function () { rows.forEach(function (row) { row.classList.add('is-in'); }); }, 0);
       });
       // In testing, Chrome did not report the fully clipped install line as
       // intersecting, so its column starts the typing as soon as any of it
