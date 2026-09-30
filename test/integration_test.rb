@@ -122,7 +122,7 @@ class IntegrationTest < Minitest::Test
     assert_equal "fee", s.subject.name.to_s
     assert_equal :condition_false, s.mutation.operator
     assert_equal "total >= 100", source_token(s)
-    assert_equal "false", s.mutation.replacement
+    assert_equal "(false)", s.mutation.replacement
   end
 
   # Scenario B — calculator + strong, perfect score (R10)

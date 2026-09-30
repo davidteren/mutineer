@@ -77,23 +77,17 @@ module Mutineer
         )
       end
 
-      # Returns the forced value for the condition. A condition that assigns a
-      # local keeps its code, so later reads still see the variable:
-      # `(m = x; true)`. A parenthesized condition keeps its parentheses, so
-      # `(a)?1:2` stays a ternary. A space goes between the value and a word
-      # character next to it, so `x if@a` becomes `x if true`, not `x iftrue`.
+      # Returns the forced value for the condition, always in parentheses, so it
+      # cannot fuse with a keyword or a `?` next to it: `x if@a` becomes
+      # `x if(true)` and `@a?1:2` becomes `(true)?1:2`. A condition that assigns
+      # a local keeps its code, so later reads still see the variable:
+      # `(m = x; true)`.
       #
       # @param predicate [Prism::Node] the condition.
       # @return [String] the replacement source.
       def replacement(predicate)
         value = self.class::VALUE.to_s
-        return "(#{predicate.slice}; #{value})" if writes_local?(predicate)
-        return "(#{value})" if predicate.is_a?(Prism::ParenthesesNode)
-
-        loc = predicate.location
-        before = loc.start_offset.positive? && @source.byteslice(loc.start_offset - 1).match?(/\w/)
-        after = @source.byteslice(loc.end_offset)&.match?(/\w/)
-        "#{' ' if before}#{value}#{' ' if after}"
+        writes_local?(predicate) ? "(#{predicate.slice}; #{value})" : "(#{value})"
       end
 
       # Returns whether the node writes a local variable anywhere inside it: a

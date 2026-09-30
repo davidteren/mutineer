@@ -32,21 +32,21 @@ class ConditionForcingTest < Minitest::Test
 
   def test_if_elsif_else_forces_each_condition
     body = "if a\n    b\n  elsif c\n    d\n  else\n    e\n  end"
-    assert_equal [["a -> true", "c -> true"], ["a -> false", "c -> false"]], both(body)
+    assert_equal [["a -> (true)", "c -> (true)"], ["a -> (false)", "c -> (false)"]], both(body)
   end
 
   def test_unless_with_else_and_ternary
-    assert_equal [["f -> true"], ["f -> false"]], both("unless f then g else h end")
-    assert_equal [["ready? -> true"], ["ready? -> false"]], both("ready? ? 1 : 2")
+    assert_equal [["f -> (true)"], ["f -> (false)"]], both("unless f then g else h end")
+    assert_equal [["ready? -> (true)"], ["ready? -> (false)"]], both("ready? ? 1 : 2")
   end
 
   def test_modifier_guard_in_a_block
-    assert_equal [["row.ok? -> true"], ["row.ok? -> false"]], both("rows.each { |row| save(row) if row.ok? }")
+    assert_equal [["row.ok? -> (true)"], ["row.ok? -> (false)"]], both("rows.each { |row| save(row) if row.ok? }")
   end
 
   def test_case_in_guards
     body = "case v\n  in Integer => n if n > 0 then 1\n  in String unless v.empty? then 2\n  end"
-    assert_equal [["n > 0 -> true", "v.empty? -> true"], ["n > 0 -> false", "v.empty? -> false"]], both(body)
+    assert_equal [["n > 0 -> (true)", "v.empty? -> (true)"], ["n > 0 -> (false)", "v.empty? -> (false)"]], both(body)
   end
 
   def test_whole_condition_is_replaced
@@ -65,19 +65,14 @@ class ConditionForcingTest < Minitest::Test
     assert_equal [[], []], both("((false)) ? 1 : 2")
   end
 
-  # A parenthesized condition keeps its parentheses, so `x if(y)` does not
-  # become `x iftrue`, a call to an undefined method.
-  def test_parenthesized_condition_keeps_its_parentheses
+  # The value is always parenthesized, so it cannot fuse with a keyword or a
+  # `?` next to it.
+  def test_value_never_fuses_with_its_neighbours
     assert_equal [["(y) -> (true)"], ["(y) -> (false)"]], both("x if(y)")
-    assert_equal [["(a) -> (true)"], ["(a) -> (false)"]], both("(a)?1:2")
-  end
-
-  # A space goes between the value and a word character next to it, so a
-  # condition that only starts with `(` or `@` does not fuse with the keyword.
-  def test_value_is_spaced_from_a_neighbouring_word
-    assert_equal [["(a) && b ->  true"], ["(a) && b ->  false"]], both("x if(a) && b")
-    assert_equal [["@a ->  true"], ["@a ->  false"]], both("x if@a")
-    assert_equal [["foo(a) -> true "], ["foo(a) -> false "]], both("if foo(a)then 1 end")
+    assert_equal [["@a -> (true)"], ["@a -> (false)"]], both("x if@a")
+    assert_equal [["(a) && b -> (true)"], ["(a) && b -> (false)"]], both("x if(a) && b")
+    assert_equal [["foo(a) -> (true)"], ["foo(a) -> (false)"]], both("if foo(a)then 1 end")
+    assert_equal [["@a -> (true)"], ["@a -> (false)"]], both("@a?1:2")
   end
 
   # A condition that assigns a local still runs, so later code sees the
@@ -97,11 +92,11 @@ class ConditionForcingTest < Minitest::Test
   # nil in place of the whole conditional: this operator's mutants must not
   # depend on which other operators run or what the user suppressed.
   def test_never_runs_side_is_always_made
-    assert_equal [["a -> true"], ["a -> false"]], both("return :none if a\n  b")
-    assert_equal [["b -> true"], ["b -> false"]], both("audit! unless b\n  c")
-    assert_equal [["f -> true"], ["f -> false"]], both("x\n  done if f")
-    assert_equal [["c -> true"], ["c -> false"]], both("foo = bar if c\n  foo")
-    assert_equal [["c -> true"], ["c -> false"]], both("x\n  if c then d else e end")
+    assert_equal [["a -> (true)"], ["a -> (false)"]], both("return :none if a\n  b")
+    assert_equal [["b -> (true)"], ["b -> (false)"]], both("audit! unless b\n  c")
+    assert_equal [["f -> (true)"], ["f -> (false)"]], both("x\n  done if f")
+    assert_equal [["c -> (true)"], ["c -> (false)"]], both("foo = bar if c\n  foo")
+    assert_equal [["c -> (true)"], ["c -> (false)"]], both("x\n  if c then d else e end")
   end
 
   def test_runner_makes_the_same_mutants_with_or_without_statement_removal
