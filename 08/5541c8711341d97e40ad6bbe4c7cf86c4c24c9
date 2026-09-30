@@ -1,0 +1,28 @@
+lib/mutineer/mutator_registry.rb
+  s_b7dd1d64c00462::t_7c12152766b072 81-82
+lib/mutineer/mutators/condition_forcing.rb
+  s_b7dd1d64c00462::t_57442750940d79 14-16,18-22,36,46,59,63
+CHANGELOG.md
+  s_b7dd1d64c00462::t_7c12152766b072 15-19
+test/mutators/condition_forcing_test.rb
+  s_b7dd1d64c00462::t_7c12152766b072 4
+  s_b7dd1d64c00462::t_92b1fb56cc5186 67-76,78-79,84-89
+lib/mutineer/runner.rb
+  s_b7dd1d64c00462::t_57442750940d79 196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "085541c8711341d97e40ad6bbe4c7cf86c4c24c9",
+  "prompts": {},
+  "sessions": {
+    "s_b7dd1d64c00462": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "963bc426-a189-4852-b89c-a965c34b5517",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
