@@ -61,7 +61,7 @@ inputs:
     required: false
     default: ""
   jobs:
-    description: "Parallel worker count (default: processor count); forced to 1 for Rails without a daemon, a test-command, or fail-fast."
+    description: "Parallel worker count (default: processor count); forced to 1 by a test-command, fail-fast, or Rails without a daemon."
     required: false
     default: ""
   rails:
