@@ -56,7 +56,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--no-since` | Disable diff scoping; a typed no beats a `.mutineer.yml` `since:` key |
 | `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (score drop is skipped under `--since`, whose score covers a different denominator; see [CI](https://github.com/davidteren/mutineer#ci-gating)) |
 | `--baseline-epsilon FLOAT` | Score-drop tolerance for `--baseline` (default: 0) |
-| `--jobs N` | Parallel worker count (default: processor count); forced to `1` under `--rails` without `--daemon` |
+| `--jobs N` | Parallel worker count (default: processor count); forced to `1` under `--rails` without `--daemon`, `--test-command`, or `--fail-fast` |
 | `--boot FILE` | Require an app entry point once before forking; select at least one test file |
 | `--rails` | Boot `config/environment` and reconnect ActiveRecord per fork; without `--daemon`, defaults to `redefine` and runs serially |
 | `--verbose` | Surface the real error when a fork capture fails (alias `--debug`) |
@@ -344,7 +344,7 @@ config file accepts these keys:
 |-----|-------------------|
 | `operators` | An operator name or list of names; defaults to the Tier-1 set |
 | `threshold` | A number from 0 to 100; 0 turns the score gate off |
-| `jobs` | A positive integer; the default is the processor count. `--rails` without `--daemon` forces 1. |
+| `jobs` | A positive integer; the default is the processor count. `--rails` without `--daemon`, `test_command`, or `fail_fast` forces 1. |
 | `only` | A fully-qualified subject name, such as `Calculator#add` |
 | `require` | A path or list of extra files to load before mutating |
 | `boot` | The app entry point to require once before forking |
