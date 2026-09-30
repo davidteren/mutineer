@@ -1,0 +1,23 @@
+lib/mutineer/cli.rb
+  s_c2eb114aea63f6::t_ae233ef236e814 49
+README.md
+  s_c2eb114aea63f6::t_59dabd95db0900 59
+lib/mutineer/config.rb
+  s_c2eb114aea63f6::t_ae233ef236e814 63-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "71dac0da484dfb154f120ffea86890f6a5d598c2",
+  "prompts": {},
+  "sessions": {
+    "s_c2eb114aea63f6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f1a5-6312-72d1-916e-711a671ccfd8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
