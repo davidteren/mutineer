@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-30
+
 ### Added
 - **Condition-forcing operators** (Tier-2, opt-in via `--operators`):
   `condition_true` and `condition_false` replace an `if`/`elsif`/`unless`,
@@ -675,6 +677,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.4.0]: https://github.com/davidteren/mutineer/releases/tag/v1.4.0
 [1.3.0]: https://github.com/davidteren/mutineer/releases/tag/v1.3.0
 [1.2.0]: https://github.com/davidteren/mutineer/releases/tag/v1.2.0
 [1.1.0]: https://github.com/davidteren/mutineer/releases/tag/v1.1.0
