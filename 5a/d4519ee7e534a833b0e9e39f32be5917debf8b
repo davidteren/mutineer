@@ -1,0 +1,24 @@
+rake/site_build.rb
+  s_b7dd1d64c00462::t_84eb9a131ffbab 18-21,28-29,33-41
+test/site_build_test.rb
+  s_b7dd1d64c00462::t_84eb9a131ffbab 5,25-30
+  s_b7dd1d64c00462::t_7b487520f34e7b 31-32
+Rakefile
+  s_b7dd1d64c00462::t_84eb9a131ffbab 73-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5ad4519ee7e534a833b0e9e39f32be5917debf8b",
+  "prompts": {},
+  "sessions": {
+    "s_b7dd1d64c00462": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "963bc426-a189-4852-b89c-a965c34b5517",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
