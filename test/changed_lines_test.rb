@@ -109,6 +109,25 @@ class ChangedLinesTest < Minitest::Test
     end
   end
 
+  # The ref still has the path, so git prints only a deletion hunk for the new file.
+  def test_git_diff_rewritten_after_deletion_marks_every_line_changed
+    in_repo do |root|
+      git(root, "rm", "-q", "old.rb")
+      git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "drop")
+      File.write(File.join(root, "old.rb"), "x\ny\nz\n")
+      assert_equal Set[1, 2, 3], CL.parse(CL.git_diff("HEAD~1", File.join(root, "old.rb"), root))
+    end
+  end
+
+  def test_git_diff_bracket_in_name_is_not_a_glob
+    in_repo do |root|
+      File.write(File.join(root, "file1.rb"), "a\n")
+      git(root, "add", "file1.rb")
+      File.write(File.join(root, "file[1].rb"), "a\nb\n")
+      assert_equal Set[1, 2], CL.parse(CL.git_diff("HEAD", File.join(root, "file[1].rb"), root))
+    end
+  end
+
   def test_git_diff_empty_untracked_file_has_no_changed_lines
     in_repo do |root|
       File.write(File.join(root, "empty.rb"), "")
@@ -128,6 +147,10 @@ class ChangedLinesTest < Minitest::Test
   end
 
   private
+
+  def git(root, *args)
+    assert system("git", "-C", root, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+  end
 
   def in_repo
     Dir.mktmpdir do |root|
