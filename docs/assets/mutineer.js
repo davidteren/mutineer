@@ -172,7 +172,11 @@
         counter.real.textContent = text;
         el.setAttribute('aria-hidden', 'true');
         el.parentNode.insertBefore(counter.real, el.nextSibling);
+        // Reserve the wider of the two values so the caption beside it does not move.
+        el.style.display = 'inline-block';
+        var endWidth = el.getBoundingClientRect().width;
         el.textContent = counter.format(counter.from);
+        el.style.minWidth = Math.ceil(Math.max(endWidth, el.getBoundingClientRect().width)) + 'px';
         counters.push(counter);
         once(el, function () {
           if (counter.finished) return;

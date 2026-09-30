@@ -280,7 +280,7 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
   .motion .proof-meter span { width: 100%; transition: width 1800ms var(--ease-out); }
   .motion .proof-meter span.go { width: var(--to); }
 }
-@keyframes glyph-nudge { 0%, 100% { transform: translateX(-8px); opacity: .55; } 50% { transform: translateX(8px); opacity: 1; } }
+@keyframes glyph-nudge { 0%, 100% { transform: none; opacity: 1; } 50% { transform: translateX(10px); opacity: .6; } }
 @keyframes type-in { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
