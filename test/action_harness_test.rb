@@ -24,7 +24,7 @@ class ActionHarnessTest < Minitest::Test
 
     { "case1" => 1, "case2" => 0, "case3" => 1, "case3b" => 1, "case4" => 1,
       "case5" => 1, "case6" => 2, "case7" => 1, "case8" => 2, "case8b" => 2, "case9" => 0,
-      "case10" => 1, "case11" => 2, "case12" => 1 }.each do |c, code|
+      "case10" => 1, "case11" => 2, "case11b" => 2, "case12" => 1 }.each do |c, code|
       assert_includes out, "#{c}: exit=#{code}", "#{c} exit code drifted:\n#{out}"
     end
     assert_includes out, "OK: abbreviation rejected"
@@ -40,6 +40,8 @@ class ActionHarnessTest < Minitest::Test
     assert_includes out, "OK: same-file baseline kept"
     assert_includes out, "OK: same file rejected before running"
     assert_includes out, "OK: same-file message names the CLI"
+    assert_includes out, "OK: hard-link baseline kept"
+    assert_includes out, "OK: hard link rejected before running"
     assert_includes out, "OK: distinct baseline kept"
     assert_includes out, "OK: distinct output delivered"
     assert_includes out, "Old ignore entries matched: 2.", "old-format ignore count missing"

@@ -129,6 +129,16 @@ after=$(cksum .mutineer/baseline.json)
 [ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran despite the same file" || echo "  OK: same file rejected before running"
 grep -q 'Refresh the baseline with the CLI' "$SCRATCH/case11/stdout.txt" && echo "  OK: same-file message names the CLI" || echo "  FAIL: missing same-file message"
 
+echo; echo "== 11b: exit 1 with output a hard link of the baseline (expects exit 2) =="
+mkdir -p "$SCRATCH/case11b"
+cp "$SCRATCH/report.json" "$SCRATCH/case11b/baseline.json"
+ln "$SCRATCH/case11b/baseline.json" "$SCRATCH/case11b/hard.json"
+before=$(cksum "$SCRATCH/case11b/baseline.json")
+run_step case11b STUB_EXIT=1 OUTPUT="$SCRATCH/case11b/hard.json" BASELINE="$SCRATCH/case11b/baseline.json"
+after=$(cksum "$SCRATCH/case11b/baseline.json")
+[ "$before" = "$after" ] && echo "  OK: hard-link baseline kept" || echo "  FAIL: hard-link baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on a hard link" || echo "  OK: hard link rejected before running"
+
 echo; echo "== 12: exit 1 with output and baseline as two files (expects the report copied) =="
 mkdir -p "$SCRATCH/case12"
 cp "$SCRATCH/report.json" "$SCRATCH/case12/baseline.json"
