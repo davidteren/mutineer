@@ -73,11 +73,13 @@ test('printing before scrolling shows the real numbers', async ({ page }) => {
 test('turning on reduced motion mid-visit finishes the counts', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.setViewportSize({ width: 1280, height: 1100 });
-  await page.goto('/');
-  await page.waitForTimeout(150);
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const hero = page.locator('.hero-proof .odo');
+  // The 1.8 s count must still be running, or this test proves nothing.
+  expect(await hero.textContent()).not.toBe('8,170');
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  // The media change reaches the page asynchronously; wait for it.
-  await expect.poll(() => page.locator('.hero-proof .odo').textContent(), { timeout: 1000 }).toBe('8,170');
+  // The change arrives asynchronously; a short window is enough only if it finishes the count.
+  await expect.poll(() => hero.textContent(), { timeout: 300 }).toBe('8,170');
   await expect(page.locator('.hero-proof .visually-hidden')).toHaveCount(0);
 });
 

@@ -7,9 +7,9 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
-- **A bare `public`, `private` or `protected` ends `module_function` mode**:
-  one written without arguments now ends `module_function` mode, so later `def`s in the module body are named as
-  instance methods, not singleton methods (#144).
+- **A bare `public`, `private` or `protected` ends `module_function` mode**,
+  so later `def`s in the module body are named as instance methods, not
+  singleton methods (#144).
 - **Turning on reduced motion mid-visit finishes the landing page count-ups**,
   so no number keeps changing after the visitor asks for less motion (#176).
 - **`rake site:build` can no longer delete a directory such as `lib/` or
