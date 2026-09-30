@@ -68,13 +68,15 @@ class DaemonClientEnvTest < Minitest::Test
     end
   end
 
-  # The flag has to be on the real spawn call. A helper that adds it only in
-  # the test would stay green if spawn_daemon dropped it.
+  # The flag and the cleaned env have to be on the real spawn call. A helper
+  # that adds them only in the test would stay green if spawn_daemon dropped them.
   def test_spawn_daemon_passes_unsetenv_others
     root = Dir.mktmpdir("daemon-env")
     seen = {}
+    seen_env = nil
     client = client_for(root)
-    Open3.stub(:popen3, lambda { |*_args, **kwargs|
+    Open3.stub(:popen3, lambda { |*args, **kwargs|
+      seen_env = args[0]
       seen.replace(kwargs)
       raise Errno::ENOENT
     }) do
@@ -83,6 +85,7 @@ class DaemonClientEnvTest < Minitest::Test
     end
     assert_equal true, seen[:unsetenv_others]
     assert_equal root, seen[:chdir]
+    assert_equal client.send(:app_env), seen_env
   ensure
     FileUtils.remove_entry(root) if root && File.directory?(root)
   end
