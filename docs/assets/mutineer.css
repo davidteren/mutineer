@@ -281,8 +281,8 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
   .motion .typed.is-in { animation: type-in 1s steps(20) calc(var(--d, 0ms) + 250ms) both; }
   .motion .btn span[aria-hidden] { display: inline-block; transition: transform 180ms var(--ease-out); }
   .motion .btn:hover span[aria-hidden] { transform: translate(3px, -3px); }
-  .motion .proof-meter span.armed { width: 100%; transition: width 1800ms var(--ease-out); }
-  .motion .proof-meter span.armed.go { width: var(--to); }
+  .motion .proof-meter span.armed { width: 100%; }
+  .motion .proof-meter span.armed.go { width: var(--to); transition: width 1800ms var(--ease-out); }
 }
 @keyframes glyph-nudge { 0%, 100% { transform: none; opacity: 1; } 50% { transform: translateX(10px); opacity: .6; } }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
