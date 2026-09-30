@@ -2,6 +2,7 @@
 
 require "json"
 require "open3"
+require_relative "external_backend"
 
 module Mutineer
   # Raised when the daemon cannot be booted or is gone for good: a bad boot path, an
@@ -13,10 +14,11 @@ module Mutineer
 
   # Tool-side handle for the app-side daemon.
   #
-  # Spawns `daemon_server.rb` UNDER THE APP'S BUNDLE/RUBY (cleaned env so the
-  # gem's bundler context never leaks; the daemon file is loaded by absolute path
-  # with `-r`, which bypasses the app bundle that has no mutineer), completes the
-  # ready handshake, then ships per-mutant payloads and reads structured verdicts.
+  # Spawns `daemon_server.rb` UNDER THE APP'S BUNDLE/RUBY (tool Ruby, Bundler,
+  # and version-manager keys are unset in the child, because Open3 keeps a key
+  # the hash omits; the daemon file is loaded by absolute path with `-r`, which
+  # bypasses the app bundle that has no mutineer), completes the ready
+  # handshake, then ships per-mutant payloads and reads structured verdicts.
   # If the daemon dies mid-run it respawns (bounded) and marks the in-flight
   # mutant `error` rather than corrupting the run. Reuses the cleaned-env spawn
   # and stderr-drain proven in the spike driver and the spawn discipline of
@@ -30,7 +32,8 @@ module Mutineer
     # @param boot [Hash] boot config sent to the daemon: project_root, boot,
     #   load_paths, framework, rails.
     # @param app_root [String] directory to spawn the daemon in (the app root).
-    # @param ruby_version [String, nil] RBENV_VERSION for the app's Ruby (nil = inherit).
+    # @param ruby_version [String, nil] RBENV_VERSION for the app's Ruby.
+    #   nil does not copy the tool's version-manager pin.
     # @param gemfile [String, nil] BUNDLE_GEMFILE for the app's bundle (nil = app_root/Gemfile).
     # @param errio [IO] where daemon stderr is drained.
     def initialize(boot:, app_root:, ruby_version: nil, gemfile: nil, errio: $stderr)
@@ -117,14 +120,30 @@ module Mutineer
 
     private
 
-    # Cleaned environment for the app bundle: strip the gem's bundler/Ruby context
-    # so `bundle exec` resolves the APP's Gemfile under the requested Ruby.
+    # Environment delta for the daemon child. Open3 merges this onto the parent,
+    # so a missing key still leaks. Start from {ExternalBackend.child_env}, which
+    # sets tool Ruby, Bundler, gem, and version-manager keys to nil and drops
+    # concrete version bins from PATH. Also unset <tt>BUNDLER_*</tt>:
+    # <tt>BUNDLER_SETUP</tt> is not a <tt>BUNDLE_</tt> key, and Ruby loads it
+    # before the script. Then point the child at the target app.
+    #
+    # @api private
+    # @return [Hash{String => String, nil}]
     def app_env
-      env = ENV.to_h.reject { |k, _| k.start_with?("BUNDLE_", "RUBY", "GEM_") }
+      env = ExternalBackend.child_env
+      ENV.each_key { |key| env[key] = nil if key.start_with?("BUNDLER_") }
       env["BUNDLE_GEMFILE"] = @gemfile
       env["RBENV_VERSION"] = @ruby_version if @ruby_version
-      env["RAILS_ENV"] ||= "test" if @boot[:rails] || @boot["rails"]
+      env["RAILS_ENV"] = "test" if rails_boot? && ENV["RAILS_ENV"].nil?
       env
+    end
+
+    # True when this daemon boots a Rails app.
+    #
+    # @api private
+    # @return [Boolean]
+    def rails_boot?
+      @boot[:rails] || @boot["rails"]
     end
 
     # Spawn the daemon under the app bundle and complete the ready handshake.
@@ -133,9 +152,8 @@ module Mutineer
     # @raise [Mutineer::DaemonBootError] when the daemon fails to boot.
     def spawn_daemon
       # Plain `bundle exec ruby`, NOT `rbenv exec`, which would break CI and any
-      # non-rbenv setup. When bundler/ruby are rbenv shims, the RBENV_VERSION
-      # carried in app_env still selects the app's Ruby; otherwise the active
-      # Ruby is used.
+      # non-rbenv setup. An explicit ruby_version sets RBENV_VERSION so shims
+      # select that Ruby. With no pin, shims and `.ruby-version` select it.
       # Everything up to the handshake is terminal, not one mutant's problem: a spawn
       # the OS refuses (EMFILE/ENOMEM under --jobs N, ENOENT when `bundle` does not
       # resolve) and a daemon that dies before accepting the boot payload (EPIPE on
