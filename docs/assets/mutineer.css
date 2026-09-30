@@ -250,7 +250,7 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
 .hero-proof { position: relative; display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 12px 32px; margin: 0 0 8px; padding: 22px 24px 26px; background: var(--bg-2); border: 1px solid var(--accent); overflow: hidden; }
 .hero-proof .kicker { color: var(--accent); }
 .hero-proof-num { margin: 0; display: flex; align-items: baseline; gap: 14px; }
-.hero-proof-num .odo { font-size: 44px; font-weight: 700; letter-spacing: -.045em; line-height: 1; color: var(--accent); }
+.hero-proof-num .odo { display: inline-block; min-width: 5.4ch; /* room for 17,702 while it counts */ font-size: 44px; font-weight: 700; letter-spacing: -.045em; line-height: 1; color: var(--accent); }
 .hero-proof-num small { font: 12px/1.4 var(--mono); color: var(--fg-dim); max-width: 18ch; }
 .hero-proof-by { margin: 0; font-size: 14px; color: var(--fg-dim); max-width: 60ch; }
 .hero-proof > a { font-size: 13px; white-space: nowrap; }
