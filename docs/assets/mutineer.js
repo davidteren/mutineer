@@ -126,14 +126,20 @@
       progress();
 
       var install = document.querySelector('#install .codeblock .typed-text');
+      // Items that come into view in the same frame stagger by 80 ms; an item
+      // that comes in alone starts at once.
+      var batch = 0, batchFrame = null;
+      var show = function (el) {
+        el.style.setProperty('--d', Math.min(batch++, 6) * 80 + 'ms');
+        if (!batchFrame) batchFrame = requestAnimationFrame(function () { batch = 0; batchFrame = null; });
+        el.classList.add('is-in');
+      };
       ['.sec-head', '.step', '.usecase', '.card', '.evidence-strip', '.cta', '#install .codeblock', '#install .sub'].forEach(function (sel) {
         document.querySelectorAll(sel).forEach(function (el) {
           // The hero already animates in on load; hiding it again would flicker.
           if (el.closest('.hero')) return;
-          var i = Array.prototype.indexOf.call(el.parentElement.children, el);
-          el.style.setProperty('--d', Math.min(i, 6) * 80 + 'ms');
           el.classList.add('reveal');
-          once(el, function (x) { x.classList.add('is-in'); });
+          once(el, show);
         });
       });
       // Table rows cascade as one group when the table first shows, so a row
