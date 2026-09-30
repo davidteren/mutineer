@@ -28,9 +28,6 @@ module Mutineer
     # Walks an AST, maintaining a namespace stack, emitting Subjects.
     # Nested inside Project to signal its private role.
     class SubjectVisitor < Prism::Visitor
-      # Bareword calls that switch Ruby back to instance-method definitions.
-      BAREWORD_VISIBILITY = %i[public private protected].freeze
-
       attr_reader :subjects
 
       # Builds a subject visitor.
@@ -85,8 +82,8 @@ module Mutineer
       # @param node [Prism::CallNode] call node.
       # @return [void]
       def visit_call_node(node)
-        if BAREWORD_VISIBILITY.include?(node.name) && node.receiver.nil? && node.arguments.nil?
-          @module_function_active = false # a bareword visibility call ends module_function mode
+        if %i[public private protected].include?(node.name) && node.receiver.nil? && node.arguments.nil?
+          @module_function_active = false # without arguments, Ruby goes back to instance methods
         end
         if node.name == :module_function && node.receiver.nil?
           args = node.arguments&.arguments || []

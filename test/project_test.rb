@@ -51,7 +51,18 @@ class ProjectTest < Minitest::Test
   end
 
   def test_discover_bareword_visibility_ends_module_function_mode
-    src = "module M\n  module_function\n  def a; end\n  public\n  def b; end\n  module_function\n  def c; end\n  private\n  def d; end\nend\n"
+    src = <<~RUBY
+      module M
+        module_function
+        def a; end
+        public
+        def b; end
+        module_function
+        def c; end
+        private
+        def d; end
+      end
+    RUBY
     with_source(src) do |path|
       singleton = Mutineer::Project.discover([path]).to_h { |s| [s.name, s.singleton] }
       assert_equal({ a: true, b: false, c: true, d: false }, singleton)

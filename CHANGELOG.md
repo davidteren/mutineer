@@ -36,7 +36,7 @@ All notable changes to this project are documented here. The format is based on
   its URLs (#153).
 
 ### Fixed
-- A bareword `public`, `private` or `protected` now ends bareword
+- A `public`, `private` or `protected` written without arguments now ends
   `module_function` mode, so later `def`s in the module body are named as
   instance methods, not singleton methods (#144).
 
