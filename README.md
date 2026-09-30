@@ -56,7 +56,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--no-since` | Disable diff scoping; a typed no beats a `.mutineer.yml` `since:` key |
 | `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (score drop is skipped under `--since`, whose score covers a different denominator; see [CI](https://github.com/davidteren/mutineer#ci-gating)) |
 | `--baseline-epsilon FLOAT` | Score-drop tolerance for `--baseline` (default: 0) |
-| `--jobs N` | Parallel worker count (default: processor count; `1` under `--rails`) |
+| `--jobs N` | Parallel worker count (default: processor count; `1` under `--rails` without `--daemon`) |
 | `--boot FILE` | Require an app entry point once before forking; select at least one test file |
 | `--rails` | Boot `config/environment` and reconnect ActiveRecord per fork; without `--daemon`, defaults to `redefine` and runs serially |
 | `--verbose` | Surface the real error when a fork capture fails (alias `--debug`) |

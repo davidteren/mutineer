@@ -60,8 +60,8 @@ module Mutineer
   #
   # Boot mode adds: boot (a file to require ONCE in the parent so the app env,
   # e.g. Rails, is booted before forking; sources are then NOT manually required)
-  # and rails (sugar: defaults boot to config/environment and strategy to redefine,
-  # and reconnects ActiveRecord per fork).
+  # and rails (sugar: defaults boot to config/environment, prefers redefine without
+  # a daemon, and reconnects ActiveRecord per fork).
   Config = Struct.new(
     :sources, :tests, :operators, :threshold, :only, :dry_run,
     :cache_dir, :project_root, :load_paths,

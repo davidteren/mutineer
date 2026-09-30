@@ -41,12 +41,14 @@ module Mutineer
         --only NAME          Restrict to one fully-qualified subject
         --since REF          Only mutate lines changed since git REF (e.g. origin/main)
         --no-since           Disable diff scoping (a typed no beats a .mutineer.yml since:)
-        --jobs N             Parallel worker count (default: processor count)
+        --jobs N             Parallel worker count (default: processor count;
+                             --rails without --daemon: 1)
         --strategy NAME      reload (whole-file) or redefine (surgical); default: reload
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then
                              fork per mutant (Rails apps; requires --test)
-        --rails              Sugar for --boot config/environment --strategy redefine
+        --rails              Boot config/environment; without --daemon, defaults to
+                             redefine and serial execution
         --test-command CMD   Run the target suite in the app's own runtime as a
                              subprocess (for apps on Ruby < 3.4). CMD must contain
                              %{files}. Scrubs Mutineer Ruby PATH pins; set RAILS_ENV
