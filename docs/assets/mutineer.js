@@ -201,6 +201,10 @@
       });
       // Printing before a count ends would show a start or middle value.
       addEventListener('beforeprint', function () { counters.forEach(function (c) { c.finish(); }); });
+      // Turning on reduced motion mid-visit stops the counts where they end.
+      window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', function (event) {
+        if (event.matches) counters.forEach(function (c) { c.finish(); });
+      });
     }
   });
 })();

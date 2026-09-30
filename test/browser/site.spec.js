@@ -70,6 +70,17 @@ test('printing before scrolling shows the real numbers', async ({ page }) => {
   await expect(page.locator('.visually-hidden')).toHaveCount(0);
 });
 
+test('turning on reduced motion mid-visit finishes the counts', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.setViewportSize({ width: 1280, height: 1100 });
+  await page.goto('/');
+  await page.waitForTimeout(150);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  // The media change reaches the page asynchronously; wait for it.
+  await expect.poll(() => page.locator('.hero-proof .odo').textContent(), { timeout: 400 }).toBe('8,170');
+  await expect(page.locator('.hero-proof .visually-hidden')).toHaveCount(0);
+});
+
 test('motion keeps step labels, true numbers and every section visible', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
   await page.setViewportSize({ width: 390, height: 844 });
