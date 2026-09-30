@@ -1,0 +1,25 @@
+lib/mutineer/mutant_id.rb
+  s_956af0f9b72f7a::t_e386d5bfd271b3 15-17,41-42
+docs/agentic-coding.md
+  s_956af0f9b72f7a::t_e386d5bfd271b3 38-39
+docs/agentic-coding.html
+  s_956af0f9b72f7a::t_e386d5bfd271b3 87
+docs/skill.md
+  s_956af0f9b72f7a::t_e386d5bfd271b3 45-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "048362ee2e81e6da0fdc7f68b6c9ebc9a802cb02",
+  "prompts": {},
+  "sessions": {
+    "s_956af0f9b72f7a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a0f1a5-6312-72d1-916e-711a671ccfd8",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
