@@ -1,0 +1,280 @@
+docs/json-schema.md
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 10,19-23,28,57-58,70,108
+lib/mutineer.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 28-33
+test/fixtures/stop_at_first_failure_parallel_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-17
+lib/mutineer/version.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 5
+test/fixtures/calculator_load_time_puts_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-34
+test/mutators/safe_navigation_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-64
+lib/mutineer/result.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 31-32
+test/mutator_registry_test.rb
+  s_b7dd1d64c00462::t_a58da507987a26 66-67,75
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 42-65,74
+test/equivalent_mutant_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 30,36-46,49-50,55,59-116,118-180,240,257-286,289-321
+  s_b7dd1d64c00462::t_67d554b996933e 322
+lib/mutineer/mutators/range_literal.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-54
+lib/mutineer/test_runners/rspec.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 19-20,22,28-30,32-34
+test/site_build_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-61
+lib/mutineer/daemon_server.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 5,183
+.pr_agent.toml
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-7
+test/fixtures/action_harness.sh
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 18,114-119
+test/isolation_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 4-5,31-100,136-142
+lib/mutineer/child_stdout.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-35
+lib/mutineer/isolation.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 6,30-32,43,49-50,53,102,135,191-194,196,201-202
+test/fixtures/noisy_minitest_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-12
+lib/mutineer/reporter.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 38-39,41,44,136-138,140,149,163-171
+test/fixtures/rspec/load_time_banner.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-8
+AGENTS.md
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 23-30,45,52-55,63,116-139
+lib/mutineer/mutators/operand_removal.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-65
+test/fixtures/calculator_stdout_swap_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-37
+docs/skill.md
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 37
+lib/mutineer/mutator_registry.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 14-19,44-48,58,75-79
+  s_b7dd1d64c00462::t_a58da507987a26 49,59,80
+lib/mutineer/mutators/negation_removal.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-44
+docs/index.md
+  s_b7dd1d64c00462::t_a58da507987a26 83
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 81-82
+test/fixtures/rspec/calculator_subprocess_io_spec.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-16
+lib/mutineer/mutant_id.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 6,11-17,25-27,35-40,42-45,55-57,59-97,103,107-113
+  s_b7dd1d64c00462::t_7543e11c656e81 114
+test/fixtures/stop_at_first_failure_later_class_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-32
+test/integration_test.rb
+  s_b7dd1d64c00462::t_a58da507987a26 110-111
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 28-42,60-109,163-214
+  s_b7dd1d64c00462::t_2ebb588ad0748e 215
+test/fixtures/steps_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-12
+test/fixtures/discount.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-7
+gemfiles/minitest6.gemfile
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-15
+test/mutant_id_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 4-5,9,25,30,39,44-45,51-52,58,67-68,79,83-222
+test/docs_contract_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 8-12,14-15,21-26,28-30,39-43,47,95
+test/project_path_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-50
+test/baseline_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 20,22,28-29,36,41,43,240,249-359
+  s_b7dd1d64c00462::t_6e888da5ca8b34 360
+test/json_reporter_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 37,45-62
+  s_b7dd1d64c00462::t_95e686d44a4dd1 63
+test/fixtures/tags_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-12
+test/fixtures/calculator_background_process_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-19
+test/fixtures/singleton/root_anchored.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-13
+test/fixtures/rspec/stop_at_first_failure_spec.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-20
+Rakefile
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 59,64,71-75
+  s_b7dd1d64c00462::t_079885e3ab0902 76-78
+test/fixtures/calculator_subprocess_io_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-33
+rake/site_docs.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 114-117,124
+test/site_test.js
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 9-12,16-18,28,31,36
+lib/mutineer/test_runners.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 9-12
+test/test_runners/rspec_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 4,7-9,12-14,19-24,26-27,30,33,35,38,40,44-45,47,49,51,65-119
+  s_b7dd1d64c00462::t_e5541813568967 120
+test/runner_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 45-86,178-188
+  s_b7dd1d64c00462::t_09187000f4a888 189
+lib/mutineer/test_runners/minitest.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 12-13,15-17
+test/fixtures/stop_at_first_failure_reporter_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-26
+lib/mutineer/runner.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 3,16,35-38,45-46,101-106,110,116,151,158-161,163-179,183-187,191-192,195,197-201,204-210,212,219,231-232,248,253,277,303-304,306-309,354,359-368,374-381,501-502
+test/fixtures/greeting.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-7
+.gitattributes
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1
+rake/yard_pages.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 5-6,9,11,13-15,18-20,23,27,29-32,37-40,74,76-77
+test/yard_pages_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 9,13-16,24,27,36-52
+lib/mutineer/minitest_integration/stop_at_first_failure.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-199
+docs/index.html
+  s_b7dd1d64c00462::t_a58da507987a26 78,175-176
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 196-201
+test/site_docs_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 5,8-10,44,52-54
+test/fixtures/stop_at_first_failure_fiber_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-32
+lib/mutineer/minitest_integration.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 3,19-23,32-33,35,57-65,67-70
+lib/mutineer/mutators/chain_link.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-139
+rake/site_build.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-135
+test/fixtures/stop_at_first_failure_seed_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-11
+lib/mutineer/coverage_map.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 11-12,26-29,100,146-147,149-156,247,309-310,444-484,486-509,527,590-592,594,596-598,618,621,642,646,648-650,653,656-659,664-668,671,684,687-690,726,907,911-912,914,919
+test/mutators/chain_link_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-91
+test/release_workflow_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 4,16-26,79-94,103-154,161-172,174-176,181-231,246-247,262-263
+lib/mutineer/cli.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 165,473-474,484-486,488,490-492,495,534-591,599-600
+test/mutators/operand_removal_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-96
+test/fixtures/discount_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-16
+lib/mutineer/daemon_backend.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 46-47,49,62,88
+test/fixtures/stop_at_first_failure_cleanup_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-33
+lib/mutineer/project.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 39,43,49-51,57-58,66,74,90,92-93,124,134-166
+  s_b7dd1d64c00462::t_15ab0dffb325f4 167
+lib/mutineer/pairing.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 8-10,71-72,81-85
+test/fixtures/rspec/noisy_spec.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-11
+test/singleton_redefine_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 14,18,39-69
+  s_b7dd1d64c00462::t_4d4be580b02566 70
+test/browser/playwright.config.js
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 7
+docs/llms.txt
+  s_b7dd1d64c00462::t_a58da507987a26 15
+lib/mutineer/baseline.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 4,6,11,17,31-35,37-42,88-89,92,99,103-113,117-118,120,122-131,133-146,152-155,170-182
+test/fixtures/singleton/module_func_scope_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-15
+lib/mutineer/mutators/base.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 29-43
+test/fixtures/stop_at_first_failure_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-23
+.github/workflows/ci.yml
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 30-49,89-92,98-101
+CHANGELOG.md
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 18-213,630-632
+test/test_runners/minitest_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 4,10-20,22-29,31-39,44-61,66-73,77-199
+test/project_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 64-126
+docs/agentic-coding.md
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 25,56,119
+test/rspec_integration_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 12,14,37-69,90-91,93
+lib/mutineer/mutators/safe_navigation.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-76
+lib/mutineer/mutators/array_literal.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-51
+test/mutators/array_literal_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-66
+.gitignore
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 2,11-22
+.github/workflows/release-pr.yml
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 3-11,20-21,27-31,40-43,54-94,114-115,136-144,146-148,150-163,183-230,232,234-242,244-280
+test/action_harness_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 11-12,25-26,37-40
+rake/docs_contract.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 136-139,145,503
+test/coverage_map_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 14-28,65-188,448-450,452,460-486,788-837
+test/mutators/negation_removal_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-62
+.github/workflows/pages.yml
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-47
+test/fixtures/stop_at_first_failure_nested_run_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-37
+Gemfile
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 11-13
+test/fixtures/tags.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-7
+test/fixtures/steps.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-7
+action.yml
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 385-398,402
+test/fixtures/rspec/calculator_load_time_puts_spec.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-18
+test/fixtures/singleton/root_anchored_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-12
+test/daemon_backend_contract_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 232-267
+test/fixtures/roster.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-13
+test/pairing_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 46-69
+.github/workflows/release.yml
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 49-50
+lib/mutineer/subject.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 7-11,19-24
+  s_b7dd1d64c00462::t_ab87bc7bcb550c 25-26
+test/fixtures/rspec/calculator_stdout_swap_spec.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-21
+test/fixtures/greeting_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-14
+lib/mutineer/project_path.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-57
+test/cli_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 22-76,228,288,340-397,427,508-612
+test/fixtures/access.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-7
+test/mutators/range_literal_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-71
+test/fixtures/roster_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-13
+test/fixtures/singleton/module_func_scope.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-16
+test/fixtures/access_test.rb
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 1-12
+README.md
+  s_b7dd1d64c00462::t_e5dc00c14fbfbd 16-17,87,217-218,223-270,280,319
+  s_b7dd1d64c00462::t_a58da507987a26 88-89
+test/mutators/condition_forcing_test.rb
+  s_b7dd1d64c00462::t_3998b68bcbb4e8 83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e09a484a125e9964af40dc3b1346d205e2205552",
+  "prompts": {},
+  "sessions": {
+    "s_b7dd1d64c00462": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "963bc426-a189-4852-b89c-a965c34b5517",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
