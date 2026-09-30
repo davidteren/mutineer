@@ -65,9 +65,19 @@ class MutatorRegistryTest < Minitest::Test
     assert_equal [M::ArrayLiteral], Mutineer::MutatorRegistry.resolve(%w[array_literal])
   end
 
+  def test_operator_assignment_resolvable
+    assert_equal [M::OperatorAssignment], Mutineer::MutatorRegistry.resolve(%w[operator_assignment])
+  end
+
+  def test_condition_forcing_resolvable
+    assert_equal [M::ConditionTrue, M::ConditionFalse],
+                 Mutineer::MutatorRegistry.resolve(%w[condition_true condition_false])
+  end
+
   def test_new_operators_are_tier2_and_not_default
     %w[string_literal regex collection_method safe_navigation range negation_removal chain_link
-       operand_removal array_literal].each do |name|
+       operand_removal array_literal condition_true condition_false
+       operator_assignment].each do |name|
       assert_equal 2, Mutineer::MutatorRegistry.tier(name), "#{name} should be tier 2"
       refute Mutineer::MutatorRegistry.default?(name), "#{name} should not be default"
       assert Mutineer::MutatorRegistry::DESCRIPTIONS.key?(name), "#{name} needs a description"

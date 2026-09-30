@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **Condition-forcing operators** (Tier-2, opt-in via `--operators`):
+  `condition_true` and `condition_false` replace an `if`/`elsif`/`unless`,
+  ternary, modifier or `case`/`in` guard condition with `(true)` or `(false)`, so
+  its branch always runs or never runs. A surviving mutant means no selected
+  test detected the forced condition. A literal condition, also in
+  parentheses, makes no mutant: forcing it changes nothing or repeats the
+  `boolean_literal` flip. A condition that holds a heredoc makes no mutant.
+  A condition that assigns a variable keeps its code, and only its value
+  is forced (`(m = x; true)`), so later code still sees the variable.
+  The never-runs side of an else-less conditional can
+  be the same program as the `nil` that `statement_removal` or `return_nil`
+  puts in its place; it is still made, so these mutants and their ids do not
+  depend on which other operators run.
+- **Operator-assignment operator** (Tier-2, opt-in via `--operators`):
+  `operator_assignment` swaps the operator of a compound assignment:
+  `+=` <-> `-=`, `*=` <-> `/=`, and `%=` and `**=` -> `*=`. It covers local,
+  instance, class and global variables, constants, calls (`a.b += 1`) and
+  index calls (`a[i] += 1`). The `arithmetic` operator never sees these
+  forms, because Prism does not parse them as calls. The operator does not
+  change `||=`, `&&=`, or the bitwise and shift forms (`|=`, `<<=`).
+
 ### Changed
 - **The docs site is built in CI** — a Pages workflow runs `rake site:build`
   and deploys the result, so the YARD HTML under `/api/`, `llms-full.txt`,
