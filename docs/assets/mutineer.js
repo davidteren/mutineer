@@ -143,9 +143,9 @@
           once(el, show);
         });
       });
-      // Table rows cascade as one group when the table first shows, so a row
-      // scrolled into view later is not held back by its position.
-      document.querySelectorAll('.table-wrap tbody').forEach(function (body) {
+      // The landing page's operator table cascades as one group when it first
+      // shows. Reference tables on the docs pages stay still.
+      document.querySelectorAll('#operators .table-wrap tbody').forEach(function (body) {
         var rows = Array.prototype.slice.call(body.rows);
         rows.forEach(function (row, i) {
           row.style.setProperty('--d', Math.min(i, 20) * 28 + 'ms');
@@ -171,8 +171,10 @@
           el: el,
           to: parseInt(text.replace(/,/g, ''), 10),
           from: +el.getAttribute('data-from'),
-          // Keep leading zeros only where the page writes them ("01").
-          format: /,/.test(text) ? grouped : function (n) { return String(Math.round(n)).padStart(/^0\d/.test(text) ? text.length : 1, '0'); },
+          // Pad to the final width: zeros where the page writes them ("01"),
+          // otherwise figure spaces, which are as wide as a digit, so the text
+          // after the number does not move while it counts.
+          format: /,/.test(text) ? grouped : function (n) { return String(Math.round(n)).padStart(text.length, /^0\d/.test(text) ? '0' : '\u2007'); },
           meter: card && card.querySelector('.proof-meter span'),
           real: document.createElement('span'),
           finished: false,
