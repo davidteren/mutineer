@@ -12,9 +12,9 @@ module Mutineer
   # qualified_name (a method, not a byte position) + operator + the normalized
   # mutated token + an occurrence ordinal among same-(operator, token) twins
   # WITHIN the subject + (only when positive) the subject's ordinal among
-  # same-named subjects in its file. So it survives any edit outside the subject method,
-  # where raw start/end offsets shift on every edit earlier in the file and
-  # would silently stop matching. Moving or renaming the file changes the id.
+  # same-named subjects in its file. Unrelated edits that only shift byte offsets
+  # can preserve the id. File moves, renames, project-root changes, and changes to
+  # repeated-name or repeated-mutation order can change it.
   module MutantId
     module_function
 
@@ -38,7 +38,8 @@ module Mutineer
     #   file sharing this qualified name (two owner-less `def index` in two DSL
     #   blocks). Hashed only when positive, so a subject whose name is unique in
     #   its file keeps the id it had without it.
-    # @return [String] a 12-character hex id, stable across edits outside the subject.
+    # @return [String] a 12-character hex id, stable while its keyed identity and
+    #   occurrence order stay unchanged.
     def for(subject, mutation, source, occurrence = 0, path:, subject_ordinal: 0)
       parts = [path, subject.qualified_name, mutation.operator, normalized_token(mutation, source), occurrence]
       parts << subject_ordinal if subject_ordinal.positive?

@@ -35,7 +35,8 @@ oracle, closing the loop with a concrete stopping condition:
    and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`;
    the score is rounded, so `--threshold 100` alone can still pass with a survivor.
 
-Before running, set `fail_fast: false` in `.mutineer.yml`. A fail-fast run is partial,
+Keep `fail_fast` disabled (the default). If the active `.mutineer.yml` sets it to
+`true`, change that value to `false` before running. A fail-fast run is partial,
 and its score and exit code do not cover the full scope. If the score is null, stop
 and report “no score”. Inspect the coverage gaps and harness failures, and fix them
 before starting a new run. Do not treat an empty or fully suppressed scope as proof
