@@ -121,11 +121,26 @@ class ConfigTest < Minitest::Test
     assert_equal "main", Config.parse(:since, "main")
   end
 
-  # An empty `only:` in the file is nil, not "": "" would filter out every subject.
-  def test_parse_string_keeps_nil
-    assert_nil Config.parse(:only, nil)
-    assert_equal "5", Config.parse(:only, 5)
+def test_parse_string_converts_numbers
+  assert_equal "5", Config.parse(:only, 5)
+end
+
+# A key with no value is nil in YAML. Keeping nil would turn `baseline:` off
+# without a word, so it is an error; a key that is absent is simply not set.
+def test_from_file_rejects_a_string_key_with_no_value
+  %w[only boot baseline test_command].each do |key|
+    with_config("#{key}:\n") do |path|
+      err = assert_raises(Mutineer::ConfigError, key) { Config.from_file(path) }
+      assert_equal ".mutineer.yml: #{key} must be a string (got: nil)", err.message
+    end
   end
+end
+
+def test_from_file_leaves_an_absent_string_key_unset
+  with_config("jobs: 2\n") do |path|
+    assert_equal({ jobs: 2 }, Config.from_file(path))
+  end
+end
 
 # A boolean is not a string: `only: false` once became the subject name "false",
 # so the run had no mutants and still exited 0.
