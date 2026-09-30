@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
-require "fileutils"
-require "tmpdir"
+require 'fileutils'
+require 'tmpdir'
 
-require_relative "test_helper"
-require_relative "../rake/site_docs"
-require_relative "../rake/yard_pages"
-require_relative "../rake/docs_contract"
+require_relative 'test_helper'
+require_relative '../rake/site_docs'
+require_relative '../rake/yard_pages'
+require_relative '../rake/docs_contract'
 
 # #92: published YARD HTML tracks the shipped gem.
 #
@@ -17,36 +17,36 @@ require_relative "../rake/docs_contract"
 class YardPagesTest < Minitest::Test
   def test_catalog_lists_the_api_root
     paths = MutineerSiteDocs::CATALOG.map(&:path)
-    assert_includes paths, "/api/"
+    assert_includes paths, '/api/'
   end
 
   def test_site_nav_links_to_api
     %w[docs/index.html docs/agentic-coding.html docs/sample-report.html].each do |path|
       assert_includes File.read(path), 'href="api/"', "#{path} should link to api/"
     end
-    assert_includes DocsContract.json_schema_html, 'href="api/"', "json-schema.html should link to api/"
+    assert_includes DocsContract.json_schema_html, 'href="api/"', 'json-schema.html should link to api/'
   end
 
   def test_documentation_uri_stays_the_pages_root
-    spec = File.read("mutineer.gemspec")
+    spec = File.read('mutineer.gemspec')
     assert_includes spec, '"documentation_uri" => "https://davidteren.github.io/mutineer/"'
   end
 
   def test_published_markers_require_root_and_api_nojekyll
-    Dir.mktmpdir("yard-markers") do |dir|
-      api = File.join(dir, "api")
+    Dir.mktmpdir('yard-markers') do |dir|
+      api = File.join(dir, 'api')
       FileUtils.mkdir_p(api)
-      FileUtils.touch(File.join(dir, ".nojekyll"))
-      FileUtils.touch(File.join(api, ".nojekyll"))
+      FileUtils.touch(File.join(dir, '.nojekyll'))
+      FileUtils.touch(File.join(api, '.nojekyll'))
       assert YardPages.published_markers?(api)
     end
   end
 
   def test_published_markers_false_when_the_root_nojekyll_is_missing
-    Dir.mktmpdir("yard-markers-missing") do |dir|
-      api = File.join(dir, "api")
+    Dir.mktmpdir('yard-markers-missing') do |dir|
+      api = File.join(dir, 'api')
       FileUtils.mkdir_p(api)
-      FileUtils.touch(File.join(api, ".nojekyll"))
+      FileUtils.touch(File.join(api, '.nojekyll'))
       # No `dir/.nojekyll` — Pages would run Jekyll and drop `_index.html`.
       refute YardPages.published_markers?(api)
     end
@@ -66,32 +66,32 @@ class YardPagesTest < Minitest::Test
       0.9.46 (ruby-3.4.7).
     HTML
 
-    Dir.mktmpdir("yard-eq") do |dir|
-      a = File.join(dir, "a")
-      b = File.join(dir, "b")
+    Dir.mktmpdir('yard-eq') do |dir|
+      a = File.join(dir, 'a')
+      b = File.join(dir, 'b')
       FileUtils.mkdir_p([a, b])
-      File.write(File.join(a, "index.html"), left)
-      File.write(File.join(b, "index.html"), right)
+      File.write(File.join(a, 'index.html'), left)
+      File.write(File.join(b, 'index.html'), right)
       assert YardPages.equivalent?(a, b)
     end
   end
 
   def test_equivalent_rejects_content_or_file_list_drift
-    Dir.mktmpdir("yard-neq") do |dir|
-      a = File.join(dir, "a")
-      b = File.join(dir, "b")
+    Dir.mktmpdir('yard-neq') do |dir|
+      a = File.join(dir, 'a')
+      b = File.join(dir, 'b')
       FileUtils.mkdir_p([a, b])
-      File.write(File.join(a, "index.html"), "alpha")
-      File.write(File.join(b, "index.html"), "beta")
+      File.write(File.join(a, 'index.html'), 'alpha')
+      File.write(File.join(b, 'index.html'), 'beta')
       refute YardPages.equivalent?(a, b)
 
-      File.write(File.join(b, "index.html"), "alpha")
-      File.write(File.join(b, "extra.html"), "x")
+      File.write(File.join(b, 'index.html'), 'alpha')
+      File.write(File.join(b, 'extra.html'), 'x')
       refute YardPages.equivalent?(a, b)
     end
   end
 
-  def test_changelog_headings_keep_first_anchor_and_qualify_repeated_ones
+  def test_changelog_headings_keep_aliases_and_stable_release_anchors
     Dir.mktmpdir('yard-headings') do |dir|
       path = File.join(dir, 'file.CHANGELOG.html')
       File.write(path, <<~HTML)
@@ -100,15 +100,23 @@ class YardPagesTest < Minitest::Test
         <h3 id="Changed">Changed</h3>
         <h2 id="release_1_2">1.2</h2><h3 id="Changed">Changed</h3>
       HTML
+      original = File.read(path)
       YardPages.send(:stabilize_html!, dir)
       html = File.read(path)
       assert_includes html, 'id="Added"'
+      assert_includes html, 'id="release_1_4-Added"'
       assert_includes html, 'id="release_1_3-Added"'
+      assert_includes html, 'id="release_1_3-Changed"'
       assert_includes html, 'id="release_1_2-Changed"'
       ids = html.scan(/\bid="([^"]+)"/).flatten
       assert_equal ids.uniq, ids
       YardPages.send(:stabilize_html!, dir)
       assert_equal html, File.read(path), 'a second pass must preserve anchors'
+      File.write(path, '<h2 id="Unreleased">Unreleased</h2><h3 id="Added">Added</h3>' + original)
+      YardPages.send(:stabilize_html!, dir)
+      assert_includes File.read(path), 'id="release_1_4-Added"', 'new releases must not move release anchors'
+      ids = File.read(path).scan(/\bid="([^"]+)"/).flatten
+      assert_equal ids.uniq, ids
     end
   end
 end

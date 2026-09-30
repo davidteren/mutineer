@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "fileutils"
+require 'fileutils'
 
 # Generate YARD HTML for the Pages `/api/` URL. `SiteBuild.generate!` calls
 # this with `<dest>/api` (see rake/site_build.rb).
@@ -12,11 +12,11 @@ module YardPages
     # @return [void]
     def generate!(output_dir)
       FileUtils.rm_rf(output_dir)
-      ok = system("bundle", "exec", "yard", "doc", "--output-dir", output_dir)
-      raise "yard doc failed" unless ok
+      ok = system('bundle', 'exec', 'yard', 'doc', '--output-dir', output_dir)
+      raise 'yard doc failed' unless ok
 
-      FileUtils.touch(File.join(output_dir, ".nojekyll"))
-      FileUtils.touch(File.join(File.dirname(output_dir), ".nojekyll"))
+      FileUtils.touch(File.join(output_dir, '.nojekyll'))
+      FileUtils.touch(File.join(File.dirname(output_dir), '.nojekyll'))
       stabilize_html!(output_dir)
     end
 
@@ -28,8 +28,8 @@ module YardPages
     # @return [Boolean]
     def published_markers?(output_dir)
       File.directory?(output_dir) &&
-        File.file?(File.join(File.dirname(output_dir), ".nojekyll")) &&
-        File.file?(File.join(output_dir, ".nojekyll"))
+        File.file?(File.join(File.dirname(output_dir), '.nojekyll')) &&
+        File.file?(File.join(output_dir, '.nojekyll'))
     end
 
     # Compare two YARD trees after stripping the "Generated on" stamp.
@@ -56,17 +56,17 @@ module YardPages
     # @param dir [String]
     # @return [Array<String>]
     def relative_files(dir)
-      Dir.glob(File.join(dir, "**/*"), File::FNM_DOTMATCH).select { |p| File.file?(p) }
-         .map { |p| p.delete_prefix("#{dir}/") }.sort
+      Dir.glob(File.join(dir, '**/*'), File::FNM_DOTMATCH).select { |p| File.file?(p) }
+                                                          .map { |p| p.delete_prefix("#{dir}/") }.sort
     end
 
     # @param text [String]
     # @return [String]
     def normalize(text)
-      text.gsub(/Generated on .+ by/, "Generated on DATE by")
-          .gsub(/\(ruby-\d+\.\d+\.\d+\)/, "(ruby-VERSION)")
-          .gsub(/YARD \d+\.\d+\.\d+/, "YARD X.Y.Z")
-          .gsub(/(>yard<\/a>\s+)\d+\.\d+\.\d+/, "\\1X.Y.Z")
+      text.gsub(/Generated on .+ by/, 'Generated on DATE by')
+          .gsub(/\(ruby-\d+\.\d+\.\d+\)/, '(ruby-VERSION)')
+          .gsub(/YARD \d+\.\d+\.\d+/, 'YARD X.Y.Z')
+          .gsub(%r{(>yard</a>\s+)\d+\.\d+\.\d+}, '\\1X.Y.Z')
     end
 
     # Pin the YARD footer stamp so a regenerate does not rewrite every page.
@@ -74,14 +74,14 @@ module YardPages
     # @param output_dir [String]
     # @return [void]
     def stabilize_html!(output_dir)
-      Dir.glob(File.join(output_dir, "**/*.html")).each do |path|
-        html = File.read(path).gsub(/Generated on .+ by/, "Generated on DATE by")
-        html = unique_changelog_headings(html) if File.basename(path) == "file.CHANGELOG.html"
+      Dir.glob(File.join(output_dir, '**/*.html')).each do |path|
+        html = File.read(path).gsub(/Generated on .+ by/, 'Generated on DATE by')
+        html = unique_changelog_headings(html) if File.basename(path) == 'file.CHANGELOG.html'
         File.write(path, html)
       end
     end
 
-    # Preserve the first subsection anchor and qualify repeated ones by release.
+    # Qualify subsection anchors by release and retain the first short alias.
     # YARD's Markdown renderer otherwise gives every Added/Fixed heading the same id.
     #
     # @param html [String] generated changelog page.
@@ -91,11 +91,12 @@ module YardPages
       release = nil
       html.gsub(/<h([23]) id="([^"]+)">/) do |heading|
         level, id = Regexp.last_match.captures
-        release = id if level == "2"
-        if level == "3" && seen[id]
-          heading.sub(id, "#{release}-#{id}")
-        else
+        release = id if level == '2'
+        if level == '3' && release && !id.start_with?("#{release}-")
+          alias_anchor = seen[id] ? '' : %(<a id="#{id}"></a>)
           seen[id] = true
+          alias_anchor + heading.sub(id, "#{release}-#{id}")
+        else
           heading
         end
       end
