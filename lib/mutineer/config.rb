@@ -262,14 +262,14 @@ module Mutineer
         raise ConfigError, "#{prefix}unknown #{field} #{value.to_s.inspect}. Expected: #{opt.values.join(', ')}"
       when :string_list then Array(value).map(&:to_s)
       when :string
-# A key written with no value (`baseline:`) parses as nil. Keeping nil
-# would switch the feature off without a word; main failed here, so the
-# typo stays loud. An absent key never reaches parse, so it stays unset.
-# `only: false` must not become the subject name "false" either: it
-# matches nothing, so the run has no mutants and still exits 0.
-raise ConfigError, "#{origin} must be a string #{got}" if [nil, true, false].include?(value)
+        # A key written with no value (`baseline:`) parses as nil. Keeping nil
+        # would switch the feature off without a word; main failed here, so the
+        # typo stays loud. An absent key never reaches parse, so it stays unset.
+        # `only: false` must not become the subject name "false" either: it
+        # matches nothing, so the run has no mutants and still exits 0.
+        raise ConfigError, "#{origin} must be a string #{got}" if [nil, true, false].include?(value)
 
-value.to_s
+        value.to_s
       when :since
         # false / empty normalize to nil ("no scoping"), so every consumer's
         # nil-check (runner scoping, the report's scoped marker) agrees. A

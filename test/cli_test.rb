@@ -252,26 +252,26 @@ class CliTest < Minitest::Test
     assert_includes err, "unknown git ref"
   end
 
-# `only: false` in the file must fail like a bad flag. It once ran zero mutants,
-# scored nil and exited 0 even with a weak test.
-def test_only_false_in_config_file_exits_two
-  with_project do |proj|
-    File.write(File.join(proj, ".mutineer.yml"), "only: false\n")
-    _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb", chdir: proj)
-    assert_equal 2, status.exitstatus
-    assert_includes err, ".mutineer.yml: only must be a string (got: false)"
+  # `only: false` in the file must fail like a bad flag. It once ran zero mutants,
+  # scored nil and exited 0 even with a weak test.
+  def test_only_false_in_config_file_exits_two
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "only: false\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, ".mutineer.yml: only must be a string (got: false)"
+    end
   end
-end
 
-# `baseline:` with no value once switched the baseline check off and exited 0.
-def test_string_key_with_no_value_in_config_file_exits_two
-  with_project do |proj|
-    File.write(File.join(proj, ".mutineer.yml"), "baseline:\n")
-    _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
-    assert_equal 2, status.exitstatus
-    assert_includes err, ".mutineer.yml: baseline must be a string (got: nil)"
+  # `baseline:` with no value once switched the baseline check off and exited 0.
+  def test_string_key_with_no_value_in_config_file_exits_two
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "baseline:\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, ".mutineer.yml: baseline must be a string (got: nil)"
+    end
   end
-end
 
   # --- happy paths driven through bin/mutineer -----------------------------
 
