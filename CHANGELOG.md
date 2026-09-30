@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **A blank `operators` key no longer runs zero mutants and exits 0** (#167).
+  `operators:` with no value became an empty list. The run made no mutants
+  and the gate passed. A blank list is now an error, and so is a list of
+  only unknown operator names. The same blank-list rule applies to `require`
+  and `ignore`.
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not
   singleton methods (#144).
