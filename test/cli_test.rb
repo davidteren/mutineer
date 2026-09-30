@@ -97,14 +97,14 @@ class CliTest < Minitest::Test
   def test_jobs_zero_exits_two
     _, err, status = mutineer("run", "x.rb", "--jobs", "0")
     assert_equal 2, status.exitstatus
-    assert_includes err, "--jobs must be a positive integer"
+    assert_includes err, "--jobs must be a positive integer, digits only"
   end
 
   # #105: a fractional or non-integer --jobs is a usage error, never rounded down.
   def test_fractional_jobs_exits_two
     _, err, status = mutineer("run", "x.rb", "--jobs", "1.9")
     assert_equal 2, status.exitstatus
-    assert_includes err, %(--jobs must be a positive integer (got: "1.9"))
+    assert_includes err, %(--jobs must be a positive integer, digits only (got: "1.9"))
   end
 
   # #105: the same rule applies to a .mutineer.yml `jobs:` key, with the file named.
@@ -114,7 +114,7 @@ class CliTest < Minitest::Test
         File.write(File.join(proj, ".mutineer.yml"), "jobs: #{bad}\n")
         _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
         assert_equal 2, status.exitstatus, "jobs: #{bad}"
-        assert_includes err, ".mutineer.yml: jobs must be a positive integer"
+        assert_includes err, ".mutineer.yml: jobs must be a positive integer, digits only"
         refute_match(/\.rb:\d+:in /, err, "no backtrace for jobs: #{bad}")
       end
     end

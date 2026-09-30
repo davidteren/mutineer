@@ -74,8 +74,8 @@ class ConfigTest < Minitest::Test
 
   def test_parse_positive_int_rejects_everything_else_naming_the_origin
     ["1.9", 1.9, true, 0, "0", -1, "abc", "", nil, "1e3"].each do |bad|
-      assert_match(/\A--jobs must be a positive integer \(got: /, parse_error(:jobs, bad), bad.inspect)
-      assert_match(/\A\.mutineer\.yml: jobs must be a positive integer/, parse_error(:jobs, bad, file: ".mutineer.yml"))
+      assert_match(/\A--jobs must be a positive integer, digits only \(got: /, parse_error(:jobs, bad), bad.inspect)
+      assert_match(/\A\.mutineer\.yml: jobs must be a positive integer, digits only/, parse_error(:jobs, bad, file: ".mutineer.yml"))
     end
   end
 
@@ -94,6 +94,25 @@ class ConfigTest < Minitest::Test
       assert_match(/\A--baseline-epsilon must be a finite number, 0 or greater/,
                    parse_error(:baseline_epsilon, bad), bad.inspect)
     end
+  end
+
+  # A string takes the same digits-only rule as `jobs`. `Float()` alone read
+  # "0x10" as 16.0, "1_0" as 10.0, "+2" as 2.0 and "1e2" as 100.0.
+  def test_parse_float_strings_take_plain_decimals_only
+    %i[threshold baseline_epsilon].each do |field|
+      assert_equal 2.0, Config.parse(field, "2")
+      assert_equal 2.5, Config.parse(field, "2.5")
+      ["0x10", "1_0", "+2", "1e2", ".5", "5.", " 2"].each do |bad|
+        assert_match(/\A--#{field.to_s.tr('_', '-')} must be a /, parse_error(field, bad), "#{field} #{bad.inspect}")
+      end
+    end
+  end
+
+  def test_parse_float_still_accepts_yaml_numbers
+    assert_equal 5.0, Config.parse(:threshold, 5)
+    assert_equal 62.5, Config.parse(:threshold, 62.5)
+    assert_equal 0.25, Config.parse(:baseline_epsilon, 0.25)
+    assert_equal 1.0, Config.parse(:baseline_epsilon, 1)
   end
 
   def test_parse_bool_accepts_only_true_and_false
@@ -170,7 +189,7 @@ class ConfigTest < Minitest::Test
   def test_from_file_rejects_bad_jobs_and_bad_booleans
     with_config("jobs: 1.9\n") do |path|
       err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
-      assert_match(/\.mutineer\.yml: jobs must be a positive integer \(got: 1\.9\)/, err.message)
+      assert_match(/\.mutineer\.yml: jobs must be a positive integer, digits only \(got: 1\.9\)/, err.message)
     end
     with_config("jobs: true\n") do |path|
       assert_raises(Mutineer::ConfigError) { Config.from_file(path) }

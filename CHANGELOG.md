@@ -27,7 +27,10 @@ All notable changes to this project are documented here. The format is based on
   `.mutineer.yml` that is not `true` or `false`, such as the string `"yes"`
   (before: `false`).
 - **`--jobs` takes plain digits only.** `0x2`, `+2`, `" 2"` and `1_0` exit 2.
-  Before, `Integer()` read them as 2, 2, 2 and 10.
+  Before, `Integer()` read them as 2, 2, 2 and 10. `--threshold` and
+  `--baseline-epsilon` take a plain decimal, such as `2` or `2.5`, from a
+  string. `0x10`, `+2`, `1_0` and `1e2` exit 2. Before, `Float()` read them
+  as 16.0, 2.0, 10.0 and 100.0.
 - **Config file errors start with the file and key**, for example
   `.mutineer.yml: threshold must be a number between 0 and 100`, where they
   started with `--threshold`.

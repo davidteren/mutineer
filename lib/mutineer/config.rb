@@ -236,7 +236,7 @@ module Mutineer
       case opt.type
       when :positive_int
         n = value.is_a?(Integer) ? value : (value.to_i if value.is_a?(String) && value.match?(/\A\d+\z/))
-        raise ConfigError, "#{origin} must be a positive integer #{got}" if n.nil? || n < 1
+        raise ConfigError, "#{origin} must be a positive integer, digits only #{got}" if n.nil? || n < 1
 
         n
       when :percent
@@ -283,8 +283,10 @@ module Mutineer
       end
     end
 
-    # Reads a finite Float from a number or a numeric string. Rejects booleans,
+    # Reads a finite Float from a number or a plain decimal string. Rejects booleans,
     # NaN and Infinity: `Float(true)` is an error, but a YAML `.nan` is a Float.
+    # A string must be digits with an optional fraction, the same digits-only rule
+    # as `jobs`: `Float()` alone would also read `0x10`, `1_0`, `+2` and `1e2`.
     #
     # @api private
     # @param value [Object] raw value.
@@ -292,7 +294,7 @@ module Mutineer
     def self.finite_float(value)
       f = case value
           when Integer, Float then value.to_f
-          when String then Float(value, exception: false)
+          when String then Float(value) if value.match?(/\A\d+(\.\d+)?\z/)
           end
       f if f&.finite?
     end
