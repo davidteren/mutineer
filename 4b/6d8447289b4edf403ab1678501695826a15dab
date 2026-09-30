@@ -1,0 +1,70 @@
+lib/mutineer/external_backend.rb
+  s_c2eb114aea63f6::t_d1777754e7b32d 55,59
+test/site_links.py
+  s_c2eb114aea63f6::t_ccebf2e9b20b71 1-54
+test/yard_pages_test.rb
+  s_c2eb114aea63f6::t_96ce77165e42ae 93-94,97-110,112-113
+  s_c2eb114aea63f6::t_69b473699cf86d 95-96,111
+test/site_test.js
+  s_c2eb114aea63f6::t_ccebf2e9b20b71 6,15-18
+  s_be14d56078e8d2::t_9cd82bb7af7c99 19
+docs/agentic-coding.md
+  s_c2eb114aea63f6::t_d1777754e7b32d 22,25,34-42
+lib/mutineer/runner.rb
+  s_956af0f9b72f7a::t_fa0df73e72c8bb 349
+mutineer.gemspec
+  s_c2eb114aea63f6::t_d1777754e7b32d 11
+rake/yard_pages.rb
+  s_c2eb114aea63f6::t_5cb3830b5e8a08 78-79
+  s_c2eb114aea63f6::t_ccebf2e9b20b71 80-93,96-100
+  s_956af0f9b72f7a::t_fa0df73e72c8bb 94-95
+docs/skill.md
+  s_c2eb114aea63f6::t_d1777754e7b32d 35,37-39,41-48
+CHANGELOG.md
+  s_c2eb114aea63f6::t_ccebf2e9b20b71 9-16
+docs/json-schema.md
+  s_c2eb114aea63f6::t_d1777754e7b32d 44,70,105-106
+README.md
+  s_956af0f9b72f7a::t_da8455c629529c 57,64-65,212,282,321,327,331,387
+  s_c2eb114aea63f6::t_ccebf2e9b20b71 60-61,340-371
+Rakefile
+  s_c2eb114aea63f6::t_d1777754e7b32d 38
+docs/agentic-coding.html
+  s_c2eb114aea63f6::t_d1777754e7b32d 76,78,85,87-88,98
+docs/llms.txt
+  s_c2eb114aea63f6::t_d1777754e7b32d 14
+docs/index.html
+  s_c2eb114aea63f6::t_d1777754e7b32d 157,246-248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4b6d8447289b4edf403ab1678501695826a15dab",
+  "prompts": {},
+  "sessions": {
+    "s_956af0f9b72f7a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a0f1a5-6312-72d1-916e-711a671ccfd8",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_be14d56078e8d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8a017ee4-da61-4a96-9a80-843bb0f41e07",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_c2eb114aea63f6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f1a5-6312-72d1-916e-711a671ccfd8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
