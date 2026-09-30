@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **A mutation no longer leaves a heredoc body behind as Ruby** (#134).
+  Replacing a node deletes the heredoc opener and not the body. The body
+  then parses as code, raises, and counts as a kill. A mutation that drops
+  the opener is skipped. A replacement that still contains the opener stays.
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not
   singleton methods (#144).
