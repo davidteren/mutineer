@@ -65,21 +65,29 @@ class ConditionForcingTest < Minitest::Test
     assert_equal [[], []], both("((false)) ? 1 : 2")
   end
 
-# A parenthesized condition keeps its parentheses, so `x if(y)` does not
-# become `x iftrue`, a call to an undefined method.
-def test_parenthesized_condition_keeps_its_parentheses
-  assert_equal [["(y) -> (true)"], ["(y) -> (false)"]], both("x if(y)")
-  assert_equal [["(a) -> (true)"], ["(a) -> (false)"]], both("(a)?1:2")
-end
+  # A parenthesized condition keeps its parentheses, so `x if(y)` does not
+  # become `x iftrue`, a call to an undefined method.
+  def test_parenthesized_condition_keeps_its_parentheses
+    assert_equal [["(y) -> (true)"], ["(y) -> (false)"]], both("x if(y)")
+    assert_equal [["(a) -> (true)"], ["(a) -> (false)"]], both("(a)?1:2")
+  end
 
-# A condition that assigns a local still runs, so later code sees the
-# variable; only the value is forced.
-def test_condition_that_assigns_a_local_keeps_the_assignment
-  assert_equal [["(m = s.match(re)) -> ((m = s.match(re)); true)"], ["(m = s.match(re)) -> ((m = s.match(re)); false)"]],
-               both("if (m = s.match(re)) then m[0] end\n  m")
-  assert_equal [["/(?<x>a)/ =~ s -> (/(?<x>a)/ =~ s; true)"], ["/(?<x>a)/ =~ s -> (/(?<x>a)/ =~ s; false)"]],
-               both("return 1 unless /(?<x>a)/ =~ s\n  x")
-end
+  # A space goes between the value and a word character next to it, so a
+  # condition that only starts with `(` or `@` does not fuse with the keyword.
+  def test_value_is_spaced_from_a_neighbouring_word
+    assert_equal [["(a) && b ->  true"], ["(a) && b ->  false"]], both("x if(a) && b")
+    assert_equal [["@a ->  true"], ["@a ->  false"]], both("x if@a")
+    assert_equal [["foo(a) -> true "], ["foo(a) -> false "]], both("if foo(a)then 1 end")
+  end
+
+  # A condition that assigns a local still runs, so later code sees the
+  # variable; only the value is forced.
+  def test_condition_that_assigns_a_local_keeps_the_assignment
+    assert_equal [["(m = s.match(re)) -> ((m = s.match(re)); true)"], ["(m = s.match(re)) -> ((m = s.match(re)); false)"]],
+                 both("if (m = s.match(re)) then m[0] end\n  m")
+    assert_equal [["/(?<x>a)/ =~ s -> (/(?<x>a)/ =~ s; true)"], ["/(?<x>a)/ =~ s -> (/(?<x>a)/ =~ s; false)"]],
+                 both("return 1 unless /(?<x>a)/ =~ s\n  x")
+  end
 
   def test_condition_with_a_heredoc_is_skipped
     assert_equal [[], []], both("if foo(<<~X)\n    hi\n  X\n    1\n  end")
