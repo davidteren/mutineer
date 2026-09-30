@@ -41,8 +41,8 @@ module Mutineer
         --only NAME          Restrict to one fully-qualified subject
         --since REF          Only mutate lines changed since git REF (e.g. origin/main)
         --no-since           Disable diff scoping (a typed no beats a .mutineer.yml since:)
-        --jobs N             Parallel worker count (default: processor count;
-                             --rails without --daemon: 1)
+        --jobs N             Parallel worker count (default: processor count);
+                             --rails without --daemon forces 1
         --strategy NAME      reload (whole-file) or redefine (surgical); default: reload
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then

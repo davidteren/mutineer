@@ -61,11 +61,14 @@ inputs:
     required: false
     default: ""
   jobs:
-    description: "Parallel worker count (default: processor count)."
+    description: "Parallel worker count (default: processor count); forced to 1 for Rails without a daemon."
     required: false
     default: ""
   rails:
-    description: "Set to 'true' to boot config/environment once (Rails apps)."
+    description: >-
+      Set to 'true' to boot config/environment once (Rails apps). Without a
+      daemon, the strategy defaults to redefine and the worker count is forced to 1.
+      Enable a daemon with extra-args: '--daemon' or daemon: true in .mutineer.yml.
     required: false
     default: "false"
   format:
