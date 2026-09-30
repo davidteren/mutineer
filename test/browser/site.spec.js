@@ -78,8 +78,9 @@ test('turning on reduced motion mid-visit finishes the counts', async ({ page })
   // The 1.8 s count must still be running, or this test proves nothing.
   expect(await hero.textContent()).not.toBe('8,170');
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  // The change arrives asynchronously; a short window is enough only if it finishes the count.
-  await expect.poll(() => hero.textContent(), { timeout: 300 }).toBe('8,170');
+  // The change arrives asynchronously. Polling every 50 ms for 500 ms is far
+  // shorter than the 1.8 s count, so only the fix can finish it in time.
+  await expect.poll(() => hero.textContent(), { timeout: 500, intervals: [50] }).toBe('8,170');
   await expect(page.locator('.hero-proof .visually-hidden')).toHaveCount(0);
 });
 
