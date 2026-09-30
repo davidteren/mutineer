@@ -109,6 +109,22 @@ class IntegrationTest < Minitest::Test
                          operator: :array_literal, subject: "defaults", token: "%w[ruby rails]", replacement: "[]")
   end
 
+  def test_condition_forcing_survivor
+    result = run_mutineer(sources: ["test/fixtures/shipping.rb"],
+                          tests: ["test/fixtures/shipping_test.rb"],
+                          operators: %w[condition_true condition_false])
+
+    assert_equal 1, result.survived_count,
+                 "Expected exactly 1 survivor from shipping.rb + shipping_test.rb"
+    assert_equal 50.0, result.mutation_score
+
+    s = result.surviving_mutants.first
+    assert_equal "fee", s.subject.name.to_s
+    assert_equal :condition_false, s.mutation.operator
+    assert_equal "total >= 100", source_token(s)
+    assert_equal "(false)", s.mutation.replacement
+  end
+
   # Scenario B — calculator + strong, perfect score (R10)
   def test_calculator_strong_kills_all
     result = run_mutineer(sources: ["test/fixtures/calculator.rb"],

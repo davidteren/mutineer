@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **Condition-forcing operators** (Tier-2, opt-in via `--operators`):
+  `condition_true` and `condition_false` replace an `if`/`elsif`/`unless`,
+  ternary, modifier or `case`/`in` guard condition with `(true)` or `(false)`, so
+  its branch always runs or never runs. A surviving mutant means no selected
+  test detected the forced condition. A literal condition, also in
+  parentheses, makes no mutant: forcing it changes nothing or repeats the
+  `boolean_literal` flip. A condition that holds a heredoc makes no mutant.
+  A condition that assigns a variable keeps its code, and only its value
+  is forced (`(m = x; true)`), so later code still sees the variable.
+  The never-runs side of an else-less conditional can
+  be the same program as the `nil` that `statement_removal` or `return_nil`
+  puts in its place; it is still made, so these mutants and their ids do not
+  depend on which other operators run.
+
 ### Fixed
 - **A typed `--rails`, `--verbose` or `--debug` beats `rails: false` and
   `verbose: false` in `.mutineer.yml`** (#103). The flag was dropped, so the
@@ -31,6 +46,10 @@ All notable changes to this project are documented here. The format is based on
   `--baseline-epsilon` take a plain decimal, such as `2` or `2.5`, from a
   string. `0x10`, `+2`, `1_0` and `1e2` exit 2. Before, `Float()` read them
   as 16.0, 2.0, 10.0 and 100.0.
+- **A string option that gets `true`, `false` or no value exits 2**, such as
+  `only: false` or `baseline:` in `.mutineer.yml`. A blank `since` also exits 2,
+  in the file and on the command line, so an unset shell variable does not
+  turn scoping off. `since: false` still means no scoping.
 - **Config file errors start with the file and key**, for example
   `.mutineer.yml: threshold must be a number between 0 and 100`, where they
   started with `--threshold`.
