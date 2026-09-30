@@ -1,0 +1,41 @@
+README.md
+  s_c2eb114aea63f6::t_59dabd95db0900 59
+lib/mutineer/cli.rb
+  s_3c9f4ab57c61c3::t_761cce23f5eb4e 44-45
+  s_0214cb1e158c48::t_d5caceaba32af0 50
+  s_0214cb1e158c48::t_080f99478cec81 51
+lib/mutineer/config.rb
+  s_c2eb114aea63f6::t_ae233ef236e814 63-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d162a79cab898d66805b48abf66e4ccf27e58865",
+  "prompts": {},
+  "sessions": {
+    "s_0214cb1e158c48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74ffa322-cf8d-4be0-bd49-e4e824297603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_3c9f4ab57c61c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "099db18b-2f70-411c-b88b-2bb2d5f3fb47",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_c2eb114aea63f6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f1a5-6312-72d1-916e-711a671ccfd8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
