@@ -56,3 +56,26 @@ test('content and disclosure remain usable without JavaScript', async ({ browser
     await context.close();
   }
 });
+
+test('motion keeps step labels, true numbers and every section visible', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveClass(/\bmotion\b/);
+  // Screen readers, find-in-page and copy get the real figure at once.
+  await expect(page.locator('.hero-proof .visually-hidden').first()).toHaveText('8,170');
+  const labels = await page.locator('.step').evaluateAll(steps => steps.map(s => getComputedStyle(s, '::before').content));
+  expect(labels).toEqual(['"0" counter(step)', '"0" counter(step)', '"0" counter(step)'].map(() => expect.stringMatching(/0/)));
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  for (let y = 0; y < height; y += 300) {
+    await page.evaluate(top => scrollTo(0, top), y);
+    await page.waitForTimeout(40);
+  }
+  await page.waitForTimeout(2000);
+  const state = await page.evaluate(() => ({
+    hidden: [...document.querySelectorAll('.reveal, .typed')].filter(e => getComputedStyle(e).opacity === '0' || getComputedStyle(e).clipPath.includes('100%')).length,
+    numbers: [...document.querySelectorAll('.odo')].map(e => e.textContent),
+    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+  }));
+  expect(state).toEqual({ hidden: 0, numbers: ['20', '01', '8,170', '24'], overflow: 0 });
+});

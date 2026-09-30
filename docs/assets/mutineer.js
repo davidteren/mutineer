@@ -78,7 +78,7 @@
         if (el) obs.observe(el);
       });
     }
-    
+
     // Motion: a scroll progress bar, count-ups, and sections that rise into view.
     if (motion) {
       var once = function (el, fn, threshold) {
@@ -96,7 +96,7 @@
         })(start);
       };
       var grouped = function (n) { return Math.round(n).toLocaleString('en-US'); };
-    
+
       var bar = document.createElement('div');
       bar.className = 'scroll-progress';
       document.body.appendChild(bar);
@@ -106,9 +106,11 @@
       };
       addEventListener('scroll', progress, { passive: true });
       progress();
-    
+
+      var install = document.querySelector('#install .codeblock');
       ['.sec-head', '.step', '.usecase', '.card', '.evidence-strip', '.cta', '.table-wrap tbody tr', '#install .codeblock', '#install .sub'].forEach(function (sel) {
         document.querySelectorAll(sel).forEach(function (el) {
+          if (el === install) return;
           var row = el.tagName === 'TR';
           var i = Array.prototype.indexOf.call(el.parentElement.children, el);
           el.style.setProperty('--d', Math.min(i, row ? 20 : 6) * (row ? 28 : 80) + 'ms');
@@ -116,32 +118,27 @@
           once(el, function (x) { x.classList.add('is-in'); }, row ? 0.1 : 0.2);
         });
       });
-      var install = document.querySelector('#install .codeblock');
-      // A fully clipped element never counts as visible, so its label above
-      // starts the typing.
+      // In testing, Chrome did not report the fully clipped install line as
+      // intersecting, so the label above it starts the typing.
       if (install && install.previousElementSibling) {
-        install.classList.replace('reveal', 'typed');
+        install.classList.add('typed');
         once(install.previousElementSibling, function () { install.classList.add('is-in'); }, 0.5);
       }
-    
-      document.querySelectorAll('.badge b').forEach(function (b) {
-        var to = parseInt(b.textContent, 10), width = b.textContent.length;
-        if (!(to > 0)) return;
-        b.textContent = '0'.padStart(width, '0');
-        setTimeout(function () { count(b, 0, to, 900, function (n) { return String(Math.round(n)).padStart(width, '0'); }); }, 500);
-      });
-    
-      var caught = document.querySelector('.evidence-strip strong');
-      if (caught && /^24 caught/.test(caught.textContent)) {
-        caught.innerHTML = '<span class="odo">0</span> caught. 1 missed.';
-        once(caught, function () { count(caught.firstChild, 0, 24, 900, grouped); });
-      }
-    
+
+      // Count-ups: each .odo counts from data-from to the number in the HTML. A
+      // hidden copy keeps the real value for screen readers, find and copy.
       document.querySelectorAll('.odo[data-from]').forEach(function (el) {
-        var to = parseInt(el.textContent.replace(/,/g, ''), 10), from = +el.getAttribute('data-from');
-        var meter = el.closest('.hero-proof').querySelector('.proof-meter span');
-        el.textContent = grouped(from);
-        once(el, function () { count(el, from, to, 1800, grouped); if (meter) meter.classList.add('go'); }, 0.5);
+        var text = el.textContent, to = parseInt(text.replace(/,/g, ''), 10), from = +el.getAttribute('data-from');
+        var format = /,/.test(text) ? grouped : function (n) { return String(Math.round(n)).padStart(text.length, '0'); };
+        var real = document.createElement('span');
+        real.className = 'visually-hidden';
+        real.textContent = text;
+        el.setAttribute('aria-hidden', 'true');
+        el.parentNode.insertBefore(real, el.nextSibling);
+        el.textContent = format(from);
+        var card = el.closest('.hero-proof');
+        var meter = card && card.querySelector('.proof-meter span');
+        once(el, function () { count(el, from, to, from > to ? 1800 : 900, format); if (meter) meter.classList.add('go'); }, 0.5);
       });
     }
   });
