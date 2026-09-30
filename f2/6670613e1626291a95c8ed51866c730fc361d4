@@ -1,0 +1,32 @@
+CHANGELOG.md
+  s_b7dd1d64c00462::t_d7f389f366ef87 10-14
+docs/sample-report.html
+  s_b7dd1d64c00462::t_11d50679f883bb 20
+rake/docs_contract.rb
+  s_b7dd1d64c00462::t_11d50679f883bb 468
+test/browser/site.spec.js
+  s_b7dd1d64c00462::t_11d50679f883bb 73-78,81-83
+  s_b7dd1d64c00462::t_d7f389f366ef87 79-80
+docs/index.html
+  s_b7dd1d64c00462::t_11d50679f883bb 26
+docs/assets/mutineer.js
+  s_b7dd1d64c00462::t_11d50679f883bb 204-207
+docs/agentic-coding.html
+  s_b7dd1d64c00462::t_11d50679f883bb 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f26670613e1626291a95c8ed51866c730fc361d4",
+  "prompts": {},
+  "sessions": {
+    "s_b7dd1d64c00462": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "963bc426-a189-4852-b89c-a965c34b5517",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
