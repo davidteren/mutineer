@@ -1,0 +1,20 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 14-19
+action.yml
+  h_e8a5bb9272fa34 85-92,252-291,293-301,304-305
+test/action_harness_test.rb
+  h_e8a5bb9272fa34 27-28,48-55
+test/fixtures/action_harness.sh
+  h_e8a5bb9272fa34 150-181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "647ff4aaed4072abacf0c0f34e0951ecbe4ce78b",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
