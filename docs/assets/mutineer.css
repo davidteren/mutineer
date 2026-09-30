@@ -269,6 +269,9 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
 @media screen and (prefers-reduced-motion: no-preference) {
   .motion .reveal:not(.is-in) { opacity: 0; transform: translateY(14px); }
   .motion .reveal.is-in { animation: enter 560ms var(--ease-out) var(--d, 0ms) both; }
+  /* Rows only fade: moving them would spill past the table's scroll box. */
+  .motion tr.reveal:not(.is-in) { transform: none; }
+  .motion tr.reveal.is-in { animation-name: fade-in; }
   .motion .glyph-arrow { display: inline-block; animation: glyph-nudge 2.4s ease-in-out 3; }
   .motion .step.reveal { border-top-color: transparent; position: relative; }
   .motion .step.reveal::after { content: ""; position: absolute; left: 0; right: 0; top: -2px; height: 2px; background: var(--fg); transform: scaleX(0); transform-origin: left; transition: transform 800ms var(--ease-out) calc(var(--d, 0ms) + 120ms); }
@@ -282,6 +285,7 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
   .motion .proof-meter span.go { width: var(--to); }
 }
 @keyframes glyph-nudge { 0%, 100% { transform: none; opacity: 1; } 50% { transform: translateX(10px); opacity: .6; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes type-in { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
