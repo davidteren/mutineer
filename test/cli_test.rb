@@ -247,9 +247,25 @@ class CliTest < Minitest::Test
   # An empty --since is an error, not "no scoping": `--since "$REF"` with an
   # unset variable must not turn into a full run.
   def test_since_empty_ref_exits_two
-    _, err, status = mutineer("run", "lib/mutineer/version.rb", "--since", "", chdir: ROOT)
-    assert_equal 2, status.exitstatus
-    assert_includes err, "unknown git ref"
+    ["", "  "].each do |blank|
+      _, err, status = mutineer("run", "lib/mutineer/version.rb", "--since", blank, chdir: ROOT)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "--since must be a git ref, not blank (got: #{blank.inspect})"
+    end
+  end
+
+  # The file path follows the same rule as the flag, and `since: false` stays
+  # the one way to write "no scoping" in the file.
+  def test_blank_since_in_config_file_exits_two_and_false_does_not
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "since: \"\"\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, ".mutineer.yml: since must be a git ref, not blank (got: \"\")"
+      File.write(File.join(proj, ".mutineer.yml"), "since: false\n")
+      _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus
+    end
   end
 
   # `only: false` in the file must fail like a bad flag. It once ran zero mutants,

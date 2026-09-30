@@ -91,7 +91,7 @@ module Mutineer
         o.on("--dry-run") { opts[:dry_run] = true }
         o.on("--fail-fast") { opts[:fail_fast] = true }
         o.on("--only NAME") { |v| opts[:only] = v }
-        o.on("--since REF") { |v| opts[:since] = v }
+        o.on("--since REF") { |v| opts[:since] = Config.parse(:since, v) }
         # A typed "no" must beat a .mutineer.yml `since:` key: the key is present
         # with a nil value, and nil is a value.
         o.on("--no-since") { opts[:since] = nil }

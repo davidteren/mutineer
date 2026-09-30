@@ -114,11 +114,19 @@ class ConfigTest < Minitest::Test
                     %(.mutineer.yml: unknown framework "junit")
   end
 
-  def test_parse_since_maps_false_and_empty_to_nil
-    assert_nil Config.parse(:since, nil)
+  def test_parse_since_maps_false_to_nil_and_keeps_a_ref
     assert_nil Config.parse(:since, false)
-    assert_nil Config.parse(:since, "")
     assert_equal "main", Config.parse(:since, "main")
+  end
+
+  # A blank ref is an error on every path: a shell variable that expands to
+  # nothing must not silently turn diff scoping off.
+  def test_parse_since_rejects_a_blank_value_naming_the_origin
+    [nil, "", "  ", "\t"].each do |bad|
+      assert_equal "--since must be a git ref, not blank (got: #{bad.inspect})", parse_error(:since, bad)
+      assert_equal ".mutineer.yml: since must be a git ref, not blank (got: #{bad.inspect})",
+                   parse_error(:since, bad, file: ".mutineer.yml")
+    end
   end
 
   def test_parse_string_converts_numbers
@@ -259,17 +267,22 @@ class ConfigTest < Minitest::Test
     end
   end
 
-  # `since: false` (or empty) normalizes to nil: a raw false would skip
-  # scoping in the runner but still mark the JSON report scoped, silently
-  # disabling the baseline score-drop gate on a full run.
-  def test_since_false_and_empty_normalize_to_nil
+  # `since: false` normalizes to nil: a raw false would skip scoping in the
+  # runner but still mark the JSON report scoped, silently disabling the
+  # baseline score-drop gate on a full run.
+  def test_since_false_normalizes_to_nil
     with_config("since: false\n") do |path|
       capture_io { @hash = Config.from_file(path) }
       assert_nil Config.resolve({}, @hash).since
     end
-    with_config("since: \"\"\n") do |path|
-      capture_io { @hash = Config.from_file(path) }
-      assert_nil Config.resolve({}, @hash).since
+  end
+
+  def test_from_file_rejects_a_blank_since
+    ["since: \"\"\n", "since:\n", "since: \"  \"\n"].each do |yaml|
+      with_config(yaml) do |path|
+        err = assert_raises(Mutineer::ConfigError, yaml) { Config.from_file(path) }
+        assert_match(/\A\.mutineer\.yml: since must be a git ref, not blank/, err.message)
+      end
     end
   end
 

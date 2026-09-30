@@ -221,7 +221,7 @@ module Mutineer
     # Parses one raw value into the typed value for `field`. A value that does
     # not fit its type raises ConfigError naming where it came from, so the CLI
     # and .mutineer.yml report the same mistake in the same way. `nil` and
-    # `false` are valid results for some fields (`since: nil` means "no scoping").
+    # `false` are valid results for some fields (`since: false` means "no scoping").
     #
     # @param field [Symbol] Config field name (a row of the option schema).
     # @param value [Object] raw CLI string or YAML value.
@@ -271,10 +271,15 @@ module Mutineer
 
         value.to_s
       when :since
-        # false / empty normalize to nil ("no scoping"), so every consumer's
-        # nil-check (runner scoping, the report's scoped marker) agrees. A
-        # false left raw would skip scoping but still mark the report scoped.
-        value.nil? || value == false || value.to_s.empty? ? nil : value.to_s
+        # `false` is the one way to say "no scoping" in the file. It becomes nil
+        # so every consumer's nil-check (runner scoping, the report's scoped
+        # marker) agrees; a false left raw would skip scoping but still mark
+        # the report scoped. A blank value is an error, not "no scoping": a
+        # `since: "$REF"` whose variable is unset must not turn scoping off.
+        return nil if value == false
+        raise ConfigError, "#{origin} must be a git ref, not blank #{got}" if value.to_s.strip.empty?
+
+        value.to_s
       end
     end
 
