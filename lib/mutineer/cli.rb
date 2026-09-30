@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "optparse"
-require "set"
 require "open3"
 require_relative "version"
 require_relative "config"
