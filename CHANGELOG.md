@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **Condition-forcing operators** (Tier-2, opt-in via `--operators`):
+  `condition_true` and `condition_false` replace an `if`/`elsif`/`unless`,
+  ternary, modifier or `case`/`in` guard condition with `(true)` or `(false)`, so
+  its branch always runs or never runs. A surviving mutant means no selected
+  test detected the forced condition. A literal condition, also in
+  parentheses, makes no mutant: forcing it changes nothing or repeats the
+  `boolean_literal` flip. A condition that holds a heredoc makes no mutant.
+  A condition that assigns a variable keeps its code, and only its value
+  is forced (`(m = x; true)`), so later code still sees the variable.
+  The never-runs side of an else-less conditional can
+  be the same program as the `nil` that `statement_removal` or `return_nil`
+  puts in its place; it is still made, so these mutants and their ids do not
+  depend on which other operators run.
+
 ### Fixed
 - **`--since` keeps a source file that git does not track yet** (#156). Before,
   such a file counted as unchanged. The run scored no mutants, and a positive

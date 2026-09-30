@@ -85,7 +85,8 @@ Run `mutineer --list-operators` to see them. Default (Tier 1): `arithmetic`,
 Available but off by default (Tier 2, enable via `--operators`): `return_nil`,
 `literal_mutation`, `condition_negation`, `string_literal`, `regex`,
 `collection_method`, `safe_navigation`, `range`, `negation_removal`, `chain_link`,
-`operand_removal`, `array_literal`.
+`operand_removal`, `array_literal`, `condition_true`,
+`condition_false`.
 
 ## Rails apps
 
