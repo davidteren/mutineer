@@ -802,13 +802,15 @@ class CoverageMapTest < Minitest::Test
     refute map.uncapturable_source?(CALC)
   end
 
-  # #87: bar_upsert_test.rb is the split suite for bar.rb when bar_upsert.rb
-  # is not in the run. A failed capture must taint bar.rb, not look like a gap.
+  # #87: a failed split file in the mirrored directory taints that source
+  # when no longer source file owns the name.
   def test_failing_split_test_marks_the_shorter_source_uncapturable
     dir = Dir.mktmpdir
-    src = File.join(dir, "bar.rb")
+    src = File.join(dir, "app/foo/bar.rb")
+    bad = File.join(dir, "test/foo/bar_upsert_test.rb")
+    FileUtils.mkdir_p(File.dirname(src))
+    FileUtils.mkdir_p(File.dirname(bad))
     File.write(src, "class Bar; def n; 1; end; end\n")
-    bad = File.join(dir, "bar_upsert_test.rb")
     File.write(bad, "require 'does/not/exist'\n")
     map = nil
     capture_subprocess_io do
@@ -816,6 +818,32 @@ class CoverageMapTest < Minitest::Test
                                       cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
     end
     assert map.uncapturable_source?(src)
+  end
+
+  # A failed test in another directory shares a basename prefix only. It must
+  # not fail the gate for app/models/user.rb.
+  def test_failing_split_test_outside_the_mirror_does_not_taint_the_source
+    dir = Dir.mktmpdir
+    src = File.join(dir, "app/models/user.rb")
+    bad = File.join(dir, "test/mailers/user_admin_test.rb")
+    FileUtils.mkdir_p(File.dirname(src))
+    FileUtils.mkdir_p(File.dirname(bad))
+    File.write(src, "class User; def n; 1; end; end\n")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    refute map.uncapturable_source?(src)
+  end
+
+  # The daemon rebuilds the map with from_data, which has no @source_paths.
+  # A failed exact test must still blame its source, and must not raise.
+  def test_from_data_uncapturable_does_not_crash_without_source_paths
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["test/calc_test.rb"],
+                                          project_root: Dir.pwd)
+    assert map.method_uncapturable?("lib/calc.rb", 1..3)
   end
 
   # user_mailer_test.rb keeps its exact source. It must not also fail the gate

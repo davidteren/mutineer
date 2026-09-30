@@ -98,8 +98,9 @@ module Mutineer
     # rather than a genuine coverage gap? True iff some capture failed this run
     # AND this file got zero coverage from any successful capture AND a failed
     # test file maps to it by the _test/_spec/test_ naming convention. Derived
-    # purely from already-persisted state (@map keys + @failed_test_files); no
-    # rerun, no new cached field, no digest change.
+    # from already-persisted state (@map keys + @failed_test_files). A split
+    # name also checks that no longer source file exists on disk. No rerun,
+    # no new cached field, no digest change.
     #
     # File-level, convention-based attribution. A line covered only by a failed
     # test in an otherwise-covered file stays no_coverage (condition 2), and a
@@ -112,7 +113,7 @@ module Mutineer
       rel = relativize(absolute(file))
       return false if covered_source_files.include?(rel)
 
-      failed_test_targets.include?(File.basename(rel, ".rb"))
+      failed_test_blames?(rel)
     end
 
     # Per-method taint. A mutant on a line whose enclosing method got zero
@@ -131,7 +132,7 @@ module Mutineer
       return false if @failed_test_files.empty?
 
       rel = relativize(absolute(file))
-      return false unless failed_test_targets.include?(File.basename(rel, ".rb"))
+      return false unless failed_test_blames?(rel)
 
       line_range.none? { |ln| @map.key?("#{rel}:#{ln}") }
     end
@@ -143,52 +144,63 @@ module Mutineer
       @map.keys.map { |k| k.rpartition(":").first }.to_set
     end
 
-    # Basenames of the sources that failed test files pair with by convention.
-    # A trailing `_test` or `_spec` is stripped first, as pairing tries that
-    # form first. A split file `<name>_<piece>_test.rb` also names `<name>` when
-    # `<name>` is a source in this run and `<name>_<piece>` is not (#87). An
-    # exact source keeps the file, so `user.rb` is not blamed for a failed
-    # `user_mailer_test.rb` while `user_mailer.rb` is in the run.
+    # True when a failed test file pairs with `source_rel` by convention.
+    # Exact `_test` / `_spec` / `test_` names match by basename, as before.
+    # A split `<name>_*_test.rb` matches only in the mirrored test directory,
+    # and only when no longer source file owns that name (#87).
+    #
+    # @param source_rel [String] project-relative source path.
+    # @return [Boolean]
+    def failed_test_blames?(source_rel)
+      name = File.basename(source_rel, ".rb")
+      failed_test_targets.include?(name) || split_failed_test?(source_rel)
+    end
+
+    # Basenames of the sources that failed test files pair with by convention:
+    # a trailing _test/_spec is stripped first, as pairing tries that form first.
     #
     # @return [Set<String>] source basenames, without `.rb`.
     def failed_test_targets
-      sources = @source_paths.map { |path| File.basename(path, ".rb") }.to_set
-      @failed_test_files.flat_map { |t| targets_for_failed_test(File.basename(t, ".rb"), sources) }.to_set
+      @failed_test_files.map do |t|
+        name = File.basename(t, ".rb")
+        case name
+        when /_(test|spec)\z/ then name.sub(/_(test|spec)\z/, "")
+        when "test_helper" then name # Minitest's support file pairs with no source
+        else name.delete_prefix("test_")
+        end
+      end.to_set
     end
 
-    # Source basenames one failed test file can taint.
+    # True when a failed split test file pairs with this source. Directory and
+    # the longer-source check match {Pairing}, so a test outside the mirror, or
+    # one owned by `user_session.rb`, does not taint `user.rb`.
     #
-    # @api private
-    # @param name [String] test basename without `.rb`.
-    # @param sources [Set<String>] basenames of the sources in this run.
-    # @return [Array<String>] candidate source basenames.
-    def targets_for_failed_test(name, sources)
-      case name
-      when "test_helper" then [name] # Minitest's support file pairs with no source
-      when /_spec\z/ then [name.sub(/_spec\z/, "")]
-      when /_test\z/
-        stem = name.sub(/_test\z/, "")
-        sources.include?(stem) ? [stem] : [stem] + split_source_names(stem, sources)
-      else [name.delete_prefix("test_")]
+    # @param source_rel [String] project-relative source path.
+    # @return [Boolean]
+    def split_failed_test?(source_rel)
+      base, lib = Pairing.logical_path(source_rel)
+      name = File.basename(base)
+      @failed_test_files.any? do |t|
+        test_rel = relativize(t)
+        entry = File.basename(test_rel)
+        next false unless Pairing.split_entry?(entry, name)
+        next false unless mirrored_test_dir?(test_rel, base, lib)
+        next false if Pairing.claimed_by_longer_source?(@project_root, base, entry)
+
+        true
       end
     end
 
-    # Shorter source names a split test file also refers to. `bar_upsert`
-    # yields `bar` when that source is in the run. The full stem is not
-    # included here.
+    # True when `test_rel` sits in a mirrored test directory for `base`.
     #
-    # @api private
-    # @param stem [String] test basename with `_test` removed.
-    # @param sources [Set<String>] basenames of the sources in this run.
-    # @return [Array<String>] matching shorter source basenames.
-    def split_source_names(stem, sources)
-      parts = stem.split("_")
-      return [] if parts.length < 2
-
-      (1...parts.length).filter_map do |i|
-        prefix = parts.first(i).join("_")
-        prefix if sources.include?(prefix)
-      end
+    # @param test_rel [String] project-relative test path.
+    # @param base [String] logical source path without extension.
+    # @param lib [Boolean] whether the source originated from lib/.
+    # @return [Boolean]
+    def mirrored_test_dir?(test_rel, base, lib)
+      dirs = [Pairing.mirror_dir("test", base)]
+      dirs << Pairing.mirror_dir("test/lib", base) if lib
+      dirs.include?(File.dirname(test_rel))
     end
 
     # Shared cache dance for both build paths: hit the digest-keyed cache, else

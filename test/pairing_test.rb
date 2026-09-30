@@ -168,6 +168,24 @@ class PairingTest < Minitest::Test
     end
   end
 
+  def test_split_file_is_left_for_the_longer_source_when_that_file_exists
+    with_tree("app/models/user.rb", "app/models/user_session.rb",
+              "test/models/user_session_test.rb") do |root|
+      assert_empty infer_tests("app/models/user.rb", root)
+      assert_equal ["test/models/user_session_test.rb"],
+                   infer_tests("app/models/user_session.rb", root)
+    end
+  end
+
+  def test_intermediate_source_owns_a_longer_split_name
+    with_tree("app/foo/bar.rb", "app/foo/bar_upsert.rb",
+              "test/foo/bar_upsert_guards_test.rb") do |root|
+      assert_empty infer_tests("app/foo/bar.rb", root)
+      assert_equal ["test/foo/bar_upsert_guards_test.rb"],
+                   infer_tests("app/foo/bar_upsert.rb", root)
+    end
+  end
+
   def test_split_files_still_pair_when_rspec_is_preferred_and_no_spec_exists
     with_tree("app/foo/bar.rb", "test/foo/bar_guards_test.rb") do |root|
       assert_equal ["test/foo/bar_guards_test.rb"],

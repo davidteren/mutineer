@@ -120,7 +120,7 @@ module Mutineer
       name = File.basename(base)
       dirs = [mirror_dir("test", base)]
       dirs << mirror_dir("test/lib", base) if lib
-      dirs.flat_map { |dir| split_tests_in(root, dir, name) }
+      dirs.flat_map { |dir| split_tests_in(root, dir, name, base) }
     end
 
     # Relative test directory for a logical source path. A source with no
@@ -139,23 +139,72 @@ module Mutineer
     # @param root [String] expanded project root.
     # @param dir_rel [String] relative directory.
     # @param name [String] source basename without extension.
+    # @param base [String] logical source path without extension.
     # @return [Array<String>] sorted relative paths.
-    def split_tests_in(root, dir_rel, name)
+    def split_tests_in(root, dir_rel, name, base)
       dir_abs = File.join(root, dir_rel)
       return [] unless File.directory?(dir_abs)
 
-      prefix = "#{name}_"
       Dir.children(dir_abs).filter_map do |entry|
         path = File.join(dir_abs, entry)
         next unless File.file?(path)
-        next unless entry.end_with?("_test.rb")
-
-        rest = entry.delete_prefix(prefix)
-        next if rest == entry
-        next unless rest.match?(/\A.+_test\.rb\z/)
+        next unless split_entry?(entry, name)
+        next if claimed_by_longer_source?(root, base, entry)
 
         File.join(dir_rel, entry)
       end.sort
+    end
+
+    # True when `entry` is `<name>_<piece>_test.rb` and not the exact
+    # `<name>_test.rb` file.
+    #
+    # @param entry [String] test file basename.
+    # @param name [String] source basename without extension.
+    # @return [Boolean]
+    def split_entry?(entry, name)
+      return false unless entry.end_with?("_test.rb")
+
+      rest = entry.delete_prefix("#{name}_")
+      rest != entry && rest.match?(/\A.+_test\.rb\z/)
+    end
+
+    # True when a longer source file on disk owns this split test. `user.rb`
+    # does not take `user_session_test.rb` when `user_session.rb` exists under
+    # `app/` or `lib/` in the same logical directory. An intermediate file
+    # counts: `bar_upsert.rb` owns `bar_upsert_guards_test.rb`, so `bar.rb`
+    # does not.
+    #
+    # @param root [String] expanded project root.
+    # @param base [String] logical source path without extension.
+    # @param entry [String] test file basename.
+    # @return [Boolean]
+    def claimed_by_longer_source?(root, base, entry)
+      name = File.basename(base)
+      stem = entry.sub(/_test\.rb\z/, "")
+      return false unless stem.start_with?("#{name}_")
+
+      rest = stem.delete_prefix("#{name}_")
+      return false if rest.empty?
+
+      dir = File.dirname(base)
+      parts = rest.split("_")
+      (1..parts.length).any? do |i|
+        longer = "#{name}_#{parts.first(i).join("_")}"
+        longer_source_exists?(root, dir, longer)
+      end
+    end
+
+    # True when `app/` or `lib/` has `<dir>/<stem>.rb`.
+    #
+    # @param root [String] expanded project root.
+    # @param dir [String] logical directory, or `.` when the source has none.
+    # @param stem [String] longer source basename without extension.
+    # @return [Boolean]
+    def longer_source_exists?(root, dir, stem)
+      %w[app lib].any? do |prefix|
+        rel = dir == "." ? File.join(prefix, "#{stem}.rb") : File.join(prefix, dir, "#{stem}.rb")
+        File.file?(File.join(root, rel))
+      end
     end
   end
 end

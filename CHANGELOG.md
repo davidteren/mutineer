@@ -13,9 +13,11 @@ All notable changes to this project are documented here. The format is based on
   that file exists. The same names under `test/lib/` pair with a `lib/`
   source. Before, only the exact `bar_test.rb` name was tried, so a suite
   split across `bar_*_test.rb` files was skipped and a gate could pass with
-  no mutants run. A spec the old rules already find is unchanged. A failed
-  capture of `bar_upsert_test.rb` marks `bar.rb` uncapturable when
-  `bar_upsert.rb` is not part of the run.
+  no mutants run. A spec the old rules already find is unchanged. The
+  split name is left for `user_session.rb` when that file exists, so
+  `user.rb` does not run `user_session_test.rb`. A failed capture of
+  `test/foo/bar_upsert_test.rb` marks `app/foo/bar.rb` uncapturable when
+  `bar_upsert.rb` does not exist. A test outside that directory does not.
 - **`rake site:build` can no longer delete a directory such as `lib/` or
   `.git`** (#162). The task removed the destination it was given, and only
   refused the checkout, its parents and `docs/`. It now always builds into
