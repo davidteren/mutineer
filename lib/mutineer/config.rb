@@ -261,7 +261,12 @@ module Mutineer
         prefix = file ? "#{file}: " : ""
         raise ConfigError, "#{prefix}unknown #{field} #{value.to_s.inspect}. Expected: #{opt.values.join(', ')}"
       when :string_list then Array(value).map(&:to_s)
-      when :string then value&.to_s
+      when :string
+        # `only: false` must not become the subject name "false", which matches
+        # nothing and turns a full run into an empty one that still exits 0.
+        raise ConfigError, "#{origin} must be a string #{got}" if [true, false].include?(value)
+
+        value&.to_s
       when :since
         # false / empty normalize to nil ("no scoping"), so every consumer's
         # nil-check (runner scoping, the report's scoped marker) agrees. A

@@ -252,6 +252,17 @@ class CliTest < Minitest::Test
     assert_includes err, "unknown git ref"
   end
 
+# `only: false` in the file must fail like a bad flag. It once ran zero mutants,
+# scored nil and exited 0 even with a weak test.
+def test_only_false_in_config_file_exits_two
+  with_project do |proj|
+    File.write(File.join(proj, ".mutineer.yml"), "only: false\n")
+    _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb", chdir: proj)
+    assert_equal 2, status.exitstatus
+    assert_includes err, ".mutineer.yml: only must be a string (got: false)"
+  end
+end
+
   # --- happy paths driven through bin/mutineer -----------------------------
 
   def test_successful_run_exits_zero

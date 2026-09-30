@@ -127,6 +127,23 @@ class ConfigTest < Minitest::Test
     assert_equal "5", Config.parse(:only, 5)
   end
 
+# A boolean is not a string: `only: false` once became the subject name "false",
+# so the run had no mutants and still exited 0.
+def test_parse_string_rejects_booleans_naming_the_origin
+  [true, false].each do |bad|
+    assert_equal "--only must be a string (got: #{bad})", parse_error(:only, bad)
+    assert_equal ".mutineer.yml: only must be a string (got: #{bad})",
+                 parse_error(:only, bad, file: ".mutineer.yml")
+  end
+end
+
+def test_from_file_rejects_a_boolean_for_a_string_key
+  with_config("only: false\n") do |path|
+    err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+    assert_match(/\.mutineer\.yml: only must be a string \(got: false\)/, err.message)
+  end
+end
+
   def test_from_file_rejects_bad_jobs_and_bad_booleans
     with_config("jobs: 1.9\n") do |path|
       err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
