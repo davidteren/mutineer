@@ -7,13 +7,13 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
-- **The daemon no longer inherits the tool's Ruby and Bundler settings** (#100).
+- **The daemon no longer runs the tool's Ruby settings inside the app** (#100).
   Open3 keeps a variable when the spawn hash omits it, so a parent `RUBYOPT`
-  ran inside the app, and tool load paths, gem paths, and excluded groups
-  stayed. The daemon now uses the same child environment as the external
-  runner, and also unsets `BUNDLER_SETUP` (Ruby loads that path before the
-  script). Version-manager bins leave `PATH`. The app Gemfile, an explicit
-  Ruby pin, and Rails env are applied after that.
+  ran inside the app. The child now gets the environment Bundler saved before
+  it activated, passed with `unsetenv_others`. The app keeps its gem home,
+  excluded groups, Bundler config, and chruby path. The tool's `RUBYOPT`,
+  `RUBYLIB`, and gem home do not. rbenv and asdf version bins leave `PATH`.
+  The app Gemfile, an explicit Ruby pin, and Rails env are applied after that.
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not
   singleton methods (#144).

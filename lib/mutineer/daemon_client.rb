@@ -14,11 +14,12 @@ module Mutineer
 
   # Tool-side handle for the app-side daemon.
   #
-  # Spawns `daemon_server.rb` UNDER THE APP'S BUNDLE/RUBY (tool Ruby, Bundler,
-  # and version-manager keys are unset in the child, because Open3 keeps a key
-  # the hash omits; the daemon file is loaded by absolute path with `-r`, which
-  # bypasses the app bundle that has no mutineer), completes the ready
-  # handshake, then ships per-mutant payloads and reads structured verdicts.
+  # Spawns `daemon_server.rb` UNDER THE APP'S BUNDLE/RUBY. The child gets the
+  # environment from before the tool's Bundler activated, with
+  # <tt>unsetenv_others</tt>, because Open3 keeps a key the hash omits. The
+  # daemon file is loaded by absolute path with `-r`, which bypasses the app
+  # bundle that has no mutineer. The client completes the ready handshake,
+  # then ships per-mutant payloads and reads structured verdicts.
   # If the daemon dies mid-run it respawns (bounded) and marks the in-flight
   # mutant `error` rather than corrupting the run. Reuses the cleaned-env spawn
   # and stderr-drain proven in the spike driver and the spawn discipline of
@@ -28,6 +29,27 @@ module Mutineer
     DAEMON_PATH = File.expand_path("daemon_server.rb", __dir__)
     # How many times to respawn a crashing daemon before aborting the run.
     MAX_RESTARTS = 3
+    # Variables Bundler saves under <tt>BUNDLER_ORIG_*</tt> before it replaces
+    # them. Restoring these undoes the tool bundle. Other <tt>BUNDLE_</tt>
+    # keys (the app's <tt>BUNDLE_WITHOUT</tt> or <tt>BUNDLE_APP_CONFIG</tt>)
+    # stay.
+    BUNDLER_SAVED_KEYS = %w[
+      BUNDLE_BIN_PATH BUNDLE_GEMFILE BUNDLER_VERSION BUNDLER_SETUP
+      GEM_HOME GEM_PATH MANPATH PATH RB_USER_INSTALL RUBYLIB RUBYOPT
+    ].freeze
+    # Bundler's marker for a variable that was unset before it activated.
+    BUNDLER_UNSET = "BUNDLER_ENVIRONMENT_PRESERVER_INTENTIONALLY_NIL"
+    # rbenv and asdf put a concrete Ruby bin ahead of their shims. chruby has
+    # no shims, so a <tt>~/.rubies</tt> bin stays on PATH.
+    MANAGED_RUBY_BIN = %r{
+      (?:
+        /\.rbenv/versions/[^/]+/bin
+        |/\.asdf/installs/ruby/[^/]+/bin
+      )/?\z
+    }x
+    # Version-manager pins that would force the tool's Ruby. An explicit
+    # +ruby_version+ is applied after these are removed.
+    RUBY_PIN_KEYS = %w[RBENV_VERSION ASDF_RUBY_VERSION RBENV_DIR].freeze
 
     # @param boot [Hash] boot config sent to the daemon: project_root, boot,
     #   load_paths, framework, rails.
@@ -120,22 +142,56 @@ module Mutineer
 
     private
 
-    # Environment delta for the daemon child. Open3 merges this onto the parent,
-    # so a missing key still leaks. Start from {ExternalBackend.child_env}, which
-    # sets tool Ruby, Bundler, gem, and version-manager keys to nil and drops
-    # concrete version bins from PATH. Also unset <tt>BUNDLER_*</tt>:
-    # <tt>BUNDLER_SETUP</tt> is not a <tt>BUNDLE_</tt> key, and Ruby loads it
-    # before the script. Then point the child at the target app.
+    # Full environment for the daemon child. Spawn with +unsetenv_others+ so a
+    # key deleted here does not leak back from the parent. Undo only what
+    # Bundler saved before it activated, then point the child at the target app.
     #
     # @api private
-    # @return [Hash{String => String, nil}]
+    # @return [Hash{String => String}]
     def app_env
-      env = ExternalBackend.child_env
-      ENV.each_key { |key| env[key] = nil if key.start_with?("BUNDLER_") }
+      env = restored_user_env
+      RUBY_PIN_KEYS.each { |key| env.delete(key) }
+      scrub_managed_ruby_bins!(env)
+      env.delete("BUNDLER_SETUP")
       env["BUNDLE_GEMFILE"] = @gemfile
       env["RBENV_VERSION"] = @ruby_version if @ruby_version
-      env["RAILS_ENV"] = "test" if rails_boot? && ENV["RAILS_ENV"].nil?
+      env["RAILS_ENV"] = "test" if rails_boot? && !env.key?("RAILS_ENV")
       env
+    end
+
+    # Environment with Bundler's saved originals put back.
+    #
+    # @api private
+    # @return [Hash{String => String}]
+    def restored_user_env
+      env = ENV.to_h
+      BUNDLER_SAVED_KEYS.each do |key|
+        saved = env.delete("BUNDLER_ORIG_#{key}")
+        next if saved.nil?
+
+        if saved == BUNDLER_UNSET
+          env.delete(key)
+        else
+          env[key] = saved
+        end
+      end
+      env.delete_if { |key, _| key.start_with?("BUNDLER_ORIG_") }
+      env
+    end
+
+    # Drop rbenv and asdf version bins so shims can select the app Ruby.
+    # Leave chruby bins in place.
+    #
+    # @api private
+    # @param env [Hash{String => String}]
+    # @return [void]
+    def scrub_managed_ruby_bins!(env)
+      parts = env["PATH"].to_s.split(File::PATH_SEPARATOR)
+      kept = parts.reject { |part| part.match?(MANAGED_RUBY_BIN) }
+      return if kept.size == parts.size
+
+      shims = ExternalBackend.version_manager_shim_dirs
+      env["PATH"] = (shims + kept).uniq.join(File::PATH_SEPARATOR)
     end
 
     # True when this daemon boots a Rails app.
@@ -163,7 +219,8 @@ module Mutineer
         begin
           @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(
             app_env, "bundle", "exec", "ruby",
-            "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run", chdir: @app_root
+            "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run",
+            unsetenv_others: true, chdir: @app_root
           )
           # Drain daemon stderr to the tool's stderr so child/boot errors are visible.
           # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn;
