@@ -1,0 +1,18 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 10,12-16
+lib/mutineer/daemon_client.rb
+  h_e8a5bb9272fa34 17-22,32-52,145-147,150,152-155,158,162-196,222-223
+test/daemon_client_env_test.rb
+  h_e8a5bb9272fa34 12-14,17,19,23-25,31-34,37,41,49-54,63,70,89-91,94,96,98-100,102,104,109-114,130,138-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7313978f6a9cabff08ef899330638f02ff39312d",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
