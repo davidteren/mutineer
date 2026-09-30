@@ -55,8 +55,8 @@ mutineer run --dry-run lib/foo.rb
 | `--baseline FILE` | Exit 1 on new survivors / score drop versus a prior JSON run |
 | `--format human\|json\|html` | Report format (default: human) |
 | `--output FILE` | Write the report to FILE instead of stdout |
-| `--jobs N` | Parallel worker count |
-| `--rails` | Boot `config/environment` once (Rails apps) |
+| `--jobs N` | Parallel worker count; forced to 1 under `--rails` without `--daemon` |
+| `--rails` | Boot `config/environment` once; without `--daemon`, defaults to `redefine` and runs serially |
 | `--daemon` | Persistent daemon + per-worker DB isolation (needs `--rails` / `--boot`) |
 | `--dry-run` | List candidate mutations without executing |
 
