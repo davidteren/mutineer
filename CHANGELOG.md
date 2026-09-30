@@ -13,7 +13,8 @@ All notable changes to this project are documented here. The format is based on
   its branch always runs or never runs. A surviving mutant means no selected
   test detected the forced condition. A literal condition, also in
   parentheses, makes no mutant: forcing it changes nothing or repeats the
-  `boolean_literal` flip. The never-runs side of an else-less conditional can
+  `boolean_literal` flip. A condition that holds a heredoc makes no mutant.
+  The never-runs side of an else-less conditional can
   be the same program as the `nil` that `statement_removal` or `return_nil`
   puts in its place; it is still made, so these mutants and their ids do not
   depend on which other operators run.

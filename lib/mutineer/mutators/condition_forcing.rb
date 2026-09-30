@@ -14,6 +14,8 @@ module Mutineer
     # A condition that is already `true`, `false` or `nil`, even in
     # parentheses, is left alone: forcing it changes nothing or repeats the
     # `boolean_literal` flip. This holds even when `boolean_literal` does not run.
+    # A condition that holds a heredoc is left alone too: the heredoc body lies
+    # outside the condition, so it would stay behind as code.
     #
     # The never-runs side of an else-less conditional can be the same program
     # as the `nil` that `statement_removal` or `return_nil` puts in place of the
@@ -56,13 +58,14 @@ module Mutineer
 
       private
 
-      # Emits the forced condition unless the condition is a literal.
+      # Emits the forced condition unless the condition is a literal or holds a
+      # heredoc, whose body would stay behind as code.
       #
       # @param node [Prism::IfNode, Prism::UnlessNode] the conditional.
       # @return [void]
       def force(node)
         predicate = node.predicate
-        return if LITERALS.any? { |literal| unwrap(predicate).is_a?(literal) }
+        return if LITERALS.any? { |literal| unwrap(predicate).is_a?(literal) } || heredoc?(predicate)
 
         loc = predicate.location
         @mutations << Mutation.new(

@@ -65,6 +65,10 @@ class ConditionForcingTest < Minitest::Test
     assert_equal [[], []], both("((false)) ? 1 : 2")
   end
 
+  def test_condition_with_a_heredoc_is_skipped
+    assert_equal [[], []], both("if foo(<<~X)\n    hi\n  X\n    1\n  end")
+  end
+
   # Both sides are made even when statement_removal or return_nil would put
   # nil in place of the whole conditional: this operator's mutants must not
   # depend on which other operators run or what the user suppressed.
