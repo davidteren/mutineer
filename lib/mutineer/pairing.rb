@@ -146,9 +146,8 @@ module Mutineer
       return [] unless File.directory?(dir_abs)
 
       Dir.children(dir_abs).filter_map do |entry|
-        path = File.join(dir_abs, entry)
-        next unless File.file?(path)
         next unless split_entry?(entry, name)
+        next unless File.file?(File.join(dir_abs, entry))
         next if claimed_by_longer_source?(root, base, entry)
 
         File.join(dir_rel, entry)
@@ -169,8 +168,8 @@ module Mutineer
     end
 
     # True when a longer source file on disk owns this split test. `user.rb`
-    # does not take `user_session_test.rb` when `user_session.rb` exists under
-    # `app/` or `lib/` in the same logical directory. An intermediate file
+    # does not take `user_session_test.rb` when `user_session.rb` exists in the
+    # same directory, under `app/`, or under `lib/`. An intermediate file
     # counts: `bar_upsert.rb` owns `bar_upsert_guards_test.rb`, so `bar.rb`
     # does not.
     #
@@ -194,15 +193,21 @@ module Mutineer
       end
     end
 
-    # True when `app/` or `lib/` has `<dir>/<stem>.rb`.
+    # True when a longer source file exists beside this logical path.
+    # The logical directory itself is checked, so `src/user_session.rb` owns
+    # `test/src/user_session_test.rb`. `app/` and `lib/` are checked too, so an
+    # `app/` source still yields the name to a `lib/` sibling and the reverse.
     #
     # @param root [String] expanded project root.
     # @param dir [String] logical directory, or `.` when the source has none.
     # @param stem [String] longer source basename without extension.
     # @return [Boolean]
     def longer_source_exists?(root, dir, stem)
-      %w[app lib].any? do |prefix|
-        rel = dir == "." ? File.join(prefix, "#{stem}.rb") : File.join(prefix, dir, "#{stem}.rb")
+      file = "#{stem}.rb"
+      folders = [dir == "." ? nil : dir]
+      %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
+      folders.uniq.any? do |folder|
+        rel = folder ? File.join(folder, file) : file
         File.file?(File.join(root, rel))
       end
     end

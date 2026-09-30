@@ -285,7 +285,7 @@ directory (or several sources) to audit a whole layer in one boot — tests are
 auto-paired by convention and the report breaks down per source. A source
 `app/foo/bar.rb` pairs with `test/foo/bar_test.rb` and with every
 `test/foo/bar_*_test.rb` in that directory, such as `bar_upsert_test.rb`.
-It does not take `user_session_test.rb` when `user_session.rb` exists.
+It does not take `user_session_test.rb` when `user_session.rb` exists in the same directory.
 A spec that already pairs is left as that one file.
 
 ### GitHub Action

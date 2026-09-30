@@ -15,7 +15,9 @@ All notable changes to this project are documented here. The format is based on
   split across `bar_*_test.rb` files was skipped and a gate could pass with
   no mutants run. A spec the old rules already find is unchanged. The
   split name is left for `user_session.rb` when that file exists, so
-  `user.rb` does not run `user_session_test.rb`. A failed capture of
+  `user.rb` does not run `user_session_test.rb`. The same rule holds outside
+  `app/` and `lib/`: `src/user.rb` does not take `test/src/user_session_test.rb`
+  when `src/user_session.rb` exists. A failed capture of
   `test/foo/bar_upsert_test.rb` marks `app/foo/bar.rb` uncapturable when
   `bar_upsert.rb` does not exist. A test outside that directory does not.
 - **`rake site:build` can no longer delete a directory such as `lib/` or

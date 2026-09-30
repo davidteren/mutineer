@@ -177,6 +177,20 @@ class PairingTest < Minitest::Test
     end
   end
 
+  def test_longer_source_outside_app_and_lib_keeps_its_split_file
+    with_tree("src/user.rb", "src/user_session.rb", "test/src/user_session_test.rb") do |root|
+      assert_empty infer_tests("src/user.rb", root)
+      assert_equal ["test/src/user_session_test.rb"], infer_tests("src/user_session.rb", root)
+    end
+  end
+
+  def test_root_source_does_not_take_a_longer_sibling_test
+    with_tree("user.rb", "user_session.rb", "test/user_session_test.rb") do |root|
+      assert_empty infer_tests("user.rb", root)
+      assert_equal ["test/user_session_test.rb"], infer_tests("user_session.rb", root)
+    end
+  end
+
   def test_intermediate_source_owns_a_longer_split_name
     with_tree("app/foo/bar.rb", "app/foo/bar_upsert.rb",
               "test/foo/bar_upsert_guards_test.rb") do |root|

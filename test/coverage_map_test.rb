@@ -838,12 +838,47 @@ class CoverageMapTest < Minitest::Test
     refute map.uncapturable_source?(src)
   end
 
+  # src/user_session.rb owns the split name even though it is outside app/ and lib/.
+  def test_failing_split_owned_outside_app_and_lib_does_not_taint_the_shorter_source
+    dir = Dir.mktmpdir
+    user = File.join(dir, "src/user.rb")
+    session = File.join(dir, "src/user_session.rb")
+    bad = File.join(dir, "test/src/user_session_test.rb")
+    [user, session, bad].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+    File.write(user, "class User; def n; 1; end; end\n")
+    File.write(session, "class UserSession; def n; 1; end; end\n")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [user, session], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    assert map.uncapturable_source?(session)
+    refute map.uncapturable_source?(user)
+  end
+
   # The daemon rebuilds the map with from_data, which has no @source_paths.
   # A failed exact test must still blame its source, and must not raise.
   def test_from_data_uncapturable_does_not_crash_without_source_paths
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["test/calc_test.rb"],
                                           project_root: Dir.pwd)
     assert map.method_uncapturable?("lib/calc.rb", 1..3)
+  end
+
+  # The split path must run on a daemon map. An exact name returns before it.
+  # The files exist so path normalization stays project-relative.
+  def test_from_data_split_blame_does_not_need_source_paths
+    Dir.mktmpdir do |dir|
+      bad = File.join(dir, "test/foo/bar_extra_test.rb")
+      src = File.join(dir, "app/foo/bar.rb")
+      FileUtils.mkdir_p(File.dirname(bad))
+      FileUtils.mkdir_p(File.dirname(src))
+      File.write(bad, "require 'does/not/exist'\n")
+      File.write(src, "class Bar; def n; 1; end; end\n")
+      map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["test/foo/bar_extra_test.rb"],
+                                            project_root: dir)
+      assert map.method_uncapturable?(src, 1..3)
+    end
   end
 
   # user_mailer_test.rb keeps its exact source. It must not also fail the gate
