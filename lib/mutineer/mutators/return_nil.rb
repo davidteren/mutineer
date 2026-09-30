@@ -39,13 +39,6 @@ module Mutineer
         super
       end
 
-      # Nested method definitions are discovered as their own subjects; do not
-      # recurse into them (prevents double-counting their statements).
-      #
-      # @param node [Prism::DefNode] nested definition node.
-      # @return [void]
-      def visit_def_node(node); end
-
       private
 
       # Mutates a method's final expression to nil when eligible.

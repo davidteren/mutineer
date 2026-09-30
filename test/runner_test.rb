@@ -91,6 +91,37 @@ class RunnerTest < Minitest::Test
     assert_predicate result, :skipped?, "expected skipped, got #{result.status}"
   end
 
+  def test_collect_jobs_emits_a_nested_method_mutant_once_on_the_inner_subject
+    Dir.mktmpdir do |root|
+      path = File.join(root, "nested.rb")
+      File.write(path, "class Nested\n  def outer\n    def inner\n      true\n    end\n    false\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: root)
+      jobs, = Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::ALL.keys))
+
+      edits = jobs.map { |_s, m, _id| [m.start_offset, m.end_offset, m.replacement] }
+      assert_equal edits.uniq, edits, "an edit is emitted on more than one subject"
+      owners = jobs.select { |_s, m, _id| m.operator == :boolean_literal && m.replacement == "false" }
+                   .map { |s, _m, _id| s.qualified_name }
+      assert_equal ["Nested#inner"], owners
+    end
+  end
+
+  def test_collect_jobs_keeps_a_def_in_class_shift_obj_on_the_enclosing_subject
+    Dir.mktmpdir do |root|
+      path = File.join(root, "nested.rb")
+      File.write(path, "class Nested\n  def outer(obj)\n    class << obj\n      def hidden\n        true\n      end\n    end\n" \
+                       "    class << self\n      def shown\n        true\n      end\n    end\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: root)
+      jobs, = Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::ALL.keys))
+
+      edits = jobs.map { |_s, m, _id| [m.start_offset, m.end_offset, m.replacement] }
+      assert_equal edits.uniq, edits, "an edit is emitted on more than one subject"
+      owners = jobs.select { |_s, m, _id| m.operator == :boolean_literal && m.replacement == "false" }
+                   .map { |s, _m, _id| s.qualified_name }
+      assert_equal ["Nested#outer", "Nested.shown"], owners.sort
+    end
+  end
+
   # --since restricts the job list to mutations on changed lines. Deterministic:
   # stub ChangedLines.for (no real git) so only line 5 (`a + b`) is "changed",
   # then assert filter_since keeps only line-5 jobs and drops the rest.

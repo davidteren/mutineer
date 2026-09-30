@@ -27,6 +27,30 @@ module Mutineer
         @mutations
       end
 
+      # Skips a nested method definition. The project finds it as a subject of
+      # its own, so a visit here counts its mutations twice. Inside
+      # `class << obj`, the project finds no subject, so the visit continues.
+      #
+      # @param node [Prism::DefNode] nested definition node.
+      # @return [void]
+      def visit_def_node(node)
+        super if @in_undiscovered
+      end
+
+      # Tracks a `class << obj` whose `obj` is not `self`. The project does not
+      # recurse into it, so its defs are no subjects (see
+      # `Project::SubjectVisitor#visit_singleton_class_node`).
+      #
+      # @param node [Prism::SingletonClassNode] singleton-class node.
+      # @return [void]
+      def visit_singleton_class_node(node)
+        return super if node.expression.is_a?(Prism::SelfNode)
+
+        outer, @in_undiscovered = @in_undiscovered, true
+        super
+        @in_undiscovered = outer
+      end
+
       private
 
       # Returns whether a node is, or contains, a heredoc.

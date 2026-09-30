@@ -18,6 +18,30 @@ All notable changes to this project are documented here. The format is based on
   rules. API README links work outside GitHub, repeated changelog headings have
   unique anchors, and the website checks validate built links and anchors.
   Mutant-id wording and the gem's Minitest/RSpec description are also corrected.
+- **A mutant in a nested method counts once** (#157). A `def` inside
+  another method is a subject of its own, but most operators also mutated
+  its code on the outer method. The same edit then counted twice in the
+  score, with two ids. Every operator now skips a nested `def` when it
+  mutates the outer method. A `def` inside `class << obj`, where `obj` is
+  not `self`, is not a subject, so the outer method still mutates its code.
+  `array_literal`, `chain_link`, `condition_true`, `condition_false`,
+  `operand_removal`, `operator_assignment` and `return_nil` skipped that
+  code before. Their new mutants there can show as new survivors against a
+  baseline.
+
+  A mutant id includes an ordinal among the mutants with the same operator
+  and token in a subject. When the duplicates leave the outer method, the
+  ordinals of its own mutants change. An old duplicate id can then name a
+  different mutant on the outer method, and an `ignore:` entry or a
+  baseline entry with that id applies to that mutant with no warning. If
+  your code has nested methods, regenerate the `ignore:` entries and the
+  baseline for the outer methods.
+
+  Under `--strategy redefine` (the `--rails` default), a mutant in a nested
+  method can survive or error even when a test would catch it. `redefine`
+  loads only the inner method, and a call to the outer method defines the
+  original inner method again. Before, the copy of the edit on the outer
+  method was killed. Now each edit has one verdict, from the inner method.
 
 ## [1.4.0] - 2026-09-30
 
