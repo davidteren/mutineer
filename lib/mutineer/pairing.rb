@@ -4,10 +4,12 @@ module Mutineer
   # Source -> test pairing by path convention (#11). Pure stdlib path logic:
   # no Rails, no class loading, no process. Two jobs:
   #   * expand_sources — a directory argument becomes its sorted **/*.rb files.
-  #   * infer_test     — a source's test file by convention (app/ and lib/
-  #                     sources map to test/.../_test.rb, test/.../test_*.rb
-  #                     or spec/.../_spec.rb), preserving namespaced
-  #                     subdirectories. First EXISTING candidate wins.
+  #   * infer_tests    — a source's test files by convention (app/ and lib/
+  #                     sources map to test/.../_test.rb, test/.../<name>_*_test.rb,
+  #                     test/.../test_*.rb or spec/.../_spec.rb), preserving
+  #                     namespaced subdirectories. The first EXISTING exact
+  #                     candidate stays first. Split Minitest files join a
+  #                     Minitest match. A matched spec is left as that one file.
   #
   # Independently unit-testable: every method is pure in/out over the
   # filesystem, so the pairing contract is exercised with plain fixtures, no
@@ -34,20 +36,36 @@ module Mutineer
       end.uniq
     end
 
-    # The first EXISTING candidate test path for a source (relative to
-    # project_root), or nil. `prefer` is the resolved framework ("minitest" |
-    # "rspec"): its candidates are tried first, the other framework's as
-    # fallback, so a minitest default still finds a spec and vice-versa.
+    # The first test path {#infer_tests} would run for a source, or nil.
+    # `prefer` is the resolved framework ("minitest" | "rspec"): its candidates
+    # are tried first, the other framework's as fallback, so a minitest default
+    # still finds a spec and vice-versa.
     #
     # @param source_rel [String] relative source path.
     # @param project_root [String] repository root for existence checks.
     # @param prefer [String] preferred framework name.
     # @return [String, nil] existing test path or nil.
     def infer_test(source_rel, project_root:, prefer: "minitest")
+      infer_tests(source_rel, project_root: project_root, prefer: prefer).first
+    end
+
+    # Every test file convention pairs with a source. The first existing exact
+    # candidate from {#candidates} stays first. Each `<basename>_*_test.rb` in
+    # the mirrored test directory is added after it (#87). A spec that the exact
+    # rules already found is left alone: split Minitest names do not join it
+    # and do not replace it.
+    #
+    # @param source_rel [String] relative source path.
+    # @param project_root [String] repository root for existence checks.
+    # @param prefer [String] preferred framework name.
+    # @return [Array<String>] existing test paths, exact candidate first.
+    def infer_tests(source_rel, project_root:, prefer: "minitest")
       base, lib = logical_path(source_rel)
-      candidates(base, lib, prefer).find do |rel|
-        File.exist?(File.expand_path(rel, project_root))
-      end
+      root = File.expand_path(project_root)
+      exact = candidates(base, lib, prefer).find { |rel| File.exist?(File.expand_path(rel, root)) }
+      return [exact] if exact&.end_with?("_spec.rb")
+
+      ([exact] + split_test_files(base, lib, root)).compact.uniq
     end
 
     # Strip the source root to a logical path (no ".rb") and flag lib/
@@ -86,6 +104,58 @@ module Mutineer
       rspec = ["spec/#{base}_spec.rb"]
       rspec << "spec/lib/#{base}_spec.rb" if lib
       prefer == "rspec" ? rspec + minitest : minitest + rspec
+    end
+
+    # `<basename>_*_test.rb` files in each mirrored test directory (#87). The
+    # exact `<basename>_test.rb` name is not included. `lib/` sources also look
+    # under `test/lib/`. Names are matched as text, not as a glob, so a basename
+    # that contains `*` stays literal. `test/` comes before `test/lib/`, and
+    # each directory is sorted.
+    #
+    # @param base [String] logical source path without extension.
+    # @param lib [Boolean] whether the source originated from lib/.
+    # @param root [String] expanded project root.
+    # @return [Array<String>] relative split-test paths.
+    def split_test_files(base, lib, root)
+      name = File.basename(base)
+      dirs = [mirror_dir("test", base)]
+      dirs << mirror_dir("test/lib", base) if lib
+      dirs.flat_map { |dir| split_tests_in(root, dir, name) }
+    end
+
+    # Relative test directory for a logical source path. A source with no
+    # subdirectory (`calc`) maps to `prefix` itself, not `prefix/.`.
+    #
+    # @param prefix [String] `test` or `test/lib`.
+    # @param base [String] logical source path without extension.
+    # @return [String] relative directory.
+    def mirror_dir(prefix, base)
+      dir = File.dirname(base)
+      dir == "." ? prefix : File.join(prefix, dir)
+    end
+
+    # Split test files directly inside `dir_rel` (not in subdirectories).
+    #
+    # @param root [String] expanded project root.
+    # @param dir_rel [String] relative directory.
+    # @param name [String] source basename without extension.
+    # @return [Array<String>] sorted relative paths.
+    def split_tests_in(root, dir_rel, name)
+      dir_abs = File.join(root, dir_rel)
+      return [] unless File.directory?(dir_abs)
+
+      prefix = "#{name}_"
+      Dir.children(dir_abs).filter_map do |entry|
+        path = File.join(dir_abs, entry)
+        next unless File.file?(path)
+        next unless entry.end_with?("_test.rb")
+
+        rest = entry.delete_prefix(prefix)
+        next if rest == entry
+        next unless rest.match?(/\A.+_test\.rb\z/)
+
+        File.join(dir_rel, entry)
+      end.sort
     end
   end
 end

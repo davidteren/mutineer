@@ -568,6 +568,31 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #87: bar_*_test.rb is the suite when bar_test.rb does not exist. The source
+  # must run, not be skipped as if it had no tests.
+  def test_split_test_files_are_paired_and_run
+    Dir.mktmpdir("mutineer-split") do |proj|
+      FileUtils.mkdir_p(File.join(proj, "app/foo"))
+      FileUtils.mkdir_p(File.join(proj, "test/foo"))
+      File.write(File.join(proj, "app/foo/bar.rb"), "class Bar\n  def n(a)\n    a + 1\n  end\nend\n")
+      File.write(File.join(proj, "test/foo/bar_upsert_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "../../app/foo/bar"
+        class BarUpsertTest < Minitest::Test
+          def test_n
+            assert_equal 2, Bar.new.n(1)
+          end
+        end
+      RUBY
+      out, err, status = mutineer("run", "app/foo/bar.rb", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "no test found by convention"
+      doc = JSON.parse(out)
+      assert_equal ["app/foo/bar.rb"], doc["per_source"].map { |h| h["file"] }
+      assert_operator doc["summary"]["killed"], :>, 0
+    end
+  end
+
   # R5: an explicit --test disables inference entirely — only the named source runs.
   def test_explicit_test_overrides_autopairing
     with_autopair_project do |proj|

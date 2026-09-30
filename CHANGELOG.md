@@ -7,6 +7,15 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **Split test files pair with their source** (#87). A source such as
+  `app/foo/bar.rb` now also uses `test/foo/bar_upsert_test.rb` and
+  `test/foo/bar_guards_test.rb`, together with `test/foo/bar_test.rb` when
+  that file exists. The same names under `test/lib/` pair with a `lib/`
+  source. Before, only the exact `bar_test.rb` name was tried, so a suite
+  split across `bar_*_test.rb` files was skipped and a gate could pass with
+  no mutants run. A spec the old rules already find is unchanged. A failed
+  capture of `bar_upsert_test.rb` marks `bar.rb` uncapturable when
+  `bar_upsert.rb` is not part of the run.
 - **`rake site:build` can no longer delete a directory such as `lib/` or
   `.git`** (#162). The task removed the destination it was given, and only
   refused the checkout, its parents and `docs/`. It now always builds into

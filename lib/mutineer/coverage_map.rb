@@ -143,17 +143,52 @@ module Mutineer
       @map.keys.map { |k| k.rpartition(":").first }.to_set
     end
 
-    # Basenames of the sources that failed test files pair with by convention:
-    # a trailing _test/_spec is stripped first, as pairing tries that form first.
+    # Basenames of the sources that failed test files pair with by convention.
+    # A trailing `_test` or `_spec` is stripped first, as pairing tries that
+    # form first. A split file `<name>_<piece>_test.rb` also names `<name>` when
+    # `<name>` is a source in this run and `<name>_<piece>` is not (#87). An
+    # exact source keeps the file, so `user.rb` is not blamed for a failed
+    # `user_mailer_test.rb` while `user_mailer.rb` is in the run.
+    #
+    # @return [Set<String>] source basenames, without `.rb`.
     def failed_test_targets
-      @failed_test_files.map do |t|
-        name = File.basename(t, ".rb")
-        case name
-        when /_(test|spec)\z/ then name.sub(/_(test|spec)\z/, "")
-        when "test_helper" then name # Minitest's support file pairs with no source
-        else name.delete_prefix("test_")
-        end
-      end.to_set
+      sources = @source_paths.map { |path| File.basename(path, ".rb") }.to_set
+      @failed_test_files.flat_map { |t| targets_for_failed_test(File.basename(t, ".rb"), sources) }.to_set
+    end
+
+    # Source basenames one failed test file can taint.
+    #
+    # @api private
+    # @param name [String] test basename without `.rb`.
+    # @param sources [Set<String>] basenames of the sources in this run.
+    # @return [Array<String>] candidate source basenames.
+    def targets_for_failed_test(name, sources)
+      case name
+      when "test_helper" then [name] # Minitest's support file pairs with no source
+      when /_spec\z/ then [name.sub(/_spec\z/, "")]
+      when /_test\z/
+        stem = name.sub(/_test\z/, "")
+        sources.include?(stem) ? [stem] : [stem] + split_source_names(stem, sources)
+      else [name.delete_prefix("test_")]
+      end
+    end
+
+    # Shorter source names a split test file also refers to. `bar_upsert`
+    # yields `bar` when that source is in the run. The full stem is not
+    # included here.
+    #
+    # @api private
+    # @param stem [String] test basename with `_test` removed.
+    # @param sources [Set<String>] basenames of the sources in this run.
+    # @return [Array<String>] matching shorter source basenames.
+    def split_source_names(stem, sources)
+      parts = stem.split("_")
+      return [] if parts.length < 2
+
+      (1...parts.length).filter_map do |i|
+        prefix = parts.first(i).join("_")
+        prefix if sources.include?(prefix)
+      end
     end
 
     # Shared cache dance for both build paths: hit the digest-keyed cache, else

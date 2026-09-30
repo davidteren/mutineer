@@ -802,6 +802,41 @@ class CoverageMapTest < Minitest::Test
     refute map.uncapturable_source?(CALC)
   end
 
+  # #87: bar_upsert_test.rb is the split suite for bar.rb when bar_upsert.rb
+  # is not in the run. A failed capture must taint bar.rb, not look like a gap.
+  def test_failing_split_test_marks_the_shorter_source_uncapturable
+    dir = Dir.mktmpdir
+    src = File.join(dir, "bar.rb")
+    File.write(src, "class Bar; def n; 1; end; end\n")
+    bad = File.join(dir, "bar_upsert_test.rb")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    assert map.uncapturable_source?(src)
+  end
+
+  # user_mailer_test.rb keeps its exact source. It must not also fail the gate
+  # for uncovered methods in user.rb while user_mailer.rb is in the run.
+  def test_failing_longer_name_does_not_taint_a_shorter_source_also_in_the_run
+    dir = Dir.mktmpdir
+    user = File.join(dir, "user.rb")
+    mailer = File.join(dir, "user_mailer.rb")
+    File.write(user, "class User; def n; 1; end; end\n")
+    File.write(mailer, "class UserMailer; def n; 1; end; end\n")
+    bad = File.join(dir, "user_mailer_test.rb")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [user, mailer], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    assert map.uncapturable_source?(mailer)
+    refute map.uncapturable_source?(user)
+  end
+
   def test_failing_test_helper_does_not_taint_a_helper_source
     dir = Dir.mktmpdir
     helper = File.join(dir, "helper.rb")

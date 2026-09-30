@@ -357,9 +357,10 @@ module Mutineer
     end
 
     # Auto-pair sources to tests by path convention when no --test was given
-    # (explicit --test wins). Each source with an inferred test on disk joins the
-    # run; a source with none is dropped with a one-line stderr warning and the
-    # run continues with the rest. If every source is dropped: in boot mode the
+    # (explicit --test wins). Each source with at least one inferred test on
+    # disk joins the run; a source with none is dropped with a one-line stderr
+    # warning and the run continues with the rest. Split files for one source
+    # are all kept (#87). If every source is dropped: in boot mode the
     # dedicated --boot/--rails-requires-test check reports it; otherwise exit 2
     # with a usage message. The framework is re-detected from the inferred set
     # unless it was set explicitly (a spec-only project loads/reports as rspec).
@@ -371,14 +372,14 @@ module Mutineer
       return unless config.tests.empty?
 
       paired = config.sources.filter_map do |s|
-        t = Pairing.infer_test(s, project_root: config.project_root, prefer: config.framework)
-        [s, t] if t
+        tests = Pairing.infer_tests(s, project_root: config.project_root, prefer: config.framework)
+        [s, tests] unless tests.empty?
       end
       (config.sources - paired.map(&:first)).each do |s|
         warn "[mutineer] no test found by convention for #{s}; skipping"
       end
       config.sources = paired.map(&:first)
-      config.tests   = paired.map(&:last).uniq
+      config.tests   = paired.flat_map(&:last).uniq
       config.framework = Config.detect_framework(config.tests) unless config.explicit?(:framework)
 
       return unless config.sources.empty?
