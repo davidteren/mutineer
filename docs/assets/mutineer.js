@@ -140,7 +140,11 @@
           // The hero already animates in on load; hiding it again would flicker.
           if (el.closest('.hero')) return;
           el.classList.add('reveal');
-          once(el, show);
+          once(el, function (x) {
+            show(x);
+            // The install command types once its own box is shown.
+            if (install && x.contains(install)) install.classList.add('is-in');
+          });
         });
       });
       // The landing page's operator table cascades as one group when it first
@@ -153,13 +157,7 @@
         });
         once(body, function () { rows.forEach(function (row) { row.classList.add('is-in'); }); }, 0);
       });
-      // In testing, Chrome did not report the fully clipped install line as
-      // intersecting, so its column starts the typing as soon as any of it
-      // shows, even when a restored scroll position hides the label above.
-      if (install) {
-        install.classList.add('typed');
-        once(install.closest('.codeblock').parentElement, function () { install.classList.add('is-in'); }, 0);
-      }
+      if (install) install.classList.add('typed');
 
       // Count-ups: each .odo counts from data-from to the number in the HTML.
       // While it counts, a hidden copy holds the real value for screen readers;

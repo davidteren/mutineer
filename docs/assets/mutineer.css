@@ -278,7 +278,7 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
   .motion .step.reveal.is-in::after { transform: scaleX(1); }
   .motion .typed { display: inline-block; }
   .motion .typed:not(.is-in) { clip-path: inset(0 100% 0 0); }
-  .motion .typed.is-in { animation: type-in 1s steps(20) 200ms both; }
+  .motion .typed.is-in { animation: type-in 1s steps(20) calc(var(--d, 0ms) + 250ms) both; }
   .motion .btn span[aria-hidden] { display: inline-block; transition: transform 180ms var(--ease-out); }
   .motion .btn:hover span[aria-hidden] { transform: translate(3px, -3px); }
   .motion .proof-meter span { width: 100%; transition: width 1800ms var(--ease-out); }
