@@ -57,15 +57,24 @@ test('content and disclosure remain usable without JavaScript', async ({ browser
   }
 });
 
+test('printing before scrolling shows the real numbers', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+  await expect(page.locator('.evidence-strip .odo')).toHaveText('00');
+  await page.evaluate(() => dispatchEvent(new Event('beforeprint')));
+  expect(await page.locator('.odo').allTextContents()).toEqual(['20', '01', '8,170', '24']);
+  await expect(page.locator('.visually-hidden')).toHaveCount(0);
+});
+
 test('motion keeps step labels, true numbers and every section visible', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
   await page.setViewportSize({ width: 390, height: 844 });
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
   await expect(page.locator('html')).toHaveClass(/\bmotion\b/);
   // Screen readers, find-in-page and copy get the real figure at once.
   await expect(page.locator('.hero-proof .visually-hidden').first()).toHaveText('8,170');
-  const errors = [];
-  page.on('pageerror', error => errors.push(error.message));
   const labels = await page.locator('.step').evaluateAll(steps => steps.map(s => getComputedStyle(s, '::before').content));
   expect(labels).toEqual(Array(3).fill(expect.stringMatching(/counter\(step\)/)));
   const height = await page.evaluate(() => document.documentElement.scrollHeight);

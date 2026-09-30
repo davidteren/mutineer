@@ -145,6 +145,7 @@
       // Count-ups: each .odo counts from data-from to the number in the HTML.
       // While it counts, a hidden copy holds the real value for screen readers;
       // when it ends, the copy goes so copy and find see the number once.
+      var pending = [];
       document.querySelectorAll('.odo[data-from]').forEach(function (el) {
         var text = el.textContent, to = parseInt(text.replace(/,/g, ''), 10), from = +el.getAttribute('data-from');
         var format = /,/.test(text) ? grouped : function (n) { return String(Math.round(n)).padStart(text.length, '0'); };
@@ -157,8 +158,11 @@
         var card = el.closest('.hero-proof');
         var meter = card && card.querySelector('.proof-meter span');
         var settle = function () { real.remove(); el.removeAttribute('aria-hidden'); };
+        pending.push(function () { el.textContent = text; settle(); if (meter) meter.classList.add('go'); });
         once(el, function () { count(el, from, to, from > to ? 1800 : 900, format, settle); if (meter) meter.classList.add('go'); }, 0.5);
       });
+      // Printing before scrolling would show start values; jump to the real ones.
+      addEventListener('beforeprint', function () { pending.forEach(function (f) { f(); }); pending = []; });
     }
   });
 })();
