@@ -270,9 +270,9 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
   .motion .reveal:not(.is-in) { opacity: 0; transform: translateY(14px); }
   .motion .reveal.is-in { animation: enter 560ms var(--ease-out) var(--d, 0ms) both; }
   .motion .glyph-arrow { display: inline-block; animation: glyph-nudge 2.4s ease-in-out 3; }
-  .motion .step { border-top-color: transparent; position: relative; }
-  .motion .step::after { content: ""; position: absolute; left: 0; right: 0; top: -2px; height: 2px; background: var(--fg); transform: scaleX(0); transform-origin: left; transition: transform 800ms var(--ease-out) calc(var(--d, 0ms) + 120ms); }
-  .motion .step.is-in::after { transform: scaleX(1); }
+  .motion .step.reveal { border-top-color: transparent; position: relative; }
+  .motion .step.reveal::after { content: ""; position: absolute; left: 0; right: 0; top: -2px; height: 2px; background: var(--fg); transform: scaleX(0); transform-origin: left; transition: transform 800ms var(--ease-out) calc(var(--d, 0ms) + 120ms); }
+  .motion .step.reveal.is-in::after { transform: scaleX(1); }
   .motion .typed { display: inline-block; }
   .motion .typed:not(.is-in) { clip-path: inset(0 100% 0 0); }
   .motion .typed.is-in { animation: type-in 1s steps(20) 200ms both; }
