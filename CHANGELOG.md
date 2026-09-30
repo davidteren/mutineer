@@ -20,6 +20,13 @@ All notable changes to this project are documented here. The format is based on
   be the same program as the `nil` that `statement_removal` or `return_nil`
   puts in its place; it is still made, so these mutants and their ids do not
   depend on which other operators run.
+- **Operator-assignment operator** (Tier-2, opt-in via `--operators`):
+  `operator_assignment` swaps the operator of a compound assignment:
+  `+=` <-> `-=`, `*=` <-> `/=`, and `%=` and `**=` -> `*=`. It covers local,
+  instance, class and global variables, constants, calls (`a.b += 1`) and
+  index calls (`a[i] += 1`). The `arithmetic` operator never sees these
+  forms, because Prism does not parse them as calls. The operator does not
+  change `||=`, `&&=`, or the bitwise and shift forms (`|=`, `<<=`).
 
 ### Fixed
 - **A typed `--rails`, `--verbose` or `--debug` beats `rails: false` and
