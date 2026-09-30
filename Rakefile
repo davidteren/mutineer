@@ -70,8 +70,11 @@ end
 
 namespace :site do
   desc "Build the published GitHub Pages tree into _site"
-  task :build do
-    require_relative "rake/site_build"
+task :build do |_, args|
+  # The destination argument is gone (#162). Fail, not ignore it, so an old
+  # caller does not look for its output in the wrong place.
+  abort "site:build takes no destination; it always builds into _site" if args.extras.any? || ENV["SITE_BUILD_DEST"]
+  require_relative "rake/site_build"
     SiteBuild.generate!
   end
 end

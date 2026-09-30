@@ -15,16 +15,30 @@ module SiteBuild
   # parameter, so no argument can aim the removal at `lib/` or `.git`.
   DEST = File.expand_path("../_site", __dir__)
 
+  # The checkout root. The build reads docs/ and runs git and YARD from here,
+  # so a caller in another directory still builds this checkout's site.
+  ROOT = File.expand_path("..", __dir__)
+
   # docs/ entries the generators below write directly into the destination,
   # so the tree copy must skip them instead of copying a (possibly absent)
   # committed version.
   GENERATED = %w[api llms-full.txt json-schema.html sitemap.xml].freeze
 
   class << self
-    # Build the site into {DEST} (removed first, then rebuilt from scratch).
+    # Build the site into {DEST} (removed first, then rebuilt from scratch),
+    # from the checkout root whatever the working directory is.
     #
     # @return [void]
     def generate!
+      Dir.chdir(ROOT) { build! }
+    end
+
+    private
+
+    # The build itself; {generate!} runs it from {ROOT}.
+    #
+    # @return [void]
+    def build!
       FileUtils.rm_rf(DEST)
       FileUtils.mkdir_p(DEST)
       copy_docs_tree!(DEST)
@@ -35,8 +49,6 @@ module SiteBuild
       write!(File.join(DEST, "json-schema.html"), DocsContract.json_schema_html)
       write!(File.join(DEST, "sitemap.xml"), MutineerSiteDocs.sitemap_xml)
     end
-
-    private
 
     # Fail loudly if the YARD build did not produce a usable `api/`. CI's
     # site job and the release workflow run `site:build`, so this fails them

@@ -2,6 +2,7 @@
 
 require "minitest/mock"
 require "tmpdir"
+require "open3"
 require_relative "test_helper"
 require_relative "../rake/site_build"
 
@@ -19,6 +20,14 @@ class SiteBuildTest < Minitest::Test
       end
     end
     assert_equal [File.join(ROOT, "_site")], removed
+  end
+
+  # The removed destination argument fails, so an old caller does not look for
+  # its output in a directory the build never writes.
+  def test_rake_task_rejects_a_destination
+    out, status = Open3.capture2e("bundle", "exec", "rake", "site:build[#{Dir.tmpdir}/x]", chdir: ROOT)
+    refute status.success?
+    assert_match(/takes no destination/, out)
   end
 
   def test_tracked_docs_paths_raises_outside_a_checkout
