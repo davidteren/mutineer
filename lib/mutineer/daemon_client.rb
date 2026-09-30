@@ -29,14 +29,6 @@ module Mutineer
     DAEMON_PATH = File.expand_path("daemon_server.rb", __dir__)
     # How many times to respawn a crashing daemon before aborting the run.
     MAX_RESTARTS = 3
-    # Variables Bundler saves under <tt>BUNDLER_ORIG_*</tt> before it replaces
-    # them. Restoring these undoes the tool bundle. Other <tt>BUNDLE_</tt>
-    # keys (the app's <tt>BUNDLE_WITHOUT</tt> or <tt>BUNDLE_APP_CONFIG</tt>)
-    # stay.
-    BUNDLER_SAVED_KEYS = %w[
-      BUNDLE_BIN_PATH BUNDLE_GEMFILE BUNDLER_VERSION BUNDLER_SETUP
-      GEM_HOME GEM_PATH MANPATH PATH RB_USER_INSTALL RUBYLIB RUBYOPT
-    ].freeze
     # Bundler's marker for a variable that was unset before it activated.
     BUNDLER_UNSET = "BUNDLER_ENVIRONMENT_PRESERVER_INTENTIONALLY_NIL"
     # rbenv and asdf put a concrete Ruby bin ahead of their shims. chruby has
@@ -53,7 +45,8 @@ module Mutineer
     #   load_paths, framework, rails.
     # @param app_root [String] directory to spawn the daemon in (the app root).
     # @param ruby_version [String, nil] RBENV_VERSION for the app's Ruby.
-    #   nil keeps a pin already in the environment.
+    #   nil keeps a pin already in the environment. That pin is often the
+    #   Ruby that started the tool.
     # @param gemfile [String, nil] BUNDLE_GEMFILE for the app's bundle (nil = app_root/Gemfile).
     # @param errio [IO] where daemon stderr is drained.
     def initialize(boot:, app_root:, ruby_version: nil, gemfile: nil, errio: $stderr)
@@ -156,23 +149,25 @@ module Mutineer
       env
     end
 
-    # Environment with Bundler's saved originals put back.
+    # Environment with every <tt>BUNDLER_ORIG_*</tt> value put back. Bundler
+    # writes one saved key per variable it replaced. Restoring all of them
+    # undoes the tool bundle without a copied key list.
     #
     # @api private
     # @return [Hash{String => String}]
     def restored_user_env
       env = ENV.to_h
-      BUNDLER_SAVED_KEYS.each do |key|
-        saved = env.delete("BUNDLER_ORIG_#{key}")
-        next if saved.nil?
+      env.keys.each do |saved_key|
+        next unless saved_key.start_with?("BUNDLER_ORIG_")
 
+        key = saved_key.delete_prefix("BUNDLER_ORIG_")
+        saved = env.delete(saved_key)
         if saved == BUNDLER_UNSET
           env.delete(key)
         else
           env[key] = saved
         end
       end
-      env.delete_if { |key, _| key.start_with?("BUNDLER_ORIG_") }
       env
     end
 
@@ -205,10 +200,11 @@ module Mutineer
     # @raise [Mutineer::DaemonBootError] when the daemon fails to boot.
     def spawn_daemon
       # Plain `bundle exec ruby`, NOT `rbenv exec`, which would break CI and any
-      # non-rbenv setup. An explicit ruby_version sets RBENV_VERSION so shims
-      # select that Ruby. With no argument, an existing pin or `.ruby-version`
-      # selects it. rbenv and asdf version bins are not on PATH, so they cannot
-      # hide that pin. chruby bins stay.
+      # non-rbenv setup. An explicit ruby_version replaces RBENV_VERSION.
+      # With no argument, a pin already in the environment stays. That pin is
+      # often the Ruby that started the tool. `.ruby-version` applies only
+      # when no pin is set. rbenv and asdf version bins leave PATH so a shim
+      # can apply the pin. chruby bins stay.
       # Everything up to the handshake is terminal, not one mutant's problem: a spawn
       # the OS refuses (EMFILE/ENOMEM under --jobs N, ENOENT when `bundle` does not
       # resolve) and a daemon that dies before accepting the boot payload (EPIPE on

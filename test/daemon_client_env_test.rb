@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "json"
+require "minitest/mock"
 require "open3"
 require "rbconfig"
 require "tmpdir"

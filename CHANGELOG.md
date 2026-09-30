@@ -11,11 +11,12 @@ All notable changes to this project are documented here. The format is based on
   Open3 keeps a variable when the spawn hash omits it, so a parent `RUBYOPT`
   ran inside the app. The child now gets the environment Bundler saved before
   it activated, passed with `unsetenv_others`. The app keeps its gem home,
-  excluded groups, Bundler config, chruby path, and an `RBENV_VERSION` or
-  `ASDF_RUBY_VERSION` already in the environment. The tool's `RUBYOPT`,
-  `RUBYLIB`, and gem home do not. rbenv and asdf version bins leave `PATH`
-  so they cannot hide that pin. The app Gemfile, an explicit Ruby pin, and
-  Rails env are applied after that.
+  excluded groups, Bundler config, and chruby path. An `RBENV_VERSION` or
+  `ASDF_RUBY_VERSION` already in the environment stays. That pin is often
+  the Ruby that started the tool. `.ruby-version` applies only when no pin
+  is set. The tool's `RUBYOPT`, `RUBYLIB`, and gem home do not. rbenv and
+  asdf version bins leave `PATH` so a shim can apply the pin. The app
+  Gemfile, an explicit Ruby pin, and Rails env are applied after that.
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not
   singleton methods (#144).
