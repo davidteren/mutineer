@@ -1,0 +1,25 @@
+rake/yard_pages.rb
+  s_c2eb114aea63f6::t_9c4a69c9bd1c57 98
+  s_c2eb114aea63f6::t_89f4154bbdec1c 3,15-16,18-19,31-32,59-60,66-69,77-79,94-96
+test/yard_pages_test.rb
+  s_c2eb114aea63f6::t_89f4154bbdec1c 3-4,6-9,20,27,31,36-37,39-40,46-47,49,69-71,73-74,80-82,84-85,88-89,95-96,116,119
+  s_c2eb114aea63f6::t_b1ba6ed8bb3896 102,112
+README.md
+  s_c2eb114aea63f6::t_b1ba6ed8bb3896 61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "14e71c3f09467cf0ebf01bd23e19779a969976b8",
+  "prompts": {},
+  "sessions": {
+    "s_c2eb114aea63f6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f1a5-6312-72d1-916e-711a671ccfd8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
