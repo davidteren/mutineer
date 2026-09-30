@@ -15,6 +15,202 @@ All notable changes to this project are documented here. The format is based on
   an else-less conditional that `statement_removal` or `return_nil` already
   replaces with `nil`, make no mutant.
 
+### Changed
+- **The docs site is built in CI** — a Pages workflow runs `rake site:build`
+  and deploys the result, so the YARD HTML under `/api/`, `llms-full.txt`,
+  `json-schema.html` and `sitemap.xml` are no longer committed. CI checks
+  that the site builds, in place of `rake yard:pages:check`. The site keeps
+  its URLs (#153).
+
+## [1.3.0] - 2026-09-29
+
+### Changed
+- **Mutant ids now include the project-relative file path** (#126). Before, two
+  mutants with the same method name, operator and token in different files got
+  the same id. That happened with a top-level `def` or block in two files, and
+  with a class reopened in another file. One `ignore:` entry then suppressed
+  both mutants, and `--baseline` could hide a new survivor behind an old one.
+  - Every survivor id changes once in this release. This affects any external
+    tool that tracks survivors by id.
+  - Moving or renaming a file now changes its ids.
+  - Ids follow the project root: the directory mutineer runs from, or the
+    Action's `working-directory`. A run from a different root gives different ids.
+    mutineer finds `.mutineer.yml` by walking up, so a run from a subdirectory
+    prints one `[mutineer]` warning that the loaded ignore ids will not match.
+  - A source outside the project root uses its absolute path, so its ids differ
+    between machines.
+  - Two methods with the same qualified name in one file (for example two
+    top-level `def index` in two DSL blocks) now get different ids. The second
+    and later ones hash their position among those methods; the first keeps its
+    id.
+- **The JSON report marks its id format** (schema `1.4`, additive).
+  `summary.id_format` is `2` for ids that include the file path.
+  `summary.legacy_id_matches` counts old-format `ignore:` entries (`ignore`) and
+  survivors matched only through an old-format baseline id (`baseline`). The
+  GitHub Action shows one warning annotation when either count is not zero.
+
+### Deprecated
+- **Old-format ids in `ignore:` and in baselines.** Matching on them is removed
+  in 2.0. Replace each old `ignore:` entry with the new ids from the warning
+  (only the intended ones when it over-matched several mutants).
+  Regenerate a baseline (`--format json`) only after every gate that reads it
+  runs this version or later (the Action's `version:` pin, your CI
+  `Gemfile.lock`). An older version treats every new-format survivor as new.
+
+### Fixed
+- **`module_function :name` and `module_function def name` promote only
+  their own module's methods** — a class or module in the same file with a
+  method of the same name kept an instance method in Ruby, but mutineer
+  named it as a class method. `--strategy redefine` then mutated a method the
+  tests never call, so a killable mutant falsely survived, and
+  `--only Class#name` selected nothing (#98). The affected methods now get
+  their correct names, so their mutant ids change: regenerate any ignore
+  entries or baseline survivors that pointed at them.
+- **A root-anchored reopening names the top-level constant** — a
+  `module ::Root` or `class ::Solo` written inside another module now gives
+  `Root` and `Solo`, not `Outer::Root` and `Outer::Solo`. This applies to every
+  method in such a body, with or without `module_function`, so their mutant
+  ids change too. `--strategy redefine` rebuilds such a body's scope as
+  written (`module Outer` then `class ::Solo`), so a constant from `Outer`
+  still resolves in the mutated method, as it does under `reload`. Before,
+  the method raised NameError in the test, which counted as a false kill
+  (#145).
+- **Old-format ids keep working, with a warning** (#126). An old-format
+  `ignore:` entry still suppresses the mutants it matched before. The run prints
+  one `[mutineer]` warning per entry with each new id, its file and its method.
+  When the entry matched several mutants (in different files, or same-named
+  methods in one file), the warning says it
+  over-matched and to keep only the ids for the mutant you meant to ignore. A
+  `--baseline` file without `summary.id_format` matches on new ids, or on old
+  ids from the same file, so no survivor reads as new or fixed only because its
+  id changed. A stored file outside the project root (a baseline written on
+  another machine) matches on the old id alone. The run prints one
+  `[mutineer]` warning to regenerate the baseline.
+
+## [1.2.0] - 2026-09-28
+
+### Added
+- **Operand-removal operator** (Tier-2, opt-in via `--operators`):
+  `operand_removal` replaces `a && b` with `(a)` and with `(b)`, and does the
+  same for `||`, `and` and `or`. The mutant survives when no test needs the
+  operand that the mutant removes. The operator never keeps a jump operand
+  (`return`, `break`, `next`, `redo`, `retry`) alone, because a jump does not
+  parse in a value context. It never removes an operand that holds a heredoc,
+  because the heredoc body stays behind as code. It skips nested method
+  definitions, because mutineer mutates each one as its own method.
+- **Array-literal operator** (Tier-2, opt-in via `--operators`):
+  `array_literal` replaces a non-empty array literal, such as `[a, b]` or
+  `%i[a b]`, with `[]`. The mutant survives when no test checks the contents
+  of the array. The operator skips an implicit array (`x = 1, 2`), an array
+  that holds a heredoc, and nested method definitions.
+- **Sources also pair with Minitest's `test/**/test_*.rb` files** — after the
+  `_test.rb` forms, so existing projects pair as before. `lib/helper.rb` does
+  not pair with the `test/test_helper.rb` support file. A failed capture of a
+  `test_<name>.rb` file now marks `<name>.rb` uncapturable, as `<name>_test.rb`
+  does (#120). Without `framework:` set, a source with `spec/<name>_spec.rb`
+  and `test/test_<name>.rb` but no `<name>_test.rb` now pairs with the
+  Minitest file, as the "Minitest first" order says.
+
+### Fixed
+- **`reload` loads the mutant by an absolute path** — a relative source path
+  gave the mutant relative backtrace paths, so code that checks its own frames
+  by absolute path failed for every mutant, a false kill (#123).
+- **`require "test_helper"` works without `RUBYOPT`** — a standalone run puts
+  `lib`, then each test file's `test_helper.rb` directory, on the load path,
+  as boot mode and `rake test` do. A run where no test records coverage because
+  captures failed now exits 1 instead of reporting N/A (#119).
+- **A disable-line marker warns about an operator it does not know** — a
+  reason written without `--` became part of the operator name, so the marker
+  suppressed nothing and said nothing (#124). A marker followed only by spaces
+  or commas, such as `disable-line  -- why`, now disables the whole line.
+- **Coverage capture and the clean check run each source once** — they read
+  sources with `load`, so a test's own `require` ran them again: a `Struct`
+  superclass raised `superclass mismatch`, and load-time code ran twice (#122).
+  A mutant of such a class still errors under `--strategy reload`, which loads
+  the mutated file again; `--strategy redefine` runs it.
+  Code that guards itself to run once (`unless defined?(X)`) can now show as
+  covered, so its mutants run where they were `no_coverage` before.
+- **A red unmutated suite now shows why it failed** — in a standalone run, the
+  Minitest summary or RSpec output of the failing test, with its failure
+  message, goes to stderr before the "not green" error. A passing run prints
+  nothing extra. Boot mode (`--rails`, `--boot`) is unchanged (#121).
+
+## [1.1.0] - 2026-09-28
+
+### Added
+- **Safe-navigation operator** (Tier-2, opt-in via `--operators`):
+  `safe_navigation` replaces `&.` with `.`. The mutant survives when no test
+  passes `nil` to the call.
+- **Range operator** (Tier-2, opt-in via `--operators`): `range` replaces
+  `..` with `...` and `...` with `..`. The `..` -> `...` mutant survives when
+  no test checks the last element of the range. Endless ranges (`1..`) are
+  skipped, because `(1..)` and `(1...)` give the same result for slicing,
+  `include?`, `===` and pattern matching.
+- **Negation-removal operator** (Tier-2, opt-in via `--operators`):
+  `negation_removal` removes the `!` from `!x` and the `not` from `not x`.
+  The mutant survives when no test depends on the negated value. The
+  explicit form `x.!` is skipped, because `x.` does not parse.
+
+### Changed
+- **Stderr of tests and specs is visible** in the in-process and `--daemon`
+  runs. Mutineer silences stdout once per child process and no longer hides
+  stderr, so its own child diagnostics always reach you. `--test-command`
+  runs still capture stderr with stdout and show it under `--verbose`.
+- **A mutant's test run stops at the first failing test** — one failure
+  already kills the mutant, so the forked child does not run the tests that
+  remain. Killed mutants cost less time, and survived mutants cost the same.
+  Under Minitest, when the outer reporter of the run records a failure or an
+  error (a skip does not count), each remaining test and each remaining test
+  class returns before it starts. A skipped class does not start its
+  class-level hooks. The run does not unwind: a class that is running
+  finishes normally, so its `after_all` hooks and a class-level
+  `transaction { super; raise ActiveRecord::Rollback }` still run. RSpec runs
+  with `--fail-fast`. This applies to the in-process backend only: coverage
+  capture and the clean checks still run every test, and the `--daemon` and
+  `--test-command` backends do not change. The CLI `--fail-fast` flag keeps
+  its meaning. On rack's `lib/rack/utils.rb` (`--jobs 1`), a full run takes
+  about 35–41 s instead of about 86–89 s. With the same coverage map, the
+  verdicts are the same.
+- **The mutant run uses a fixed Minitest seed** — with the stop, the test
+  order can decide the verdict, so the child runs Minitest with seed `1`
+  unless the environment sets `SEED`. The same code then gives the same
+  verdict on each run. Coverage capture and the clean checks keep the random
+  seed, so the clean check runs the tests in a random order while each mutant
+  run uses the fixed order. RSpec keeps its configured order: a suite configured with
+  `config.order = :random` can still get a different verdict on each run for
+  the case below. In an order-dependent Minitest suite, the fixed seed makes
+  a false `killed` happen on every run or on no run, not on some runs.
+- **A mutant whose failing test runs before a hanging test is now `killed`,
+  not `timeout`** — the run stops at the failure, before the hang. The tests
+  did detect the mutation, so `killed` is the correct verdict. If the hanging
+  test runs first in the fixed order, the verdict stays `timeout`. Compared
+  with a baseline from an earlier version, the score usually goes up. In an
+  order-dependent suite it can also go down: a mutant that a random order
+  killed on some runs can survive on every run in the fixed order. A change
+  to the tests can change the fixed order, so a later run can move such a
+  mutant from `killed` to `timeout`, and a `--baseline` gate then reports a
+  score drop.
+- **Some runs still run most tests** — Minitest `parallelize_me!`, and Rails
+  `parallelize` above its threshold (by default more than 50 tests in the
+  child, or at any test count when `PARALLEL_WORKERS` is 2 or more in the
+  environment), queue their tests before the first result comes back, so the
+  queued tests still run. The verdict is the same as before. Below the
+  Rails threshold, the tests run one after the other in the child, and the
+  stop works.
+
+### Fixed
+- **Tests that reopen `$stdout`** (Minitest's `capture_subprocess_io`,
+  RSpec's `to_stdout_from_any_process`) no longer make a green suite
+  "not green" or count as false kills.
+- **Test or source files that print while they load** no longer make coverage
+  capture fail with `invalid coverage output`. The capture subprocess now
+  sends its result over a separate pipe, not over stdout.
+- **Chain-link operator** (Tier-2, opt-in via `--operators`):
+  `chain_link` drops one call from a chain, with its arguments and block
+  (`user.account.name` -> `user.name`). The mutant survives when no test tells
+  the chain apart from the same chain without that step. Conversions and copies
+  (`to_s`, `to_a`, `dup`, `freeze`, ...) and `new` are never dropped.
+
 ## [1.0.2] - 2026-09-21
 
 ### Added
@@ -431,6 +627,9 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.3.0]: https://github.com/davidteren/mutineer/releases/tag/v1.3.0
+[1.2.0]: https://github.com/davidteren/mutineer/releases/tag/v1.2.0
+[1.1.0]: https://github.com/davidteren/mutineer/releases/tag/v1.1.0
 [1.0.2]: https://github.com/davidteren/mutineer/releases/tag/v1.0.2
 [1.0.1]: https://github.com/davidteren/mutineer/releases/tag/v1.0.1
 [1.0.0]: https://github.com/davidteren/mutineer/releases/tag/v1.0.0

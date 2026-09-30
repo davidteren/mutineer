@@ -20,6 +20,14 @@ ruby -Ilib -e 'require "mutineer"'             # load smoke
 bundle exec rake yard:strict                    # 100% documented — see below
 ```
 
+The default `Gemfile` pins Minitest 5. For changes to the Minitest
+integration, also run the suite on Minitest 6:
+
+```sh
+BUNDLE_GEMFILE=gemfiles/minitest6.gemfile bundle install
+BUNDLE_GEMFILE=gemfiles/minitest6.gemfile bundle exec rake test
+```
+
 - **`yard:strict` requires 100% documentation, including private methods AND
   constants.** Every new method and constant needs a YARD docstring / `#` comment
   or CI fails.
@@ -34,11 +42,16 @@ bundle exec rake yard:strict                    # 100% documented — see below
 For changes to the GitHub Pages site or its tests, also run:
 
 ```sh
+bundle exec rake site:build
 node --test test/site_test.js
 npm ci --prefix test/browser
 npx --prefix test/browser playwright install chromium
 npm test --prefix test/browser
 ```
+
+`rake site:build` writes the published tree to `_site/` — the YARD API docs,
+`sitemap.xml`, `llms-full.txt`, and `json-schema.html` are build artifacts, not
+committed files under `docs/`. The checks above read `_site/`, so build first.
 
 These development-only checks require Node.js 22+, npm, and Python 3.
 Playwright starts a local server on port 8766; keep that port free so the
@@ -47,7 +60,7 @@ independent of Node and Playwright. CI runs these checks in `website browser tes
 
 ## CI gates that block merge
 
-`yard:strict` · `test` (×2 OS) · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
+`yard:strict` · `test` (×2 OS) · `test (minitest 6)` · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
 
 ## PR review gate (before any merge — never skip)
 
@@ -100,11 +113,30 @@ default flip must never reach them without opting in.
 
 Safety nets:
 - The **tag must equal `Mutineer::VERSION`** or the release aborts.
-- `.github/workflows/release-pr.yml` **auto-opens a release PR** (bumps `version.rb`,
-  dates the CHANGELOG + adds its reference-link def) when `feat:`/`fix:` commits sit on
-  `main` past the latest tag — so a merge without a release can't slip by. Review + merge
-  it, then push the `vX.Y.Z` tag. (To get CI on that auto-PR, add a `RELEASE_PR_TOKEN`
-  PAT secret — a PR opened by the default `GITHUB_TOKEN` doesn't trigger other workflows.)
+- **Releases are batched, not cut per merge.** `.github/workflows/release-pr.yml` runs
+  weekly (Monday 08:00 UTC) and on demand (`gh workflow run release-pr.yml`). When
+  `feat:`/`fix:` commits sit on `main` past the latest tag, it opens a release PR (bumps
+  `version.rb`, dates the CHANGELOG + adds its reference-link def). Each run rebuilds that
+  PR from the current `main`, so it always covers every change since the last tag; a
+  newer version supersedes an older open release PR, and when `main` moved the same
+  version is re-opened fresh (the old branch is deleted under a lease, never
+  force-pushed). The run never replaces a release branch that holds someone else's
+  commits, or that has a PR it did not open (it leaves that branch alone with a
+  warning), and it never closes a release PR it did not open. A merge commit counts as
+  someone else's commit: GitHub's "Update branch" button on the release PR pauses the
+  automation until that PR is merged or its branch is deleted. Review + merge it, then push the
+  `vX.Y.Z` tag. Every release moves the floating major tag (`v1` today), so Action users get it at once:
+  batch changes rather than releasing after each merge. (To get CI on that auto-PR, add a
+  `RELEASE_PR_TOKEN` PAT secret — a PR opened by the default `GITHUB_TOKEN` doesn't
+  trigger other workflows.)
+- **The release-PR run stops (and opens nothing) in two cases.** If `VERSION` on `main`
+  differs from the latest tag, a bump is merged but not tagged: it warns you to push
+  that tag first. If the computed `vX.Y.Z` tag already exists on origin (for example
+  pushed from a branch), it fails and you resolve it by hand.
+- **GitHub disables scheduled workflows in a public repo after 60 days without
+  activity.** If no release PR appears on a Monday while unreleased `feat:`/`fix:`
+  work sits on `main`, check `gh workflow view release-pr.yml` and re-enable it with
+  `gh workflow enable release-pr.yml`.
 
 **One-time setup (required for the publish to work):** register a Trusted Publisher
 on <https://rubygems.org/gems/mutineer> → owner `davidteren`, repo `mutineer`,

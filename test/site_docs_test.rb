@@ -2,8 +2,12 @@
 
 require_relative "test_helper"
 require_relative "../rake/site_docs"
+require_relative "../rake/docs_contract"
 
 # #91: sitemap.xml and llms.txt stay generated from one catalog.
+#
+# sitemap.xml is a Pages build artifact (`rake site:build`), not a committed
+# file — tests below render it fresh instead of reading docs/sitemap.xml.
 class SiteDocsTest < Minitest::Test
   ALTERNATE = 'rel="alternate" type="text/markdown"'
 
@@ -24,13 +28,6 @@ class SiteDocsTest < Minitest::Test
     ].each { |path| assert_includes paths, path }
   end
 
-  def test_committed_sitemap_matches_a_fresh_generate
-    assert MutineerSiteDocs.sitemap_equivalent?(
-      File.read("docs/sitemap.xml"),
-      MutineerSiteDocs.sitemap_xml
-    ), "docs/sitemap.xml locs/priorities drifted from the catalog"
-  end
-
   def test_committed_llms_txt_matches_a_fresh_generate
     source = File.read("docs/llms.txt")
     assert_equal MutineerSiteDocs.llms_txt(source), source
@@ -44,7 +41,7 @@ class SiteDocsTest < Minitest::Test
   end
 
   def test_sitemap_lists_every_catalog_loc
-    xml = File.read("docs/sitemap.xml")
+    xml = MutineerSiteDocs.sitemap_xml
     MutineerSiteDocs::CATALOG.each do |entry|
       assert_includes xml, "<loc>#{MutineerSiteDocs.loc(entry.path)}</loc>"
     end
@@ -52,7 +49,9 @@ class SiteDocsTest < Minitest::Test
 
   def test_html_pages_with_markdown_twins_advertise_alternate
     MutineerSiteDocs::HTML_MARKDOWN_TWINS.each do |html, twin|
-      source = File.read(html)
+      # json-schema.html is a Pages build artifact — render it instead of
+      # reading a committed copy.
+      source = html == "docs/json-schema.html" ? DocsContract.json_schema_html : File.read(html)
       assert_includes source, ALTERNATE, "#{html} needs #{ALTERNATE}"
       assert_includes source, MutineerSiteDocs.loc("/#{twin}")
     end

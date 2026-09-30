@@ -80,7 +80,7 @@ class ConditionForcingTest < Minitest::Test
     subject = subject_for(source)
     mutations = [Mutineer::Mutators::ConditionTrue, Mutineer::Mutators::ConditionFalse]
                 .flat_map { |klass| klass.new.mutations_for(subject, source) }
-    assert_equal 2, Mutineer::MutantId.for_subject(subject, source, mutations).uniq.size
+    assert_equal 2, Mutineer::MutantId.for_subject(subject, source, mutations, path: "snippet.rb").uniq.size
   end
 
   def test_nested_def_is_its_own_subject

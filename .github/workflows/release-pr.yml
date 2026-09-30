@@ -1,10 +1,14 @@
 name: Release PR
 
-# When shippable work (feat:/fix: commits) lands on main past the latest tag, open
-# (or leave open) a release PR that bumps Mutineer::VERSION and dates the CHANGELOG
-# (including the reference-link def that's easy to forget). You review + merge, then
-# push the vX.Y.Z tag — release.yml tests and publishes. Replaces the old nag-only
-# release-drift workflow: the PR is the actionable nag.
+# Releases are batched: this runs weekly (and on demand), not on every push. When
+# shippable work (feat:/fix: commits) is on main past the latest tag, it opens a
+# release PR that bumps Mutineer::VERSION and dates the CHANGELOG (including the
+# reference-link def that's easy to forget). Each run REBUILDS that PR from the
+# current main, so it always covers every change since the last tag: a newer
+# version replaces an older open release PR, and when main moved the same version
+# is re-opened fresh (the old branch is deleted, never force-pushed). You review +
+# merge, then push the vX.Y.Z tag — release.yml tests and publishes. Cut a release
+# early with: gh workflow run release-pr.yml
 #
 # Note: a PR opened with the default GITHUB_TOKEN does NOT trigger other workflows
 # (GitHub's recursion guard), so CI won't auto-run on it. To get CI on the release
@@ -12,15 +16,18 @@ name: Release PR
 # uses it when present and falls back to GITHUB_TOKEN otherwise. Either way, merging
 # to main and tagging still run release.yml.
 on:
-  push:
-    branches: [main]
   schedule:
-    - cron: "0 8 * * 1" # Monday 08:00 UTC — weekly backstop
-  workflow_dispatch:
+    - cron: "0 8 * * 1" # Monday 08:00 UTC — the weekly release batch
+  workflow_dispatch: # cut a release now: gh workflow run release-pr.yml
 
 permissions:
   contents: write
   pull-requests: write
+
+# One run at a time: an overlapping run must not close or overwrite a newer release PR.
+concurrency:
+  group: release-pr
+  cancel-in-progress: false
 
 jobs:
   release-pr:
@@ -30,6 +37,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history + tags for git describe/log
+          # git push must use the PAT too: GitHub's recursion guard starts no workflow
+          # for a push (or PR) made with GITHUB_TOKEN, so the release PR head would get
+          # no CI. Falls back to GITHUB_TOKEN when the secret is absent.
+          token: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
       - uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601 # v1
         with:
           ruby-version: "3.4"
@@ -39,6 +50,47 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
         run: |
           set -euo pipefail
+
+          # A manual run from another branch would build a release PR from code not on main.
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Run this workflow on main (got $GITHUB_REF)."; exit 1
+          fi
+
+          # MUTINEER_RELEASE_HELPERS_START
+          bot="41898282+github-actions[bot]@users.noreply.github.com"
+          # True when origin/<branch> has a commit this workflow did not make. Checks
+          # author AND committer, so a bot commit a human amended or rebased counts, and
+          # merge commits count too (GitHub's "Update branch" is human work).
+          # (grep without -q reads all input, so pipefail never sees a SIGPIPE from git log.)
+          has_human_commits() {
+            git log --format='%ae%n%ce' "HEAD..refs/remotes/origin/$1" | grep -vxF "$bot" >/dev/null
+          }
+          # True when version $1 sorts strictly below version $2 (1.2.9 < 1.2.10).
+          version_lt() {
+            [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" = "$1" ]
+          }
+          # True when VERSION on main ($1) is not the latest tag ($2): a bump is merged
+          # but not tagged yet, so a new release PR would stack on an unpublished one.
+          untagged_bump() {
+            [ "v$1" != "$2" ]
+          }
+          # MUTINEER_RELEASE_HELPERS_END
+
+          # Warns and returns 0 when VERSION on main is a merged but untagged bump (the
+          # last release PR, or a manual major): it must be tagged first, and an open
+          # release PR must not be merged over it. Returns 1 when VERSION is tagged.
+          stop_if_untagged_bump() {
+            local cur
+            cur="$(ruby -r ./lib/mutineer/version -e 'print Mutineer::VERSION')"
+            untagged_bump "$cur" "$1" || return 1
+            echo "::warning::VERSION $cur on main is not tagged yet (latest tag $1). Tag it: git tag v$cur && git push origin v$cur"
+            local open_release
+            open_release="$(gh pr list --state open --json number,headRefName --jq '.[] | select(.headRefName | startswith("release/v")) | "#\(.number) \(.headRefName)"')"
+            if [ -n "$open_release" ]; then
+              echo "::warning::Open release PRs; close any that predate the VERSION bump before merging anything: ${open_release//$'\n'/, }"
+            fi
+            return 0
+          }
 
           # MUTINEER_VERSION_CALC_START
           # Complete vMAJOR.MINOR.PATCH tags only. git describe --tags --abbrev=0
@@ -59,6 +111,8 @@ jobs:
           feats="$(printf '%s\n' "$log" | grep -Ec '^feat(\(|!|:)' || true)"
           fixes="$(printf '%s\n' "$log" | grep -Ec '^fix(\(|!|:)'  || true)"
           if [ "$feats" -eq 0 ] && [ "$fixes" -eq 0 ]; then
+            # A manual bump with no feat:/fix: subject must still be flagged as untagged.
+            if [ -f lib/mutineer/version.rb ]; then stop_if_untagged_bump "$latest_tag" || true; fi
             echo "No feat:/fix: commits since ${latest_tag} — nothing to release."; exit 0
           fi
 
@@ -79,22 +133,34 @@ jobs:
           echo "latest_tag=$latest_tag  feats=$feats  fixes=$fixes  ->  v$next"
           # MUTINEER_VERSION_CALC_END
 
-          # Idempotent: don't duplicate an already-open release PR for this version.
-          if [ -n "$(gh pr list --state open --head "$branch" --json number --jq '.[0].number // empty')" ]; then
-            echo "Release PR for $branch is already open."; exit 0
-          fi
+          # The computed tag must not exist anywhere yet (for example pushed from a branch).
+          # Fail closed: only "not found" (exit 2) lets the run continue.
+          tag_rc=0
+          git ls-remote --exit-code --tags origin "refs/tags/v${next}" >/dev/null 2>&1 || tag_rc=$?
+          case "$tag_rc" in
+            0) echo "::error::Tag v${next} already exists on origin but is not an ancestor of main. Resolve it by hand before cutting a release."; exit 1 ;;
+            2) ;;
+            *) echo "::error::Could not check origin for tag v${next} (git ls-remote exit $tag_rc)."; exit 1 ;;
+          esac
 
-          # A stale branch from a PREVIOUSLY CLOSED release PR would make `git push` below
-          # fail. Detect it and stop with an actionable message rather than erroring.
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            echo "Stale release branch $branch exists (from a closed PR?). Delete it to re-open: git push origin --delete $branch"; exit 0
-          fi
+          # A merged but untagged bump must be tagged first; a new release PR would
+          # otherwise undo or stack on it.
+          if stop_if_untagged_bump "$latest_tag"; then exit 0; fi
 
-          # If VERSION is already this value, the bump merged and only the tag is missing.
-          cur="$(ruby -r ./lib/mutineer/version -e 'print Mutineer::VERSION')"
-          if [ "$cur" = "$next" ]; then
-            echo "VERSION is already $next (bump merged, awaiting tag). Push it: git tag v$next && git push origin v$next"; exit 0
-          fi
+          # Only this workflow's own PRs carry this marker in the body (see the footer).
+          export RELEASE_PR_MARKER='Auto-opened by `release-pr.yml`'
+          # The open same-repo PR on head <branch> that this workflow opened (empty if none).
+          own_pr_number() {
+            gh pr list --state open --head "$1" --json number,isCrossRepository,body \
+              --jq '[.[] | select(.isCrossRepository | not)
+                         | select(.body | contains(env.RELEASE_PR_MARKER))][0].number // empty'
+          }
+          # Open same-repo PRs on head <branch> that a person opened (no marker).
+          hand_opened_prs() {
+            gh pr list --state open --head "$1" --json number,isCrossRepository,body \
+              --jq '.[] | select(.isCrossRepository | not)
+                        | select(.body | contains(env.RELEASE_PR_MARKER) | not) | "#\(.number)"'
+          }
 
           date="$(date -u +%Y-%m-%d)"
           url="https://github.com/${GITHUB_REPOSITORY}"
@@ -114,13 +180,101 @@ jobs:
 
           # 4) branch, commit, push, open the PR
           git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "$branch"
-          git commit -aqm "release: v${next}"
-          git push -u origin "$branch"
+          git config user.email "$bot"
+          # The release branch is generated: rebuild it from main on every run so the PR
+          # always includes every change since the last tag. A branch that holds someone
+          # else's commits, or that a person opened a PR on, is never replaced.
+          git fetch --quiet origin '+refs/heads/release/*:refs/remotes/origin/release/*'
+          hand_prs="$(hand_opened_prs "$branch")"
+          if [ -n "$hand_prs" ]; then
+            echo "::warning::$branch has a release PR this workflow did not open (${hand_prs//$'\n'/, }), so it is left as is. Merge or close that PR and delete the branch to let the next run rebuild it."
+            exit 0
+          fi
+          remote="refs/remotes/origin/$branch"
+          built=0
+          if git rev-parse -q --verify "$remote" >/dev/null; then
+            if has_human_commits "$branch"; then
+              # Someone is working on this release PR: leave it alone (no rebuild, no
+              # close), and say so. A failure here would repeat every week.
+              echo "::warning::$branch has commits this workflow did not make, so it is left as is. Merge that release PR, or close it and delete the branch, to let the next run rebuild it."
+              exit 0
+            fi
+            [ "$(git rev-parse "$remote^")" = "$(git rev-parse HEAD)" ] && built=1
+          fi
+          if [ "$built" = 1 ]; then
+            echo "$branch is already built on the current main; not rebuilding it."
+          else
+            # main moved: replace the old release branch instead of force-pushing it.
+            # A force-push onto a branch whose new commits include workflow-file changes
+            # is refused for the default GITHUB_TOKEN; creating a branch works. The delete
+            # carries a lease on the SHA checked above, so a commit pushed since then makes
+            # it fail loudly instead of being lost.
+            if git rev-parse -q --verify "$remote" >/dev/null; then
+              old_sha="$(git rev-parse "$remote")"
+              open_num="$(own_pr_number "$branch")"
+              # Explain first (deleting the head branch closes the PR, and a closed PR's
+              # close-comment is skipped), then delete under the lease, then make sure the
+              # PR is closed. A failed delete leaves the PR open with only the comment.
+              if [ -n "$open_num" ]; then
+                gh pr comment "$open_num" --body "main moved: rebuilding the v${next} release PR from main as a fresh PR."
+              fi
+              git push --force-with-lease="refs/heads/${branch}:${old_sha}" origin ":refs/heads/${branch}" \
+                || { echo "::error::$branch changed after it was checked; not replacing it. Re-run after reviewing it."; exit 1; }
+              if [ -n "$open_num" ] && [ "$(gh pr view "$open_num" --json state --jq .state)" = "OPEN" ]; then
+                gh pr close "$open_num"
+              fi
+            fi
+            git switch -C "$branch"
+            git commit -aqm "release: v${next}"
+            git push -u origin "$branch"
+          fi
 
-          notes="$(git log --pretty='- %h %s' "${latest_tag}..HEAD" | grep -E ' (feat|fix)(\(|!|:)' || true)"
+          notes="$(git log --pretty='- %h %s' "${latest_tag}..HEAD" | grep -E '^- [0-9a-f]+ (feat|fix)(\(|!|:)' || true)"
           bump="$([ "$feats" -gt 0 ] && echo minor || echo patch)"
-          body="$(printf '## What / Why / How\n\n**What.** Cut release **v%s**.\n\n**Why.** feat:/fix: commits have landed on `main` since `%s` (auto-detected). This bumps the version + dates the CHANGELOG so a tag can publish — closing the release-drift gap automatically.\n\n**How.** Review, merge, then `git tag v%s && git push origin v%s` — release.yml tests and publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_Auto-opened by `release-pr.yml`. Close to decline; it re-opens on the next qualifying push._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes")"
+          body="$(printf '## What / Why / How\n\n**What.** Cut release **v%s**.\n\n**Why.** feat:/fix: commits have landed on `main` since `%s` (auto-detected). This bumps the version + dates the CHANGELOG so a tag can publish — closing the release-drift gap automatically.\n\n**How.** Review, merge, then `git tag v%s && git push origin v%s` — release.yml tests and publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_%s and rebuilt from `main` on each weekly (or manual) run. When `main` moves, the next run replaces this PR with a fresh one, so comments and approvals stay on the closed PR: review and merge promptly, and put notes in comments only on the current PR. Closing it only snoozes it: the next run re-opens it._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes" "$RELEASE_PR_MARKER")"
 
-          gh pr create --base main --head "$branch" --title "release: v${next}" --body "$body"
+          own_num="$(own_pr_number "$branch")"
+          if [ -n "$own_num" ]; then
+            gh pr edit "$own_num" --body "$body"
+            echo "Refreshed the open release PR #$own_num for $branch."
+          else
+            gh pr create --base main --head "$branch" --title "release: v${next}" --body "$body"
+          fi
+
+          # Only now that the replacement exists: close an open release PR for an OLDER
+          # version (for example v1.2.1 when a feat: has since made this v1.3.0). Only PRs
+          # this workflow opened (body marker, same repo) and only lower versions, so a
+          # hand-made release PR (such as a manual major) is never touched.
+          olds="$(gh pr list --state open --limit 200 --json number,headRefName,isCrossRepository,body \
+            --jq '.[] | select(.isCrossRepository | not)
+                      | select(.headRefName | test("^release/v[0-9]+\\.[0-9]+\\.[0-9]+$"))
+                      | select(.body | contains(env.RELEASE_PR_MARKER))
+                      | "\(.number) \(.headRefName)"')"
+          failed=0
+          while read -r num old; do
+            [ -n "$num" ] || continue
+            version_lt "${old#release/v}" "$next" || continue
+            # Deleting a branch closes every PR on it: never delete one a person also uses.
+            if [ -n "$(hand_opened_prs "$old")" ]; then
+              echo "::warning::Not superseding #$num ($old): a PR this workflow did not open uses that branch."
+              continue
+            fi
+            old_sha="$(git rev-parse -q --verify "refs/remotes/origin/$old" || true)"
+            if [ -n "$old_sha" ] && has_human_commits "$old"; then
+              echo "::warning::Not superseding #$num ($old): it has commits this workflow did not make. Merge or close it by hand."
+              continue
+            fi
+            echo "Superseding #$num ($old) with $branch."
+            # Same order as the rebuild above: explain, delete under a lease on the SHA
+            # checked above (this closes the PR), then close it only if still open.
+            gh pr comment "$num" --body "Superseded by the v${next} release PR, rebuilt from main." \
+              || { echo "::error::Could not comment on #$num ($old)."; failed=1; continue; }
+            if [ -n "$old_sha" ] && ! git push --force-with-lease="refs/heads/${old}:${old_sha}" origin ":refs/heads/${old}"; then
+              echo "::warning::$old changed after it was checked, so it and #$num are left open. Review it by hand."
+              continue
+            fi
+            if [ "$(gh pr view "$num" --json state --jq .state)" = "OPEN" ]; then
+              gh pr close "$num" || { echo "::error::Could not close #$num ($old)."; failed=1; }
+            fi
+          done <<< "$olds"
+          exit "$failed"

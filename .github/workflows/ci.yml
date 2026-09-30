@@ -27,6 +27,26 @@ jobs:
       - name: Build gem
         run: gem build mutineer.gemspec
 
+  test-minitest6:
+    name: test (ruby 3.4, minitest 6)
+    runs-on: ubuntu-latest
+    # The default Gemfile keeps Minitest 5. The stop at the first failure has
+    # separate hooks for Minitest 5 and 6, so each major version needs a run.
+    env:
+      BUNDLE_GEMFILE: ${{ github.workspace }}/gemfiles/minitest6.gemfile
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      # Mutineer clears BUNDLE_* before it runs a test command, so those child
+      # processes fall back to the root Gemfile. Install that bundle too.
+      - name: Install root bundle
+        run: BUNDLE_GEMFILE="$GITHUB_WORKSPACE/Gemfile" bundle install
+      - name: Run tests
+        run: bundle exec rake test
+
   docs:
     name: yard strict (ruby 3.4)
     runs-on: ubuntu-latest
@@ -38,8 +58,6 @@ jobs:
           bundler-cache: true
       - name: Enforce 100% YARD documentation
         run: bundle exec rake yard:strict
-      - name: Published API docs match this checkout
-        run: bundle exec rake yard:pages:check
 
   rails-integration:
     name: rails dogfood (ruby 3.4)
@@ -68,11 +86,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: test/browser/package-lock.json
+      # These tests read the published tree; docs/ no longer carries the
+      # generated files (YARD API docs, sitemap, llms-full.txt).
+      - name: Build site
+        run: bundle exec rake site:build
       - name: Check theme and copy logic
         run: node --test test/site_test.js
       - name: Install browser test tools

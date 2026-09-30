@@ -3,6 +3,7 @@
 require "tempfile"
 require_relative "result"
 require_relative "parser"
+require_relative "child_stdout"
 
 module Mutineer
   # Fork-based isolation for running one mutant. The block runs in a child
@@ -26,6 +27,9 @@ module Mutineer
     # exit code) or any explicit `exit` is honoured; an unhandled exception
     # becomes exit 2 with the cause written to STDERR.
     #
+    # The child silences its stdout (see {ChildStdout.silence}) before the
+    # block runs, so test output never reaches the user. Stderr stays open.
+    #
     # @param timeout [Integer] timeout in seconds.
     # @yieldreturn [Integer] child exit status.
     # @return [Mutineer::Result] result from the child process.
@@ -36,15 +40,17 @@ module Mutineer
         Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
         code = 0
         begin
+          ChildStdout.silence
           result = yield
           code = result.is_a?(Integer) ? result : 0
         rescue SystemExit => e
           code = e.status
         rescue Exception => e # rubocop:disable Lint/RescueException
-          warn "[mutineer-child] #{e.class}: #{e.message}"
+          # STDERR, not `warn`: a test may have left `$stderr` as a StringIO.
+          STDERR.puts "[mutineer-child] #{e.class}: #{e.message}"
           code = 2
         end
-        $stderr.flush
+        STDERR.flush
         # exit! skips at_exit handlers — critical, since a child forked from
         # inside our own Minitest suite would otherwise re-run the parent's
         # at_exit autorun hook on the way out.
@@ -93,7 +99,7 @@ module Mutineer
     # @param source_file [String] original source file path.
     # @return [Object] whatever `load` returns.
     def self.apply_whole_file(mutated, source_file)
-      Tempfile.create(["mutineer_mutant", ".rb"], File.dirname(source_file)) do |f|
+      Tempfile.create(["mutineer_mutant", ".rb"], File.dirname(File.expand_path(source_file))) do |f|
         f.write(mutated)
         f.flush
         load f.path
@@ -126,7 +132,7 @@ module Mutineer
       # namespace constants resolve exactly as the reload strategy would. A
       # bare redefinition on the owner would collapse Module.nesting to [owner]
       # and raise NameError on such constants (C2 scope-collapse).
-      keywords = nesting_keywords(subject.namespace)
+      keywords = nesting_keywords(subject.lexical_namespace)
       prefix   = keywords.map { |kw, name| "#{kw} #{name}" }.join("\n")
       prefix  += "\n" unless prefix.empty?
 
@@ -182,13 +188,18 @@ module Mutineer
     # Foo], so an unqualified constant defined only in Foo would resolve under
     # redefine but not reload — a strategy disagreement.
     #
+    # A root-anchored element (`::Top`, #145) resolves from Object and keeps its
+    # `::` in the wrapper, so `module Outer; class ::Top` rebuilds nesting
+    # [Top, Outer] exactly as the source does.
+    #
     # @api private
-    # @param namespace [Array<String>] namespace components.
+    # @param namespace [Array<String>] class/module chain as written.
     # @return [Array<[String, String]>] wrapper keywords and names.
     def self.nesting_keywords(namespace)
       mod = Object
       namespace.map do |name|
-        mod = mod.const_get(name) # const_get resolves a compact "Foo::Bar" too
+        # const_get resolves a compact "Foo::Bar" too
+        mod = name.start_with?("::") ? Object.const_get(name.delete_prefix("::")) : mod.const_get(name)
         [mod.is_a?(Class) ? "class" : "module", name]
       end
     end

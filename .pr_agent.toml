@@ -1,0 +1,7 @@
+# Repo-root config overrides the Qodo portal.
+# These commands turn automatic review and the pull request summary back on.
+[github_app]
+pr_commands = [
+    "/agentic_describe",
+    "/agentic_review"
+]

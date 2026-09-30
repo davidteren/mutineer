@@ -1,0 +1,47 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - name: Build site
+        run: bundle exec rake site:build
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+          # .nojekyll and docs/.well-known are dotfiles the artifact tar
+          # drops by default; both are on the served site today.
+          include-hidden-files: true
+
+  deploy:
+    needs: build
+    # A manual run may pick any branch; only main replaces the site.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Only this job can deploy, so the build steps never hold these.
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1 — pinned: privileged (id-token) job

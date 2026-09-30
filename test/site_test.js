@@ -6,12 +6,16 @@ const vm = require('node:vm');
 
 const BASE = 'https://davidteren.github.io/mutineer';
 const ALTERNATE = 'rel="alternate" type="text/markdown"';
+// `rake site:build` output. Two files checked here (json-schema.html,
+// sitemap.xml) are Pages build artifacts, not committed — run
+// `bundle exec rake site:build` before this suite.
+const SITE = '_site';
 
 test('HTML pages with markdown twins advertise rel=alternate', () => {
   const twins = {
-    'docs/index.html': `${BASE}/index.md`,
-    'docs/agentic-coding.html': `${BASE}/agentic-coding.md`,
-    'docs/json-schema.html': `${BASE}/json-schema.md`
+    [`${SITE}/index.html`]: `${BASE}/index.md`,
+    [`${SITE}/agentic-coding.html`]: `${BASE}/agentic-coding.md`,
+    [`${SITE}/json-schema.html`]: `${BASE}/json-schema.md`
   };
   for (const [html, href] of Object.entries(twins)) {
     const source = fs.readFileSync(html, 'utf8');
@@ -21,15 +25,15 @@ test('HTML pages with markdown twins advertise rel=alternate', () => {
 });
 
 test('index.md landing twin exists and sitemap lists the same Pages URLs as llms.txt', () => {
-  const indexMd = fs.readFileSync('docs/index.md', 'utf8');
+  const indexMd = fs.readFileSync(`${SITE}/index.md`, 'utf8');
   assert.match(indexMd, /gem install mutineer/);
   assert.match(indexMd, /mutineer run/);
-  const llms = fs.readFileSync('docs/llms.txt', 'utf8');
+  const llms = fs.readFileSync(`${SITE}/llms.txt`, 'utf8');
   assert.match(llms, /## Optional/);
   assert.match(llms, new RegExp(`${BASE}/skill\\.md`));
   const pagesUrls = [...llms.matchAll(/https:\/\/davidteren\.github\.io\/mutineer[^)\s]*/g)].map((m) => m[0]);
   pagesUrls.push(`${BASE}/llms.txt`);
-  const sitemap = fs.readFileSync('docs/sitemap.xml', 'utf8');
+  const sitemap = fs.readFileSync(`${SITE}/sitemap.xml`, 'utf8');
   const unique = [...new Set(pagesUrls)];
   assert.ok(unique.length >= 8, 'llms.txt should list the docs + optional Pages URLs');
   for (const url of unique) {

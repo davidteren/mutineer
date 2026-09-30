@@ -39,13 +39,40 @@ class MutatorRegistryTest < Minitest::Test
                  Mutineer::MutatorRegistry.resolve(%w[string_literal regex collection_method])
   end
 
+  def test_safe_navigation_resolvable
+    assert_equal [M::SafeNavigation], Mutineer::MutatorRegistry.resolve(%w[safe_navigation])
+  end
+
+  def test_range_resolvable
+    assert_equal [M::RangeLiteral], Mutineer::MutatorRegistry.resolve(%w[range])
+  end
+
+  def test_negation_removal_resolvable
+    assert_equal [M::NegationRemoval], Mutineer::MutatorRegistry.resolve(%w[negation_removal])
+  end
+
+
+  def test_chain_link_resolvable
+    assert_equal [M::ChainLink], Mutineer::MutatorRegistry.resolve(%w[chain_link])
+  end
+
+
+  def test_operand_removal_resolvable
+    assert_equal [M::OperandRemoval], Mutineer::MutatorRegistry.resolve(%w[operand_removal])
+  end
+
+  def test_array_literal_resolvable
+    assert_equal [M::ArrayLiteral], Mutineer::MutatorRegistry.resolve(%w[array_literal])
+  end
+
   def test_condition_forcing_resolvable
     assert_equal [M::ConditionTrue, M::ConditionFalse],
                  Mutineer::MutatorRegistry.resolve(%w[condition_true condition_false])
   end
 
   def test_new_operators_are_tier2_and_not_default
-    %w[string_literal regex collection_method condition_true condition_false].each do |name|
+    %w[string_literal regex collection_method safe_navigation range negation_removal chain_link
+       operand_removal array_literal condition_true condition_false].each do |name|
       assert_equal 2, Mutineer::MutatorRegistry.tier(name), "#{name} should be tier 2"
       refute Mutineer::MutatorRegistry.default?(name), "#{name} should not be default"
       assert Mutineer::MutatorRegistry::DESCRIPTIONS.key?(name), "#{name} needs a description"

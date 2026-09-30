@@ -111,34 +111,24 @@ module MutineerSiteDocs
 
     # Write generated site files in `docs/`.
     #
+    # `sitemap.xml` is a Pages build artifact (`rake site:build`), not a
+    # committed copy — this only touches `docs/llms.txt` and the contract
+    # splices.
+    #
     # @return [void]
     def generate!
-      write!("docs/sitemap.xml", sitemap_xml)
       write!("docs/llms.txt", llms_txt(File.read("docs/llms.txt")))
       DocsContract.generate!
     end
 
-    # Paths whose committed bytes differ from a fresh generate.
-    #
-    # Sitemap lastmod is compared after a shared stamp is applied so a
-    # same-day generate and a later check agree on locs and priorities.
+    # Committed paths whose bytes differ from a fresh generate.
     #
     # @return [Array<String>]
     def stale_files
       stale = []
-      stale << "docs/sitemap.xml" unless sitemap_equivalent?(File.read("docs/sitemap.xml"), sitemap_xml)
       stale << "docs/llms.txt" unless File.read("docs/llms.txt") == llms_txt(File.read("docs/llms.txt"))
       stale.concat(DocsContract.stale_files)
       stale
-    end
-
-    # True when two sitemaps list the same locs and priorities.
-    #
-    # @param committed [String]
-    # @param generated [String]
-    # @return [Boolean]
-    def sitemap_equivalent?(committed, generated)
-      strip_lastmod(committed) == strip_lastmod(generated)
     end
 
     private
@@ -156,14 +146,6 @@ module MutineerSiteDocs
       raise "docs/llms.txt is missing #{start} … #{stop}" unless text.match?(pattern)
 
       text.sub(pattern, "#{start}\n#{body.chomp}\n#{stop}")
-    end
-
-    # Replace lastmod values so date refresh is not a stale-file failure.
-    #
-    # @param xml [String]
-    # @return [String]
-    def strip_lastmod(xml)
-      xml.gsub(%r{<lastmod>[^<]+</lastmod>}, "<lastmod>DATE</lastmod>")
     end
 
     # Write + trailing newline.

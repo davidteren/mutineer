@@ -25,6 +25,21 @@ class IntegrationTest < Minitest::Test
     src[result.mutation.start_offset...result.mutation.end_offset]
   end
 
+  # One operator, one fixture pair, and exactly one survivor that nothing kills.
+  def assert_sole_survivor(source:, test:, operator:, subject:, token:, replacement:)
+    result = run_mutineer(sources: [source], tests: [test], operators: [operator.to_s])
+
+    assert_equal 1, result.survived_count,
+                 "Expected exactly 1 survivor from #{File.basename(source)} + #{File.basename(test)}"
+    assert_equal 0.0, result.mutation_score
+
+    s = result.surviving_mutants.first
+    assert_equal subject, s.subject.name.to_s
+    assert_equal operator, s.mutation.operator
+    assert_equal token, source_token(s)
+    assert_equal replacement, s.mutation.replacement
+  end
+
   # Scenario A — pricing boundary survivor (R9)
   def test_pricing_boundary_survivor
     result = run_mutineer(sources: ["test/fixtures/pricing.rb"],
@@ -40,6 +55,58 @@ class IntegrationTest < Minitest::Test
     assert_equal :comparison, s.mutation.operator
     assert_equal ">=", source_token(s)
     assert_equal ">", s.mutation.replacement
+  end
+
+  def test_safe_navigation_survivor
+    assert_sole_survivor(source: "test/fixtures/greeting.rb", test: "test/fixtures/greeting_test.rb",
+                         operator: :safe_navigation, subject: "name_of", token: "&.", replacement: ".")
+  end
+
+  def test_range_survivor
+    assert_sole_survivor(source: "test/fixtures/steps.rb", test: "test/fixtures/steps_test.rb",
+                         operator: :range, subject: "upto", token: "..", replacement: "...")
+  end
+
+  def test_negation_removal_survivor
+    assert_sole_survivor(source: "test/fixtures/access.rb", test: "test/fixtures/access_test.rb",
+                         operator: :negation_removal, subject: "guest?", token: "!", replacement: "")
+  end
+
+  def test_chain_link_survivor
+    result = run_mutineer(sources: ["test/fixtures/roster.rb"],
+                          tests: ["test/fixtures/roster_test.rb"],
+                          operators: ["chain_link"])
+
+    assert_equal 1, result.survived_count,
+                 "Expected exactly 1 survivor from roster.rb + roster_test.rb"
+    assert_equal 50.0, result.mutation_score
+
+    s = result.surviving_mutants.first
+    assert_equal "active_names", s.subject.name.to_s
+    assert_equal :chain_link, s.mutation.operator
+    assert_equal ".select(&:active)", source_token(s)
+    assert_equal "", s.mutation.replacement
+  end
+
+  def test_operand_removal_survivor
+    result = run_mutineer(sources: ["test/fixtures/discount.rb"],
+                          tests: ["test/fixtures/discount_test.rb"],
+                          operators: ["operand_removal"])
+
+    assert_equal 1, result.survived_count,
+                 "Expected exactly 1 survivor from discount.rb + discount_test.rb"
+    assert_equal 50.0, result.mutation_score
+
+    s = result.surviving_mutants.first
+    assert_equal "eligible?", s.subject.name.to_s
+    assert_equal :operand_removal, s.mutation.operator
+    assert_equal "member && total >= 100", source_token(s)
+    assert_equal "(member)", s.mutation.replacement
+  end
+
+  def test_array_literal_survivor
+    assert_sole_survivor(source: "test/fixtures/tags.rb", test: "test/fixtures/tags_test.rb",
+                         operator: :array_literal, subject: "defaults", token: "%w[ruby rails]", replacement: "[]")
   end
 
   def test_condition_forcing_survivor
@@ -91,6 +158,59 @@ class IntegrationTest < Minitest::Test
     assert_equal 4, result.killed_count, "Expected multiply, divide, modulo, power killed"
     refute result.surviving_mutants.any? { |r| r.subject.name.to_s == "multiply" }
     refute result.surviving_mutants.any? { |r| r.subject.name.to_s == "divide" }
+  end
+
+  # A test that reopens $stdout (Minitest's capture_subprocess_io) must see the
+  # same verdicts as the plain weak suite: no "not green" abort, no false kills.
+  def test_suite_that_reopens_stdout_scores_like_weak_suite
+    result = run_mutineer(sources: ["test/fixtures/calculator.rb"],
+                        tests: ["test/fixtures/calculator_subprocess_io_test.rb"])
+
+    assert_equal 2, result.survived_count
+    assert_equal 4, result.killed_count
+    assert_equal %w[add subtract], result.surviving_mutants.map { |r| r.subject.name.to_s }.sort
+  end
+
+  # A warm cache re-checks the clean suite in a separate script; that check must
+  # also keep $stdout a real IO.
+  def test_suite_that_reopens_stdout_scores_like_weak_suite_on_warm_cache
+    cache = Dir.mktmpdir("mutineer-cache")
+    run = lambda do
+      config = Mutineer::Config.new(
+        sources: ["test/fixtures/calculator.rb"],
+        tests: ["test/fixtures/calculator_subprocess_io_test.rb"],
+        cache_dir: cache, project_root: ROOT
+      )
+      Mutineer::Runner.execute(config).first
+    end
+
+    run.call
+    assert File.exist?(File.join(cache, "coverage.json")), "first run must leave a cache for the second"
+    result = run.call
+
+    assert_equal 2, result.survived_count
+    assert_equal 4, result.killed_count
+  end
+
+  # A test file that leaves $stdout as a StringIO (at load time and inside a
+  # test) must not break the silencing that the reopen fix added.
+  def test_suite_that_swaps_stdout_for_a_stringio_scores_like_weak_suite
+    result = run_mutineer(sources: ["test/fixtures/calculator.rb"],
+                        tests: ["test/fixtures/calculator_stdout_swap_test.rb"])
+
+    assert_equal 2, result.survived_count
+    assert_equal 4, result.killed_count
+  end
+
+  # A test file that prints at load time must not corrupt the coverage result
+  # that the capture subprocess sends back, so no mutant becomes unscoreable.
+  def test_suite_that_prints_at_load_time_scores_like_weak_suite
+    result = run_mutineer(sources: ["test/fixtures/calculator.rb"],
+                        tests: ["test/fixtures/calculator_load_time_puts_test.rb"])
+
+    assert_equal 2, result.survived_count
+    assert_equal 4, result.killed_count
+    assert_equal %w[add subtract], result.surviving_mutants.map { |r| r.subject.name.to_s }.sort
   end
 
   # #97: changing only a required helper must not leave a stale no_coverage

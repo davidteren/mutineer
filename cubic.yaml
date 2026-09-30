@@ -26,7 +26,6 @@ reviews:
 
   ignore:
     files:
-      - 'docs/api/**'
       - 'doc/**'
       - '**/.yardoc/**'
       - '**/yardoc/**'

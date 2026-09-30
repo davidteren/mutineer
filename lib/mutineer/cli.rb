@@ -162,6 +162,7 @@ module Mutineer
 
       case argv.first
       when "run"
+        warn_config_root_mismatch(file_path, config.project_root) if file_path
         # A directory source expands to its **/*.rb files; literal files pass
         # through. Test inference (when --test is omitted) happens in validate!.
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
@@ -469,7 +470,8 @@ module Mutineer
         exit 2
       end
 
-      aggregate, source_map = Runner.execute(config)
+      aggregate, source_map, extras = Runner.execute(config)
+      warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
       reporter = Reporter.new(aggregate, source_map)
 
       # Diff the current run against the baseline (preflighted above) by the
@@ -479,12 +481,18 @@ module Mutineer
       # so only the new-survivor half of the gate applies (see Baseline#diff).
       delta = if config.baseline
                 Baseline.load(config.baseline).diff(aggregate, epsilon: config.baseline_epsilon,
-                                                               scoped: !config.since.nil?)
+                                                               scoped: !config.since.nil?,
+                                                               id_map: extras[:id_map],
+                                                               project_root: config.project_root)
               end
+      warn_legacy_baseline if delta&.legacy_matches&.positive?
 
+      # ignore counts old-format entries (one warning each), not the ids they matched.
+      legacy_id_matches = { ignore: extras[:legacy_ignore_matches].size,
+                            baseline: delta ? delta.legacy_matches : 0 }
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
-                      scoped: !config.since.nil?)
+                      scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches)
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
@@ -523,6 +531,64 @@ module Mutineer
         "enable with --operators <list>."
     end
 
+    # Warns once when the loaded .mutineer.yml sits outside the run directory
+    # (#126). Mutant ids hash each file's path relative to the run directory,
+    # but the config is found by walking up, so a run from a subdirectory loads
+    # the same ignore list while its ids no longer match. A config in the home
+    # directory is a personal default, not a project root, so it never warns.
+    #
+    # @param file_path [String] the .mutineer.yml that was loaded.
+    # @param project_root [String] the run directory ids are relative to.
+    # @return [void]
+    def self.warn_config_root_mismatch(file_path, project_root)
+      config_dir = ProjectPath.root_real(File.dirname(file_path))
+      return if config_dir == ProjectPath.root_real(project_root)
+      return if config_dir == ProjectPath.root_real(Dir.home)
+
+      warn "[mutineer] loaded #{file_path}, but mutant ids are relative to the run directory " \
+           "#{project_root}, not to #{config_dir}. Ignore ids and baselines written from " \
+           "#{config_dir} will not match this run. Run mutineer from #{config_dir}."
+    end
+
+    # Warns once per old-format `ignore:` entry (#126), naming each new id it
+    # matched with that mutant's file and subject. mutineer cannot tell a full
+    # run from a narrowed one, so the text always says the list covers only this
+    # run's mutants. An entry that matched more than one distinct mutant (in
+    # other files, or same-named methods in one file) over-matched: the old id
+    # could not tell them apart, so replacing it with every new id would keep
+    # suppressing the mutants it hid by accident.
+    #
+    # @param matches [Hash{String => Array<Hash{Symbol => String}>}] old-format
+    #   entry => one `{id:, file:, subject:}` hash per matched mutant.
+    # @return [void]
+    def self.warn_legacy_ignore_matches(matches)
+      matches.each do |old, hits|
+        listed = hits.map { |h| "#{h[:id]} (#{h[:file]}, #{h[:subject]})" }.join(", ")
+        advice = if hits.map { |h| h[:id] }.uniq.size > 1
+                   "#{old} over-matched: the old format could not tell these mutants apart. " \
+                     "Replace #{old} and keep only the ids for the mutant you meant to ignore, not all of them."
+                 else
+                   "Replace #{old} with the new ids in your ignore list."
+                 end
+        warn "[mutineer] ignore entry #{old} uses the old id format, which did not include the " \
+             "file path. It matched these new ids: #{listed}. This list covers only mutants in " \
+             "this run's sources and operators; a run over every source gives the complete " \
+             "replacement. #{advice}"
+      end
+    end
+
+    # Warns once that the --baseline file stores old-format ids (#126), so the
+    # diff fell back to matching on them. Called only when a survivor matched
+    # through an old id alone.
+    #
+    # @return [void]
+    def self.warn_legacy_baseline
+      warn "[mutineer] the baseline uses the old id format, which did not include the file " \
+           "path, so survivors were matched on their old ids and files. Regenerate the baseline " \
+           "(run with --format json and save the output), but only after every gate that reads " \
+           "it runs this mutineer version or later."
+    end
+
     # Runs dry-run mode. Reuses Runner.collect_jobs (+ filter_since) so the
     # candidate list cannot drift from a real run's job selection.
     #
@@ -530,7 +596,8 @@ module Mutineer
     # @return [void]
     def self.dry_run(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
-      jobs, ignored_results, source_map = Runner.collect_jobs(config, operator_classes)
+      jobs, ignored_results, source_map, extras = Runner.collect_jobs(config, operator_classes)
+      warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
       # Narrow jobs and ignored the same way so the summary matches the printed list.
       if config.since
         jobs = Runner.filter_since(jobs, source_map, config)

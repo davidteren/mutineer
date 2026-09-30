@@ -34,7 +34,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
    ```sh
    mutineer run app/ --since origin/main --format json --output .mutineer/run.json
    ```
-3. Parse `survivors[]` — each carries a `diff` and stable `id`. For each, write/strengthen a
+3. Parse `survivors[]` — each carries a `diff` and an `id` (stable across edits outside the method; a file move or rename changes it). For each, write/strengthen a
    test that fails under that change.
 4. Re-run. Stop when `summary.survived == 0` or `summary.score >= target`.
 

@@ -8,8 +8,6 @@ module DocsContract
   ROOT = File.expand_path("..", __dir__)
   CONTRACT_PATH = File.join(ROOT, "docs/fragments/contract.yml")
   SCHEMA_MD = File.join(ROOT, "docs/json-schema.md")
-  SCHEMA_HTML = File.join(ROOT, "docs/json-schema.html")
-  LLMS_FULL = File.join(ROOT, "docs/llms-full.txt")
 
   # Heading text in json-schema.md → stable HTML ids (keep existing anchors).
   HEADING_IDS = {
@@ -135,14 +133,16 @@ module DocsContract
 
     # Apply the contract to every derived surface and write them.
     #
+    # `llms-full.txt` and `json-schema.html` are Pages build artifacts
+    # (`rake site:build`), not committed copies — this only touches the
+    # hand-written files the contract is spliced into.
+    #
     # @return [void]
     def generate!
       apply_markers!
-      write!(LLMS_FULL, llms_full_txt)
-      write!(SCHEMA_HTML, json_schema_html)
     end
 
-    # Derived paths that do not match a fresh generate.
+    # Committed paths whose contract splice does not match a fresh generate.
     #
     # @return [Array<String>]
     def stale_files
@@ -155,8 +155,6 @@ module DocsContract
       stale << "docs/agentic-coding.html" unless File.read(html) == with_exit_codes(File.read(html), :html)
       stale << "README.md" unless threshold_applied?(File.read(File.join(ROOT, "README.md")))
       stale << "action.yml" unless action_applied?(File.read(File.join(ROOT, "action.yml")))
-      stale << "docs/llms-full.txt" unless File.read(LLMS_FULL) == "#{llms_full_txt.rstrip}\n"
-      stale << "docs/json-schema.html" unless File.read(SCHEMA_HTML) == json_schema_html
       stale
     end
 
@@ -502,7 +500,7 @@ module DocsContract
             </aside>
 
             <article class="prose">
-              <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Reference · schema_version 1.3</span>
+              <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Reference · schema_version 1.4</span>
               <h1>JSON report schema reference</h1>
               #{article}
               <div class="callout"><span class="ico" aria-hidden="true">→</span><p>See the <a href="agentic-coding.html">agent &amp; CI recipes</a> for how to consume this in a loop or a PR gate.</p></div>

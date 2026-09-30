@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "open3"
 require "json"
 require "digest"
 require "fileutils"
@@ -9,6 +8,8 @@ require "coverage"
 require "set"
 require_relative "minitest_integration"
 require_relative "test_runners"
+require_relative "child_stdout"
+require_relative "project_path"
 
 module Mutineer
   # Maps `(source_file, line) -> [test_files]` so each mutant runs only against
@@ -21,6 +22,10 @@ module Mutineer
   class CoverageMap
     # Seconds per coverage subprocess before the parent kills it.
     DEFAULT_CAPTURE_TIMEOUT = 120
+
+    # File descriptor in a capture subprocess that carries the JSON result to
+    # the parent. Stdout stays free for test output, which goes to File::NULL.
+    RESULT_FD = 3
 
     attr_reader :project_root, :failed_test_files, :failed_clean_tests, :phase_a_ran, :map
 
@@ -92,7 +97,7 @@ module Mutineer
     # Is this source file's empty coverage the result of an *errored* capture
     # rather than a genuine coverage gap? True iff some capture failed this run
     # AND this file got zero coverage from any successful capture AND a failed
-    # test file maps to it by the standard _test/_spec naming convention. Derived
+    # test file maps to it by the _test/_spec/test_ naming convention. Derived
     # purely from already-persisted state (@map keys + @failed_test_files); no
     # rerun, no new cached field, no digest change.
     #
@@ -138,10 +143,17 @@ module Mutineer
       @map.keys.map { |k| k.rpartition(":").first }.to_set
     end
 
-    # Basenames of failed test files with a trailing _test/_spec (and .rb) stripped,
-    # i.e. the source basenames they would have covered by convention.
+    # Basenames of the sources that failed test files pair with by convention:
+    # a trailing _test/_spec is stripped first, as pairing tries that form first.
     def failed_test_targets
-      @failed_test_files.map { |t| File.basename(t, ".rb").sub(/_(test|spec)\z/, "") }.to_set
+      @failed_test_files.map do |t|
+        name = File.basename(t, ".rb")
+        case name
+        when /_(test|spec)\z/ then name.sub(/_(test|spec)\z/, "")
+        when "test_helper" then name # Minitest's support file pairs with no source
+        else name.delete_prefix("test_")
+        end
+      end.to_set
     end
 
     # Shared cache dance for both build paths: hit the digest-keyed cache, else
@@ -232,6 +244,7 @@ module Mutineer
         rd.close
         payload =
           begin
+            ChildStdout.silence
             # Fork-safety hook: the in-process path reconnects AR; the daemon
             # routes to its worker DB. Nil (non-Rails) = no-op. Injected so this
             # file needs neither Runner (Prism) nor Rails.
@@ -293,22 +306,8 @@ module Mutineer
     # before any source is loaded. Returns the wrapped capture payload
     # (`passed` + `coverage`), or nil when the subprocess failed (logged + skipped).
     def capture(test_path)
-      out = +""
-      status = nil
-      Open3.popen2(RbConfig.ruby, "-") do |stdin, stdout, wait_thr|
-        stdin.write(subprocess_script(test_path))
-        stdin.close
-        reader = Thread.new { out << stdout.read }
-        # Bound the subprocess with a wall clock: a hanging test file must not
-        # wedge the whole run before any per-mutant timeout.
-        unless wait_thr.join(@capture_timeout)
-          Process.kill(:KILL, wait_thr.pid) rescue nil # rubocop:disable Style/RescueModifier
-          reader.kill
-          return fail_test(test_path, "timed out after #{@capture_timeout}s")
-        end
-        reader.join
-        status = wait_thr.value
-      end
+      status, out = spawn_script(subprocess_script(test_path))
+      return fail_test(test_path, "timed out after #{@capture_timeout}s") unless status
       return fail_test(test_path, "subprocess exited #{status.exitstatus}") unless status.success?
 
       parsed = JSON.parse(out)
@@ -442,20 +441,72 @@ module Mutineer
     # @param test_paths [Array<String>] test file paths.
     # @return [Boolean]
     def subprocess_clean_pass?(test_paths)
-      status = nil
-      Open3.popen2(RbConfig.ruby, "-") do |stdin, stdout, wait_thr|
-        stdin.write(clean_check_script(test_paths))
-        stdin.close
-        reader = Thread.new { stdout.read }
-        unless wait_thr.join(@capture_timeout)
-          Process.kill(:KILL, wait_thr.pid) rescue nil # rubocop:disable Style/RescueModifier
-          reader.kill
-          return false
-        end
-        reader.join
-        status = wait_thr.value
+      status, = spawn_script(clean_check_script(test_paths), result: false)
+      status&.success? || false
+    end
+
+    # Runs `script` in a fresh `ruby -` that reads the script from stdin. The
+    # child's stdout goes to File::NULL, so test output never reaches the user
+    # or the result. With `result: true`, the child writes its result as one
+    # line to fd {RESULT_FD}, a pipe that only the script uses. The child's
+    # stderr is the parent's stderr, so warnings from the script reach the
+    # user. A wall clock of `@capture_timeout` bounds the whole call, so a hung
+    # test cannot wedge the run.
+    #
+    # The parent reads one line, not until EOF: a process that a test leaves
+    # running can inherit fd {RESULT_FD} (a `fork` without `exec` keeps it
+    # despite close-on-exec) and hold the pipe open long after the child exits.
+    # A clean check reports only through its exit status, so it gets no pipe.
+    #
+    # @api private
+    # @param script [String] Ruby script text.
+    # @param result [Boolean] whether to open the result pipe on fd {RESULT_FD}.
+    # @return [Array(Process::Status, String)] the exit status and the line the
+    #   child wrote to fd {RESULT_FD} (`""` without one); `[nil, ""]` after a
+    #   timeout.
+    def spawn_script(script, result: true)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @capture_timeout
+      script_rd, script_wr = IO.pipe
+      result_rd, result_wr = IO.pipe if result
+      options = { in: script_rd, out: File::NULL }
+      options[RESULT_FD] = result_wr if result
+      pid = Process.spawn(RbConfig.ruby, "-", **options)
+      waiter = Process.detach(pid)
+      script_rd.close
+      result_wr&.close
+      reader = Thread.new { result_rd.gets.to_s } if result
+      script_wr.write(script)
+      script_wr.close
+      unless waiter.join(remaining(deadline))
+        Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
+        waiter.join
+        reader&.kill
+        return [nil, ""]
       end
-      status&.success?
+      [waiter.value, reader&.join(remaining(deadline))&.value.to_s]
+    ensure
+      reader&.kill
+      [script_rd, script_wr, result_rd, result_wr].compact.each { |io| io.close unless io.closed? }
+    end
+
+    # Seconds left before `deadline`, never negative.
+    #
+    # @api private
+    # @param deadline [Float] a CLOCK_MONOTONIC time.
+    # @return [Float]
+    def remaining(deadline)
+      [deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC), 0].max
+    end
+
+    # Ruby source that opens the result channel in a {#spawn_script} child. The
+    # script runs it first, so no file that a test opens can take fd
+    # {RESULT_FD}. Close-on-exec keeps the fd out of the test's own
+    # subprocesses.
+    #
+    # @api private
+    # @return [String] Ruby script text.
+    def result_channel_expression
+      "_result = IO.new(#{RESULT_FD}, \"w\"); _result.close_on_exec = true"
     end
 
     # Runs test files in a fork of the booted parent and returns whether they passed.
@@ -473,6 +524,7 @@ module Mutineer
         rd.close
         Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
         begin
+          ChildStdout.silence
           after_fork&.call
           Coverage.result(clear: true, stop: false) if Coverage.running?
           wr.write(Marshal.dump(TestRunners.for(@framework).run(abs_tests).zero?))
@@ -535,11 +587,15 @@ module Mutineer
         require "minitest"
         require "stringio"
         def Minitest.autorun; end
+        _report = StringIO.new
+        Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
+        Minitest.extensions << "mutineer_report"
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| load f }
+        #{abs_source_paths.inspect}.each { |f| require f }
         #{loads}
-        $stdout = StringIO.new
-        exit(Minitest.run([]) ? 0 : 1)
+        _passed = Minitest.run([])
+        $stderr.write(_report.string) unless _passed
+        exit(_passed ? 0 : 1)
       RUBY
     end
 
@@ -559,10 +615,10 @@ module Mutineer
         end
         RSpec::Core::Runner.disable_autorun!
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| load f }
+        #{abs_source_paths.inspect}.each { |f| require f }
         _sink = StringIO.new
-        $stdout = _sink
         status = RSpec::Core::Runner.run(["--no-color", #{specs}], _sink, _sink)
+        $stderr.write(_sink.string) unless status.zero?
         exit(status.zero? ? 0 : 1)
       RUBY
     end
@@ -583,31 +639,36 @@ module Mutineer
     # @return [String] Ruby script text.
     def minitest_subprocess_script(test_path)
       <<~RUBY
+        #{result_channel_expression}
         require "coverage"
         require "json"
-        require "stringio"
         require "minitest"
+        require "stringio"
         def Minitest.autorun; end
+        _report = StringIO.new
+        Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
+        Minitest.extensions << "mutineer_report"
         Coverage.start(lines: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| load f }
+        #{abs_source_paths.inspect}.each { |f| require f }
         load #{absolute(test_path).inspect}
-        _orig = $stdout
-        $stdout = StringIO.new
         _passed = Minitest.run([])
-        $stdout = _orig
-        puts JSON.generate("passed" => _passed == true, "coverage" => Coverage.result,
-                           "loaded_files" => #{loaded_files_expression})
+        $stderr.write(_report.string) unless _passed
+        _result.puts JSON.generate("passed" => _passed == true, "coverage" => Coverage.result,
+                                    "loaded_files" => #{loaded_files_expression})
+        _result.close
       RUBY
     end
 
     # Same coverage-JSON contract as the minitest path, but driven by RSpec:
-    # require rspec/core lazily, load the sources under Coverage, then run the
-    # one spec via RSpec::Core::Runner with output silenced so only the JSON
-    # reaches stdout. A missing rspec makes `require` raise -> subprocess exits
-    # non-zero -> capture() records a skipped (incomplete-map) test, with a hint.
+    # require rspec/core lazily, require the sources under Coverage, then run the
+    # one spec via RSpec::Core::Runner. The JSON goes to the result channel (see
+    # {#spawn_script}), so spec output cannot corrupt it. A missing rspec makes
+    # the script exit non-zero -> capture() records a skipped (incomplete-map)
+    # test, with a hint.
     def rspec_subprocess_script(test_path)
       <<~RUBY
+        #{result_channel_expression}
         require "coverage"
         require "json"
         require "stringio"
@@ -620,14 +681,13 @@ module Mutineer
         RSpec::Core::Runner.disable_autorun!
         Coverage.start(lines: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| load f }
-        _orig = $stdout
+        #{abs_source_paths.inspect}.each { |f| require f }
         _sink = StringIO.new
-        $stdout = _sink
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
-        $stdout = _orig
-        puts JSON.generate("passed" => _status.zero?, "coverage" => Coverage.result,
-                           "loaded_files" => #{loaded_files_expression})
+        $stderr.write(_sink.string) unless _status.zero?
+        _result.puts JSON.generate("passed" => _status.zero?, "coverage" => Coverage.result,
+                                    "loaded_files" => #{loaded_files_expression})
+        _result.close
       RUBY
     end
 
@@ -663,11 +723,7 @@ module Mutineer
     #
     # @api private
     # @return [String] realpath of the project root when it exists.
-    def project_root_real
-      File.realpath(File.expand_path(@project_root))
-    rescue Errno::ENOENT
-      File.expand_path(@project_root)
-    end
+    def project_root_real = ProjectPath.root_real(@project_root)
 
     # Project-local `.rb` files loaded in this process at capture time.
     #
@@ -848,38 +904,18 @@ module Mutineer
     # @return [Array<String>] absolute load paths.
     def abs_load_paths   = @load_paths.map { |p| absolute(p) }
 
-    # Relativizes a path against the project root.
+    # Relativizes a path against the project root (see {ProjectPath.relative}).
     #
     # @api private
     # @param path [String] path to relativize.
-    # @return [String] relative path.
-    def relativize(path)
-      abs = path.start_with?("/") ? path : absolute(path)
-      abs = realpath_if_exists(abs)
-      root = project_root_real
-      prefix = root.end_with?("/") ? root : "#{root}/"
-      return abs unless abs.start_with?(prefix)
+    # @return [String] relative path, or an absolute path when outside the root.
+    def relativize(path) = ProjectPath.relative(path, @project_root)
 
-      abs.delete_prefix(prefix)
-    end
-
-    # Expands a path relative to the project root.
+    # Expands a path relative to the project root (see {ProjectPath.absolute}).
     #
     # @api private
     # @param path [String] path to expand.
     # @return [String] absolute path.
-    def absolute(path)
-      raw = File.absolute_path?(path) ? path : File.expand_path(path, @project_root)
-      realpath_if_exists(raw)
-    end
-
-    # Real path when the file exists, otherwise `path` unchanged.
-    #
-    # @api private
-    # @param path [String] absolute or relative path.
-    # @return [String]
-    def realpath_if_exists(path)
-      File.exist?(path) ? File.realpath(path) : path
-    end
+    def absolute(path) = ProjectPath.absolute(path, @project_root)
   end
 end
