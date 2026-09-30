@@ -117,3 +117,23 @@ run_step case10 STUB_REPORT="$SCRATCH/report-legacy.json"
 grep 'title=Old-format mutant ids' "$SCRATCH/case10/stdout.txt"
 [ "$(grep -c 'title=Old-format mutant ids' "$SCRATCH/case10/stdout.txt")" = "1" ] && echo "  OK: one old-format id warning" || echo "  FAIL: expected exactly one old-format id warning"
 grep -q 'title=Old-format mutant ids' "$SCRATCH/case1/stdout.txt" && echo "  FAIL: old-format id warning without legacy_id_matches" || echo "  OK: no old-format id warning when the report has no counts"
+
+echo; echo "== 11: exit 1 with output and baseline as the same file (expects exit 2, file unchanged) =="
+mkdir -p .mutineer
+cp "$SCRATCH/report.json" .mutineer/baseline.json
+ln -s baseline.json .mutineer/link.json
+before=$(cksum .mutineer/baseline.json)
+run_step case11 STUB_EXIT=1 OUTPUT=".mutineer/link.json" BASELINE="$(pwd)/.mutineer/baseline.json"
+after=$(cksum .mutineer/baseline.json)
+[ "$before" = "$after" ] && echo "  OK: same-file baseline kept" || echo "  FAIL: baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran despite the same file" || echo "  OK: same file rejected before running"
+grep -q 'Refresh the baseline with the CLI' "$SCRATCH/case11/stdout.txt" && echo "  OK: same-file message names the CLI" || echo "  FAIL: missing same-file message"
+
+echo; echo "== 12: exit 1 with output and baseline as two files (expects the report copied) =="
+mkdir -p "$SCRATCH/case12"
+cp "$SCRATCH/report.json" "$SCRATCH/case12/baseline.json"
+before=$(cksum "$SCRATCH/case12/baseline.json")
+run_step case12 STUB_EXIT=1 OUTPUT="$SCRATCH/case12/out.json" BASELINE="$SCRATCH/case12/baseline.json"
+after=$(cksum "$SCRATCH/case12/baseline.json")
+[ "$before" = "$after" ] && echo "  OK: distinct baseline kept" || echo "  FAIL: distinct baseline changed"
+[ -s "$SCRATCH/case12/out.json" ] && echo "  OK: distinct output delivered" || echo "  FAIL: distinct output missing"

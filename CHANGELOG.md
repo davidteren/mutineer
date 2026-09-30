@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **The Action refuses to run when `output` and `baseline` are the same file** (#160).
+  A failing run copied its report onto that path. The next run then treated
+  the failed report as the baseline, so the gate could pass. The Action now
+  stops before the run. Refresh the baseline with the CLI, and keep the file
+  only when the run exits 0.
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not
   singleton methods (#144).

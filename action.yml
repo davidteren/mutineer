@@ -82,7 +82,10 @@ inputs:
     description: >-
       Write the report to this file instead of stdout. When unset with the
       default json format, the report is written to a temp file (for the step
-      summary and annotations) and still printed to the log.
+      summary and annotations) and still printed to the log. This path and
+      `baseline` must not be the same file. A failing run would replace the
+      baseline. Refresh the baseline with the CLI, and keep that file only
+      when the run exits 0.
     required: false
     default: ""
   extra-args:
@@ -210,8 +213,9 @@ runs:
         # report" is simply "is it non-empty": no mtime comparison (bash 3.2 /
         # whole-second filesystems misjudge same-second files), no cross-step
         # collisions, and a run that dies early can neither clobber nor
-        # impersonate the caller's existing file (`output` may even equal
-        # `baseline`). RUNNER_TEMP is cleaned up at job end.
+        # impersonate the caller's existing file. `output` and `baseline` as
+        # the same file are refused below, before the run. RUNNER_TEMP is
+        # cleaned up at job end.
         TMP_REPORT=""
         if [ "$FORMAT" = "json" ] || [ -n "$OUTPUT" ]; then
           TMP_REPORT="$(mktemp "${RUNNER_TEMP:-/tmp}/mutineer-report-XXXXXX")"
@@ -234,6 +238,29 @@ runs:
           out_dir="$(dirname "$OUTPUT")"
           if [ ! -d "$out_dir" ] || [ ! -w "$out_dir" ]; then
             echo "::error::mutineer: cannot write output '$SAFE_OUT': no such directory or not writable."
+            exit 2
+          fi
+        fi
+
+        # A finished run copies its report onto `output` even when the exit
+        # code is not 0. When that path is the baseline, the next run diffs
+        # against the failed report and the gate can pass. Stop first.
+        # Resolve both paths (relative names, and two names for one file).
+        if [ -n "$OUTPUT" ] && [ -n "$BASELINE" ]; then
+          same_path="$(ruby -e '
+            def ident(path)
+              abs = File.expand_path(path)
+              File.exist?(abs) ? File.realpath(abs) : abs
+            end
+            a = ident(ARGV[0])
+            b = ident(ARGV[1])
+            print a if a == b
+          ' "$OUTPUT" "$BASELINE")"
+          if [ -n "$same_path" ]; then
+            SAFE_SAME="${same_path//%/%25}"
+            SAFE_SAME="${SAFE_SAME//$'\r'/%0D}"
+            SAFE_SAME="${SAFE_SAME//$'\n'/%0A}"
+            echo "::error::mutineer: output and baseline are the same file ('$SAFE_SAME'). A failing run would replace the baseline. Refresh the baseline with the CLI, and keep that file only when the run exits 0."
             exit 2
           fi
         fi
