@@ -81,10 +81,19 @@
 
     // Motion: a scroll progress bar, count-ups, and sections that rise into view.
     if (motion) {
+      // One observer per threshold, shared by every element that uses it.
+      var observers = {}, callbacks = new Map();
       var once = function (el, fn, threshold) {
-        var io = new IntersectionObserver(function (entries) {
-          entries.forEach(function (e) { if (e.isIntersecting) { io.unobserve(e.target); fn(e.target); } });
-        }, { threshold: threshold || 0.2 });
+        var t = threshold || 0.2;
+        var io = observers[t] || (observers[t] = new IntersectionObserver(function (entries, self) {
+          entries.forEach(function (e) {
+            if (!e.isIntersecting) return;
+            self.unobserve(e.target);
+            callbacks.get(e.target).forEach(function (f) { f(e.target); });
+            callbacks.delete(e.target);
+          });
+        }, { threshold: t }));
+        callbacks.set(el, (callbacks.get(el) || []).concat(fn));
         io.observe(el);
       };
       var count = function (el, from, to, ms, format) {
@@ -105,6 +114,7 @@
         bar.style.transform = 'scaleX(' + (h > 0 ? scrollY / h : 0) + ')';
       };
       addEventListener('scroll', progress, { passive: true });
+      addEventListener('resize', progress);
       progress();
 
       var install = document.querySelector('#install .codeblock');
