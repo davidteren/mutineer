@@ -1,0 +1,20 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 10-14
+README.md
+  h_e8a5bb9272fa34 361-364
+lib/mutineer/config.rb
+  h_e8a5bb9272fa34 137-141,160-165,270-283
+test/config_test.rb
+  h_e8a5bb9272fa34 214-250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f8dc3be3f5f473e36d33f8fd7e8a2d636026effd",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
