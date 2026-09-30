@@ -2,46 +2,36 @@
 
 require "minitest/mock"
 require "tmpdir"
+require "open3"
 require_relative "test_helper"
 require_relative "../rake/site_build"
 
-# #153: site:build removes its destination first, and deploys only what git tracks.
+# #153: site:build deploys only what git tracks. #162: it removes only _site.
 class SiteBuildTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
-  def test_check_dest_refuses_the_checkout_its_ancestors_and_docs
-    [ROOT, File.dirname(ROOT), "/", File.join(ROOT, "docs"), File.join(ROOT, "docs/assets")].each do |dest|
-      assert_raises(ArgumentError, dest) { SiteBuild.check_dest!(dest) }
-    end
-  end
-
-  def test_check_dest_refuses_by_path_when_file_identity_is_unknown
-    File.stub(:identical?, false) do
-      [ROOT, File.join(ROOT, "docs")].each do |dest|
-        assert_raises(ArgumentError, dest) { SiteBuild.check_dest!(dest) }
+  # #162: the only directory the build removes is _site at the checkout root,
+  # whatever the working directory is.
+  def test_generate_removes_only_the_checkout_site_directory
+    removed = []
+    Dir.mktmpdir do |elsewhere|
+      FileUtils.stub(:rm_rf, ->(path) { removed << path; throw :stop }) do
+        catch(:stop) { Dir.chdir(elsewhere) { SiteBuild.generate! } }
       end
     end
+    assert_equal [File.join(ROOT, "_site")], removed
   end
 
-  def test_check_dest_accepts_a_build_directory
-    assert_nil SiteBuild.check_dest!(File.join(ROOT, "_site"))
-  end
+  # The removed destination argument fails, so an old caller does not look for
+  # its output in a directory the build never writes.
+  def test_rake_task_rejects_a_destination
+    out, status = Open3.capture2e("bundle", "exec", "rake", "site:build[#{Dir.tmpdir}/x]", chdir: ROOT)
+    refute status.success?
+    assert_match(/takes no destination/, out)
 
-  def test_check_dest_refuses_the_checkout_and_docs_through_a_symlink
-    Dir.mktmpdir do |dir|
-      link = File.join(dir, "checkout")
-      File.symlink(ROOT, link)
-      [link, File.join(link, "docs"), File.join(link, "docs/new")].each do |dest|
-        assert_raises(ArgumentError, dest) { SiteBuild.check_dest!(dest) }
-      end
-    end
-  end
-
-  def test_check_dest_refuses_docs_in_other_letter_case
-    other_case = File.join(ROOT, "DOCS")
-    skip "case-sensitive filesystem" unless File.identical?(other_case, File.join(ROOT, "docs"))
-
-    assert_raises(ArgumentError) { SiteBuild.check_dest!(other_case) }
+    out, status = Open3.capture2e({ "SITE_BUILD_DEST" => "#{Dir.tmpdir}/x" }, "bundle", "exec", "rake", "site:build", chdir: ROOT)
+    refute status.success?
+    assert_match(/SITE_BUILD_DEST/, out)
   end
 
   def test_tracked_docs_paths_raises_outside_a_checkout

@@ -47,7 +47,7 @@ jobs:
       - name: Tests
         run: bundle exec rake test
       - name: Pages site builds
-        run: bundle exec rake "site:build[${{ runner.temp }}/site]"
+        run: bundle exec rake site:build
 
       # Exchanges the workflow's OIDC token for short-lived RubyGems credentials.
       # Requires a one-time Trusted Publisher entry on rubygems.org for this repo

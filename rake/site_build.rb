@@ -11,8 +11,13 @@ require_relative "../lib/mutineer/version"
 # llms-full.txt, json-schema.html, sitemap.xml) built straight into it. Pages
 # publishes this directory as a build artifact — nothing under it is committed.
 module SiteBuild
-  # Output directory used when the caller gives none.
-  DEFAULT_DEST = "_site"
+  # The one directory the build removes and rewrites. It is a constant, not a
+  # parameter, so no argument can aim the removal at `lib/` or `.git`.
+  DEST = File.expand_path("../_site", __dir__)
+
+  # The checkout root. The build reads docs/ and runs git and YARD from here,
+  # so a caller in another directory still builds this checkout's site.
+  ROOT = File.expand_path("..", __dir__)
 
   # docs/ entries the generators below write directly into the destination,
   # so the tree copy must skip them instead of copying a (possibly absent)
@@ -20,47 +25,30 @@ module SiteBuild
   GENERATED = %w[api llms-full.txt json-schema.html sitemap.xml].freeze
 
   class << self
-    # Build the site into `dest` (removed first, then rebuilt from scratch).
+    # Build the site into {DEST} (removed first, then rebuilt from scratch),
+    # from the checkout root whatever the working directory is.
     #
-    # @param dest [String, nil] output directory; defaults to
-    #   `SITE_BUILD_DEST` or {DEFAULT_DEST}
     # @return [void]
-    def generate!(dest = nil)
-      dest ||= ENV["SITE_BUILD_DEST"] || DEFAULT_DEST
-      check_dest!(dest)
-      FileUtils.rm_rf(dest)
-      FileUtils.mkdir_p(dest)
-      copy_docs_tree!(dest)
-      api = File.join(dest, "api")
-      YardPages.generate!(api)
-      verify_api!(api)
-      write!(File.join(dest, "llms-full.txt"), DocsContract.llms_full_txt)
-      write!(File.join(dest, "json-schema.html"), DocsContract.json_schema_html)
-      write!(File.join(dest, "sitemap.xml"), MutineerSiteDocs.sitemap_xml)
-    end
-
-    # The build starts with rm_rf, so refuse a destination whose removal
-    # deletes the checkout or the docs/ sources.
-    #
-    # @param dest [String]
-    # @return [void]
-    # @raise [ArgumentError] when `dest` is the checkout, one of its
-    #   ancestors, or inside docs/
-    def check_dest!(dest)
-      target = File.expand_path(dest)
-      root = File.expand_path("..", __dir__)
-      docs = File.join(root, "docs")
-      # File.identical? is false when stat fails, so fail here, not open.
-      [root, docs].each { |dir| File.stat(dir) }
-      # Compare path text, and also directories: a symlinked parent, or
-      # other letter case on a case-insensitive volume, names the same one.
-      same = ->(a, b) { a == b || File.identical?(a, b) }
-      covers_root = path_and_parents(root).any? { |dir| same.(dir, target) }
-      in_docs = path_and_parents(target).any? { |dir| same.(dir, docs) }
-      raise ArgumentError, "site:build: refusing to replace #{target}" if covers_root || in_docs
+    def generate!
+      Dir.chdir(ROOT) { build! }
     end
 
     private
+
+    # The build itself; {generate!} runs it from {ROOT}.
+    #
+    # @return [void]
+    def build!
+      FileUtils.rm_rf(DEST)
+      FileUtils.mkdir_p(DEST)
+      copy_docs_tree!(DEST)
+      api = File.join(DEST, "api")
+      YardPages.generate!(api)
+      verify_api!(api)
+      write!(File.join(DEST, "llms-full.txt"), DocsContract.llms_full_txt)
+      write!(File.join(DEST, "json-schema.html"), DocsContract.json_schema_html)
+      write!(File.join(DEST, "sitemap.xml"), MutineerSiteDocs.sitemap_xml)
+    end
 
     # Fail loudly if the YARD build did not produce a usable `api/`. CI's
     # site job and the release workflow run `site:build`, so this fails them
@@ -82,16 +70,6 @@ module SiteBuild
       unless YardPages.published_markers?(api)
         raise "site:build: #{api} is missing the .nojekyll markers"
       end
-    end
-
-    # `path` and each parent directory up to the filesystem root.
-    #
-    # @param path [String] absolute path
-    # @return [Array<String>]
-    def path_and_parents(path)
-      dirs = [path]
-      dirs << File.dirname(dirs.last) until File.dirname(dirs.last) == dirs.last
-      dirs
     end
 
     # Copy every tracked docs/ file except the entries this task regenerates.

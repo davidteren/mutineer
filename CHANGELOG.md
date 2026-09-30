@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **`rake site:build` can no longer delete a directory such as `lib/` or
+  `.git`** (#162). The task removed the destination it was given, and only
+  refused the checkout, its parents and `docs/`. It now always builds into
+  `_site/` at the checkout root, and `rake "site:build[DEST]"` and
+  `SITE_BUILD_DEST` are gone.
 - **Documentation matches the 1.4 behavior.** Config examples use supported keys,
   agent loops check the exit code and a real score, and report totals explain
   partial `--fail-fast` runs. The README lists every config key and its validation
