@@ -1,0 +1,24 @@
+lib/mutineer/mutators/condition_forcing.rb
+  s_b7dd1d64c00462::t_472970af0eea45 69,90,93-94,98-100,102
+  s_b7dd1d64c00462::t_001a82fdc3724e 19,83
+CHANGELOG.md
+  s_b7dd1d64c00462::t_001a82fdc3724e 17
+test/mutators/condition_forcing_test.rb
+  s_b7dd1d64c00462::t_001a82fdc3724e 85-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9ccfd4e42117e12368298c530f7a86ac49da3ad9",
+  "prompts": {},
+  "sessions": {
+    "s_b7dd1d64c00462": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "963bc426-a189-4852-b89c-a965c34b5517",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
