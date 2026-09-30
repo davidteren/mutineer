@@ -28,6 +28,10 @@ class SiteBuildTest < Minitest::Test
     out, status = Open3.capture2e("bundle", "exec", "rake", "site:build[#{Dir.tmpdir}/x]", chdir: ROOT)
     refute status.success?
     assert_match(/takes no destination/, out)
+
+    out, status = Open3.capture2e({ "SITE_BUILD_DEST" => "#{Dir.tmpdir}/x" }, "bundle", "exec", "rake", "site:build", chdir: ROOT)
+    refute status.success?
+    assert_match(/SITE_BUILD_DEST/, out)
   end
 
   def test_tracked_docs_paths_raises_outside_a_checkout
