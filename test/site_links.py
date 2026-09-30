@@ -20,7 +20,20 @@ def github_slug(heading):
     return re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
 
 
-README_ANCHORS = {github_slug(line.lstrip("#")) for line in README.read_text().splitlines() if re.match(r"#+ ", line)}
+def readme_anchors():
+    """Anchors GitHub gives the README headings, skipping fenced code; a repeated slug gets -1, -2, ..."""
+    anchors, seen, fenced = set(), Counter(), False
+    for line in README.read_text().splitlines():
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        elif not fenced and re.match(r"#+ ", line):
+            slug = github_slug(line.lstrip("#"))
+            anchors.add(f"{slug}-{seen[slug]}" if seen[slug] else slug)
+            seen[slug] += 1
+    return anchors
+
+
+README_ANCHORS = readme_anchors()
 
 
 class Page(HTMLParser):
