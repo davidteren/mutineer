@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **Documentation matches the 1.4 behavior.** Config examples use supported keys,
+  agent loops check the exit code and a real score, and report totals explain
+  partial `--fail-fast` runs. The README lists every config key and its validation
+  rules. API README links work outside GitHub, repeated changelog headings have
+  unique anchors, and the website checks validate built links and anchors.
+  Mutant-id wording and the gem's Minitest/RSpec description are also corrected.
+
 ## [1.4.0] - 2026-09-30
 
 ### Added

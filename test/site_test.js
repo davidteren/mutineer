@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const { spawnSync } = require('node:child_process');
 
 const BASE = 'https://davidteren.github.io/mutineer';
 const ALTERNATE = 'rel="alternate" type="text/markdown"';
@@ -10,6 +11,11 @@ const ALTERNATE = 'rel="alternate" type="text/markdown"';
 // sitemap.xml) are Pages build artifacts, not committed — run
 // `bundle exec rake site:build` before this suite.
 const SITE = '_site';
+
+test('built pages have valid local links and unique anchors, including the API', () => {
+  const result = spawnSync('python3', ['test/site_links.py', SITE], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.error?.message || result.stderr || result.stdout);
+});
 
 test('HTML pages with markdown twins advertise rel=alternate', () => {
   const twins = {

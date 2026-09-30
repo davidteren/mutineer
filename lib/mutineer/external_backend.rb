@@ -52,11 +52,11 @@ module Mutineer
     ].freeze
 
     # Turn a command template into an argv array (no shell → no eval, no
-    # injection). The `%{files}` token expands IN PLACE to N separate argv
+    # injection). The <tt>%{files}</tt> token expands IN PLACE to N separate argv
     # elements — one per path, unescaped — so a path containing a space stays a
     # single argument. It is not a space-joined string.
     #
-    # @param command [String] the --test-command template (contains %{files}).
+    # @param command [String] the --test-command template (contains <tt>%{files}</tt>).
     # @param files [Array<String>] test file paths to substitute.
     # @return [Array<String>] argv.
     def self.build_argv(command, files)

@@ -346,7 +346,7 @@ module Mutineer
       [:run, chosen.map { |t| File.expand_path(t, coverage_map.project_root) }]
     end
 
-    # Scan a source once into { line_number => :all | Set[operator_syms] } from
+    # Map each line number to :all or a set of operator symbols, using
     # inline `# mutineer:disable-line [ops]` markers (RuboCop semantics: the marker
     # sits on the same physical line as the code it silences). A bare marker
     # disables every operator on that line; `disable-line a, b` only the listed

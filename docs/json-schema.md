@@ -41,7 +41,7 @@ between reports with the same `id_format` (a missing key is the old format).
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| `total` | int | Total mutants generated (every status, before exclusions). |
+| `total` | int | Classified results included in this report, across all statuses. With `--fail-fast`, unscheduled candidates are omitted, so this is not the full generated candidate count. |
 | `killed` | int | Mutants a test caught (suite went red). |
 | `survived` | int | Mutants no test caught. **These are the actionable test gaps.** |
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). |
@@ -67,7 +67,7 @@ Each surviving mutant — the records an agent or reviewer acts on:
 | `file` | string | Source file path (as passed to the run). |
 | `line` | int | 1-based line of the mutation. |
 | `operator` | string | Operator name, e.g. `arithmetic`, `comparison`. |
-| `id` | string | **Offset-free id** (12 hex chars). Includes the file path relative to the project root (a source outside the root uses its absolute real path, so its ids differ between machines), so moving or renaming the file changes it. Survives edits elsewhere in the file. Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
+| `id` | string | **Offset-free id** (12 hex chars). Includes the file path relative to the project root (a source outside the root uses its absolute real path, so its ids differ between machines). Unrelated edits preserve it when the path, qualified method name, mutated token, and repeated-name/mutation order stay the same. File moves, renames, and root changes can change it. See [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
 | `token` | string | The exact code being mutated (whitespace-collapsed), e.g. `a + b`. |
 | `diff` | string | A unified diff (`@@ -line +line @@` with `-original` / `+mutant`). Ready to hand to an agent as "write a test that fails under this change." |
 
@@ -102,6 +102,8 @@ Suppressed (equivalent) mutants, so you can audit what's silenced: `{ subject, f
 ### `per_source[]` (array of object)
 
 Per-file roll-up: `{ file, total, killed, survived, no_coverage, score }` (`score` is `float | null` as above).
+`total` counts classified results for that file. A `--fail-fast` report is partial:
+unscheduled candidates are omitted from these counts and from the top-level totals.
 
 ### `baseline` (object, only with `--baseline`)
 

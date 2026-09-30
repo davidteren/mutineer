@@ -154,7 +154,7 @@
       <div class="sec-head">
         <div class="kicker">Why Mutineer</div>
         <h2>Small tool. Exacting work.</h2>
-        <p>No agent, no boot hooks, no monkey-patching your test framework. Just Ruby's own parser and standard library.</p>
+        <p>Prism and the standard library provide the runtime. Test-framework changes stay in disposable child processes; Rails apps can use the optional <code>--rails</code> or <code>--boot</code> entry point.</p>
       </div>
       <div class="grid">
         <div class="card"><h3>Zero runtime deps</h3><p>Prism ships with Ruby ≥ 3.4 and everything else is stdlib. Nothing to pin, nothing to break on upgrade.</p></div>
@@ -243,8 +243,9 @@ operators:
   - arithmetic
   - return_nil
 threshold: 85
-jobs: 8
-format: json</div>
+jobs: 8</div>
+          <p class="note">Select JSON output on the command line:</p>
+          <div class="codeblock"><button hidden class="copy" data-copy="mutineer run lib/foo.rb --test test/foo_test.rb --format json">Copy</button><span class="p">$</span> mutineer run lib/foo.rb <span class="c">--test</span> test/foo_test.rb <span class="c">--format</span> json</div>
         </div>
       </div>
       <p class="note">Key flags: <code>--operators</code>, <code>--threshold</code>, <code>--baseline</code>, <code>--since</code>, <code>--rails</code>, <code>--only</code>, <code>--jobs</code>, <code>--format human|json|html</code>, <code>--output FILE</code>, <code>--dry-run</code>, <code>--fail-fast</code>. Typed flags override <code>.mutineer.yml</code>.</p>

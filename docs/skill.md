@@ -32,11 +32,20 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 1. Edit code + tests on a branch.
 2. Run diff-scoped, as JSON:
    ```sh
-   mutineer run app/ --since origin/main --format json --output .mutineer/run.json
+   mutineer run app/ --since origin/main --threshold 90 --format json --output .mutineer/run.json
    ```
-3. Parse `survivors[]` — each carries a `diff` and an `id` (stable across edits outside the method; a file move or rename changes it). For each, write/strengthen a
+3. Parse `survivors[]` — each carries a `diff` and an `id`. File moves, renames,
+   project-root changes, and changes to repeated-name or repeated-mutation order can
+   change ids; see [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). For each, write/strengthen a
    test that fails under that change.
-4. Re-run. Stop when `summary.survived == 0` or `summary.score >= target`.
+4. Re-run. Stop only when this run exits `0`, `summary.score` is not `null`,
+   and `summary.score >= 90`. Use `--threshold 100` if every scored mutant must be killed.
+
+Zero survivors alone is not success. A null score means no score. Inspect
+`no_coverage[]` for test gaps and `no_verdict[]` for harness failures before accepting
+the result. A positive threshold fails when nothing can be scored and something
+broke, or when more than one mutant has no verdict and they exceed 10% of those
+attempted; it does not require zero errors. Set the threshold to your target.
 
 ## Exit codes
 

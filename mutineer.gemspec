@@ -8,7 +8,7 @@ Gem::Specification.new do |spec|
   spec.authors       = ["David Teren"]
   spec.email         = ["dteren@gmail.com"]
   spec.summary       = "A clean-room mutation-testing tool for Ruby (Prism + stdlib only)."
-  spec.description   = "Mutineer mutates your source one change at a time and runs your Minitest " \
+  spec.description   = "Mutineer mutates your source one change at a time and runs your Minitest or RSpec " \
                        "suite against each mutant to find tests that don't actually test anything. " \
                        "Prism-based, fork-isolated, zero runtime dependencies."
   spec.homepage      = "https://github.com/davidteren/mutineer"

@@ -19,10 +19,10 @@ oracle, closing the loop with a concrete stopping condition:
 2. Run Mutineer on the diff, as JSON:
 
    ```sh
-   mutineer run app/ --since origin/main --format json --output .mutineer/run.json
+   mutineer run app/ --since origin/main --threshold 90 --format json --output .mutineer/run.json
    ```
 
-3. Parse `survivors[]`. Each entry carries a ready-made `diff` and an `id` (stable across edits outside the method; moving or renaming the file changes it). For each survivor, feed
+3. Parse `survivors[]`. Each entry carries a ready-made `diff` and an `id`. Unrelated edits can preserve the id; file moves, renames, project-root changes, and changes to repeated-name or repeated-mutation order can change it. See [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). For each survivor, feed
    the agent a prompt like:
 
    > This change to `{subject}` (`{file}:{line}`) was **not** caught by any test:
@@ -31,7 +31,15 @@ oracle, closing the loop with a concrete stopping condition:
    > ```
    > Write or strengthen a test so it fails under this change.
 
-4. Re-run. Stop when `summary.survived == 0` (or `summary.score >= target`).
+4. Re-run. Stop only when this run exits `0`, `summary.score` is not `null`,
+   and `summary.score >= 90`. Use `--threshold 100` if every scored mutant must be killed.
+
+Zero survivors alone is not success: an empty scope or a run with no usable verdicts
+also has zero survivors. Treat a null score as “no score”. Check `no_coverage[]` for
+test gaps and `no_verdict[]` for harness failures before accepting the result. A
+positive threshold fails when nothing can be scored and something broke, or when
+more than one mutant has no verdict and they exceed 10% of those attempted; it
+does not require zero errors. Keep the threshold in the command equal to your target.
 
 Progress lines go to **stderr**; do not merge streams (`2>&1`) when parsing JSON from
 stdout — prefer `--output FILE` and read the file.

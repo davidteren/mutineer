@@ -54,13 +54,15 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--framework NAME` | `minitest` (default) or `rspec`; auto-detected as rspec when most `--test` files end in `_spec.rb` |
 | `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`) — ideal for PR CI |
 | `--no-since` | Disable diff scoping; a typed no beats a `.mutineer.yml` `since:` key |
-| `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (score drop is skipped under `--since`, whose score covers a different denominator; see [CI](#ci-gating)) |
+| `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (score drop is skipped under `--since`, whose score covers a different denominator; see [CI](https://github.com/davidteren/mutineer#ci-gating)) |
 | `--baseline-epsilon FLOAT` | Score-drop tolerance for `--baseline` (default: 0) |
 | `--jobs N` | Parallel worker count (default: processor count; `1` under `--rails`) |
+| `--boot FILE` | Require an app entry point once before forking; select at least one test file |
+| `--rails` | Boot `config/environment`, default to `redefine`, and reconnect ActiveRecord per fork; runs serially without `--daemon` |
 | `--verbose` | Surface the real error when a fork capture fails (alias `--debug`) |
 | `--strategy NAME` | Mutation application: `reload` whole-file (default) or `redefine` surgical (`7a`/`7b` accepted as deprecated aliases) |
-| `--test-command CMD` | Run the suite as a subprocess in the app's own runtime (for apps on Ruby < 3.4); `CMD` must contain `%{files}`. See [Apps on Ruby < 3.4](#apps-on-ruby--34) |
-| `--daemon` | Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so `--jobs N` is safe under Rails (needs `--rails`/`--boot`; not with `--test-command`). See [the daemon backend](#faster-parallel-safe-rails-the---daemon-backend) |
+| `--test-command CMD` | Run the suite as a subprocess in the app's own runtime (for apps on Ruby < 3.4); `CMD` must contain `%{files}`. See [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34) |
+| `--daemon` | Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so `--jobs N` is safe under Rails (needs `--rails`/`--boot`; not with `--test-command`). See [the daemon backend](https://github.com/davidteren/mutineer#faster-parallel-safe-rails-the---daemon-backend) |
 | `--format human\|json\|html` | Report format (default: human; `html` is a self-contained file) |
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--dry-run` | List candidate mutations without executing (honors suppression) |
@@ -207,7 +209,7 @@ Tradeoffs — this path is correct but not free:
   front (a "smoke check") if your unmutated suite isn't green.
 - **Reload strategy only** (`--strategy redefine` is rejected on this path) and
   **serial** (`--jobs` is forced to 1). For apps on Ruby ≥ 3.4, `--daemon` gives
-  safe parallelism instead (see [the daemon backend](#faster-parallel-safe-rails-the---daemon-backend)).
+  safe parallelism instead (see [the daemon backend](https://github.com/davidteren/mutineer#faster-parallel-safe-rails-the---daemon-backend)).
 
 ## Suppressing equivalent mutants
 
@@ -277,7 +279,7 @@ worse:
 mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
 ```
 
-`--baseline` reports which survivors are new (by [mutant id](#mutant-ids)) and any score drop. It
+`--baseline` reports which survivors are new (by [mutant id](https://github.com/davidteren/mutineer#mutant-ids)) and any score drop. It
 combines with `--threshold` (the worse of the two sets the exit code). Pass a
 directory (or several sources) to audit a whole layer in one boot — tests are
 auto-paired by convention and the report breaks down per source.
@@ -316,17 +318,17 @@ the format.
 
 ## For AI agents & pipelines
 
-Mutineer is built for programmatic use — versioned JSON, [mutant ids](#mutant-ids) that survive unrelated edits,
+Mutineer is built for programmatic use — versioned JSON, [mutant ids](https://github.com/davidteren/mutineer#mutant-ids) that survive unrelated edits,
 structured exit codes, and diff-scoped runs. See:
 
 - **AI agents & CI recipes** — the agent inner-loop and CI-gate recipes (and how
   to avoid infinite loops on equivalent mutants):
   [rendered](https://davidteren.github.io/mutineer/agentic-coding.html) ·
-  [source](docs/agentic-coding.md)
+  [source](https://davidteren.github.io/mutineer/agentic-coding.md)
 - **JSON schema reference** — the `--format json` schema and its versioning
   contract:
   [rendered](https://davidteren.github.io/mutineer/json-schema.html) ·
-  [source](docs/json-schema.md)
+  [source](https://davidteren.github.io/mutineer/json-schema.md)
 - **Ruby API (YARD)** — class reference for the shipped gem:
   [https://davidteren.github.io/mutineer/api/](https://davidteren.github.io/mutineer/api/)
 
@@ -335,11 +337,38 @@ structured exit codes, and diff-scoped runs. See:
 Mutineer reads an optional `.mutineer.yml` from the project root (nearest one,
 walking up). CLI flags override config; config overrides defaults.
 
-Sources are positional CLI arguments and test files come from `--test`; the
-config file accepts these keys: `operators`, `threshold`, `jobs`, `only`,
-`require` (extra files to load before mutating), `boot`/`rails`, and
-`test_command` (the external-runtime suite command — see
-[Apps on Ruby < 3.4](#apps-on-ruby--34)).
+Sources are positional CLI arguments and test files come from `--test`. The
+config file accepts these keys:
+
+| Key | Value and purpose |
+|-----|-------------------|
+| `operators` | An operator name or list of names; defaults to the Tier-1 set |
+| `threshold` | A number from 0 to 100; 0 turns the score gate off |
+| `jobs` | A positive integer; defaults to the processor count, or 1 under `--rails` without `--daemon` |
+| `only` | A fully-qualified subject name, such as `Calculator#add` |
+| `require` | A path or list of extra files to load before mutating |
+| `boot` | The app entry point to require once before forking |
+| `rails` | `true` or `false`; enables the Rails boot defaults |
+| `since` | A nonblank git ref, or `false` to disable diff scoping |
+| `framework` | `minitest` or `rspec`; an explicit value is kept during test pairing |
+| `verbose` | `true` or `false`; shows capture diagnostics |
+| `ignore` | A mutant id or list of ids to suppress |
+| `baseline` | The path to a prior JSON report |
+| `fail_fast` | `true` or `false`; stops scheduling after the first survivor |
+| `test_command` | The external-runtime suite command, including `%{files}`; see [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34) |
+| `daemon` | `true` or `false`; uses the persistent app daemon with worker DB isolation |
+
+In 1.4, invalid values for known keys exit 2 with a message naming the file and
+key. Boolean keys take `true` or `false` (quoted forms also work), not `"yes"`.
+`jobs` must be positive; a string value contains digits only. String values for
+`threshold` and the CLI-only `--baseline-epsilon` use plain decimals such as `90`
+or `0.5`, not `+2`, `1e2`, or `1_0`. String options such as `only` and `baseline`
+cannot be null or boolean. A blank `since` is invalid; use `since: false` to turn
+scoping off. Unknown keys and operator names warn and are ignored.
+
+`format`, `strategy`, `output`, `baseline_epsilon`, and `dry_run` are CLI-only.
+For JSON output, use `--format json`, not a `format:` config key. To select RSpec
+in the file, add `framework: rspec`.
 
 ```yaml
 # .mutineer.yml
@@ -355,4 +384,4 @@ automatically when sources change). Add `.mutineer/` to your `.gitignore`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](https://github.com/davidteren/mutineer/blob/main/LICENSE).

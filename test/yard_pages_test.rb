@@ -90,4 +90,25 @@ class YardPagesTest < Minitest::Test
       refute YardPages.equivalent?(a, b)
     end
   end
+
+  def test_changelog_headings_keep_first_anchor_and_qualify_repeated_ones
+    Dir.mktmpdir('yard-headings') do |dir|
+      path = File.join(dir, 'file.CHANGELOG.html')
+      File.write(path, <<~HTML)
+        <h2 id="release_1_4">1.4</h2><h3 id="Added">Added</h3>
+        <h2 id="release_1_3">1.3</h2><h3 id="Added">Added</h3>
+        <h3 id="Changed">Changed</h3>
+        <h2 id="release_1_2">1.2</h2><h3 id="Changed">Changed</h3>
+      HTML
+      YardPages.send(:stabilize_html!, dir)
+      html = File.read(path)
+      assert_includes html, 'id="Added"'
+      assert_includes html, 'id="release_1_3-Added"'
+      assert_includes html, 'id="release_1_2-Changed"'
+      ids = html.scan(/\bid="([^"]+)"/).flatten
+      assert_equal ids.uniq, ids
+      YardPages.send(:stabilize_html!, dir)
+      assert_equal html, File.read(path), 'a second pass must preserve anchors'
+    end
+  end
 end

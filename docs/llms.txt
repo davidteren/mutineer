@@ -11,7 +11,7 @@ tests would *notice if that code broke*. Mutation testing closes that gap — ex
 AI-generated code and tests are weakest (tests that execute and pass but assert nothing).
 
 Key facts:
-- **Zero runtime dependencies** — Prism + stdlib only. No `eval`, no monkey-patching.
+- **Zero runtime dependencies** — Prism + stdlib only. No `eval`. Test-framework changes stay in disposable child processes.
 - **One mutation per mutant**, validity-checked by re-parsing; 20 mutation operators.
 - **Fork-isolated, parallel** execution (Linux + macOS); coverage-guided per-line test selection.
 - **Programmatic**: versioned JSON contract, structured exit codes (0 pass / 1 weak-tests / 2 misinvocation), `--since` diff-scoped runs, `--threshold` hard gate, `--baseline` delta gating.

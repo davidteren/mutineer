@@ -35,7 +35,7 @@ begin
   require "yard"
 
   YARD::Rake::YardocTask.new(:yard) do |t|
-    t.stats_options = ["--list-undocumented"]
+    t.stats_options = ["--list-undoc"]
   end
 
   namespace :yard do

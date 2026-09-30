@@ -73,17 +73,19 @@
       <ol>
         <li>Agent edits code + tests on a branch.</li>
         <li>Run Mutineer on the diff, as JSON:
-          <pre><code><span class="p">$</span> mutineer run app/ --since origin/main --format json --output .mutineer/run.json</code></pre>
+          <pre><code><span class="p">$</span> mutineer run app/ --since origin/main --threshold 90 --format json --output .mutineer/run.json</code></pre>
         </li>
-        <li>Parse <code>survivors[]</code>. Each entry carries a ready-made <code>diff</code> and a stable <code>id</code>. For each survivor, feed the agent a prompt like:
+        <li>Parse <code>survivors[]</code>. Each entry carries a ready-made <code>diff</code> and an <code>id</code>. Unrelated edits can preserve the id; file moves, renames, project-root changes, and changes to repeated-name or repeated-mutation order can change it. See <a href="https://github.com/davidteren/mutineer#mutant-ids">Mutant ids</a>. For each survivor, feed the agent a prompt like:
           <blockquote>
             <p>This change to <code>{subject}</code> (<code>{file}:{line}</code>) was <strong>not</strong> caught by any test:</p>
             <pre><code><span class="s">{diff}</span></code></pre>
             <p>Write or strengthen a test so it fails under this change.</p>
           </blockquote>
         </li>
-        <li>Re-run. Stop when <code>summary.survived == 0</code> (or <code>summary.score &gt;= target</code>).</li>
+        <li>Re-run. Stop only when this run exits <code>0</code>, <code>summary.score</code> is not <code>null</code>, and <code>summary.score &gt;= 90</code>. Use <code>--threshold 100</code> if every scored mutant must be killed.</li>
       </ol>
+      <p>Zero survivors alone is not success: an empty scope or a run with no usable verdicts also has zero survivors. Treat a null score as “no score”. Check <code>no_coverage[]</code> for test gaps and <code>no_verdict[]</code> for harness failures before accepting the result. A positive threshold fails when nothing can be scored and something broke, or when more than one mutant has no verdict and they exceed 10% of those attempted; it does not require zero errors. Keep the threshold in the command equal to your target.</p>
+      <p>Progress lines go to <strong>stderr</strong>; do not merge streams (<code>2&gt;&amp;1</code>) when parsing JSON from stdout. Prefer <code>--output FILE</code> and read the file.</p>
       <p><code>--since</code> keeps each iteration fast by mutating only the lines the agent just touched. Genuinely equivalent mutants (which can never be killed) should be suppressed so the loop terminates — see <a href="#equivalent">Avoiding infinite loops</a> below.</p>
 
       <h2 id="ci-gate">CI gate: fail a PR only when it makes things worse</h2>
@@ -93,7 +95,7 @@
 
 <span class="c"># On a PR:</span>
 <span class="p">$</span> mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json</code></pre>
-      <p><code>--baseline</code> exits <code>1</code> on any <strong>new</strong> survivor (matched by stable <code>id</code>, so it survives unrelated edits) or a <strong>score drop</strong> (<code>--baseline-epsilon</code> tolerates float jitter); under <code>--since</code> the score-drop half is skipped, because a diff-scoped score covers a different denominator — new-survivor detection still gates. Combine with <code>--threshold</code> to enforce an absolute floor too — the worse of the two gates wins. Keep the full-scan baseline refresh on main as the backstop: a PR with no changed source lines scores zero mutants and passes the scoped gate vacuously.</p>
+      <p><code>--baseline</code> exits <code>1</code> on any <strong>new</strong> survivor (matched by <code>id</code>; file moves and renames change it — see <a href="https://github.com/davidteren/mutineer#mutant-ids">Mutant ids</a>) or a <strong>score drop</strong> (<code>--baseline-epsilon</code> tolerates float jitter); under <code>--since</code> the score-drop half is skipped, because a diff-scoped score covers a different denominator — new-survivor detection still gates. Combine with <code>--threshold</code> to enforce an absolute floor too — the worse of the two gates wins. Keep the full-scan baseline refresh on main as the backstop: a PR with no changed source lines scores zero mutants and passes the scoped gate vacuously.</p>
 
       <h3 id="action">GitHub Action</h3>
       <p>This repo ships a composite action (<code>action.yml</code>). Minimal PR gate:</p>
