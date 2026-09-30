@@ -64,8 +64,10 @@ test('motion keeps step labels, true numbers and every section visible', async (
   await expect(page.locator('html')).toHaveClass(/\bmotion\b/);
   // Screen readers, find-in-page and copy get the real figure at once.
   await expect(page.locator('.hero-proof .visually-hidden').first()).toHaveText('8,170');
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
   const labels = await page.locator('.step').evaluateAll(steps => steps.map(s => getComputedStyle(s, '::before').content));
-  expect(labels).toEqual(['"0" counter(step)', '"0" counter(step)', '"0" counter(step)'].map(() => expect.stringMatching(/0/)));
+  expect(labels).toEqual(Array(3).fill(expect.stringMatching(/counter\(step\)/)));
   const height = await page.evaluate(() => document.documentElement.scrollHeight);
   for (let y = 0; y < height; y += 300) {
     await page.evaluate(top => scrollTo(0, top), y);
@@ -78,4 +80,8 @@ test('motion keeps step labels, true numbers and every section visible', async (
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
   }));
   expect(state).toEqual({ hidden: 0, numbers: ['20', '01', '8,170', '24'], overflow: 0 });
+  // After counting, each number reads once (no hidden copy left behind).
+  expect(await page.locator('.hero-proof-num').innerText()).toMatch(/^8,170\s/);
+  await expect(page.locator('.odo[aria-hidden], .visually-hidden')).toHaveCount(0);
+  expect(errors).toEqual([]);
 });

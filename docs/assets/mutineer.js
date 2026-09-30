@@ -6,8 +6,8 @@
   try { saved = localStorage.getItem('mutineer-theme'); } catch (e) {}
   var explicit = saved === 'light' || saved === 'dark';
   root.setAttribute('data-theme', explicit ? saved : (system.matches ? 'light' : 'dark'));
-  // Motion is opt-out by the visitor's system setting. Set before the first
-  // paint so content that animates in never flashes first.
+  // Motion follows the visitor's system setting. It is set in <head> so the
+  // motion styles apply from the first paint.
   var motion = 'IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (motion) root.classList.add('motion');
 
@@ -81,27 +81,33 @@
 
     // Motion: a scroll progress bar, count-ups, and sections that rise into view.
     if (motion) {
-      // One observer per threshold, shared by every element that uses it.
-      var observers = {}, callbacks = new Map();
+      // One observer per threshold, shared by every element that uses it. Each
+      // keeps its own callbacks, so one element can wait at two thresholds.
+      var observers = {};
       var once = function (el, fn, threshold) {
         var t = threshold || 0.2;
-        var io = observers[t] || (observers[t] = new IntersectionObserver(function (entries, self) {
-          entries.forEach(function (e) {
-            if (!e.isIntersecting) return;
-            self.unobserve(e.target);
-            callbacks.get(e.target).forEach(function (f) { f(e.target); });
-            callbacks.delete(e.target);
-          });
-        }, { threshold: t }));
-        callbacks.set(el, (callbacks.get(el) || []).concat(fn));
-        io.observe(el);
+        var o = observers[t];
+        if (!o) {
+          o = observers[t] = { callbacks: new Map() };
+          o.io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (e) {
+              if (!e.isIntersecting) return;
+              o.io.unobserve(e.target);
+              var fns = o.callbacks.get(e.target) || [];
+              o.callbacks.delete(e.target);
+              fns.forEach(function (f) { f(e.target); });
+            });
+          }, { threshold: t });
+        }
+        o.callbacks.set(el, (o.callbacks.get(el) || []).concat(fn));
+        o.io.observe(el);
       };
-      var count = function (el, from, to, ms, format) {
+      var count = function (el, from, to, ms, format, done) {
         var start = performance.now();
         (function tick(now) {
           var p = Math.min(1, (now - start) / ms), eased = 1 - Math.pow(1 - p, 3);
           el.textContent = format(from + (to - from) * eased);
-          if (p < 1) requestAnimationFrame(tick);
+          if (p < 1) requestAnimationFrame(tick); else if (done) done();
         })(start);
       };
       var grouped = function (n) { return Math.round(n).toLocaleString('en-US'); };
@@ -120,7 +126,8 @@
       var install = document.querySelector('#install .codeblock');
       ['.sec-head', '.step', '.usecase', '.card', '.evidence-strip', '.cta', '.table-wrap tbody tr', '#install .codeblock', '#install .sub'].forEach(function (sel) {
         document.querySelectorAll(sel).forEach(function (el) {
-          if (el === install) return;
+          // The hero already animates in on load; hiding it again would flicker.
+          if (el === install || el.closest('.hero')) return;
           var row = el.tagName === 'TR';
           var i = Array.prototype.indexOf.call(el.parentElement.children, el);
           el.style.setProperty('--d', Math.min(i, row ? 20 : 6) * (row ? 28 : 80) + 'ms');
@@ -135,8 +142,9 @@
         once(install.previousElementSibling, function () { install.classList.add('is-in'); }, 0.5);
       }
 
-      // Count-ups: each .odo counts from data-from to the number in the HTML. A
-      // hidden copy keeps the real value for screen readers, find and copy.
+      // Count-ups: each .odo counts from data-from to the number in the HTML.
+      // While it counts, a hidden copy holds the real value for screen readers;
+      // when it ends, the copy goes so copy and find see the number once.
       document.querySelectorAll('.odo[data-from]').forEach(function (el) {
         var text = el.textContent, to = parseInt(text.replace(/,/g, ''), 10), from = +el.getAttribute('data-from');
         var format = /,/.test(text) ? grouped : function (n) { return String(Math.round(n)).padStart(text.length, '0'); };
@@ -148,7 +156,8 @@
         el.textContent = format(from);
         var card = el.closest('.hero-proof');
         var meter = card && card.querySelector('.proof-meter span');
-        once(el, function () { count(el, from, to, from > to ? 1800 : 900, format); if (meter) meter.classList.add('go'); }, 0.5);
+        var settle = function () { real.remove(); el.removeAttribute('aria-hidden'); };
+        once(el, function () { count(el, from, to, from > to ? 1800 : 900, format, settle); if (meter) meter.classList.add('go'); }, 0.5);
       });
     }
   });
