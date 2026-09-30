@@ -147,3 +147,35 @@ run_step case12 STUB_EXIT=1 OUTPUT="$SCRATCH/case12/out.json" BASELINE="$SCRATCH
 after=$(cksum "$SCRATCH/case12/baseline.json")
 [ "$before" = "$after" ] && echo "  OK: distinct baseline kept" || echo "  FAIL: distinct baseline changed"
 [ -s "$SCRATCH/case12/out.json" ] && echo "  OK: distinct output delivered" || echo "  FAIL: distinct output missing"
+
+echo; echo "== 13: baseline only in .mutineer.yml, output is that file (expects exit 2) =="
+cat > .mutineer.yml <<'YAML'
+baseline: .mutineer/baseline.json
+YAML
+before=$(cksum .mutineer/baseline.json)
+run_step case13 STUB_EXIT=1 OUTPUT=".mutineer/baseline.json"
+after=$(cksum .mutineer/baseline.json)
+[ "$before" = "$after" ] && echo "  OK: yml baseline kept" || echo "  FAIL: yml baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on a yml baseline" || echo "  OK: yml baseline rejected before running"
+
+echo; echo "== 14: extra-args --baseline is the same file as output (expects exit 2) =="
+mkdir -p "$SCRATCH/case14"
+cp "$SCRATCH/report.json" "$SCRATCH/case14/baseline.json"
+before=$(cksum "$SCRATCH/case14/baseline.json")
+run_step case14 STUB_EXIT=1 OUTPUT="$SCRATCH/case14/baseline.json" EXTRA_ARGS="--baseline $SCRATCH/case14/baseline.json"
+after=$(cksum "$SCRATCH/case14/baseline.json")
+[ "$before" = "$after" ] && echo "  OK: extra-args baseline kept" || echo "  FAIL: extra-args baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on extra-args baseline" || echo "  OK: extra-args baseline rejected before running"
+
+echo; echo "== 14b: extra-args --base abbreviation is the same file (expects exit 2) =="
+run_step case14b STUB_EXIT=1 OUTPUT="$SCRATCH/case14/baseline.json" EXTRA_ARGS="--base $SCRATCH/case14/baseline.json"
+[ "$(cksum "$SCRATCH/case14/baseline.json")" = "$before" ] && echo "  OK: abbreviated baseline kept" || echo "  FAIL: abbreviated baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on abbreviated baseline" || echo "  OK: abbreviated baseline rejected before running"
+
+echo; echo "== 15: yml baseline and a different output (expects the report copied) =="
+mkdir -p "$SCRATCH/case15"
+before=$(cksum .mutineer/baseline.json)
+run_step case15 STUB_EXIT=1 OUTPUT="$SCRATCH/case15/out.json"
+after=$(cksum .mutineer/baseline.json)
+[ "$before" = "$after" ] && echo "  OK: yml baseline left in place" || echo "  FAIL: yml baseline changed on a different output"
+[ -s "$SCRATCH/case15/out.json" ] && echo "  OK: different output still delivered" || echo "  FAIL: different output was refused"
