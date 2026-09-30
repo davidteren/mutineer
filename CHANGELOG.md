@@ -29,12 +29,41 @@ All notable changes to this project are documented here. The format is based on
   change `||=`, `&&=`, or the bitwise and shift forms (`|=`, `<<=`).
 
 ### Fixed
+- **A typed `--rails`, `--verbose` or `--debug` beats `rails: false` and
+  `verbose: false` in `.mutineer.yml`** (#103). The flag was dropped, so the
+  run went on without Rails boot or verbose output. The config layers now keep
+  only the keys the user wrote, and "did the user write this" comes from those
+  keys, not from a hand-kept list.
+- **`framework: rspec` in `.mutineer.yml` survives test pairing** (#103).
+  Pairing re-detected the framework from the test file names, so an RSpec
+  suite in `test/calc_test.rb` ran under Minitest.
+- **A bad number is an error, not a rounded value** (#105). `--jobs 1.9` and
+  `--baseline-epsilon abc` no longer become `1` and `0.0`. One option schema
+  parses each value once, where it enters, for both the command line and
+  `.mutineer.yml`.
 - **`--since` keeps a source file that git does not track yet** (#156). Before,
   such a file counted as unchanged. The run scored no mutants, and a positive
   `--threshold` still exited 0. The file is now new in full, so all its
   mutants run.
 
 ### Changed
+- **These now exit 2 with a message that names the option**: `jobs: 1.9` or
+  `jobs: true` in `.mutineer.yml` (before: `1`, or a crash); a bad, negative
+  or non-finite `--baseline-epsilon` (before: `0.0`); a boolean key in
+  `.mutineer.yml` that is not `true` or `false`, such as the string `"yes"`
+  (before: `false`).
+- **`--jobs` takes plain digits only.** `0x2`, `+2`, `" 2"` and `1_0` exit 2.
+  Before, `Integer()` read them as 2, 2, 2 and 10. `--threshold` and
+  `--baseline-epsilon` take a plain decimal, such as `2` or `2.5`, from a
+  string. `0x10`, `+2`, `1_0` and `1e2` exit 2. Before, `Float()` read them
+  as 16.0, 2.0, 10.0 and 100.0.
+- **A string option that gets `true`, `false` or no value exits 2**, such as
+  `only: false` or `baseline:` in `.mutineer.yml`. A blank `since` also exits 2,
+  in the file and on the command line, so an unset shell variable does not
+  turn scoping off. `since: false` still means no scoping.
+- **Config file errors start with the file and key**, for example
+  `.mutineer.yml: threshold must be a number between 0 and 100`, where they
+  started with `--threshold`.
 - **The docs site is built in CI** — a Pages workflow runs `rake site:build`
   and deploys the result, so the YARD HTML under `/api/`, `llms-full.txt`,
   `json-schema.html` and `sitemap.xml` are no longer committed. CI checks

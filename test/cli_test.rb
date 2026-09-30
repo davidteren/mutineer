@@ -97,13 +97,64 @@ class CliTest < Minitest::Test
   def test_jobs_zero_exits_two
     _, err, status = mutineer("run", "x.rb", "--jobs", "0")
     assert_equal 2, status.exitstatus
-    assert_includes err, "--jobs requires a positive integer"
+    assert_includes err, "--jobs must be a positive integer, digits only"
+  end
+
+  # #105: a fractional or non-integer --jobs is a usage error, never rounded down.
+  def test_fractional_jobs_exits_two
+    _, err, status = mutineer("run", "x.rb", "--jobs", "1.9")
+    assert_equal 2, status.exitstatus
+    assert_includes err, %(--jobs must be a positive integer, digits only (got: "1.9"))
+  end
+
+  # #105: the same rule applies to a .mutineer.yml `jobs:` key, with the file named.
+  def test_config_file_bad_jobs_exits_two_without_backtrace
+    ["1.9", "true", "0"].each do |bad|
+      with_project do |proj|
+        File.write(File.join(proj, ".mutineer.yml"), "jobs: #{bad}\n")
+        _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+        assert_equal 2, status.exitstatus, "jobs: #{bad}"
+        assert_includes err, ".mutineer.yml: jobs must be a positive integer, digits only"
+        refute_match(/\.rb:\d+:in /, err, "no backtrace for jobs: #{bad}")
+      end
+    end
+  end
+
+  def test_config_file_integer_jobs_runs
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "jobs: 2\n")
+      _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus
+    end
+  end
+
+  # #105: a bad --baseline-epsilon fails at parse time, before any test runs.
+  def test_bad_baseline_epsilon_exits_two_before_running
+    ["abc", "-1", "NaN", "Infinity"].each do |bad|
+      with_project do |proj|
+        _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--baseline-epsilon", bad, chdir: proj)
+        assert_equal 2, status.exitstatus, bad
+        assert_includes err, "--baseline-epsilon must be a finite number, 0 or greater"
+        refute_includes err, "[mutineer] 1/", "tests ran for #{bad}"
+      end
+    end
+  end
+
+  def test_valid_baseline_epsilon_runs
+    %w[0 0.5].each do |ok|
+      with_project do |proj|
+        _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--baseline-epsilon", ok, chdir: proj)
+        assert_equal 0, status.exitstatus, ok
+      end
+    end
   end
 
   def test_non_numeric_threshold_exits_two
     _, err, status = mutineer("run", "x.rb", "--threshold", "abc")
     assert_equal 2, status.exitstatus
-    assert_includes err, "--threshold requires a number"
+    assert_includes err, "--threshold must be a number between 0 and 100"
   end
 
   def test_unknown_format_exits_two
@@ -191,6 +242,51 @@ class CliTest < Minitest::Test
                               "--since", "definitely-not-a-ref-xyz", chdir: ROOT)
     assert_equal 2, status.exitstatus
     assert_includes err, "unknown git ref: definitely-not-a-ref-xyz"
+  end
+
+  # An empty --since is an error, not "no scoping": `--since "$REF"` with an
+  # unset variable must not turn into a full run.
+  def test_since_empty_ref_exits_two
+    ["", "  "].each do |blank|
+      _, err, status = mutineer("run", "lib/mutineer/version.rb", "--since", blank, chdir: ROOT)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "--since must be a git ref, not blank (got: #{blank.inspect})"
+    end
+  end
+
+  # The file path follows the same rule as the flag, and `since: false` stays
+  # the one way to write "no scoping" in the file.
+  def test_blank_since_in_config_file_exits_two_and_false_does_not
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "since: \"\"\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, ".mutineer.yml: since must be a git ref, not blank (got: \"\")"
+      File.write(File.join(proj, ".mutineer.yml"), "since: false\n")
+      _, _, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus
+    end
+  end
+
+  # `only: false` in the file must fail like a bad flag. It once ran zero mutants,
+  # scored nil and exited 0 even with a weak test.
+  def test_only_false_in_config_file_exits_two
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "only: false\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, ".mutineer.yml: only must be a string (got: false)"
+    end
+  end
+
+  # `baseline:` with no value once switched the baseline check off and exited 0.
+  def test_string_key_with_no_value_in_config_file_exits_two
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "baseline:\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, ".mutineer.yml: baseline must be a string (got: nil)"
+    end
   end
 
   # --- happy paths driven through bin/mutineer -----------------------------
@@ -481,6 +577,101 @@ class CliTest < Minitest::Test
       refute_includes err, "no test found by convention"
       files = JSON.parse(out)["per_source"].map { |h| h["file"] }
       assert_equal ["lib/calc.rb"], files
+    end
+  end
+
+  # --- a typed flag beats the config file, whatever the file holds (#103) ---
+
+  # Runs Mutineer::CLI.start in-process inside `proj` and returns the Config it
+  # would have run, without running it.
+  def config_resolved_by_cli(proj, *argv)
+    captured = nil
+    cli = Mutineer::CLI.singleton_class
+    original = Mutineer::CLI.method(:run)
+    cli.send(:define_method, :run) { |config| captured = config }
+    begin
+      Dir.chdir(proj) { Mutineer::CLI.start(argv) }
+    ensure
+      cli.send(:define_method, :run, original)
+    end
+    captured
+  end
+
+  def test_typed_rails_beats_config_file_rails_false
+    Dir.mktmpdir("mutineer-proj") do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "rails: false\n")
+      src = File.join(FIXTURES, "boot", "widget.rb")
+      # rails on means boot mode, whose own check fires; rails off would instead
+      # report that no test was found by convention.
+      _, err, status = mutineer("run", src, "--rails", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "--boot/--rails requires at least one --test file"
+    end
+  end
+
+  def test_typed_verbose_and_debug_beat_config_file_verbose_false
+    Dir.mktmpdir("mutineer-proj") do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "verbose: false\n")
+      %w[--verbose --debug].each do |flag|
+        assert config_resolved_by_cli(proj, "run", "x.rb", flag).verbose, flag
+      end
+      refute config_resolved_by_cli(proj, "run", "x.rb").verbose
+    end
+  end
+
+  def rspec_project
+    with_autopair_project do |proj|
+      File.write(File.join(proj, "test", "calc_test.rb"), <<~RUBY)
+        require_relative "../lib/calc"
+
+        RSpec.describe Calc do
+          it "adds" do
+            expect(Calc.new.add(2, 3)).to eq(5)
+          end
+        end
+      RUBY
+      yield proj
+    end
+  end
+
+  # An RSpec file that autopair finds under test/calc_test.rb looks like minitest
+  # by name. The file's framework: rspec must survive autopair's re-detection;
+  # the minitest runner cannot even load this file.
+  def test_config_file_framework_survives_autopair
+    rspec_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "framework: rspec\n")
+      config = config_resolved_by_cli(proj, "run", "lib/calc.rb")
+      Mutineer::CLI.autopair!(config)
+      assert_equal "rspec", config.framework
+      assert_equal ["test/calc_test.rb"], config.tests
+
+      out, err, status = mutineer("run", "lib/calc.rb", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      summary = JSON.parse(out)["summary"]
+      assert_equal 1, summary["killed"], "the RSpec runner must have run the spec"
+    end
+  end
+
+  def test_cli_framework_beats_config_file_framework
+    rspec_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "framework: minitest\n")
+      out, err, status = mutineer("run", "lib/calc.rb", "--framework", "rspec", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, JSON.parse(out)["summary"]["killed"]
+    end
+  end
+
+  def test_framework_is_detected_from_names_when_nobody_wrote_one
+    with_autopair_project do |proj|
+      config = config_resolved_by_cli(proj, "run", "lib/calc.rb")
+      Mutineer::CLI.autopair!(config)
+      assert_equal "minitest", config.framework
+      refute config.explicit?(:framework)
+      FileUtils.mkdir_p(File.join(proj, "spec"))
+      FileUtils.mv(File.join(proj, "test", "calc_test.rb"), File.join(proj, "spec", "calc_spec.rb"))
+      config = config_resolved_by_cli(proj, "run", "lib/calc.rb")
+      Mutineer::CLI.autopair!(config)
+      assert_equal "rspec", config.framework
     end
   end
 
