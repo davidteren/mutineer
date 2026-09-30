@@ -38,9 +38,9 @@ for path, page in pages.items():
         if parts.scheme or parts.netloc:
             continue
         if parts.path.startswith("/"):
-            target = root / unquote(parts.path).lstrip("/")
-        else:
-            target = path.parent / unquote(parts.path) if parts.path else path
+            errors.append(f"{path.relative_to(root)}:{line}: root-absolute URL {url!r}; use a relative URL under /mutineer/")
+            continue
+        target = path.parent / unquote(parts.path) if parts.path else path
         if target.is_dir():
             target /= "index.html"
         target = target.resolve()

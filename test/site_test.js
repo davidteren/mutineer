@@ -19,7 +19,7 @@ test('built pages have valid local links and unique anchors, including the API',
   assert.equal(result.status, 0, result.error?.message || result.stderr || result.stdout);
 });
 
-test('link checker rejects files outside the published tree', () => {
+test('link checker rejects files outside the published tree and root-absolute URLs', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mutineer-site-links-'));
   try {
     const site = path.join(directory, 'site');
@@ -29,6 +29,11 @@ test('link checker rejects files outside the published tree', () => {
     const result = spawnSync('python3', ['test/site_links.py', site], { encoding: 'utf8' });
     assert.equal(result.status, 1, result.error?.message || result.stdout);
     assert.match(result.stderr, /outside site/);
+    fs.writeFileSync(path.join(site, 'inside.txt'), 'This file is published under /mutineer/.');
+    fs.writeFileSync(path.join(site, 'index.html'), '<a href="/inside.txt">wrong origin path</a>');
+    const absolute = spawnSync('python3', ['test/site_links.py', site], { encoding: 'utf8' });
+    assert.equal(absolute.status, 1, absolute.error?.message || absolute.stdout);
+    assert.match(absolute.stderr, /root-absolute URL/);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
