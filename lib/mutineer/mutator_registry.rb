@@ -78,8 +78,8 @@ module Mutineer
       "chain_link"         => "drop one call from a chain: a.b.c -> a.c",
       "operand_removal"    => "a && b -> a, b",
       "array_literal"      => "[a, b] -> []",
-      "condition_true"     => "replace if/unless/ternary/guard condition with true",
-      "condition_false"    => "replace if/unless/ternary/guard condition with false"
+      "condition_true"     => "replace an if/elsif/unless/ternary/modifier/case-in guard condition with true",
+      "condition_false"    => "replace an if/elsif/unless/ternary/modifier/case-in guard condition with false"
     }.freeze
 
     # Resolves operator names to classes.

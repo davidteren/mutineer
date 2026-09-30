@@ -70,6 +70,38 @@ class ConditionForcingTest < Minitest::Test
     assert_equal [["f -> true"], []], both("x\n  done if f")
   end
 
+  # A parenthesized literal is still a literal: `boolean_literal` flips it.
+  def test_parenthesized_literal_conditions_are_left_to_boolean_literal
+    assert_equal [[], []], both("if (true) then 1 else 2 end")
+    assert_equal [[], []], both("((false)) ? 1 : 2")
+  end
+  
+  # The nil twin exists only when statement_removal or return_nil runs.
+  # With neither enabled, the never-runs side is the only such mutant.
+  def test_never_runs_side_kept_when_no_nil_operator_runs
+    source = "def m\n  return :none if a\n  b\nend\n"
+    mutations = Mutineer::Mutators::ConditionFalse.new(nilled_by: []).mutations_for(subject_for(source), source)
+    assert_equal ["a -> false"], mutations.map { |m| "#{source[m.start_offset...m.end_offset]} -> #{m.replacement}" }
+  end
+  
+  def test_runner_passes_only_the_enabled_nil_operators
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "guard.rb")
+      File.write(path, "def m(a)\n  return :none if a\n  :some\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: dir)
+      ops = ->(names) { Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(names)).first.map { |_, m| m.operator } }
+      assert_equal %i[condition_false], ops.(%w[condition_false])
+      assert_equal %i[statement_removal], ops.(%w[condition_false statement_removal]).uniq
+    end
+  end
+  
+  # `foo = bar if c` declares `foo` even when the branch never runs, so the
+  # program differs from the nil twin, where a later `foo` is a method call.
+  def test_never_runs_side_kept_when_the_conditional_writes_a_local
+    assert_equal [["c -> true"], ["c -> false"]], both("foo = bar if c\n  foo")
+    assert_equal [["c -> true"], ["c -> false"]], both("(x, y = pair) if c\n  x")
+  end
+  
   def test_never_runs_side_kept_when_there_is_an_else_or_no_nil_twin
     assert_equal [["c -> true"], ["c -> false"]], both("x\n  if c then d else e end")
     assert_equal [["c -> true"], ["c -> false"]], both("y = (d if c)\n  y")

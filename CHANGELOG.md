@@ -10,10 +10,13 @@ All notable changes to this project are documented here. The format is based on
 - **Condition-forcing operators** (Tier-2, opt-in via `--operators`):
   `condition_true` and `condition_false` replace an `if`/`elsif`/`unless`,
   ternary, modifier or `case`/`in` guard condition with `true` or `false`, so
-  its branch always runs or never runs. A survivor means no test covers the
-  other side of that condition. A literal condition, and the never-runs side of
-  an else-less conditional that `statement_removal` or `return_nil` already
-  replaces with `nil`, make no mutant.
+  its branch always runs or never runs. A surviving mutant means no selected
+  test detected the forced condition. A literal condition, also in
+  parentheses, makes no mutant. The never-runs side of an else-less
+  conditional makes no mutant when `statement_removal` or `return_nil` also
+  runs and already replaces the whole conditional with `nil`. It is still
+  made when the conditional writes a local variable, because
+  `foo = bar if false` declares `foo` and `nil` does not.
 
 ### Changed
 - **The docs site is built in CI** — a Pages workflow runs `rake site:build`

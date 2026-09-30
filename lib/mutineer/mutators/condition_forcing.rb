@@ -16,12 +16,15 @@ module Mutineer
     # Two kinds of condition are left alone, because the mutant would repeat
     # one another operator makes:
     #
-    # - A condition that is already `true`, `false` or `nil`: `boolean_literal`
-    #   flips it.
+    # - A condition that is already `true`, `false` or `nil`, even in
+    #   parentheses: `boolean_literal` flips it.
     # - The never-runs side of a conditional with no else branch whose whole
     #   expression `statement_removal` or `return_nil` replaces with `nil`, as
     #   in `return x if y` followed by more code: forcing it that way is the
-    #   same program. The always-runs side is still made.
+    #   same program. The always-runs side is still made. This applies only
+    #   when that operator runs too, and only when the conditional writes no
+    #   local variable: `foo = bar if false` still declares `foo`, while `nil`
+    #   does not.
     #
     # `condition_negation` wraps the condition in `!( ... )`, which neither
     # forced value is.
@@ -32,6 +35,13 @@ module Mutineer
       # Operators whose `nil` replacement of a whole conditional equals forcing
       # an else-less conditional's branch never to run.
       NILLED_BY = [StatementRemoval, ReturnNil].freeze
+
+      # @param nilled_by [Array<Class>] the {NILLED_BY} operators that run with
+      #   this one. The runner passes the enabled ones; the default is both.
+      def initialize(nilled_by: NILLED_BY)
+        super()
+        @nilled_by = nilled_by
+      end
 
       # Keeps the subject for the lazy {#nilled?} lookup, then walks its body.
       #
@@ -82,8 +92,8 @@ module Mutineer
       # @return [void]
       def force(node, runs:, otherwise:)
         predicate = node.predicate
-        return if LITERALS.any? { |literal| predicate.is_a?(literal) }
-        return if self.class::VALUE != runs && otherwise.nil? && nilled?(node)
+        return if LITERALS.any? { |literal| unwrap(predicate).is_a?(literal) }
+        return if self.class::VALUE != runs && otherwise.nil? && !writes_local?(node) && nilled?(node)
 
         loc = predicate.location
         @mutations << Mutation.new(
@@ -94,13 +104,36 @@ module Mutineer
         )
       end
 
-      # Returns whether an operator in {NILLED_BY} replaces this whole node
+      # Returns the node inside parentheses that hold exactly one expression,
+      # so `(true)` and `((true))` read as `true`.
+      #
+      # @param node [Prism::Node] the condition.
+      # @return [Prism::Node] the innermost wrapped node, or `node` itself.
+      def unwrap(node)
+        body = node.body if node.is_a?(Prism::ParenthesesNode)
+        body = body.body.first if body.is_a?(Prism::StatementsNode) && body.body.size == 1
+        body && !body.is_a?(Prism::StatementsNode) ? unwrap(body) : node
+      end
+
+      # Returns whether the node writes a local variable anywhere inside it:
+      # a plain, compound, multiple or pattern write.
+      #
+      # @param node [Prism::Node] the conditional.
+      # @return [Boolean] true when a local write or target node is inside.
+      def writes_local?(node)
+        type = node.type.name
+        return true if type.start_with?("local_variable_") && type.end_with?("_write_node", "_target_node")
+
+        node.compact_child_nodes.any? { |child| writes_local?(child) }
+      end
+
+      # Returns whether an enabled operator in {NILLED_BY} replaces this whole node
       # with `nil`. Their mutations are built once per subject, on first use.
       #
       # @param node [Prism::Node] the conditional.
       # @return [Boolean] true when the node's exact range is replaced by nil.
       def nilled?(node)
-        @nilled ||= NILLED_BY.flat_map { |klass| klass.new.mutations_for(@subject, @source) }
+        @nilled ||= @nilled_by.flat_map { |klass| klass.new.mutations_for(@subject, @source) }
                              .to_h { |m| [[m.start_offset, m.end_offset], true] }
         loc = node.location
         @nilled.key?([loc.start_offset, loc.end_offset])
