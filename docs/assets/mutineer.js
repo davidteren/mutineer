@@ -108,7 +108,7 @@
         var start = performance.now();
         (function tick(now) {
           if (counter.finished) return;
-          var p = Math.min(1, (now - start) / ms), eased = 1 - Math.pow(1 - p, 3);
+          var p = Math.min(1, Math.max(0, (now - start) / ms)), eased = 1 - Math.pow(1 - p, 3);
           counter.el.textContent = counter.format(counter.from + (counter.to - counter.from) * eased);
           if (p < 1) requestAnimationFrame(tick); else counter.finish();
         })(start);
@@ -191,6 +191,7 @@
         el.setAttribute('aria-hidden', 'true');
         el.parentNode.insertBefore(counter.real, el.nextSibling);
         el.textContent = counter.format(counter.from);
+        if (counter.meter) counter.meter.classList.add('armed');
         counters.push(counter);
         once(el, function () {
           if (counter.finished) return;
