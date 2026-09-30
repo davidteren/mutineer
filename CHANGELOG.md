@@ -12,11 +12,11 @@ All notable changes to this project are documented here. The format is based on
   ternary, modifier or `case`/`in` guard condition with `true` or `false`, so
   its branch always runs or never runs. A surviving mutant means no selected
   test detected the forced condition. A literal condition, also in
-  parentheses, makes no mutant. The never-runs side of an else-less
-  conditional makes no mutant when `statement_removal` or `return_nil` also
-  runs and already replaces the whole conditional with `nil`. It is still
-  made when the conditional writes a local variable, because
-  `foo = bar if false` declares `foo` and `nil` does not.
+  parentheses, makes no mutant: forcing it changes nothing or repeats the
+  `boolean_literal` flip. The never-runs side of an else-less conditional can
+  be the same program as the `nil` that `statement_removal` or `return_nil`
+  puts in its place; it is still made, so these mutants and their ids do not
+  depend on which other operators run.
 
 ### Changed
 - **The docs site is built in CI** — a Pages workflow runs `rake site:build`

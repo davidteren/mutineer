@@ -190,14 +190,10 @@ module Mutineer
       ignored_results = []
       legacy_ignore_matches = {}
       id_map = {}
-      # Condition forcing drops a mutant that an enabled nil-replacing operator
-      # already makes, so it must know which of those operators run.
-      nilled_by = operator_classes & Mutators::ConditionForcing::NILLED_BY
-      build = ->(klass) { klass <= Mutators::ConditionForcing ? klass.new(nilled_by: nilled_by) : klass.new }
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
-        mutations = operator_classes.flat_map { |klass| build.(klass).mutations_for(subject, source) }
+        mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
         id_path = (id_paths[subject.file] ||= ProjectPath.relative(subject.file, config.project_root))
         decls = name_decls[[id_path, subject.qualified_name]]
         ordinal = (decls[subject.def_node.location.start_offset] ||= decls.size)

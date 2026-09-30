@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "base"
-require_relative "statement_removal"
-require_relative "return_nil"
 
 module Mutineer
   module Mutators
@@ -13,18 +11,15 @@ module Mutineer
     # runs or never runs. {ConditionTrue} forces `true` and {ConditionFalse}
     # forces `false`; one mutation per condition each.
     #
-    # Two kinds of condition are left alone, because the mutant would repeat
-    # one another operator makes:
+    # A condition that is already `true`, `false` or `nil`, even in
+    # parentheses, is left alone: forcing it changes nothing or repeats the
+    # `boolean_literal` flip. This holds even when `boolean_literal` does not run.
     #
-    # - A condition that is already `true`, `false` or `nil`, even in
-    #   parentheses: `boolean_literal` flips it.
-    # - The never-runs side of a conditional with no else branch whose whole
-    #   expression `statement_removal` or `return_nil` replaces with `nil`, as
-    #   in `return x if y` followed by more code: forcing it that way is the
-    #   same program. The always-runs side is still made. This applies only
-    #   when that operator runs too, and only when the conditional writes no
-    #   local variable: `foo = bar if false` still declares `foo`, while `nil`
-    #   does not.
+    # The never-runs side of an else-less conditional can be the same program
+    # as the `nil` that `statement_removal` or `return_nil` puts in place of the
+    # whole conditional. It is still made: dropping it would make the mutants
+    # of one operator depend on which other operators run, and on what the user
+    # suppressed for them. The two then get the same verdict.
     #
     # `condition_negation` wraps the condition in `!( ... )`, which neither
     # forced value is.
@@ -32,35 +27,13 @@ module Mutineer
       # Condition nodes that `boolean_literal` already mutates.
       LITERALS = [Prism::TrueNode, Prism::FalseNode, Prism::NilNode].freeze
 
-      # Operators whose `nil` replacement of a whole conditional equals forcing
-      # an else-less conditional's branch never to run.
-      NILLED_BY = [StatementRemoval, ReturnNil].freeze
-
-      # @param nilled_by [Array<Class>] the {NILLED_BY} operators that run with
-      #   this one. The runner passes the enabled ones; the default is both.
-      def initialize(nilled_by: NILLED_BY)
-        super()
-        @nilled_by = nilled_by
-      end
-
-      # Keeps the subject for the lazy {#nilled?} lookup, then walks its body.
-      #
-      # @param subject [Mutineer::Subject] subject whose body is visited.
-      # @param source [String] full source text for byte-based slicing.
-      # @return [Array<Mutineer::Mutation>] collected mutations.
-      def mutations_for(subject, source)
-        @subject = subject
-        @nilled = nil
-        super
-      end
-
       # Visits if nodes: `if`, `elsif`, a ternary, a modifier `if` and an
       # `in ... if` guard.
       #
       # @param node [Prism::IfNode] node to inspect.
       # @return [void]
       def visit_if_node(node)
-        force(node, runs: true, otherwise: node.subsequent)
+        force(node)
         super
       end
 
@@ -70,7 +43,7 @@ module Mutineer
       # @param node [Prism::UnlessNode] node to inspect.
       # @return [void]
       def visit_unless_node(node)
-        force(node, runs: false, otherwise: node.else_clause)
+        force(node)
         super
       end
 
@@ -83,17 +56,13 @@ module Mutineer
 
       private
 
-      # Emits the forced condition unless another operator already makes the
-      # same program.
+      # Emits the forced condition unless the condition is a literal.
       #
       # @param node [Prism::IfNode, Prism::UnlessNode] the conditional.
-      # @param runs [Boolean] the condition value that runs the branch.
-      # @param otherwise [Prism::Node, nil] the else branch or `elsif`, if any.
       # @return [void]
-      def force(node, runs:, otherwise:)
+      def force(node)
         predicate = node.predicate
         return if LITERALS.any? { |literal| unwrap(predicate).is_a?(literal) }
-        return if self.class::VALUE != runs && otherwise.nil? && !writes_local?(node) && nilled?(node)
 
         loc = predicate.location
         @mutations << Mutation.new(
@@ -113,30 +82,6 @@ module Mutineer
         body = node.body if node.is_a?(Prism::ParenthesesNode)
         body = body.body.first if body.is_a?(Prism::StatementsNode) && body.body.size == 1
         body && !body.is_a?(Prism::StatementsNode) ? unwrap(body) : node
-      end
-
-      # Returns whether the node writes a local variable anywhere inside it:
-      # a plain, compound, multiple or pattern write.
-      #
-      # @param node [Prism::Node] the conditional.
-      # @return [Boolean] true when a local write or target node is inside.
-      def writes_local?(node)
-        type = node.type.name
-        return true if type.start_with?("local_variable_") && type.end_with?("_write_node", "_target_node")
-
-        node.compact_child_nodes.any? { |child| writes_local?(child) }
-      end
-
-      # Returns whether an enabled operator in {NILLED_BY} replaces this whole node
-      # with `nil`. Their mutations are built once per subject, on first use.
-      #
-      # @param node [Prism::Node] the conditional.
-      # @return [Boolean] true when the node's exact range is replaced by nil.
-      def nilled?(node)
-        @nilled ||= @nilled_by.flat_map { |klass| klass.new.mutations_for(@subject, @source) }
-                             .to_h { |m| [[m.start_offset, m.end_offset], true] }
-        loc = node.location
-        @nilled.key?([loc.start_offset, loc.end_offset])
       end
     end
 
