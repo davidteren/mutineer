@@ -38,8 +38,15 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
    project-root changes, and changes to repeated-name or repeated-mutation order can
    change ids; see [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). For each, write/strengthen a
    test that fails under that change.
-4. Re-run. Stop only when this run exits `0`, `summary.score` is not `null`,
-   and `summary.score >= 90`. Use `--threshold 100` if every scored mutant must be killed.
+4. Re-run. Accept the result only when this run exits `0`, `summary.score` is not `null`,
+   and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`;
+   the score is rounded, so `--threshold 100` alone can still pass with a survivor.
+
+Before running, set `fail_fast: false` in `.mutineer.yml`. A fail-fast run is partial,
+and its score and exit code do not cover the full scope. If the score is null, stop
+and report “no score”. Inspect the coverage gaps and harness failures, and fix them
+before starting a new run. Do not treat an empty or fully suppressed scope as proof
+of test quality.
 
 Zero survivors alone is not success. A null score means no score. Inspect
 `no_coverage[]` for test gaps and `no_verdict[]` for harness failures before accepting

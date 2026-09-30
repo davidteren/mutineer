@@ -82,8 +82,9 @@
             <p>Write or strengthen a test so it fails under this change.</p>
           </blockquote>
         </li>
-        <li>Re-run. Stop only when this run exits <code>0</code>, <code>summary.score</code> is not <code>null</code>, and <code>summary.score &gt;= 90</code>. Use <code>--threshold 100</code> if every scored mutant must be killed.</li>
+        <li>Re-run. Accept the result only when this run exits <code>0</code>, <code>summary.score</code> is not <code>null</code>, and <code>summary.score &gt;= 90</code>. If every scored mutant must be killed, also require <code>summary.survived == 0</code>; the score is rounded, so <code>--threshold 100</code> alone can still pass with a survivor.</li>
       </ol>
+      <p>Before running, set <code>fail_fast: false</code> in <code>.mutineer.yml</code>. A fail-fast run is partial, and its score and exit code do not cover the full scope. If the score is null, stop and report “no score”. Inspect the coverage gaps and harness failures, and fix them before starting a new run. Do not treat an empty or fully suppressed scope as proof of test quality.</p>
       <p>Zero survivors alone is not success: an empty scope or a run with no usable verdicts also has zero survivors. Treat a null score as “no score”. Check <code>no_coverage[]</code> for test gaps and <code>no_verdict[]</code> for harness failures before accepting the result. A positive threshold fails when nothing can be scored and something broke, or when more than one mutant has no verdict and they exceed 10% of those attempted; it does not require zero errors. Keep the threshold in the command equal to your target.</p>
       <p>Progress lines go to <strong>stderr</strong>; do not merge streams (<code>2&gt;&amp;1</code>) when parsing JSON from stdout. Prefer <code>--output FILE</code> and read the file.</p>
       <p><code>--since</code> keeps each iteration fast by mutating only the lines the agent just touched. Genuinely equivalent mutants (which can never be killed) should be suppressed so the loop terminates — see <a href="#equivalent">Avoiding infinite loops</a> below.</p>
@@ -137,7 +138,7 @@ jobs:
       <p>Some mutants are semantically identical to the original and can <strong>never</strong> be killed by any test. In an unattended agent loop these would never clear, so suppress them explicitly:</p>
       <ul>
         <li><strong>Inline:</strong> <code>#&nbsp;mutineer:disable-line [operators]</code> on the offending source line.</li>
-        <li><strong>Config:</strong> add the survivor's stable <code>id</code> (printed in the JSON report) to <code>.mutineer.yml</code>:
+        <li><strong>Config:</strong> add the survivor's <code>id</code> (printed in the JSON report; it includes the file path) to <code>.mutineer.yml</code>:
           <pre><code>ignore:
   - 9f2a1c4b7e0d   <span class="c"># Calculator#scale — equivalent under `comparison`</span></code></pre>
         </li>
