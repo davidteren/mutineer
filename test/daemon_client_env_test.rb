@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "json"
 require "open3"
 require "rbconfig"
@@ -34,7 +35,8 @@ class DaemonClientEnvTest < Minitest::Test
         assert_equal app_home, observed["BUNDLE_APP_CONFIG"]
         assert_equal File.join(root, "Gemfile"), observed["BUNDLE_GEMFILE"]
         assert_equal "kept", observed["MUTINEER_APP_PROBE"]
-        assert_nil observed["RBENV_VERSION"]
+        assert_equal "3.3.6", observed["RBENV_VERSION"]
+        assert_equal "3.2.1", observed["ASDF_RUBY_VERSION"]
         parts = observed["PATH"].split(File::PATH_SEPARATOR)
         refute_includes parts, version_bin
         refute_includes parts, "#{version_bin}/"
@@ -63,6 +65,25 @@ class DaemonClientEnvTest < Minitest::Test
         assert_nil observed["RUBYOPT"]
       end
     end
+  end
+
+  # The flag has to be on the real spawn call. A helper that adds it only in
+  # the test would stay green if spawn_daemon dropped it.
+  def test_spawn_daemon_passes_unsetenv_others
+    root = Dir.mktmpdir("daemon-env")
+    seen = {}
+    client = client_for(root)
+    Open3.stub(:popen3, lambda { |*_args, **kwargs|
+      seen.replace(kwargs)
+      raise Errno::ENOENT
+    }) do
+      error = assert_raises(Mutineer::DaemonBootError) { client.send(:spawn_daemon) }
+      assert_match(/ENOENT/, error.message)
+    end
+    assert_equal true, seen[:unsetenv_others]
+    assert_equal root, seen[:chdir]
+  ensure
+    FileUtils.remove_entry(root) if root && File.directory?(root)
   end
 
   def test_spawn_keeps_existing_rails_env
@@ -102,8 +123,8 @@ class DaemonClientEnvTest < Minitest::Test
       "BUNDLE_APP_CONFIG" => app_home,
       "BUNDLE_GEMFILE" => "/tmp/MutineerToolGemfile",
       "BUNDLER_ORIG_BUNDLE_GEMFILE" => UNSET,
-      "RBENV_VERSION" => "3.4.9",
-      "ASDF_RUBY_VERSION" => "3.4.9",
+      "RBENV_VERSION" => "3.3.6",
+      "ASDF_RUBY_VERSION" => "3.2.1",
       "MUTINEER_APP_PROBE" => "kept",
       "RAILS_ENV" => nil,
       "PATH" => [

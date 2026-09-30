@@ -40,22 +40,20 @@ module Mutineer
     # Bundler's marker for a variable that was unset before it activated.
     BUNDLER_UNSET = "BUNDLER_ENVIRONMENT_PRESERVER_INTENTIONALLY_NIL"
     # rbenv and asdf put a concrete Ruby bin ahead of their shims. chruby has
-    # no shims, so a <tt>~/.rubies</tt> bin stays on PATH.
+    # no shims, so a <tt>~/.rubies</tt> bin stays on PATH. This is narrower
+    # than {ExternalBackend::VERSION_BIN_PATH} on purpose.
     MANAGED_RUBY_BIN = %r{
       (?:
         /\.rbenv/versions/[^/]+/bin
         |/\.asdf/installs/ruby/[^/]+/bin
       )/?\z
     }x
-    # Version-manager pins that would force the tool's Ruby. An explicit
-    # +ruby_version+ is applied after these are removed.
-    RUBY_PIN_KEYS = %w[RBENV_VERSION ASDF_RUBY_VERSION RBENV_DIR].freeze
 
     # @param boot [Hash] boot config sent to the daemon: project_root, boot,
     #   load_paths, framework, rails.
     # @param app_root [String] directory to spawn the daemon in (the app root).
     # @param ruby_version [String, nil] RBENV_VERSION for the app's Ruby.
-    #   nil does not copy the tool's version-manager pin.
+    #   nil keeps a pin already in the environment.
     # @param gemfile [String, nil] BUNDLE_GEMFILE for the app's bundle (nil = app_root/Gemfile).
     # @param errio [IO] where daemon stderr is drained.
     def initialize(boot:, app_root:, ruby_version: nil, gemfile: nil, errio: $stderr)
@@ -150,7 +148,6 @@ module Mutineer
     # @return [Hash{String => String}]
     def app_env
       env = restored_user_env
-      RUBY_PIN_KEYS.each { |key| env.delete(key) }
       scrub_managed_ruby_bins!(env)
       env.delete("BUNDLER_SETUP")
       env["BUNDLE_GEMFILE"] = @gemfile
@@ -209,7 +206,9 @@ module Mutineer
     def spawn_daemon
       # Plain `bundle exec ruby`, NOT `rbenv exec`, which would break CI and any
       # non-rbenv setup. An explicit ruby_version sets RBENV_VERSION so shims
-      # select that Ruby. With no pin, shims and `.ruby-version` select it.
+      # select that Ruby. With no argument, an existing pin or `.ruby-version`
+      # selects it. rbenv and asdf version bins are not on PATH, so they cannot
+      # hide that pin. chruby bins stay.
       # Everything up to the handshake is terminal, not one mutant's problem: a spawn
       # the OS refuses (EMFILE/ENOMEM under --jobs N, ENOENT when `bundle` does not
       # resolve) and a daemon that dies before accepting the boot payload (EPIPE on
