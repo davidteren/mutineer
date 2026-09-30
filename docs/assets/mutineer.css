@@ -246,6 +246,40 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
   .prose pre { padding: 16px; font-size: 12px; }
   .doc-lede { font-size: 18px; }
 }
+/* Field report in the hero: an outside result, with a bar showing the drop. */
+.hero-proof { position: relative; display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 12px 32px; margin: 0 0 8px; padding: 22px 24px 26px; background: var(--bg-2); border: 1px solid var(--accent); overflow: hidden; }
+.hero-proof .kicker { color: var(--accent); }
+.hero-proof-num { margin: 0; display: flex; align-items: baseline; gap: 14px; }
+.hero-proof-num .odo { font-size: 44px; font-weight: 700; letter-spacing: -.045em; line-height: 1; color: var(--accent); }
+.hero-proof-num small { font: 12px/1.4 var(--mono); color: var(--fg-dim); max-width: 18ch; }
+.hero-proof-by { margin: 0; font-size: 14px; color: var(--fg-dim); max-width: 60ch; }
+.hero-proof > a { font-size: 13px; white-space: nowrap; }
+.proof-meter { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--bg-3); }
+.proof-meter span { display: block; height: 100%; width: 46.2%; background: var(--accent); }
+.odo { font-variant-numeric: tabular-nums; }
+@media (max-width: 1100px) { .hero-proof { grid-template-columns: 1fr auto; } .hero-proof-by { grid-column: 1 / -1; } }
+@media (max-width: 600px) { .hero-proof { grid-template-columns: 1fr; } }
+
+/* Motion. mutineer.js adds .motion to <html> only when the browser can observe
+   scrolling and the visitor has not asked for reduced motion, so without it
+   every element shows in its final state. */
+.scroll-progress { position: fixed; z-index: 60; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); transform-origin: left; transform: scaleX(0); pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .motion .reveal:not(.is-in) { opacity: 0; transform: translateY(14px); }
+  .motion .reveal.is-in { animation: enter 560ms var(--ease-out) var(--d, 0ms) both; }
+  .motion .glyph-arrow { display: inline-block; animation: glyph-nudge 2.4s ease-in-out infinite; }
+  .motion .step { border-top-color: transparent; position: relative; }
+  .motion .step::before { content: ""; position: absolute; left: 0; right: 0; top: -2px; height: 2px; background: var(--fg); transform: scaleX(0); transform-origin: left; transition: transform 800ms var(--ease-out) calc(var(--d, 0ms) + 120ms); }
+  .motion .step.is-in::before { transform: scaleX(1); }
+  .motion .typed:not(.is-in) { clip-path: inset(0 100% 0 0); }
+  .motion .typed.is-in { animation: type-in 1.1s steps(24) 200ms both; }
+  .motion .btn span[aria-hidden] { display: inline-block; transition: transform 180ms var(--ease-out); }
+  .motion .btn:hover span[aria-hidden] { transform: translate(3px, -3px); }
+  .motion .proof-meter span { width: 100%; transition: width 1800ms var(--ease-out); }
+  .motion .proof-meter span.go { width: 46.2%; }
+}
+@keyframes glyph-nudge { 0%, 100% { transform: translateX(-8px); opacity: .55; } 50% { transform: translateX(8px); opacity: 1; } }
+@keyframes type-in { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
