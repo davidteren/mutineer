@@ -172,7 +172,8 @@ module Mutineer
     end
 
     # Drop rbenv and asdf version bins so shims can select the app Ruby.
-    # Leave chruby bins in place.
+    # Leave those bins in place when no shim directory exists, so +bundle+
+    # stays on PATH. Leave chruby bins in place.
     #
     # @api private
     # @param env [Hash{String => String}]
@@ -183,6 +184,8 @@ module Mutineer
       return if kept.size == parts.size
 
       shims = ExternalBackend.version_manager_shim_dirs
+      return if shims.empty?
+
       env["PATH"] = (shims + kept).uniq.join(File::PATH_SEPARATOR)
     end
 
@@ -203,8 +206,8 @@ module Mutineer
       # non-rbenv setup. An explicit ruby_version replaces RBENV_VERSION.
       # With no argument, a pin already in the environment stays. That pin is
       # often the Ruby that started the tool. `.ruby-version` applies only
-      # when no pin is set. rbenv and asdf version bins leave PATH so a shim
-      # can apply the pin. chruby bins stay.
+      # when no pin is set. rbenv and asdf version bins leave PATH when a shim
+      # directory exists. chruby bins stay.
       # Everything up to the handshake is terminal, not one mutant's problem: a spawn
       # the OS refuses (EMFILE/ENOMEM under --jobs N, ENOENT when `bundle` does not
       # resolve) and a daemon that dies before accepting the boot payload (EPIPE on

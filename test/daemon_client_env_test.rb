@@ -24,7 +24,11 @@ class DaemonClientEnvTest < Minitest::Test
       version_bin = File.expand_path("~/.rbenv/versions/9.9.9/bin")
       chruby_bin = File.expand_path("~/.rubies/app-ruby/bin")
       app_home = "/usr/local/bundle"
-      with_env(tool_over_app_env(root, injected, version_bin, chruby_bin, app_home)) do
+      home = File.join(root, "home")
+      FileUtils.mkdir_p(File.join(home, ".rbenv", "shims"))
+      updates = tool_over_app_env(root, injected, version_bin, chruby_bin, app_home)
+      updates["HOME"] = home
+      with_env(updates) do
         observed = observe(client_for(root), root)
 
         assert_nil observed["MUTINEER_PARENT_CODE_LOADED"]
@@ -42,6 +46,7 @@ class DaemonClientEnvTest < Minitest::Test
         refute_includes parts, version_bin
         refute_includes parts, "#{version_bin}/"
         assert_includes parts, chruby_bin
+        assert_includes parts, File.join(home, ".rbenv", "shims")
       end
     end
   end
@@ -88,6 +93,17 @@ class DaemonClientEnvTest < Minitest::Test
     assert_equal client.send(:app_env), seen_env
   ensure
     FileUtils.remove_entry(root) if root && File.directory?(root)
+  end
+
+  def test_spawn_keeps_version_bin_when_no_shim_exists
+    Dir.mktmpdir("daemon-env") do |root|
+      version_bin = File.join(root, ".rbenv", "versions", "9.9.9", "bin")
+      path = [version_bin, "/usr/bin"].join(File::PATH_SEPARATOR)
+      with_env("HOME" => root, "PATH" => path, "BUNDLER_ORIG_PATH" => path) do
+        observed = observe(client_for(root), root)
+        assert_includes observed["PATH"].split(File::PATH_SEPARATOR), version_bin
+      end
+    end
   end
 
   def test_spawn_keeps_existing_rails_env

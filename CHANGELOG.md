@@ -15,7 +15,9 @@ All notable changes to this project are documented here. The format is based on
   `ASDF_RUBY_VERSION` already in the environment stays. That pin is often
   the Ruby that started the tool. `.ruby-version` applies only when no pin
   is set. The tool's `RUBYOPT`, `RUBYLIB`, and gem home do not. rbenv and
-  asdf version bins leave `PATH` so a shim can apply the pin. The app
+  asdf version bins leave `PATH` when a shim directory exists, so the shim
+  can apply the pin. Without a shim, those bins stay and `bundle` can still
+  be found. The app
   Gemfile, an explicit Ruby pin, and Rails env are applied after that.
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not
