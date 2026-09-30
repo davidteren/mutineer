@@ -50,7 +50,7 @@ class ConditionForcingTest < Minitest::Test
   end
 
   def test_whole_condition_is_replaced
-    assert_equal [["(a && b) -> true"], ["(a && b) -> false"]], both("(a && b) ? 1 : 2")
+    assert_equal [["(a && b) -> (true)"], ["(a && b) -> (false)"]], both("(a && b) ? 1 : 2")
   end
 
   def test_literal_conditions_are_left_to_boolean_literal
@@ -64,6 +64,22 @@ class ConditionForcingTest < Minitest::Test
     assert_equal [[], []], both("if (true) then 1 else 2 end")
     assert_equal [[], []], both("((false)) ? 1 : 2")
   end
+
+# A parenthesized condition keeps its parentheses, so `x if(y)` does not
+# become `x iftrue`, a call to an undefined method.
+def test_parenthesized_condition_keeps_its_parentheses
+  assert_equal [["(y) -> (true)"], ["(y) -> (false)"]], both("x if(y)")
+  assert_equal [["(a) -> (true)"], ["(a) -> (false)"]], both("(a)?1:2")
+end
+
+# A condition that assigns a local still runs, so later code sees the
+# variable; only the value is forced.
+def test_condition_that_assigns_a_local_keeps_the_assignment
+  assert_equal [["(m = s.match(re)) -> ((m = s.match(re)); true)"], ["(m = s.match(re)) -> ((m = s.match(re)); false)"]],
+               both("if (m = s.match(re)) then m[0] end\n  m")
+  assert_equal [["/(?<x>a)/ =~ s -> (/(?<x>a)/ =~ s; true)"], ["/(?<x>a)/ =~ s -> (/(?<x>a)/ =~ s; false)"]],
+               both("return 1 unless /(?<x>a)/ =~ s\n  x")
+end
 
   def test_condition_with_a_heredoc_is_skipped
     assert_equal [[], []], both("if foo(<<~X)\n    hi\n  X\n    1\n  end")

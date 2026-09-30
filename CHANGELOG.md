@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format is based on
   test detected the forced condition. A literal condition, also in
   parentheses, makes no mutant: forcing it changes nothing or repeats the
   `boolean_literal` flip. A condition that holds a heredoc makes no mutant.
+  A condition that assigns a local variable keeps its code, and only its value
+  is forced (`(m = x; true)`), so later code still sees the variable.
   The never-runs side of an else-less conditional can
   be the same program as the `nil` that `statement_removal` or `return_nil`
   puts in its place; it is still made, so these mutants and their ids do not
