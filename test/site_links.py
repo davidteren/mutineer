@@ -44,7 +44,9 @@ for path, page in pages.items():
         if target.is_dir():
             target /= "index.html"
         target = target.resolve()
-        if not target.exists():
+        if root not in target.parents:
+            errors.append(f"{path.relative_to(root)}:{line}: outside site {url!r}")
+        elif not target.exists():
             errors.append(f"{path.relative_to(root)}:{line}: missing file {url!r}")
         elif parts.fragment and target in pages and unquote(parts.fragment) not in pages[target].ids:
             errors.append(f"{path.relative_to(root)}:{line}: missing fragment {url!r}")

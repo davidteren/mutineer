@@ -3,6 +3,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const os = require('node:os');
+const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const BASE = 'https://davidteren.github.io/mutineer';
@@ -15,6 +17,21 @@ const SITE = '_site';
 test('built pages have valid local links and unique anchors, including the API', () => {
   const result = spawnSync('python3', ['test/site_links.py', SITE], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.error?.message || result.stderr || result.stdout);
+});
+
+test('link checker rejects files outside the published tree', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mutineer-site-links-'));
+  try {
+    const site = path.join(directory, 'site');
+    fs.mkdirSync(site);
+    fs.writeFileSync(path.join(directory, 'outside.txt'), 'This file is not published.');
+    fs.writeFileSync(path.join(site, 'index.html'), '<a href="../outside.txt">outside</a>');
+    const result = spawnSync('python3', ['test/site_links.py', site], { encoding: 'utf8' });
+    assert.equal(result.status, 1, result.error?.message || result.stdout);
+    assert.match(result.stderr, /outside site/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('HTML pages with markdown twins advertise rel=alternate', () => {
