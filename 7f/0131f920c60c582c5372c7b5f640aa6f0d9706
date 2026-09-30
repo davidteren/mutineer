@@ -1,0 +1,22 @@
+test/site_test.js
+  s_956af0f9b72f7a::t_9a004f5ac35246 6-7,22-34
+  s_956af0f9b72f7a::t_e4e736d5b23ba4 35-36
+test/site_links.py
+  s_956af0f9b72f7a::t_7ad7eb3e00e678 47-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7f0131f920c60c582c5372c7b5f640aa6f0d9706",
+  "prompts": {},
+  "sessions": {
+    "s_956af0f9b72f7a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a0f1a5-6312-72d1-916e-711a671ccfd8",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
