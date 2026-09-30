@@ -82,6 +82,8 @@ class ConditionForcingTest < Minitest::Test
                  both("if (m = s.match(re)) then m[0] end\n  m")
     assert_equal [["/(?<x>a)/ =~ s -> (/(?<x>a)/ =~ s; true)"], ["/(?<x>a)/ =~ s -> (/(?<x>a)/ =~ s; false)"]],
                  both("return 1 unless /(?<x>a)/ =~ s\n  x")
+    assert_equal [["(@post = find) -> ((@post = find); true)"], ["(@post = find) -> ((@post = find); false)"]],
+                 both("return :none unless (@post = find)\n  @post.title")
   end
 
   def test_condition_with_a_heredoc_is_skipped

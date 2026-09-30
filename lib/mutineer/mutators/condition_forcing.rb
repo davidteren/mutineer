@@ -16,7 +16,7 @@ module Mutineer
     # `boolean_literal` flip. This holds even when `boolean_literal` does not run.
     # A condition that holds a heredoc is left alone too: the heredoc body lies
     # outside the condition, so it would stay behind as code. A condition that
-    # assigns a local variable keeps its code and only its value is forced.
+    # assigns a variable keeps its code and only its value is forced.
     #
     # The never-runs side of an else-less conditional can be the same program
     # as the `nil` that `statement_removal` or `return_nil` puts in place of the
@@ -66,7 +66,7 @@ module Mutineer
       # @return [void]
       def force(node)
         predicate = node.predicate
-        return if LITERALS.any? { |literal| unwrap(predicate).is_a?(literal) } || heredoc?(predicate)
+        return if LITERALS.include?(unwrap(predicate).class) || heredoc?(predicate)
 
         loc = predicate.location
         @mutations << Mutation.new(
@@ -80,26 +80,26 @@ module Mutineer
       # Returns the forced value for the condition, always in parentheses, so it
       # cannot fuse with a keyword or a `?` next to it: `x if@a` becomes
       # `x if(true)` and `@a?1:2` becomes `(true)?1:2`. A condition that assigns
-      # a local keeps its code, so later reads still see the variable:
+      # a variable keeps its code, so later reads still see the variable:
       # `(m = x; true)`.
       #
       # @param predicate [Prism::Node] the condition.
       # @return [String] the replacement source.
       def replacement(predicate)
         value = self.class::VALUE.to_s
-        writes_local?(predicate) ? "(#{predicate.slice}; #{value})" : "(#{value})"
+        writes?(predicate) ? "(#{predicate.slice}; #{value})" : "(#{value})"
       end
 
-      # Returns whether the node writes a local variable anywhere inside it: a
+      # Returns whether the node writes a variable or constant anywhere inside
+      # it: a local, instance, class or global variable, or a constant, in a
       # plain, compound, multiple or pattern write, or a named regex capture.
       #
       # @param node [Prism::Node] the node to inspect.
-      # @return [Boolean] true when a local write or target node is inside.
-      def writes_local?(node)
-        type = node.type.name
-        return true if type.start_with?("local_variable_") && type.end_with?("_write_node", "_target_node")
+      # @return [Boolean] true when a write or target node is inside.
+      def writes?(node)
+        return true if node.type.name.end_with?("_write_node", "_target_node")
 
-        node.compact_child_nodes.any? { |child| writes_local?(child) }
+        node.compact_child_nodes.any? { |child| writes?(child) }
       end
 
       # Returns the node inside parentheses that hold exactly one expression,
