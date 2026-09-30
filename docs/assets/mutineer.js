@@ -102,12 +102,14 @@
         o.callbacks.set(el, (o.callbacks.get(el) || []).concat(fn));
         o.io.observe(el);
       };
-      var count = function (el, from, to, ms, format, done) {
+      // Runs a count-up until it ends or counter.finish() stops it.
+      var count = function (counter, ms) {
         var start = performance.now();
         (function tick(now) {
+          if (counter.finished) return;
           var p = Math.min(1, (now - start) / ms), eased = 1 - Math.pow(1 - p, 3);
-          el.textContent = format(from + (to - from) * eased);
-          if (p < 1) requestAnimationFrame(tick); else if (done) done();
+          counter.el.textContent = counter.format(counter.from + (counter.to - counter.from) * eased);
+          if (p < 1) requestAnimationFrame(tick); else counter.finish();
         })(start);
       };
       var grouped = function (n) { return Math.round(n).toLocaleString('en-US'); };
@@ -145,24 +147,41 @@
       // Count-ups: each .odo counts from data-from to the number in the HTML.
       // While it counts, a hidden copy holds the real value for screen readers;
       // when it ends, the copy goes so copy and find see the number once.
-      var pending = [];
+      var counters = [];
       document.querySelectorAll('.odo[data-from]').forEach(function (el) {
-        var text = el.textContent, to = parseInt(text.replace(/,/g, ''), 10), from = +el.getAttribute('data-from');
-        var format = /,/.test(text) ? grouped : function (n) { return String(Math.round(n)).padStart(text.length, '0'); };
-        var real = document.createElement('span');
-        real.className = 'visually-hidden';
-        real.textContent = text;
+        var text = el.textContent, card = el.closest('.hero-proof');
+        var counter = {
+          el: el,
+          to: parseInt(text.replace(/,/g, ''), 10),
+          from: +el.getAttribute('data-from'),
+          format: /,/.test(text) ? grouped : function (n) { return String(Math.round(n)).padStart(text.length, '0'); },
+          meter: card && card.querySelector('.proof-meter span'),
+          real: document.createElement('span'),
+          finished: false,
+          // Shows the real value and drops the hidden copy; later frames stop.
+          finish: function () {
+            if (counter.finished) return;
+            counter.finished = true;
+            el.textContent = text;
+            counter.real.remove();
+            el.removeAttribute('aria-hidden');
+            if (counter.meter) counter.meter.classList.add('go');
+          }
+        };
+        counter.real.className = 'visually-hidden';
+        counter.real.textContent = text;
         el.setAttribute('aria-hidden', 'true');
-        el.parentNode.insertBefore(real, el.nextSibling);
-        el.textContent = format(from);
-        var card = el.closest('.hero-proof');
-        var meter = card && card.querySelector('.proof-meter span');
-        var settle = function () { real.remove(); el.removeAttribute('aria-hidden'); };
-        pending.push(function () { el.textContent = text; settle(); if (meter) meter.classList.add('go'); });
-        once(el, function () { count(el, from, to, from > to ? 1800 : 900, format, settle); if (meter) meter.classList.add('go'); }, 0.5);
+        el.parentNode.insertBefore(counter.real, el.nextSibling);
+        el.textContent = counter.format(counter.from);
+        counters.push(counter);
+        once(el, function () {
+          if (counter.finished) return;
+          if (counter.meter) counter.meter.classList.add('go');
+          count(counter, counter.from > counter.to ? 1800 : 900);
+        }, 0.5);
       });
-      // Printing before scrolling would show start values; jump to the real ones.
-      addEventListener('beforeprint', function () { pending.forEach(function (f) { f(); }); pending = []; });
+      // Printing before a count ends would show a start or middle value.
+      addEventListener('beforeprint', function () { counters.forEach(function (c) { c.finish(); }); });
     }
   });
 })();
