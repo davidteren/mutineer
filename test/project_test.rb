@@ -69,6 +69,43 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def test_discover_visibility_call_in_nested_scope_keeps_module_function_mode
+    src = <<~RUBY
+      module M
+        module_function
+        class << self
+          private
+          def h; end
+        end
+        def b; end
+      end
+      module N
+        module_function
+        def z
+          public
+        end
+        def b; end
+      end
+    RUBY
+    with_source(src) do |path|
+      singleton = Mutineer::Project.discover([path]).to_h { |s| [s.qualified_name, s.singleton] }
+      assert_equal({ "M.h" => true, "M.b" => true, "N.z" => true, "N.b" => true }, singleton)
+    end
+  end
+
+  def test_discover_visibility_call_in_a_block_ends_module_function_mode
+    src = <<~RUBY
+      module M
+        module_function
+        [1].each { public }
+        def b; end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal [false], Mutineer::Project.discover([path]).map(&:singleton)
+    end
+  end
+
   def test_discover_module_function_symbol_list_marks_named_methods
     # naming call appears AFTER the defs — promotion must be order-independent.
     with_source("module M\n  def a; end\n  def b; end\n  module_function :a\nend\n") do |path|

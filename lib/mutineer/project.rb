@@ -112,7 +112,9 @@ module Mutineer
         return unless node.expression.is_a?(Prism::SelfNode)
 
         @singleton_depth += 1
+        saved_active = @module_function_active
         super
+        @module_function_active = saved_active # a visibility call in here is not the module body's
         @singleton_depth -= 1
       end
 
@@ -129,7 +131,9 @@ module Mutineer
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node
         )
+        saved_active = @module_function_active
         super
+        @module_function_active = saved_active # a visibility call in a method body runs only when it is called
       end
 
       private
