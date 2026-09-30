@@ -1,0 +1,23 @@
+action.yml
+  s_c2eb114aea63f6::t_833e59c12b8b2f 64,68-71
+README.md
+  s_c2eb114aea63f6::t_833e59c12b8b2f 59,347
+lib/mutineer/cli.rb
+  s_c2eb114aea63f6::t_833e59c12b8b2f 44-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7f079966f8f34c36bb618f2a1314175591590ef4",
+  "prompts": {},
+  "sessions": {
+    "s_c2eb114aea63f6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f1a5-6312-72d1-916e-711a671ccfd8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
