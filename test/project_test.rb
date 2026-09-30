@@ -50,6 +50,14 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def test_discover_bareword_visibility_ends_module_function_mode
+    src = "module M\n  module_function\n  def a; end\n  public\n  def b; end\n  module_function\n  def c; end\n  private\n  def d; end\nend\n"
+    with_source(src) do |path|
+      singleton = Mutineer::Project.discover([path]).to_h { |s| [s.name, s.singleton] }
+      assert_equal({ a: true, b: false, c: true, d: false }, singleton)
+    end
+  end
+
   def test_discover_module_function_symbol_list_marks_named_methods
     # naming call appears AFTER the defs — promotion must be order-independent.
     with_source("module M\n  def a; end\n  def b; end\n  module_function :a\nend\n") do |path|
