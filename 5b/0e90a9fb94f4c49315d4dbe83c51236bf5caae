@@ -1,0 +1,23 @@
+CHANGELOG.md
+  s_fcc8c09fbc45b5::t_75028470195a1d 14-19
+lib/mutineer/daemon_client.rb
+  s_fcc8c09fbc45b5::t_1eadf344808c4c 48-49,152-154,160-161,163-164,203-207
+test/daemon_client_env_test.rb
+  s_fcc8c09fbc45b5::t_964b10875e0f5f 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5b0e90a9fb94f4c49315d4dbe83c51236bf5caae",
+  "prompts": {},
+  "sessions": {
+    "s_fcc8c09fbc45b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f488-dc81-7150-bf83-b45faf9f6abf",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
