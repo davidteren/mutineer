@@ -1,0 +1,28 @@
+Rakefile
+  s_b7dd1d64c00462::t_cca2106a487c0d 72-76,78
+.github/workflows/release.yml
+  s_b7dd1d64c00462::t_cca2106a487c0d 50
+test/site_build_test.rb
+  s_b7dd1d64c00462::t_cca2106a487c0d 5,9,13-19,22,25-30,32-34
+rake/site_build.rb
+  s_b7dd1d64c00462::t_cca2106a487c0d 14-20,28-29,32-33,36-38,41-50
+CHANGELOG.md
+  s_b7dd1d64c00462::t_cca2106a487c0d 10
+  s_b7dd1d64c00462::t_9fa378f275bf97 11-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "eab3503078bc9048e92a4e606f977c9eff72ba35",
+  "prompts": {},
+  "sessions": {
+    "s_b7dd1d64c00462": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "963bc426-a189-4852-b89c-a965c34b5517",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
