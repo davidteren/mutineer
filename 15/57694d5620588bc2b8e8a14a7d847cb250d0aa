@@ -1,0 +1,23 @@
+docs/agentic-coding.md
+  s_c2eb114aea63f6::t_dd3fe6cbecebc4 34-42
+docs/agentic-coding.html
+  s_c2eb114aea63f6::t_dd3fe6cbecebc4 85,87,141
+docs/skill.md
+  s_c2eb114aea63f6::t_dd3fe6cbecebc4 41-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1557694d5620588bc2b8e8a14a7d847cb250d0aa",
+  "prompts": {},
+  "sessions": {
+    "s_c2eb114aea63f6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f1a5-6312-72d1-916e-711a671ccfd8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
