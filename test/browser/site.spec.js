@@ -64,7 +64,7 @@ test('content and disclosure remain usable without JavaScript', async ({ browser
 test('printing before scrolling shows the real numbers', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('/');
-  await expect(page.locator('.evidence-strip .odo')).toHaveText('00');
+  await expect(page.locator('.evidence-strip .odo')).toHaveText('0');
   await page.evaluate(() => dispatchEvent(new Event('beforeprint')));
   expect(await page.locator('.odo').allTextContents()).toEqual(['20', '01', '8,170', '24']);
   await expect(page.locator('.visually-hidden')).toHaveCount(0);

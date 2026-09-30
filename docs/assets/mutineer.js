@@ -82,7 +82,8 @@
     // Motion: a scroll progress bar, count-ups, and sections that rise into view.
     if (motion) {
       // One observer per threshold, shared by every element that uses it. Each
-      // keeps its own callbacks, so one element can wait at two thresholds.
+      // observer has its own callback map, so one element can wait at two
+      // thresholds.
       var observers = {};
       var once = function (el, fn, threshold) {
         var t = threshold == null ? 0.2 : threshold;
@@ -93,13 +94,13 @@
             entries.forEach(function (e) {
               if (!e.isIntersecting) return;
               o.io.unobserve(e.target);
-              var fns = o.callbacks.get(e.target) || [];
+              var fn = o.callbacks.get(e.target);
               o.callbacks.delete(e.target);
-              fns.forEach(function (f) { f(e.target); });
+              if (fn) fn(e.target);
             });
           }, { threshold: t });
         }
-        o.callbacks.set(el, (o.callbacks.get(el) || []).concat(fn));
+        o.callbacks.set(el, fn);
         o.io.observe(el);
       };
       // Runs a count-up until it ends or counter.finish() stops it.
@@ -170,7 +171,8 @@
           el: el,
           to: parseInt(text.replace(/,/g, ''), 10),
           from: +el.getAttribute('data-from'),
-          format: /,/.test(text) ? grouped : function (n) { return String(Math.round(n)).padStart(text.length, '0'); },
+          // Keep leading zeros only where the page writes them ("01").
+          format: /,/.test(text) ? grouped : function (n) { return String(Math.round(n)).padStart(/^0\d/.test(text) ? text.length : 1, '0'); },
           meter: card && card.querySelector('.proof-meter span'),
           real: document.createElement('span'),
           finished: false,
