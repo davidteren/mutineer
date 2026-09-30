@@ -1,0 +1,19 @@
+docs/index.md
+  s_956af0f9b72f7a::t_e312113eef9e6d 58-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c958202ccadca33fbd20d08dae4d2472cc17d317",
+  "prompts": {},
+  "sessions": {
+    "s_956af0f9b72f7a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a0f1a5-6312-72d1-916e-711a671ccfd8",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
