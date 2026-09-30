@@ -1,0 +1,22 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 18-20
+README.md
+  h_e8a5bb9272fa34 288
+lib/mutineer/pairing.rb
+  h_e8a5bb9272fa34 150,171-172,196-199,206-210
+test/coverage_map_test.rb
+  h_e8a5bb9272fa34 841-859,868-883
+test/pairing_test.rb
+  h_e8a5bb9272fa34 179-192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d46aea2094b29fa233be0e6cc5ba5ca11ba4f42c",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
