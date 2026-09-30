@@ -465,8 +465,8 @@ module DocsContract
         <meta name="twitter:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
         <meta name="twitter:image:alt" content="Mutineer — Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
         <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='1' fill='%2367286a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
-        <script src="assets/mutineer.js?v=4db06102b82f"></script>
-        <link rel="stylesheet" href="assets/mutineer.css?v=030195735d4d">
+        <script src="assets/mutineer.js?v=727f5b78991d"></script>
+        <link rel="stylesheet" href="assets/mutineer.css?v=945ca1ac20f0">
         </head>
         <body>
         <a class="skip" href="#main">Skip to content</a>

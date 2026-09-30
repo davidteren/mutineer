@@ -4,6 +4,10 @@ test('theme, keyboard disclosure, copy and mobile navigation work together', asy
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.goto('/');
   const root = page.locator('html');
+  // Reduced motion: no motion layer, and every number is final at once.
+  await expect(root).not.toHaveClass(/\bmotion\b/);
+  await expect(page.locator('.scroll-progress, .visually-hidden, .reveal')).toHaveCount(0);
+  expect(await page.locator('.odo').allTextContents()).toEqual(['20', '01', '8,170', '24']);
   await expect(root).toHaveAttribute('data-theme', 'dark');
   const summary = page.locator('.boundary-test summary');
   await summary.focus();

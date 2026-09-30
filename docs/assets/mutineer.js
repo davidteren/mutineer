@@ -85,7 +85,7 @@
       // keeps its own callbacks, so one element can wait at two thresholds.
       var observers = {};
       var once = function (el, fn, threshold) {
-        var t = threshold || 0.2;
+        var t = threshold == null ? 0.2 : threshold;
         var o = observers[t];
         if (!o) {
           o = observers[t] = { callbacks: new Map() };
@@ -125,11 +125,11 @@
       addEventListener('resize', progress);
       progress();
 
-      var install = document.querySelector('#install .codeblock');
+      var install = document.querySelector('#install .codeblock .typed-text');
       ['.sec-head', '.step', '.usecase', '.card', '.evidence-strip', '.cta', '.table-wrap tbody tr', '#install .codeblock', '#install .sub'].forEach(function (sel) {
         document.querySelectorAll(sel).forEach(function (el) {
           // The hero already animates in on load; hiding it again would flicker.
-          if (el === install || el.closest('.hero')) return;
+          if (el.closest('.hero')) return;
           var row = el.tagName === 'TR';
           var i = Array.prototype.indexOf.call(el.parentElement.children, el);
           el.style.setProperty('--d', Math.min(i, row ? 20 : 6) * (row ? 28 : 80) + 'ms');
@@ -142,7 +142,7 @@
       // shows, even when a restored scroll position hides the label above.
       if (install) {
         install.classList.add('typed');
-        once(install.parentElement, function () { install.classList.add('is-in'); }, 0);
+        once(install.closest('.codeblock').parentElement, function () { install.classList.add('is-in'); }, 0);
       }
 
       // Count-ups: each .odo counts from data-from to the number in the HTML.
