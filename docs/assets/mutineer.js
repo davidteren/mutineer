@@ -138,10 +138,11 @@
         });
       });
       // In testing, Chrome did not report the fully clipped install line as
-      // intersecting, so the label above it starts the typing.
-      if (install && install.previousElementSibling) {
+      // intersecting, so its column starts the typing as soon as any of it
+      // shows, even when a restored scroll position hides the label above.
+      if (install) {
         install.classList.add('typed');
-        once(install.previousElementSibling, function () { install.classList.add('is-in'); }, 0.5);
+        once(install.parentElement, function () { install.classList.add('is-in'); }, 0);
       }
 
       // Count-ups: each .odo counts from data-from to the number in the HTML.
