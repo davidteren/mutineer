@@ -38,14 +38,12 @@ oracle, closing the loop with a concrete stopping condition:
 Keep `fail_fast` disabled (the default). If the active `.mutineer.yml` sets it to
 `true`, temporarily change that value to `false` for the loop. Restore the original
 value when the loop ends, before committing. A fail-fast run is partial,
-and its score and exit code do not cover the full scope. If the score is null, stop
-and report “no score”. Inspect the coverage gaps and harness failures, and fix them
-before starting a new run. Do not treat an empty or fully suppressed scope as proof
-of test quality.
+and its score and exit code do not cover the full scope.
 
-Zero survivors alone is not success: an empty scope or a run with no usable verdicts
-also has zero survivors. Treat a null score as “no score”. Check `no_coverage[]` for
-test gaps and `no_verdict[]` for harness failures before accepting the result. A
+Zero survivors alone is not success: an empty or fully suppressed scope, or a run
+with no usable verdicts, also has zero survivors. If the score is null, stop and
+report “no score”. Check `no_coverage[]` for test gaps and `no_verdict[]` for
+harness failures, and fix them before starting a new run. A
 positive threshold fails when nothing can be scored and something broke, or when
 more than one mutant has no verdict and they exceed 10% of those attempted; it
 does not require zero errors. Keep the threshold in the command equal to your target.

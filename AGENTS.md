@@ -69,36 +69,18 @@ suggest merge until this is done on the current head.
 
 ### Before opening a new PR
 
-Run `/dt-ship-pre-pr-gate` once for the proposed PR changes:
+Run `/dt-ship-pre-pr-gate` on the exact PR-head commit:
 
 1. `/ce-code-review` — fix findings  
 2. `/ie-review` — fix findings  
 3. `/cubic-loop` (local) — fix findings  
 
-Then push and run `gh pr create` when all findings are addressed and local CI is green.
-
-### Follow-up commits: review the changes, not the commit number
-
-A new commit does not invalidate reviews of unchanged work. After a fix or other
-follow-up commit:
-
-- Review the added or changed lines and the code they affect. Use the review lenses
-  relevant to those changes and check that the original finding is resolved.
-- Run the checks affected by the changes. Keep completed checks for unchanged code.
-- Record the reviewed commits, the follow-up checks, and the final covered head.
-  Every change in the PR must have review and validation coverage before push.
-- Restart the full gate only when changes materially expand the feature scope,
-  change risk boundaries, or invalidate earlier review conclusions. A new commit
-  number, a rebase with the same changes, or a routine local fix is not enough.
-
-This repository rule takes precedence over inherited workflow or skill instructions
-that restart the entire gate solely because the head commit changed.
+Then `gh pr create`. A gate run is stale after any later commit; re-run.
 
 ### After the PR is open
 
 1. **Re-review the PR** with the same three lenses (CE, IE, cubic PR/local
-   mode). Fix real findings; commit and push. Use the follow-up rule above for later
-   commits and retain reviews of unchanged work.
+   mode). Fix real findings; commit and push.
 2. **Address every review comment/thread** (cubic, bots, humans):
    - Fix or document why not
    - **Reply inline on every thread** (fix + commit SHA, or rationale)
@@ -108,7 +90,7 @@ that restart the entire gate solely because the head commit changed.
    `dt-ship-pr-readiness`. Human merges.
 
 **Stacked PRs:** gate each PR from the bottom of the stack up. After fixing
-a lower PR, restack dependents and review affected changes under the follow-up rule.
+a lower PR, restack dependents and re-gate them.
 
 ## Releasing (tag-driven — CI publishes, no manual `gem push`)
 

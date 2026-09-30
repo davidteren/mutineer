@@ -6,6 +6,10 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 import sys
 
+# Pages serves the site here, so an absolute link under it is a local link.
+SITE_HOST = "davidteren.github.io"
+SITE_PATH = "/mutineer/"
+
 
 class Page(HTMLParser):
     def __init__(self, path):
@@ -35,12 +39,15 @@ for path, page in pages.items():
             errors.append(f"{path.relative_to(root)}: duplicate anchor {identifier!r}")
     for line, url in page.links:
         parts = urlsplit(url)
-        if parts.scheme or parts.netloc:
+        if parts.scheme == "https" and parts.netloc == SITE_HOST and (parts.path + "/").startswith(SITE_PATH):
+            target = root / unquote(parts.path[len(SITE_PATH):])
+        elif parts.scheme or parts.netloc:
             continue
-        if parts.path.startswith("/"):
+        elif parts.path.startswith("/"):
             errors.append(f"{path.relative_to(root)}:{line}: root-absolute URL {url!r}; use a relative URL under /mutineer/")
             continue
-        target = path.parent / unquote(parts.path) if parts.path else path
+        else:
+            target = path.parent / unquote(parts.path) if parts.path else path
         if target.is_dir():
             target /= "index.html"
         target = target.resolve()
@@ -53,4 +60,4 @@ for path, page in pages.items():
 
 if errors:
     sys.exit("\n".join(errors))
-print(f"Checked local links and anchors in {len(pages)} HTML pages.")
+print(f"Checked local and same-site links and anchors in {len(pages)} HTML pages.")

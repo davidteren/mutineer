@@ -119,7 +119,7 @@
       <div class="sec-head">
         <div class="kicker">AI agents &amp; CI</div>
         <h2>Give your pipeline evidence.</h2>
-        <p>Line coverage tells you which code <em>ran</em> under test. It can't tell you whether a test would <em>notice</em> if that code broke — exactly where AI-generated tests are weakest. Mutineer answers that, programmatically: versioned JSON, stable mutant ids, structured exit codes, and diff-scoped runs.</p>
+        <p>Line coverage tells you which code <em>ran</em> under test. It can't tell you whether a test would <em>notice</em> if that code broke — exactly where AI-generated tests are weakest. Mutineer answers that, programmatically: versioned JSON, mutant ids that survive unrelated edits, structured exit codes, and diff-scoped runs.</p>
       </div>
       <div class="usecases">
         <div class="usecase">
@@ -131,7 +131,7 @@
         <div class="usecase">
           <span class="tag">PR / CI gate</span>
           <h3>Fail only when a PR makes tests worse</h3>
-          <p>Diff the run against a stored baseline by stable id. Exit 1 on any <em>new</em> survivor or a score drop — adopt mutation testing on a legacy suite without fixing everything first.</p>
+          <p>Diff the run against a stored baseline by mutant id. Exit 1 on any <em>new</em> survivor or a score drop — adopt mutation testing on a legacy suite without fixing everything first.</p>
           <p><code class="flag">--baseline prior.json</code> <code class="flag">--threshold 90</code></p>
         </div>
         <div class="usecase">
@@ -161,7 +161,7 @@
         <div class="card"><h3>Valid mutants only</h3><p>Every mutation is re-parsed before it runs. Syntactically broken mutants are skipped, not counted against your score.</p></div>
         <div class="card"><h3>Fork isolation</h3><p>Each mutant runs in its own forked process on Linux &amp; macOS — no state bleed between runs, parallel by default.</p></div>
         <div class="card"><h3>Coverage-mapped</h3><p>A per-mutant coverage map runs only the test files that reach the mutated line. Digest-keyed cache skips unchanged work.</p></div>
-        <div class="card"><h3>CI &amp; agent ready</h3><p>Stable, sorted <code>--format json</code> with a versioned schema and stable mutant ids. <code>--threshold</code> and <code>--baseline</code> gate the build.</p></div>
+        <div class="card"><h3>CI &amp; agent ready</h3><p>Stable, sorted <code>--format json</code> with a versioned schema and mutant ids that survive unrelated edits. <code>--threshold</code> and <code>--baseline</code> gate the build.</p></div>
         <div class="card"><h3>Rails-aware</h3><p><code>--rails</code> boots <code>config/environment</code> once, then forks per mutant with fork-safe ActiveRecord — dogfooded against a real Rails app.</p></div>
       </div>
     </div>

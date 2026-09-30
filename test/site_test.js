@@ -39,6 +39,31 @@ test('link checker rejects files outside the published tree and root-absolute UR
   }
 });
 
+test('link checker rejects a missing file, fragment or site URL, and a duplicate anchor', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mutineer-site-links-'));
+  try {
+    fs.writeFileSync(path.join(directory, 'page.html'), '<h2 id="here">here</h2>');
+    const cases = {
+      'missing file': '<a href="gone.html">x</a>',
+      'missing fragment': '<a href="page.html#nowhere">x</a>',
+      'duplicate anchor': '<a href="page.html">x</a><p id="twice"></p><p id="twice"></p>',
+      'missing file.*davidteren': `<a href="${BASE}/gone.html">x</a>`,
+      'missing fragment.*davidteren': `<a href="${BASE}/page.html#nowhere">x</a>`
+    };
+    for (const [message, html] of Object.entries(cases)) {
+      fs.writeFileSync(path.join(directory, 'index.html'), html);
+      const result = spawnSync('python3', ['test/site_links.py', directory], { encoding: 'utf8' });
+      assert.equal(result.status, 1, `${message}: ${result.error?.message || result.stdout}`);
+      assert.match(result.stderr, new RegExp(message));
+    }
+    fs.writeFileSync(path.join(directory, 'index.html'), `<a href="${BASE}/page.html#here">ok</a>`);
+    const good = spawnSync('python3', ['test/site_links.py', directory], { encoding: 'utf8' });
+    assert.equal(good.status, 0, good.stderr);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('HTML pages with markdown twins advertise rel=alternate', () => {
   const twins = {
     [`${SITE}/index.html`]: `${BASE}/index.md`,
