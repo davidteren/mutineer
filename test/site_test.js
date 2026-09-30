@@ -48,7 +48,8 @@ test('link checker rejects a missing file, fragment or site URL, and a duplicate
       'missing fragment': '<a href="page.html#nowhere">x</a>',
       'duplicate anchor': '<a href="page.html">x</a><p id="twice"></p><p id="twice"></p>',
       'missing file.*davidteren': `<a href="${BASE}/gone.html">x</a>`,
-      'missing fragment.*davidteren': `<a href="${BASE}/page.html#nowhere">x</a>`
+      'missing fragment.*davidteren': `<a href="${BASE}/page.html#nowhere">x</a>`,
+      'missing README section': '<a href="https://github.com/davidteren/mutineer#no-such-section">x</a>'
     };
     for (const [message, html] of Object.entries(cases)) {
       fs.writeFileSync(path.join(directory, 'index.html'), html);

@@ -4,11 +4,23 @@ from collections import Counter
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
+import re
 import sys
 
 # Pages serves the site here, so an absolute link under it is a local link.
 SITE_HOST = "davidteren.github.io"
 SITE_PATH = "/mutineer/"
+# Links to README sections on GitHub, checked against the README's headings.
+README_URL = "https://github.com/davidteren/mutineer"
+README = Path(__file__).resolve().parent.parent / "README.md"
+
+
+def github_slug(heading):
+    """GitHub's anchor for a Markdown heading: lower case, punctuation dropped, spaces to hyphens."""
+    return re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
+
+
+README_ANCHORS = {github_slug(line.lstrip("#")) for line in README.read_text().splitlines() if re.match(r"#+ ", line)}
 
 
 class Page(HTMLParser):
@@ -39,6 +51,10 @@ for path, page in pages.items():
             errors.append(f"{path.relative_to(root)}: duplicate anchor {identifier!r}")
     for line, url in page.links:
         parts = urlsplit(url)
+        if url.startswith(README_URL + "#"):
+            if unquote(parts.fragment) not in README_ANCHORS:
+                errors.append(f"{path.relative_to(root)}:{line}: missing README section {url!r}")
+            continue
         if parts.scheme == "https" and parts.netloc == SITE_HOST and (parts.path + "/").startswith(SITE_PATH):
             target = root / unquote(parts.path[len(SITE_PATH):])
         elif parts.scheme or parts.netloc:
