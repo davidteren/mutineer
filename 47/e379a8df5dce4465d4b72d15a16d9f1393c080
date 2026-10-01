@@ -1,0 +1,14 @@
+README.md
+  h_e8a5bb9272fa34 361-364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "47e379a8df5dce4465d4b72d15a16d9f1393c080",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
