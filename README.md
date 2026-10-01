@@ -358,10 +358,10 @@ config file accepts these keys:
 | `test_command` | The external-runtime suite command, including `%{files}`; see [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34) |
 | `daemon` | `true` or `false`; uses the persistent app daemon with worker DB isolation |
 
-Invalid values for known keys exit 2 with a message naming the file and key.
-A blank `operators` list is invalid. An unknown operator name warns and is
-skipped. If none of the names are known, the run exits 2. An empty `require`
-or `ignore` list is valid. Boolean keys take `true` or `false` (quoted forms also work), not `"yes"`.
+Invalid values for known scalar keys, and a blank `operators` list, exit 2
+with a message naming the file and key. An unknown operator name warns and
+is skipped. If none of the names are known, the run exits 2. An empty
+`require` or `ignore` list is valid. Boolean keys take `true` or `false` (quoted forms also work), not `"yes"`.
 `jobs` must be positive; a string value contains digits only. String values for
 `threshold` and the CLI-only `--baseline-epsilon` use plain decimals such as `90`
 or `0.5`, not `+2`, `1e2`, or `1_0`. String options such as `only` and `baseline`
