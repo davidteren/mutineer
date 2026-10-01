@@ -211,6 +211,48 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  # A blank operator list is not "use the defaults". `operators:` became []
+  # and the run exited 0 with no mutants. An empty require or ignore matches
+  # the default, so those stay valid.
+  def test_from_file_rejects_a_blank_operators_key
+    ["operators:\n", "operators: ~\n", "operators: []\n", "operators: \"\"\n"].each do |yaml|
+      with_config(yaml) do |path|
+        err = assert_raises(Mutineer::ConfigError, yaml) { Config.from_file(path) }
+        assert_match(/\.mutineer\.yml: operators must name at least one operator, not blank \(got: /, err.message)
+      end
+    end
+  end
+
+  def test_from_file_keeps_an_empty_require_or_ignore
+    with_config("require: []\nignore:\n") do |path|
+      assert_equal({ require_paths: [], ignore: [] }, Config.from_file(path))
+    end
+  end
+
+  def test_parse_string_list_rejects_a_blank_operator_list
+    [nil, true, false, [], ""].each do |bad|
+      assert_equal "--operators must name at least one operator, not blank (got: #{bad.inspect})",
+                   parse_error(:operators, bad)
+    end
+    assert_equal ["arithmetic"], Config.parse(:operators, ["arithmetic"])
+    assert_equal [], Config.parse(:ignore, nil)
+    assert_equal [], Config.parse(:require_paths, [])
+    assert_equal ["a.rb"], Config.parse(:require_paths, "a.rb")
+  end
+
+  # Every name unknown: the warning still names the typo, then the file is
+  # an error so the empty list cannot exit 0.
+  def test_from_file_rejects_operators_that_are_all_unknown
+    with_config("operators: [bogus]\n") do |path|
+      err = nil
+      _, stderr = capture_io do
+        err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      end
+      assert_includes stderr, "unknown operator"
+      assert_equal ".mutineer.yml: operators must name at least one known operator", err.message
+    end
+  end
+
   # Boot mode keys are accepted (not warned/ignored) and resolve onto the Config.
   def test_from_file_accepts_boot_and_rails
     with_config("boot: config/environment\nrails: true\n") do |path|
