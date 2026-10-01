@@ -211,27 +211,32 @@ class ConfigTest < Minitest::Test
     end
   end
 
-  # A blank list is not "use the defaults". `operators:` became [] and the
-  # run exited 0 with no mutants. The same rule covers require and ignore.
-  def test_from_file_rejects_a_blank_list_key
-    %w[operators require ignore].each do |key|
-      ["#{key}:\n", "#{key}: ~\n", "#{key}: []\n", "#{key}: \"\"\n"].each do |yaml|
-        with_config(yaml) do |path|
-          err = assert_raises(Mutineer::ConfigError, yaml) { Config.from_file(path) }
-          assert_match(/\.mutineer\.yml: #{key} must be a list of strings, not blank \(got: /, err.message)
-        end
+  # A blank operator list is not "use the defaults". `operators:` became []
+  # and the run exited 0 with no mutants. An empty require or ignore matches
+  # the default, so those stay valid.
+  def test_from_file_rejects_a_blank_operators_key
+    ["operators:\n", "operators: ~\n", "operators: []\n", "operators: \"\"\n"].each do |yaml|
+      with_config(yaml) do |path|
+        err = assert_raises(Mutineer::ConfigError, yaml) { Config.from_file(path) }
+        assert_match(/\.mutineer\.yml: operators must name at least one operator, not blank \(got: /, err.message)
       end
     end
   end
 
-  def test_parse_string_list_rejects_blank_values_naming_the_origin
+  def test_from_file_keeps_an_empty_require_or_ignore
+    with_config("require: []\nignore:\n") do |path|
+      assert_equal({ require_paths: [], ignore: [] }, Config.from_file(path))
+    end
+  end
+
+  def test_parse_string_list_rejects_a_blank_operator_list
     [nil, true, false, [], ""].each do |bad|
-      assert_equal "--operators must be a list of strings, not blank (got: #{bad.inspect})",
+      assert_equal "--operators must name at least one operator, not blank (got: #{bad.inspect})",
                    parse_error(:operators, bad)
-      assert_equal ".mutineer.yml: ignore must be a list of strings, not blank (got: #{bad.inspect})",
-                   parse_error(:ignore, bad, file: ".mutineer.yml")
     end
     assert_equal ["arithmetic"], Config.parse(:operators, ["arithmetic"])
+    assert_equal [], Config.parse(:ignore, nil)
+    assert_equal [], Config.parse(:require_paths, [])
     assert_equal ["a.rb"], Config.parse(:require_paths, "a.rb")
   end
 

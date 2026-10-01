@@ -268,16 +268,12 @@ module Mutineer
         prefix = file ? "#{file}: " : ""
         raise ConfigError, "#{prefix}unknown #{field} #{value.to_s.inspect}. Expected: #{opt.values.join(', ')}"
       when :string_list
-        # A key with no value is nil. `Array(nil)` is `[]`, and the runner
-        # treats that as "these operators", not "the defaults", so the run
-        # makes no mutants and exits 0. An absent key never reaches parse.
-        # A boolean is not a list either: `Array(false)` would become
-        # `["false"]`. An empty list is the same dead run.
-        raise ConfigError, "#{origin} must be a list of strings, not blank #{got}" if [nil, true, false].include?(value)
-
         items = Array(value).map(&:to_s)
-        if items.empty? || items.all? { |item| item.strip.empty? }
-          raise ConfigError, "#{origin} must be a list of strings, not blank #{got}"
+        # Only `operators` treats [] as "run these" rather than "use the
+        # default". A blank key then makes no mutants and exits 0. An empty
+        # `require` or `ignore` matches the default, so those stay valid.
+        if field == :operators && ([nil, true, false].include?(value) || items.empty? || items.all? { |item| item.strip.empty? })
+          raise ConfigError, "#{origin} must name at least one operator, not blank #{got}"
         end
 
         items

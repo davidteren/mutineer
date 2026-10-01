@@ -359,9 +359,9 @@ config file accepts these keys:
 | `daemon` | `true` or `false`; uses the persistent app daemon with worker DB isolation |
 
 Invalid values for known keys exit 2 with a message naming the file and key.
-A blank `operators`, `require`, or `ignore` is invalid, and so is an empty
-list. An unknown operator name warns and is skipped. If none of the names
-are known, the run exits 2. Boolean keys take `true` or `false` (quoted forms also work), not `"yes"`.
+A blank `operators` list is invalid. An unknown operator name warns and is
+skipped. If none of the names are known, the run exits 2. An empty `require`
+or `ignore` list is valid. Boolean keys take `true` or `false` (quoted forms also work), not `"yes"`.
 `jobs` must be positive; a string value contains digits only. String values for
 `threshold` and the CLI-only `--baseline-epsilon` use plain decimals such as `90`
 or `0.5`, not `+2`, `1e2`, or `1_0`. String options such as `only` and `baseline`
