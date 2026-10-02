@@ -465,8 +465,8 @@ module Mutineer
       out.puts "-------"
       out.puts format("Total:        %-6d  Killed:        %d", @agg.total, @agg.killed_count)
       out.puts format("Survived:     %-6d  No coverage:   %d", @agg.survived_count, @agg.no_coverage_count)
-      out.puts format("Skipped:      %-6d  Errored:       %d", @agg.skipped_invalid_count,
-                      @agg.errored_count + @agg.timeout_count)
+      out.puts format("Skipped:      %-6d  Errored:       %d", @agg.skipped_invalid_count, @agg.errored_count)
+      out.puts format("Timeout:      %-6d  (over the per-mutant time limit)", @agg.timeout_count)
       # A broken harness, not a coverage gap: report it distinctly from No coverage.
       out.puts format("Uncapturable: %-6d  (tests failed to run)", @agg.uncapturable_count)
       # Equivalent mutants the user suppressed; excluded from the denominator.
@@ -482,7 +482,7 @@ module Mutineer
       score = @agg.mutation_score
       excluded = "#{@agg.no_coverage_count} no-coverage, #{@agg.uncapturable_count} uncapturable, " \
                  "#{@agg.skipped_invalid_count} skipped, " \
-                 "#{@agg.errored_count + @agg.timeout_count} errored, " \
+                 "#{@agg.errored_count} errored, #{@agg.timeout_count} timeout, " \
                  "#{@agg.ignored_count} ignored excluded"
       if score.nil?
         out.puts "Mutation score: N/A  (no covered mutants)"
