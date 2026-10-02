@@ -120,6 +120,33 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_a_test_file_given_as_a_source_after_test_exits_two
+    with_project do |proj|
+      FileUtils.mkdir_p(File.join(proj, "test"))
+      %w[calculator_strong_test.rb calculator_weak_test.rb].each do |f|
+        FileUtils.mv(File.join(proj, f), File.join(proj, "test", f))
+      end
+      _, err, status = mutineer("run", "calculator.rb", "--test", "test/calculator_strong_test.rb",
+                                "test/calculator_weak_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "test/calculator_weak_test.rb looks like a test file, not a source"
+      assert_includes err, "repeat it for each test file"
+    end
+  end
+
+  def test_a_source_named_like_a_test_outside_test_dirs_still_runs
+    Dir.mktmpdir("mutineer-ab") do |proj|
+      FileUtils.mkdir_p(File.join(proj, "app/models"))
+      FileUtils.mkdir_p(File.join(proj, "test/models"))
+      File.write(File.join(proj, "app/models/ab_test.rb"), "class AbTest\n  def n = 1 + 1\nend\n")
+      File.write(File.join(proj, "test/models/ab_test_test.rb"), "")
+      out, err, status = mutineer("run", "--dry-run", "app/models/ab_test.rb",
+                                  "--test", "test/models/ab_test_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "AbTest#n"
+    end
+  end
+
   def test_config_file_integer_jobs_runs
     with_project do |proj|
       File.write(File.join(proj, ".mutineer.yml"), "jobs: 2\n")
