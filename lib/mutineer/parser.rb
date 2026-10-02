@@ -12,7 +12,7 @@ module Mutineer
   #
   # Both methods return a Prism::ParseResult so all callers use result.value,
   # result.source.source (raw bytes), and result.errors uniformly. No wrapping
-  # struct.
+  # struct. The nodes Ruby counts as statements are marked (`Node#newline?`).
   class Parser
     # Parses a file with Prism.
     #
@@ -20,7 +20,7 @@ module Mutineer
     # @return [Prism::ParseResult] Prism parse result.
     # @raise [Mutineer::ParseError] when file I/O fails.
     def self.parse_file(path)
-      Prism.parse_file(path)
+      Prism.parse_file(path).tap(&:mark_newlines!)
     rescue SystemCallError => e
       raise ParseError, e.message
     end
@@ -30,7 +30,7 @@ module Mutineer
     # @param source [String] source text.
     # @return [Prism::ParseResult] Prism parse result.
     def self.parse_string(source)
-      Prism.parse(source)
+      Prism.parse(source).tap(&:mark_newlines!)
     end
   end
 end
