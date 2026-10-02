@@ -43,30 +43,72 @@ module Mutineer
         sink = StringIO.new
         args = ["--no-color"]
         args << "--fail-fast" if stop_at_first_failure
-        # A project's .rspec can turn fail-fast on; a matrix run must still run
-        # every example, and a command-line option wins over .rspec.
-        args << "--no-fail-fast" if record_to
-        status = ::RSpec::Core::Runner.run([*args, *Array(spec_files)], sink, sink)
+        status = with_fail_fast_off(record_to) do
+          ::RSpec::Core::Runner.run([*args, *Array(spec_files)], sink, sink)
+        end
+        # Reached only when the suite returned: an example that exits the
+        # process skips it, and the parent then keeps the row incomplete.
+        KillChannel.write_end(record_to) if record_to
 
         status.zero? ? 0 : 1
       end
 
+      # Runs the block with fail-fast forced off when `record_to` is set: a
+      # matrix run must run every example. RSpec reads options from .rspec, then
+      # the command line, then `SPEC_OPTS`, and the last one wins, so the option
+      # goes at the end of `SPEC_OPTS` (restored afterwards). A forced option
+      # also beats `config.fail_fast = true` in a spec helper.
+      #
+      # @api private
+      # @param record_to [IO, nil] the channel of a matrix run, or nil.
+      # @yieldreturn [Integer] RSpec's exit status.
+      # @return [Integer] the block's value.
+      def self.with_fail_fast_off(record_to)
+        return yield unless record_to
+
+        saved = ENV.fetch("SPEC_OPTS", nil)
+        ENV["SPEC_OPTS"] = [saved, "--no-fail-fast"].compact.join(" ")
+        begin
+          yield
+        ensure
+          ENV["SPEC_OPTS"] = saved
+        end
+      end
+
       # Sends each example's outcome to the channel of a `--matrix` run. A
-      # pending or skipped example sends nothing. The test's identity is its
-      # spec file and full description.
+      # pending or skipped example sends nothing. A test is its spec file, its
+      # full description (the name reports show) and its example id, which
+      # tells apart examples that share a description.
+      #
+      # It writes only from the process that created it, so an example that runs
+      # an RSpec suite in a forked process cannot add lines. It writes `start`
+      # when the run begins with fail-fast off; a run that could stop early sends
+      # no `start`, and its rows stay incomplete.
       class KillFormatter
         # Registers the formatter with RSpec for the notifications it handles.
         # Called at run time, because rspec-core is not loaded with Mutineer.
         #
         # @return [Class] this class.
         def self.registered
-          ::RSpec::Core::Formatters.register(self, :example_passed, :example_failed)
+          ::RSpec::Core::Formatters.register(self, :start, :example_passed, :example_failed)
           self
         end
 
         # @param channel [IO] the write end of the channel.
         def initialize(channel)
           @channel = channel
+          @pid = Process.pid
+        end
+
+        # Sends `start`, unless fail-fast is on.
+        #
+        # @param _notification [RSpec::Core::Notifications::StartNotification]
+        # @return [void]
+        def start(_notification)
+          return unless owner?
+          return if ::RSpec.configuration.fail_fast
+
+          KillChannel.write_start(@channel, parallel: false)
         end
 
         # Sends a pass.
@@ -87,14 +129,23 @@ module Mutineer
 
         private
 
-        # Writes one event for `example`.
+        # True in the process that created the formatter.
+        #
+        # @return [Boolean]
+        def owner?
+          Process.pid == @pid
+        end
+
+        # Writes one test line for `example`.
         #
         # @param event [String] {KillChannel::PASS} or {KillChannel::KILL}.
         # @param example [RSpec::Core::Example] the example.
         # @return [void]
         def send_event(event, example)
+          return unless owner?
+
           file = example.metadata[:absolute_file_path] || File.expand_path(example.file_path)
-          KillChannel.write(@channel, event, file, example.full_description)
+          KillChannel.write(@channel, event, file, example.full_description, example.id)
         end
       end
 

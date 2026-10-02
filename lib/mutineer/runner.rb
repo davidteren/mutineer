@@ -144,7 +144,9 @@ module Mutineer
           # The bare Results carry only status (Subjects hold live AST nodes that
           # do not marshal); reattach subject+mutation+id in the parent, in order.
           # filter_map drops nils for jobs --fail-fast left unscheduled.
-          bare.each_with_index.filter_map { |r, i| r&.with(subject: jobs[i][0], mutation: jobs[i][1], id: jobs[i][2]) }
+          share_tests(bare.each_with_index.filter_map do |r, i|
+            r&.with(subject: jobs[i][0], mutation: jobs[i][1], id: jobs[i][2])
+          end)
         ensure
           sweep_orphans(dirs)
         end
@@ -524,8 +526,28 @@ module Mutineer
       return result unless (kills = result.kills)
 
       paths = {}
-      rel = ->(tests) { tests.map { |file, name| [(paths[file] ||= ProjectPath.relative(file, root)), name] }.uniq.sort }
+      rel = lambda do |tests|
+        tests.map { |file, name, id| [(paths[file] ||= ProjectPath.relative(file, root)), name, id] }.uniq.sort
+      end
       result.with(kills: kills.with(killed_by: rel.call(kills.killed_by), ran: rel.call(kills.ran)))
+    end
+
+    # Makes every {Kills} row refer to one shared, frozen array per test. Each
+    # row arrives with its own copy of every test it ran, and a large matrix
+    # (thousands of mutants times hundreds of tests) would otherwise hold that
+    # many copies. Results without a row come back unchanged.
+    #
+    # @api private
+    # @param results [Array<Mutineer::Result>] mutant results.
+    # @return [Array<Mutineer::Result>]
+    def self.share_tests(results)
+      shared = {}
+      share = ->(tests) { tests.map { |test| shared[test] ||= test.map { |s| -s }.freeze }.freeze }
+      results.map do |r|
+        next r unless (kills = r.kills)
+
+        r.with(kills: kills.with(killed_by: share.call(kills.killed_by), ran: share.call(kills.ran)))
+      end
     end
 
     # Reconnects ActiveRecord in a forked child when available.

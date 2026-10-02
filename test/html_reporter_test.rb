@@ -90,8 +90,8 @@ class HtmlReporterTest < Minitest::Test
   # --- kill matrix section (--matrix) ---------------------------------------
 
   def test_matrix_section_lists_blind_and_redundant_tests_escaped
-    blind = ["test/pricing_test.rb", "PricingTest#test_<b>"]
-    killer = ["test/pricing_test.rb", "PricingTest#test_kill"]
+    blind = ["test/pricing_test.rb", "PricingTest#test_<b>", "PricingTest#test_<b>"]
+    killer = ["test/pricing_test.rb", "PricingTest#test_kill", "PricingTest#test_kill"]
     result = survivor.with(status: :killed,
                            kills: Mutineer::Kills.new(killed_by: [killer], ran: [blind, killer], complete: true))
     out = StringIO.new

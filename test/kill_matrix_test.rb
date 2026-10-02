@@ -5,10 +5,10 @@ require_relative "test_helper"
 # KillMatrix is pure: these cases build Kills rows by hand and check the blind
 # and redundant math, including the rows a timeout or an error left incomplete.
 class KillMatrixTest < Minitest::Test
-  A = ["a_test.rb", "ATest#test_a"].freeze
-  B = ["b_test.rb", "BTest#test_b"].freeze
-  C = ["c_test.rb", "CTest#test_c"].freeze
-  D = ["d_test.rb", "DTest#test_d"].freeze
+  A = ["a_test.rb", "ATest#test_a", "ATest#test_a"].freeze
+  B = ["b_test.rb", "BTest#test_b", "BTest#test_b"].freeze
+  C = ["c_test.rb", "CTest#test_c", "CTest#test_c"].freeze
+  D = ["d_test.rb", "DTest#test_d", "DTest#test_d"].freeze
 
   def row(status, killed_by, ran, complete: true)
     kills = Mutineer::Kills.new(killed_by: killed_by.sort, ran: (ran + killed_by).uniq.sort, complete: complete)
@@ -57,6 +57,16 @@ class KillMatrixTest < Minitest::Test
                                        row(:survived, [], [C, D])])
     assert_empty matrix.blind
     assert_equal [C, D], matrix.redundant
+  end
+
+  # Two RSpec examples can share a file and a description; the id keeps them apart.
+  def test_tests_that_share_a_name_stay_apart_by_id
+    one = ["s_spec.rb", "S checks", "./s_spec.rb[1:1]"]
+    two = ["s_spec.rb", "S checks", "./s_spec.rb[1:2]"]
+    matrix = Mutineer::KillMatrix.new([row(:killed, [two], [one])])
+    assert_equal [one, two], matrix.tests
+    assert_equal [one], matrix.blind
+    assert_empty matrix.redundant
   end
 
   def test_tests_are_sorted_by_file_and_name

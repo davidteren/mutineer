@@ -210,6 +210,13 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  def test_origin_names_the_file_key_or_the_flag
+    cfg = Config.resolve({ fail_fast: true }, { matrix: true, fail_fast: false })
+    assert_equal "matrix in .mutineer.yml", cfg.origin(:matrix)
+    assert_equal "--fail-fast", cfg.origin(:fail_fast)
+    assert_equal "--daemon", cfg.origin(:daemon)
+  end
+
   def test_known_keys_come_from_the_schema
     assert_equal Mutineer::CONFIG_OPTIONS.filter_map(&:yaml_key), Mutineer::KNOWN_KEYS
   end

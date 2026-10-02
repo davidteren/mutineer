@@ -32,6 +32,10 @@ class JsonReporterTest < Minitest::Test
     JSON.parse(out.string)
   end
 
+  def test_schema_version_is_the_reporter_constant
+    assert_equal Mutineer::Reporter::SCHEMA_VERSION, render([survivor])["schema_version"]
+  end
+
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
     assert_equal "1.5", doc["schema_version"] # 1.5 added the --matrix block; 1.4 summary.id_format + legacy_id_matches
@@ -223,9 +227,11 @@ class JsonReporterTest < Minitest::Test
 
   # --- matrix (schema 1.5, only with --matrix) --------------------------------
 
-  MT_A = ["test/pricing_test.rb", "PricingTest#test_a"].freeze
-  MT_B = ["test/pricing_test.rb", "PricingTest#test_b"].freeze
-  MT_C = ["test/other_test.rb", "OtherTest#test_c"].freeze
+  MT_A = ["test/pricing_test.rb", "PricingTest#test_a", "PricingTest#test_a"].freeze
+  MT_B = ["test/pricing_test.rb", "PricingTest#test_b", "PricingTest#test_b"].freeze
+  MT_C = ["test/other_test.rb", "OtherTest#test_c", "OtherTest#test_c"].freeze
+
+  def mt(test) = { "file" => test[0], "name" => test[1], "id" => test[2] }
 
   def with_row(result, killed_by, ran, complete: true)
     result.with(kills: Mutineer::Kills.new(killed_by: killed_by.sort, ran: (ran + killed_by).uniq.sort,
@@ -255,17 +261,16 @@ class JsonReporterTest < Minitest::Test
     m = JSON.parse(render_matrix(matrix_results))["matrix"]
 
     assert_equal true, m["complete"]
-    assert_equal [{ "file" => MT_C[0], "name" => MT_C[1], "kills" => 0 },
-                  { "file" => MT_A[0], "name" => MT_A[1], "kills" => 1 },
-                  { "file" => MT_B[0], "name" => MT_B[1], "kills" => 1 }], m["tests"]
+    assert_equal [mt(MT_C).merge("kills" => 0), mt(MT_A).merge("kills" => 1), mt(MT_B).merge("kills" => 1)],
+                 m["tests"]
     # Same file and line: rows sort by operator, so the comparison survivor is first.
     assert_equal [{ "subject" => "Pricing#total", "file" => FILE, "line" => 3, "operator" => "comparison",
                     "id" => "survivorid01", "status" => "survived", "killed_by" => [], "ran" => 2, "complete" => true },
                   { "subject" => "Pricing#total", "file" => FILE, "line" => 3, "operator" => "literal_mutation",
                     "id" => "killedid0001", "status" => "killed", "killed_by" => [1, 2], "ran" => 3,
                     "complete" => true }], m["mutants"]
-    assert_equal [{ "file" => MT_C[0], "name" => MT_C[1] }], m["blind"]
-    assert_equal [{ "file" => MT_A[0], "name" => MT_A[1] }, { "file" => MT_B[0], "name" => MT_B[1] }], m["redundant"]
+    assert_equal [mt(MT_C)], m["blind"]
+    assert_equal [mt(MT_A), mt(MT_B)], m["redundant"]
   end
 
   def test_matrix_block_is_byte_stable_across_result_order

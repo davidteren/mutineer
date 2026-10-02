@@ -34,6 +34,11 @@ module Mutineer
   # `kills` is nil except in a `--matrix` run, where a mutant that was forked
   # carries the {Kills} its child reported. It annotates the verdict and never
   # decides it.
+  #
+  # A Result crosses a process boundary only through WorkerPool's Marshal pipe,
+  # from a fork back to the process that forked it, so both ends always run the
+  # same code. Nothing persists a marshaled Result (reports, baselines and the
+  # coverage cache are JSON), so a new field needs no Marshal compatibility.
   Result = Data.define(:status, :details, :subject, :mutation, :id, :kills) do
     # Every field but `status` defaults to nil.
     #
@@ -109,14 +114,16 @@ module Mutineer
   end
 
   # One mutant's row of the kill matrix (`--matrix`): which tests killed it and
-  # which ran against it. A test is a `[file, name]` pair: the project-relative
-  # file that defines it and its name (`CalculatorTest#test_add`, or an RSpec
-  # example's full description). Both lists are sorted and unique, and `ran`
-  # includes the killers.
+  # which ran against it. A test is a `[file, name, id]` triple: the
+  # project-relative file that defines it, its name (`CalculatorTest#test_add`,
+  # or an RSpec example's full description), and an id that tells apart tests
+  # sharing a file and name (an RSpec example id; the name again for Minitest).
+  # Both lists are sorted and unique, and `ran` includes the killers.
   #
-  # `complete` is true when every covering test ran and the row agrees with the
-  # verdict. It is false when the child timed out or errored before the run
-  # ended, or when it exited `killed` without naming a test that failed.
+  # `complete` is true when the child ran its whole suite and reported it
+  # cleanly (see Isolation.finish). It is false when the child timed out,
+  # errored or exited the process early, when the recorder never armed, or when
+  # the row does not agree with the verdict.
   Kills = Data.define(:killed_by, :ran, :complete)
 
   # Aggregates a flat list of Results into counts, the mutation score, and the

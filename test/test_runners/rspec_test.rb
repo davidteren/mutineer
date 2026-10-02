@@ -2,6 +2,7 @@
 
 require_relative "../test_helper"
 require "tmpdir"
+require "fileutils"
 
 # The RSpec runner mirrors the Minitest runner's contract: 0 = all passed,
 # 1 = any failure, RSpec's formatter output kept off stdout, and RSpec state
@@ -13,6 +14,7 @@ require "tmpdir"
 # it. Spec output is silenced at the fork boundary, not by the runner (see the
 # Isolation.run case below).
 class TestRunnersRSpecTest < Minitest::Test
+  ROOT = File.expand_path("../..", __dir__)
   FIX  = File.expand_path("../fixtures/rspec", __dir__)
   PASS = File.join(FIX, "passing_spec.rb")
   FAIL = File.join(FIX, "failing_spec.rb")
@@ -138,20 +140,22 @@ class TestRunnersRSpecTest < Minitest::Test
 
   # --- record_to (--matrix) -------------------------------------------------
   # A matrix run never stops: every example runs, and each outcome goes to the
-  # KillChannel pipe. A test's identity is its spec file and full description.
+  # KillChannel pipe between a `start` and an `end` line. A test is its spec
+  # file, its full description and its example id.
 
-  # Runs the stop fixture with a channel, from `dir` when given (to pick up a
-  # project .rspec). Returns [exit status, marker written?, [killed, ran]].
-  def record_stop_fixture(first, dir: nil)
+  # Runs `spec` with a channel, from `dir` when given (to pick up a project
+  # .rspec), with `env` set in the child. Returns [exit status, marker written?, report].
+  def record_spec(first, spec: STOP, dir: nil, env: {})
     rd, wr = IO.pipe
     Dir.mktmpdir("mutineer-record") do |tmp|
       marker = File.join(tmp, "marker")
       code, = in_fork do
         rd.close
         Dir.chdir(dir) if dir
+        env.each { |k, v| ENV[k] = v }
         ENV["MUTINEER_FIXTURE_FIRST"] = first
         ENV["MUTINEER_FIXTURE_MARKER"] = marker
-        Mutineer::TestRunners::RSpec.run([STOP], record_to: wr)
+        Mutineer::TestRunners::RSpec.run([spec], record_to: wr)
       end
       wr.close
       [code, File.exist?(marker), Mutineer::KillChannel.parse(rd.read)]
@@ -162,27 +166,106 @@ class TestRunnersRSpecTest < Minitest::Test
 
   FIRST  = "stop at first failure fixture runs first"
   MARKER = "stop at first failure fixture writes the marker"
+  FIRST_TEST  = [STOP, FIRST, "./test/fixtures/rspec/stop_at_first_failure_spec.rb[1:1]"].freeze
+  MARKER_TEST = [STOP, MARKER, "./test/fixtures/rspec/stop_at_first_failure_spec.rb[1:2]"].freeze
+
+  def names(tests) = tests.map { |_file, name, _id| name }
+
+  def assert_full_run(code, marker, report)
+    assert_equal [1, true], [code, marker]
+    assert_equal [FIRST], names(report.killed)
+    assert report.started, "a full run sends start"
+    assert report.finished, "a full run sends end"
+  end
 
   def test_record_to_runs_every_example_and_names_the_failure
-    code, marker, (killed, ran) = record_stop_fixture("fail")
-    assert_equal [1, true], [code, marker]
-    assert_equal [[STOP, FIRST]], killed
-    assert_equal [[STOP, FIRST], [STOP, MARKER]], ran
+    code, marker, report = record_spec("fail", dir: ROOT)
+    assert_full_run(code, marker, report)
+    assert_equal [FIRST_TEST], report.killed
+    assert_equal [FIRST_TEST, MARKER_TEST], report.ran
+    refute report.parallel
+    assert_equal 0, report.lost
   end
 
   def test_record_to_sends_nothing_for_a_pending_example
-    code, _, (killed, ran) = record_stop_fixture("pending")
+    code, _, report = record_spec("pending")
     assert_equal 0, code
-    assert_empty killed
-    assert_equal [[STOP, MARKER]], ran
+    assert_empty report.killed
+    assert_equal [MARKER], names(report.ran)
   end
 
   def test_record_to_runs_every_example_when_the_project_rspec_sets_fail_fast
     Dir.mktmpdir("mutineer-dotrspec") do |dir|
       File.write(File.join(dir, ".rspec"), "--fail-fast\n")
-      code, marker, (killed, _ran) = record_stop_fixture("fail", dir: dir)
-      assert_equal [1, true], [code, marker]
-      assert_equal [[STOP, FIRST]], killed
+      assert_full_run(*record_spec("fail", dir: dir))
+    end
+  end
+
+  # RSpec reads SPEC_OPTS after the command line, so a --fail-fast there beat
+  # a --no-fail-fast argument.
+  def test_record_to_runs_every_example_when_spec_opts_sets_fail_fast
+    assert_full_run(*record_spec("fail", env: { "SPEC_OPTS" => "--fail-fast" }))
+  end
+
+  # A spec helper loaded through .rspec sets fail_fast on the configuration.
+  def test_record_to_runs_every_example_when_a_spec_helper_sets_fail_fast
+    Dir.mktmpdir("mutineer-helper") do |dir|
+      FileUtils.mkdir_p(File.join(dir, "spec"))
+      File.write(File.join(dir, "spec", "fail_fast_helper.rb"), "RSpec.configure { |c| c.fail_fast = true }\n")
+      File.write(File.join(dir, ".rspec"), "--require fail_fast_helper\n")
+      assert_full_run(*record_spec("fail", dir: dir))
+    end
+  end
+
+  def test_record_to_restores_spec_opts
+    _, out = in_fork do
+      ENV["SPEC_OPTS"] = "--no-color"
+      Mutineer::TestRunners::RSpec.run([PASS], record_to: $stderr.dup)
+      $stdout.puts ENV.fetch("SPEC_OPTS", "unset")
+      0
+    end
+    assert_equal "--no-color", out.strip
+  end
+
+  # An example that forks and runs a failing suite in the child inherits the
+  # configured formatter and the channel; only the process that created the
+  # formatter may write.
+  def test_record_to_ignores_examples_run_in_a_forked_process
+    Dir.mktmpdir("mutineer-forked") do |dir|
+      spec = File.join(dir, "forking_spec.rb")
+      File.write(spec, <<~RUBY)
+        RSpec.describe "forking" do
+          it "runs a failing example in a forked child" do
+            pid = fork do
+              RSpec.describe("inner") { it("fails") { expect(1).to eq(2) } }.run(RSpec.configuration.reporter)
+              exit!(0)
+            end
+            Process.wait(pid)
+          end
+        end
+      RUBY
+      code, _, report = record_spec("pass", spec: spec)
+      assert_equal 0, code
+      assert_empty report.killed
+      assert_equal ["forking runs a failing example in a forked child"], names(report.ran)
+    end
+  end
+
+  def test_record_to_tells_apart_examples_that_share_a_description
+    Dir.mktmpdir("mutineer-dup") do |dir|
+      spec = File.join(dir, "dup_spec.rb")
+      File.write(spec, <<~RUBY)
+        RSpec.describe "dup" do
+          it("checks") { expect(1).to eq(1) }
+          it("checks") { expect(1).to eq(2) }
+        end
+      RUBY
+      code, _, report = record_spec("pass", spec: spec, dir: dir)
+      assert_equal 1, code
+      assert_equal [[spec, "dup checks"]] * 2, report.ran.map { |file, name, _id| [file, name] }
+      ids = report.ran.map(&:last)
+      assert_equal ["[1:1]", "[1:2]"], ids.map { |id| id[/\[[\d:]+\]\z/] }
+      assert_equal [ids.last], report.killed.map(&:last)
     end
   end
 

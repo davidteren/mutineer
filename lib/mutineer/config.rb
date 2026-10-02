@@ -85,9 +85,12 @@ module Mutineer
 
     # @param explicit [Array<Symbol>] fields the user wrote (CLI or file). Derived
     #   values fill only the others; a programmatic Config.new writes none.
-    def initialize(explicit: [], **kwargs)
+    # @param from_file [Array<Symbol>] the explicit fields whose value came from
+    #   the config file (the command line did not override them).
+    def initialize(explicit: [], from_file: [], **kwargs)
       super(**kwargs)
       @explicit = explicit.to_a.dup.freeze
+      @from_file = from_file.to_a.dup.freeze
       self.sources       ||= []
       self.tests         ||= []
       self.threshold     ||= 0.0
@@ -117,6 +120,17 @@ module Mutineer
     # @return [Boolean]
     def explicit?(key)
       @explicit.include?(key)
+    end
+
+    # Where the user set `key`, for messages: the config-file key (as
+    # `name in .mutineer.yml`) when its value came from the file, else the
+    # command-line flag.
+    #
+    # @param key [Symbol] Config field name (a row of the option schema).
+    # @return [String] e.g. `"--fail-fast"` or `"fail_fast in .mutineer.yml"`.
+    def origin(key)
+      opt = CONFIG_OPTIONS.find { |o| o.field == key } or raise ArgumentError, "unknown option #{key.inspect}"
+      @from_file.include?(key) && opt.yaml_key ? "#{opt.yaml_key} in #{CONFIG_FILE}" : (opt.flag || opt.yaml_key)
     end
 
     # Walk from `start` toward `home`, returning the first .mutineer.yml path found
@@ -178,7 +192,7 @@ module Mutineer
     # @return [Mutineer::Config]
     def self.resolve(cli_opts, file_hash)
       user = file_hash.merge(cli_opts)
-      config = new(**user, explicit: user.keys)
+      config = new(**user, explicit: user.keys, from_file: file_hash.keys - cli_opts.keys)
 
       # --rails sugar: boot config/environment. Prefer redefine only for the
       # in-process path (daemon is whole-file reload only). In-process --rails

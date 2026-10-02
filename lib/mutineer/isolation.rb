@@ -37,9 +37,8 @@ module Mutineer
     # With `channel: true` (a `--matrix` run) the block gets the write end of a
     # pipe for {KillChannel} lines. The parent reads it while it waits, so a
     # child with more than a pipe buffer to say never blocks, and attaches the
-    # lines to the Result as {Kills}. The exit status still decides the verdict,
-    # with one addition: a child that hits the timeout after a test already
-    # killed the mutant is `killed`, its row marked incomplete.
+    # lines to the Result as {Kills}. The verdict is the one a run without
+    # `--matrix` gives (see {.finish}).
     #
     # @param timeout [Integer] timeout in seconds.
     # @param channel [Boolean] open a {KillChannel} pipe for the block.
@@ -131,6 +130,17 @@ module Mutineer
     # the rest of the channel is read, and the Result carries the {Kills} it
     # names.
     #
+    # The verdict matches a run without `--matrix`, which stops at the first
+    # failing test and exits `killed` there. So once a serial run has named a
+    # kill, the mutant is `killed`, whatever a later test does: exit the
+    # process, crash, or run into the timeout. A parallel run (see
+    # {KillChannel}) keeps the exit status, because the stop cannot skip its
+    # queued tests either.
+    #
+    # The row is complete only when the child ended before the timeout, sent
+    # both `start` and `end`, lost no line, and its kills agree with the
+    # verdict (a killed mutant names a killer; a survivor names none).
+    #
     # @api private
     # @param result [Mutineer::Result] the verdict from the exit status or the timeout.
     # @param rd [IO, nil] the channel's read end.
@@ -141,12 +151,11 @@ module Mutineer
       return result unless rd
 
       drain(rd, buffer)
-      killed_by, ran = KillChannel.parse(buffer)
-      # The stop-mode run with the same seed would have stopped at this
-      # failure, so the timeout came after the mutant was already killed.
-      result = Result.killed if result.timeout? && killed_by.any?
-      agrees = result.killed? ? killed_by.any? : result.survived? && killed_by.empty?
-      result.with(kills: Kills.new(killed_by: killed_by, ran: ran, complete: finished && agrees))
+      report = KillChannel.parse(buffer)
+      result = Result.killed if report.started && !report.parallel && report.killed.any?
+      agrees = result.killed? ? report.killed.any? : result.survived? && report.killed.empty?
+      complete = finished && report.started && report.finished && report.lost.zero? && agrees
+      result.with(kills: Kills.new(killed_by: report.killed, ran: report.ran, complete: complete))
     end
 
     # Strategy 7a (default): write the whole mutated file and `load` it, which

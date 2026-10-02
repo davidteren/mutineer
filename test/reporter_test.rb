@@ -302,9 +302,9 @@ class ReporterTest < Minitest::Test
   end
 
   def test_matrix_section_names_blind_and_redundant_tests
-    a = ["test/a_test.rb", "ATest#test_a"]
-    b = ["test/b_test.rb", "BTest#test_b"]
-    c = ["test/c_test.rb", "CTest#test_c"]
+    a = ["test/a_test.rb", "ATest#test_a", "ATest#test_a"]
+    b = ["test/b_test.rb", "BTest#test_b", "BTest#test_b"]
+    c = ["test/c_test.rb", "CTest#test_c", "CTest#test_c"]
     text = matrix_report([row(survivor_result.with(status: :killed), [a, b], [c])])
 
     assert_includes text, "Kill matrix\n-----------\n3 tests ran against 1 mutants"
@@ -316,8 +316,24 @@ class ReporterTest < Minitest::Test
   end
 
   def test_incomplete_matrix_says_a_blind_test_may_be_wrong
-    text = matrix_report([row(survivor_result.with(status: :timeout), [], [["t.rb", "T#test"]], complete: false)])
+    text = matrix_report([row(survivor_result.with(status: :timeout), [], [["t.rb", "T#test", "T#test"]], complete: false)])
     assert_includes text, "1 mutants stopped before every covering test ran (timeout or error)"
+  end
+
+  # An RSpec id differs from the description and tells apart examples that
+  # share one, so the human report shows it.
+  def test_matrix_section_shows_an_id_that_differs_from_the_name
+    blind = ["spec/s_spec.rb", "S checks", "./spec/s_spec.rb[1:1]"]
+    text = matrix_report([row(survivor_result, [], [blind])])
+    assert_includes text, "  spec/s_spec.rb  S checks (./spec/s_spec.rb[1:1])\n"
+  end
+
+  def test_matrix_section_lists_at_most_twenty_tests_each
+    tests = (1..25).map { |i| ["t_test.rb", format("T#test_%02d", i), format("T#test_%02d", i)] }
+    text = matrix_report([row(survivor_result, [], tests)])
+    assert_includes text, "Blind tests (ran, killed no mutant): 25\n"
+    assert_includes text, "  t_test.rb  T#test_20\n  and 5 more; see --format json\n"
+    refute_includes text, "T#test_21"
   end
 
   def test_no_matrix_section_without_the_flag

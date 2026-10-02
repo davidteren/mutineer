@@ -331,17 +331,17 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.validate_matrix!(config)
-      reason =
+      conflict, reason =
         if config.daemon
-          "--daemon (the kill matrix runs on the in-process backend only)"
+          [:daemon, "the kill matrix runs on the in-process backend only"]
         elsif config.test_command
-          "--test-command (the external suite reports pass or fail, not which test failed)"
+          [:test_command, "the external suite reports pass or fail, not which test failed"]
         elsif config.fail_fast
-          "--fail-fast (a fail-fast run is partial, so blind and redundant tests would be wrong)"
+          [:fail_fast, "a fail-fast run is partial, so blind and redundant tests would be wrong"]
         end
-      return unless reason
+      return unless conflict
 
-      warn "mutineer: --matrix cannot be combined with #{reason}"
+      warn "mutineer: #{config.origin(:matrix)} cannot be combined with #{config.origin(conflict)} (#{reason})"
       exit 2
     end
 

@@ -66,7 +66,7 @@ module Mutineer
 
       armed =
         if record_to
-          KillRecorder.arm!(record_to)
+          KillRecorder.arm!(record_to, Minitest::Runnable.runnables)
         elsif stop_at_first_failure
           StopAtFirstFailure.arm!(Minitest::Runnable.runnables)
         end
@@ -76,6 +76,9 @@ module Mutineer
       # No silencing here: the fork boundary that calls this method has already
       # pointed stdout at File::NULL (see ChildStdout).
       passed = Minitest.run(args)
+      # Reached only when the suite returned: a test that exits the process
+      # skips it, and the parent then keeps the row incomplete.
+      KillRecorder.finish! if record_to
 
       # A plugin can replace the summary reporter, so a stop decides by itself.
       passed && !StopAtFirstFailure.stopped_here? ? 0 : 1

@@ -200,13 +200,15 @@ class TestRunnersMinitestTest < Minitest::Test
 
   # --- record_to (--matrix) -------------------------------------------------
   # A matrix run never stops: every test runs, and each outcome goes to the
-  # KillChannel pipe. Only the outer reporter's results count.
+  # KillChannel pipe between a `start` and an `end` line. Only the outer
+  # reporter's results count.
 
-  # Runs `file` with a channel. Returns [exit status, marker written?, [killed, ran]].
-  def record_fixture(file, first: "fail")
+  # Runs `file` with a channel. Returns [exit status, marker written?, report].
+  def record_fixture(file, first: "fail", &setup)
     rd, wr = IO.pipe
     code, marker = with_fixture_env(first) do
       rd.close
+      setup&.call
       Mutineer::TestRunners::Minitest.run([file], record_to: wr)
     end
     wr.close
@@ -215,46 +217,71 @@ class TestRunnersMinitestTest < Minitest::Test
     [rd, wr].each { |io| io.close unless io.closed? }
   end
 
-  def names(tests) = tests.map(&:last)
+  def names(tests) = tests.map { |_file, name, _id| name }
 
   def test_record_to_runs_every_test_and_names_the_failure
-    code, marker, (killed, ran) = record_fixture(STOP, first: "fail")
+    code, marker, report = record_fixture(STOP, first: "fail")
     assert_equal [1, true], [code, marker]
-    assert_equal [[STOP, "StopAtFirstFailureFixture#test_a_first"]], killed
-    assert_equal %w[StopAtFirstFailureFixture#test_a_first StopAtFirstFailureFixture#test_b_writes_marker], names(ran)
+    first = "StopAtFirstFailureFixture#test_a_first"
+    assert_equal [[STOP, first, first]], report.killed
+    assert_equal %w[StopAtFirstFailureFixture#test_a_first StopAtFirstFailureFixture#test_b_writes_marker],
+                 names(report.ran)
+    assert report.started
+    assert report.finished
+    refute report.parallel
+    assert_equal 0, report.lost
   end
 
   def test_record_to_counts_an_error_as_a_kill
-    _, marker, (killed, _ran) = record_fixture(STOP, first: "error")
+    _, marker, report = record_fixture(STOP, first: "error")
     assert marker
-    assert_equal ["StopAtFirstFailureFixture#test_a_first"], names(killed)
+    assert_equal ["StopAtFirstFailureFixture#test_a_first"], names(report.killed)
   end
 
   def test_record_to_sends_nothing_for_a_skip
-    code, _, (killed, ran) = record_fixture(STOP, first: "skip")
+    code, _, report = record_fixture(STOP, first: "skip")
     assert_equal 0, code
-    assert_empty killed
-    assert_equal ["StopAtFirstFailureFixture#test_b_writes_marker"], names(ran)
+    assert_empty report.killed
+    assert_equal ["StopAtFirstFailureFixture#test_b_writes_marker"], names(report.ran)
   end
 
   def test_record_to_ignores_a_failure_on_a_nested_reporter
-    code, _, (killed, ran) = record_fixture(REPORTER)
+    code, _, report = record_fixture(REPORTER)
     assert_equal 0, code
-    assert_empty killed
-    assert_equal 2, ran.size
+    assert_empty report.killed
+    assert_equal 2, report.ran.size
   end
 
   def test_record_to_ignores_a_nested_suite_run
-    code, _, (killed, ran) = record_fixture(NESTED)
+    code, _, report = record_fixture(NESTED)
     assert_equal 0, code
-    assert_empty killed
-    refute_includes names(ran), "StopAtFirstFailureInnerFixture#test_fails"
+    assert_empty report.killed
+    refute_includes names(report.ran), "StopAtFirstFailureInnerFixture#test_fails"
   end
 
   def test_record_to_names_a_failure_in_another_fiber
-    code, marker, (killed, _ran) = record_fixture(FIBER)
+    code, marker, report = record_fixture(FIBER)
     assert_equal [1, true], [code, marker]
-    assert_equal ["StopAtFirstFailureFiberFixture#test_a_fails"], names(killed)
+    assert_equal ["StopAtFirstFailureFiberFixture#test_a_fails"], names(report.killed)
+  end
+
+  # The stop cannot skip tests parallelize_me! already queued, so the start
+  # line says so, and the parent keeps the exit status.
+  def test_record_to_marks_a_parallel_run
+    _, _, report = record_fixture(PARALLEL)
+    assert report.started
+    assert report.parallel
+  end
+
+  # An unknown Minitest shape arms nothing: no `start`, so no row can claim to
+  # be complete, though the run itself still happens.
+  def test_record_to_with_an_unknown_minitest_shape_sends_no_start
+    code, marker, report = record_fixture(STOP, first: "fail") do
+      Mutineer::MinitestIntegration::OuterReporter.define_singleton_method(:hook_for_loaded_minitest) { nil }
+    end
+    assert_equal [1, true], [code, marker]
+    refute report.started
+    assert_empty report.ran
   end
 
   def test_record_to_pins_the_seed

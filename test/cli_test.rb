@@ -234,7 +234,16 @@ class CliTest < Minitest::Test
       File.write(File.join(proj, ".mutineer.yml"), "matrix: true\n")
       _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb", "--fail-fast", chdir: proj)
       assert_equal 2, status.exitstatus
-      assert_includes err, "--matrix cannot be combined with --fail-fast"
+      assert_includes err, "matrix in .mutineer.yml cannot be combined with --fail-fast"
+    end
+  end
+
+  def test_matrix_names_a_conflict_set_in_the_config_file
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "fail_fast: true\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb", "--matrix", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "--matrix cannot be combined with fail_fast in .mutineer.yml"
     end
   end
 
@@ -250,9 +259,9 @@ class CliTest < Minitest::Test
       doc = JSON.parse(out)
       refute plain.key?("matrix")
       assert_equal plain["summary"], doc["summary"]
-      assert_equal [{ "file" => "calculator_weak_test.rb", "name" => "CalculatorWeakTest#test_add" },
-                    { "file" => "calculator_weak_test.rb", "name" => "CalculatorWeakTest#test_subtract" }],
-                   doc.dig("matrix", "blind")
+      assert_equal(%w[test_add test_subtract].map do |m|
+        { "file" => "calculator_weak_test.rb", "name" => "CalculatorWeakTest##{m}", "id" => "CalculatorWeakTest##{m}" }
+      end, doc.dig("matrix", "blind"))
       assert_equal 6, doc.dig("matrix", "mutants").size
     end
   end

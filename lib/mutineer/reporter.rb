@@ -25,6 +25,13 @@ module Mutineer
     # workflow, so one bad mutant never fails the gate on its own, at any size.
     BROKEN_FLOOR = 1
 
+    # The JSON report's `schema_version` (see docs/json-schema.md).
+    SCHEMA_VERSION = "1.5"
+
+    # How many blind or redundant tests the human report lists before it points
+    # to `--format json` for the rest.
+    MATRIX_LIST_LIMIT = 20
+
     # @param aggregate [Mutineer::AggregateResult] the run's results.
     # @param source_map [Hash{String => String}] source file path => source text.
     # @param matrix [Mutineer::KillMatrix, nil] the kill matrix of a `--matrix`
@@ -152,7 +159,7 @@ module Mutineer
       score = @agg.mutation_score
 
       doc = {
-        schema_version: "1.5",
+        schema_version: SCHEMA_VERSION,
         summary: {
           total: @agg.total, killed: killed, survived: survived,
           no_coverage: @agg.no_coverage_count,
@@ -334,7 +341,7 @@ module Mutineer
       return "" unless @matrix
 
       lists = { "Blind tests" => @matrix.blind, "Redundant tests" => @matrix.redundant }.map do |title, tests|
-        items = tests.map { |file, name| "<li><span class=\"id\">#{esc(file)}</span> #{esc(name)}</li>" }
+        items = tests.map { |test| "<li><span class=\"id\">#{esc(test[0])}</span> #{esc(test_label(test))}</li>" }
         body = items.empty? ? "<p>None.</p>" : "<ul>\n#{items.join("\n")}\n</ul>"
         "<h3>#{esc(title)} (#{tests.size})</h3>\n#{body}"
       end
@@ -354,12 +361,34 @@ module Mutineer
       index = tests.each_with_index.to_h
       {
         complete: @matrix.complete?,
-        tests: tests.map { |file, name| { file: file, name: name, kills: @matrix.kill_count([file, name]) } },
+        tests: tests.map { |test| test_json(test).merge(kills: @matrix.kill_count(test)) },
         mutants: @matrix.rows.map { |r| matrix_row_json(r, index) }
                         .sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s, h[:id].to_s] },
-        blind: @matrix.blind.map { |file, name| { file: file, name: name } },
-        redundant: @matrix.redundant.map { |file, name| { file: file, name: name } }
+        blind: @matrix.blind.map { |test| test_json(test) },
+        redundant: @matrix.redundant.map { |test| test_json(test) }
       }
+    end
+
+    # One test as JSON: its file, display name and id.
+    #
+    # @api private
+    # @param test [Array(String, String, String)] a `[file, name, id]` test.
+    # @return [Hash]
+    def test_json(test)
+      file, name, id = test
+      { file: file, name: name, id: id }
+    end
+
+    # A test's name for people: the display name, plus the id when it differs
+    # (an RSpec example id, which tells apart examples that share a name and
+    # runs exactly that example with `rspec`).
+    #
+    # @api private
+    # @param test [Array(String, String, String)] a `[file, name, id]` test.
+    # @return [String]
+    def test_label(test)
+      _file, name, id = test
+      id == name ? name : "#{name} (#{id})"
     end
 
     # One mutant's row under `matrix.mutants`.
@@ -402,17 +431,20 @@ module Mutineer
       out.puts "Delete redundant tests one at a time: two of them can be the only killers of one mutant."
     end
 
-    # One titled list of tests in the human kill-matrix section.
+    # One titled list of tests in the human kill-matrix section, cut at
+    # {MATRIX_LIST_LIMIT}; the JSON report has the whole list.
     #
     # @api private
     # @param out [IO] output stream.
     # @param title [String] the list's title.
-    # @param tests [Array<Array(String, String)>] `[file, name]` pairs.
+    # @param tests [Array<Array(String, String, String)>] `[file, name, id]` tests.
     # @return [void]
     def matrix_list(out, title, tests)
       out.puts
       out.puts "#{title}: #{tests.size}"
-      tests.each { |file, name| out.puts "  #{file}  #{name}" }
+      tests.first(MATRIX_LIST_LIMIT).each { |test| out.puts "  #{test[0]}  #{test_label(test)}" }
+      rest = tests.size - MATRIX_LIST_LIMIT
+      out.puts "  and #{rest} more; see --format json" if rest.positive?
     end
 
     # The counts sentence both matrix renderers open with.

@@ -294,8 +294,9 @@ class IntegrationTest < Minitest::Test
   # add and subtract mutants.
   CALC_TESTS = ["test/fixtures/calculator_weak_test.rb", "test/fixtures/calculator_strong_test.rb"].freeze
 
-  def weak(name) = ["test/fixtures/calculator_weak_test.rb", "CalculatorWeakTest##{name}"]
-  def strong(name) = ["test/fixtures/calculator_strong_test.rb", "CalculatorStrongTest##{name}"]
+  def weak(name) = ["test/fixtures/calculator_weak_test.rb", "CalculatorWeakTest##{name}", "CalculatorWeakTest##{name}"]
+  def strong(name) = ["test/fixtures/calculator_strong_test.rb", "CalculatorStrongTest##{name}",
+                      "CalculatorStrongTest##{name}"]
 
   def test_kill_matrix_oracle
     result = run_mutineer(sources: ["test/fixtures/calculator.rb"], tests: CALC_TESTS,
@@ -326,6 +327,49 @@ class IntegrationTest < Minitest::Test
       assert(plain.results.none?(&:kills))
       assert(matrix.results.select { |r| r.killed? || r.survived? }.all?(&:kills))
     end
+  end
+
+
+  # --- regressions from the review of the first --matrix cut ------------------
+
+  def statuses(aggregate) = aggregate.results.to_h { |r| [r.id, r.status] }
+  def names(tests) = tests.map { |_file, name, _id| name }
+
+  # A test fails, then the next test exits the process with status 0. The run
+  # without --matrix stops at the failure and scores the mutant killed, and so
+  # must the matrix: the exit is past the point where the verdict was decided.
+  def test_matrix_keeps_a_kill_that_a_later_exit_would_erase
+    sources = ["test/fixtures/matrix/gate.rb"]
+    tests = ["test/fixtures/matrix/gate_test.rb"]
+    plain = run_mutineer(sources: sources, tests: tests)
+    matrix = run_mutineer(sources: sources, tests: tests, matrix: true)
+
+    assert_equal statuses(plain), statuses(matrix)
+    assert_equal plain.mutation_score, matrix.mutation_score
+    big = matrix.results.find { |r| r.subject.name == :big? }
+    assert_predicate big, :killed?
+    assert_equal ["MatrixGateTest#test_a_boundary"], names(big.kills.killed_by)
+    refute big.kills.complete, "the suite never returned, so the row cannot be complete"
+  end
+
+  # Setup errors, a skip, an error, a blind test, a module included in two
+  # classes, and a parallel class, in one suite.
+  def test_matrix_on_a_mixed_suite
+    sources = ["test/fixtures/matrix/acct.rb"]
+    tests = ["test/fixtures/matrix/acct_test.rb"]
+    plain = run_mutineer(sources: sources, tests: tests)
+    matrix = run_mutineer(sources: sources, tests: tests, matrix: true)
+    km = Mutineer::KillMatrix.new(matrix.results)
+
+    assert_equal statuses(plain), statuses(matrix)
+    assert_equal 16, km.tests.size
+    refute_includes names(km.tests), "MatrixAcctSetupTest#test_skipped"
+    shared = km.tests.select { |_file, name, _id| name.end_with?("#test_shared_deposit") }
+    assert_equal %w[MatrixAcctA#test_shared_deposit MatrixAcctB#test_shared_deposit], names(shared)
+    assert_equal ["test/fixtures/matrix/support/shared_tests.rb"], shared.map(&:first).uniq
+    assert_equal %w[MatrixAcctParallel#test_p0 MatrixAcctSetupTest#test_blind], names(km.blind)
+    fee = matrix.results.select { |r| r.subject.name == :fee }.flat_map { |r| names(r.kills.killed_by) }
+    assert_includes fee, "MatrixAcctSetupTest#test_errors_on_mutant"
   end
 
 end
