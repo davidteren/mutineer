@@ -72,6 +72,14 @@ class ConfigTest < Minitest::Test
     assert_equal 4, Config.parse(:jobs, "4")
   end
 
+  def test_parse_timeouts_take_whole_seconds
+    assert_equal 300, Config.parse(:timeout, "300")
+    assert_equal 600, Config.parse(:capture_timeout, 600, file: ".mutineer.yml")
+    assert_match(/\A--timeout must be a positive integer/, parse_error(:timeout, "0"))
+    assert_match(/\A\.mutineer\.yml: capture_timeout must be a positive integer/,
+                 parse_error(:capture_timeout, 1.5, file: ".mutineer.yml"))
+  end
+
   def test_parse_positive_int_rejects_everything_else_naming_the_origin
     ["1.9", 1.9, true, 0, "0", -1, "abc", "", nil, "1e3"].each do |bad|
       assert_match(/\A--jobs must be a positive integer, digits only \(got: /, parse_error(:jobs, bad), bad.inspect)
@@ -422,7 +430,9 @@ class ConfigTest < Minitest::Test
     baseline: ["a.json", "b.json"],
     fail_fast: [false, true],
     test_command: ["a %{files}", "b %{files}"],
-    daemon: [false, true]
+    daemon: [false, true],
+    timeout: [30, 60],
+    capture_timeout: [300, 600]
   }.freeze
 
   def test_every_option_with_a_yaml_key_has_a_layer_sample
