@@ -283,13 +283,14 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --matrix
 For each mutant, Mutineer runs every test in its covering files instead of
 stopping at the first failure, and records which tests failed. Coverage is
 recorded per test file, so that set also holds tests that never reach the
-mutated line; they pass and count as having run. The report names two kinds
-of test:
+mutated line; they pass and count as having run. A mutant's row is complete
+when its whole covering set ran and the suite returned normally. The report
+names two kinds of test:
 
-- **Blind:** the test ran against at least one mutant and killed none. A test
-  that kills nothing proves nothing about the code it runs, since it would
-  still pass with that code wrong. Give it an assertion that can fail, or
-  delete it.
+- **Blind:** the test ran in at least one complete row and killed no mutant
+  in any row. A test that kills nothing proves nothing about the code it runs,
+  since it would still pass with that code wrong. Give it an assertion that
+  can fail, or delete it.
 - **Redundant:** every mutant the test kills, another test kills too. That
   makes it a candidate for deletion, one test at a time: two redundant tests
   can be the only killers of one mutant, so re-run after each deletion.
@@ -298,24 +299,33 @@ The answers cover this run's mutants only. A test of code outside the sources
 you passed kills nothing here, so mutate the code a test exercises before you
 call the test blind.
 
-The matrix changes no verdict, score or exit code. The human and HTML reports
-list the blind and redundant tests, and `--format json` adds a `matrix` block
-with every test and each mutant's killers (see the
+The matrix changes no verdict, score or exit code. A mutant is `killed` as
+soon as one test fails against it, as it is without `--matrix`, even when a
+later test exits the process, crashes or runs into the time limit. Under
+Minitest's `parallelize_me!` the run without `--matrix` cannot stop at the
+first failure either, so there the exit status stands.
+
+The human report lists up to 20 blind and 20 redundant tests, and the HTML
+report lists them all. `--format json` adds a `matrix` block with every test
+and each mutant's killers (see the
 [JSON schema](https://davidteren.github.io/mutineer/json-schema.html#matrix)).
 A test is its file and its name: `CalculatorTest#test_add` under Minitest, or
-the example's full description under RSpec.
+the example's full description under RSpec, where the example id
+(`./spec/calc_spec.rb[1:2]`) tells apart examples that share a description.
 
 Each mutant runs its whole covering set, so every mutant costs what a survivor
-costs. In 1.4, stopping at the first failure halved a full run of rack's
-`lib/rack/utils.rb`; expect a matrix run to take about twice as long as a
-normal one. A mutant that reaches the per-mutant time limit (10 seconds) after
-a test already failed stays `killed` with its row marked incomplete, and the
-report warns that a blind test may have killed it.
-[#183](https://github.com/davidteren/mutineer/pull/183) adds `--timeout`, which
-raises the limit and gives complete rows.
+costs. In 1.4, stopping at the first failure cut a full run of rack's
+`lib/rack/utils.rb` from 86 to 89 seconds down to 35 to 41, so expect a matrix
+run to take 2.1 to 2.5 times as long as a normal one. A mutant that reaches the
+per-mutant time limit (10 seconds) after a test already failed stays `killed`
+with its row marked incomplete, and the report warns that a blind test may
+have killed it. The limit is fixed today;
+[#183](https://github.com/davidteren/mutineer/pull/183), once it lands, adds
+`--timeout` to raise it and get complete rows.
 
 `--matrix` runs on the in-process backend only. It exits 2 with `--daemon`,
-`--test-command` or `--fail-fast`.
+`--test-command` or `--fail-fast`, and the message says whether each setting
+came from the command line or `.mutineer.yml`.
 
 ## CI gating
 

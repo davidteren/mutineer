@@ -113,21 +113,28 @@ mutant's row names every test that kills it. Coverage is recorded per test file,
 the mutated line cannot kill the mutant. Added in schema `1.5` and absent without the flag. The block never
 changes `summary`, the score or the exit code.
 
-A test is a `file` (relative to the project root: the file that defines the test) and a `name`
-(`CalculatorTest#test_add` under Minitest, the example's full description under RSpec).
+A test has a `file` (relative to the project root: the file that defines the test), a `name`
+(`CalculatorTest#test_add` under Minitest, the example's full description under RSpec) and an `id`. The `id`
+tells apart tests that share a file and name: under RSpec it is the example id
+(`./spec/calc_spec.rb[1:2]`), and under Minitest it equals `name`.
 
 | Key | Type | Meaning |
 |-----|------|---------|
 | `complete` | bool | True when every row is complete. When false, a test in `blind[]` may have killed a mutant whose row is incomplete. |
-| `tests[]` | array | Every test that ran against at least one mutant: `{ file, name, kills }`, sorted by `file` then `name`. `kills` counts the mutants the test killed. Rows refer to a test by its index here. |
+| `tests[]` | array | Every test that ran against at least one mutant: `{ file, name, id, kills }`, sorted by `file`, `name`, then `id`. `kills` counts the mutants the test killed. Rows refer to a test by its index here. |
 | `mutants[]` | array | One row per mutant that ran: `{ subject, file, line, operator, id, status, killed_by, ran, complete }`, sorted by `(file, line, operator, id)`. `killed_by` holds indexes into `tests[]`, and `ran` counts the tests that ran against the mutant. No-coverage, skipped and ignored mutants have no row. |
-| `blind[]` | array | `{ file, name }`: tests that ran in at least one complete row and killed no mutant. |
-| `redundant[]` | array | `{ file, name }`: tests that killed at least one mutant, where each mutant they killed has another killer. |
+| `blind[]` | array | `{ file, name, id }`: tests that ran in at least one complete row and killed no mutant in any row. |
+| `redundant[]` | array | `{ file, name, id }`: tests that killed at least one mutant, where each mutant they killed has another killer. |
 
-A row is incomplete (`complete: false`) when the mutant's run stopped before every covering test ran, at the
-per-mutant timeout or on an error, or when the mutant was killed without a failing test being named. A run
-that reaches the timeout after a test already failed keeps `status: "killed"`, the verdict a run without
-`--matrix` gives, since that run stops at the same first failure.
+A row is complete (`complete: true`) only when the mutant's whole covering set ran and the suite returned
+normally before the per-mutant timeout, every line the child sent was read, and the row agrees with the
+verdict: a killed mutant names a killer and a survivor names none. A test that exits the process, a crash,
+the timeout, or a test framework Mutineer could not hook each leave the row incomplete.
+
+`status` is the verdict a run without `--matrix` gives. That run stops at the first failing test, so once
+a test fails against a mutant its status is `"killed"`, whatever a later test does. The exception is a
+Minitest suite with a `parallelize_me!` class: its queued tests cannot be stopped, so the exit status (or
+`"timeout"`) stands.
 
 Each redundant test is judged on its own. Two redundant tests can be the only killers of one mutant, so
 delete them one at a time and re-run after each. Every answer covers this run's mutants only.
