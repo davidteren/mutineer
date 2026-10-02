@@ -8,7 +8,8 @@ module Mutineer
   # (`module ::X` inside `Outer` owns into `X`); `lexical` is the class/module
   # chain as written (`["Outer", "::X"]`), which the redefine strategy needs to
   # rebuild the same Module.nesting as a whole-file reload (#145).
-  Subject = Struct.new(:file, :namespace, :name, :singleton, :def_node, :lexical, keyword_init: true) do
+  Subject = Struct.new(:file, :namespace, :name, :singleton, :def_node, :lexical, :block_owner,
+                       keyword_init: true) do
     # Returns the fully-qualified subject name.
     #
     # @return [String] namespaced method name like `Billing::Invoice#total`.

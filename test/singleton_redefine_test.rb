@@ -68,6 +68,13 @@ class SingletonRedefineTest < Minitest::Test
     assert_equal reload.killed_count, redefine.killed_count
   end
 
+  def test_data_define_and_struct_new_block_methods_are_mutated
+    %w[redefine reload].each do |strategy|
+      assert_killed(run_redefine("data_define.rb", "data_define_test.rb", strategy: strategy),
+                    "Data.define / Struct.new block (#{strategy})")
+    end
+  end
+
   # Parity control — this form already worked; it must keep working.
   def test_def_self_methods_are_mutated
     assert_killed(run_redefine("def_self.rb", "def_self_test.rb"), "def self.")

@@ -41,6 +41,8 @@ module Mutineer
         @singleton_depth = 0
         @module_function_active = false # bareword `module_function` seen in this module body
         @module_function_names = []     # [namespace, name] from `module_function :a` / `module_function def` (#98)
+        @block_owner = nil
+        @block_namespace = nil
         super()
       end
 
@@ -100,6 +102,29 @@ module Mutineer
         super
       end
 
+      # Names the defs in a `Data.define`/`Struct.new` block after the assigned constant.
+      #
+      # @param node [Prism::ConstantWriteNode, Prism::ConstantPathWriteNode] constant assignment.
+      # @return [void]
+      def visit_constant_write_node(node)
+        value = node.value
+        builds_class = value.is_a?(Prism::CallNode) && value.block.is_a?(Prism::BlockNode) &&
+                       { "Data" => :define, "Struct" => :new }[value.receiver&.slice&.delete_prefix("::")] == value.name
+        return super unless builds_class
+
+        saved = [@block_owner, @block_namespace, @module_function_active]
+        @block_owner = node.is_a?(Prism::ConstantPathWriteNode) ? node.target.slice : node.name.to_s
+        @block_namespace =
+          @block_owner.start_with?("::") ? [@block_owner.delete_prefix("::")] : @namespace_stack + [@block_owner]
+        @module_function_active = false
+        begin
+          super
+        ensure
+          @block_owner, @block_namespace, @module_function_active = saved
+        end
+      end
+      alias visit_constant_path_write_node visit_constant_write_node
+
       # Methods inside `class << self` are class methods of the enclosing
       # namespace, but their def nodes have no receiver — track the singleton
       # context so they're recorded as singleton (so redefine targets the
@@ -125,8 +150,9 @@ module Mutineer
       def visit_def_node(node)
         @subjects << Subject.new(
           file: @file,
-          namespace: @namespace_stack.dup,
+          namespace: (@block_namespace || @namespace_stack).dup,
           lexical: @lexical_stack.dup,
+          block_owner: @block_owner,
           name: node.name,
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node
@@ -151,16 +177,19 @@ module Mutineer
         saved_stack = @namespace_stack
         saved_lexical = @lexical_stack
         saved_active = @module_function_active
+        saved_block = [@block_owner, @block_namespace]
         name = extract_constant_name(path)
         root = root_anchored?(path)
         @namespace_stack = root ? [name] : saved_stack + [name]
         @lexical_stack = saved_lexical + [root ? "::#{name}" : name]
         @module_function_active = false
+        @block_owner = @block_namespace = nil
         yield
       ensure
         @namespace_stack = saved_stack
         @lexical_stack = saved_lexical
         @module_function_active = saved_active
+        @block_owner, @block_namespace = saved_block
       end
 
       # True when a constant path starts with `::` (e.g. `::X` or `::A::B`).

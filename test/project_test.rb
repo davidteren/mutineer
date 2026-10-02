@@ -196,6 +196,37 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def test_discover_data_define_and_struct_new_blocks_own_their_methods
+    src = <<~RUBY
+      Monitoring = Data.define(:a) do
+        def self.groups(g) = g
+      end
+      class ReleaseApp
+        Argo = Data.define(:url) do
+          def self.from_config(config) = new(url: config)
+          def host = url
+          class Inner
+            def m; end
+          end
+        end
+        Pair = Struct.new(:a, :b) do
+          def sum = a + b
+        end
+        Other = build do
+          def n; end
+        end
+      end
+      ReleaseApp::Gate = Struct.new(:open) do
+        def open? = open
+      end
+    RUBY
+    with_source(src) do |path|
+      names = Mutineer::Project.discover([path]).map(&:qualified_name)
+      assert_equal %w[Monitoring.groups ReleaseApp::Argo.from_config ReleaseApp::Argo#host
+                      ReleaseApp::Inner#m ReleaseApp::Pair#sum ReleaseApp#n ReleaseApp::Gate#open?], names
+    end
+  end
+
   def test_discover_nested_classes
     with_source("class Outer\n  class Inner\n    def m; end\n  end\nend\n") do |path|
       s = Mutineer::Project.discover([path]).first
