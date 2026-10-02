@@ -4,6 +4,7 @@ require "tempfile"
 require_relative "result"
 require_relative "parser"
 require_relative "child_stdout"
+require_relative "kill_channel"
 
 module Mutineer
   # Fork-based isolation for running one mutant. The block runs in a child
@@ -23,6 +24,9 @@ module Mutineer
   class Isolation
     DEFAULT_TIMEOUT = 10 # seconds
 
+    # Seconds between the parent's checks on a running child.
+    POLL_INTERVAL = 0.005
+
     # Runs the block in a forked child. The block's return value (an Integer
     # exit code) or any explicit `exit` is honoured; an unhandled exception
     # becomes exit 2 with the cause written to STDERR.
@@ -30,18 +34,30 @@ module Mutineer
     # The child silences its stdout (see {ChildStdout.silence}) before the
     # block runs, so test output never reaches the user. Stderr stays open.
     #
+    # With `channel: true` (a `--matrix` run) the block gets the write end of a
+    # pipe for {KillChannel} lines. The parent reads it while it waits, so a
+    # child with more than a pipe buffer to say never blocks, and attaches the
+    # lines to the Result as {Kills}. The exit status still decides the verdict,
+    # with one addition: a child that hits the timeout after a test already
+    # killed the mutant is `killed`, its row marked incomplete.
+    #
     # @param timeout [Integer] timeout in seconds.
+    # @param channel [Boolean] open a {KillChannel} pipe for the block.
+    # @yieldparam channel [IO, nil] the pipe's write end, or nil without `channel`.
     # @yieldreturn [Integer] child exit status.
     # @return [Mutineer::Result] result from the child process.
-    def self.run(timeout: DEFAULT_TIMEOUT)
+    def self.run(timeout: DEFAULT_TIMEOUT, channel: false)
+      rd, wr = IO.pipe if channel
+      wr&.sync = true
       pid = fork do
+        rd&.close
         # Own process group so a timeout kill can reap grandchildren (match
         # daemon/external backends). Best-effort: if setpgid fails, kill the pid.
         Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
         code = 0
         begin
           ChildStdout.silence
-          result = yield
+          result = yield(wr)
           code = result.is_a?(Integer) ? result : 0
         rescue SystemExit => e
           code = e.status
@@ -57,13 +73,17 @@ module Mutineer
         exit!(code)
       end
 
+      wr&.close
+      buffer = +"" if rd
+      reading = !rd.nil?
+
       # Single-threaded deadline poll: we are the ONLY caller of waitpid on this
       # pid, so we never reap-then-kill. SIGKILL the process group only after
       # WNOHANG shows the child is still alive past the deadline.
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
       loop do
         reaped, status = Process.waitpid2(pid, Process::WNOHANG)
-        return decode(status) if reaped
+        return finish(decode(status), rd, buffer, finished: true) if reaped
 
         if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
           begin
@@ -74,14 +94,59 @@ module Mutineer
           begin
             _reaped, status = Process.waitpid2(pid)
             # Child may have finished cleanly between WNOHANG and kill; honor it.
-            return decode(status) if status && status.exited? && !status.signaled?
+            return finish(decode(status), rd, buffer, finished: true) if status && status.exited? && !status.signaled?
           rescue Errno::ECHILD
             # already reaped
           end
-          return Result.timeout
+          return finish(Result.timeout, rd, buffer, finished: false)
         end
-        sleep 0.005
+        if reading
+          IO.select([rd], nil, nil, POLL_INTERVAL)
+          reading = drain(rd, buffer)
+        else
+          sleep POLL_INTERVAL
+        end
       end
+    ensure
+      rd&.close
+    end
+
+    # Reads what the channel holds now, without blocking.
+    #
+    # @api private
+    # @param rd [IO] the channel's read end.
+    # @param buffer [String] bytes read so far; appended to.
+    # @return [Boolean] false once the channel is at end of file.
+    def self.drain(rd, buffer)
+      loop do
+        chunk = rd.read_nonblock(65_536, exception: false)
+        return true if chunk == :wait_readable
+        return false if chunk.nil?
+
+        buffer << chunk
+      end
+    end
+
+    # The Result to return. Without a channel it is `result` itself. With one,
+    # the rest of the channel is read, and the Result carries the {Kills} it
+    # names.
+    #
+    # @api private
+    # @param result [Mutineer::Result] the verdict from the exit status or the timeout.
+    # @param rd [IO, nil] the channel's read end.
+    # @param buffer [String, nil] bytes read so far.
+    # @param finished [Boolean] the child ended before the timeout.
+    # @return [Mutineer::Result]
+    def self.finish(result, rd, buffer, finished:)
+      return result unless rd
+
+      drain(rd, buffer)
+      killed_by, ran = KillChannel.parse(buffer)
+      # The stop-mode run with the same seed would have stopped at this
+      # failure, so the timeout came after the mutant was already killed.
+      result = Result.killed if result.timeout? && killed_by.any?
+      agrees = result.killed? ? killed_by.any? : result.survived? && killed_by.empty?
+      result.with(kills: Kills.new(killed_by: killed_by, ran: ran, complete: finished && agrees))
     end
 
     # Strategy 7a (default): write the whole mutated file and `load` it, which

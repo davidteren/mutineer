@@ -140,4 +140,90 @@ class IsolationTest < Minitest::Test
       assert_equal File.join(File.realpath(dir), "lib"), File.dirname($loaded_from)
     end
   end
+
+  # --- the --matrix channel ------------------------------------------------
+  # With channel: true the block gets a pipe for KillChannel lines, and the
+  # Result carries them as Kills. The exit status still decides the verdict.
+
+  def send_kill(io, name) = Mutineer::KillChannel.write(io, Mutineer::KillChannel::KILL, "/p/t_test.rb", name)
+  def send_pass(io, name) = Mutineer::KillChannel.write(io, Mutineer::KillChannel::PASS, "/p/t_test.rb", name)
+
+  def test_without_a_channel_the_block_gets_nil_and_the_result_no_row
+    result = Mutineer::Isolation.run { |channel| channel.nil? ? 0 : 1 }
+    assert_predicate result, :survived?
+    assert_nil result.kills
+  end
+
+  def test_channel_lines_become_the_row
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_kill(io, "T#test_a")
+      send_pass(io, "T#test_b")
+      1
+    end
+    assert_predicate result, :killed?
+    assert_equal [["/p/t_test.rb", "T#test_a"]], result.kills.killed_by
+    assert_equal [["/p/t_test.rb", "T#test_a"], ["/p/t_test.rb", "T#test_b"]], result.kills.ran
+    assert result.kills.complete
+  end
+
+  def test_a_survivor_row_is_complete
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_pass(io, "T#test_a")
+      0
+    end
+    assert_predicate result, :survived?
+    assert result.kills.complete
+  end
+
+  # The parent reads while it waits; a child with more to say than a pipe
+  # buffer would otherwise block on write and be scored a timeout.
+  def test_more_than_a_pipe_buffer_of_lines_does_not_stall_the_child
+    result = Mutineer::Isolation.run(timeout: 5, channel: true) do |io|
+      5_000.times { |i| send_kill(io, "T#test_#{i.to_s.rjust(40, "0")}") }
+      1
+    end
+    assert_predicate result, :killed?
+    assert_equal 5_000, result.kills.killed_by.size
+  end
+
+  # The stop-mode run with the same seed stops at that first failure, so a
+  # timeout after a streamed kill keeps the score's `killed`.
+  def test_a_timeout_after_a_kill_is_killed_and_incomplete
+    result = Mutineer::Isolation.run(timeout: 1, channel: true) do |io|
+      send_kill(io, "T#test_a")
+      sleep 30
+    end
+    assert_predicate result, :killed?
+    assert_equal [["/p/t_test.rb", "T#test_a"]], result.kills.killed_by
+    refute result.kills.complete
+  end
+
+  def test_a_timeout_without_a_kill_stays_a_timeout
+    result = Mutineer::Isolation.run(timeout: 1, channel: true) do |io|
+      send_pass(io, "T#test_a")
+      sleep 30
+    end
+    assert_predicate result, :timeout?
+    assert_equal [["/p/t_test.rb", "T#test_a"]], result.kills.ran
+    refute result.kills.complete
+  end
+
+  def test_a_kill_with_no_named_test_is_incomplete
+    result = Mutineer::Isolation.run(channel: true) { 1 }
+    assert_predicate result, :killed?
+    assert_empty result.kills.killed_by
+    refute result.kills.complete
+  end
+
+  def test_an_errored_child_keeps_its_verdict_and_an_incomplete_row
+    capture_subprocess_io do
+      result = Mutineer::Isolation.run(channel: true) do |io|
+        send_kill(io, "T#test_a")
+        raise "boom"
+      end
+      assert_predicate result, :error?
+      refute result.kills.complete
+    end
+  end
+
 end

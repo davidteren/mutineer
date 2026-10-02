@@ -197,4 +197,81 @@ class TestRunnersMinitestTest < Minitest::Test
   ensure
     rd&.close
   end
+
+  # --- record_to (--matrix) -------------------------------------------------
+  # A matrix run never stops: every test runs, and each outcome goes to the
+  # KillChannel pipe. Only the outer reporter's results count.
+
+  # Runs `file` with a channel. Returns [exit status, marker written?, [killed, ran]].
+  def record_fixture(file, first: "fail")
+    rd, wr = IO.pipe
+    code, marker = with_fixture_env(first) do
+      rd.close
+      Mutineer::TestRunners::Minitest.run([file], record_to: wr)
+    end
+    wr.close
+    [code, marker, Mutineer::KillChannel.parse(rd.read)]
+  ensure
+    [rd, wr].each { |io| io.close unless io.closed? }
+  end
+
+  def names(tests) = tests.map(&:last)
+
+  def test_record_to_runs_every_test_and_names_the_failure
+    code, marker, (killed, ran) = record_fixture(STOP, first: "fail")
+    assert_equal [1, true], [code, marker]
+    assert_equal [[STOP, "StopAtFirstFailureFixture#test_a_first"]], killed
+    assert_equal %w[StopAtFirstFailureFixture#test_a_first StopAtFirstFailureFixture#test_b_writes_marker], names(ran)
+  end
+
+  def test_record_to_counts_an_error_as_a_kill
+    _, marker, (killed, _ran) = record_fixture(STOP, first: "error")
+    assert marker
+    assert_equal ["StopAtFirstFailureFixture#test_a_first"], names(killed)
+  end
+
+  def test_record_to_sends_nothing_for_a_skip
+    code, _, (killed, ran) = record_fixture(STOP, first: "skip")
+    assert_equal 0, code
+    assert_empty killed
+    assert_equal ["StopAtFirstFailureFixture#test_b_writes_marker"], names(ran)
+  end
+
+  def test_record_to_ignores_a_failure_on_a_nested_reporter
+    code, _, (killed, ran) = record_fixture(REPORTER)
+    assert_equal 0, code
+    assert_empty killed
+    assert_equal 2, ran.size
+  end
+
+  def test_record_to_ignores_a_nested_suite_run
+    code, _, (killed, ran) = record_fixture(NESTED)
+    assert_equal 0, code
+    assert_empty killed
+    refute_includes names(ran), "StopAtFirstFailureInnerFixture#test_fails"
+  end
+
+  def test_record_to_names_a_failure_in_another_fiber
+    code, marker, (killed, _ran) = record_fixture(FIBER)
+    assert_equal [1, true], [code, marker]
+    assert_equal ["StopAtFirstFailureFiberFixture#test_a_fails"], names(killed)
+  end
+
+  def test_record_to_pins_the_seed
+    expected = Mutineer::MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED.to_s
+    rd, wr = IO.pipe
+    assert_equal expected, seed_of_run(nil, record_to: wr)
+  ensure
+    [rd, wr].each { |io| io.close unless io.closed? }
+  end
+
+  def test_record_to_and_stop_at_first_failure_cannot_be_combined
+    code = fork_status do
+      Mutineer::TestRunners::Minitest.run([STOP], stop_at_first_failure: true, record_to: $stderr)
+    rescue ArgumentError
+      7
+    end
+    assert_equal 7, code
+  end
+
 end

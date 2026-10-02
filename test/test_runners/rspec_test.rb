@@ -135,4 +135,64 @@ class TestRunnersRSpecTest < Minitest::Test
     assert_equal 1, r2, "failing spec should return 1"
     assert_equal 1, c2, "second run must NOT accumulate the first run's example"
   end
+
+  # --- record_to (--matrix) -------------------------------------------------
+  # A matrix run never stops: every example runs, and each outcome goes to the
+  # KillChannel pipe. A test's identity is its spec file and full description.
+
+  # Runs the stop fixture with a channel, from `dir` when given (to pick up a
+  # project .rspec). Returns [exit status, marker written?, [killed, ran]].
+  def record_stop_fixture(first, dir: nil)
+    rd, wr = IO.pipe
+    Dir.mktmpdir("mutineer-record") do |tmp|
+      marker = File.join(tmp, "marker")
+      code, = in_fork do
+        rd.close
+        Dir.chdir(dir) if dir
+        ENV["MUTINEER_FIXTURE_FIRST"] = first
+        ENV["MUTINEER_FIXTURE_MARKER"] = marker
+        Mutineer::TestRunners::RSpec.run([STOP], record_to: wr)
+      end
+      wr.close
+      [code, File.exist?(marker), Mutineer::KillChannel.parse(rd.read)]
+    end
+  ensure
+    [rd, wr].each { |io| io.close unless io.closed? }
+  end
+
+  FIRST  = "stop at first failure fixture runs first"
+  MARKER = "stop at first failure fixture writes the marker"
+
+  def test_record_to_runs_every_example_and_names_the_failure
+    code, marker, (killed, ran) = record_stop_fixture("fail")
+    assert_equal [1, true], [code, marker]
+    assert_equal [[STOP, FIRST]], killed
+    assert_equal [[STOP, FIRST], [STOP, MARKER]], ran
+  end
+
+  def test_record_to_sends_nothing_for_a_pending_example
+    code, _, (killed, ran) = record_stop_fixture("pending")
+    assert_equal 0, code
+    assert_empty killed
+    assert_equal [[STOP, MARKER]], ran
+  end
+
+  def test_record_to_runs_every_example_when_the_project_rspec_sets_fail_fast
+    Dir.mktmpdir("mutineer-dotrspec") do |dir|
+      File.write(File.join(dir, ".rspec"), "--fail-fast\n")
+      code, marker, (killed, _ran) = record_stop_fixture("fail", dir: dir)
+      assert_equal [1, true], [code, marker]
+      assert_equal [[STOP, FIRST]], killed
+    end
+  end
+
+  def test_record_to_and_stop_at_first_failure_cannot_be_combined
+    code, = in_fork do
+      Mutineer::TestRunners::RSpec.run([STOP], stop_at_first_failure: true, record_to: $stderr)
+    rescue ArgumentError
+      7
+    end
+    assert_equal 7, code
+  end
+
 end

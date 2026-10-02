@@ -30,7 +30,23 @@ module Mutineer
   # them afterwards via `result.with(subject:, mutation:, id:)` so the Reporter
   # can render survivor diffs and emit the id. `id` is the content-based
   # MutantId (it includes the project-relative file path).
-  Result = Data.define(:status, :details, :subject, :mutation, :id) do
+  #
+  # `kills` is nil except in a `--matrix` run, where a mutant that was forked
+  # carries the {Kills} its child reported. It annotates the verdict and never
+  # decides it.
+  Result = Data.define(:status, :details, :subject, :mutation, :id, :kills) do
+    # Every field but `status` defaults to nil.
+    #
+    # @param status [Symbol] the outcome.
+    # @param details [String, nil] error or skip details.
+    # @param subject [Mutineer::Subject, nil] the mutated subject.
+    # @param mutation [Mutineer::Mutation, nil] the mutation.
+    # @param id [String, nil] the stable mutant id.
+    # @param kills [Mutineer::Kills, nil] the matrix row of a `--matrix` run.
+    def initialize(status:, details: nil, subject: nil, mutation: nil, id: nil, kills: nil)
+      super
+    end
+
     # Builds a killed result.
     #
     # @return [Mutineer::Result] killed result.
@@ -91,6 +107,17 @@ module Mutineer
     def ignored?      = status == :ignored
 
   end
+
+  # One mutant's row of the kill matrix (`--matrix`): which tests killed it and
+  # which ran against it. A test is a `[file, name]` pair: the project-relative
+  # file that defines it and its name (`CalculatorTest#test_add`, or an RSpec
+  # example's full description). Both lists are sorted and unique, and `ran`
+  # includes the killers.
+  #
+  # `complete` is true when every covering test ran and the row agrees with the
+  # verdict. It is false when the child timed out or errored before the run
+  # ended, or when it exited `killed` without naming a test that failed.
+  Kills = Data.define(:killed_by, :ran, :complete)
 
   # Aggregates a flat list of Results into counts, the mutation score, and the
   # surviving-mutant list. The score denominator is killed + survived ONLY:
