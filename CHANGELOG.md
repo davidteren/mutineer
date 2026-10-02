@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **A mutant on a later line of a multi-line statement runs its tests**
+  instead of being reported as `no_coverage`. Ruby counts only the first line
+  of a statement, so the runner now uses the tests that ran the statement that
+  holds the mutation.
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not
   singleton methods (#144).

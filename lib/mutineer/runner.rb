@@ -4,6 +4,7 @@ require "pathname"
 require_relative "parser"
 require_relative "project"
 require_relative "result"
+require_relative "statement_lines"
 require_relative "isolation"
 require_relative "minitest_integration"
 require_relative "test_runners"
@@ -335,6 +336,11 @@ module Mutineer
     def self.coverage_selection(source_file, mutation, subject, source, coverage_map)
       line   = source.byteslice(0, mutation.start_offset).count("\n") + 1
       chosen = coverage_map.tests_for(source_file, line)
+      if chosen.empty? && subject
+        # A later line of a multi-line statement has no count: Ruby counts the first line only.
+        lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
+        chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq if lines
+      end
       if chosen.empty?
         # Method BODY range, not the whole def: the def/end lines are "covered" at
         # class-load even when the body never runs (body_loc is the statements' span).
