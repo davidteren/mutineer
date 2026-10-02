@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **`--matrix` reports which tests kill each mutant** (`matrix: true` in
+  `.mutineer.yml`). Each mutant runs every test in its covering files instead
+  of stopping at the first failure, and the child sends each test's outcome to
+  the parent as it is recorded. The report names blind tests, which ran and
+  killed no mutant, and redundant tests, whose every kill another test also
+  makes. Redundancy is judged one test at a time, so delete redundant tests
+  one at a time. The human and HTML reports list both; the JSON report moves to
+  schema `1.5` with a `matrix` block that appears only with the flag. Verdicts,
+  the score and the exit code do not change: a mutant that reaches the timeout
+  after a test already failed stays `killed`, with its row marked incomplete.
+  Minitest and RSpec are supported, on the in-process backend only;
+  `--daemon`, `--test-command` and `--fail-fast` exit 2 with it.
+
 ### Fixed
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not

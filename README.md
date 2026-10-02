@@ -67,6 +67,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--dry-run` | List candidate mutations without executing (honors suppression) |
 | `--fail-fast` | Stop at the first surviving mutant |
+| `--matrix` | Run every covering test for each mutant and report which tests kill it, with the blind and redundant tests. In-process only; exits 2 with `--daemon`, `--test-command` or `--fail-fast`. See [Kill matrix](https://github.com/davidteren/mutineer#kill-matrix) |
 | `--list-operators` | List available operators (default vs optional) and exit |
 | `--version`, `--help` | Print version / usage and exit |
 
@@ -270,6 +271,52 @@ Ids are relative to the directory you run mutineer from. mutineer finds
 (other than your home directory), it warns that the ignore ids will not match
 and tells you which directory to run from.
 
+## Kill matrix
+
+`--matrix` reports which tests kill each mutant, and from that, which tests
+add nothing to the suite.
+
+```sh
+mutineer run lib/calculator.rb --test test/calculator_test.rb --matrix
+```
+
+For each mutant, Mutineer runs every test in its covering files instead of
+stopping at the first failure, and records which tests failed. Coverage is
+recorded per test file, so that set also holds tests that never reach the
+mutated line; they pass and count as having run. The report names two kinds
+of test:
+
+- **Blind:** the test ran against at least one mutant and killed none. A test
+  that kills nothing proves nothing about the code it runs, since it would
+  still pass with that code wrong. Give it an assertion that can fail, or
+  delete it.
+- **Redundant:** every mutant the test kills, another test kills too. That
+  makes it a candidate for deletion, one test at a time: two redundant tests
+  can be the only killers of one mutant, so re-run after each deletion.
+
+The answers cover this run's mutants only. A test of code outside the sources
+you passed kills nothing here, so mutate the code a test exercises before you
+call the test blind.
+
+The matrix changes no verdict, score or exit code. The human and HTML reports
+list the blind and redundant tests, and `--format json` adds a `matrix` block
+with every test and each mutant's killers (see the
+[JSON schema](https://davidteren.github.io/mutineer/json-schema.html#matrix)).
+A test is its file and its name: `CalculatorTest#test_add` under Minitest, or
+the example's full description under RSpec.
+
+Each mutant runs its whole covering set, so every mutant costs what a survivor
+costs. In 1.4, stopping at the first failure halved a full run of rack's
+`lib/rack/utils.rb`; expect a matrix run to take about twice as long as a
+normal one. A mutant that reaches the per-mutant time limit (10 seconds) after
+a test already failed stays `killed` with its row marked incomplete, and the
+report warns that a blind test may have killed it.
+[#183](https://github.com/davidteren/mutineer/pull/183) adds `--timeout`, which
+raises the limit and gives complete rows.
+
+`--matrix` runs on the in-process backend only. It exits 2 with `--daemon`,
+`--test-command` or `--fail-fast`.
+
 ## CI gating
 
 Store a JSON run as a baseline, then fail the build only when a PR makes things
@@ -357,6 +404,7 @@ config file accepts these keys:
 | `fail_fast` | `true` or `false`; stops scheduling after the first survivor |
 | `test_command` | The external-runtime suite command, including `%{files}`; see [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34) |
 | `daemon` | `true` or `false`; uses the persistent app daemon with worker DB isolation |
+| `matrix` | `true` or `false`; runs every covering test for each mutant and adds the kill matrix to the report |
 
 In 1.4, invalid values for known scalar keys exit 2 with a message naming the
 file and key. The list keys (`operators`, `require`, `ignore`) are not checked

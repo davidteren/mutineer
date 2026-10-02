@@ -19,6 +19,7 @@ module DocsContract
     "`no_verdict[]` (array of object)" => "no-verdict",
     "`ignored[]` (array of object)" => "ignored",
     "`per_source[]` (array of object)" => "per-source",
+    "`matrix` (object, only with `--matrix`)" => "matrix",
     "`baseline` (object, only with `--baseline`)" => "baseline",
     "Exit codes" => "exit-codes"
   }.freeze
@@ -27,6 +28,7 @@ module DocsContract
   TABLE_ARIA = {
     "summary" => "Summary fields",
     "survivors" => "Survivor fields",
+    "matrix" => "Matrix fields",
     "baseline" => "Baseline fields",
     "exit-codes" => "Exit codes"
   }.freeze
@@ -41,6 +43,7 @@ module DocsContract
     "no-verdict" => "no_verdict[]",
     "ignored" => "ignored[]",
     "per-source" => "per_source[]",
+    "matrix" => "matrix",
     "baseline" => "baseline",
     "exit-codes" => "Exit codes"
   }.freeze
