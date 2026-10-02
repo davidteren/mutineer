@@ -49,6 +49,7 @@ module Mutineer
                              a mutant over it is a timeout, excluded from the score
         --capture-timeout SECONDS  Time limit for each coverage-capture subprocess
                              and the clean check (default: 120)
+        --cache-dir DIR      Directory for the coverage cache (default: .mutineer)
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then
                              fork per mutant (Rails apps; requires --test)
@@ -109,6 +110,7 @@ module Mutineer
         o.on("--jobs N") { |v| opts[:jobs] = Config.parse(:jobs, v) }
         o.on("--timeout SECONDS") { |v| opts[:timeout] = Config.parse(:timeout, v) }
         o.on("--capture-timeout SECONDS") { |v| opts[:capture_timeout] = Config.parse(:capture_timeout, v) }
+        o.on("--cache-dir DIR") { |v| opts[:cache_dir] = v }
         o.on("--strategy STRAT") { |v| opts[:strategy] = Config.parse(:strategy, v) }
         o.on("--framework NAME") { |v| opts[:framework] = Config.parse(:framework, v) }
         o.on("--boot FILE") { |v| opts[:boot] = v }

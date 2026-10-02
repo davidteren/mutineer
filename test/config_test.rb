@@ -432,7 +432,8 @@ class ConfigTest < Minitest::Test
     test_command: ["a %{files}", "b %{files}"],
     daemon: [false, true],
     timeout: [30, 60],
-    capture_timeout: [300, 600]
+    capture_timeout: [300, 600],
+    cache_dir: ["a", "b"]
   }.freeze
 
   def test_every_option_with_a_yaml_key_has_a_layer_sample

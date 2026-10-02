@@ -44,6 +44,7 @@ module Mutineer
     ConfigOption.new(field: :timeout, type: :positive_int, yaml_key: "timeout", flag: "--timeout"),
     ConfigOption.new(field: :capture_timeout, type: :positive_int, yaml_key: "capture_timeout",
                      flag: "--capture-timeout"),
+    ConfigOption.new(field: :cache_dir, type: :string, yaml_key: "cache_dir", flag: "--cache-dir"),
     ConfigOption.new(field: :format, type: :enum, flag: "--format", values: %w[human json html]),
     ConfigOption.new(field: :strategy, type: :enum, flag: "--strategy", values: %w[reload redefine],
                      aliases: STRATEGY_ALIASES),

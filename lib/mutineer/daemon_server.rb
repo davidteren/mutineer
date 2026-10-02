@@ -149,7 +149,7 @@ module Mutineer
         cmap = CoverageMap.new(
           source_paths: Array(@cfg["sources"]), test_paths: Array(@cfg["tests"]),
           load_paths: Array(@cfg["load_paths"]), project_root: root,
-          boot_path: @cfg["boot"], framework: @framework, cache_dir: File.join(root, ".mutineer")
+          boot_path: @cfg["boot"], framework: @framework, cache_dir: @cfg["cache_dir"] || File.join(root, ".mutineer")
         ).build_via_fork(after_fork: coverage_after_fork)
         { "map" => cmap.map, "failed_test_files" => cmap.failed_test_files,
           "failed_clean_tests" => cmap.failed_clean_tests }

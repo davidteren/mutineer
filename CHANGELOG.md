@@ -15,6 +15,10 @@ All notable changes to this project are documented here. The format is based on
   stopped as not green, and a mutant on a line many tests cover took longer
   than 10s and was scored `timeout`. `--daemon` and `--test-command` keep
   their own limits.
+- **`--cache-dir DIR`**, also `cache_dir:` in `.mutineer.yml`, sets where the
+  coverage cache is written (default `.mutineer`, as before). Two runs from the
+  same project root shared `.mutineer/coverage.json` and could overwrite each
+  other's map; each can now have its own directory. `--daemon` uses it too.
 - **The README states how timeouts affect the score** (#62): a timed-out
   mutant is left out of the score, and counts as a mutant with no verdict
   under `--threshold`.
