@@ -41,6 +41,9 @@ module Mutineer
     ConfigOption.new(field: :fail_fast, type: :bool, yaml_key: "fail_fast", flag: "--fail-fast"),
     ConfigOption.new(field: :test_command, type: :string, yaml_key: "test_command", flag: "--test-command"),
     ConfigOption.new(field: :daemon, type: :bool, yaml_key: "daemon", flag: "--daemon"),
+    ConfigOption.new(field: :timeout, type: :positive_int, yaml_key: "timeout", flag: "--timeout"),
+    ConfigOption.new(field: :capture_timeout, type: :positive_int, yaml_key: "capture_timeout",
+                     flag: "--capture-timeout"),
     ConfigOption.new(field: :format, type: :enum, flag: "--format", values: %w[human json html]),
     ConfigOption.new(field: :strategy, type: :enum, flag: "--strategy", values: %w[reload redefine],
                      aliases: STRATEGY_ALIASES),
@@ -70,7 +73,7 @@ module Mutineer
     # :daemon is user-facing (--daemon flag + KNOWN_KEYS + boolean coerce).
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
-    :daemon, :daemon_timeout,
+    :daemon, :daemon_timeout, :timeout, :capture_timeout,
     keyword_init: true
   ) do
     # Config file name.

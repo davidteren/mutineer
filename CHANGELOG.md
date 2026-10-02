@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **`--timeout SECONDS` and `--capture-timeout SECONDS`**, also `timeout:` and
+  `capture_timeout:` in `.mutineer.yml`. They set the in-process per-mutant
+  time limit (default 10s) and the coverage-capture time limit (default 120s),
+  which were fixed. On a large Rails suite the clean run of the unmutated
+  tests took longer than 120s, so every run that offered the whole suite
+  stopped as not green, and a mutant on a line many tests cover took longer
+  than 10s and was scored `timeout`. `--daemon` and `--test-command` keep
+  their own limits.
+- **The README states how timeouts affect the score** (#62): a timed-out
+  mutant is left out of the score, and counts as a mutant with no verdict
+  under `--threshold`.
+
+### Changed
+- **The human report has a `Timeout:` row**, and the score line lists timeouts
+  apart from errored mutants. Before, the `Errored:` row and the score line
+  added the two together, while the JSON report kept them apart.
+
 ### Fixed
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not

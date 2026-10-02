@@ -95,7 +95,8 @@ module Mutineer
           cache_dir: config.cache_dir, project_root: config.project_root,
           load_paths: config.load_paths, framework: config.framework,
           boot_path: File.expand_path(config.boot, config.project_root),
-          verbose: config.verbose
+          verbose: config.verbose,
+          capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_via_fork(after_fork: (config.rails ? -> { reconnect_active_record } : nil))
       else
         # As in boot mode, and with lib first as `rake test` does.
@@ -107,7 +108,8 @@ module Mutineer
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: config.cache_dir, project_root: config.project_root,
-          load_paths: config.load_paths + rel_roots, framework: config.framework
+          load_paths: config.load_paths + rel_roots, framework: config.framework,
+          capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_or_load
       end
       abort_if_unclean!(coverage_map)
@@ -138,7 +140,8 @@ module Mutineer
           bare = WorkerPool.new(jobs_n).run(jobs, stop_when: stop_when,
                                                   on_result: ->(_r) { progress.tick }) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
-                subject: subject, strategy: strategy, rails: config.rails, framework: framework)
+                subject: subject, strategy: strategy, rails: config.rails, framework: framework,
+                timeout: config.timeout || Isolation::DEFAULT_TIMEOUT)
           end
           # The bare Results carry only status (Subjects hold live AST nodes that
           # do not marshal); reattach subject+mutation+id in the parent, in order.
