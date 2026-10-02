@@ -7,6 +7,15 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- **A method in a `Data.define do ... end` or `Struct.new do ... end` block
+  belongs to the constant the block's class is assigned to.** In
+  `class App; Argo = Data.define(:url) do def self.load = ...; end; end` the
+  subject is now `App::Argo.load`, not `App.load`; at the top level it was
+  `.load`, with no owner. Under `--strategy redefine` (the `--rails` default)
+  the mutated method was loaded into the wrong class, so the real method never
+  changed and every such mutant falsely survived. Redefine now re-opens the
+  assigned class inside the same nesting as the source. Mutant ids for these
+  subjects change: regenerate `ignore:` entries and baselines that name them.
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not
   singleton methods (#144).
