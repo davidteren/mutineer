@@ -9,9 +9,9 @@ require "tmpdir"
 class RSpecIntegrationTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
-  def run_mutineer(tests:, sources: ["test/fixtures/rspec/calculator.rb"])
+  def run_mutineer(tests:, sources: ["test/fixtures/rspec/calculator.rb"], matrix: false)
     config = Mutineer::Config.new(
-      sources: sources, tests: tests,
+      sources: sources, tests: tests, matrix: matrix,
       framework: "rspec", operators: ["arithmetic"],
       cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
     )
@@ -93,4 +93,20 @@ class RSpecIntegrationTest < Minitest::Test
       assert_match(/fails unrelated/, stderr)
     end
   end
+
+  # The RSpec mirror of the kill-matrix oracle: the weak "adds" example kills
+  # nothing, both "multiplies" examples kill the multiply mutant, and only the
+  # strong "adds" kills the add mutant.
+  def test_kill_matrix_names_blind_and_redundant_examples
+    weak = "test/fixtures/rspec/calculator_weak_spec.rb"
+    strong = "test/fixtures/rspec/calculator_strong_spec.rb"
+    result = run_mutineer(tests: [weak, strong], matrix: true)
+    matrix = Mutineer::KillMatrix.new(result.results)
+
+    assert_equal 2, result.killed_count
+    assert_predicate matrix, :complete?
+    assert_equal [[weak, "RSpecCalculator adds"]], matrix.blind
+    assert_equal [[strong, "RSpecCalculator multiplies"], [weak, "RSpecCalculator multiplies"]], matrix.redundant
+  end
+
 end

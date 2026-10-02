@@ -11,9 +11,9 @@ require "fileutils"
 class IntegrationTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
-  def run_mutineer(sources:, tests:, operators: nil)
+  def run_mutineer(sources:, tests:, operators: nil, matrix: false)
     config = Mutineer::Config.new(
-      sources: sources, tests: tests, operators: operators,
+      sources: sources, tests: tests, operators: operators, matrix: matrix,
       cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
     )
     aggregate, = Mutineer::Runner.execute(config)
@@ -285,4 +285,47 @@ class IntegrationTest < Minitest::Test
     assert_equal 0, result.survived_count
     assert_equal 1, result.killed_count
   end
+
+  # --- kill matrix (--matrix) oracle -----------------------------------------
+  # calculator.rb against the weak and the strong suite together. The weak
+  # add/subtract tests use a 0 operand, so they kill nothing (blind). Both
+  # suites kill multiply, divide, modulo and power, so each of those eight
+  # tests is redundant on its own. Only the strong add/subtract tests kill the
+  # add and subtract mutants.
+  CALC_TESTS = ["test/fixtures/calculator_weak_test.rb", "test/fixtures/calculator_strong_test.rb"].freeze
+
+  def weak(name) = ["test/fixtures/calculator_weak_test.rb", "CalculatorWeakTest##{name}"]
+  def strong(name) = ["test/fixtures/calculator_strong_test.rb", "CalculatorStrongTest##{name}"]
+
+  def test_kill_matrix_oracle
+    result = run_mutineer(sources: ["test/fixtures/calculator.rb"], tests: CALC_TESTS,
+                          operators: ["arithmetic"], matrix: true)
+    matrix = Mutineer::KillMatrix.new(result.results)
+
+    assert_equal 6, matrix.rows.size
+    assert_predicate matrix, :complete?
+    assert_equal 12, matrix.tests.size
+    assert_equal [weak("test_add"), weak("test_subtract")], matrix.blind
+    expected = %w[test_divide test_modulo test_multiply test_power]
+    assert_equal (expected.map { |n| strong(n) } + expected.map { |n| weak(n) }).sort, matrix.redundant
+
+    add = result.results.find { |r| r.subject.name == :add }
+    assert_equal [strong("test_add")], add.kills.killed_by
+    assert_equal 12, add.kills.ran.size
+  end
+
+  # The matrix annotates verdicts and never decides them: every mutant gets the
+  # same status with and without --matrix, so the score is the same.
+  def test_matrix_leaves_every_verdict_unchanged
+    [["test/fixtures/calculator_weak_test.rb"], CALC_TESTS].each do |tests|
+      plain = run_mutineer(sources: ["test/fixtures/calculator.rb"], tests: tests)
+      matrix = run_mutineer(sources: ["test/fixtures/calculator.rb"], tests: tests, matrix: true)
+
+      assert_equal plain.results.to_h { |r| [r.id, r.status] }, matrix.results.to_h { |r| [r.id, r.status] }
+      assert_equal plain.mutation_score, matrix.mutation_score
+      assert(plain.results.none?(&:kills))
+      assert(matrix.results.select { |r| r.killed? || r.survived? }.all?(&:kills))
+    end
+  end
+
 end

@@ -86,4 +86,30 @@ class HtmlReporterTest < Minitest::Test
       assert File.read(path).start_with?("<!DOCTYPE html")
     end
   end
+
+  # --- kill matrix section (--matrix) ---------------------------------------
+
+  def test_matrix_section_lists_blind_and_redundant_tests_escaped
+    blind = ["test/pricing_test.rb", "PricingTest#test_<b>"]
+    killer = ["test/pricing_test.rb", "PricingTest#test_kill"]
+    result = survivor.with(status: :killed,
+                           kills: Mutineer::Kills.new(killed_by: [killer], ran: [blind, killer], complete: true))
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([result]), { FILE => SRC },
+                           matrix: Mutineer::KillMatrix.new([result]))
+                      .report(out: out, err: StringIO.new, format: "html")
+    html = out.string
+
+    assert_includes html, "<h2>Kill matrix</h2>"
+    assert_includes html, "2 tests ran against 1 mutants"
+    assert_includes html, "<h3>Blind tests (1)</h3>"
+    assert_includes html, "PricingTest#test_&lt;b&gt;"
+    refute_includes html, "test_<b>"
+    assert_includes html, "<h3>Redundant tests (0)</h3>\n<p>None.</p>"
+  end
+
+  def test_no_matrix_section_without_the_flag
+    refute_includes render([survivor]), "Kill matrix"
+  end
+
 end

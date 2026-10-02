@@ -39,6 +39,7 @@ module Mutineer
     ConfigOption.new(field: :ignore, type: :string_list, yaml_key: "ignore"),
     ConfigOption.new(field: :baseline, type: :string, yaml_key: "baseline", flag: "--baseline"),
     ConfigOption.new(field: :fail_fast, type: :bool, yaml_key: "fail_fast", flag: "--fail-fast"),
+    ConfigOption.new(field: :matrix, type: :bool, yaml_key: "matrix", flag: "--matrix"),
     ConfigOption.new(field: :test_command, type: :string, yaml_key: "test_command", flag: "--test-command"),
     ConfigOption.new(field: :daemon, type: :bool, yaml_key: "daemon", flag: "--daemon"),
     ConfigOption.new(field: :format, type: :enum, flag: "--format", values: %w[human json html]),
@@ -58,6 +59,9 @@ module Mutineer
   # Config loading and the CLI > file > default precedence merge live here; each
   # layer holds only the keys the user wrote, and Config#explicit? reports them.
   #
+  # `matrix` (--matrix) runs every covering test for each mutant and reports
+  # which tests kill it (see KillMatrix); it never changes a verdict.
+  #
   # Boot mode adds: boot (a file to require ONCE in the parent so the app env,
   # e.g. Rails, is booted before forking; sources are then NOT manually required)
   # and rails (sugar: defaults boot to config/environment, prefers redefine without
@@ -70,7 +74,7 @@ module Mutineer
     # :daemon is user-facing (--daemon flag + KNOWN_KEYS + boolean coerce).
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
-    :daemon, :daemon_timeout,
+    :daemon, :daemon_timeout, :matrix,
     keyword_init: true
   ) do
     # Config file name.
@@ -101,6 +105,7 @@ module Mutineer
       self.baseline_epsilon ||= 0.0
       self.fail_fast     = false if fail_fast.nil?
       self.daemon        = false if daemon.nil?
+      self.matrix        = false if matrix.nil?
     end
 
     # True when the user wrote `key`, on the command line or in the config

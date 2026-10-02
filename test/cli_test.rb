@@ -208,6 +208,55 @@ class CliTest < Minitest::Test
     assert_includes err, "cannot be combined with --boot/--rails"
   end
 
+  # --matrix runs in-process and needs every covering test, so each conflict is
+  # a usage error named before any other check runs.
+  def test_matrix_with_daemon_exits_two
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--matrix", "--daemon", "--rails")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--matrix cannot be combined with --daemon"
+  end
+
+  def test_matrix_with_test_command_exits_two
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--matrix", "--test-command", "rake test %{files}")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--matrix cannot be combined with --test-command"
+    refute_includes err, "forcing --jobs 1"
+  end
+
+  def test_matrix_with_fail_fast_exits_two
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--matrix", "--fail-fast")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--matrix cannot be combined with --fail-fast"
+  end
+
+  def test_matrix_from_the_config_file_is_checked_too
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "matrix: true\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb", "--fail-fast", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "--matrix cannot be combined with --fail-fast"
+    end
+  end
+
+  def test_matrix_adds_the_json_block_and_keeps_the_exit_code
+    with_project do |proj|
+      args = ["run", "calculator.rb", "--test", "calculator_weak_test.rb", "--operators", "arithmetic",
+              "--format", "json", "--threshold", "50"]
+      plain_out, _, plain_status = mutineer(*args, chdir: proj)
+      out, _, status = mutineer(*args, "--matrix", chdir: proj)
+
+      assert_equal plain_status.exitstatus, status.exitstatus
+      plain = JSON.parse(plain_out)
+      doc = JSON.parse(out)
+      refute plain.key?("matrix")
+      assert_equal plain["summary"], doc["summary"]
+      assert_equal [{ "file" => "calculator_weak_test.rb", "name" => "CalculatorWeakTest#test_add" },
+                    { "file" => "calculator_weak_test.rb", "name" => "CalculatorWeakTest#test_subtract" }],
+                   doc.dig("matrix", "blind")
+      assert_equal 6, doc.dig("matrix", "mutants").size
+    end
+  end
+
   # R5: a missing source/test path is a clean usage error, not an ENOENT backtrace.
   def test_missing_source_path_exits_two
     _, err, status = mutineer("run", "no_such_source.rb", "--test", "no_such_test.rb")
@@ -397,7 +446,7 @@ class CliTest < Minitest::Test
                               "--format", "json", "--output", "report.json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(File.read(File.join(proj, "report.json")))
-      assert_equal "1.4", doc["schema_version"]
+      assert_equal "1.5", doc["schema_version"]
       assert_equal 100.0, doc["summary"]["score"]
     end
   end
@@ -536,7 +585,7 @@ class CliTest < Minitest::Test
       out, _, status = mutineer("run", "lib", "--format", "json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(out)
-      assert_equal "1.4", doc["schema_version"]
+      assert_equal "1.5", doc["schema_version"]
       per = doc["per_source"].sort_by { |h| h["file"] }
       assert_equal ["lib/calc.rb", "lib/greeter.rb"], per.map { |h| h["file"] }
       assert_equal 100.0, per.find { |h| h["file"] == "lib/greeter.rb" }["score"]

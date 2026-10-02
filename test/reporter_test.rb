@@ -287,4 +287,43 @@ class ReporterTest < Minitest::Test
   def reporter(results)
     Mutineer::Reporter.new(aggregate(results), { FILE => SRC })
   end
+
+  # --- kill matrix section (--matrix) ---------------------------------------
+
+  def matrix_report(results)
+    out = StringIO.new
+    Mutineer::Reporter.new(aggregate(results), { FILE => SRC }, matrix: Mutineer::KillMatrix.new(results))
+                      .report(out: out, err: StringIO.new)
+    out.string
+  end
+
+  def row(result, killed_by, ran, complete: true)
+    result.with(kills: Mutineer::Kills.new(killed_by: killed_by, ran: (ran + killed_by).uniq.sort, complete: complete))
+  end
+
+  def test_matrix_section_names_blind_and_redundant_tests
+    a = ["test/a_test.rb", "ATest#test_a"]
+    b = ["test/b_test.rb", "BTest#test_b"]
+    c = ["test/c_test.rb", "CTest#test_c"]
+    text = matrix_report([row(survivor_result.with(status: :killed), [a, b], [c])])
+
+    assert_includes text, "Kill matrix\n-----------\n3 tests ran against 1 mutants"
+    assert_includes text, "Blind tests (ran, killed no mutant): 1\n  test/c_test.rb  CTest#test_c\n"
+    assert_includes text, "Redundant tests (each mutant they kill has another killer): 2\n" \
+                          "  test/a_test.rb  ATest#test_a\n  test/b_test.rb  BTest#test_b\n"
+    assert_includes text, "Delete redundant tests one at a time"
+    refute_includes text, "stopped before every covering test ran"
+  end
+
+  def test_incomplete_matrix_says_a_blind_test_may_be_wrong
+    text = matrix_report([row(survivor_result.with(status: :timeout), [], [["t.rb", "T#test"]], complete: false)])
+    assert_includes text, "1 mutants stopped before every covering test ran (timeout or error)"
+  end
+
+  def test_no_matrix_section_without_the_flag
+    out = StringIO.new
+    Mutineer::Reporter.new(aggregate([survivor_result]), { FILE => SRC }).report(out: out, err: StringIO.new)
+    refute_includes out.string, "Kill matrix"
+  end
+
 end

@@ -34,7 +34,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.4", doc["schema_version"] # 1.4 added summary.id_format + summary.legacy_id_matches
+    assert_equal "1.5", doc["schema_version"] # 1.5 added the --matrix block; 1.4 summary.id_format + legacy_id_matches
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
@@ -220,4 +220,64 @@ class JsonReporterTest < Minitest::Test
       assert JSON.parse(File.read(path))
     end
   end
+
+  # --- matrix (schema 1.5, only with --matrix) --------------------------------
+
+  MT_A = ["test/pricing_test.rb", "PricingTest#test_a"].freeze
+  MT_B = ["test/pricing_test.rb", "PricingTest#test_b"].freeze
+  MT_C = ["test/other_test.rb", "OtherTest#test_c"].freeze
+
+  def with_row(result, killed_by, ran, complete: true)
+    result.with(kills: Mutineer::Kills.new(killed_by: killed_by.sort, ran: (ran + killed_by).uniq.sort,
+                                           complete: complete))
+  end
+
+  # A killed mutant both MT_A and MT_B kill, and a survivor; MT_C kills nothing.
+  def matrix_results
+    killed = Mutineer::Result.killed.with(subject: subject, mutation: mutation_at("100", "0", :literal_mutation),
+                                          id: "killedid0001")
+    [with_row(killed, [MT_A, MT_B], [MT_C]), with_row(survivor.with(id: "survivorid01"), [], [MT_A, MT_C])]
+  end
+
+  def render_matrix(results)
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { FILE => SRC },
+                           matrix: Mutineer::KillMatrix.new(results))
+                      .report(out: out, err: StringIO.new, format: "json")
+    out.string
+  end
+
+  def test_no_matrix_key_without_the_flag
+    refute render(matrix_results).key?("matrix")
+  end
+
+  def test_matrix_block_lists_tests_rows_blind_and_redundant
+    m = JSON.parse(render_matrix(matrix_results))["matrix"]
+
+    assert_equal true, m["complete"]
+    assert_equal [{ "file" => MT_C[0], "name" => MT_C[1], "kills" => 0 },
+                  { "file" => MT_A[0], "name" => MT_A[1], "kills" => 1 },
+                  { "file" => MT_B[0], "name" => MT_B[1], "kills" => 1 }], m["tests"]
+    # Same file and line: rows sort by operator, so the comparison survivor is first.
+    assert_equal [{ "subject" => "Pricing#total", "file" => FILE, "line" => 3, "operator" => "comparison",
+                    "id" => "survivorid01", "status" => "survived", "killed_by" => [], "ran" => 2, "complete" => true },
+                  { "subject" => "Pricing#total", "file" => FILE, "line" => 3, "operator" => "literal_mutation",
+                    "id" => "killedid0001", "status" => "killed", "killed_by" => [1, 2], "ran" => 3,
+                    "complete" => true }], m["mutants"]
+    assert_equal [{ "file" => MT_C[0], "name" => MT_C[1] }], m["blind"]
+    assert_equal [{ "file" => MT_A[0], "name" => MT_A[1] }, { "file" => MT_B[0], "name" => MT_B[1] }], m["redundant"]
+  end
+
+  def test_matrix_block_is_byte_stable_across_result_order
+    assert_equal render_matrix(matrix_results), render_matrix(matrix_results.reverse)
+  end
+
+  def test_matrix_block_marks_an_incomplete_run
+    rows = [with_row(survivor, [], [MT_A], complete: false)]
+    m = JSON.parse(render_matrix(rows))["matrix"]
+    assert_equal false, m["complete"]
+    assert_equal false, m["mutants"].first["complete"]
+    assert_empty m["blind"]
+  end
+
 end

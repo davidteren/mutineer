@@ -25,9 +25,14 @@ module Mutineer
     # workflow, so one bad mutant never fails the gate on its own, at any size.
     BROKEN_FLOOR = 1
 
-    def initialize(aggregate, source_map)
+    # @param aggregate [Mutineer::AggregateResult] the run's results.
+    # @param source_map [Hash{String => String}] source file path => source text.
+    # @param matrix [Mutineer::KillMatrix, nil] the kill matrix of a `--matrix`
+    #   run; nil leaves every format exactly as it is without the flag.
+    def initialize(aggregate, source_map, matrix: nil)
       @agg = aggregate
       @source_map = source_map
+      @matrix = matrix
     end
 
     # Single entry point. Branches on `format` ("human" | "json" | "html") and
@@ -96,6 +101,7 @@ module Mutineer
       per_source(out)
 
       survivors(out)
+      matrix_section(out) if @matrix
       verdict(out, threshold) if threshold && threshold.positive?
     end
 
@@ -146,7 +152,7 @@ module Mutineer
       score = @agg.mutation_score
 
       doc = {
-        schema_version: "1.4",
+        schema_version: "1.5",
         summary: {
           total: @agg.total, killed: killed, survived: survived,
           no_coverage: @agg.no_coverage_count,
@@ -202,6 +208,8 @@ module Mutineer
         per_source: @agg.by_source.map { |file, agg| per_source_json(file, agg) }
                         .sort_by { |h| h[:file] }
       }
+      # Additive (1.5): the kill matrix, present only with --matrix.
+      doc[:matrix] = matrix_json if @matrix
       # Additive baseline-delta block, present only with --baseline. Existing
       # consumers ignore the extra key; it does not move schema_version on its own.
       doc[:baseline] = baseline_json(baseline) if baseline
@@ -257,6 +265,7 @@ module Mutineer
         #{summary_html}
         #{per_source_html(per_source)}
         #{survivors_html(survivors)}
+        #{matrix_html}
         </body>
         </html>
       HTML
@@ -314,6 +323,115 @@ module Mutineer
         CARD
       end.join("\n")
       "<h2>Surviving Mutants</h2>\n#{cards}"
+    end
+
+    # The kill-matrix section of the HTML report: the counts, then the blind and
+    # redundant tests. Empty without --matrix.
+    #
+    # @api private
+    # @return [String] HTML.
+    def matrix_html
+      return "" unless @matrix
+
+      lists = { "Blind tests" => @matrix.blind, "Redundant tests" => @matrix.redundant }.map do |title, tests|
+        items = tests.map { |file, name| "<li><span class=\"id\">#{esc(file)}</span> #{esc(name)}</li>" }
+        body = items.empty? ? "<p>None.</p>" : "<ul>\n#{items.join("\n")}\n</ul>"
+        "<h3>#{esc(title)} (#{tests.size})</h3>\n#{body}"
+      end
+      note = @matrix.complete? ? "" : "\n<p>#{esc(matrix_incomplete_note)}</p>"
+      "<h2>Kill matrix</h2>\n<p>#{esc(matrix_counts_line)}</p>#{note}\n#{lists.join("\n")}"
+    end
+
+    # The JSON `matrix` block: every test with its kill count, one row per
+    # mutant that ran (its killers as indexes into `tests`), and the blind and
+    # redundant tests. Rows sort like survivors, then by id, so output is
+    # byte-stable regardless of --jobs.
+    #
+    # @api private
+    # @return [Hash] the matrix JSON object.
+    def matrix_json
+      tests = @matrix.tests
+      index = tests.each_with_index.to_h
+      {
+        complete: @matrix.complete?,
+        tests: tests.map { |file, name| { file: file, name: name, kills: @matrix.kill_count([file, name]) } },
+        mutants: @matrix.rows.map { |r| matrix_row_json(r, index) }
+                        .sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s, h[:id].to_s] },
+        blind: @matrix.blind.map { |file, name| { file: file, name: name } },
+        redundant: @matrix.redundant.map { |file, name| { file: file, name: name } }
+      }
+    end
+
+    # One mutant's row under `matrix.mutants`.
+    #
+    # @api private
+    # @param result [Mutineer::Result] a result with a {Kills} row.
+    # @param index [Hash{Array => Integer}] test => its index in `matrix.tests`.
+    # @return [Hash] the row JSON object.
+    def matrix_row_json(result, index)
+      file = result.subject&.file
+      line =
+        if result.mutation && file
+          source = @source_map[file] || File.read(file)
+          source.byteslice(0, result.mutation.start_offset).count("\n") + 1
+        end
+      kills = result.kills
+      {
+        subject: result.subject&.qualified_name, file: file, line: line,
+        operator: result.mutation&.operator&.to_s, id: result.id, status: result.status.to_s,
+        killed_by: kills.killed_by.map { |test| index.fetch(test) }.sort,
+        ran: kills.ran.size, complete: kills.complete
+      }
+    end
+
+    # The kill-matrix section of the human report.
+    #
+    # @api private
+    # @param out [IO] output stream.
+    # @return [void]
+    def matrix_section(out)
+      out.puts
+      out.puts "Kill matrix"
+      out.puts "-----------"
+      out.puts matrix_counts_line
+      out.puts matrix_incomplete_note unless @matrix.complete?
+      matrix_list(out, "Blind tests (ran, killed no mutant)", @matrix.blind)
+      matrix_list(out, "Redundant tests (each mutant they kill has another killer)", @matrix.redundant)
+      return if @matrix.redundant.empty?
+
+      out.puts "Delete redundant tests one at a time: two of them can be the only killers of one mutant."
+    end
+
+    # One titled list of tests in the human kill-matrix section.
+    #
+    # @api private
+    # @param out [IO] output stream.
+    # @param title [String] the list's title.
+    # @param tests [Array<Array(String, String)>] `[file, name]` pairs.
+    # @return [void]
+    def matrix_list(out, title, tests)
+      out.puts
+      out.puts "#{title}: #{tests.size}"
+      tests.each { |file, name| out.puts "  #{file}  #{name}" }
+    end
+
+    # The counts sentence both matrix renderers open with.
+    #
+    # @api private
+    # @return [String]
+    def matrix_counts_line
+      "#{@matrix.tests.size} tests ran against #{@matrix.rows.size} mutants " \
+        "(every test in each mutant's covering files): " \
+        "#{@matrix.blind.size} blind, #{@matrix.redundant.size} redundant."
+    end
+
+    # The warning both matrix renderers give when a row is incomplete.
+    #
+    # @api private
+    # @return [String]
+    def matrix_incomplete_note
+      "#{@matrix.incomplete_rows.size} mutants stopped before every covering test ran " \
+        "(timeout or error), so a blind test may have killed one of them."
     end
 
     # HTML-escapes any text destined for the document (stdlib CGI).
