@@ -34,7 +34,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.4", doc["schema_version"] # 1.4 added summary.id_format + summary.legacy_id_matches
+    assert_equal "1.5", doc["schema_version"] # 1.5 added operator, token and id to no_coverage[] and uncapturable[]
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
@@ -135,6 +135,37 @@ class JsonReporterTest < Minitest::Test
     assert_equal 1, doc["summary"]["no_verdict"]
   end
 
+  def test_no_coverage_entry_names_the_mutation_and_carries_its_id
+    uncovered = Mutineer::Result.no_coverage.with(subject: subject, id: "abc123def456",
+                                                  mutation: mutation_at("100", "0", :literal_mutation))
+    entry = render([uncovered])["no_coverage"].first
+
+    expected = { "subject" => "Pricing#total", "file" => FILE, "line" => 3,
+                 "operator" => "literal_mutation", "token" => "100", "id" => "abc123def456" }
+    assert_equal expected, entry
+  end
+
+  def test_ignored_entries_on_one_line_and_operator_are_ordered_by_id
+    later = Mutineer::Result.ignored.with(subject: subject, id: "bbbbbbbbbbbb",
+                                          mutation: mutation_at(">=", ">", :comparison))
+    earlier = Mutineer::Result.ignored.with(subject: subject, id: "aaaaaaaaaaaa",
+                                            mutation: mutation_at(">=", "<", :comparison))
+
+    assert_equal %w[aaaaaaaaaaaa bbbbbbbbbbbb], render([later, earlier])["ignored"].map { |e| e["id"] }
+  end
+
+  def test_no_coverage_entries_on_one_line_are_ordered_by_operator_then_id
+    first = Mutineer::Result.no_coverage.with(subject: subject, id: "bbbbbbbbbbbb",
+                                              mutation: mutation_at(">=", ">", :comparison))
+    second = Mutineer::Result.no_coverage.with(subject: subject, id: "aaaaaaaaaaaa",
+                                               mutation: mutation_at("100", "0", :literal_mutation))
+    third = Mutineer::Result.no_coverage.with(subject: subject, id: "aaaaaaaaaaaa",
+                                              mutation: mutation_at(">=", "<", :comparison))
+
+    ids = render([second, first, third])["no_coverage"].map { |e| [e["operator"], e["id"]] }
+    assert_equal [%w[comparison aaaaaaaaaaaa], %w[comparison bbbbbbbbbbbb], %w[literal_mutation aaaaaaaaaaaa]], ids
+  end
+
   def test_survivor_entry_has_all_keys_and_diff
     s = render([survivor])["survivors"].first
     assert_equal "Pricing#total", s["subject"]
@@ -179,7 +210,7 @@ class JsonReporterTest < Minitest::Test
 
   # #9: additive uncapturable count + list, distinct from no_coverage; score unaffected.
   def test_uncapturable_summary_count_and_list
-    unc = Mutineer::Result.uncapturable.with(subject: subject,
+    unc = Mutineer::Result.uncapturable.with(subject: subject, id: "abc123def456",
                                              mutation: mutation_at("100", "0", :literal_mutation))
     doc = render([Mutineer::Result.killed, survivor, unc])
     assert_equal 1, doc["summary"]["uncapturable"]
@@ -188,6 +219,7 @@ class JsonReporterTest < Minitest::Test
     assert_equal "Pricing#total", entry["subject"]
     assert_equal FILE, entry["file"]
     assert_equal 3, entry["line"]
+    assert_equal %w[literal_mutation 100 abc123def456], entry.values_at("operator", "token", "id")
     assert_equal [], doc["no_coverage"] # not conflated with no_coverage
   end
 
