@@ -146,7 +146,7 @@ module Mutineer
       score = @agg.mutation_score
 
       doc = {
-        schema_version: "1.4",
+        schema_version: "1.5",
         summary: {
           total: @agg.total, killed: killed, survived: survived,
           no_coverage: @agg.no_coverage_count,
@@ -172,11 +172,12 @@ module Mutineer
         },
         survivors: @agg.surviving_mutants.map { |r| survivor_json(r) }
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },
-        no_coverage: @agg.results.select(&:no_coverage?).map { |r| no_coverage_json(r) }
-                         .sort_by { |h| [h[:file], h[:line]] },
+        # id extends the key to a total order: several mutants share a line.
+        no_coverage: @agg.results.select(&:no_coverage?).map { |r| mutant_json(r) }
+                         .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Same shape as no_coverage; additive key.
-        uncapturable: @agg.results.select(&:uncapturable?).map { |r| no_coverage_json(r) }
-                          .sort_by { |h| [h[:file], h[:line]] },
+        uncapturable: @agg.results.select(&:uncapturable?).map { |r| mutant_json(r) }
+                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Every mutant that was attempted and produced no verdict, whatever the
         # reason — the set the --threshold completeness gate counts. Named for the
         # condition rather than one status, because summary.errored means :error
@@ -195,8 +196,8 @@ module Mutineer
         # Equivalent mutants the user suppressed: emitted with their stable id so
         # the user can audit what is silenced (and copy ids for survivors they
         # want to add). Excluded from the score; never in `survivors`.
-        ignored: @agg.results.select(&:ignored?).map { |r| ignored_json(r) }
-                     .sort_by { |h| [h[:file], h[:line], h[:operator]] },
+        ignored: @agg.results.select(&:ignored?).map { |r| mutant_json(r) }
+                     .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Per-source breakdown (additive; baseline consumes it). Sorted by file so
         # output is byte-stable. Reuses AggregateResult via by_source.
         per_source: @agg.by_source.map { |file, agg| per_source_json(file, agg) }
@@ -320,7 +321,7 @@ module Mutineer
     def esc(text) = CGI.escapeHTML(text.to_s)
 
     # The same delta facts the human report prints, for dashboards. new_survivors
-    # reuse the ignored_json shape (subject/file/line/operator/token/id) and sort
+    # reuse the mutant_json shape (subject/file/line/operator/token/id) and sort
     # byte-stably so output does not depend on --jobs finish order.
     def baseline_json(delta)
       {
@@ -332,8 +333,8 @@ module Mutineer
         # a diff-scoped side), so a consumer knows not to render the two scores
         # as a comparison.
         score_comparable: delta.score_comparable,
-        new_survivors: delta.new_survivors.map { |r| ignored_json(r) }
-                            .sort_by { |h| [h[:file], h[:line], h[:operator]] },
+        new_survivors: delta.new_survivors.map { |r| mutant_json(r) }
+                            .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         fixed_survivors: delta.fixed_survivors.map do |h|
           { subject: h["subject"], file: h["file"], line: h["line"],
             operator: h["operator"], id: h["id"] }
@@ -380,8 +381,9 @@ module Mutineer
       }
     end
 
-    # An entry under the JSON `ignored:` key: what the user already suppressed.
-    def ignored_json(result)
+    # The fields that name one mutant, for the lists that point at mutants:
+    # `no_coverage`, `uncapturable`, `ignored` and `baseline.new_survivors`.
+    def mutant_json(result)
       m = result.mutation
       file = result.subject.file
       source = @source_map[file] || File.read(file)
@@ -413,22 +415,6 @@ module Mutineer
       token       = source.byteslice(m.start_offset...m.end_offset).gsub(/\s+/, " ").strip
       token       = "#{token[0, 47]}..." if token.length > 50
       [start_line, original_block, mutated_block, token]
-    end
-
-    # Builds no-coverage JSON.
-    #
-    # @api private
-    # @param result [Mutineer::Result] result object.
-    # @return [Hash] no-coverage JSON object.
-    def no_coverage_json(result)
-      m = result.mutation
-      file = result.subject.file
-      source = @source_map[file] || File.read(file)
-      {
-        subject: result.subject.qualified_name,
-        file: file,
-        line: source.byteslice(0, m.start_offset).count("\n") + 1
-      }
     end
 
     # An entry under the JSON `no_verdict:` key: an attempted mutant with no verdict.

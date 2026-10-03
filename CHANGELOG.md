@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **`no_coverage[]` and `uncapturable[]` name each mutant.** Every entry in
+  the JSON report now has `operator`, `token` and `id`, as `ignored[]` has, so
+  mutants on one line can be told apart and an `id` can go in `ignore:`. The
+  entries are sorted by `(file, line, operator, id)`. `schema_version` is `1.5`.
+
 ### Fixed
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not
