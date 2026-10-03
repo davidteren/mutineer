@@ -67,9 +67,15 @@ independent of Node and Playwright. CI runs these checks in `website browser tes
 Applies to **every** open PR (including stacks). Do not merge and do not
 suggest merge until this is done on the current head.
 
+The review skills named below (`dt-*`, `ce-code-review`, `ie-review`,
+`cubic-loop`, `check-pr-comments`) are not in this repository. If you do not
+have them, run the local gate above, and say in the PR description which of
+these reviews you did not run. The steps that need no skill (reply on every
+thread, CI green, a human merges) apply to everyone.
+
 ### Before opening a new PR
 
-Run `/dt-ship-pre-pr-gate` on the exact PR-head commit:
+If you have the skills, run `/dt-ship-pre-pr-gate` on the exact PR-head commit:
 
 1. `/ce-code-review` — fix findings  
 2. `/ie-review` — fix findings  
@@ -80,13 +86,13 @@ Then `gh pr create`. A gate run is stale after any later commit; re-run.
 ### After the PR is open
 
 1. **Re-review the PR** with the same three lenses (CE, IE, cubic PR/local
-   mode). Fix real findings; commit and push.
+   mode), if you have the skills. Fix real findings; commit and push.
 2. **Address every review comment/thread** (cubic, bots, humans):
    - Fix or document why not
    - **Reply inline on every thread** (fix + commit SHA, or rationale)
    - Never resolve silently
 3. **CI green** on the head SHA
-4. Readiness skills only after 1–3: `check-pr-comments`,
+4. Readiness skills only after 1–3, if you have them: `check-pr-comments`,
    `dt-ship-pr-readiness`. Human merges.
 
 **Stacked PRs:** gate each PR from the bottom of the stack up. After fixing
