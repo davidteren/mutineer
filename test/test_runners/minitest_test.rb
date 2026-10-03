@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../test_helper"
+require "json"
 require "tmpdir"
 
 # The Minitest runner (wrapping MinitestIntegration) must keep its 0/1 contract.
@@ -14,6 +15,9 @@ class TestRunnersMinitestTest < Minitest::Test
   PARALLEL = File.join(FIX, "stop_at_first_failure_parallel_test.rb")
   REPORTER = File.join(FIX, "stop_at_first_failure_reporter_test.rb")
   FIBER    = File.join(FIX, "stop_at_first_failure_fiber_test.rb")
+  MATRIX   = File.expand_path("../fixtures/matrix", __dir__)
+  SERIAL_THEN_PARALLEL = File.join(MATRIX, "serial_then_parallel_test.rb")
+  INTERRUPT = File.join(MATRIX, "gate_interrupt_test.rb")
   SEED     = File.join(FIX, "stop_at_first_failure_seed_test.rb")
   CLEANUP  = File.join(FIX, "stop_at_first_failure_cleanup_test.rb")
   LATER    = File.join(FIX, "stop_at_first_failure_later_class_test.rb")
@@ -197,4 +201,143 @@ class TestRunnersMinitestTest < Minitest::Test
   ensure
     rd&.close
   end
+
+  # --- record_to (--matrix) -------------------------------------------------
+  # A matrix run never stops: every test runs, and each outcome goes to the
+  # KillChannel pipe between a `start` and an `end` line. Only the outer
+  # reporter's results count.
+
+  # Runs `file` with a channel. Returns [exit status, marker written?, report].
+  def record_fixture(file, first: "fail", &setup)
+    rd, wr = IO.pipe
+    code, marker = with_fixture_env(first) do
+      rd.close
+      setup&.call
+      Mutineer::TestRunners::Minitest.run([file], record_to: wr)
+    end
+    wr.close
+    [code, marker, Mutineer::KillChannel.parse(rd.read)]
+  ensure
+    [rd, wr].each { |io| io.close unless io.closed? }
+  end
+
+  def names(tests) = tests.map { |_file, name, _id| name }
+
+  def test_record_to_runs_every_test_and_names_the_failure
+    code, marker, report = record_fixture(STOP, first: "fail")
+    assert_equal [1, true], [code, marker]
+    first = "StopAtFirstFailureFixture#test_a_first"
+    assert_equal [[STOP, first, first]], report.killed
+    assert_equal %w[StopAtFirstFailureFixture#test_a_first StopAtFirstFailureFixture#test_b_writes_marker],
+                 names(report.ran)
+    assert report.started
+    assert report.finished
+    refute report.parallel
+    assert_equal 0, report.lost
+  end
+
+  def test_record_to_counts_an_error_as_a_kill
+    _, marker, report = record_fixture(STOP, first: "error")
+    assert marker
+    assert_equal ["StopAtFirstFailureFixture#test_a_first"], names(report.killed)
+  end
+
+  def test_record_to_sends_nothing_for_a_skip
+    code, _, report = record_fixture(STOP, first: "skip")
+    assert_equal 0, code
+    assert_empty report.killed
+    assert_equal ["StopAtFirstFailureFixture#test_b_writes_marker"], names(report.ran)
+  end
+
+  def test_record_to_ignores_a_failure_on_a_nested_reporter
+    code, _, report = record_fixture(REPORTER)
+    assert_equal 0, code
+    assert_empty report.killed
+    assert_equal 2, report.ran.size
+  end
+
+  def test_record_to_ignores_a_nested_suite_run
+    code, _, report = record_fixture(NESTED)
+    assert_equal 0, code
+    assert_empty report.killed
+    refute_includes names(report.ran), "StopAtFirstFailureInnerFixture#test_fails"
+  end
+
+  def test_record_to_names_a_failure_in_another_fiber
+    code, marker, report = record_fixture(FIBER)
+    assert_equal [1, true], [code, marker]
+    assert_equal ["StopAtFirstFailureFiberFixture#test_a_fails"], names(report.killed)
+  end
+
+  # The stop cannot skip tests parallelize_me! already queued, so a marker
+  # says where the parallel tests begin, and the parent keeps the exit status
+  # for a kill in them.
+  def test_record_to_marks_a_parallel_run
+    _, _, report = record_fixture(PARALLEL)
+    assert report.started
+    assert report.parallel
+    refute report.invalid
+  end
+
+  # Minitest runs the serial class first, so its kill comes before the
+  # `parallel` line, and a kill the stop would have followed is told apart from
+  # one in the parallel phase.
+  def test_record_to_sends_the_parallel_line_after_a_serial_kill
+    rd, wr = IO.pipe
+    fork_status do
+      rd.close
+      Mutineer::TestRunners::Minitest.run([SERIAL_THEN_PARALLEL], record_to: wr)
+    end
+    wr.close
+    text = rd.read
+    lines = text.lines.map { |line| JSON.parse(line).first }
+    assert_equal %w[start kill parallel pass end], lines
+    report = Mutineer::KillChannel.parse(text)
+    assert report.serial_kill
+    refute report.invalid
+  ensure
+    [rd, wr].each { |io| io.close unless io.closed? }
+  end
+
+  # Minitest catches an Interrupt in a test and returns, so the return proves
+  # nothing: the run is cut short without an `end` line.
+  def test_record_to_sends_no_end_when_an_interrupt_cut_the_run_short
+    ENV["MATRIX_FIXTURE_INTERRUPT"] = "1"
+    code, report = nil
+    capture_subprocess_io { code, _, report = record_fixture(INTERRUPT, first: "pass") }
+    assert_equal 1, code
+    assert_equal ["MatrixGateInterruptTest#test_a_boundary"], names(report.killed)
+    refute report.finished
+  ensure
+    ENV.delete("MATRIX_FIXTURE_INTERRUPT")
+  end
+
+  # An unknown Minitest shape arms nothing: no `start`, so no row can claim to
+  # be complete, though the run itself still happens.
+  def test_record_to_with_an_unknown_minitest_shape_sends_no_start
+    code, marker, report = record_fixture(STOP, first: "fail") do
+      Mutineer::MinitestIntegration::OuterReporter.define_singleton_method(:hook_for_loaded_minitest) { nil }
+    end
+    assert_equal [1, true], [code, marker]
+    refute report.started
+    assert_empty report.ran
+  end
+
+  def test_record_to_pins_the_seed
+    expected = Mutineer::MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED.to_s
+    rd, wr = IO.pipe
+    assert_equal expected, seed_of_run(nil, record_to: wr)
+  ensure
+    [rd, wr].each { |io| io.close unless io.closed? }
+  end
+
+  def test_record_to_and_stop_at_first_failure_cannot_be_combined
+    code = fork_status do
+      Mutineer::TestRunners::Minitest.run([STOP], stop_at_first_failure: true, record_to: $stderr)
+    rescue ArgumentError
+      7
+    end
+    assert_equal 7, code
+  end
+
 end

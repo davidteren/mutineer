@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **`--matrix` reports which tests kill each mutant** (`matrix: true` in
+  `.mutineer.yml`). Each mutant runs every test in its covering files instead
+  of stopping at the first failure, and the child sends each test's outcome to
+  the parent as it is recorded. The report names blind tests, which ran in a
+  complete row and killed no mutant, and redundant tests, whose every kill
+  another test also makes. Redundancy is judged one test at a time, so delete
+  redundant tests one at a time. The human report lists up to 20 of each, the
+  HTML report all of them, and the JSON report moves to schema `1.5` with a
+  `matrix` block that appears only with the flag. A test is its file and its
+  id (the example id under RSpec), so examples that share a description stay
+  apart and an example whose generated description changes with the mutant
+  stays one test. Verdicts, the score and the exit code do not change: once a
+  serial test fails against a mutant it is `killed`, as without the flag, even
+  when a later test exits, crashes or reaches the timeout. A failure in a
+  `parallelize_me!` class and an end inside the suite's own cleanup (RSpec
+  `after(:suite)`) keep the exit status, as they do without the flag. A row is
+  complete only when the child's stream arrived in order and, under Minitest,
+  the recorder saw every test, so a caught `Interrupt` leaves it incomplete. Minitest and RSpec are
+  supported, on the in-process backend only; `--daemon`, `--test-command` and
+  `--fail-fast` exit 2 with it.
+
 ### Fixed
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not

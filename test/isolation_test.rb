@@ -140,4 +140,271 @@ class IsolationTest < Minitest::Test
       assert_equal File.join(File.realpath(dir), "lib"), File.dirname($loaded_from)
     end
   end
+
+  # --- the --matrix channel ------------------------------------------------
+  # With channel: true the block gets a pipe for KillChannel lines, and the
+  # Result carries them as Kills. The verdict is the one a run without
+  # --matrix gives; the row is complete only with `start`, `end`, no lost line,
+  # and kills that agree with the verdict.
+
+  KC = Mutineer::KillChannel
+  T_A = ["/p/t_test.rb", "T#test_a", "T#test_a"].freeze
+  T_B = ["/p/t_test.rb", "T#test_b", "T#test_b"].freeze
+
+  def send_kill(io, name) = KC.write(io, KC::KILL, "/p/t_test.rb", name)
+  def send_pass(io, name) = KC.write(io, KC::PASS, "/p/t_test.rb", name)
+  def send_start(io) = KC.write_start(io)
+  def send_parallel(io) = KC.write_parallel(io)
+  def send_cleanup(io) = KC.write_cleanup(io)
+  def send_end(io) = KC.write_end(io)
+
+  def test_without_a_channel_the_block_gets_nil_and_the_result_no_row
+    result = Mutineer::Isolation.run { |channel| channel.nil? ? 0 : 1 }
+    assert_predicate result, :survived?
+    assert_nil result.kills
+  end
+
+  def test_a_full_report_makes_a_complete_row
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_kill(io, "T#test_a")
+      send_pass(io, "T#test_b")
+      send_end(io)
+      1
+    end
+    assert_predicate result, :killed?
+    assert_equal [T_A], result.kills.killed_by
+    assert_equal [T_A, T_B], result.kills.ran
+    assert result.kills.complete
+  end
+
+  def test_a_full_survivor_report_is_complete
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_pass(io, "T#test_a")
+      send_end(io)
+      0
+    end
+    assert_predicate result, :survived?
+    assert result.kills.complete
+  end
+
+  # Without `end` nothing shows the suite finished: a pass then exit 0 is a
+  # survivor, but its row cannot claim every test ran.
+  def test_a_row_without_end_is_incomplete
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_pass(io, "T#test_a")
+      0
+    end
+    assert_predicate result, :survived?
+    refute result.kills.complete
+  end
+
+  # A recorder that never armed sends no `start`, so its row lists no tests
+  # and must not read as a complete survivor.
+  def test_a_row_without_start_is_incomplete
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_end(io)
+      0
+    end
+    assert_predicate result, :survived?
+    refute result.kills.complete
+  end
+
+  def test_a_lost_line_makes_the_row_incomplete
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      io.write("not json\n")
+      send_end(io)
+      0
+    end
+    refute result.kills.complete
+  end
+
+  # The parent reads while it waits; a child with more to say than a pipe
+  # buffer would otherwise block on write and be scored a timeout.
+  def test_more_than_a_pipe_buffer_of_lines_does_not_stall_the_child
+    result = Mutineer::Isolation.run(timeout: 5, channel: true) do |io|
+      send_start(io)
+      5_000.times { |i| send_kill(io, "T#test_#{i.to_s.rjust(40, "0")}") }
+      send_end(io)
+      1
+    end
+    assert_predicate result, :killed?
+    assert_equal 5_000, result.kills.killed_by.size
+    assert result.kills.complete
+  end
+
+  # The run without --matrix stops at the first failure and exits killed, so a
+  # named kill makes the mutant killed whatever happens after it.
+  def test_a_timeout_after_a_kill_is_killed_and_incomplete
+    result = Mutineer::Isolation.run(timeout: 1, channel: true) do |io|
+      send_start(io)
+      send_kill(io, "T#test_a")
+      sleep 30
+    end
+    assert_predicate result, :killed?
+    assert_equal [T_A], result.kills.killed_by
+    refute result.kills.complete
+  end
+
+  def test_an_exit_zero_after_a_kill_is_killed_and_incomplete
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_kill(io, "T#test_a")
+      exit 0
+    end
+    assert_predicate result, :killed?
+    refute result.kills.complete
+  end
+
+  def test_a_crash_after_a_kill_is_killed_and_incomplete
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_kill(io, "T#test_a")
+      Process.kill(:KILL, Process.pid)
+    end
+    assert_predicate result, :killed?
+    refute result.kills.complete
+  end
+
+  def test_an_error_after_a_kill_is_killed_and_incomplete
+    capture_subprocess_io do
+      result = Mutineer::Isolation.run(channel: true) do |io|
+        send_start(io)
+        send_kill(io, "T#test_a")
+        raise "boom"
+      end
+      assert_predicate result, :killed?
+      refute result.kills.complete
+    end
+  end
+
+  # Under parallelize_me! the stop cannot skip queued tests, so a run without
+  # --matrix still reaches the timeout; the matrix keeps that verdict.
+  def test_a_kill_in_the_parallel_phase_keeps_its_timeout
+    result = Mutineer::Isolation.run(timeout: 1, channel: true) do |io|
+      send_start(io)
+      send_parallel(io)
+      send_kill(io, "T#test_a")
+      sleep 30
+    end
+    assert_predicate result, :timeout?
+    assert_equal [T_A], result.kills.killed_by
+    refute result.kills.complete
+  end
+
+  # Kills without a `start` did not come from the armed recorder.
+  def test_kills_without_start_are_not_promoted
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_kill(io, "T#test_a")
+      0
+    end
+    assert_predicate result, :survived?
+    refute result.kills.complete
+  end
+
+  def test_a_timeout_without_a_kill_stays_a_timeout
+    result = Mutineer::Isolation.run(timeout: 1, channel: true) do |io|
+      send_start(io)
+      send_pass(io, "T#test_a")
+      sleep 30
+    end
+    assert_predicate result, :timeout?
+    assert_equal [T_A], result.kills.ran
+    refute result.kills.complete
+  end
+
+  def test_a_kill_with_no_named_test_is_incomplete
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_end(io)
+      1
+    end
+    assert_predicate result, :killed?
+    assert_empty result.kills.killed_by
+    refute result.kills.complete
+  end
+
+  # --- an envelope out of order ---------------------------------------------
+  # `start` first, once; `end` last, once. Anything else is a stream the
+  # recorder did not write, so it never promotes a verdict or completes a row.
+
+  def raw(io, *lines) = lines.each { |fields| io.write("#{JSON.generate(fields)}\n") }
+
+  def test_an_end_before_a_kill_and_a_late_start_is_not_a_complete_killed_row
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      raw(io, ["end"], ["kill", "/p/t_test.rb", "T#test_a", "T#test_a"], ["start"])
+      0
+    end
+    assert_predicate result, :survived?
+    refute result.kills.complete
+  end
+
+  def test_a_second_start_is_not_promoted
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      raw(io, ["start"], ["parallel"], ["start"], ["kill", "/p/t_test.rb", "T#test_a", "T#test_a"])
+      0
+    end
+    assert_predicate result, :survived?
+    refute result.kills.complete
+  end
+
+  def test_a_second_end_is_not_complete
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      raw(io, ["start"], ["pass", "/p/t_test.rb", "T#test_a", "T#test_a"], ["end"], ["end"])
+      0
+    end
+    refute result.kills.complete
+  end
+
+  # A serial kill, then a parallel kill and an exit: the serial kill alone
+  # decides, since the stop would have skipped the parallel tests.
+  def test_a_serial_kill_before_the_parallel_phase_is_promoted
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_kill(io, "T#test_a")
+      send_parallel(io)
+      send_pass(io, "T#test_b")
+      exit 0
+    end
+    assert_predicate result, :killed?
+    refute result.kills.complete
+  end
+
+  # The suite's cleanup runs in a run without --matrix too: an exit there is
+  # the verdict, and a failed example before it does not override it.
+  def test_an_exit_in_cleanup_after_a_kill_keeps_the_exit_status
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_kill(io, "T#test_a")
+      send_cleanup(io)
+      exit 0
+    end
+    assert_predicate result, :survived?
+    refute result.kills.complete
+  end
+
+  def test_an_exit_during_later_tests_after_a_kill_is_still_promoted
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_kill(io, "T#test_a")
+      send_pass(io, "T#test_b")
+      exit 0
+    end
+    assert_predicate result, :killed?
+  end
+
+  def test_a_test_line_after_end_is_not_complete
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_pass(io, "T#test_a")
+      send_end(io)
+      send_pass(io, "T#test_b")
+      0
+    end
+    refute result.kills.complete
+  end
+
 end

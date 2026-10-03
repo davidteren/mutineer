@@ -138,12 +138,15 @@ module Mutineer
           bare = WorkerPool.new(jobs_n).run(jobs, stop_when: stop_when,
                                                   on_result: ->(_r) { progress.tick }) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
-                subject: subject, strategy: strategy, rails: config.rails, framework: framework)
+                subject: subject, strategy: strategy, rails: config.rails, framework: framework,
+                matrix: config.matrix)
           end
           # The bare Results carry only status (Subjects hold live AST nodes that
           # do not marshal); reattach subject+mutation+id in the parent, in order.
           # filter_map drops nils for jobs --fail-fast left unscheduled.
-          bare.each_with_index.filter_map { |r, i| r&.with(subject: jobs[i][0], mutation: jobs[i][1], id: jobs[i][2]) }
+          share_tests(bare.each_with_index.filter_map do |r, i|
+            r&.with(subject: jobs[i][0], mutation: jobs[i][1], id: jobs[i][2])
+          end)
         ensure
           sweep_orphans(dirs)
         end
@@ -471,9 +474,11 @@ module Mutineer
     # @param timeout [Integer] child timeout in seconds.
     # @param rails [Boolean] whether Rails reconnect handling is enabled.
     # @param framework [String] test framework name.
+    # @param matrix [Boolean] a `--matrix` run: run every covering test and
+    #   attach the {Kills} row, with project-relative test files.
     # @return [Mutineer::Result] mutant result.
     def self.run(mutation, source_file:, coverage_map: nil, subject: nil, strategy: "reload",
-                 timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest")
+                 timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest", matrix: false)
       source  = File.read(source_file)
       mutated = mutation.apply(source)
 
@@ -489,7 +494,7 @@ module Mutineer
 
       abs_tests = payload
 
-      Isolation.run(timeout: timeout) do
+      result = Isolation.run(timeout: timeout, channel: matrix) do |channel|
         # Forking inherits the parent's live DB connection; sharing one socket
         # across processes corrupts it. Drop it so AR reconnects per child.
         reconnect_active_record if rails
@@ -498,8 +503,57 @@ module Mutineer
         else
           Isolation.apply_whole_file(mutated, source_file)
         end
-        # One failing test already kills the mutant, so the child stops there.
-        TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
+        if channel
+          # --matrix: every covering test runs, and each outcome goes to the parent.
+          TestRunners.for(framework).run(abs_tests, record_to: channel)
+        else
+          # One failing test already kills the mutant, so the child stops there.
+          TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
+        end
+      end
+      relative_kills(result, coverage_map.project_root)
+    end
+
+    # Rewrites the test files of a result's {Kills} row relative to the project
+    # root, the form the coverage map and the report use. A result without a
+    # row comes back unchanged.
+    #
+    # @api private
+    # @param result [Mutineer::Result] a mutant result.
+    # @param root [String] project root.
+    # @return [Mutineer::Result]
+    def self.relative_kills(result, root)
+      return result unless (kills = result.kills)
+
+      paths = {}
+      rel = lambda do |tests|
+        tests.map { |file, name, id| [(paths[file] ||= ProjectPath.relative(file, root)), name, id] }.uniq.sort
+      end
+      result.with(kills: kills.with(killed_by: rel.call(kills.killed_by), ran: rel.call(kills.ran)))
+    end
+
+    # Makes every {Kills} row refer to one shared, frozen array per test. Each
+    # row arrives with its own copy of every test it ran, and a large matrix
+    # (thousands of mutants times hundreds of tests) would otherwise hold that
+    # many copies. Results without a row come back unchanged.
+    #
+    # A test is its file and its id. The name is display data and can differ
+    # between mutants (an RSpec example worded from its matcher reads
+    # differently under each mutant), so every row gets the name the first
+    # mutant reported, and one example stays one test.
+    #
+    # @api private
+    # @param results [Array<Mutineer::Result>] mutant results.
+    # @return [Array<Mutineer::Result>]
+    def self.share_tests(results)
+      shared = {}
+      share = lambda do |tests|
+        tests.map { |file, name, id| shared[[file, id]] ||= [file, name, id].map { |s| -s }.freeze }.uniq.sort.freeze
+      end
+      results.map do |r|
+        next r unless (kills = r.kills)
+
+        r.with(kills: kills.with(killed_by: share.call(kills.killed_by), ran: share.call(kills.ran)))
       end
     end
 

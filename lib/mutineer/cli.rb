@@ -10,6 +10,7 @@ require_relative "pairing"
 require_relative "changed_lines"
 require_relative "runner"
 require_relative "reporter"
+require_relative "kill_matrix"
 require_relative "baseline"
 require_relative "mutator_registry"
 
@@ -61,6 +62,9 @@ module Mutineer
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
         --fail-fast          Stop at the first surviving mutant
+        --matrix             Run every covering test for each mutant and report which
+                             tests kill it, with blind and redundant tests (in-process
+                             only; not with --daemon, --test-command or --fail-fast)
         --verbose            Surface the real error when a fork capture fails (alias: --debug)
 
       Options:
@@ -92,6 +96,7 @@ module Mutineer
         o.on("--list-operators") { show_operators = true }
         o.on("--dry-run") { opts[:dry_run] = true }
         o.on("--fail-fast") { opts[:fail_fast] = true }
+        o.on("--matrix") { opts[:matrix] = true }
         o.on("--only NAME") { |v| opts[:only] = v }
         o.on("--since REF") { |v| opts[:since] = Config.parse(:since, v) }
         # A typed "no" must beat a .mutineer.yml `since:` key: the key is present
@@ -227,6 +232,8 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.validate!(config)
+      # First, so a conflict is reported before another check rewrites the config.
+      validate_matrix!(config) if config.matrix
       validate_test_command!(config) if config.test_command
 
       validate_since!(config) if config.since
@@ -314,6 +321,28 @@ module Mutineer
       warn "[mutineer] --daemon uses --strategy reload " \
            "(redefine is not supported on the daemon path); forcing reload."
       config.strategy = "reload"
+    end
+
+    # --matrix runs on the in-process backend and needs every mutant's whole
+    # covering run, so a backend that cannot name the failing test, or a run that
+    # stops early, is a usage error (exit 2), never a quietly partial matrix.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.validate_matrix!(config)
+      conflict, reason =
+        if config.daemon
+          [:daemon, "the kill matrix runs on the in-process backend only"]
+        elsif config.test_command
+          [:test_command, "the external suite reports pass or fail, not which test failed"]
+        elsif config.fail_fast
+          [:fail_fast, "a fail-fast run is partial, so blind and redundant tests would be wrong"]
+        end
+      return unless conflict
+
+      warn "mutineer: #{config.origin(:matrix)} cannot be combined with #{config.origin(conflict)} (#{reason})"
+      exit 2
     end
 
     # --since needs a real git repo and a resolvable ref; either failure is a
@@ -429,7 +458,8 @@ module Mutineer
 
       aggregate, source_map, extras = Runner.execute(config)
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
-      reporter = Reporter.new(aggregate, source_map)
+      matrix = KillMatrix.new(aggregate.results) if config.matrix
+      reporter = Reporter.new(aggregate, source_map, matrix: matrix)
 
       # Diff the current run against the baseline (preflighted above) by the
       # stable survivor id. The delta is rendered inline (human section / additive

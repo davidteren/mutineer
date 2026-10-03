@@ -199,6 +199,24 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  def test_matrix_is_a_boolean_config_key_off_by_default
+    refute Config.new.matrix
+    with_config("matrix: true\n") do |path|
+      assert_equal({ matrix: true }, Config.from_file(path))
+    end
+    with_config("matrix: \"yes\"\n") do |path|
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_match(/\.mutineer\.yml: matrix must be true or false/, err.message)
+    end
+  end
+
+  def test_origin_names_the_file_key_or_the_flag
+    cfg = Config.resolve({ fail_fast: true }, { matrix: true, fail_fast: false })
+    assert_equal "matrix in .mutineer.yml", cfg.origin(:matrix)
+    assert_equal "--fail-fast", cfg.origin(:fail_fast)
+    assert_equal "--daemon", cfg.origin(:daemon)
+  end
+
   def test_known_keys_come_from_the_schema
     assert_equal Mutineer::CONFIG_OPTIONS.filter_map(&:yaml_key), Mutineer::KNOWN_KEYS
   end
@@ -421,6 +439,7 @@ class ConfigTest < Minitest::Test
     ignore: [%w[aaaaaaaaaaaa], %w[bbbbbbbbbbbb]],
     baseline: ["a.json", "b.json"],
     fail_fast: [false, true],
+    matrix: [false, true],
     test_command: ["a %{files}", "b %{files}"],
     daemon: [false, true]
   }.freeze
