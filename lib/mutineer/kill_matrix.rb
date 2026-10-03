@@ -6,7 +6,8 @@ module Mutineer
   # Which tests kill which mutants, read from the {Kills} rows of a `--matrix`
   # run. Pure: it reads results and runs nothing, and it never touches the score.
   #
-  # A test is a `[file, name, id]` triple (see {Kills}). The tests it knows are
+  # A test is a `[file, name, id]` triple (see {Kills}); file and id identify it,
+  # and every row names a test the same way (see {Runner.share_tests}). The tests it knows are
   # the ones that ran against at least one mutant of this run, so every answer
   # is relative to the run's mutants: a test of code outside the run's sources
   # kills nothing here.

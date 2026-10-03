@@ -131,15 +131,18 @@ module Mutineer
     # names.
     #
     # The verdict matches a run without `--matrix`, which stops at the first
-    # failing test and exits `killed` there. So once a serial run has named a
+    # failing test and exits `killed` there. So once a serial test has named a
     # kill, the mutant is `killed`, whatever a later test does: exit the
-    # process, crash, or run into the timeout. A parallel run (see
-    # {KillChannel}) keeps the exit status, because the stop cannot skip its
-    # queued tests either.
+    # process, crash, or run into the timeout. Two things keep the exit status
+    # instead. A kill in the parallel tests of a Minitest run (see
+    # {KillChannel}), because the stop cannot skip tests already queued. And any
+    # end after the `cleanup` marker, because the suite's cleanup hooks run in
+    # a run without `--matrix` as well, so what they do is already the verdict.
     #
-    # The row is complete only when the child ended before the timeout, sent
-    # both `start` and `end`, lost no line, and its kills agree with the
-    # verdict (a killed mutant names a killer; a survivor names none).
+    # The row is complete only when the child ended before the timeout, sent a
+    # valid stream with both `start` and `end`, lost no line, and its kills
+    # agree with the verdict (a killed mutant names a killer; a survivor names
+    # none). An invalid stream promotes nothing.
     #
     # @api private
     # @param result [Mutineer::Result] the verdict from the exit status or the timeout.
@@ -152,9 +155,9 @@ module Mutineer
 
       drain(rd, buffer)
       report = KillChannel.parse(buffer)
-      result = Result.killed if report.started && !report.parallel && report.killed.any?
+      result = Result.killed if report.started && !report.invalid && report.serial_kill && !report.cleanup
       agrees = result.killed? ? report.killed.any? : result.survived? && report.killed.empty?
-      complete = finished && report.started && report.finished && report.lost.zero? && agrees
+      complete = finished && report.started && report.finished && !report.invalid && report.lost.zero? && agrees
       result.with(kills: Kills.new(killed_by: report.killed, ran: report.ran, complete: complete))
     end
 

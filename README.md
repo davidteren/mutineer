@@ -284,7 +284,9 @@ For each mutant, Mutineer runs every test in its covering files instead of
 stopping at the first failure, and records which tests failed. Coverage is
 recorded per test file, so that set also holds tests that never reach the
 mutated line; they pass and count as having run. A mutant's row is complete
-when its whole covering set ran and the suite returned normally. The report
+when its whole covering set ran and the suite returned normally (under
+Minitest, an `Interrupt` that cut the run short does not count as returning
+normally). The report
 names two kinds of test:
 
 - **Blind:** the test ran in at least one complete row and killed no mutant
@@ -301,17 +303,21 @@ call the test blind.
 
 The matrix changes no verdict, score or exit code. A mutant is `killed` as
 soon as one test fails against it, as it is without `--matrix`, even when a
-later test exits the process, crashes or runs into the time limit. Under
-Minitest's `parallelize_me!` the run without `--matrix` cannot stop at the
-first failure either, so there the exit status stands.
+later test exits the process, crashes or runs into the time limit. Two cases
+keep the exit status, because the run without `--matrix` does not stop there
+either: a failure in a Minitest `parallelize_me!` class (those run after every
+serial class, and a failure in a serial class still stops the run), and an end
+inside the suite's own cleanup, such as RSpec's `after(:suite)`.
 
 The human report lists up to 20 blind and 20 redundant tests, and the HTML
 report lists them all. `--format json` adds a `matrix` block with every test
 and each mutant's killers (see the
 [JSON schema](https://davidteren.github.io/mutineer/json-schema.html#matrix)).
-A test is its file and its name: `CalculatorTest#test_add` under Minitest, or
-the example's full description under RSpec, where the example id
-(`./spec/calc_spec.rb[1:2]`) tells apart examples that share a description.
+A test is its file and its id. The name is `CalculatorTest#test_add` under
+Minitest, or the example's full description under RSpec, where the example id
+(`./spec/calc_spec.rb[1:2]`) tells apart examples that share a description
+and keeps an example whose generated description changes with the mutant as
+one test.
 
 Each mutant runs its whole covering set, so every mutant costs what a survivor
 costs. In 1.4, stopping at the first failure cut a full run of rack's

@@ -153,7 +153,9 @@ class IsolationTest < Minitest::Test
 
   def send_kill(io, name) = KC.write(io, KC::KILL, "/p/t_test.rb", name)
   def send_pass(io, name) = KC.write(io, KC::PASS, "/p/t_test.rb", name)
-  def send_start(io, parallel: false) = KC.write_start(io, parallel: parallel)
+  def send_start(io) = KC.write_start(io)
+  def send_parallel(io) = KC.write_parallel(io)
+  def send_cleanup(io) = KC.write_cleanup(io)
   def send_end(io) = KC.write_end(io)
 
   def test_without_a_channel_the_block_gets_nil_and_the_result_no_row
@@ -281,9 +283,10 @@ class IsolationTest < Minitest::Test
 
   # Under parallelize_me! the stop cannot skip queued tests, so a run without
   # --matrix still reaches the timeout; the matrix keeps that verdict.
-  def test_a_parallel_run_keeps_its_timeout_after_a_kill
+  def test_a_kill_in_the_parallel_phase_keeps_its_timeout
     result = Mutineer::Isolation.run(timeout: 1, channel: true) do |io|
-      send_start(io, parallel: true)
+      send_start(io)
+      send_parallel(io)
       send_kill(io, "T#test_a")
       sleep 30
     end
@@ -321,6 +324,86 @@ class IsolationTest < Minitest::Test
     end
     assert_predicate result, :killed?
     assert_empty result.kills.killed_by
+    refute result.kills.complete
+  end
+
+  # --- an envelope out of order ---------------------------------------------
+  # `start` first, once; `end` last, once. Anything else is a stream the
+  # recorder did not write, so it never promotes a verdict or completes a row.
+
+  def raw(io, *lines) = lines.each { |fields| io.write("#{JSON.generate(fields)}\n") }
+
+  def test_an_end_before_a_kill_and_a_late_start_is_not_a_complete_killed_row
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      raw(io, ["end"], ["kill", "/p/t_test.rb", "T#test_a", "T#test_a"], ["start"])
+      0
+    end
+    assert_predicate result, :survived?
+    refute result.kills.complete
+  end
+
+  def test_a_second_start_is_not_promoted
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      raw(io, ["start"], ["parallel"], ["start"], ["kill", "/p/t_test.rb", "T#test_a", "T#test_a"])
+      0
+    end
+    assert_predicate result, :survived?
+    refute result.kills.complete
+  end
+
+  def test_a_second_end_is_not_complete
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      raw(io, ["start"], ["pass", "/p/t_test.rb", "T#test_a", "T#test_a"], ["end"], ["end"])
+      0
+    end
+    refute result.kills.complete
+  end
+
+  # A serial kill, then a parallel kill and an exit: the serial kill alone
+  # decides, since the stop would have skipped the parallel tests.
+  def test_a_serial_kill_before_the_parallel_phase_is_promoted
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_kill(io, "T#test_a")
+      send_parallel(io)
+      send_pass(io, "T#test_b")
+      exit 0
+    end
+    assert_predicate result, :killed?
+    refute result.kills.complete
+  end
+
+  # The suite's cleanup runs in a run without --matrix too: an exit there is
+  # the verdict, and a failed example before it does not override it.
+  def test_an_exit_in_cleanup_after_a_kill_keeps_the_exit_status
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_kill(io, "T#test_a")
+      send_cleanup(io)
+      exit 0
+    end
+    assert_predicate result, :survived?
+    refute result.kills.complete
+  end
+
+  def test_an_exit_during_later_tests_after_a_kill_is_still_promoted
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_kill(io, "T#test_a")
+      send_pass(io, "T#test_b")
+      exit 0
+    end
+    assert_predicate result, :killed?
+  end
+
+  def test_a_test_line_after_end_is_not_complete
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_pass(io, "T#test_a")
+      send_end(io)
+      send_pass(io, "T#test_b")
+      0
+    end
     refute result.kills.complete
   end
 

@@ -116,7 +116,9 @@ changes `summary`, the score or the exit code.
 A test has a `file` (relative to the project root: the file that defines the test), a `name`
 (`CalculatorTest#test_add` under Minitest, the example's full description under RSpec) and an `id`. The `id`
 tells apart tests that share a file and name: under RSpec it is the example id
-(`./spec/calc_spec.rb[1:2]`), and under Minitest it equals `name`.
+(`./spec/calc_spec.rb[1:2]`; the example's location before RSpec 3.3), and under Minitest it equals `name`.
+A test is identified by its `file` and `id`. An example without a description of its own is worded from its
+matcher, so its `name` can change with the mutant; the report keeps the name the first mutant gave it.
 
 | Key | Type | Meaning |
 |-----|------|---------|
@@ -127,14 +129,18 @@ tells apart tests that share a file and name: under RSpec it is the example id
 | `redundant[]` | array | `{ file, name, id }`: tests that killed at least one mutant, where each mutant they killed has another killer. |
 
 A row is complete (`complete: true`) only when the mutant's whole covering set ran and the suite returned
-normally before the per-mutant timeout, every line the child sent was read, and the row agrees with the
-verdict: a killed mutant names a killer and a survivor names none. A test that exits the process, a crash,
-the timeout, or a test framework Mutineer could not hook each leave the row incomplete.
+normally before the per-mutant timeout, every line the child sent was read and arrived in order, and the row
+agrees with the verdict: a killed mutant names a killer and a survivor names none. Under Minitest the
+recorder also counts: it must have seen every test its classes run, so an `Interrupt` that Minitest caught and
+returned from leaves the row incomplete. A test that exits the process, a crash, the timeout, or a test
+framework Mutineer could not hook each leave the row incomplete too.
 
 `status` is the verdict a run without `--matrix` gives. That run stops at the first failing test, so once
-a test fails against a mutant its status is `"killed"`, whatever a later test does. The exception is a
-Minitest suite with a `parallelize_me!` class: its queued tests cannot be stopped, so the exit status (or
-`"timeout"`) stands.
+a test fails against a mutant its status is `"killed"`, whatever a later test does. Two exceptions keep the
+exit status (or `"timeout"`). A failure in the tests of a Minitest `parallelize_me!` class, which run after
+every serial class and cannot be stopped once queued: a failure in a serial class still stops the run, even in
+a suite that also has a parallel class. And an end during the suite's own cleanup (RSpec `after(:suite)`),
+which runs after a failure without `--matrix` as well.
 
 Each redundant test is judged on its own. Two redundant tests can be the only killers of one mutant, so
 delete them one at a time and re-run after each. Every answer covers this run's mutants only.

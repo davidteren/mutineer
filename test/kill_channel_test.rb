@@ -15,7 +15,7 @@ class KillChannelTest < Minitest::Test
 
   def test_a_full_run_round_trips
     text = written do |io|
-      KC.write_start(io, parallel: false)
+      KC.write_start(io)
       KC.write(io, KC::KILL, "/p/a_test.rb", "A#test_a")
       KC.write(io, KC::PASS, "/p/s_spec.rb", "S checks", "./s_spec.rb[1:1]")
       KC.write_end(io)
@@ -31,8 +31,62 @@ class KillChannelTest < Minitest::Test
     assert_equal 0, report.lost
   end
 
-  def test_start_can_mark_a_parallel_run
-    assert KC.parse(written { |io| KC.write_start(io, parallel: true) }).parallel
+  def test_a_kill_before_the_parallel_marker_is_a_serial_kill
+    report = KC.parse(written do |io|
+      KC.write_start(io)
+      KC.write(io, KC::KILL, "/p/a_test.rb", "A#test_a")
+      KC.write_parallel(io)
+      KC.write(io, KC::KILL, "/p/b_test.rb", "B#test_b")
+    end)
+    assert report.parallel
+    assert report.serial_kill
+    refute report.invalid
+  end
+
+  def test_kills_only_in_the_parallel_phase_are_not_serial_kills
+    report = KC.parse(written do |io|
+      KC.write_start(io)
+      KC.write_parallel(io)
+      KC.write(io, KC::KILL, "/p/b_test.rb", "B#test_b")
+    end)
+    refute report.serial_kill
+  end
+
+  def test_cleanup_and_lost_lines_are_read
+    report = KC.parse(written do |io|
+      KC.write_start(io)
+      KC.write_cleanup(io)
+      KC.write_lost(io)
+    end)
+    assert report.cleanup
+    assert_equal 1, report.lost
+    refute report.invalid
+  end
+
+  # `start` first and once, `end` last and once, a test only between `start`
+  # and `cleanup`/`end`, each marker once.
+  def test_a_stream_out_of_order_is_invalid
+    {
+      "a line before start" => [[KC::PASS, "f", "n", "n"], [KC::START]],
+      "a second start" => [[KC::START], [KC::START]],
+      "a start after a marker" => [[KC::START], [KC::PARALLEL], [KC::START]],
+      "a second parallel" => [[KC::START], [KC::PARALLEL], [KC::PARALLEL]],
+      "a parallel before start" => [[KC::PARALLEL], [KC::START]],
+      "a second cleanup" => [[KC::START], [KC::CLEANUP], [KC::CLEANUP]],
+      "a test after cleanup" => [[KC::START], [KC::CLEANUP], [KC::KILL, "f", "n", "n"]],
+      "a test after end" => [[KC::START], [KC::FINISH], [KC::PASS, "f", "n", "n"]],
+      "a second end" => [[KC::START], [KC::FINISH], [KC::FINISH]],
+      "an end before start" => [[KC::FINISH], [KC::START]]
+    }.each do |label, lines|
+      report = KC.parse(lines.map { |fields| "#{JSON.generate(fields)}\n" }.join)
+      assert report.invalid, "#{label} should be invalid"
+    end
+  end
+
+  def test_a_start_with_a_mode_is_a_lost_line
+    report = KC.parse(%(["start","serial"]\n))
+    assert_equal 1, report.lost
+    refute report.started
   end
 
   # The child can be killed mid-write; a partial last line is lost, not read.

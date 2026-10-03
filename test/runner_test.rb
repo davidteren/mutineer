@@ -204,6 +204,18 @@ class RunnerTest < Minitest::Test
     assert_nil shared[2].kills
   end
 
+  # A test is its file and id. An example worded from its matcher has a new
+  # name under each mutant, and it stays one test under the first name.
+  def test_share_tests_keeps_one_test_when_only_the_name_changes
+    row = lambda do |name|
+      test = ["s_spec.rb", name, "./s_spec.rb[1:1]"]
+      Mutineer::Result.new(status: :survived, kills: Mutineer::Kills.new(killed_by: [], ran: [test], complete: true))
+    end
+    shared = Mutineer::Runner.share_tests([row.("is expected to eq 1"), row.("is expected to eq -1")])
+
+    assert_equal [["s_spec.rb", "is expected to eq 1", "./s_spec.rb[1:1]"]], shared.flat_map { |r| r.kills.ran }.uniq
+  end
+
   # parallelize_me! queues every test before the first one fails, so the run
   # without --matrix cannot stop at test_a's failure and reaches the timeout
   # while test_b loops. The matrix keeps that verdict.

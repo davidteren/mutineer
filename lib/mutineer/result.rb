@@ -118,12 +118,14 @@ module Mutineer
   # project-relative file that defines it, its name (`CalculatorTest#test_add`,
   # or an RSpec example's full description), and an id that tells apart tests
   # sharing a file and name (an RSpec example id; the name again for Minitest).
-  # Both lists are sorted and unique, and `ran` includes the killers.
+  # File and id identify a test; the name is display data that a mutant can
+  # change. Both lists are sorted and unique, and `ran` includes the killers.
   #
   # `complete` is true when the child ran its whole suite and reported it
   # cleanly (see Isolation.finish). It is false when the child timed out,
-  # errored or exited the process early, when the recorder never armed, or when
-  # the row does not agree with the verdict.
+  # errored or exited the process early, when the recorder never armed, when
+  # its lines arrived out of order, when Minitest returned after an Interrupt
+  # with tests unseen, or when the row does not agree with the verdict.
   Kills = Data.define(:killed_by, :ran, :complete)
 
   # Aggregates a flat list of Results into counts, the mutation score, and the

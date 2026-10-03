@@ -372,4 +372,31 @@ class IntegrationTest < Minitest::Test
     assert_includes fee, "MatrixAcctSetupTest#test_errors_on_mutant"
   end
 
+  # Minitest runs a serial class first, so a kill there still stops the run
+  # without --matrix; the parallel class loaded beside it must not turn the
+  # matrix run into one that keeps the exit status.
+  def test_matrix_keeps_a_serial_kill_in_a_suite_that_also_has_a_parallel_class
+    sources = ["test/fixtures/matrix/gate.rb"]
+    tests = ["test/fixtures/matrix/gate_mixed_test.rb"]
+    plain = run_mutineer(sources: sources, tests: tests)
+    matrix = run_mutineer(sources: sources, tests: tests, matrix: true)
+
+    assert_equal statuses(plain), statuses(matrix)
+    big = matrix.results.find { |r| r.subject.name == :big? }
+    assert_predicate big, :killed?
+    refute big.kills.complete
+  end
+
+  # Minitest catches an Interrupt in a test and returns after the tests so far,
+  # so a returned run proves nothing: the row must not claim every test ran.
+  def test_matrix_row_is_incomplete_when_an_interrupt_cut_the_run_short
+    sources = ["test/fixtures/matrix/gate.rb"]
+    tests = ["test/fixtures/matrix/gate_interrupt_test.rb"]
+    matrix = run_mutineer(sources: sources, tests: tests, matrix: true)
+    big = matrix.results.find { |r| r.subject.name == :big? }
+
+    assert_predicate big, :killed?
+    refute big.kills.complete
+  end
+
 end

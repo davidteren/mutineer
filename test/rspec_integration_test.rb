@@ -152,4 +152,29 @@ class RSpecIntegrationTest < Minitest::Test
                  names(mul.kills.killed_by)
   end
 
+  # The suite's after(:suite) hook exits 0, which plain RSpec runs even after
+  # a failed example, so the run without --matrix scores the mutant survived.
+  def test_matrix_keeps_the_verdict_of_a_suite_hook_that_exits
+    args = { sources: ["test/fixtures/rspec/matrix_calc.rb"], operators: ["comparison"],
+             tests: ["test/fixtures/rspec/matrix_cleanup_spec.rb"] }
+    plain = run_mutineer(**args)
+    matrix = run_mutineer(**args, matrix: true)
+
+    assert_equal plain.results.to_h { |r| [r.id, r.status] }, matrix.results.to_h { |r| [r.id, r.status] }
+    pos = matrix.results.find { |r| r.subject.name == :pos? && r.mutation.replacement == ">=" }
+    assert_predicate pos, :survived?
+    refute pos.kills.complete
+  end
+
+  # An example without a description is worded from its matcher, so its name
+  # changes with the mutant. Its example id does not, and it is one test.
+  def test_kill_matrix_keeps_one_test_for_an_example_whose_description_changes
+    result = run_mutineer(sources: ["test/fixtures/rspec/matrix_calc.rb"], operators: ["arithmetic"],
+                          tests: ["test/fixtures/rspec/matrix_generated_spec.rb"], matrix: true)
+    km = Mutineer::KillMatrix.new(result.results)
+
+    assert_equal 2, km.tests.size
+    assert_empty km.blind
+  end
+
 end

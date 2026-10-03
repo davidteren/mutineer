@@ -176,6 +176,8 @@ class TestRunnersRSpecTest < Minitest::Test
     assert_equal [FIRST], names(report.killed)
     assert report.started, "a full run sends start"
     assert report.finished, "a full run sends end"
+    assert report.cleanup, "the suite's cleanup is marked before its hooks run"
+    refute report.invalid
   end
 
   def test_record_to_runs_every_example_and_names_the_failure
@@ -267,6 +269,36 @@ class TestRunnersRSpecTest < Minitest::Test
       assert_equal ["[1:1]", "[1:2]"], ids.map { |id| id[/\[[\d:]+\]\z/] }
       assert_equal [ids.last], report.killed.map(&:last)
     end
+  end
+
+  # `Example#id` arrived in RSpec 3.3. Without it the test is told apart by
+  # where it is defined, which no mutant changes.
+  FakeExample = Struct.new(:metadata, :full_description, :file_path)
+  Notice = Struct.new(:example)
+
+  def fake_example(**extra)
+    example = FakeExample.new({ absolute_file_path: "/p/a_spec.rb", location: "./a_spec.rb:7" }, "A does", "./a_spec.rb")
+    extra.each { |name, body| example.define_singleton_method(name, &body) }
+    example
+  end
+
+  def formatted
+    io = StringIO.new
+    yield Mutineer::TestRunners::RSpec::KillFormatter.new(io)
+    Mutineer::KillChannel.parse(io.string)
+  end
+
+  def test_an_example_without_an_id_is_identified_by_its_location
+    report = formatted { |fmt| fmt.example_passed(Notice.new(fake_example)) }
+    assert_equal [["/p/a_spec.rb", "A does", "./a_spec.rb:7"]], report.ran
+    assert_equal 0, report.lost
+  end
+
+  # A recorder that raises would change the verdict; the lost test leaves the row incomplete.
+  def test_an_example_that_cannot_be_described_is_a_lost_line_not_an_error
+    report = formatted { |fmt| fmt.example_failed(Notice.new(fake_example(id: -> { raise "boom" }))) }
+    assert_empty report.ran
+    assert_equal 1, report.lost
   end
 
   def test_record_to_and_stop_at_first_failure_cannot_be_combined

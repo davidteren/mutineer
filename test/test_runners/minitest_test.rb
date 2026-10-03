@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../test_helper"
+require "json"
 require "tmpdir"
 
 # The Minitest runner (wrapping MinitestIntegration) must keep its 0/1 contract.
@@ -14,6 +15,9 @@ class TestRunnersMinitestTest < Minitest::Test
   PARALLEL = File.join(FIX, "stop_at_first_failure_parallel_test.rb")
   REPORTER = File.join(FIX, "stop_at_first_failure_reporter_test.rb")
   FIBER    = File.join(FIX, "stop_at_first_failure_fiber_test.rb")
+  MATRIX   = File.expand_path("../fixtures/matrix", __dir__)
+  SERIAL_THEN_PARALLEL = File.join(MATRIX, "serial_then_parallel_test.rb")
+  INTERRUPT = File.join(MATRIX, "gate_interrupt_test.rb")
   SEED     = File.join(FIX, "stop_at_first_failure_seed_test.rb")
   CLEANUP  = File.join(FIX, "stop_at_first_failure_cleanup_test.rb")
   LATER    = File.join(FIX, "stop_at_first_failure_later_class_test.rb")
@@ -265,12 +269,47 @@ class TestRunnersMinitestTest < Minitest::Test
     assert_equal ["StopAtFirstFailureFiberFixture#test_a_fails"], names(report.killed)
   end
 
-  # The stop cannot skip tests parallelize_me! already queued, so the start
-  # line says so, and the parent keeps the exit status.
+  # The stop cannot skip tests parallelize_me! already queued, so a marker
+  # says where the parallel tests begin, and the parent keeps the exit status
+  # for a kill in them.
   def test_record_to_marks_a_parallel_run
     _, _, report = record_fixture(PARALLEL)
     assert report.started
     assert report.parallel
+    refute report.invalid
+  end
+
+  # Minitest runs the serial class first, so its kill comes before the
+  # `parallel` line, and a kill the stop would have followed is told apart from
+  # one in the parallel phase.
+  def test_record_to_sends_the_parallel_line_after_a_serial_kill
+    rd, wr = IO.pipe
+    fork_status do
+      rd.close
+      Mutineer::TestRunners::Minitest.run([SERIAL_THEN_PARALLEL], record_to: wr)
+    end
+    wr.close
+    text = rd.read
+    lines = text.lines.map { |line| JSON.parse(line).first }
+    assert_equal %w[start kill parallel pass end], lines
+    report = Mutineer::KillChannel.parse(text)
+    assert report.serial_kill
+    refute report.invalid
+  ensure
+    [rd, wr].each { |io| io.close unless io.closed? }
+  end
+
+  # Minitest catches an Interrupt in a test and returns, so the return proves
+  # nothing: the run is cut short without an `end` line.
+  def test_record_to_sends_no_end_when_an_interrupt_cut_the_run_short
+    ENV["MATRIX_FIXTURE_INTERRUPT"] = "1"
+    code, report = nil
+    capture_subprocess_io { code, _, report = record_fixture(INTERRUPT, first: "pass") }
+    assert_equal 1, code
+    assert_equal ["MatrixGateInterruptTest#test_a_boundary"], names(report.killed)
+    refute report.finished
+  ensure
+    ENV.delete("MATRIX_FIXTURE_INTERRUPT")
   end
 
   # An unknown Minitest shape arms nothing: no `start`, so no row can claim to

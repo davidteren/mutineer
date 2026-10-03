@@ -78,12 +78,15 @@ module Mutineer
       # Sends each example's outcome to the channel of a `--matrix` run. A
       # pending or skipped example sends nothing. A test is its spec file, its
       # full description (the name reports show) and its example id, which
-      # tells apart examples that share a description.
+      # tells apart examples that share a description and stays the same when a
+      # mutant changes a generated description. RSpec before 3.3 has no example
+      # id, so there the id is the example's location.
       #
       # It writes only from the process that created it, so an example that runs
       # an RSpec suite in a forked process cannot add lines. It writes `start`
       # when the run begins with fail-fast off; a run that could stop early sends
-      # no `start`, and its rows stay incomplete.
+      # no `start`, and its rows stay incomplete. It also registers an
+      # `after(:suite)` hook that writes `cleanup` ahead of the suite's own hooks.
       class KillFormatter
         # Registers the formatter with RSpec for the notifications it handles.
         # Called at run time, because rspec-core is not loaded with Mutineer.
@@ -100,7 +103,10 @@ module Mutineer
           @pid = Process.pid
         end
 
-        # Sends `start`, unless fail-fast is on.
+        # Sends `start`, unless fail-fast is on, and registers the hook that
+        # sends `cleanup`. RSpec runs `after(:suite)` hooks last-defined first,
+        # and this runs once the spec files have loaded, so the hook goes before
+        # every hook the suite defines.
         #
         # @param _notification [RSpec::Core::Notifications::StartNotification]
         # @return [void]
@@ -108,7 +114,16 @@ module Mutineer
           return unless owner?
           return if ::RSpec.configuration.fail_fast
 
-          KillChannel.write_start(@channel, parallel: false)
+          KillChannel.write_start(@channel)
+          formatter = self
+          ::RSpec.configuration.after(:suite) { formatter.cleanup_begins }
+        end
+
+        # Sends `cleanup`: every example has run, and the suite's own hooks follow.
+        #
+        # @return [void]
+        def cleanup_begins
+          KillChannel.write_cleanup(@channel) if owner?
         end
 
         # Sends a pass.
@@ -145,7 +160,19 @@ module Mutineer
           return unless owner?
 
           file = example.metadata[:absolute_file_path] || File.expand_path(example.file_path)
-          KillChannel.write(@channel, event, file, example.full_description, example.id)
+          KillChannel.write(@channel, event, file, example.full_description, identify(example))
+        rescue StandardError
+          # A recorder that raised would change the verdict; the lost line keeps the row incomplete.
+          KillChannel.write_lost(@channel)
+        end
+
+        # What tells `example` apart from the others, and stays the same across
+        # mutants: its id, or its location before RSpec 3.3.
+        #
+        # @param example [RSpec::Core::Example] the example.
+        # @return [String]
+        def identify(example)
+          example.respond_to?(:id) ? example.id : example.metadata.fetch(:location)
         end
       end
 

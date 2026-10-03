@@ -6,21 +6,35 @@ module Mutineer
   # The line protocol a `--matrix` mutant child uses to tell its parent how its
   # tests went. One JSON array per line:
   #
-  #   ["start", "serial" | "parallel"]   the recorder is armed; once, first
+  #   ["start"]                         the recorder is armed; once, first
   #   ["pass", file, name, id]          a test passed against the mutant
   #   ["kill", file, name, id]          a test failed or errored: it killed it
-  #   ["end"]                           the suite returned normally; once, last
+  #   ["parallel"]                      the run reached its parallel tests; once
+  #   ["cleanup"]                       every test ran; suite hooks follow; once
+  #   ["lost"]                          a test the recorder could not describe
+  #   ["end"]                           the suite returned with every test seen;
+  #                                     once, last
   #
-  # `id` tells two tests apart when `[file, name]` does not (an RSpec example
-  # id such as `./spec/calc_spec.rb[1:2]`); for Minitest it equals the name. A
-  # test line is written when the test is recorded, so a child killed at the
-  # timeout has already sent every kill it saw. A skipped test sends nothing.
-  # `parallel` means a test class runs its tests in parallel threads, where a
-  # stop at the first failure cannot skip the tests already queued.
+  # `id` tells two tests apart when `[file, name]` does not, and it is what
+  # identifies the test across mutants (an RSpec example id such as
+  # `./spec/calc_spec.rb[1:2]`; the name can change with the mutant). For
+  # Minitest it equals the name. A test line is written when the test is
+  # recorded, so a child killed at the timeout has already sent every kill it
+  # saw. A skipped test sends nothing.
   #
-  # A row is complete only with both `start` and `end` and no lost line: a test
-  # that exits the process, a crash, or a recorder that never armed leaves one
-  # out.
+  # Minitest runs its serial test classes first and its `parallelize_me!`
+  # classes after them, and the stop at the first failure of a run without
+  # `--matrix` skips everything after a serial kill. `parallel` marks where the
+  # parallel tests begin, so the parent can tell a kill that the stop would have
+  # followed from one it could not. `cleanup` marks where the tests end and the
+  # suite's own hooks begin (RSpec `after(:suite)`), which a run without
+  # `--matrix` runs after a failure as well.
+  #
+  # A row is complete only with `start` and `end`, in order, and no lost line: a
+  # test that exits the process, a crash, an interrupted run or a recorder that
+  # never armed leaves one out. A stream out of order (a duplicate marker, a
+  # test line before `start` or after `end`) is invalid, and the parent trusts
+  # nothing from it.
   #
   # Writing never raises: a recorder that broke the test run would change the
   # verdict, and the exit status decides the verdict. A lost line leaves the row
@@ -37,22 +51,28 @@ module Mutineer
     # Event that opens a recorded run.
     START = "start"
 
-    # Event that closes a run whose suite returned normally.
-    FINISH = "end"
-
-    # `start` mode of a run whose tests all run one after another.
-    SERIAL = "serial"
-
-    # `start` mode of a run where some test class runs its tests in parallel.
+    # Event that marks the first parallel test of a run.
     PARALLEL = "parallel"
+
+    # Event that marks the end of the tests and the start of the suite's cleanup.
+    CLEANUP = "cleanup"
+
+    # Event for a test the recorder could not describe.
+    LOST = "lost"
+
+    # Event that closes a run whose suite returned with every test seen.
+    FINISH = "end"
 
     # Serializes writes from tests that record on several threads.
     LOCK = Mutex.new
 
     # What one child sent. `killed` and `ran` are sorted, unique
     # `[file, name, id]` tests (`ran` includes the killers); `lost` counts lines
-    # that could not be read, including a partial last line.
-    Report = Struct.new(:killed, :ran, :started, :finished, :parallel, :lost, keyword_init: true)
+    # that could not be read, including a partial last line. `parallel` and
+    # `cleanup` say the marker arrived, and `serial_kill` that a test killed
+    # before the `parallel` marker. `invalid` is set by any line out of order.
+    Report = Struct.new(:killed, :ran, :started, :finished, :parallel, :cleanup, :serial_kill, :invalid, :lost,
+                        keyword_init: true)
 
     # Writes one test line.
     #
@@ -70,10 +90,33 @@ module Mutineer
     # Writes the `start` line.
     #
     # @param io [IO] the write end of the channel.
-    # @param parallel [Boolean] some test class runs its tests in parallel.
     # @return [void]
-    def self.write_start(io, parallel:)
-      emit(io, [START, parallel ? PARALLEL : SERIAL])
+    def self.write_start(io)
+      emit(io, [START])
+    end
+
+    # Writes the `parallel` line.
+    #
+    # @param io [IO] the write end of the channel.
+    # @return [void]
+    def self.write_parallel(io)
+      emit(io, [PARALLEL])
+    end
+
+    # Writes the `cleanup` line.
+    #
+    # @param io [IO] the write end of the channel.
+    # @return [void]
+    def self.write_cleanup(io)
+      emit(io, [CLEANUP])
+    end
+
+    # Writes the `lost` line, for a test the recorder could not describe.
+    #
+    # @param io [IO] the write end of the channel.
+    # @return [void]
+    def self.write_lost(io)
+      emit(io, [LOST])
     end
 
     # Writes the `end` line.
@@ -89,7 +132,8 @@ module Mutineer
     # @param buffer [String] bytes read from the channel.
     # @return [Report]
     def self.parse(buffer)
-      report = Report.new(killed: [], ran: [], started: false, finished: false, parallel: false, lost: 0)
+      report = Report.new(killed: [], ran: [], started: false, finished: false, parallel: false, cleanup: false,
+                          serial_kill: false, invalid: false, lost: 0)
       buffer.dup.force_encoding(Encoding::UTF_8).each_line do |line|
         fields = line.end_with?("\n") ? parse_line(line) : nil
         fields ? apply(report, fields) : report.lost += 1
@@ -99,7 +143,8 @@ module Mutineer
       report
     end
 
-    # Adds one parsed line to `report`.
+    # Adds one parsed line to `report`. A line out of order marks the report
+    # invalid; the line still counts, since what it names happened.
     #
     # @api private
     # @param report [Report] the report being built.
@@ -108,14 +153,36 @@ module Mutineer
     def self.apply(report, fields)
       case fields[0]
       when START
+        report.invalid = true if report.started || report.ran.any? || report.parallel || report.cleanup || report.finished
         report.started = true
-        report.parallel = fields[1] == PARALLEL
-      when FINISH then report.finished = true
+      when PARALLEL
+        report.invalid = true unless open?(report) && !report.parallel
+        report.parallel = true
+      when CLEANUP
+        report.invalid = true unless open?(report) && !report.cleanup
+        report.cleanup = true
+      when LOST then report.lost += 1
+      when FINISH
+        report.invalid = true unless open?(report) && !report.finished
+        report.finished = true
       else
+        report.invalid = true unless open?(report) && !report.cleanup
         test = fields[1, 3]
         report.ran << test
-        report.killed << test if fields[0] == KILL
+        return unless fields[0] == KILL
+
+        report.killed << test
+        report.serial_kill = true unless report.parallel
       end
+    end
+
+    # True between `start` and `end`.
+    #
+    # @api private
+    # @param report [Report] the report being built.
+    # @return [Boolean]
+    def self.open?(report)
+      report.started && !report.finished
     end
 
     # Parses one line into its fields, or nil when it is not a valid line.
@@ -130,8 +197,7 @@ module Mutineer
       valid =
         case fields[0]
         when PASS, KILL then fields.size == 4
-        when START then fields.size == 2 && [SERIAL, PARALLEL].include?(fields[1])
-        when FINISH then fields.size == 1
+        when START, PARALLEL, CLEANUP, LOST, FINISH then fields.size == 1
         end
       fields if valid
     rescue JSON::ParserError
@@ -161,6 +227,6 @@ module Mutineer
       str = str.encode(Encoding::UTF_8, invalid: :replace, undef: :replace) unless str.encoding == Encoding::UTF_8
       str.scrub
     end
-    private_class_method :apply, :parse_line, :emit, :utf8
+    private_class_method :apply, :open?, :parse_line, :emit, :utf8
   end
 end

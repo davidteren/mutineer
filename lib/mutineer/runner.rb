@@ -537,12 +537,19 @@ module Mutineer
     # (thousands of mutants times hundreds of tests) would otherwise hold that
     # many copies. Results without a row come back unchanged.
     #
+    # A test is its file and its id. The name is display data and can differ
+    # between mutants (an RSpec example worded from its matcher reads
+    # differently under each mutant), so every row gets the name the first
+    # mutant reported, and one example stays one test.
+    #
     # @api private
     # @param results [Array<Mutineer::Result>] mutant results.
     # @return [Array<Mutineer::Result>]
     def self.share_tests(results)
       shared = {}
-      share = ->(tests) { tests.map { |test| shared[test] ||= test.map { |s| -s }.freeze }.freeze }
+      share = lambda do |tests|
+        tests.map { |file, name, id| shared[[file, id]] ||= [file, name, id].map { |s| -s }.freeze }.uniq.sort.freeze
+      end
       results.map do |r|
         next r unless (kills = r.kills)
 
