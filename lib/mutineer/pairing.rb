@@ -36,11 +36,9 @@ module Mutineer
         if File.directory?(abs)
           Dir.glob(File.join(abs, "**", "*.rb")).sort.map { |f| root_relative(f, root) || f }
         else
+          # `..` resolves as text, as FileSwap and the daemon already read it.
           rel = root_relative(abs, root) || root_relative(real_dir_path(abs), root) if File.exist?(abs)
-          # expand_path drops `..` as text; past a symlinked directory that can
-          # name another file, so keep the typed path unless both are one file.
-          typed = File.absolute_path?(arg) ? arg : File.join(root, arg)
-          [rel && File.identical?(File.join(root, rel), typed) ? rel : arg]
+          [rel || arg]
         end
       end.uniq
     end

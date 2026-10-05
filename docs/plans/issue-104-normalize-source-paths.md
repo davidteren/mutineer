@@ -52,9 +52,10 @@ CLI reports "no test found by convention" and exits 2.
 
 **Files:** `lib/mutineer/pairing.rb`, `test/pairing_test.rb`, `test/cli_test.rb`, `CHANGELOG.md`
 
-**Approach:** In the non-directory branch of `expand_sources`, map the argument through
-`ProjectPath.relative`. Use the result when it is relative, else the original argument.
-Update the method docstring.
+**Approach:** Add a text-based `root_relative` helper and use it in both branches of
+`expand_sources`. A file argument that exists inside the root becomes its root-relative
+path; otherwise the original argument stays. `..` resolves as text, the same way
+`FileSwap` and the daemon read paths. Update the docstrings.
 
 **Test scenarios:**
 - `./lib/calc.rb` expands to `lib/calc.rb`, and `infer_tests` finds `test/calc_test.rb`.
