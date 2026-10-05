@@ -365,8 +365,11 @@ module Mutineer
       file = result.subject.file
       source = @source_map[file] || File.read(file)
       start_line, original_block, mutated_block, token = diff_for(m, source)
-      minus = original_block.each_line.map { |l| "-#{l.chomp}" }.join("\n")
-      plus  = mutated_block.each_line.map { |l| "+#{l.chomp}" }.join("\n")
+      old_lines = block_lines(original_block)
+      new_lines = block_lines(mutated_block)
+      # The block reaches the end of a file with no final newline: both sides
+      # say so, or `git apply` reads a newline that is not there.
+      eof = source.byteindex("\n", m.end_offset) ? "" : "\\ No newline at end of file\n"
       {
         subject: result.subject.qualified_name,
         file: file,
@@ -376,8 +379,32 @@ module Mutineer
         # user can paste it straight into .mutineer.yml `ignore:`.
         id: result.id,
         token: token,
-        diff: "--- a/#{file}\n+++ b/#{file}\n@@ -#{start_line} +#{start_line} @@\n#{minus}\n#{plus}\n"
+        diff: "--- a/#{file}\n+++ b/#{file}\n" \
+              "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
+              "#{old_lines.map { |l| "-#{l}\n" }.join}#{eof}#{new_lines.map { |l| "+#{l}\n" }.join}#{eof}"
       }
+    end
+
+    # The lines of a {#diff_for} block as the file holds them. The block stops
+    # before its final newline, so an empty block is one empty line, and a
+    # block ending in a newline ends with an empty line.
+    #
+    # @api private
+    # @param block [String] the block's text.
+    # @return [Array<String>] its lines, without line endings.
+    def block_lines(block)
+      "#{block}\n".lines.map(&:chomp)
+    end
+
+    # One side of a unified diff hunk header: `start` for one line, else
+    # `start,count` (#106).
+    #
+    # @api private
+    # @param start_line [Integer] 1-based first line of the block.
+    # @param lines [Array<String>] the block's lines.
+    # @return [String] the range, e.g. "3" or "3,2".
+    def hunk_range(start_line, lines)
+      lines.size == 1 ? start_line.to_s : "#{start_line},#{lines.size}"
     end
 
     # An entry under the JSON `ignored:` key: what the user already suppressed.

@@ -15,6 +15,13 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **A survivor diff for a multi-line mutant applies with `git apply`** (#106).
+  The JSON `diff` header always read `@@ -N +N @@`, even when the mutant
+  removed two lines and added one, so `git apply` rejected the patch as
+  corrupt. The header now carries each side's line count (`@@ -3,2 +3 @@`).
+  A one-line diff keeps its old header. A mutant that empties a line now
+  shows that empty line as a `+` line. A mutant on the last line of a file
+  with no final newline adds `\ No newline at end of file` to both sides.
 - **Split test files pair with their source** (#87). A source such as
   `app/foo/bar.rb` now also uses `test/foo/bar_upsert_test.rb` and
   `test/foo/bar_guards_test.rb`, together with `test/foo/bar_test.rb` when
