@@ -592,6 +592,22 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #104: `./lib/calc.rb`, its absolute path and `lib/calc.rb` pair with the
+  # same test, and given together they run the source once.
+  def test_equivalent_source_spellings_autopair_once
+    with_autopair_project do |proj|
+      out, err, status = mutineer("run", "./lib/calc.rb", File.join(proj, "lib/calc.rb"), "lib/calc.rb",
+                                  "--format", "json", chdir: proj)
+      refute_includes err, "no test found"
+      assert_includes [0, 1], status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal ["lib/calc.rb"], doc["per_source"].map { |h| h["file"] }
+
+      single, = mutineer("run", "lib/calc.rb", "--format", "json", chdir: proj)
+      assert_equal JSON.parse(single)["summary"]["total"], doc["summary"]["total"]
+    end
+  end
+
   # R3: a source with no inferred test warns on stderr and is skipped; the run
   # continues on the rest (not exit 2).
   def test_orphan_source_warns_and_is_skipped

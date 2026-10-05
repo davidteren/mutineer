@@ -110,6 +110,26 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # #104: equivalent spellings of one file name the same root-relative path,
+  # so they pair with the same test and run once.
+  def test_expand_sources_normalizes_equivalent_file_paths
+    with_tree("lib/calc.rb", "test/calc_test.rb") do |root|
+      spellings = ["lib/calc.rb", "./lib/calc.rb", File.join(root, "lib/calc.rb"), "lib/../lib/calc.rb"]
+      spellings.each do |arg|
+        assert_equal ["lib/calc.rb"], Mutineer::Pairing.expand_sources([arg], project_root: root), arg
+      end
+      assert_equal ["lib/calc.rb"], Mutineer::Pairing.expand_sources(spellings, project_root: root)
+      assert_equal ["test/calc_test.rb"], infer_tests("lib/calc.rb", root)
+    end
+  end
+
+  def test_expand_sources_keeps_a_path_outside_the_root_as_typed
+    with_tree("proj/lib/calc.rb", "other/x.rb") do |dir|
+      root = File.join(dir, "proj")
+      assert_equal ["../other/x.rb"], Mutineer::Pairing.expand_sources(["../other/x.rb"], project_root: root)
+    end
+  end
+
   def test_expand_sources_dedupes_and_mixes_dir_and_file
     with_tree("app/a.rb", "lib/x.rb") do |root|
       got = Mutineer::Pairing.expand_sources(["app", "app/a.rb", "lib/x.rb"], project_root: root)

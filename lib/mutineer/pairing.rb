@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "project_path"
+
 module Mutineer
   # Source -> test pairing by path convention (#11). Pure stdlib path logic:
   # no Rails, no class loading, no process. Two jobs:
@@ -19,7 +21,10 @@ module Mutineer
 
     # Expand each positional source: a directory -> its sorted **/*.rb files
     # (relative to project_root); a file (or glob, or anything non-directory)
-    # -> itself. Flattened, deduped, order-stable.
+    # -> its path relative to project_root, so `./lib/x.rb` and an absolute
+    # path pair like `lib/x.rb` (#104). A path that does not resolve inside the
+    # root (outside it, or missing under a symlinked root) stays as typed.
+    # Flattened, deduped, order-stable.
     #
     # @param args [Array<String>] source paths or directories.
     # @param project_root [String] repository root for relative expansion.
@@ -31,7 +36,8 @@ module Mutineer
         if File.directory?(abs)
           Dir.glob(File.join(abs, "**", "*.rb")).sort.map { |f| f.delete_prefix("#{root}/") }
         else
-          [arg]
+          rel = ProjectPath.relative(arg, root)
+          [File.absolute_path?(rel) ? arg : rel]
         end
       end.uniq
     end

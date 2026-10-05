@@ -15,6 +15,13 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **`./lib/x.rb` and an absolute path pair with a test** (#104). Auto-pairing
+  found the test for `lib/calc.rb` but not for `./lib/calc.rb` or the
+  absolute path to the same file. It reported "no test found by convention"
+  and exited 2. A file argument inside the project is now made relative to
+  the project root first, so every spelling pairs with the same test and
+  runs once. Reports show that root-relative path. A path outside the
+  project stays as typed.
 - **Split test files pair with their source** (#87). A source such as
   `app/foo/bar.rb` now also uses `test/foo/bar_upsert_test.rb` and
   `test/foo/bar_guards_test.rb`, together with `test/foo/bar_test.rb` when
