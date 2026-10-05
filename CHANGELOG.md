@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-05
+
 ### Fixed
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not
@@ -695,6 +697,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.4.1]: https://github.com/davidteren/mutineer/releases/tag/v1.4.1
 [1.4.0]: https://github.com/davidteren/mutineer/releases/tag/v1.4.0
 [1.3.0]: https://github.com/davidteren/mutineer/releases/tag/v1.3.0
 [1.2.0]: https://github.com/davidteren/mutineer/releases/tag/v1.2.0
