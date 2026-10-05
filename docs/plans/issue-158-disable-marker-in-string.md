@@ -29,7 +29,7 @@ out of the score.
 
 ## Key Technical Decisions
 
-- **Use `Prism.parse_comments`.** Prism ships with Ruby 3.4 (the gem has zero runtime
+- **Read comments from `Parser.parse_string`** (the repo's Prism boundary; changed from `Prism.parse_comments` after code review). Prism ships with Ruby 3.4 (the gem has zero runtime
   dependencies) and already parses this source. It returns each comment with its line, so a string never counts.
 - **Only inline (`#`) comments.** An `=begin`/`=end` block spans many lines, and the
   marker is documented as a line comment.

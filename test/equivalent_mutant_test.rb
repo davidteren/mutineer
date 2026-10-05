@@ -44,7 +44,7 @@ class EquivalentMutantTest < Minitest::Test
     assert_equal({ 1 => :all, 2 => :all, 3 => :all }, map)
   end
 
-  # #158: the marker text inside a string or heredoc is not a comment.
+  # #158: the marker text inside a string, heredoc or regex is not a comment.
   def test_suppress_map_ignores_the_marker_inside_a_string
     src = <<~RUBY
       class Example
@@ -60,6 +60,10 @@ class EquivalentMutantTest < Minitest::Test
 
         def real(x)
           x == 1 # mutineer:disable-line comparison
+        end
+
+        def pattern(x)
+          x =~ /# mutineer:disable-line/
         end
       end
     RUBY

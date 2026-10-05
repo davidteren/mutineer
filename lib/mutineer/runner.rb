@@ -355,7 +355,7 @@ module Mutineer
     # text inside a string, heredoc or regex silences nothing (#158).
     def self.suppress_map(source, file)
       map = {}
-      Prism.parse_comments(source).grep(Prism::InlineComment).each do |comment|
+      Parser.parse_string(source).comments.grep(Prism::InlineComment).each do |comment|
         line = comment.location.start_line
         next unless (m = comment.slice.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
 
