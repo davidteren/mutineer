@@ -1,0 +1,23 @@
+docs/plans/issue-158-disable-marker-in-string.md
+  s_07d7b58ff1b9fd::t_4afdc263bc075a 32
+lib/mutineer/runner.rb
+  s_07d7b58ff1b9fd::t_a9e3400a786f74 358
+test/equivalent_mutant_test.rb
+  s_07d7b58ff1b9fd::t_a7278937b627ca 47,64-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "919ded9a00b32f74aac48f817940b635b1f3e916",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
