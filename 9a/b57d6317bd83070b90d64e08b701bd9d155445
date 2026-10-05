@@ -1,0 +1,28 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 40-62
+README.md
+  h_e8a5bb9272fa34 366-369,374
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 145
+lib/mutineer/config.rb
+  h_e8a5bb9272fa34 137-148,165-171,243-245,248,279-288
+lib/mutineer/daemon_client.rb
+  h_e8a5bb9272fa34 5,17-22,32-33,38-40,127-132,134-136,139-169,173-283,290-294,304-305
+test/cli_test.rb
+  h_e8a5bb9272fa34 319-339
+test/config_test.rb
+  h_e8a5bb9272fa34 214-272
+test/daemon_client_env_test.rb
+  h_e8a5bb9272fa34 1-312
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ab57d6317bd83070b90d64e08b701bd9d155445",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
