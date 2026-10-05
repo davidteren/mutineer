@@ -15,7 +15,7 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
-- **One edit is scored once** (#159). Some opt-in operators emitted two
+- **One edit on a line is scored once** (#159). Some opt-in operators emitted two
   mutants that give the same source: `literal_mutation` on `0` (the "change
   to 1" and "add 1" rules), `negation_removal` on `!!x` (either `!`
   removed), and `chain_link` or `operand_removal` on a repeated part such as
