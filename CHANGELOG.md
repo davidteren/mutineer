@@ -15,6 +15,23 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **The daemon no longer runs the tool's Ruby settings inside the app** (#100).
+  Open3 keeps a variable when the spawn hash omits it, so a parent `RUBYOPT`
+  ran inside the app. The child now gets the environment Bundler saved before
+  it activated, passed with `unsetenv_others`. The app keeps its gem home,
+  excluded groups, Bundler config, and chruby path. An `RBENV_VERSION` or
+  `ASDF_RUBY_VERSION` already in the environment stays. That pin is often
+  the Ruby that started the tool. `.ruby-version` applies only when no pin
+  is set. The tool's `RUBYOPT` and `RUBYLIB` do not reach the child, including
+  a value Bundler had saved. A gem home, `BUNDLE_PATH`, or `BUNDLE_WITHOUT`
+  reaches the child only when Bundler saved the app's value. The same
+  rule covers `GEM_PATH` and `BUNDLER_VERSION`. An rbenv version
+  bin under `RBENV_ROOT`, or under `~/.rbenv` when that variable is unset,
+  leaves `PATH` only when that root has a shim directory. An asdf version
+  bin leaves only when an asdf shim directory exists, including
+  `ASDF_DATA_DIR/shims`. Without that shim, the bin stays and `bundle` can
+  still be found. The app Gemfile, an explicit Ruby pin, and Rails env are
+  applied after that.
 - **The Action refuses to run when `output` and `baseline` are the same file** (#160).
   That setup used to work, and a failing run copied its report onto the
   baseline. The next run then treated the failed report as the baseline, so
