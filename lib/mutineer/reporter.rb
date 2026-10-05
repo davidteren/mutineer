@@ -581,7 +581,7 @@ module Mutineer
       sources.sort.each do |file, agg|
         score = agg.mutation_score
         out.puts format("%s  %s  (%d killed / %d survived / %d no-cov)",
-                        file, score.nil? ? "N/A" : "#{score}%",
+                        printable(file), score.nil? ? "N/A" : "#{score}%",
                         agg.killed_count, agg.survived_count, agg.no_coverage_count)
       end
     end
@@ -600,7 +600,7 @@ module Mutineer
         file = r.subject.file
         source = @source_map[file] || File.read(file)
         line, = diff_for(r.mutation, source)
-        out.puts "  + #{r.subject.qualified_name} (#{file}:#{line}) #{r.mutation.operator}"
+        out.puts "  + #{r.subject.qualified_name} (#{printable(file)}:#{line}) #{r.mutation.operator}"
       end
       out.puts "score dropped #{delta.score_before}% -> #{delta.score_after}%" if delta.score_drop
       # An OK verdict must not imply a check that never ran: say when the score
@@ -622,7 +622,7 @@ module Mutineer
       out.puts "-----------------"
       mutants.group_by { |r| r.subject.file }.sort.each do |file, group|
         out.puts
-        out.puts file
+        out.puts printable(file)
         group.sort_by { |r| r.mutation.start_offset }.each { |r| survivor(out, file, r) }
       end
     end
@@ -638,23 +638,24 @@ module Mutineer
       source = @source_map[file] || File.read(file)
       start_line, original_block, mutated_block, token = diff_for(m, source)
 
-      out.puts "  #{result.subject.qualified_name} (#{File.basename(file)}:#{start_line})"
+      out.puts "  #{result.subject.qualified_name} (#{printable(File.basename(file))}:#{start_line})"
       out.puts "  Operator: #{m.operator}  (#{printable(token)} -> #{printable(m.replacement)})"
       original_block.each_line { |l| out.puts "  - #{printable(l.chomp)}" }
       mutated_block.each_line  { |l| out.puts "  + #{printable(l.chomp)}" }
     end
 
-    # Source text made safe for a terminal (#163): each control character
-    # except tab becomes its Ruby escape (ESC prints as `\e`), so a byte in a
-    # surviving line cannot drive the terminal. JSON and HTML escape on their own.
-    # Invalid UTF-8 (Prism accepts it in a comment) is scrubbed first, so the
-    # regex never raises.
+    # Source text or a file path made safe for a terminal (#163): each control
+    # character except tab becomes its Ruby escape (ESC prints as `\e`), so a
+    # byte in a surviving line cannot drive the terminal. JSON and HTML escape
+    # on their own. The text is read as UTF-8, as Prism reads source, whatever
+    # the locale (`File.read` tags it US-ASCII under `LANG=C`). Invalid bytes
+    # (Prism accepts them in a comment) are scrubbed, so the regex never raises.
     #
     # @api private
     # @param text [String] source text.
     # @return [String] the text with control characters escaped.
     def printable(text)
-      text.scrub.gsub(/[[:cntrl:]&&[^\t]]/) { |c| c.dump[1..-2] }
+      text.dup.force_encoding(Encoding::UTF_8).scrub.gsub(/[[:cntrl:]&&[^\t]]/) { |c| c.dump[1..-2] }
     end
 
     # Writes the final verdict line.

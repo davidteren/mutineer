@@ -35,8 +35,10 @@ and can change what it shows. The JSON and HTML reports already escape text.
 - **Scrub invalid bytes first.** Plan review said Prism rejects invalid UTF-8, but code
   review showed Prism accepts it inside a comment, so a Latin-1 byte after the token
   crashed the new regex. `scrub` keeps the report working.
-- **Apply it only in the human `survivor` method.** Other human lines print names,
-  counts, and paths, not source text.
+- **Apply it to source text and file paths in the human report** (paths added after
+  code review: a file name can hold a control byte too).
+- **Read the text as UTF-8 before scrubbing** (code review): under `LANG=C`, `File.read`
+  tags source US-ASCII, and `scrub` alone would turn valid UTF-8 into `?`.
 
 ## Implementation Units
 

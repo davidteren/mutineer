@@ -219,7 +219,7 @@ class ReporterTest < Minitest::Test
     def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
     subject = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
                                     singleton: false, def_node: def_node)
-    at = src.index(">=")
+    at = src.byteindex(">=")
     mutation = Mutineer::Mutation.new(start_offset: at, end_offset: at + 2, replacement: ">", operator: :comparison)
     agg = Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subject, mutation: mutation)])
 
@@ -227,6 +227,27 @@ class ReporterTest < Minitest::Test
     Mutineer::Reporter.new(agg, { "foo.rb" => src }).report(out: out, err: StringIO.new)
     refute_includes out.string, "\e"
     assert_includes out.string, %(-     "\\e[2J\\x7F\\r\\u009B" if x >= 1\t# t)
+    assert_includes out.string, %(+     "\\e[2J\\x7F\\r\\u009B" if x > 1\t# t)
+
+    # A source read under LANG=C is tagged US-ASCII; UTF-8 after the token
+    # still prints as UTF-8, not as `??`.
+    ascii_src = "class Foo\n  def bar(x)\n    x >= 1 # caf\u00e9\n  end\nend\n".dup.force_encoding(Encoding::US_ASCII)
+    ascii_at = ascii_src.byteindex(">=")
+    ascii_mutation = Mutineer::Mutation.new(start_offset: ascii_at, end_offset: ascii_at + 2, replacement: ">",
+                                            operator: :comparison)
+    ascii_agg = Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subject, mutation: ascii_mutation)])
+    out = StringIO.new
+    Mutineer::Reporter.new(ascii_agg, { "foo.rb" => ascii_src }).report(out: out, err: StringIO.new)
+    assert_includes out.string, "+     x > 1 # caf\u00e9"
+
+    # A file name with a control byte is escaped too.
+    named = Mutineer::Subject.new(file: "f\eoo.rb", namespace: ["Foo"], name: :bar,
+                                  singleton: false, def_node: def_node)
+    named_agg = Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: named, mutation: mutation)])
+    out = StringIO.new
+    Mutineer::Reporter.new(named_agg, { "f\eoo.rb" => src }).report(out: out, err: StringIO.new)
+    refute_includes out.string, "\e"
+    assert_includes out.string, "f\\eoo.rb"
 
     json = StringIO.new
     Mutineer::Reporter.new(agg, { "foo.rb" => src }).report(out: json, err: StringIO.new, format: "json")
