@@ -44,6 +44,11 @@ does the same on `a.b.b.c`: dropping either `.b` gives `a.b.c`. Each copy gets i
   `mutations_for`, and ids count same-token twins over the full list, so dropping after
   that keeps every id stable (R4). The key is `[operator, span text]`, so the drop stays
   per operator.
+- **Drop separately among run and ignored mutants** (cubic review). A copy whose id is
+  in the ignore list must not hide the other copy, so the drop runs after the
+  suppression check, with one seen-set for each group.
+- **Baseline effect** (cubic review): with these opt-in operators, a stored baseline can
+  show a score change with no code change. The CHANGELOG says to regenerate it.
 - **Mutator unit tests keep pinning both emissions,** because the mutators still emit
   them. A runner test pins the drop and the ids.
 
@@ -53,9 +58,9 @@ does the same on `a.b.b.c`: dropping either `.b` gives `a.b.c`. Each copy gets i
 
 **Files:** `lib/mutineer/runner.rb`, `test/runner_test.rb`, `CHANGELOG.md`
 
-**Approach:** Add `Runner.repeated_results`, which returns the indexes of mutations
-that repeat an earlier mutation of the same operator. `collect_jobs` skips those
-indexes after it computes ids.
+**Approach:** Add `Runner.result_keys`, one `[operator, span text]` key per mutation.
+`collect_jobs` skips a mutation whose key it already placed in the same group (run or
+ignored), after ids and the suppression check.
 
 **Test scenarios:**
 - A subject with `x = 0`, `y = 0` and `!!x`, run with `literal_mutation` and
@@ -63,6 +68,7 @@ indexes after it computes ids.
   operator and mutated source.
 - Every kept job's id equals the id that mutant had over the full, undeduplicated list.
 - The test fails when the drop is disabled.
+- An ignore entry for the first copy's id ignores that copy, and the second copy still runs.
 - Existing mutator tests (which still pin both emissions) stay green.
 
 **Verification:** The new runner test passes and the full suite stays green.

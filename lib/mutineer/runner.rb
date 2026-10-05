@@ -199,10 +199,12 @@ module Mutineer
         ordinal = (decls[subject.def_node.location.start_offset] ||= decls.size)
         ids = MutantId.for_subject(subject, source, mutations, path: id_path, subject_ordinal: ordinal)
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
-        repeats = repeated_results(mutations, source)
+        keys = result_keys(mutations, source)
+        # A repeat of an earlier edit is dropped (#159), separately among the
+        # run and the ignored mutants, so a copy on a suppressed line never
+        # hides a copy on a line that is not suppressed.
+        seen = { run: Set.new, ignored: Set.new }
         mutations.each_with_index do |mutation, i|
-          next if repeats.include?(i)
-
           id = ids[i]
           legacy = legacy_ids[i]
           id_map[id] = legacy
@@ -213,8 +215,12 @@ module Mutineer
           end
           line = source.byteslice(0, mutation.start_offset).count("\n") + 1
           if suppressed?(mutation.operator, line, [id, legacy], disabled, ignore_set)
+            next unless seen[:ignored].add?(keys[i])
+
             ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id)
           else
+            next unless seen[:run].add?(keys[i])
+
             jobs << [subject, mutation, id]
           end
         end
@@ -222,29 +228,26 @@ module Mutineer
       [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map }]
     end
 
-    # Indexes of mutations that repeat an earlier mutation of the same operator:
-    # same mutated source, so one edit (#159). `literal_mutation` on `0` ("change
-    # to 1" and "add 1"), `negation_removal` on `!!x` and `chain_link` on
-    # `a.b.b.c` emit such pairs. The caller drops them AFTER ids are assigned,
-    # so every kept mutant keeps the id it had before, and a dropped copy's id
-    # is never reused by another mutant. Text outside the span from the
-    # earliest start to the latest end is the same for every mutation, so
+    # One key per mutation that is equal for two mutations exactly when they are
+    # the same operator and give the same mutated source: one edit (#159).
+    # `literal_mutation` on `0` ("change to 1" and "add 1"), `negation_removal`
+    # on `!!x` and `chain_link` on `a.b.b.c` emit such pairs. The caller drops
+    # a repeat AFTER ids are assigned, so every kept mutant keeps the id it had
+    # before and a dropped copy's id is never reused. Text outside the span from
+    # the earliest start to the latest end is the same for every mutation, so
     # comparing that span is exact without copying the whole file.
     #
     # @param mutations [Array<Mutineer::Mutation>] one subject's mutations.
     # @param source [String] the full, unmutated source.
-    # @return [Set<Integer>] indexes into `mutations` to drop.
-    def self.repeated_results(mutations, source)
-      return Set.new if mutations.size < 2
+    # @return [Array<Array(Symbol, String)>] one key per mutation, in order.
+    def self.result_keys(mutations, source)
+      return [] if mutations.empty?
 
       from = mutations.map(&:start_offset).min
       to = mutations.map(&:end_offset).max
-      seen = Set.new
-      mutations.each_index.reject do |i|
-        m = mutations[i]
-        seen.add?([m.operator, "#{source.byteslice(from...m.start_offset)}#{m.replacement}" \
-                               "#{source.byteslice(m.end_offset...to)}"])
-      end.to_set
+      mutations.map do |m|
+        [m.operator, "#{source.byteslice(from...m.start_offset)}#{m.replacement}#{source.byteslice(m.end_offset...to)}"]
+      end
     end
 
     # External backend orchestration. Runs each mutant's whole-file mutation on

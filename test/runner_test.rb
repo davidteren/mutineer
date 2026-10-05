@@ -206,8 +206,26 @@ class RunnerTest < Minitest::Test
       subject = jobs.first[0]
       all = ops.flat_map { |k| k.new.mutations_for(subject, source) }
       before = Mutineer::MutantId.for_subject(subject, source, all, path: "zero.rb")
-      kept = all.each_index.reject { |i| Mutineer::Runner.repeated_results(all, source).include?(i) }
+      keys = Mutineer::Runner.result_keys(all, source)
+      kept = all.each_index.select { |i| keys.index(keys[i]) == i }
       assert_equal kept.map { |i| before[i] }, jobs.map(&:last)
+    end
+  end
+
+  # #159: an ignore entry for one copy's id does not hide the other copy of the
+  # same edit. The copies are dropped separately among run and ignored mutants.
+  def test_collect_jobs_keeps_an_unsuppressed_copy_of_a_suppressed_edit
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "zero.rb")
+      File.write(path, "class Zero\n  def a\n    0\n  end\nend\n")
+      ops = Mutineer::MutatorRegistry.resolve(%w[literal_mutation])
+      first_id = Mutineer::Runner.collect_jobs(Mutineer::Config.new(sources: [path], project_root: dir), ops)
+                                 .first.first.last
+      config = Mutineer::Config.new(sources: [path], project_root: dir, ignore: [first_id])
+      jobs, ignored, = Mutineer::Runner.collect_jobs(config, ops)
+      assert_equal [first_id], ignored.map(&:id)
+      assert_equal 1, jobs.size
+      refute_equal first_id, jobs.first.last
     end
   end
 
@@ -234,5 +252,4 @@ class RunnerTest < Minitest::Test
     end
     jobs
   end
-
 end

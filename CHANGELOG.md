@@ -22,7 +22,11 @@ All notable changes to this project are documented here. The format is based on
   `a.b.b.c` or `x || x`. Each copy had its own id, so one surviving edit
   counted twice. Now only the first copy runs. Ids are assigned before the
   copy is dropped, so every kept mutant keeps its id, and the dropped copy's
-  id simply stops appearing. Default runs do not change.
+  id simply stops appearing. Default runs do not change. If you use these
+  operators with `--baseline`, regenerate the baseline after upgrading: the
+  score can move with no code change, and a dropped copy that survived is
+  listed as fixed. An ignore entry for one copy's id still ignores only
+  that copy; the other copy still runs.
 - **Split test files pair with their source** (#87). A source such as
   `app/foo/bar.rb` now also uses `test/foo/bar_upsert_test.rb` and
   `test/foo/bar_guards_test.rb`, together with `test/foo/bar_test.rb` when
