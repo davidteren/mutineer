@@ -294,7 +294,7 @@ runs:
             raw = YAML.safe_load(File.read(file)) rescue exit(0)
             exit 0 unless raw.is_a?(Hash)
             value = raw["baseline"]
-            print value if value.is_a?(String) && !value.empty?
+            print value.to_s unless [nil, true, false].include?(value) || value.to_s.empty?
           ')"
         fi
         if [ -n "$OUTPUT" ] && [ -n "$baseline_path" ]; then

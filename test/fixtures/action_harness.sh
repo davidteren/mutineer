@@ -179,3 +179,23 @@ run_step case15 STUB_EXIT=1 OUTPUT="$SCRATCH/case15/out.json"
 after=$(cksum .mutineer/baseline.json)
 [ "$before" = "$after" ] && echo "  OK: yml baseline left in place" || echo "  FAIL: yml baseline changed on a different output"
 [ -s "$SCRATCH/case15/out.json" ] && echo "  OK: different output still delivered" || echo "  FAIL: different output was refused"
+
+echo; echo "== 16: numeric baseline in .mutineer.yml is the same file as output (expects exit 2) =="
+printf 'baseline: 123\n' > .mutineer.yml
+cp "$SCRATCH/report.json" 123
+before=$(cksum 123)
+run_step case16 STUB_EXIT=1 OUTPUT="123"
+after=$(cksum 123)
+[ "$before" = "$after" ] && echo "  OK: numeric baseline kept" || echo "  FAIL: numeric baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on a numeric baseline" || echo "  OK: numeric baseline rejected before running"
+
+echo; echo "== 17: same-file path escapes percent and newline (expects exit 2) =="
+mkdir -p "$SCRATCH/case17"
+weird="$SCRATCH/case17/a%b"$'\n'"c.json"
+cp "$SCRATCH/report.json" "$weird"
+before=$(cksum "$weird")
+run_step case17 STUB_EXIT=1 OUTPUT="$weird" BASELINE="$weird"
+after=$(cksum "$weird")
+[ "$before" = "$after" ] && echo "  OK: escaped-path baseline kept" || echo "  FAIL: escaped-path baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on an escaped path" || echo "  OK: escaped path rejected before running"
+grep '::error::' "$SCRATCH/case17/stdout.txt"

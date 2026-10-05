@@ -25,7 +25,8 @@ class ActionHarnessTest < Minitest::Test
     { "case1" => 1, "case2" => 0, "case3" => 1, "case3b" => 1, "case4" => 1,
       "case5" => 1, "case6" => 2, "case7" => 1, "case8" => 2, "case8b" => 2, "case9" => 0,
       "case10" => 1, "case11" => 2, "case11b" => 2, "case12" => 1,
-      "case13" => 2, "case14" => 2, "case14b" => 2, "case15" => 1 }.each do |c, code|
+      "case13" => 2, "case14" => 2, "case14b" => 2, "case15" => 1,
+      "case16" => 2, "case17" => 2 }.each do |c, code|
       assert_includes out, "#{c}: exit=#{code}", "#{c} exit code drifted:\n#{out}"
     end
     assert_includes out, "OK: abbreviation rejected"
@@ -53,6 +54,11 @@ class ActionHarnessTest < Minitest::Test
     assert_includes out, "OK: abbreviated baseline rejected before running"
     assert_includes out, "OK: yml baseline left in place"
     assert_includes out, "OK: different output still delivered"
+    assert_includes out, "OK: numeric baseline kept"
+    assert_includes out, "OK: numeric baseline rejected before running"
+    assert_includes out, "OK: escaped-path baseline kept"
+    assert_includes out, "OK: escaped path rejected before running"
+    assert_includes out, "a%25b%0Ac.json"
     assert_includes out, "Old ignore entries matched: 2.", "old-format ignore count missing"
     assert_includes out, "Baseline survivors matched only by an old id: 3.", "old-format baseline count missing"
     assert_includes out, "::error file=lib/we%2Cird%3Aname.rb", "property escaping regressed"
