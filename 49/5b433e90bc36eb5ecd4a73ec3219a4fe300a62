@@ -1,0 +1,16 @@
+lib/mutineer/daemon_client.rb
+  h_e8a5bb9272fa34 151,157,164-169,182-194,197-199,203-254
+test/daemon_client_env_test.rb
+  h_e8a5bb9272fa34 118-182,196-198,209-210,239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "495b433e90bc36eb5ecd4a73ec3219a4fe300a62",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
