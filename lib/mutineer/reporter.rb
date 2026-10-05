@@ -368,7 +368,8 @@ module Mutineer
       old_lines = block_lines(original_block)
       new_lines = block_lines(mutated_block)
       # The block reaches the end of a file with no final newline: both sides
-      # say so, or `git apply` reads a newline that is not there.
+      # say so, or `git apply` reads a newline that is not there. Same lookup as
+      # diff_for's line_end, so the marker always matches the block's last line.
       eof = source.byteindex("\n", m.end_offset) ? "" : "\\ No newline at end of file\n"
       {
         subject: result.subject.qualified_name,
@@ -393,7 +394,7 @@ module Mutineer
     # @param block [String] the block's text.
     # @return [Array<String>] its lines, without line endings.
     def block_lines(block)
-      "#{block}\n".lines.map(&:chomp)
+      "#{block}\n".lines.map { |l| l.delete_suffix("\n") }
     end
 
     # One side of a unified diff hunk header: `start` for one line, else

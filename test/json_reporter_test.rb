@@ -33,6 +33,25 @@ class JsonReporterTest < Minitest::Test
     JSON.parse(out.string)
   end
 
+  # Renders one survivor's JSON diff and checks that git applies it to `src`
+  # and gives the same file as Mutation#apply.
+  def assert_git_applies(subj, src, mutation, header)
+    result = Mutineer::Result.survived.with(subject: subj, mutation: mutation)
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([result]), { "foo.rb" => src })
+                      .report(out: out, err: StringIO.new, format: "json")
+    diff = JSON.parse(out.string)["survivors"].first["diff"]
+    assert_includes diff, header
+
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "foo.rb"), src)
+      File.write(File.join(dir, "m.patch"), diff)
+      _, err, status = Open3.capture3("git", "apply", "--unidiff-zero", "m.patch", chdir: dir)
+      assert status.success?, "git apply rejected #{header}: #{err}\n#{diff}"
+      assert_equal mutation.apply(src), File.read(File.join(dir, "foo.rb"))
+    end
+  end
+
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
     assert_equal "1.4", doc["schema_version"] # 1.4 added summary.id_format + summary.legacy_id_matches
@@ -159,25 +178,22 @@ class JsonReporterTest < Minitest::Test
     tail = Mutineer::Mutation.new(start_offset: src.index("x >= 1"), end_offset: src.bytesize,
                                   replacement: "x > 1\nend", operator: :comparison)
     assert_git_applies(subj, src, tail, "@@ -2,2 +2,2 @@")
+    # A one-line mutant on a last line with no final newline.
+    one_line_src = "class Foo; def bar(x) = x >= 1; end"
+    one_line = Mutineer::Mutation.new(start_offset: one_line_src.index(">="), end_offset: one_line_src.index(">=") + 2,
+                                      replacement: ">", operator: :comparison)
+    assert_git_applies(subj, one_line_src, one_line, "@@ -1 +1 @@\n-class Foo; def bar(x) = x >= 1; end\n\\ No newline")
   end
 
-  # Renders one survivor's JSON diff and checks that git applies it to `src`
-  # and gives the same file as Mutation#apply.
-  def assert_git_applies(subj, src, mutation, header)
-    result = Mutineer::Result.survived.with(subject: subj, mutation: mutation)
-    out = StringIO.new
-    Mutineer::Reporter.new(Mutineer::AggregateResult.new([result]), { "foo.rb" => src })
-                      .report(out: out, err: StringIO.new, format: "json")
-    diff = JSON.parse(out.string)["survivors"].first["diff"]
-    assert_includes diff, header
-
-    Dir.mktmpdir do |dir|
-      File.write(File.join(dir, "foo.rb"), src)
-      File.write(File.join(dir, "m.patch"), diff)
-      _, err, status = Open3.capture3("git", "apply", "--unidiff-zero", "m.patch", chdir: dir)
-      assert status.success?, "git apply rejected #{header}: #{err}\n#{diff}"
-      assert_equal mutation.apply(src), File.read(File.join(dir, "foo.rb"))
-    end
+  # #106: a CRLF file keeps its "\r" in the diff, so git applies it unchanged.
+  def test_survivor_diff_of_a_crlf_file_applies_with_git
+    src = "class Foo\r\n  def bar(x)\r\n    log(x,\r\n        y)\r\n    x\r\n  end\r\nend\r\n"
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                 singleton: false, def_node: def_node)
+    multiline = Mutineer::Mutation.new(start_offset: src.index("log"), end_offset: src.index("y)") + 2,
+                                       replacement: "nil", operator: :statement_removal)
+    assert_git_applies(subj, src, multiline, "@@ -3,2 +3 @@")
   end
 
   # #106: the hunk header counts the lines the diff removes and adds, so an
