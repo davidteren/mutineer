@@ -22,7 +22,8 @@ and can change what it shows. The JSON and HTML reports already escape text.
 
 ## Requirements
 
-- R1. Control characters in the survivor token, replacement, and diff lines print as
+- R1. Control characters in the survivor token, replacement, diff lines, method names
+  and file paths print as
   visible escapes (ESC prints as `\e`).
 - R2. Tab stays as it is. Newlines never reach these strings (lines are chomped).
 - R3. JSON and HTML output do not change.
