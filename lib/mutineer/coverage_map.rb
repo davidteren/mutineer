@@ -99,8 +99,10 @@ module Mutineer
     # AND this file got zero coverage from any successful capture AND a failed
     # test file maps to it by the _test/_spec/test_ naming convention. Derived
     # from already-persisted state (@map keys + @failed_test_files). A split
-    # name also checks that no longer source file exists on disk. No rerun,
-    # no new cached field, no digest change.
+    # name checks the longer source files that existed when that check first
+    # ran for this map. Adding or deleting one of those files changes the
+    # coverage digest, so the next run captures again instead of retargeting
+    # a stored failure.
     #
     # File-level, convention-based attribution. A line covered only by a failed
     # test in an otherwise-covered file stays no_coverage (condition 2), and a
@@ -147,12 +149,16 @@ module Mutineer
     # True when a failed test file pairs with `source_rel` by convention.
     # Exact `_test` / `_spec` / `test_` names match by basename, as before.
     # A split `<name>_*_test.rb` matches only in the mirrored test directory,
-    # and only when no longer source file owns that name (#87).
+    # and only when no longer source file owns that name (#87). The answer
+    # is kept for this map, so a later delete does not move the failure.
     #
     # @param source_rel [String] project-relative source path.
     # @return [Boolean]
     def failed_test_blames?(source_rel)
-      exact_failed_test?(source_rel) || split_failed_test?(source_rel)
+      @blame_for ||= {}
+      return @blame_for[source_rel] if @blame_for.key?(source_rel)
+
+      @blame_for[source_rel] = exact_failed_test?(source_rel) || split_failed_test?(source_rel)
     end
 
     # True when a failed exact `_test` / `_spec` / `test_` file pairs with
@@ -908,9 +914,47 @@ module Mutineer
       digest_group(d, "source", @source_paths)
       digest_group(d, "test", @test_paths)
       digest_group(d, "boot", [boot_digest_path]) if @boot_path
+      ownership_paths.each do |rel|
+        d.update("owner\0")
+        d.update(rel)
+        d.update("\0")
+      end
       @load_paths.sort.each { |lp| d.update("loadpath\0#{lp}\0") }
       d.update("framework\0#{@framework}\0")
       d.hexdigest
+    end
+
+    # Longer source files that can take a split test from a configured source.
+    # Only their presence is digested. A content edit of a sibling does not
+    # change pairing, and it does not rebuild coverage.
+    #
+    # @return [Array<String>] project-relative paths, sorted.
+    def ownership_paths
+      root = File.expand_path(@project_root)
+      paths = @source_paths.flat_map do |source|
+        rel = relativize(absolute(source))
+        next [] if rel.start_with?("/")
+
+        base, = Pairing.logical_path(rel)
+        name = File.basename(base)
+        dir = File.dirname(base)
+        folders = [dir == "." ? nil : dir]
+        %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
+        folders.uniq.flat_map do |folder|
+          abs = folder ? File.join(root, folder) : root
+          next [] unless File.directory?(abs)
+
+          Dir.children(abs).filter_map do |entry|
+            next unless entry.end_with?(".rb")
+
+            stem = entry.delete_suffix(".rb")
+            next unless stem.start_with?("#{name}_") && stem.length > name.length
+
+            folder ? File.join(folder, entry) : entry
+          end
+        end
+      end
+      paths.uniq.sort
     end
 
     # boot_path is a require-style path (e.g. "config/environment", no extension);

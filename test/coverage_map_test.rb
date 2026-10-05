@@ -929,6 +929,67 @@ class CoverageMapTest < Minitest::Test
     refute map.uncapturable_source?(user)
   end
 
+  # The blame decision is fixed for this map. Deleting the longer source
+  # during the run must not move the stored failure onto user.rb.
+  def test_deleting_a_longer_source_during_the_run_does_not_retarget_the_failure
+    Dir.mktmpdir do |dir|
+      user = File.join(dir, "app/models/user.rb")
+      session = File.join(dir, "app/models/user_session.rb")
+      bad = File.join(dir, "test/models/user_session_extra_test.rb")
+      [user, session, bad].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+      File.write(user, "class User; def n; 1; end; end\n")
+      File.write(session, "class UserSession; def n; 1; end; end\n")
+      File.write(bad, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [user], test_paths: [bad],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      refute map.uncapturable_source?(user)
+
+      File.delete(session)
+      refute map.uncapturable_source?(user)
+    end
+  end
+
+  # The next run sees the deleted sibling. The test passes once that file is
+  # gone, so user.rb stays a coverage gap instead of a stored failure.
+  def test_deleting_a_longer_source_rebuilds_coverage
+    Dir.mktmpdir do |dir|
+      user = File.join(dir, "app/models/user.rb")
+      session = File.join(dir, "app/models/user_session.rb")
+      bad = File.join(dir, "test/models/user_session_extra_test.rb")
+      [user, session, bad].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+      File.write(user, "class User; def n; 1; end; end\n")
+      File.write(session, "class UserSession; def n; 1; end; end\n")
+      File.write(bad, <<~RUBY)
+        sibling = File.expand_path("../../app/models/user_session.rb", __FILE__)
+        raise "sibling present" if File.file?(sibling)
+      RUBY
+      capture_subprocess_io do
+        Mutineer::CoverageMap.new(source_paths: [user], test_paths: [bad],
+                                  cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+
+      File.write(session, "class UserSession; def n; 2; end; end\n")
+      edited = nil
+      capture_subprocess_io do
+        edited = Mutineer::CoverageMap.new(source_paths: [user], test_paths: [bad],
+                                           cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      refute edited.phase_a_ran, "a sibling content edit does not change pairing"
+
+      File.delete(session)
+      rebuilt = nil
+      capture_subprocess_io do
+        rebuilt = Mutineer::CoverageMap.new(source_paths: [user], test_paths: [bad],
+                                            cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      assert rebuilt.phase_a_ran, "deleting the longer source must rebuild coverage"
+      refute rebuilt.uncapturable_source?(user)
+    end
+  end
+
   # The daemon rebuilds the map with from_data, which has no @source_paths.
   # A failed exact test must still blame its source, and must not raise.
   def test_from_data_uncapturable_does_not_crash_without_source_paths

@@ -186,12 +186,15 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # ../../widget.rb searches the parent of the project. The file there is a
+  # real split match, and the guard must reject that directory. ../widget.rb
+  # collapses onto the project root, so it never sees this file.
   def test_split_search_stays_inside_the_project
     parent = Dir.mktmpdir
     root = File.join(parent, "proj")
     FileUtils.mkdir_p(root)
     File.write(File.join(parent, "widget_extra_test.rb"), "class T; end\n")
-    assert_empty infer_tests("../widget.rb", root)
+    assert_empty infer_tests("../../widget.rb", root)
   ensure
     FileUtils.remove_entry(parent) if parent && File.directory?(parent)
   end

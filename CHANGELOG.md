@@ -36,7 +36,9 @@ All notable changes to this project are documented here. The format is based on
   `user_session`. A failed exact spec in the mirrored `spec/` or `spec/lib/` directory
   marks an `app/` or `lib/` source the same way. A failed spec in another
   directory does not. A project rooted at `/` still finds split tests
-  inside that root.
+  inside that root. A stored failure keeps the pairing from the moment it
+  was checked. Adding or deleting a longer source rebuilds the coverage
+  map, so that failure is not moved onto the shorter source.
 - **A blank `operators` key no longer runs zero mutants and exits 0** (#167).
   `operators:` with no value became an empty list. The run made no mutants
   and the gate passed. A blank operator list is now an error, and so is a
