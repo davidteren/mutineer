@@ -1,0 +1,14 @@
+test/cli_test.rb
+  h_e8a5bb9272fa34 328,330,333,336
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e96fe5a9c79f97b15e91e4b112ddd467b0322c9",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
