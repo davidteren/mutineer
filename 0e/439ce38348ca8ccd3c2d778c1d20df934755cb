@@ -1,0 +1,16 @@
+lib/mutineer/coverage_map.rb
+  h_e8a5bb9272fa34 930-931,936,948-951
+test/coverage_map_test.rb
+  h_e8a5bb9272fa34 966,969,971-972,974-975
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0e439ce38348ca8ccd3c2d778c1d20df934755cb",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
