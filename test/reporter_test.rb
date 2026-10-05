@@ -215,7 +215,7 @@ class ReporterTest < Minitest::Test
   # #163: a control byte in a surviving line prints as an escape, not raw, in
   # the human report. A tab stays. JSON keeps the raw character.
   def test_human_survivor_escapes_control_characters
-    src = "class Foo\n  def bar(x)\n    \"\e[2J\" if x >= 1\t# t\n  end\nend\n"
+    src = "class Foo\n  def bar(x)\n    \"\e[2J\x7F\r\u009B\" if x >= 1\t# t\n  end\nend\n"
     def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
     subject = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
                                     singleton: false, def_node: def_node)
@@ -226,11 +226,29 @@ class ReporterTest < Minitest::Test
     out = StringIO.new
     Mutineer::Reporter.new(agg, { "foo.rb" => src }).report(out: out, err: StringIO.new)
     refute_includes out.string, "\e"
-    assert_includes out.string, %(-     "\\e[2J" if x >= 1\t# t)
+    assert_includes out.string, %(-     "\\e[2J\\x7F\\r\\u009B" if x >= 1\t# t)
 
     json = StringIO.new
     Mutineer::Reporter.new(agg, { "foo.rb" => src }).report(out: json, err: StringIO.new, format: "json")
     assert_includes JSON.parse(json.string)["survivors"].first["diff"], "\e[2J"
+  end
+
+  # #163: the token and replacement on the Operator line are escaped too, and
+  # an invalid UTF-8 byte after the token does not crash the report.
+  def test_human_operator_line_escapes_and_survives_invalid_utf8
+    src = "class Foo\n  def bar\n    \"\e[2J\" # caf\xE9\n  end\nend\n".b.force_encoding(Encoding::UTF_8)
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subject = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                    singleton: false, def_node: def_node)
+    at = src.byteindex("\"")
+    mutation = Mutineer::Mutation.new(start_offset: at, end_offset: at + 6, replacement: "\"\e\"",
+                                      operator: :string_literal)
+    agg = Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subject, mutation: mutation)])
+
+    out = StringIO.new
+    Mutineer::Reporter.new(agg, { "foo.rb" => src }).report(out: out, err: StringIO.new)
+    refute_includes out.string.b, "\e".b
+    assert_includes out.string, %(string_literal  ("\\e[2J" -> "\\e"))
   end
 
   # #9: the human report distinguishes uncapturable (broken harness) from

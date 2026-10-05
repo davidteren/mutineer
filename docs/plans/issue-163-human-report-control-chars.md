@@ -26,13 +26,15 @@ and can change what it shows. The JSON and HTML reports already escape text.
   visible escapes (ESC prints as `\e`).
 - R2. Tab stays as it is. Newlines never reach these strings (lines are chomped).
 - R3. JSON and HTML output do not change.
+- R4. A survivor line with an invalid UTF-8 byte after the token does not crash the report.
 
 ## Key Technical Decisions
 
 - **One private helper in `Reporter`** that replaces each control character except tab
   with its `String#dump` escape. Ruby's `[[:cntrl:]]` covers C0, DEL, and C1 controls.
-- **No scrub step** (dropped after plan review): Prism rejects a source with invalid
-  UTF-8 before the report runs, and `diff_for` already runs a regex on the token.
+- **Scrub invalid bytes first.** Plan review said Prism rejects invalid UTF-8, but code
+  review showed Prism accepts it inside a comment, so a Latin-1 byte after the token
+  crashed the new regex. `scrub` keeps the report working.
 - **Apply it only in the human `survivor` method.** Other human lines print names,
   counts, and paths, not source text.
 
@@ -48,7 +50,9 @@ each diff line in `survivor` with it.
 **Test scenarios:**
 - A survivor line that contains `"\e[2J"` in a string: the human output has no ESC byte
   and shows `\e[2J`.
-- A tab in a survivor line prints as a tab.
+- A tab in a survivor line prints as a tab; DEL, CR and a C1 control print as escapes.
+- A control character in the token and replacement is escaped on the Operator line.
+- A Latin-1 byte in a comment after the token does not crash the report.
 - The JSON report for the same run keeps the raw character, JSON-escaped as before.
 - Existing human report tests stay green.
 

@@ -647,12 +647,14 @@ module Mutineer
     # Source text made safe for a terminal (#163): each control character
     # except tab becomes its Ruby escape (ESC prints as `\e`), so a byte in a
     # surviving line cannot drive the terminal. JSON and HTML escape on their own.
+    # Invalid UTF-8 (Prism accepts it in a comment) is scrubbed first, so the
+    # regex never raises.
     #
     # @api private
     # @param text [String] source text.
     # @return [String] the text with control characters escaped.
     def printable(text)
-      text.gsub(/[[:cntrl:]&&[^\t]]/) { |c| c.dump[1..-2] }
+      text.scrub.gsub(/[[:cntrl:]&&[^\t]]/) { |c| c.dump[1..-2] }
     end
 
     # Writes the final verdict line.
