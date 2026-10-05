@@ -500,7 +500,7 @@ module DocsContract
             </aside>
 
             <article class="prose">
-              <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Reference · schema_version 1.4</span>
+              <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Reference · schema_version 1.5</span>
               <h1>JSON report schema reference</h1>
               #{article}
               <div class="callout"><span class="ico" aria-hidden="true">→</span><p>See the <a href="agentic-coding.html">agent &amp; CI recipes</a> for how to consume this in a loop or a PR gate.</p></div>

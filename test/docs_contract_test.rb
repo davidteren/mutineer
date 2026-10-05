@@ -96,6 +96,8 @@ class DocsContractTest < Minitest::Test
     assert_includes html, 'id="exit-codes"'
     assert_includes html, 'aria-label="Exit codes"'
     assert_includes html, "schema_version"
+    version = md[/"schema_version": "([\d.]+)"/, 1]
+    assert_includes html, "Reference · schema_version #{version}<"
     assert_includes plain(html), plain(DocsContract.meaning_plain("0"))
     md.scan(/^\#{2,3}\s+(.+)$/).flatten.each do |title|
       id = DocsContract::HEADING_IDS[title]
