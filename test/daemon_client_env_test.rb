@@ -135,6 +135,34 @@ class DaemonClientEnvTest < Minitest::Test
     end
   end
 
+  # An unsaved gem path or Bundler version belongs to the tool. A saved value
+  # is the app's and stays.
+  def test_spawn_drops_an_unsaved_gem_path_and_bundler_version
+    Dir.mktmpdir("daemon-env") do |root|
+      with_env(
+        "GEM_PATH" => "/tmp/tool-gems",
+        "BUNDLER_ORIG_GEM_PATH" => nil,
+        "BUNDLER_VERSION" => "2.6.9",
+        "BUNDLER_ORIG_BUNDLER_VERSION" => nil
+      ) do
+        observed = observe(client_for(root), root)
+        assert_nil observed["GEM_PATH"]
+        assert_nil observed["BUNDLER_VERSION"]
+      end
+
+      with_env(
+        "GEM_PATH" => "/tmp/tool-gems",
+        "BUNDLER_ORIG_GEM_PATH" => "/app/gems",
+        "BUNDLER_VERSION" => "2.6.9",
+        "BUNDLER_ORIG_BUNDLER_VERSION" => "2.4.1"
+      ) do
+        observed = observe(client_for(root), root)
+        assert_equal "/app/gems", observed["GEM_PATH"]
+        assert_equal "2.4.1", observed["BUNDLER_VERSION"]
+      end
+    end
+  end
+
   def test_spawn_keeps_an_asdf_bin_when_only_rbenv_shims_exist
     Dir.mktmpdir("daemon-env") do |root|
       home = File.join(root, "home")
@@ -258,8 +286,8 @@ class DaemonClientEnvTest < Minitest::Test
     script = <<~'RUBY'
       require "json"
       keys = %w[
-        RUBYOPT RUBYLIB GEM_HOME BUNDLE_PATH BUNDLE_WITHOUT BUNDLE_APP_CONFIG BUNDLE_GEMFILE
-        BUNDLER_SETUP RBENV_VERSION ASDF_RUBY_VERSION RAILS_ENV
+        RUBYOPT RUBYLIB GEM_HOME GEM_PATH BUNDLE_PATH BUNDLE_WITHOUT BUNDLE_APP_CONFIG
+        BUNDLE_GEMFILE BUNDLER_SETUP BUNDLER_VERSION RBENV_VERSION ASDF_RUBY_VERSION RAILS_ENV
         MUTINEER_PARENT_CODE_LOADED MUTINEER_APP_PROBE
       ]
       data = keys.to_h { |key| [key, ENV[key]] }
