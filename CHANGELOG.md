@@ -19,7 +19,8 @@ All notable changes to this project are documented here. The format is based on
   instead of being reported as `no_coverage`. Ruby counts one line of a
   statement only, so the runner now uses the tests that ran the statement that
   holds the mutation. A heredoc body belongs to its statement. A first or last
-  line that also holds other code, such as the `def` line, is not used.
+  line that also holds other code, such as the `def` line, is not used. A
+  mutant in the body of `x while c` or `x until c` stays `no_coverage`.
 - **The Action refuses to run when `output` and `baseline` are the same file** (#160).
   That setup used to work, and a failing run copied its report onto the
   baseline. The next run then treated the failed report as the baseline, so

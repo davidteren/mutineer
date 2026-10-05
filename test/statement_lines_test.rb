@@ -180,4 +180,38 @@ class StatementLinesTest < Minitest::Test
     RUBY
     assert_equal [2, 3], lines_at(source, ":b")
   end
+
+  # Ruby counts the line when it checks the condition, also when the body never runs.
+  def test_the_body_of_a_while_modifier_has_no_lines
+    source = <<~'RUBY'
+      def f(flag)
+        g(:a,
+          :b) while flag
+      end
+    RUBY
+    assert_empty lines_at(source, ":b")
+  end
+
+  def test_the_body_of_an_until_modifier_has_no_lines
+    source = <<~'RUBY'
+      def f(flag)
+        g(:a,
+          :b,
+          :c) until flag
+      end
+    RUBY
+    assert_empty lines_at(source, ":b")
+  end
+
+  def test_the_body_of_a_begin_end_while_runs_with_its_statement
+    source = <<~'RUBY'
+      def f(flag)
+        begin
+          g(:a,
+            :b)
+        end while flag
+      end
+    RUBY
+    assert_equal [3, 4], lines_at(source, ":b")
+  end
 end

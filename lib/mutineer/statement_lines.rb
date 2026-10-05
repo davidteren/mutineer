@@ -20,8 +20,14 @@ module Mutineer
     def self.for(def_node, source, offset)
       return [] unless def_node.body
 
-      statement = (path_to(def_node.body, offset) || []).reverse.find(&:newline?)
-      return [] unless statement
+      path = path_to(def_node.body, offset) || []
+      index = path.rindex(&:newline?)
+      return [] unless index
+
+      statement = path[index]
+      # Ruby counts the line of `x while c` when it checks `c`, also when `x` never runs.
+      # The path is loop, its body, statement.
+      return [] if index >= 2 && modifier_loop?(path[index - 2])
 
       location = statement.location
       lines = (location.start_line..last_line(statement)).to_a
@@ -54,6 +60,18 @@ module Mutineer
     # @return [Integer]
     def self.last_line(node)
       [node.location.end_line, *node.compact_child_nodes.map { |child| last_line(child) }].max
+    end
+
+    # Whether `node` is a `while` or `until` modifier, such as `x while c`.
+    # The body of `begin ... end while c` runs once before the check, so it is not.
+    #
+    # @param node [Prism::Node, nil] the parent of the body that holds the statement.
+    # @return [Boolean]
+    def self.modifier_loop?(node)
+      return false unless node.is_a?(Prism::WhileNode) || node.is_a?(Prism::UntilNode)
+      return false if node.begin_modifier? || node.statements.nil?
+
+      node.statements.location.start_offset < node.keyword_loc.start_offset
     end
 
     # The text before `location` on its first line.
