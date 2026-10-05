@@ -47,6 +47,10 @@ does the same on `a.b.b.c`: dropping either `.b` gives `a.b.c`. Each copy gets i
 - **Drop separately among run and ignored mutants** (cubic review). A copy whose id is
   in the ignore list must not hide the other copy, so the drop runs after the
   suppression check, with one seen-set for each group.
+- **Copies on different lines both stay; the key is a digest** (cubic review). `--since`
+  narrows by line after `collect_jobs`, so dropping a copy on another line could lose
+  the edit. The key is `[operator, start line, SHA-256 of the span]`, so no span copy
+  is kept in memory.
 - **Baseline effect** (cubic review): with these opt-in operators, a stored baseline can
   show a score change with no code change. The CHANGELOG says to regenerate it.
 - **Mutator unit tests keep pinning both emissions,** because the mutators still emit
@@ -58,7 +62,7 @@ does the same on `a.b.b.c`: dropping either `.b` gives `a.b.c`. Each copy gets i
 
 **Files:** `lib/mutineer/runner.rb`, `test/runner_test.rb`, `CHANGELOG.md`
 
-**Approach:** Add `Runner.result_keys`, one `[operator, span text]` key per mutation.
+**Approach:** Add `Runner.result_keys`, one `[operator, start line, span digest]` key per mutation.
 `collect_jobs` skips a mutation whose key it already placed in the same group (run or
 ignored), after ids and the suppression check.
 
@@ -69,6 +73,7 @@ ignored), after ids and the suppression check.
 - Every kept job's id equals the id that mutant had over the full, undeduplicated list.
 - The test fails when the drop is disabled.
 - An ignore entry for the first copy's id ignores that copy, and the second copy still runs.
+- A multi-line chain `a / .b / .b / .c` with `chain_link` keeps both copies.
 - Existing mutator tests (which still pin both emissions) stay green.
 
 **Verification:** The new runner test passes and the full suite stays green.

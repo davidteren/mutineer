@@ -212,6 +212,18 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # #159: copies of one edit that start on different lines both stay, so a
+  # line-based filter such as --since never loses the edit.
+  def test_collect_jobs_keeps_copies_on_different_lines
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "chain.rb")
+      File.write(path, "class Chain\n  def m\n    a\n      .b\n      .b\n      .c\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: dir)
+      jobs, = Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[chain_link]))
+      assert_equal 2, jobs.size
+    end
+  end
+
   # #159: an ignore entry for one copy's id does not hide the other copy of the
   # same edit. The copies are dropped separately among run and ignored mutants.
   def test_collect_jobs_keeps_an_unsuppressed_copy_of_a_suppressed_edit

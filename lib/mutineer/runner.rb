@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "pathname"
 require_relative "parser"
 require_relative "project"
@@ -229,24 +230,27 @@ module Mutineer
     end
 
     # One key per mutation that is equal for two mutations exactly when they are
-    # the same operator and give the same mutated source: one edit (#159).
-    # `literal_mutation` on `0` ("change to 1" and "add 1"), `negation_removal`
-    # on `!!x` and `chain_link` on `a.b.b.c` emit such pairs. The caller drops
-    # a repeat AFTER ids are assigned, so every kept mutant keeps the id it had
-    # before and a dropped copy's id is never reused. Text outside the span from
-    # the earliest start to the latest end is the same for every mutation, so
-    # comparing that span is exact without copying the whole file.
+    # the same operator, start on the same line and give the same mutated
+    # source: one edit (#159). `literal_mutation` on `0` ("change to 1" and "add
+    # 1"), `negation_removal` on `!!x` and `chain_link` on `a.b.b.c` emit such
+    # pairs. The caller drops a repeat AFTER ids are assigned, so every kept
+    # mutant keeps its id and a dropped copy's id is never reused. Copies on
+    # different lines (a multi-line chain) both stay, so a line-based filter
+    # such as `--since` never loses the edit. Text outside the span from the
+    # earliest start to the latest end is the same for every mutation, so the
+    # key digests that span only.
     #
     # @param mutations [Array<Mutineer::Mutation>] one subject's mutations.
     # @param source [String] the full, unmutated source.
-    # @return [Array<Array(Symbol, String)>] one key per mutation, in order.
+    # @return [Array<Array(Symbol, Integer, String)>] one key per mutation, in order.
     def self.result_keys(mutations, source)
       return [] if mutations.empty?
 
       from = mutations.map(&:start_offset).min
       to = mutations.map(&:end_offset).max
       mutations.map do |m|
-        [m.operator, "#{source.byteslice(from...m.start_offset)}#{m.replacement}#{source.byteslice(m.end_offset...to)}"]
+        span = "#{source.byteslice(from...m.start_offset)}#{m.replacement}#{source.byteslice(m.end_offset...to)}"
+        [m.operator, source.byteslice(0, m.start_offset).count("\n"), Digest::SHA256.digest(span)]
       end
     end
 
