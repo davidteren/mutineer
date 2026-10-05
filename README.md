@@ -33,7 +33,7 @@ gem "mutineer", group: :test
 ## Usage
 
 ```sh
-mutineer run <source...> --test <test...> [options]
+mutineer run <source...> --test <test> [--test <test>...] [options]
 ```
 
 Mutate `lib/calculator.rb`, checking it against its test, and fail CI if the
@@ -47,7 +47,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 
 | Flag | Meaning |
 |------|---------|
-| `--test FILE` | Test file covering the sources (repeatable) |
+| `--test FILE` | Test file covering the sources; one file per flag, so repeat it for each (`--test a_test.rb --test b_test.rb`) |
 | `--operators LIST` | Comma-separated operator names (default: the Tier-1 set) |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
 | `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
