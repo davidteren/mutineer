@@ -97,7 +97,7 @@ class RunnerTest < Minitest::Test
   end
 
   def selection(source, snippet, tests_by_line)
-    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    def_node = Mutineer::Parser.parse_string(source).tap(&:mark_newlines!).value.statements.body.first
     subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
     start = source.index(snippet)
     mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,

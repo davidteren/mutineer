@@ -16,7 +16,8 @@ module Mutineer
     # @return [Array<Mutineer::Subject>] discovered subjects.
     def self.discover(paths, only: nil)
       subjects = Array(paths).flat_map do |path|
-        result = Parser.parse_file(path)
+        # StatementLines finds the statement of a mutant through these marks.
+        result = Parser.parse_file(path).tap(&:mark_newlines!)
         visitor = SubjectVisitor.new(path)
         visitor.visit(result.value)
         visitor.promote_module_functions!

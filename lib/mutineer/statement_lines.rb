@@ -3,25 +3,27 @@
 module Mutineer
   # The lines of the statement that holds a position in a method body.
   #
-  # Ruby counts a line at the start of a statement only. A position on a later
-  # line of a multi-line statement has no count of its own, but the tests that
-  # ran the statement ran it. Prism marks the statements (`Node#newline?`), so
-  # the nearest marked ancestor of the position is the statement.
+  # Ruby counts one line of a statement only. A position on another line of a
+  # multi-line statement has no count of its own, but the tests that ran the
+  # statement ran it. Prism marks the statements (`Node#newline?`), so the
+  # nearest marked ancestor of the position is the statement. The caller reads
+  # the counts on the lines of the statement; a line Ruby does not count has none.
   module StatementLines
-    # @param def_node [Prism::DefNode] the method that holds the position.
-    # @param source [String] the source text of the file.
+    # @param def_node [Prism::DefNode] the method that holds the position. Its
+    #   parse result must have its statements marked (`ParseResult#mark_newlines!`).
     # @param offset [Integer] byte offset of the position.
-    # @return [Range, nil] the lines of the statement, or nil when no statement
-    #   in the body holds the position. The body of an endless method has none of
-    #   its own, so its statement is the `def`.
-    def self.for(def_node, source, offset)
-      path = path_to(def_node, offset) || []
-      # Ruby counts no line for an expression inside `#{...}`, so the statement is outside it.
-      path = path.take_while { |node| !node.is_a?(Prism::EmbeddedStatementsNode) }
+    # @return [Range, nil] the lines of the statement, with the body of each
+    #   heredoc in it, or nil when no statement in the body holds the position.
+    #   The `def` is not a statement of the body: Ruby counts its line when the
+    #   file loads.
+    def self.for(def_node, offset)
+      return unless def_node.body
+
+      path = path_to(def_node.body, offset) || []
       statement = path.reverse.find(&:newline?)
       return unless statement
 
-      statement.location.start_line..statement.location.end_line
+      statement.location.start_line..last_line(statement)
     end
 
     # The nodes from `node` down to the deepest one that holds the offset. A
@@ -38,6 +40,15 @@ module Mutineer
       end
       location = node.location
       [node] if location.start_offset <= offset && offset < location.end_offset
+    end
+
+    # The last line of `node` and its children. A heredoc body ends below the
+    # node of its opener.
+    #
+    # @param node [Prism::Node]
+    # @return [Integer]
+    def self.last_line(node)
+      [node.location.end_line, *node.compact_child_nodes.map { |child| last_line(child) }].max
     end
   end
 end

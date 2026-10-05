@@ -11,4 +11,16 @@ class ContinuationTest < Minitest::Test
   def test_message
     assert_equal "true\n", Continuation.message(3)
   end
+
+  def test_note
+    assert_equal "false\n", Continuation.note(3)
+  end
+
+  def test_label
+    assert_equal "", Continuation.label(false)
+  end
+
+  def test_empty
+    assert_equal :never_counted, Continuation.empty
+  end
 end

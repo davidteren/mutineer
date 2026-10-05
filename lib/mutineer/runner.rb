@@ -337,8 +337,8 @@ module Mutineer
       line   = source.byteslice(0, mutation.start_offset).count("\n") + 1
       chosen = coverage_map.tests_for(source_file, line)
       if chosen.empty? && subject
-        # A later line of a multi-line statement has no count: Ruby counts the first line only.
-        lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
+        # A multi-line statement has a count on one of its lines only.
+        lines = StatementLines.for(subject.def_node, mutation.start_offset)
         chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq if lines
       end
       if chosen.empty?

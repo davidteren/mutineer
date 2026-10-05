@@ -4,8 +4,8 @@ require_relative "test_helper"
 
 class StatementLinesTest < Minitest::Test
   def lines_at(source, snippet)
-    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
-    Mutineer::StatementLines.for(def_node, source, source.index(snippet))
+    def_node = Mutineer::Parser.parse_string(source).tap(&:mark_newlines!).value.statements.body.first
+    Mutineer::StatementLines.for(def_node, source.index(snippet))
   end
 
   def test_a_later_entry_of_a_hash_belongs_to_the_hash
@@ -55,34 +55,69 @@ class StatementLinesTest < Minitest::Test
     assert_equal 4..4, lines_at(source, "raise")
   end
 
-  def test_an_interpolation_in_a_heredoc_belongs_to_the_statement_with_the_opener
-    source = <<~'RUBY'
-      def f
-        puts(<<~TXT)
-          #{false}
-        TXT
-      end
-    RUBY
-    assert_equal 2..2, lines_at(source, "false")
-  end
+# A heredoc body lies below its opener. Ruby counts the body line for an
+# assigned heredoc, and the opener line for a call such as `puts`.
+def test_a_heredoc_statement_spans_the_heredoc_body
+  source = <<~'RUBY'
+    def f
+      puts(<<~TXT)
+        #{false}
+      TXT
+    end
+  RUBY
+  assert_equal 2..4, lines_at(source, "false")
+end
 
-  def test_a_call_inside_a_heredoc_interpolation_belongs_to_the_statement_with_the_opener
-    source = <<~'RUBY'
-      def f
-        puts(<<~TXT)
-          #{g(
-            1)}
-        TXT
-      end
-    RUBY
-    assert_equal 2..2, lines_at(source, "1)")
-  end
+def test_an_assigned_heredoc_spans_the_interpolation_line
+  source = <<~'RUBY'
+    def f(count)
+      s = <<~TXT
+        #{count > 0}
+      TXT
+    end
+  RUBY
+  assert_equal 2..4, lines_at(source, "count > 0")
+end
 
-  def test_the_body_of_an_endless_method_belongs_to_the_def
-    source = <<~'RUBY'
-      def f =
-        false
-    RUBY
-    assert_equal 1..2, lines_at(source, "false")
-  end
+def test_a_call_inside_a_heredoc_interpolation_belongs_to_the_statement_with_the_opener
+  source = <<~'RUBY'
+    def f
+      puts(<<~TXT)
+        #{g(
+          1)}
+      TXT
+    end
+  RUBY
+  assert_equal 2..5, lines_at(source, "1)")
+end
+
+def test_a_statement_on_its_own_line_inside_an_interpolation_is_its_own_statement
+  source = <<~'RUBY'
+    def f(flag)
+      x = "#{ if flag
+        never
+      end }"
+    end
+  RUBY
+  assert_equal 3..3, lines_at(source, "never")
+end
+
+# The `def` line is counted when the file loads, so it is not a statement of the body.
+def test_the_body_of_an_endless_method_has_no_statement
+  source = <<~'RUBY'
+    def f =
+      false
+  RUBY
+  assert_nil lines_at(source, "false")
+end
+
+def test_a_default_argument_has_no_statement
+  source = <<~'RUBY'
+    def work(a =
+              sent)
+      a
+    end
+  RUBY
+  assert_nil lines_at(source, "sent")
+end
 end
