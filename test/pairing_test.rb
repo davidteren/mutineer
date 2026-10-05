@@ -204,6 +204,16 @@ class PairingTest < Minitest::Test
     assert Mutineer::Pairing.inside_project?("/tmp/proj/test", "/tmp/proj")
   end
 
+  # user_session__test.rb is not an exact test or a split test for
+  # user_session.rb. user.rb keeps it.
+  def test_double_underscore_split_stays_with_the_shorter_source
+    with_tree("app/models/user.rb", "app/models/user_session.rb",
+              "test/models/user_session__test.rb") do |root|
+      assert_equal ["test/models/user_session__test.rb"], infer_tests("app/models/user.rb", root)
+      assert_empty infer_tests("app/models/user_session.rb", root)
+    end
+  end
+
   def test_split_file_is_left_for_the_longer_source_when_that_file_exists
     with_tree("app/models/user.rb", "app/models/user_session.rb",
               "test/models/user_session_test.rb") do |root|

@@ -202,11 +202,24 @@ module Mutineer
       return false if rest.empty?
 
       dir = File.dirname(base)
-      parts = rest.split("_")
+      parts = rest.split("_", -1)
       (1..parts.length).any? do |i|
         longer = "#{name}_#{parts.first(i).join("_")}"
+        next false unless longer_owns_entry?(entry, longer)
+
         longer_source_exists?(root, dir, longer, scanned_dir)
       end
+    end
+
+    # True when `entry` is the exact test, or a split test with a non-empty
+    # piece, for `stem`. `user_session__test.rb` is neither for
+    # `user_session`, so that source does not take it from `user.rb`.
+    #
+    # @param entry [String] test file basename.
+    # @param stem [String] longer source basename without extension.
+    # @return [Boolean]
+    def longer_owns_entry?(entry, stem)
+      entry == "#{stem}_test.rb" || split_entry?(entry, stem)
     end
 
     # True when a longer source file exists beside this logical path.
