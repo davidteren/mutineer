@@ -17,10 +17,11 @@ All notable changes to this project are documented here. The format is based on
 ### Fixed
 - **A mutant on another line of a multi-line statement runs its tests**
   instead of being reported as `no_coverage`. Ruby counts one line of a
-  statement only, so the runner now uses the tests that ran the statement that
-  holds the mutation. A heredoc body belongs to its statement. A first or last
-  line that also holds other code, such as the `def` line, is not used. A
-  mutant in the body of `x while c` or `x until c` stays `no_coverage`.
+  statement only. When the mutant's own line has no count, the runner now uses
+  the tests that ran the statement that holds the mutation. A heredoc body
+  belongs to its statement. This fallback skips a first or last line that also
+  holds other code, such as the `def` line, and the body of `x while c` and
+  `x until c`.
 - **Split test files pair with their source** (#87). A source such as
   `app/foo/bar.rb` now also uses `test/foo/bar_upsert_test.rb` and
   `test/foo/bar_guards_test.rb`, together with `test/foo/bar_test.rb` when
