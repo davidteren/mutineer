@@ -366,7 +366,7 @@ is skipped. If none of the names are known, the run exits 2. An empty
 `threshold` and the CLI-only `--baseline-epsilon` use plain decimals such as `90`
 or `0.5`, not `+2`, `1e2`, or `1_0`. String options such as `only` and `baseline`
 cannot be null or boolean. A blank `since` is invalid; use `since: false` to turn
-scoping off. Unknown keys and operator names warn and are ignored.
+scoping off. Unknown keys warn and are ignored. Unknown operator names warn and are skipped, and the run exits 2 when none remain. `--operators` replaces a blank or unknown file list.
 
 `format`, `strategy`, `output`, `baseline_epsilon`, and `dry_run` are CLI-only.
 For JSON output, use `--format json`, not a `format:` config key. To select RSpec

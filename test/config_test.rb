@@ -253,6 +253,23 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  # --operators replaces the file list. A blank or unknown file list must not
+  # raise before that replacement. Called alone, the file still raises.
+  def test_from_file_defers_a_blank_or_unknown_list_for_the_cli
+    with_config("operators: []\n") do |path|
+      hash = Config.from_file(path, defer_operators: true)
+      cfg = Config.resolve({ operators: ["arithmetic"] }, hash)
+      assert_equal ["arithmetic"], cfg.operators
+    end
+    with_config("operators: [bogus]\n") do |path|
+      hash = nil
+      _, stderr = capture_io { hash = Config.from_file(path, defer_operators: true) }
+      assert_includes stderr, "unknown operator"
+      cfg = Config.resolve({ operators: ["arithmetic"] }, hash)
+      assert_equal ["arithmetic"], cfg.operators
+    end
+  end
+
   # Boot mode keys are accepted (not warned/ignored) and resolve onto the Config.
   def test_from_file_accepts_boot_and_rails
     with_config("boot: config/environment\nrails: true\n") do |path|

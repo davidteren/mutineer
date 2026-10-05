@@ -316,6 +316,25 @@ class CliTest < Minitest::Test
     end
   end
 
+  # A blank file list still exits 2. --operators replaces that list, including
+  # one that names only an unknown operator.
+  def test_operators_flag_replaces_a_blank_or_unknown_file_list
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "operators: []\n")
+      _, err, status = mutineer("run", "calculator.rb", "--dry-run", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "operators must name at least one operator, not blank"
+
+      _, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+
+      File.write(File.join(proj, ".mutineer.yml"), "operators: [bogus]\n")
+      _, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "unknown operator"
+    end
+  end
+
   # --- happy paths driven through bin/mutineer -----------------------------
 
   def test_successful_run_exits_zero
