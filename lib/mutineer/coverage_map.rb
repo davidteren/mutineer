@@ -10,6 +10,7 @@ require_relative "minitest_integration"
 require_relative "test_runners"
 require_relative "child_stdout"
 require_relative "project_path"
+require_relative "pairing"
 
 module Mutineer
   # Maps `(source_file, line) -> [test_files]` so each mutant runs only against
