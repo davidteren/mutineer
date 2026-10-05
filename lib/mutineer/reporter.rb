@@ -600,7 +600,7 @@ module Mutineer
         file = r.subject.file
         source = @source_map[file] || File.read(file)
         line, = diff_for(r.mutation, source)
-        out.puts "  + #{r.subject.qualified_name} (#{printable(file)}:#{line}) #{r.mutation.operator}"
+        out.puts "  + #{printable(r.subject.qualified_name)} (#{printable(file)}:#{line}) #{r.mutation.operator}"
       end
       out.puts "score dropped #{delta.score_before}% -> #{delta.score_after}%" if delta.score_drop
       # An OK verdict must not imply a check that never ran: say when the score
@@ -638,13 +638,13 @@ module Mutineer
       source = @source_map[file] || File.read(file)
       start_line, original_block, mutated_block, token = diff_for(m, source)
 
-      out.puts "  #{result.subject.qualified_name} (#{printable(File.basename(file))}:#{start_line})"
+      out.puts "  #{printable(result.subject.qualified_name)} (#{printable(File.basename(file))}:#{start_line})"
       out.puts "  Operator: #{m.operator}  (#{printable(token)} -> #{printable(m.replacement)})"
       original_block.each_line { |l| out.puts "  - #{printable(l.chomp)}" }
       mutated_block.each_line  { |l| out.puts "  + #{printable(l.chomp)}" }
     end
 
-    # Source text or a file path made safe for a terminal (#163): each control
+    # Source text, a method name or a file path made safe for a terminal (#163): each control
     # character except tab becomes its Ruby escape (ESC prints as `\e`), so a
     # byte in a surviving line cannot drive the terminal. JSON and HTML escape
     # on their own. The text is read as UTF-8, as Prism reads source, whatever

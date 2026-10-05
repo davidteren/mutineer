@@ -240,14 +240,15 @@ class ReporterTest < Minitest::Test
     Mutineer::Reporter.new(ascii_agg, { "foo.rb" => ascii_src }).report(out: out, err: StringIO.new)
     assert_includes out.string, "+     x > 1 # caf\u00e9"
 
-    # A file name with a control byte is escaped too.
-    named = Mutineer::Subject.new(file: "f\eoo.rb", namespace: ["Foo"], name: :bar,
+    # A file name and a method name with a control character are escaped too.
+    named = Mutineer::Subject.new(file: "f\eoo.rb", namespace: ["Foo"], name: :"b\u009Bar",
                                   singleton: false, def_node: def_node)
     named_agg = Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: named, mutation: mutation)])
     out = StringIO.new
     Mutineer::Reporter.new(named_agg, { "f\eoo.rb" => src }).report(out: out, err: StringIO.new)
     refute_includes out.string, "\e"
     assert_includes out.string, "f\\eoo.rb"
+    assert_includes out.string, "Foo#b\\u009Bar"
 
     json = StringIO.new
     Mutineer::Reporter.new(agg, { "foo.rb" => src }).report(out: json, err: StringIO.new, format: "json")
