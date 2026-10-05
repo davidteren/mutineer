@@ -62,35 +62,29 @@ independent of Node and Playwright. CI runs these checks in `website browser tes
 
 `yard:strict` · `test` (×2 OS) · `test (minitest 6)` · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
 
-## PR review gate (before any merge — never skip)
+## PR review gate (before any merge)
 
-Applies to **every** open PR (including stacks). Do not merge and do not
-suggest merge until this is done on the current head.
+Applies to every open pull request, including a stack. Do not merge until
+the current head meets this bar.
 
-### Before opening a new PR
+### Before opening a new pull request
 
-Run `/dt-ship-pre-pr-gate` on the exact PR-head commit:
+Run the checks in "Before every commit". For a site change, run the website
+checks too. Open the pull request when those checks pass.
 
-1. `/ce-code-review` — fix findings  
-2. `/ie-review` — fix findings  
-3. `/cubic-loop` (local) — fix findings  
+After a later commit, run the checks that the new lines affect.
 
-Then `gh pr create`. A gate run is stale after any later commit; re-run.
+### After the pull request is open
 
-### After the PR is open
+1. Read every review comment. Fix a real finding, or write why the comment
+   is wrong.
+2. Reply on every thread before resolving it. A fix reply names the commit.
+   A decline reply gives the reason.
+3. GitHub checks are green on the head commit.
+4. A person merges.
 
-1. **Re-review the PR** with the same three lenses (CE, IE, cubic PR/local
-   mode). Fix real findings; commit and push.
-2. **Address every review comment/thread** (cubic, bots, humans):
-   - Fix or document why not
-   - **Reply inline on every thread** (fix + commit SHA, or rationale)
-   - Never resolve silently
-3. **CI green** on the head SHA
-4. Readiness skills only after 1–3: `check-pr-comments`,
-   `dt-ship-pr-readiness`. Human merges.
-
-**Stacked PRs:** gate each PR from the bottom of the stack up. After fixing
-a lower PR, restack dependents and re-gate them.
+**Stacked pull requests:** start at the bottom of the stack. After a lower
+pull request changes, update the ones above it and review the new lines.
 
 ## Releasing (tag-driven — CI publishes, no manual `gem push`)
 
