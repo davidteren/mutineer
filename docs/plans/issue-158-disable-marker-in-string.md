@@ -43,7 +43,7 @@ out of the score.
 **Files:** `lib/mutineer/runner.rb`, `test/equivalent_mutant_test.rb` (where the
 existing `suppress_map` tests live), `CHANGELOG.md`
 
-**Approach:** In `suppress_map`, iterate the inline comments from `Prism.parse_comments`
+**Approach:** In `suppress_map`, iterate the inline comments from `Parser.parse_string(source).comments`
 instead of the source lines. Use each comment's start line as the key. Update the docstring.
 
 **Test scenarios:**
