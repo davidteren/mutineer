@@ -142,7 +142,7 @@ module Mutineer
 
       begin
         file_path = Config.find_file
-        file_hash = file_path ? Config.from_file(file_path) : {}
+        file_hash = file_path ? Config.from_file(file_path, defer_operators: opts.key?(:operators)) : {}
         config = Config.resolve(opts, file_hash)
       rescue Mutineer::ConfigError => e
         # The lib layer raises instead of killing the host; the CLI maps a
