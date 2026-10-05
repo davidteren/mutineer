@@ -16,11 +16,12 @@ module Mutineer
       def mutations_for(subject, source)
         @source = source
         @mutations = []
-        body = subject.def_node.body
-        if body
-          body.accept(self)       # rule 1 (explicit return nodes in this body)
-          final_expression_nil(body) # rule 2 (method's final expression)
+        @body = subject.def_node.body
+        if @body
+          @body.accept(self)       # rule 1 (explicit return nodes in this body)
+          final_expression_nil(@body) # rule 2 (method's final expression)
         end
+        drop_dangling_heredocs
         @mutations
       end
 
