@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_976e31566b7bc5 25-29
+docs/plans/issue-159-duplicate-mutations.md
+  s_07d7b58ff1b9fd::t_672760e1f742a1 47-51,61-63,71
+lib/mutineer/runner.rb
+  s_07d7b58ff1b9fd::t_d678dccdf6830b 202-206,218-219,222-223,231-237,242-244,248-250
+test/runner_test.rb
+  s_07d7b58ff1b9fd::t_c8fbc833c27d39 209-210,215-231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "89f4e9f6e201b2076928751cf7614749d29c0601",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
