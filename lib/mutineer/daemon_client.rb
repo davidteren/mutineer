@@ -31,15 +31,6 @@ module Mutineer
     MAX_RESTARTS = 3
     # Bundler's marker for a variable that was unset before it activated.
     BUNDLER_UNSET = "BUNDLER_ENVIRONMENT_PRESERVER_INTENTIONALLY_NIL"
-    # rbenv and asdf put a concrete Ruby bin ahead of their shims. chruby has
-    # no shims, so a <tt>~/.rubies</tt> bin stays on PATH. This is narrower
-    # than {ExternalBackend::VERSION_BIN_PATH} on purpose.
-    MANAGED_RUBY_BIN = %r{
-      (?:
-        /\.rbenv/versions/[^/]+/bin
-        |/\.asdf/installs/ruby/[^/]+/bin
-      )/?\z
-    }x
 
     # @param boot [Hash] boot config sent to the daemon: project_root, boot,
     #   load_paths, framework, rails.
@@ -157,16 +148,24 @@ module Mutineer
     # @return [Hash{String => String}]
     def restored_user_env
       env = ENV.to_h
+      restored = []
       env.keys.each do |saved_key|
         next unless saved_key.start_with?("BUNDLER_ORIG_")
 
         key = saved_key.delete_prefix("BUNDLER_ORIG_")
         saved = env.delete(saved_key)
+        restored << key
         if saved == BUNDLER_UNSET
           env.delete(key)
         else
           env[key] = saved
         end
+      end
+      # A parent require must not run in the app, even when Bundler saved it.
+      %w[RUBYOPT RUBYLIB].each { |key| env.delete(key) }
+      # No saved original means the value belongs to the tool process.
+      %w[GEM_HOME BUNDLE_PATH BUNDLE_WITHOUT].each do |key|
+        env.delete(key) unless restored.include?(key)
       end
       env
     end
@@ -180,13 +179,77 @@ module Mutineer
     # @return [void]
     def scrub_managed_ruby_bins!(env)
       parts = env["PATH"].to_s.split(File::PATH_SEPARATOR)
-      kept = parts.reject { |part| part.match?(MANAGED_RUBY_BIN) }
+      rbenv = rbenv_shim_dirs(env)
+      asdf = asdf_shim_dirs(env)
+      dropped_rbenv = false
+      dropped_asdf = false
+      kept = parts.reject do |part|
+        if rbenv_version_bin?(part) && rbenv.any?
+          dropped_rbenv = true
+        elsif asdf_version_bin?(part, env) && asdf.any?
+          dropped_asdf = true
+        else
+          false
+        end
+      end
       return if kept.size == parts.size
 
-      shims = ExternalBackend.version_manager_shim_dirs
-      return if shims.empty?
-
+      shims = []
+      shims.concat(rbenv) if dropped_rbenv
+      shims.concat(asdf) if dropped_asdf
       env["PATH"] = (shims + kept).uniq.join(File::PATH_SEPARATOR)
+    end
+
+    # Existing rbenv shim directory, if the home directory has one.
+    #
+    # @api private
+    # @param env [Hash{String => String}]
+    # @return [Array<String>]
+    def rbenv_shim_dirs(env)
+      home = env["HOME"]
+      return [] if home.nil? || home.empty?
+
+      dir = File.join(home, ".rbenv", "shims")
+      File.directory?(dir) ? [dir] : []
+    end
+
+    # Existing asdf shim directories. A custom install uses +ASDF_DATA_DIR+.
+    #
+    # @api private
+    # @param env [Hash{String => String}]
+    # @return [Array<String>]
+    def asdf_shim_dirs(env)
+      dirs = []
+      data = env["ASDF_DATA_DIR"]
+      dirs << File.join(data, "shims") if data && !data.empty?
+      home = env["HOME"]
+      dirs << File.join(home, ".asdf", "shims") if home && !home.empty?
+      dirs.select { |dir| File.directory?(dir) }.uniq
+    end
+
+    # True when `part` is an rbenv version bin, with or without a trailing slash.
+    #
+    # @api private
+    # @param part [String] one PATH entry.
+    # @return [Boolean]
+    def rbenv_version_bin?(part)
+      part.match?(%r{/\.rbenv/versions/[^/]+/bin/?\z})
+    end
+
+    # True when `part` is an asdf Ruby version bin under ~/.asdf or +ASDF_DATA_DIR+.
+    #
+    # @api private
+    # @param part [String] one PATH entry.
+    # @param env [Hash{String => String}]
+    # @return [Boolean]
+    def asdf_version_bin?(part, env)
+      return true if part.match?(%r{/\.asdf/installs/ruby/[^/]+/bin/?\z})
+
+      data = env["ASDF_DATA_DIR"]
+      return false if data.nil? || data.empty?
+
+      prefix = File.join(File.expand_path(data), "installs", "ruby")
+      File.expand_path(part).match?(%r{\A#{Regexp.escape(prefix)}/[^/]+/bin/?\z})
     end
 
     # True when this daemon boots a Rails app.

@@ -115,6 +115,71 @@ class DaemonClientEnvTest < Minitest::Test
     end
   end
 
+  # A bare BUNDLE_WITHOUT belongs to the tool. A saved BUNDLE_PATH is the app's.
+  # A saved RUBYOPT is still the tool's require list, so it stays out.
+  def test_spawn_drops_unsaved_bundle_settings_and_a_saved_rubyopt
+    Dir.mktmpdir("daemon-env") do |root|
+      with_env(
+        "BUNDLE_WITHOUT" => "tool_group",
+        "BUNDLE_PATH" => "/tmp/tool-bundle",
+        "BUNDLER_ORIG_BUNDLE_PATH" => "/app/bundle",
+        "RUBYOPT" => "-rother",
+        "BUNDLER_ORIG_RUBYOPT" => "-rtool_saved"
+      ) do
+        observed = observe(client_for(root), root)
+        assert_nil observed["BUNDLE_WITHOUT"]
+        assert_equal "/app/bundle", observed["BUNDLE_PATH"]
+        assert_nil observed["RUBYOPT"]
+      end
+    end
+  end
+
+  def test_spawn_keeps_an_asdf_bin_when_only_rbenv_shims_exist
+    Dir.mktmpdir("daemon-env") do |root|
+      home = File.join(root, "home")
+      FileUtils.mkdir_p(File.join(home, ".rbenv", "shims"))
+      asdf_bin = File.join(root, ".asdf", "installs", "ruby", "3.3.0", "bin")
+      rbenv_bin = File.join(home, ".rbenv", "versions", "3.3.0", "bin")
+      path = [asdf_bin, rbenv_bin, "/usr/bin"].join(File::PATH_SEPARATOR)
+      with_env("HOME" => home, "PATH" => path, "BUNDLER_ORIG_PATH" => path, "ASDF_DATA_DIR" => nil) do
+        parts = observe(client_for(root), root)["PATH"].split(File::PATH_SEPARATOR)
+        assert_includes parts, asdf_bin
+        refute_includes parts, rbenv_bin
+        assert_equal File.join(home, ".rbenv", "shims"), parts.first
+      end
+    end
+  end
+
+  def test_spawn_keeps_an_rbenv_bin_when_only_asdf_shims_exist
+    Dir.mktmpdir("daemon-env") do |root|
+      home = File.join(root, "home")
+      FileUtils.mkdir_p(File.join(home, ".asdf", "shims"))
+      asdf_bin = File.join(home, ".asdf", "installs", "ruby", "3.3.0", "bin")
+      rbenv_bin = File.join(home, ".rbenv", "versions", "3.3.0", "bin")
+      path = [rbenv_bin, asdf_bin, "/usr/bin"].join(File::PATH_SEPARATOR)
+      with_env("HOME" => home, "PATH" => path, "BUNDLER_ORIG_PATH" => path, "ASDF_DATA_DIR" => nil) do
+        parts = observe(client_for(root), root)["PATH"].split(File::PATH_SEPARATOR)
+        assert_includes parts, rbenv_bin
+        refute_includes parts, asdf_bin
+        assert_equal File.join(home, ".asdf", "shims"), parts.first
+      end
+    end
+  end
+
+  def test_spawn_drops_a_custom_asdf_bin_when_that_data_dir_has_shims
+    Dir.mktmpdir("daemon-env") do |root|
+      data = File.join(root, "asdf-data")
+      FileUtils.mkdir_p(File.join(data, "shims"))
+      asdf_bin = File.join(data, "installs", "ruby", "3.3.0", "bin")
+      path = [asdf_bin, "/usr/bin"].join(File::PATH_SEPARATOR)
+      with_env("HOME" => root, "ASDF_DATA_DIR" => data, "PATH" => path, "BUNDLER_ORIG_PATH" => path) do
+        parts = observe(client_for(root), root)["PATH"].split(File::PATH_SEPARATOR)
+        refute_includes parts, asdf_bin
+        assert_equal File.join(data, "shims"), parts.first
+      end
+    end
+  end
+
   private
 
   def client_for(root, boot: { project_root: root })
@@ -128,7 +193,9 @@ class DaemonClientEnvTest < Minitest::Test
   end
 
   # Current values are the tool's. BUNDLER_ORIG_* is what the app had before
-  # the tool's Bundler activated. Keys with no saved original are the app's.
+  # the tool's Bundler activated. A gem home, BUNDLE_PATH, or BUNDLE_WITHOUT
+  # is kept only when that saved key exists. RUBYOPT and RUBYLIB are always
+  # dropped, including a saved value.
   def tool_over_app_env(root, injected, version_bin, chruby_bin, app_home)
     {
       "RUBYOPT" => "-r#{injected}",
@@ -139,7 +206,8 @@ class DaemonClientEnvTest < Minitest::Test
       "BUNDLER_ORIG_GEM_HOME" => app_home,
       "BUNDLER_SETUP" => "/tmp/tool/bundler/setup",
       "BUNDLER_ORIG_BUNDLER_SETUP" => UNSET,
-      "BUNDLE_WITHOUT" => "app_required_group",
+      "BUNDLE_WITHOUT" => "tool_group",
+      "BUNDLER_ORIG_BUNDLE_WITHOUT" => "app_required_group",
       "BUNDLE_APP_CONFIG" => app_home,
       "BUNDLE_GEMFILE" => "/tmp/MutineerToolGemfile",
       "BUNDLER_ORIG_BUNDLE_GEMFILE" => UNSET,
@@ -168,7 +236,7 @@ class DaemonClientEnvTest < Minitest::Test
     script = <<~'RUBY'
       require "json"
       keys = %w[
-        RUBYOPT RUBYLIB GEM_HOME BUNDLE_WITHOUT BUNDLE_APP_CONFIG BUNDLE_GEMFILE
+        RUBYOPT RUBYLIB GEM_HOME BUNDLE_PATH BUNDLE_WITHOUT BUNDLE_APP_CONFIG BUNDLE_GEMFILE
         BUNDLER_SETUP RBENV_VERSION ASDF_RUBY_VERSION RAILS_ENV
         MUTINEER_PARENT_CODE_LOADED MUTINEER_APP_PROBE
       ]
