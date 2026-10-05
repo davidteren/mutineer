@@ -34,23 +34,25 @@ module Mutineer
       Array(args).flat_map do |arg|
         abs = File.expand_path(arg, root)
         if File.directory?(abs)
-          Dir.glob(File.join(abs, "**", "*.rb")).sort.map { |f| root_relative(f, root) || f }
+          Dir.glob(File.join(abs, "**", "*.rb")).sort.map { |f| existing_relative(f, root) || f }
         else
           # `..` resolves as text, as FileSwap and the daemon already read it.
-          rel = root_relative(abs, root) || root_relative(real_dir_path(abs), root) if File.exist?(abs)
-          [rel || arg]
+          [(existing_relative(abs, root) if File.exist?(abs)) || arg]
         end
       end.uniq
     end
 
-    # `abs` with its directory resolved to a real path and its own name kept,
-    # so `/var/...` typed under a `/private/var/...` root still matches while a
-    # symlinked file is not renamed to its target.
+    # An existing file's root-relative path, or nil outside the root. Tries the
+    # path as given, then with its directory resolved, so a path typed through
+    # a symlinked parent (or macOS `/var` under a `/private/var` root) matches.
+    # The file's own name is kept, so a symlinked file is not renamed.
     #
     # @param abs [String] expanded absolute path of an existing file.
-    # @return [String] the path with a real directory part.
-    def real_dir_path(abs)
-      File.join(File.realpath(File.dirname(abs)), File.basename(abs))
+    # @param root [String] expanded project root.
+    # @return [String, nil] root-relative path, or nil outside the root.
+    def existing_relative(abs, root)
+      root_relative(abs, root) ||
+        root_relative(File.join(File.realpath(File.dirname(abs)), File.basename(abs)), root)
     end
 
     # `abs` relative to `root`, or nil when it is not under it. Text only: a

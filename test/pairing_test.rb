@@ -135,6 +135,17 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # A directory typed through a symlinked parent agrees with the file argument.
+  def test_expand_sources_resolves_a_symlinked_parent_for_dirs_and_files
+    with_tree("real/proj/lib/calc.rb") do |dir|
+      File.symlink(File.join(dir, "real"), File.join(dir, "link"))
+      root = File.join(File.realpath(dir), "real/proj")
+      typed = File.join(dir, "link/proj/lib")
+      assert_equal ["lib/calc.rb"], Mutineer::Pairing.expand_sources([typed], project_root: root)
+      assert_equal ["lib/calc.rb"], Mutineer::Pairing.expand_sources(["#{typed}/calc.rb"], project_root: root)
+    end
+  end
+
   def test_expand_sources_keeps_a_missing_file_as_typed
     with_tree("lib/calc.rb") do |root|
       assert_equal ["./lib/nope.rb"], Mutineer::Pairing.expand_sources(["./lib/nope.rb"], project_root: root)
