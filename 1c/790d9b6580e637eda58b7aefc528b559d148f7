@@ -1,0 +1,18 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 34-36
+lib/mutineer/pairing.rb
+  h_e8a5bb9272fa34 205,208-209,214-224
+test/pairing_test.rb
+  h_e8a5bb9272fa34 207-216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1c790d9b6580e637eda58b7aefc528b559d148f7",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
