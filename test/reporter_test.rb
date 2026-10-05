@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "json"
 require "stringio"
 
 class ReporterTest < Minitest::Test
@@ -209,6 +210,27 @@ class ReporterTest < Minitest::Test
     assert_includes s, "-         y)"   # second original line shown too
     assert_includes s, "+     nil"      # spliced replacement
     refute_match(/lonil|nilx|eminil/, s) # no fragment mashing
+  end
+
+  # #163: a control byte in a surviving line prints as an escape, not raw, in
+  # the human report. A tab stays. JSON keeps the raw character.
+  def test_human_survivor_escapes_control_characters
+    src = "class Foo\n  def bar(x)\n    \"\e[2J\" if x >= 1\t# t\n  end\nend\n"
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subject = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                    singleton: false, def_node: def_node)
+    at = src.index(">=")
+    mutation = Mutineer::Mutation.new(start_offset: at, end_offset: at + 2, replacement: ">", operator: :comparison)
+    agg = Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subject, mutation: mutation)])
+
+    out = StringIO.new
+    Mutineer::Reporter.new(agg, { "foo.rb" => src }).report(out: out, err: StringIO.new)
+    refute_includes out.string, "\e"
+    assert_includes out.string, %(-     "\\e[2J" if x >= 1\t# t)
+
+    json = StringIO.new
+    Mutineer::Reporter.new(agg, { "foo.rb" => src }).report(out: json, err: StringIO.new, format: "json")
+    assert_includes JSON.parse(json.string)["survivors"].first["diff"], "\e[2J"
   end
 
   # #9: the human report distinguishes uncapturable (broken harness) from

@@ -639,9 +639,20 @@ module Mutineer
       start_line, original_block, mutated_block, token = diff_for(m, source)
 
       out.puts "  #{result.subject.qualified_name} (#{File.basename(file)}:#{start_line})"
-      out.puts "  Operator: #{m.operator}  (#{token} -> #{m.replacement})"
-      original_block.each_line { |l| out.puts "  - #{l.chomp}" }
-      mutated_block.each_line  { |l| out.puts "  + #{l.chomp}" }
+      out.puts "  Operator: #{m.operator}  (#{printable(token)} -> #{printable(m.replacement)})"
+      original_block.each_line { |l| out.puts "  - #{printable(l.chomp)}" }
+      mutated_block.each_line  { |l| out.puts "  + #{printable(l.chomp)}" }
+    end
+
+    # Source text made safe for a terminal (#163): each control character
+    # except tab becomes its Ruby escape (ESC prints as `\e`), so a byte in a
+    # surviving line cannot drive the terminal. JSON and HTML escape on their own.
+    #
+    # @api private
+    # @param text [String] source text.
+    # @return [String] the text with control characters escaped.
+    def printable(text)
+      text.gsub(/[[:cntrl:]&&[^\t]]/) { |c| c.dump[1..-2] }
     end
 
     # Writes the final verdict line.
