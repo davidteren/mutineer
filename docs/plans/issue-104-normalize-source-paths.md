@@ -33,15 +33,18 @@ CLI reports "no test found by convention" and exits 2.
 
 ## Key Technical Decisions
 
-- **Reuse `ProjectPath.relative`.** It already resolves `./`, `..`, absolute paths, and
-  the macOS `/var` vs `/private/var` alias for mutant ids and the coverage cache. One
-  path rule for pairing and ids is least surprise.
+- **Text-based normalization, not `ProjectPath.relative`** (changed after code review).
+  `ProjectPath.relative` follows a symlinked source to its target, which renamed
+  `lib/calc.rb` to its target and paired the wrong test. `File.expand_path` resolves
+  `./` and `..` as text. The root's real path, and then the file's real directory
+  with its own name kept, are tried so the macOS `/var` vs `/private/var` alias matches.
 - **Normalize file arguments in `expand_sources`, before `uniq`.** All later steps
   (existence check, pairing, the run) then see one spelling, and `uniq` removes
   duplicates (R2).
-- **Keep the typed path when the result is outside the root** (R4). `ProjectPath.relative`
-  returns an absolute path in that case; `expand_sources` uses the original argument instead.
-- **Leave the directory branch unchanged.** It already produces root-relative paths.
+- **Keep the typed path when the file is missing or outside the root** (R4), so the
+  "no such file" message shows what the user typed.
+- **The directory branch uses the same helper,** so a directory run and a file
+  argument always agree on one name.
 
 ## Implementation Units
 
@@ -70,5 +73,4 @@ Update the method docstring.
 - Visible effect (from plan review): the JSON `file` value and the diff `a/<file>`
   header show the root-relative path, not the typed spelling. The CHANGELOG says so.
 
-- A symlinked source inside the project resolves to its target's path, as mutant ids
-  already do. No special handling.
+- A symlinked source keeps its own name (tested).

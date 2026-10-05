@@ -123,6 +123,24 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # Review of #104: a symlinked source keeps its own name, so it pairs with its
+  # own test, and a directory run and a file argument agree on that name.
+  def test_expand_sources_keeps_a_symlinked_source_name
+    with_tree("lib/shared/calc.rb", "test/calc_test.rb") do |root|
+      File.symlink(File.join(root, "lib/shared/calc.rb"), File.join(root, "lib/calc.rb"))
+      got = Mutineer::Pairing.expand_sources(["lib", "./lib/calc.rb", File.join(File.realpath(root), "lib/calc.rb")],
+                                             project_root: root)
+      assert_equal ["lib/calc.rb", "lib/shared/calc.rb"], got
+      assert_equal ["test/calc_test.rb"], infer_tests(got.first, root)
+    end
+  end
+
+  def test_expand_sources_keeps_a_missing_file_as_typed
+    with_tree("lib/calc.rb") do |root|
+      assert_equal ["./lib/nope.rb"], Mutineer::Pairing.expand_sources(["./lib/nope.rb"], project_root: root)
+    end
+  end
+
   def test_expand_sources_keeps_a_path_outside_the_root_as_typed
     with_tree("proj/lib/calc.rb", "other/x.rb") do |dir|
       root = File.join(dir, "proj")

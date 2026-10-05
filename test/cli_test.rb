@@ -605,6 +605,11 @@ class CliTest < Minitest::Test
 
       single, = mutineer("run", "lib/calc.rb", "--format", "json", chdir: proj)
       assert_equal JSON.parse(single)["summary"]["total"], doc["summary"]["total"]
+
+      explicit, err, status = mutineer("run", "./lib/calc.rb", "--test", "./test/calc_test.rb",
+                                       "--format", "json", chdir: proj)
+      assert_includes [0, 1], status.exitstatus, err
+      assert_equal JSON.parse(single)["summary"], JSON.parse(explicit)["summary"]
     end
   end
 

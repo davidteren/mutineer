@@ -160,8 +160,8 @@ module Mutineer
                "--test takes one file; repeat it for each test file (--test a_test.rb --test b_test.rb)"
           exit 2
         end
-        # A directory source expands to its **/*.rb files; literal files pass
-        # through. Test inference (when --test is omitted) happens in validate!.
+        # A directory source expands to its **/*.rb files; a file inside the
+        # project becomes its root-relative path (#104). Test inference (when --test is omitted) happens in validate!.
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
         run(config)
       else

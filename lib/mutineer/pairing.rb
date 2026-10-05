@@ -5,7 +5,8 @@ require_relative "project_path"
 module Mutineer
   # Source -> test pairing by path convention (#11). Pure stdlib path logic:
   # no Rails, no class loading, no process. Two jobs:
-  #   * expand_sources — a directory argument becomes its sorted **/*.rb files.
+  #   * expand_sources — a directory argument becomes its sorted **/*.rb files;
+  #                     a file inside the root becomes its root-relative path.
   #   * infer_tests    — a source's test files by convention (app/ and lib/
   #                     sources map to test/.../_test.rb, test/.../<name>_*_test.rb,
   #                     test/.../test_*.rb or spec/.../_spec.rb), preserving
@@ -22,9 +23,8 @@ module Mutineer
     # Expand each positional source: a directory -> its sorted **/*.rb files
     # (relative to project_root); a file (or glob, or anything non-directory)
     # -> its path relative to project_root, so `./lib/x.rb` and an absolute
-    # path pair like `lib/x.rb` (#104). A path that does not resolve inside the
-    # root (outside it, or missing under a symlinked root) stays as typed.
-    # Flattened, deduped, order-stable.
+    # path pair like `lib/x.rb` (#104). A missing file, or one outside the
+    # root, stays as typed. Flattened, deduped, order-stable.
     #
     # @param args [Array<String>] source paths or directories.
     # @param project_root [String] repository root for relative expansion.
@@ -34,12 +34,38 @@ module Mutineer
       Array(args).flat_map do |arg|
         abs = File.expand_path(arg, root)
         if File.directory?(abs)
-          Dir.glob(File.join(abs, "**", "*.rb")).sort.map { |f| f.delete_prefix("#{root}/") }
+          Dir.glob(File.join(abs, "**", "*.rb")).sort.map { |f| root_relative(f, root) || f }
         else
-          rel = ProjectPath.relative(arg, root)
-          [File.absolute_path?(rel) ? arg : rel]
+          rel = root_relative(abs, root) || root_relative(real_dir_path(abs), root) if File.exist?(abs)
+          [rel || arg]
         end
       end.uniq
+    end
+
+    # `abs` with its directory resolved to a real path and its own name kept,
+    # so `/var/...` typed under a `/private/var/...` root still matches while a
+    # symlinked file is not renamed to its target.
+    #
+    # @param abs [String] expanded absolute path of an existing file.
+    # @return [String] the path with a real directory part.
+    def real_dir_path(abs)
+      File.join(File.realpath(File.dirname(abs)), File.basename(abs))
+    end
+
+    # `abs` relative to `root`, or nil when it is not under it. Text only: a
+    # symlinked source keeps its own name (realpath would rename it to its
+    # target and pair the wrong test). The root's real path is also tried, so
+    # the macOS `/var` vs `/private/var` alias still matches.
+    #
+    # @param abs [String] expanded absolute path.
+    # @param root [String] expanded project root.
+    # @return [String, nil] root-relative path, or nil outside the root.
+    def root_relative(abs, root)
+      [root, ProjectPath.root_real(root)].uniq.each do |r|
+        prefix = r.end_with?("/") ? r : "#{r}/"
+        return abs.delete_prefix(prefix) if abs.start_with?(prefix)
+      end
+      nil
     end
 
     # The first test path {#infer_tests} would run for a source, or nil.
