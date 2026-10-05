@@ -325,13 +325,15 @@ class CliTest < Minitest::Test
       assert_equal 2, status.exitstatus
       assert_includes err, "operators must name at least one operator, not blank"
 
-      _, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
+      out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
       assert_equal 0, status.exitstatus, err
+      assert_match(/arithmetic: [1-9]/, out)
 
       File.write(File.join(proj, ".mutineer.yml"), "operators: [bogus]\n")
-      _, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
+      out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
       assert_equal 0, status.exitstatus, err
       assert_includes err, "unknown operator"
+      assert_match(/arithmetic: [1-9]/, out)
     end
   end
 
