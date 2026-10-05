@@ -927,11 +927,13 @@ module Mutineer
 
     # Longer source files that can take a split test from a configured source.
     # Only their presence is digested. A content edit of a sibling does not
-    # change pairing, and it does not rebuild coverage.
+    # change pairing, and it does not rebuild coverage. Each directory is
+    # listed once, even when many sources share it.
     #
     # @return [Array<String>] project-relative paths, sorted.
     def ownership_paths
       root = File.expand_path(@project_root)
+      listings = {}
       paths = @source_paths.flat_map do |source|
         rel = relativize(absolute(source))
         next [] if rel.start_with?("/")
@@ -943,9 +945,10 @@ module Mutineer
         %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
         folders.uniq.flat_map do |folder|
           abs = folder ? File.join(root, folder) : root
-          next [] unless File.directory?(abs)
-
-          Dir.children(abs).filter_map do |entry|
+          entries = listings.fetch(abs) do
+            listings[abs] = File.directory?(abs) ? Dir.children(abs) : []
+          end
+          entries.filter_map do |entry|
             next unless entry.end_with?(".rb")
 
             stem = entry.delete_suffix(".rb")

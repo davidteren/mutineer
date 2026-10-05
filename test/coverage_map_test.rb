@@ -963,13 +963,16 @@ class CoverageMapTest < Minitest::Test
       File.write(user, "class User; def n; 1; end; end\n")
       File.write(session, "class UserSession; def n; 1; end; end\n")
       File.write(bad, <<~RUBY)
-        sibling = File.expand_path("../../app/models/user_session.rb", __FILE__)
+        sibling = File.expand_path("../../app/models/user_session.rb", __dir__)
         raise "sibling present" if File.file?(sibling)
       RUBY
+      first = nil
       capture_subprocess_io do
-        Mutineer::CoverageMap.new(source_paths: [user], test_paths: [bad],
-                                  cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+        first = Mutineer::CoverageMap.new(source_paths: [user], test_paths: [bad],
+                                          cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
       end
+      refute_empty first.failed_test_files
+      refute first.uncapturable_source?(user)
 
       File.write(session, "class UserSession; def n; 2; end; end\n")
       edited = nil
