@@ -1,0 +1,31 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_6447e4a6031f46 18-26
+docs/plans/issue-159-duplicate-mutations.md
+  s_07d7b58ff1b9fd::t_ebd4816313dff9 1-64
+lib/mutineer/mutators/base.rb
+  s_07d7b58ff1b9fd::t_c3420c50966411 29,35-52
+lib/mutineer/mutators/return_nil.rb
+  s_07d7b58ff1b9fd::t_554a8751867669 25
+test/mutators/chain_link_test.rb
+  s_07d7b58ff1b9fd::t_875629d1065346 80-86
+test/mutators/literal_mutation_test.rb
+  s_07d7b58ff1b9fd::t_d6cd718ff84b58 20-22
+test/mutators/negation_removal_test.rb
+  s_07d7b58ff1b9fd::t_9a71b1b043f72c 34-35,37-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6b3515c9ae0071f846d8eb93a4b73b078876ba06",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
