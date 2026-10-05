@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **A test file given as a source after `--test` exits 2.** `--test` takes one
+  file, so in `mutineer run app/x.rb --test spec/a_spec.rb spec/b_spec.rb` the
+  second spec became a source to mutate, and the run tested with one spec file
+  without a word. Now a source named `*_test.rb` or `*_spec.rb` inside a
+  `test/` or `spec/` directory, given with `--test`, is a usage error that says
+  to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
+
 ### Fixed
 - **The daemon no longer runs the tool's Ruby settings inside the app** (#100).
   Open3 keeps a variable when the spawn hash omits it, so a parent `RUBYOPT`
@@ -14,11 +22,18 @@ All notable changes to this project are documented here. The format is based on
   excluded groups, Bundler config, and chruby path. An `RBENV_VERSION` or
   `ASDF_RUBY_VERSION` already in the environment stays. That pin is often
   the Ruby that started the tool. `.ruby-version` applies only when no pin
-  is set. The tool's `RUBYOPT`, `RUBYLIB`, and gem home do not. rbenv and
-  asdf version bins leave `PATH` when a shim directory exists, so the shim
-  can apply the pin. Without a shim, those bins stay and `bundle` can still
-  be found. The app
-  Gemfile, an explicit Ruby pin, and Rails env are applied after that.
+  is set. The tool's `RUBYOPT` and `RUBYLIB` do not reach the child, including
+  a value Bundler had saved. A gem home, `BUNDLE_PATH`, or `BUNDLE_WITHOUT`
+  reaches the child only when Bundler saved the app's value. An rbenv version
+  bin leaves `PATH` only when an rbenv shim directory exists, and an asdf
+  version bin leaves only when an asdf shim directory exists, including
+  `ASDF_DATA_DIR/shims`. Without that shim, the bin stays and `bundle` can
+  still be found. The app Gemfile, an explicit Ruby pin, and Rails env are
+  applied after that.
+- **A mutation no longer leaves a heredoc body behind as Ruby** (#134).
+  Replacing a node deletes the heredoc opener and not the body. The body
+  then parses as code, raises, and counts as a kill. A mutation that drops
+  the opener is skipped. A replacement that still contains the opener stays.
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not
   singleton methods (#144).
