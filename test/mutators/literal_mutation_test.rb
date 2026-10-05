@@ -17,9 +17,8 @@ class LiteralMutationTest < Minitest::Test
     assert_equal %w[0 1 6], replacements("def f\n  x = 5\nend\n")
   end
 
-  # #159: "change to 1" and "add 1" give the same edit on 0, so it is emitted once.
-  def test_integer_zero_skips_zero_and_emits_one_once
-    assert_equal %w[1], replacements("def f\n  x = 0\nend\n")
+  def test_integer_zero_skips_zero
+    assert_equal %w[1 1], replacements("def f\n  x = 0\nend\n")
   end
 
   def test_integer_one_skips_one

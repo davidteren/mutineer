@@ -187,6 +187,30 @@ class RunnerTest < Minitest::Test
     assert_nil Mutineer::Runner.abort_if_unclean!(map)
   end
 
+  # #159: an operator that emits one edit twice runs it once, and every kept
+  # mutant keeps the id it had before (ids are assigned before the drop, so a
+  # dropped copy's id is never handed to the next twin).
+  def test_collect_jobs_runs_a_repeated_edit_once_and_keeps_ids
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "zero.rb")
+      File.write(path, "class Zero\n  def a\n    x = 0\n    y = 0\n    !!x\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: dir)
+      ops = Mutineer::MutatorRegistry.resolve(%w[literal_mutation negation_removal])
+      jobs, = Mutineer::Runner.collect_jobs(config, ops)
+
+      source = File.read(path)
+      mutated = jobs.map { |_s, m, _id| [m.operator, m.apply(source)] }
+      assert_equal mutated.uniq, mutated
+      assert_equal 3, jobs.size # x = 1, y = 1, !x
+
+      subject = jobs.first[0]
+      all = ops.flat_map { |k| k.new.mutations_for(subject, source) }
+      before = Mutineer::MutantId.for_subject(subject, source, all, path: "zero.rb")
+      kept = all.each_index.reject { |i| Mutineer::Runner.repeated_results(all, source).include?(i) }
+      assert_equal kept.map { |i| before[i] }, jobs.map(&:last)
+    end
+  end
+
   private
 
   def with_rails_env(value)
@@ -210,4 +234,5 @@ class RunnerTest < Minitest::Test
     end
     jobs
   end
+
 end

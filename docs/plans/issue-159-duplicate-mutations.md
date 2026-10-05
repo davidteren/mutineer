@@ -26,8 +26,11 @@ does the same on `a.b.b.c`: dropping either `.b` gives `a.b.c`. Each copy gets i
 - R1. Within one operator and one subject, a mutation whose result equals an earlier
   mutation's result is dropped. The first one is kept.
 - R2. Mutations that give different results all stay.
-- R3. The fix covers every operator, including the two that override `mutations_for`
-  (`return_nil`, `chain_link`).
+- R3. The fix covers every operator.
+- R4. Every kept mutant keeps the id it had before the fix. A dropped copy's id is
+  never handed to another mutant (found in code review: dropping before ids are
+  assigned let the next same-token twin take the dropped copy's id, so an old ignore
+  entry would silently hide a different mutant).
 
 ## Key Technical Decisions
 
@@ -36,29 +39,30 @@ does the same on `a.b.b.c`: dropping either `.b` gives `a.b.c`. Each copy gets i
   body of an endless `def` lies past the `def` node, so a mutation can sit outside it.
   Text outside the span is the same for every mutation, so comparing the span is exact
   and avoids a full copy of the file per mutation.
-- **One private `Base` helper,** run next to `drop_dangling_heredocs` in `Base` and in
-  `ReturnNil`. `ChainLink` calls `super`, so it gets the fix from `Base`.
-- **Id effect.** Ids count same-token twins in order. Dropping a duplicate removes its
-  id, and a later twin of the same token can get a lower ordinal. This affects only
-  opt-in operators with these duplicates. The CHANGELOG says so.
+- **Drop in `Runner.collect_jobs`, after ids are assigned** (changed after code review;
+  the first version dropped in `Mutators::Base`). `collect_jobs` is the only caller of
+  `mutations_for`, and ids count same-token twins over the full list, so dropping after
+  that keeps every id stable (R4). The key is `[operator, span text]`, so the drop stays
+  per operator.
+- **Mutator unit tests keep pinning both emissions,** because the mutators still emit
+  them. A runner test pins the drop and the ids.
 
 ## Implementation Units
 
-### U1. Drop same-result mutations in Base
+### U1. Drop same-result mutations after ids are assigned
 
-**Files:** `lib/mutineer/mutators/base.rb`, `lib/mutineer/mutators/return_nil.rb`,
-`test/mutators/literal_mutation_test.rb`, `test/mutators/negation_removal_test.rb`,
-`test/mutators/chain_link_test.rb`, `CHANGELOG.md`
+**Files:** `lib/mutineer/runner.rb`, `test/runner_test.rb`, `CHANGELOG.md`
 
-**Approach:** Add a `Base` helper that keeps the first mutation for each mutated span. Call it in `Base#mutations_for`
-and `ReturnNil#mutations_for`.
+**Approach:** Add `Runner.repeated_results`, which returns the indexes of mutations
+that repeat an earlier mutation of the same operator. `collect_jobs` skips those
+indexes after it computes ids.
 
 **Test scenarios:**
-- `x = 0` with `literal_mutation`: replacements are `["1"]`, one entry.
-- `x = 5`: replacements stay `["0", "1", "6"]`.
-- `!!x` with `negation_removal`: one mutation, applied source `!x`.
-- `!x`: still one mutation.
-- `a.b.b.c` with `chain_link` gives one mutation; `a.b.x.c` keeps both links.
-- Existing mutator round-trip tests stay green.
+- A subject with `x = 0`, `y = 0` and `!!x`, run with `literal_mutation` and
+  `negation_removal`: three jobs (`x = 1`, `y = 1`, `!x`), no two with the same
+  operator and mutated source.
+- Every kept job's id equals the id that mutant had over the full, undeduplicated list.
+- The test fails when the drop is disabled.
+- Existing mutator tests (which still pin both emissions) stay green.
 
-**Verification:** The updated tests pass and the full suite stays green.
+**Verification:** The new runner test passes and the full suite stays green.

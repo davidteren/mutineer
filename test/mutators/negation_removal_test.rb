@@ -31,11 +31,10 @@ class NegationRemovalTest < Minitest::Test
     assert_equal "", m.replacement
   end
 
-  # #159: removing either `!` of `!!x` gives `!x`, so it is emitted once.
-  def test_double_bang_yields_one
+  def test_double_bang_yields_two
     mutations, source = run_mutator("!!x")
-    assert_equal 1, mutations.size
-    assert_equal "def m\n  !x\nend\n", mutations.first.apply(source)
+    assert_equal 2, mutations.size
+    assert_equal ["!", "!"], mutations.map { |m| source[m.start_offset...m.end_offset] }
   end
 
   def test_explicit_bang_call_skipped

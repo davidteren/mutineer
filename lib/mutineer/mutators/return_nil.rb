@@ -22,7 +22,6 @@ module Mutineer
           final_expression_nil(@body) # rule 2 (method's final expression)
         end
         drop_dangling_heredocs
-        drop_repeated_results
         @mutations
       end
 
