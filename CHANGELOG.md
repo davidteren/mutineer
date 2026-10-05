@@ -15,6 +15,11 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **`# mutineer:disable-line` inside a string no longer silences a line**
+  (#158). The marker was found with a text search, so a string such as
+  `"# mutineer:disable-line"` ignored every mutant on its line and left
+  them out of the score. Only a real `#` comment counts now. A heredoc or
+  regex that holds the text is ignored too.
 - **Split test files pair with their source** (#87). A source such as
   `app/foo/bar.rb` now also uses `test/foo/bar_upsert_test.rb` and
   `test/foo/bar_guards_test.rb`, together with `test/foo/bar_test.rb` when

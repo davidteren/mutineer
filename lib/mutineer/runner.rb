@@ -351,10 +351,13 @@ module Mutineer
     # sits on the same physical line as the code it silences). A bare marker
     # disables every operator on that line; `disable-line a, b` only the listed
     # operators. Block-form disable/enable ranges are intentionally not supported.
+    # Only a real `#` comment counts: Prism lists the comments, so the marker
+    # text inside a string, heredoc or regex silences nothing (#158).
     def self.suppress_map(source, file)
       map = {}
-      source.each_line.with_index(1) do |text, line|
-        next unless (m = text.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
+      Prism.parse_comments(source).grep(Prism::InlineComment).each do |comment|
+        line = comment.location.start_line
+        next unless (m = comment.slice.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
 
         ops = m[1]&.split(",")&.map(&:strip)&.reject(&:empty?)
         # Only spaces or commas after the marker (e.g. `disable-line  -- why`)
