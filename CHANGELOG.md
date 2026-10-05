@@ -25,8 +25,9 @@ All notable changes to this project are documented here. The format is based on
   is set. The tool's `RUBYOPT` and `RUBYLIB` do not reach the child, including
   a value Bundler had saved. A gem home, `BUNDLE_PATH`, or `BUNDLE_WITHOUT`
   reaches the child only when Bundler saved the app's value. An rbenv version
-  bin leaves `PATH` only when an rbenv shim directory exists, and an asdf
-  version bin leaves only when an asdf shim directory exists, including
+  bin under `RBENV_ROOT`, or under `~/.rbenv` when that variable is unset,
+  leaves `PATH` only when that root has a shim directory. An asdf version
+  bin leaves only when an asdf shim directory exists, including
   `ASDF_DATA_DIR/shims`. Without that shim, the bin stays and `bundle` can
   still be found. The app Gemfile, an explicit Ruby pin, and Rails env are
   applied after that.

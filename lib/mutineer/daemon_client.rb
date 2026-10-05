@@ -184,7 +184,7 @@ module Mutineer
       dropped_rbenv = false
       dropped_asdf = false
       kept = parts.reject do |part|
-        if rbenv_version_bin?(part) && rbenv.any?
+        if rbenv_version_bin?(part, env) && rbenv.any?
           dropped_rbenv = true
         elsif asdf_version_bin?(part, env) && asdf.any?
           dropped_asdf = true
@@ -200,17 +200,33 @@ module Mutineer
       env["PATH"] = (shims + kept).uniq.join(File::PATH_SEPARATOR)
     end
 
-    # Existing rbenv shim directory, if the home directory has one.
+    # Existing rbenv shim directory. +RBENV_ROOT+ wins. Otherwise the home
+    # directory's <tt>.rbenv</tt> is used.
     #
     # @api private
     # @param env [Hash{String => String}]
     # @return [Array<String>]
     def rbenv_shim_dirs(env)
-      home = env["HOME"]
-      return [] if home.nil? || home.empty?
+      root = rbenv_root(env)
+      return [] if root.nil?
 
-      dir = File.join(home, ".rbenv", "shims")
+      dir = File.join(root, "shims")
       File.directory?(dir) ? [dir] : []
+    end
+
+    # rbenv install root. +RBENV_ROOT+ wins over <tt>~/.rbenv</tt>.
+    #
+    # @api private
+    # @param env [Hash{String => String}]
+    # @return [String, nil]
+    def rbenv_root(env)
+      root = env["RBENV_ROOT"]
+      return File.expand_path(root) if root && !root.empty?
+
+      home = env["HOME"]
+      return nil if home.nil? || home.empty?
+
+      File.join(home, ".rbenv")
     end
 
     # Existing asdf shim directories. A custom install uses +ASDF_DATA_DIR+.
@@ -227,13 +243,18 @@ module Mutineer
       dirs.select { |dir| File.directory?(dir) }.uniq
     end
 
-    # True when `part` is an rbenv version bin, with or without a trailing slash.
+    # True when `part` is a version bin under the active rbenv root.
     #
     # @api private
     # @param part [String] one PATH entry.
+    # @param env [Hash{String => String}]
     # @return [Boolean]
-    def rbenv_version_bin?(part)
-      part.match?(%r{/\.rbenv/versions/[^/]+/bin/?\z})
+    def rbenv_version_bin?(part, env)
+      root = rbenv_root(env)
+      return false if root.nil?
+
+      prefix = File.join(root, "versions")
+      File.expand_path(part).match?(%r{\A#{Regexp.escape(prefix)}/[^/]+/bin/?\z})
     end
 
     # True when `part` is an asdf Ruby version bin under ~/.asdf or +ASDF_DATA_DIR+.

@@ -21,13 +21,14 @@ class DaemonClientEnvTest < Minitest::Test
   def test_spawn_drops_tool_injection_and_keeps_app_settings
     Dir.mktmpdir("daemon-env") do |root|
       injected = write_parent_require(root)
-      version_bin = File.expand_path("~/.rbenv/versions/9.9.9/bin")
       chruby_bin = File.expand_path("~/.rubies/app-ruby/bin")
       app_home = "/usr/local/bundle"
       home = File.join(root, "home")
+      version_bin = File.join(home, ".rbenv", "versions", "9.9.9", "bin")
       FileUtils.mkdir_p(File.join(home, ".rbenv", "shims"))
       updates = tool_over_app_env(root, injected, version_bin, chruby_bin, app_home)
       updates["HOME"] = home
+      updates["RBENV_ROOT"] = nil
       with_env(updates) do
         observed = observe(client_for(root), root)
 
@@ -99,7 +100,7 @@ class DaemonClientEnvTest < Minitest::Test
     Dir.mktmpdir("daemon-env") do |root|
       version_bin = File.join(root, ".rbenv", "versions", "9.9.9", "bin")
       path = [version_bin, "/usr/bin"].join(File::PATH_SEPARATOR)
-      with_env("HOME" => root, "PATH" => path, "BUNDLER_ORIG_PATH" => path) do
+      with_env("HOME" => root, "RBENV_ROOT" => nil, "PATH" => path, "BUNDLER_ORIG_PATH" => path) do
         observed = observe(client_for(root), root)
         assert_includes observed["PATH"].split(File::PATH_SEPARATOR), version_bin
       end
@@ -141,7 +142,7 @@ class DaemonClientEnvTest < Minitest::Test
       asdf_bin = File.join(root, ".asdf", "installs", "ruby", "3.3.0", "bin")
       rbenv_bin = File.join(home, ".rbenv", "versions", "3.3.0", "bin")
       path = [asdf_bin, rbenv_bin, "/usr/bin"].join(File::PATH_SEPARATOR)
-      with_env("HOME" => home, "PATH" => path, "BUNDLER_ORIG_PATH" => path, "ASDF_DATA_DIR" => nil) do
+      with_env("HOME" => home, "RBENV_ROOT" => nil, "PATH" => path, "BUNDLER_ORIG_PATH" => path, "ASDF_DATA_DIR" => nil) do
         parts = observe(client_for(root), root)["PATH"].split(File::PATH_SEPARATOR)
         assert_includes parts, asdf_bin
         refute_includes parts, rbenv_bin
@@ -157,11 +158,32 @@ class DaemonClientEnvTest < Minitest::Test
       asdf_bin = File.join(home, ".asdf", "installs", "ruby", "3.3.0", "bin")
       rbenv_bin = File.join(home, ".rbenv", "versions", "3.3.0", "bin")
       path = [rbenv_bin, asdf_bin, "/usr/bin"].join(File::PATH_SEPARATOR)
-      with_env("HOME" => home, "PATH" => path, "BUNDLER_ORIG_PATH" => path, "ASDF_DATA_DIR" => nil) do
+      with_env("HOME" => home, "RBENV_ROOT" => nil, "PATH" => path, "BUNDLER_ORIG_PATH" => path, "ASDF_DATA_DIR" => nil) do
         parts = observe(client_for(root), root)["PATH"].split(File::PATH_SEPARATOR)
         assert_includes parts, rbenv_bin
         refute_includes parts, asdf_bin
         assert_equal File.join(home, ".asdf", "shims"), parts.first
+      end
+    end
+  end
+
+  def test_spawn_drops_a_custom_rbenv_bin_when_that_root_has_shims
+    Dir.mktmpdir("daemon-env") do |root|
+      rbenv = File.join(root, "custom-rbenv")
+      FileUtils.mkdir_p(File.join(rbenv, "shims"))
+      version_bin = File.join(rbenv, "versions", "3.3.0", "bin")
+      other = File.join(root, "home", ".rbenv", "versions", "3.3.0", "bin")
+      path = [version_bin, other, "/usr/bin"].join(File::PATH_SEPARATOR)
+      with_env(
+        "HOME" => File.join(root, "home"),
+        "RBENV_ROOT" => rbenv,
+        "PATH" => path,
+        "BUNDLER_ORIG_PATH" => path
+      ) do
+        parts = observe(client_for(root), root)["PATH"].split(File::PATH_SEPARATOR)
+        refute_includes parts, version_bin
+        assert_includes parts, other
+        assert_equal File.join(rbenv, "shims"), parts.first
       end
     end
   end
