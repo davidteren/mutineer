@@ -206,7 +206,7 @@ class RunnerTest < Minitest::Test
       subject = jobs.first[0]
       all = ops.flat_map { |k| k.new.mutations_for(subject, source) }
       before = Mutineer::MutantId.for_subject(subject, source, all, path: "zero.rb")
-      keys = Mutineer::Runner.result_keys(all, source)
+      keys = Mutineer::Runner.result_keys(all, source) # each repeat here sits on one line
       kept = all.each_index.select { |i| keys.index(keys[i]) == i }
       assert_equal kept.map { |i| before[i] }, jobs.map(&:last)
     end

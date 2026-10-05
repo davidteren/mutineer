@@ -201,27 +201,26 @@ module Mutineer
         ids = MutantId.for_subject(subject, source, mutations, path: id_path, subject_ordinal: ordinal)
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
         keys = result_keys(mutations, source)
-        # A repeat of an earlier edit is dropped (#159), separately among the
-        # run and the ignored mutants, so a copy on a suppressed line never
-        # hides a copy on a line that is not suppressed.
+        # A repeat of an earlier edit on the same line is dropped (#159),
+        # separately among the run and the ignored mutants, so an ignored copy
+        # never hides a copy that should run. A dropped copy records nothing.
         seen = { run: Set.new, ignored: Set.new }
         mutations.each_with_index do |mutation, i|
           id = ids[i]
           legacy = legacy_ids[i]
+          line = source.byteslice(0, mutation.start_offset).count("\n") + 1
+          ignored = suppressed?(mutation.operator, line, [id, legacy], disabled, ignore_set)
+          next unless seen[ignored ? :ignored : :run].add?([line, keys[i]])
+
           id_map[id] = legacy
           # An old entry still over-matches other files even when the new id is
           # listed too, so every old-entry match is reported for migration.
           if ignore_set.include?(legacy)
             (legacy_ignore_matches[legacy] ||= []) << { id: id, file: id_path, subject: subject.qualified_name }
           end
-          line = source.byteslice(0, mutation.start_offset).count("\n") + 1
-          if suppressed?(mutation.operator, line, [id, legacy], disabled, ignore_set)
-            next unless seen[:ignored].add?(keys[i])
-
+          if ignored
             ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id)
           else
-            next unless seen[:run].add?(keys[i])
-
             jobs << [subject, mutation, id]
           end
         end
@@ -229,20 +228,20 @@ module Mutineer
       [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map }]
     end
 
-    # One key per mutation that is equal for two mutations exactly when they are
-    # the same operator, start on the same line and give the same mutated
-    # source: one edit (#159). `literal_mutation` on `0` ("change to 1" and "add
-    # 1"), `negation_removal` on `!!x` and `chain_link` on `a.b.b.c` emit such
-    # pairs. The caller drops a repeat AFTER ids are assigned, so every kept
-    # mutant keeps its id and a dropped copy's id is never reused. Copies on
-    # different lines (a multi-line chain) both stay, so a line-based filter
-    # such as `--since` never loses the edit. Text outside the span from the
-    # earliest start to the latest end is the same for every mutation, so the
-    # key digests that span only.
+    # One key per mutation that is equal for two mutations of one subject
+    # exactly when they are the same operator and give the same mutated source:
+    # one edit (#159). `literal_mutation` on `0` ("change to 1" and "add 1"),
+    # `negation_removal` on `!!x` and `chain_link` on `a.b.b.c` emit such pairs.
+    # The caller adds each mutation's line and drops a repeat AFTER ids are
+    # assigned, so every kept mutant keeps its id and a dropped copy's id is
+    # never reused. With the line in the key, copies on different lines (a
+    # multi-line chain) both stay, so a line filter such as `--since` never
+    # loses the edit. Text outside the span from the earliest start to the
+    # latest end is the same for every mutation, so the key digests that span.
     #
     # @param mutations [Array<Mutineer::Mutation>] one subject's mutations.
     # @param source [String] the full, unmutated source.
-    # @return [Array<Array(Symbol, Integer, String)>] one key per mutation, in order.
+    # @return [Array<Array(Symbol, String)>] one key per mutation, in order.
     def self.result_keys(mutations, source)
       return [] if mutations.empty?
 
@@ -250,7 +249,7 @@ module Mutineer
       to = mutations.map(&:end_offset).max
       mutations.map do |m|
         span = "#{source.byteslice(from...m.start_offset)}#{m.replacement}#{source.byteslice(m.end_offset...to)}"
-        [m.operator, source.byteslice(0, m.start_offset).count("\n"), Digest::SHA256.digest(span)]
+        [m.operator, Digest::SHA256.digest(span)]
       end
     end
 
