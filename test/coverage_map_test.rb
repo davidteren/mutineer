@@ -802,6 +802,240 @@ class CoverageMapTest < Minitest::Test
     refute map.uncapturable_source?(CALC)
   end
 
+  # #87: a failed split file in the mirrored directory taints that source
+  # when no longer source file owns the name.
+  def test_failing_split_test_marks_the_shorter_source_uncapturable
+    dir = Dir.mktmpdir
+    src = File.join(dir, "app/foo/bar.rb")
+    bad = File.join(dir, "test/foo/bar_upsert_test.rb")
+    FileUtils.mkdir_p(File.dirname(src))
+    FileUtils.mkdir_p(File.dirname(bad))
+    File.write(src, "class Bar; def n; 1; end; end\n")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    assert map.uncapturable_source?(src)
+  end
+
+  # A failed exact spec in the mirrored directory marks that app source.
+  def test_failing_exact_spec_in_the_mirror_marks_the_source_uncapturable
+    Dir.mktmpdir do |dir|
+      src = File.join(dir, "app/foo/bar.rb")
+      bad = File.join(dir, "spec/foo/bar_spec.rb")
+      FileUtils.mkdir_p(File.dirname(src))
+      FileUtils.mkdir_p(File.dirname(bad))
+      File.write(src, "class Bar; def n; 1; end; end\n")
+      File.write(bad, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [bad],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      assert map.uncapturable_source?(src)
+    end
+  end
+
+  # The same basename under another spec directory does not mark the source.
+  def test_failing_exact_spec_outside_the_mirror_does_not_taint_the_source
+    Dir.mktmpdir do |dir|
+      src = File.join(dir, "app/foo/bar.rb")
+      bad = File.join(dir, "spec/other/bar_spec.rb")
+      FileUtils.mkdir_p(File.dirname(src))
+      FileUtils.mkdir_p(File.dirname(bad))
+      File.write(src, "class Bar; def n; 1; end; end\n")
+      File.write(bad, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [bad],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      refute map.uncapturable_source?(src)
+    end
+  end
+
+  # lib/ sources also accept the spec/lib mirror.
+  def test_failing_exact_spec_under_spec_lib_marks_a_lib_source
+    Dir.mktmpdir do |dir|
+      src = File.join(dir, "lib/billing/invoice.rb")
+      bad = File.join(dir, "spec/lib/billing/invoice_spec.rb")
+      FileUtils.mkdir_p(File.dirname(src))
+      FileUtils.mkdir_p(File.dirname(bad))
+      File.write(src, "class Invoice; def n; 1; end; end\n")
+      File.write(bad, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [bad],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      assert map.uncapturable_source?(src)
+    end
+  end
+
+  # test/foo/bar_upsert_test.rb is an exact name for bar_upsert.rb, but only
+  # in the foo mirror. A source in another directory must stay no_coverage.
+  def test_failed_exact_name_in_another_mirror_does_not_taint_that_source
+    dir = Dir.mktmpdir
+    other = File.join(dir, "app/other/bar_upsert.rb")
+    bad = File.join(dir, "test/foo/bar_upsert_test.rb")
+    FileUtils.mkdir_p(File.dirname(other))
+    FileUtils.mkdir_p(File.dirname(bad))
+    File.write(other, "class BarUpsert; def n; 1; end; end\n")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [other], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    refute map.uncapturable_source?(other)
+  end
+
+  # A failed test in another directory shares a basename prefix only. It must
+  # not fail the gate for app/models/user.rb.
+  def test_failing_split_test_outside_the_mirror_does_not_taint_the_source
+    dir = Dir.mktmpdir
+    src = File.join(dir, "app/models/user.rb")
+    bad = File.join(dir, "test/mailers/user_admin_test.rb")
+    FileUtils.mkdir_p(File.dirname(src))
+    FileUtils.mkdir_p(File.dirname(bad))
+    File.write(src, "class User; def n; 1; end; end\n")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    refute map.uncapturable_source?(src)
+  end
+
+  # src/user_session.rb owns the split name even though it is outside app/ and lib/.
+  def test_failing_split_owned_outside_app_and_lib_does_not_taint_the_shorter_source
+    dir = Dir.mktmpdir
+    user = File.join(dir, "src/user.rb")
+    session = File.join(dir, "src/user_session.rb")
+    bad = File.join(dir, "test/src/user_session_test.rb")
+    [user, session, bad].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+    File.write(user, "class User; def n; 1; end; end\n")
+    File.write(session, "class UserSession; def n; 1; end; end\n")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [user, session], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    assert map.uncapturable_source?(session)
+    refute map.uncapturable_source?(user)
+  end
+
+  # The blame decision is fixed for this map. Deleting the longer source
+  # during the run must not move the stored failure onto user.rb.
+  def test_deleting_a_longer_source_during_the_run_does_not_retarget_the_failure
+    Dir.mktmpdir do |dir|
+      user = File.join(dir, "app/models/user.rb")
+      session = File.join(dir, "app/models/user_session.rb")
+      bad = File.join(dir, "test/models/user_session_extra_test.rb")
+      [user, session, bad].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+      File.write(user, "class User; def n; 1; end; end\n")
+      File.write(session, "class UserSession; def n; 1; end; end\n")
+      File.write(bad, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [user], test_paths: [bad],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      refute map.uncapturable_source?(user)
+
+      File.delete(session)
+      refute map.uncapturable_source?(user)
+    end
+  end
+
+  # The next run sees the deleted sibling. The test passes once that file is
+  # gone, so user.rb stays a coverage gap instead of a stored failure.
+  def test_deleting_a_longer_source_rebuilds_coverage
+    Dir.mktmpdir do |dir|
+      user = File.join(dir, "app/models/user.rb")
+      session = File.join(dir, "app/models/user_session.rb")
+      bad = File.join(dir, "test/models/user_session_extra_test.rb")
+      [user, session, bad].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+      File.write(user, "class User; def n; 1; end; end\n")
+      File.write(session, "class UserSession; def n; 1; end; end\n")
+      File.write(bad, <<~RUBY)
+        sibling = File.expand_path("../../app/models/user_session.rb", __dir__)
+        raise "sibling present" if File.file?(sibling)
+      RUBY
+      first = nil
+      capture_subprocess_io do
+        first = Mutineer::CoverageMap.new(source_paths: [user], test_paths: [bad],
+                                          cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      refute_empty first.failed_test_files
+      refute first.uncapturable_source?(user)
+
+      File.write(session, "class UserSession; def n; 2; end; end\n")
+      edited = nil
+      capture_subprocess_io do
+        edited = Mutineer::CoverageMap.new(source_paths: [user], test_paths: [bad],
+                                           cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      refute edited.phase_a_ran, "a sibling content edit does not change pairing"
+
+      File.delete(session)
+      rebuilt = nil
+      capture_subprocess_io do
+        rebuilt = Mutineer::CoverageMap.new(source_paths: [user], test_paths: [bad],
+                                            cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      assert rebuilt.phase_a_ran, "deleting the longer source must rebuild coverage"
+      refute rebuilt.uncapturable_source?(user)
+    end
+  end
+
+  # The daemon rebuilds the map with from_data, which has no @source_paths.
+  # A failed exact test must still blame its source, and must not raise.
+  def test_from_data_uncapturable_does_not_crash_without_source_paths
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["test/calc_test.rb"],
+                                          project_root: Dir.pwd)
+    assert map.method_uncapturable?("lib/calc.rb", 1..3)
+  end
+
+  # The split path must run on a daemon map. An exact name returns before it.
+  # The files exist so path normalization stays project-relative.
+  def test_from_data_split_blame_does_not_need_source_paths
+    Dir.mktmpdir do |dir|
+      bad = File.join(dir, "test/foo/bar_extra_test.rb")
+      src = File.join(dir, "app/foo/bar.rb")
+      FileUtils.mkdir_p(File.dirname(bad))
+      FileUtils.mkdir_p(File.dirname(src))
+      File.write(bad, "require 'does/not/exist'\n")
+      File.write(src, "class Bar; def n; 1; end; end\n")
+      map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["test/foo/bar_extra_test.rb"],
+                                            project_root: dir)
+      assert map.method_uncapturable?(src, 1..3)
+    end
+  end
+
+  # user_mailer_test.rb keeps its exact source. It must not also fail the gate
+  # for uncovered methods in user.rb while user_mailer.rb is in the run.
+  def test_failing_longer_name_does_not_taint_a_shorter_source_also_in_the_run
+    dir = Dir.mktmpdir
+    user = File.join(dir, "user.rb")
+    mailer = File.join(dir, "user_mailer.rb")
+    File.write(user, "class User; def n; 1; end; end\n")
+    File.write(mailer, "class UserMailer; def n; 1; end; end\n")
+    bad = File.join(dir, "user_mailer_test.rb")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [user, mailer], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    assert map.uncapturable_source?(mailer)
+    refute map.uncapturable_source?(user)
+  end
+
   def test_failing_test_helper_does_not_taint_a_helper_source
     dir = Dir.mktmpdir
     helper = File.join(dir, "helper.rb")

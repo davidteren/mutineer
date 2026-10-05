@@ -21,6 +21,53 @@ All notable changes to this project are documented here. The format is based on
   holds the mutation. A heredoc body belongs to its statement. A first or last
   line that also holds other code, such as the `def` line, is not used. A
   mutant in the body of `x while c` or `x until c` stays `no_coverage`.
+- **Split test files pair with their source** (#87). A source such as
+  `app/foo/bar.rb` now also uses `test/foo/bar_upsert_test.rb` and
+  `test/foo/bar_guards_test.rb`, together with `test/foo/bar_test.rb` when
+  that file exists. The same names under `test/lib/` pair with a `lib/`
+  source. Before, only the exact `bar_test.rb` name was tried, so a suite
+  split across `bar_*_test.rb` files was skipped and a gate could pass with
+  no mutants run. A spec the old rules already find is unchanged. The
+  split name is left for `user_session.rb` when that file exists, so
+  `user.rb` does not run `user_session_test.rb`. The same rule holds outside
+  `app/` and `lib/`: `src/user.rb` does not take `test/src/user_session_test.rb`
+  when `src/user_session.rb` exists. A longer source claims a split file
+  only when that source itself searches the directory the file is in.
+  A failed capture of `test/foo/bar_upsert_test.rb` can mark `app/foo/bar.rb`
+  uncapturable only when no successful capture covered that source and
+  `bar_upsert.rb` does not exist. A test outside that directory does not,
+  and neither does a source that only shares the test basename.
+  `user_session__test.rb` stays with `user.rb` when `user_session.rb`
+  exists, because that name is not the exact test or a split test for
+  `user_session`. A failed exact spec in the mirrored `spec/` or `spec/lib/` directory
+  marks an `app/` or `lib/` source the same way. A failed spec in another
+  directory does not. A project rooted at `/` still finds split tests
+  inside that root. A stored failure keeps the pairing from the moment it
+  was checked. Adding or deleting a longer source rebuilds the coverage
+  map, so that failure is not moved onto the shorter source.
+- **A blank `operators` key no longer runs zero mutants and exits 0** (#167).
+  `operators:` with no value became an empty list. The run made no mutants
+  and the gate passed. A blank operator list is now an error, and so is a
+  list of only unknown operator names. An empty `require` or `ignore` list
+  is still valid. `--operators` on the command line still replaces the
+  file list, including a blank or unknown file list.
+- **The daemon no longer runs the tool's Ruby settings inside the app** (#100).
+  Open3 keeps a variable when the spawn hash omits it, so a parent `RUBYOPT`
+  ran inside the app. The child now gets the environment Bundler saved before
+  it activated, passed with `unsetenv_others`. The app keeps its gem home,
+  excluded groups, Bundler config, and chruby path. An `RBENV_VERSION` or
+  `ASDF_RUBY_VERSION` already in the environment stays. That pin is often
+  the Ruby that started the tool. `.ruby-version` applies only when no pin
+  is set. The tool's `RUBYOPT` and `RUBYLIB` do not reach the child, including
+  a value Bundler had saved. A gem home, `BUNDLE_PATH`, or `BUNDLE_WITHOUT`
+  reaches the child only when Bundler saved the app's value. The same
+  rule covers `GEM_PATH` and `BUNDLER_VERSION`. An rbenv version
+  bin under `RBENV_ROOT`, or under `~/.rbenv` when that variable is unset,
+  leaves `PATH` only when that root has a shim directory. An asdf version
+  bin leaves only when an asdf shim directory exists, including
+  `ASDF_DATA_DIR/shims`. Without that shim, the bin stays and `bundle` can
+  still be found. The app Gemfile, an explicit Ruby pin, and Rails env are
+  applied after that.
 - **The Action refuses to run when `output` and `baseline` are the same file** (#160).
   That setup used to work, and a failing run copied its report onto the
   baseline. The next run then treated the failed report as the baseline, so
