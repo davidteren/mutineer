@@ -15,6 +15,12 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **A blank `operators` key no longer runs zero mutants and exits 0** (#167).
+  `operators:` with no value became an empty list. The run made no mutants
+  and the gate passed. A blank operator list is now an error, and so is a
+  list of only unknown operator names. An empty `require` or `ignore` list
+  is still valid. `--operators` on the command line still replaces the
+  file list, including a blank or unknown file list.
 - **The daemon no longer runs the tool's Ruby settings inside the app** (#100).
   Open3 keeps a variable when the spawn hash omits it, so a parent `RUBYOPT`
   ran inside the app. The child now gets the environment Bundler saved before
