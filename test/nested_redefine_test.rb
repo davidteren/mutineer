@@ -11,12 +11,14 @@ class NestedRedefineTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
   def run_strategy(strategy)
-    config = Mutineer::Config.new(
-      sources: ["test/fixtures/nested.rb"], tests: ["test/fixtures/nested_test.rb"],
-      operators: ["arithmetic"], strategy: strategy,
-      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
-    )
-    Mutineer::Runner.execute(config).first
+    Dir.mktmpdir("mutineer-cache") do |cache_dir|
+      config = Mutineer::Config.new(
+        sources: ["test/fixtures/nested.rb"], tests: ["test/fixtures/nested_test.rb"],
+        operators: ["arithmetic"], strategy: strategy,
+        cache_dir: cache_dir, project_root: ROOT
+      )
+      Mutineer::Runner.execute(config).first
+    end
   end
 
   def test_reload_kills_the_nested_mutant
