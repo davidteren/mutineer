@@ -338,8 +338,8 @@ module Mutineer
       chosen = coverage_map.tests_for(source_file, line)
       if chosen.empty? && subject
         # A multi-line statement has a count on one of its lines only.
-        lines = StatementLines.for(subject.def_node, mutation.start_offset)
-        chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq if lines
+        lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
+        chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq
       end
       if chosen.empty?
         # Method BODY range, not the whole def: the def/end lines are "covered" at

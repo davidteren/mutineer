@@ -9,21 +9,26 @@ module Mutineer
   # nearest marked ancestor of the position is the statement. The caller reads
   # the counts on the lines of the statement; a line Ruby does not count has none.
   module StatementLines
-    # @param def_node [Prism::DefNode] the method that holds the position. Its
-    #   parse result must have its statements marked (`ParseResult#mark_newlines!`).
+    # @param def_node [Prism::DefNode] the method that holds the position.
+    # @param source [String] the source text of the file.
     # @param offset [Integer] byte offset of the position.
-    # @return [Range, nil] the lines of the statement, with the body of each
-    #   heredoc in it, or nil when no statement in the body holds the position.
-    #   The `def` is not a statement of the body: Ruby counts its line when the
-    #   file loads.
-    def self.for(def_node, offset)
-      return unless def_node.body
+    # @return [Array<Integer>] the lines of the statement, with the body of each
+    #   heredoc in it. Empty when no statement in the body holds the position.
+    #   A first or last line that holds other code is left out, because Ruby
+    #   can count that line without the statement: the `def` line counts when
+    #   the file loads, and `x if done; y(` counts when `y` does not run.
+    def self.for(def_node, source, offset)
+      return [] unless def_node.body
 
-      path = path_to(def_node.body, offset) || []
-      statement = path.reverse.find(&:newline?)
-      return unless statement
+      statement = (path_to(def_node.body, offset) || []).reverse.find(&:newline?)
+      return [] unless statement
 
-      statement.location.start_line..last_line(statement)
+      location = statement.location
+      lines = (location.start_line..last_line(statement)).to_a
+      lines.delete(location.start_line) unless before(source, location).strip.empty?
+      after = after(source, location).strip
+      lines.delete(location.end_line) unless after.empty? || after.start_with?("#")
+      lines
     end
 
     # The nodes from `node` down to the deepest one that holds the offset. A
@@ -49,6 +54,24 @@ module Mutineer
     # @return [Integer]
     def self.last_line(node)
       [node.location.end_line, *node.compact_child_nodes.map { |child| last_line(child) }].max
+    end
+
+    # The text before `location` on its first line.
+    #
+    # @param source [String]
+    # @param location [Prism::Location]
+    # @return [String]
+    def self.before(source, location)
+      source.byteslice(location.start_offset - location.start_column, location.start_column)
+    end
+
+    # The text after `location` on its last line.
+    #
+    # @param source [String]
+    # @param location [Prism::Location]
+    # @return [String]
+    def self.after(source, location)
+      source.byteslice(location.end_offset, source.bytesize).each_line.first.to_s
     end
   end
 end

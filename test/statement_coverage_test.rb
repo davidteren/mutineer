@@ -4,7 +4,8 @@ require_relative "test_helper"
 require "tmpdir"
 
 # Uses a real coverage capture. Ruby counts no line for the later entries of a
-# multi-line hash, and counts the body line of an assigned heredoc.
+# multi-line hash. It counts the body line of an assigned heredoc, and the def
+# line when the file loads.
 class StatementCoverageTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
   SOURCE = File.expand_path("fixtures/continuation.rb", __dir__)
@@ -45,5 +46,9 @@ class StatementCoverageTest < Minitest::Test
 
   def test_the_body_of_an_endless_method_has_no_tests
     assert_equal :verdict, selection_for(":never_counted")
+  end
+
+  def test_a_statement_on_the_def_line_of_a_method_no_test_calls_has_no_tests
+    assert_equal :verdict, selection_for(":never_called")
   end
 end

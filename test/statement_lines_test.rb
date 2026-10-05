@@ -4,8 +4,8 @@ require_relative "test_helper"
 
 class StatementLinesTest < Minitest::Test
   def lines_at(source, snippet)
-    def_node = Mutineer::Parser.parse_string(source).tap(&:mark_newlines!).value.statements.body.first
-    Mutineer::StatementLines.for(def_node, source.index(snippet))
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    Mutineer::StatementLines.for(def_node, source, source.index(snippet))
   end
 
   def test_a_later_entry_of_a_hash_belongs_to_the_hash
@@ -17,7 +17,7 @@ class StatementLinesTest < Minitest::Test
         }
       end
     RUBY
-    assert_equal 2..5, lines_at(source, "2")
+    assert_equal (2..5).to_a, lines_at(source, "2")
   end
 
   def test_a_later_argument_of_a_call_belongs_to_the_call
@@ -29,7 +29,7 @@ class StatementLinesTest < Minitest::Test
         )
       end
     RUBY
-    assert_equal 2..5, lines_at(source, "2")
+    assert_equal (2..5).to_a, lines_at(source, "2")
   end
 
   def test_a_statement_inside_a_block_is_its_own_statement
@@ -41,7 +41,7 @@ class StatementLinesTest < Minitest::Test
         end
       end
     RUBY
-    assert_equal 3..4, lines_at(source, "x)")
+    assert_equal (3..4).to_a, lines_at(source, "x)")
   end
 
   def test_the_other_branch_of_a_ternary_is_its_own_statement
@@ -52,72 +52,132 @@ class StatementLinesTest < Minitest::Test
           raise("x")
       end
     RUBY
-    assert_equal 4..4, lines_at(source, "raise")
+    assert_equal (4..4).to_a, lines_at(source, "raise")
   end
 
-# A heredoc body lies below its opener. Ruby counts the body line for an
-# assigned heredoc, and the opener line for a call such as `puts`.
-def test_a_heredoc_statement_spans_the_heredoc_body
-  source = <<~'RUBY'
-    def f
-      puts(<<~TXT)
-        #{false}
-      TXT
-    end
-  RUBY
-  assert_equal 2..4, lines_at(source, "false")
-end
+  # A heredoc body lies below its opener. Ruby counts the body line for an
+  # assigned heredoc, and the opener line for a call such as `puts`.
+  def test_a_heredoc_statement_spans_the_heredoc_body
+    source = <<~'RUBY'
+      def f
+        puts(<<~TXT)
+          #{false}
+        TXT
+      end
+    RUBY
+    assert_equal [2, 3, 4], lines_at(source, "false")
+  end
 
-def test_an_assigned_heredoc_spans_the_interpolation_line
-  source = <<~'RUBY'
-    def f(count)
-      s = <<~TXT
-        #{count > 0}
-      TXT
-    end
-  RUBY
-  assert_equal 2..4, lines_at(source, "count > 0")
-end
+  def test_an_assigned_heredoc_spans_the_interpolation_line
+    source = <<~'RUBY'
+      def f(count)
+        s = <<~TXT
+          #{count > 0}
+        TXT
+      end
+    RUBY
+    assert_equal [2, 3, 4], lines_at(source, "count > 0")
+  end
 
-def test_a_call_inside_a_heredoc_interpolation_belongs_to_the_statement_with_the_opener
-  source = <<~'RUBY'
-    def f
-      puts(<<~TXT)
-        #{g(
-          1)}
-      TXT
-    end
-  RUBY
-  assert_equal 2..5, lines_at(source, "1)")
-end
+  def test_a_call_inside_a_heredoc_interpolation_belongs_to_the_statement_with_the_opener
+    source = <<~'RUBY'
+      def f
+        puts(<<~TXT)
+          #{g(
+            1)}
+        TXT
+      end
+    RUBY
+    assert_equal [2, 3, 4, 5], lines_at(source, "1)")
+  end
 
-def test_a_statement_on_its_own_line_inside_an_interpolation_is_its_own_statement
-  source = <<~'RUBY'
-    def f(flag)
-      x = "#{ if flag
-        never
-      end }"
-    end
-  RUBY
-  assert_equal 3..3, lines_at(source, "never")
-end
+  def test_a_statement_on_its_own_line_inside_an_interpolation_is_its_own_statement
+    source = <<~'RUBY'
+      def f(flag)
+        x = "#{ if flag
+          never
+        end }"
+      end
+    RUBY
+    assert_equal [3], lines_at(source, "never")
+  end
 
-# The `def` line is counted when the file loads, so it is not a statement of the body.
-def test_the_body_of_an_endless_method_has_no_statement
-  source = <<~'RUBY'
-    def f =
-      false
-  RUBY
-  assert_nil lines_at(source, "false")
-end
+  # The `def` line is counted when the file loads, so it is not a statement of the body.
+  def test_the_body_of_an_endless_method_has_no_lines
+    source = <<~'RUBY'
+      def f =
+        false
+    RUBY
+    assert_empty lines_at(source, "false")
+  end
 
-def test_a_default_argument_has_no_statement
-  source = <<~'RUBY'
-    def work(a =
-              sent)
-      a
-    end
-  RUBY
-  assert_nil lines_at(source, "sent")
-end
+  def test_a_default_argument_has_no_lines
+    source = <<~'RUBY'
+      def work(a =
+                sent)
+        a
+      end
+    RUBY
+    assert_empty lines_at(source, "sent")
+  end
+
+  # A line that holds code outside the statement is counted without the statement.
+  def test_a_statement_on_the_def_line_drops_the_def_line_and_the_end_line
+    source = <<~'RUBY'
+      def f; g(:a,
+        :b); end
+    RUBY
+    assert_empty lines_at(source, ":b")
+  end
+
+  def test_a_statement_after_another_on_its_first_line_drops_that_line
+    source = <<~'RUBY'
+      def f(done)
+        return 0 if done; g(:a,
+          :b)
+      end
+    RUBY
+    assert_equal [3], lines_at(source, ":b")
+  end
+
+  def test_a_statement_in_a_one_line_brace_block_drops_the_shared_lines
+    source = <<~'RUBY'
+      def f(list)
+        list.each { |x| g(x,
+          :b) }
+      end
+    RUBY
+    assert_empty lines_at(source, ":b")
+  end
+
+  def test_a_statement_in_a_lambda_drops_the_line_of_the_lambda
+    source = <<~'RUBY'
+      def f
+        cb = ->(x) { g(x,
+          :b)
+        }
+      end
+    RUBY
+    assert_equal [3], lines_at(source, ":b")
+  end
+
+  def test_a_statement_in_a_one_line_loop_drops_the_line_of_the_condition
+    source = <<~'RUBY'
+      def f(c)
+        while c; g(:a,
+          :b); end
+      end
+    RUBY
+    assert_empty lines_at(source, ":b")
+  end
+
+  def test_a_comment_after_a_statement_keeps_its_last_line
+    source = <<~'RUBY'
+      def f
+        g(:a,
+          :b) # why
+      end
+    RUBY
+    assert_equal [2, 3], lines_at(source, ":b")
+  end
 end

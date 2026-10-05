@@ -18,8 +18,8 @@ All notable changes to this project are documented here. The format is based on
 - **A mutant on another line of a multi-line statement runs its tests**
   instead of being reported as `no_coverage`. Ruby counts one line of a
   statement only, so the runner now uses the tests that ran the statement that
-  holds the mutation. A heredoc body belongs to its statement. The `def` line
-  does not belong to the body.
+  holds the mutation. A heredoc body belongs to its statement. A first or last
+  line that also holds other code, such as the `def` line, is not used.
 - **The Action refuses to run when `output` and `baseline` are the same file** (#160).
   That setup used to work, and a failing run copied its report onto the
   baseline. The next run then treated the failed report as the baseline, so

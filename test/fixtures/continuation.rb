@@ -32,4 +32,7 @@ class Continuation
 
   def self.empty =
     :never_counted
+
+  def self.untested; [:a,
+    :never_called]; end
 end
