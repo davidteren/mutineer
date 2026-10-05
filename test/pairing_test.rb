@@ -196,6 +196,14 @@ class PairingTest < Minitest::Test
     FileUtils.remove_entry(parent) if parent && File.directory?(parent)
   end
 
+  # A root of "/" must not build the prefix "//", or every child is rejected.
+  def test_inside_project_accepts_a_child_of_the_filesystem_root
+    assert Mutineer::Pairing.inside_project?("/widget", "/")
+    assert Mutineer::Pairing.inside_project?("/", "/")
+    refute Mutineer::Pairing.inside_project?("/tmp/proj-evil", "/tmp/proj")
+    assert Mutineer::Pairing.inside_project?("/tmp/proj/test", "/tmp/proj")
+  end
+
   def test_split_file_is_left_for_the_longer_source_when_that_file_exists
     with_tree("app/models/user.rb", "app/models/user_session.rb",
               "test/models/user_session_test.rb") do |root|

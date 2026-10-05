@@ -173,7 +173,7 @@ module Mutineer
         rel = relativize(test_path)
         dir = File.dirname(rel)
         if app_or_lib_source?(source_rel) && conventional_test_dir?(dir)
-          mirrored_test_dir?(rel, base, lib)
+          mirrored_test_dir?(rel, base, lib) || spec_mirror?(rel, base, lib)
         else
           true
         end
@@ -238,6 +238,20 @@ module Mutineer
     def mirrored_test_dir?(test_rel, base, lib)
       dirs = [Pairing.mirror_dir("test", base)]
       dirs << Pairing.mirror_dir("test/lib", base) if lib
+      dirs.include?(File.dirname(test_rel))
+    end
+
+    # True when `test_rel` sits in a mirrored spec directory for `base`.
+    # Split Minitest names stay in {#mirrored_test_dir?}. An exact `_spec`
+    # file uses this directory.
+    #
+    # @param test_rel [String] project-relative test path.
+    # @param base [String] logical source path without extension.
+    # @param lib [Boolean] whether the source originated from lib/.
+    # @return [Boolean]
+    def spec_mirror?(test_rel, base, lib)
+      dirs = [Pairing.mirror_dir("spec", base)]
+      dirs << Pairing.mirror_dir("spec/lib", base) if lib
       dirs.include?(File.dirname(test_rel))
     end
 

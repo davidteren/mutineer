@@ -163,7 +163,8 @@ module Mutineer
     # @param root_abs [String] expanded project root.
     # @return [Boolean]
     def inside_project?(dir_abs, root_abs)
-      dir_abs == root_abs || dir_abs.start_with?("#{root_abs}#{File::SEPARATOR}")
+      prefix = root_abs == File::SEPARATOR ? File::SEPARATOR : "#{root_abs}#{File::SEPARATOR}"
+      dir_abs == root_abs || dir_abs.start_with?(prefix)
     end
 
     # True when `entry` is `<name>_<piece>_test.rb` and not the exact

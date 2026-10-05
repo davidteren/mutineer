@@ -820,6 +820,60 @@ class CoverageMapTest < Minitest::Test
     assert map.uncapturable_source?(src)
   end
 
+  # A failed exact spec in the mirrored directory marks that app source.
+  def test_failing_exact_spec_in_the_mirror_marks_the_source_uncapturable
+    Dir.mktmpdir do |dir|
+      src = File.join(dir, "app/foo/bar.rb")
+      bad = File.join(dir, "spec/foo/bar_spec.rb")
+      FileUtils.mkdir_p(File.dirname(src))
+      FileUtils.mkdir_p(File.dirname(bad))
+      File.write(src, "class Bar; def n; 1; end; end\n")
+      File.write(bad, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [bad],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      assert map.uncapturable_source?(src)
+    end
+  end
+
+  # The same basename under another spec directory does not mark the source.
+  def test_failing_exact_spec_outside_the_mirror_does_not_taint_the_source
+    Dir.mktmpdir do |dir|
+      src = File.join(dir, "app/foo/bar.rb")
+      bad = File.join(dir, "spec/other/bar_spec.rb")
+      FileUtils.mkdir_p(File.dirname(src))
+      FileUtils.mkdir_p(File.dirname(bad))
+      File.write(src, "class Bar; def n; 1; end; end\n")
+      File.write(bad, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [bad],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      refute map.uncapturable_source?(src)
+    end
+  end
+
+  # lib/ sources also accept the spec/lib mirror.
+  def test_failing_exact_spec_under_spec_lib_marks_a_lib_source
+    Dir.mktmpdir do |dir|
+      src = File.join(dir, "lib/billing/invoice.rb")
+      bad = File.join(dir, "spec/lib/billing/invoice_spec.rb")
+      FileUtils.mkdir_p(File.dirname(src))
+      FileUtils.mkdir_p(File.dirname(bad))
+      File.write(src, "class Invoice; def n; 1; end; end\n")
+      File.write(bad, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [bad],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      assert map.uncapturable_source?(src)
+    end
+  end
+
   # test/foo/bar_upsert_test.rb is an exact name for bar_upsert.rb, but only
   # in the foo mirror. A source in another directory must stay no_coverage.
   def test_failed_exact_name_in_another_mirror_does_not_taint_that_source

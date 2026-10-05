@@ -31,6 +31,10 @@ All notable changes to this project are documented here. The format is based on
   uncapturable only when no successful capture covered that source and
   `bar_upsert.rb` does not exist. A test outside that directory does not,
   and neither does a source that only shares the test basename.
+  A failed exact spec in the mirrored `spec/` or `spec/lib/` directory
+  marks an `app/` or `lib/` source the same way. A failed spec in another
+  directory does not. A project rooted at `/` still finds split tests
+  inside that root.
 - **A mutation no longer leaves a heredoc body behind as Ruby** (#134).
   Replacing a node deletes the heredoc opener and not the body. The body
   then parses as code, raises, and counts as a kill. A mutation that drops
