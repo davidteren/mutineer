@@ -1,0 +1,38 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 9-16,22-27
+README.md
+  h_e8a5bb9272fa34 36,50
+docs/index.md
+  h_e8a5bb9272fa34 27
+docs/skill.md
+  h_e8a5bb9272fa34 21
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 31-32,36,157-162
+lib/mutineer/mutators/base.rb
+  h_e8a5bb9272fa34 26-28,34-69
+lib/mutineer/mutators/return_nil.rb
+  h_e8a5bb9272fa34 19-22,24
+test/cli_test.rb
+  h_e8a5bb9272fa34 123-149
+test/mutators/chain_link_test.rb
+  h_e8a5bb9272fa34 91-104
+test/mutators/condition_negation_test.rb
+  h_e8a5bb9272fa34 45-60
+test/mutators/literal_mutation_test.rb
+  h_e8a5bb9272fa34 45-59
+test/mutators/return_nil_test.rb
+  h_e8a5bb9272fa34 53-82
+test/mutators/statement_removal_test.rb
+  h_e8a5bb9272fa34 67-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "60e3b6fc27326cd0c56478c36642089529fe1f06",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
