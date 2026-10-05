@@ -1,0 +1,20 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 39-41
+lib/mutineer/coverage_map.rb
+  h_e8a5bb9272fa34 102-105,152-153,158-161,917-921,927-959
+test/coverage_map_test.rb
+  h_e8a5bb9272fa34 932-992
+test/pairing_test.rb
+  h_e8a5bb9272fa34 189-191,197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cf3a37f09468f0c544b69ba35dff5c5924e760a7",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
