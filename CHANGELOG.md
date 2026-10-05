@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **A test file given as a source after `--test` exits 2.** `--test` takes one
+  file, so in `mutineer run app/x.rb --test spec/a_spec.rb spec/b_spec.rb` the
+  second spec became a source to mutate, and the run tested with one spec file
+  without a word. Now a source named `*_test.rb` or `*_spec.rb` inside a
+  `test/` or `spec/` directory, given with `--test`, is a usage error that says
+  to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
+
 ### Fixed
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not
