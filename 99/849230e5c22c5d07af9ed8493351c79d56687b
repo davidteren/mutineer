@@ -1,0 +1,23 @@
+docs/plans/issue-163-human-report-control-chars.md
+  s_07d7b58ff1b9fd::t_2164f81802d3b6 29,35-37,53-55
+lib/mutineer/reporter.rb
+  s_07d7b58ff1b9fd::t_9821a7cc5dc82b 650-651,657
+test/reporter_test.rb
+  s_07d7b58ff1b9fd::t_3c6f1858818f9e 218,229,236-253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "99849230e5c22c5d07af9ed8493351c79d56687b",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
