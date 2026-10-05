@@ -168,6 +168,34 @@ class PairingTest < Minitest::Test
     end
   end
 
+  def test_app_source_does_not_claim_a_test_lib_file
+    with_tree("lib/models/user.rb", "app/models/user_session.rb",
+              "test/lib/models/user_session_guards_test.rb") do |root|
+      assert_equal ["test/lib/models/user_session_guards_test.rb"],
+                   infer_tests("lib/models/user.rb", root)
+      assert_empty infer_tests("app/models/user_session.rb", root)
+    end
+  end
+
+  def test_lib_longer_source_still_claims_a_test_lib_file
+    with_tree("lib/models/user.rb", "lib/models/user_session.rb",
+              "test/lib/models/user_session_guards_test.rb") do |root|
+      assert_empty infer_tests("lib/models/user.rb", root)
+      assert_equal ["test/lib/models/user_session_guards_test.rb"],
+                   infer_tests("lib/models/user_session.rb", root)
+    end
+  end
+
+  def test_split_search_stays_inside_the_project
+    parent = Dir.mktmpdir
+    root = File.join(parent, "proj")
+    FileUtils.mkdir_p(root)
+    File.write(File.join(parent, "widget_extra_test.rb"), "class T; end\n")
+    assert_empty infer_tests("../widget.rb", root)
+  ensure
+    FileUtils.remove_entry(parent) if parent && File.directory?(parent)
+  end
+
   def test_split_file_is_left_for_the_longer_source_when_that_file_exists
     with_tree("app/models/user.rb", "app/models/user_session.rb",
               "test/models/user_session_test.rb") do |root|

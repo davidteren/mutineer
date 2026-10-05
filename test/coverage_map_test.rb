@@ -820,6 +820,24 @@ class CoverageMapTest < Minitest::Test
     assert map.uncapturable_source?(src)
   end
 
+  # test/foo/bar_upsert_test.rb is an exact name for bar_upsert.rb, but only
+  # in the foo mirror. A source in another directory must stay no_coverage.
+  def test_failed_exact_name_in_another_mirror_does_not_taint_that_source
+    dir = Dir.mktmpdir
+    other = File.join(dir, "app/other/bar_upsert.rb")
+    bad = File.join(dir, "test/foo/bar_upsert_test.rb")
+    FileUtils.mkdir_p(File.dirname(other))
+    FileUtils.mkdir_p(File.dirname(bad))
+    File.write(other, "class BarUpsert; def n; 1; end; end\n")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [other], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    refute map.uncapturable_source?(other)
+  end
+
   # A failed test in another directory shares a basename prefix only. It must
   # not fail the gate for app/models/user.rb.
   def test_failing_split_test_outside_the_mirror_does_not_taint_the_source

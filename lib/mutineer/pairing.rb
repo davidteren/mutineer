@@ -142,16 +142,28 @@ module Mutineer
     # @param base [String] logical source path without extension.
     # @return [Array<String>] sorted relative paths.
     def split_tests_in(root, dir_rel, name, base)
-      dir_abs = File.join(root, dir_rel)
+      root_abs = File.expand_path(root)
+      dir_abs = File.expand_path(dir_rel, root_abs)
+      return [] unless inside_project?(dir_abs, root_abs)
       return [] unless File.directory?(dir_abs)
 
       Dir.children(dir_abs).filter_map do |entry|
         next unless split_entry?(entry, name)
         next unless File.file?(File.join(dir_abs, entry))
-        next if claimed_by_longer_source?(root, base, entry)
+        next if claimed_by_longer_source?(root, base, entry, dir_rel)
 
         File.join(dir_rel, entry)
       end.sort
+    end
+
+    # True when `dir_abs` is the project root or a directory inside it.
+    # A source path such as `../../evil.rb` must not list tests outside the project.
+    #
+    # @param dir_abs [String] expanded directory.
+    # @param root_abs [String] expanded project root.
+    # @return [Boolean]
+    def inside_project?(dir_abs, root_abs)
+      dir_abs == root_abs || dir_abs.start_with?("#{root_abs}#{File::SEPARATOR}")
     end
 
     # True when `entry` is `<name>_<piece>_test.rb` and not the exact
@@ -176,8 +188,11 @@ module Mutineer
     # @param root [String] expanded project root.
     # @param base [String] logical source path without extension.
     # @param entry [String] test file basename.
+    # @param scanned_dir [String, nil] relative test directory being scanned.
+    #   When set, a longer source claims the file only if that source searches
+    #   this directory. An `app/` source does not take a `test/lib/` file.
     # @return [Boolean]
-    def claimed_by_longer_source?(root, base, entry)
+    def claimed_by_longer_source?(root, base, entry, scanned_dir = nil)
       name = File.basename(base)
       stem = entry.sub(/_test\.rb\z/, "")
       return false unless stem.start_with?("#{name}_")
@@ -189,7 +204,7 @@ module Mutineer
       parts = rest.split("_")
       (1..parts.length).any? do |i|
         longer = "#{name}_#{parts.first(i).join("_")}"
-        longer_source_exists?(root, dir, longer)
+        longer_source_exists?(root, dir, longer, scanned_dir)
       end
     end
 
@@ -201,15 +216,31 @@ module Mutineer
     # @param root [String] expanded project root.
     # @param dir [String] logical directory, or `.` when the source has none.
     # @param stem [String] longer source basename without extension.
+    # @param scanned_dir [String, nil] relative test directory being scanned.
     # @return [Boolean]
-    def longer_source_exists?(root, dir, stem)
+    def longer_source_exists?(root, dir, stem, scanned_dir = nil)
       file = "#{stem}.rb"
       folders = [dir == "." ? nil : dir]
       %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
       folders.uniq.any? do |folder|
         rel = folder ? File.join(folder, file) : file
-        File.file?(File.join(root, rel))
+        next false unless File.file?(File.join(root, rel))
+        next false if scanned_dir && !source_searches_dir?(rel, scanned_dir)
+
+        true
       end
+    end
+
+    # True when pairing this source looks in `scanned_dir`.
+    #
+    # @param source_rel [String] project-relative source path.
+    # @param scanned_dir [String] relative test directory.
+    # @return [Boolean]
+    def source_searches_dir?(source_rel, scanned_dir)
+      base, lib = logical_path(source_rel)
+      dirs = [mirror_dir("test", base)]
+      dirs << mirror_dir("test/lib", base) if lib
+      dirs.include?(scanned_dir)
     end
   end
 end

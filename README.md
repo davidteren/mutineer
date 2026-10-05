@@ -283,9 +283,10 @@ mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors
 combines with `--threshold` (the worse of the two sets the exit code). Pass a
 directory (or several sources) to audit a whole layer in one boot — tests are
 auto-paired by convention and the report breaks down per source. A source
-`app/foo/bar.rb` pairs with `test/foo/bar_test.rb` and with every
-`test/foo/bar_*_test.rb` in that directory, such as `bar_upsert_test.rb`.
+`app/foo/bar.rb` pairs with `test/foo/bar_test.rb` and with unclaimed
+`test/foo/bar_*_test.rb` files in that directory, such as `bar_upsert_test.rb`.
 It does not take `user_session_test.rb` when `user_session.rb` exists in the same directory.
+It does not take `bar_upsert_guards_test.rb` when `bar_upsert.rb` exists.
 A spec that already pairs is left as that one file.
 
 ### GitHub Action

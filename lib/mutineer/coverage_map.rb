@@ -152,23 +152,61 @@ module Mutineer
     # @param source_rel [String] project-relative source path.
     # @return [Boolean]
     def failed_test_blames?(source_rel)
-      name = File.basename(source_rel, ".rb")
-      failed_test_targets.include?(name) || split_failed_test?(source_rel)
+      exact_failed_test?(source_rel) || split_failed_test?(source_rel)
     end
 
-    # Basenames of the sources that failed test files pair with by convention:
-    # a trailing _test/_spec is stripped first, as pairing tries that form first.
+    # True when a failed exact `_test` / `_spec` / `test_` file pairs with
+    # this source. An `app/` or `lib/` source only accepts a `test/` or
+    # `spec/` file from its mirrored directory, so
+    # `test/foo/bar_upsert_test.rb` does not taint `app/other/bar_upsert.rb`.
+    # Any other source still matches by basename. A fixture under
+    # `test/fixtures/` and an explicit test both name their source that way.
     #
-    # @return [Set<String>] source basenames, without `.rb`.
-    def failed_test_targets
-      @failed_test_files.map do |t|
-        name = File.basename(t, ".rb")
-        case name
-        when /_(test|spec)\z/ then name.sub(/_(test|spec)\z/, "")
-        when "test_helper" then name # Minitest's support file pairs with no source
-        else name.delete_prefix("test_")
+    # @param source_rel [String] project-relative source path.
+    # @return [Boolean]
+    def exact_failed_test?(source_rel)
+      name = File.basename(source_rel, ".rb")
+      base, lib = Pairing.logical_path(source_rel)
+      @failed_test_files.any? do |test_path|
+        next false unless failed_test_target_name(test_path) == name
+
+        rel = relativize(test_path)
+        dir = File.dirname(rel)
+        if app_or_lib_source?(source_rel) && conventional_test_dir?(dir)
+          mirrored_test_dir?(rel, base, lib)
+        else
+          true
         end
-      end.to_set
+      end
+    end
+
+    # True when pairing gives this source a mirrored test directory.
+    #
+    # @param source_rel [String] project-relative source path.
+    # @return [Boolean]
+    def app_or_lib_source?(source_rel)
+      source_rel.start_with?("app/", "lib/")
+    end
+
+    # Basename a failed test file would pair with, before the directory check.
+    #
+    # @param test_path [String]
+    # @return [String]
+    def failed_test_target_name(test_path)
+      name = File.basename(test_path, ".rb")
+      case name
+      when /_(test|spec)\z/ then name.sub(/_(test|spec)\z/, "")
+      when "test_helper" then name
+      else name.delete_prefix("test_")
+      end
+    end
+
+    # True when `dir` is `test`, `spec`, or a directory under one of them.
+    #
+    # @param dir [String] project-relative directory.
+    # @return [Boolean]
+    def conventional_test_dir?(dir)
+      dir == "test" || dir == "spec" || dir.start_with?("test/", "spec/")
     end
 
     # True when a failed split test file pairs with this source. Directory and
@@ -185,7 +223,7 @@ module Mutineer
         entry = File.basename(test_rel)
         next false unless Pairing.split_entry?(entry, name)
         next false unless mirrored_test_dir?(test_rel, base, lib)
-        next false if Pairing.claimed_by_longer_source?(@project_root, base, entry)
+        next false if Pairing.claimed_by_longer_source?(@project_root, base, entry, File.dirname(test_rel))
 
         true
       end
