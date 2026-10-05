@@ -135,6 +135,15 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # `..` after a symlinked directory names a file outside the textual path.
+  def test_expand_sources_keeps_dot_dot_through_a_symlinked_dir_as_typed
+    with_tree("lib/calc.rb", "vendor/x/y.rb", "vendor/calc.rb") do |root|
+      File.symlink(File.join(root, "vendor/x"), File.join(root, "lib/link"))
+      assert_equal ["lib/link/../calc.rb"],
+                   Mutineer::Pairing.expand_sources(["lib/link/../calc.rb"], project_root: root)
+    end
+  end
+
   def test_expand_sources_keeps_a_missing_file_as_typed
     with_tree("lib/calc.rb") do |root|
       assert_equal ["./lib/nope.rb"], Mutineer::Pairing.expand_sources(["./lib/nope.rb"], project_root: root)
