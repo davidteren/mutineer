@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_175eedfe35332c 18-24
+docs/plans/issue-104-normalize-source-paths.md
+  s_07d7b58ff1b9fd::t_2a68bf7d0dafee 1-74
+lib/mutineer/pairing.rb
+  s_07d7b58ff1b9fd::t_fda1999df4ebac 3-4,24-27,39-40
+test/cli_test.rb
+  s_07d7b58ff1b9fd::t_8fb32aed8ba2ef 595-610
+test/pairing_test.rb
+  s_07d7b58ff1b9fd::t_06c131d1e8484e 113-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "beb9caa8f9a037a8d70a9e6d8900efc7e7c70ca2",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
