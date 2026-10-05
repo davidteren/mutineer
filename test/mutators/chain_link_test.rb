@@ -77,6 +77,13 @@ class ChainLinkTest < Minitest::Test
     end
   end
 
+  # #159: dropping either `.b` of `a.b.b.c` gives `a.b.c`, so it is emitted
+  # once. Links that give different sources all stay.
+  def test_links_with_the_same_result_are_emitted_once
+    assert_equal [".b"], dropped("a.b.b.c")
+    assert_equal [".x", ".b"], dropped("a.b.x.c")
+  end
+
   def test_repeated_links_get_distinct_ids
     source = "def m\n  a.b.c\n  a.b.d\nend\n"
     subject = subject_for(source)

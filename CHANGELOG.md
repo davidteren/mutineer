@@ -15,6 +15,15 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **One edit is scored once** (#159). Some operators emitted two mutants
+  that give the same source: `literal_mutation` on `0` (the "change to 1"
+  and "add 1" rules), `negation_removal` on `!!x` (either `!` removed), and
+  `chain_link` on a repeated link such as `a.b.b.c`. Each copy had its own
+  id, so one surviving edit counted twice. Now only the first is kept. The
+  dropped copy's id is gone, and a later mutant on the same token in that
+  method can take a lower id ordinal, so an ignore entry or baseline for it
+  may need regenerating. All three operators are opt-in, so default runs
+  do not change.
 - **Split test files pair with their source** (#87). A source such as
   `app/foo/bar.rb` now also uses `test/foo/bar_upsert_test.rb` and
   `test/foo/bar_guards_test.rb`, together with `test/foo/bar_test.rb` when

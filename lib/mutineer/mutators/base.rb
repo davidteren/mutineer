@@ -26,10 +26,29 @@ module Mutineer
         @body = subject.def_node.body
         @body&.accept(self)
         drop_dangling_heredocs
+        drop_repeated_results
         @mutations
       end
 
       private
+
+      # Keeps only the first mutation for each mutated source (#159). Two rules
+      # can give one edit: `0` changed to 1 and `0` plus 1, or either `!` of
+      # `!!x` removed. Each copy got its own id, so one surviving edit counted
+      # twice. Every mutation leaves the source outside the span from the
+      # earliest start to the latest end alone, so comparing that span is exact
+      # and cheaper than comparing whole files.
+      #
+      # @return [void]
+      def drop_repeated_results
+        return if @mutations.size < 2
+
+        from = @mutations.map(&:start_offset).min
+        to = @mutations.map(&:end_offset).max
+        @mutations.uniq! do |m|
+          "#{@source.byteslice(from...m.start_offset)}#{m.replacement}#{@source.byteslice(m.end_offset...to)}"
+        end
+      end
 
       # Drops a mutation that deletes a heredoc opener and leaves its body.
       #
