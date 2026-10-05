@@ -88,4 +88,18 @@ class ChainLinkTest < Minitest::Test
   def test_nested_def_is_its_own_subject
     assert_empty dropped("def inner = a.b.c")
   end
+
+  def test_link_that_opens_a_heredoc_is_not_dropped
+    source = <<~RUBY
+      def m
+        a.b(<<~X).c.d
+          hello
+        X
+      end
+    RUBY
+    mutations = Mutineer::Mutators::ChainLink.new.mutations_for(subject_for(source), source)
+    removed = mutations.map { |m| source[m.start_offset...m.end_offset] }
+    assert_equal [".c"], removed
+    mutations.each { |m| assert m.valid?(source) }
+  end
 end
