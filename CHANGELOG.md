@@ -15,6 +15,30 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **Split test files pair with their source** (#87). A source such as
+  `app/foo/bar.rb` now also uses `test/foo/bar_upsert_test.rb` and
+  `test/foo/bar_guards_test.rb`, together with `test/foo/bar_test.rb` when
+  that file exists. The same names under `test/lib/` pair with a `lib/`
+  source. Before, only the exact `bar_test.rb` name was tried, so a suite
+  split across `bar_*_test.rb` files was skipped and a gate could pass with
+  no mutants run. A spec the old rules already find is unchanged. The
+  split name is left for `user_session.rb` when that file exists, so
+  `user.rb` does not run `user_session_test.rb`. The same rule holds outside
+  `app/` and `lib/`: `src/user.rb` does not take `test/src/user_session_test.rb`
+  when `src/user_session.rb` exists. A longer source claims a split file
+  only when that source itself searches the directory the file is in.
+  A failed capture of `test/foo/bar_upsert_test.rb` can mark `app/foo/bar.rb`
+  uncapturable only when no successful capture covered that source and
+  `bar_upsert.rb` does not exist. A test outside that directory does not,
+  and neither does a source that only shares the test basename.
+  `user_session__test.rb` stays with `user.rb` when `user_session.rb`
+  exists, because that name is not the exact test or a split test for
+  `user_session`. A failed exact spec in the mirrored `spec/` or `spec/lib/` directory
+  marks an `app/` or `lib/` source the same way. A failed spec in another
+  directory does not. A project rooted at `/` still finds split tests
+  inside that root. A stored failure keeps the pairing from the moment it
+  was checked. Adding or deleting a longer source rebuilds the coverage
+  map, so that failure is not moved onto the shorter source.
 - **A blank `operators` key no longer runs zero mutants and exits 0** (#167).
   `operators:` with no value became an empty list. The run made no mutants
   and the gate passed. A blank operator list is now an error, and so is a
