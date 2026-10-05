@@ -6,11 +6,34 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **A test file given as a source after `--test` exits 2.** `--test` takes one
+  file, so in `mutineer run app/x.rb --test spec/a_spec.rb spec/b_spec.rb` the
+  second spec became a source to mutate, and the run tested with one spec file
+  without a word. Now a source named `*_test.rb` or `*_spec.rb` inside a
+  `test/` or `spec/` directory, given with `--test`, is a usage error that says
+  to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
+
 ### Fixed
 - **A mutant on a later line of a multi-line statement runs its tests**
   instead of being reported as `no_coverage`. Ruby counts only the first line
   of a statement, so the runner now uses the tests that ran the statement that
   holds the mutation.
+- **The Action refuses to run when `output` and `baseline` are the same file** (#160).
+  That setup used to work, and a failing run copied its report onto the
+  baseline. The next run then treated the failed report as the baseline, so
+  the gate could pass. The Action now stops before the run and exits 2.
+  The baseline may come from the `baseline` input, from `--baseline` in
+  `extra-args`, or from `.mutineer.yml`. A numeric path such as `123` is
+  read the same way as the CLI. Write the report to a separate path. Copy
+  that file onto the baseline in a later step, and only when this step
+  exits 0. You can also refresh the baseline with the CLI, and keep the
+  file only when the run exits 0. The next release moves the `v1` tag, so
+  workflows on `@v1` get this refusal then.
+- **A mutation no longer leaves a heredoc body behind as Ruby** (#134).
+  Replacing a node deletes the heredoc opener and not the body. The body
+  then parses as code, raises, and counts as a kill. A mutation that drops
+  the opener is skipped. A replacement that still contains the opener stays.
 - **A bare `public`, `private` or `protected` ends `module_function` mode**,
   so later `def`s in the module body are named as instance methods, not
   singleton methods (#144).

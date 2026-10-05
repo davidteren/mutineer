@@ -42,4 +42,19 @@ class LiteralMutationTest < Minitest::Test
     op = Mutineer::Mutators::LiteralMutation.new.mutations_for(subject_for(src), src).first.operator
     assert_equal :literal_mutation, op
   end
+
+  def test_heredoc_is_not_emptied
+    src = <<~RUBY
+      def f
+        n = 1
+        <<~X
+          hi
+        X
+      end
+    RUBY
+    mutations = Mutineer::Mutators::LiteralMutation.new.mutations_for(subject_for(src), src)
+    replaced = mutations.map { |m| src[m.start_offset...m.end_offset] }
+    refute_includes replaced, "<<~X"
+    assert_includes replaced, "1"
+  end
 end
