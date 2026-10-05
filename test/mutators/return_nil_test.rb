@@ -50,4 +50,34 @@ class ReturnNilTest < Minitest::Test
     mutations, source = run_mutator("def f\n  return compute(1, 2)\nend\n")
     mutations.each { |m| assert m.valid?(source) }
   end
+
+  def test_heredoc_return_value_and_final_expression_are_skipped
+    returned, source = run_mutator(<<~RUBY)
+      def f
+        return <<~X
+          hi
+        X
+        1
+      end
+    RUBY
+    assert_equal ["1"], tokens(returned, source)
+
+    final, = run_mutator(<<~RUBY)
+      def f
+        <<~X
+          hi
+        X
+      end
+    RUBY
+    assert_empty final
+
+    call, = run_mutator(<<~RUBY)
+      def f
+        foo(<<~X)
+          hi
+        X
+      end
+    RUBY
+    assert_empty call
+  end
 end
