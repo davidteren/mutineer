@@ -70,6 +70,20 @@ test('printing before scrolling shows the real numbers', async ({ page }) => {
   await expect(page.locator('.visually-hidden')).toHaveCount(0);
 });
 
+test('turning on reduced motion mid-visit finishes the counts', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.setViewportSize({ width: 1280, height: 1100 });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const hero = page.locator('.hero-proof .odo');
+  // The 1.8 s count must still be running, or this test proves nothing.
+  expect(await hero.textContent()).not.toBe('8,170');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  // The change arrives asynchronously. Polling every 50 ms for 500 ms is far
+  // shorter than the 1.8 s count, so only the fix can finish it in time.
+  await expect.poll(() => hero.textContent(), { timeout: 500, intervals: [50] }).toBe('8,170');
+  await expect(page.locator('.hero-proof .visually-hidden')).toHaveCount(0);
+});
+
 test('motion keeps step labels, true numbers and every section visible', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
   await page.setViewportSize({ width: 390, height: 844 });

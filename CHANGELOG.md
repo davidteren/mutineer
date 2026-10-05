@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **A test file given as a source after `--test` exits 2.** `--test` takes one
+  file, so in `mutineer run app/x.rb --test spec/a_spec.rb spec/b_spec.rb` the
+  second spec became a source to mutate, and the run tested with one spec file
+  without a word. Now a source named `*_test.rb` or `*_spec.rb` inside a
+  `test/` or `spec/` directory, given with `--test`, is a usage error that says
+  to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
+
 ### Fixed
 - **Split test files pair with their source** (#87). A source such as
   `app/foo/bar.rb` now also uses `test/foo/bar_upsert_test.rb` and
@@ -17,9 +25,21 @@ All notable changes to this project are documented here. The format is based on
   split name is left for `user_session.rb` when that file exists, so
   `user.rb` does not run `user_session_test.rb`. The same rule holds outside
   `app/` and `lib/`: `src/user.rb` does not take `test/src/user_session_test.rb`
-  when `src/user_session.rb` exists. A failed capture of
-  `test/foo/bar_upsert_test.rb` marks `app/foo/bar.rb` uncapturable when
-  `bar_upsert.rb` does not exist. A test outside that directory does not.
+  when `src/user_session.rb` exists. A longer source claims a split file
+  only when that source itself searches the directory the file is in.
+  A failed capture of `test/foo/bar_upsert_test.rb` can mark `app/foo/bar.rb`
+  uncapturable only when no successful capture covered that source and
+  `bar_upsert.rb` does not exist. A test outside that directory does not,
+  and neither does a source that only shares the test basename.
+- **A mutation no longer leaves a heredoc body behind as Ruby** (#134).
+  Replacing a node deletes the heredoc opener and not the body. The body
+  then parses as code, raises, and counts as a kill. A mutation that drops
+  the opener is skipped. A replacement that still contains the opener stays.
+- **A bare `public`, `private` or `protected` ends `module_function` mode**,
+  so later `def`s in the module body are named as instance methods, not
+  singleton methods (#144).
+- **Turning on reduced motion mid-visit finishes the landing page count-ups**,
+  so no number keeps changing after the visitor asks for less motion (#176).
 - **`rake site:build` can no longer delete a directory such as `lib/` or
   `.git`** (#162). The task removed the destination it was given, and only
   refused the checkout, its parents and `docs/`. It now always builds into
@@ -97,11 +117,6 @@ All notable changes to this project are documented here. The format is based on
   `json-schema.html` and `sitemap.xml` are no longer committed. CI checks
   that the site builds, in place of `rake yard:pages:check`. The site keeps
   its URLs (#153).
-
-### Fixed
-- A `public`, `private` or `protected` written without arguments now ends
-  `module_function` mode, so later `def`s in the module body are named as
-  instance methods, not singleton methods (#144).
 
 ## [1.3.0] - 2026-09-29
 

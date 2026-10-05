@@ -79,6 +79,11 @@
       });
     }
 
+    // The preference can change between the head script and this point.
+    if (motion && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      motion = false;
+      root.classList.remove('motion');
+    }
     // Motion: a scroll progress bar, count-ups, and sections that rise into view.
     if (motion) {
       // One observer per threshold, shared by every element that uses it. Each
@@ -201,6 +206,10 @@
       });
       // Printing before a count ends would show a start or middle value.
       addEventListener('beforeprint', function () { counters.forEach(function (c) { c.finish(); }); });
+      // Turning on reduced motion mid-visit stops the counts where they end.
+      window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', function (event) {
+        if (event.matches) counters.forEach(function (c) { c.finish(); });
+      });
     }
   });
 })();
