@@ -1,0 +1,49 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_0efb2ea27e371c 78-90,191-214
+docs/plans/issue-104-normalize-source-paths.md
+  s_07d7b58ff1b9fd::t_abeeae99ac4ad9 1-77
+docs/plans/issue-158-disable-marker-in-string.md
+  s_07d7b58ff1b9fd::t_fd95d16bbaade8 1-59
+lib/mutineer/cli.rb
+  s_07d7b58ff1b9fd::t_014a720e6469d4 179-180
+lib/mutineer/mutators/base.rb
+  s_07d7b58ff1b9fd::t_9ed97cf985ac04 32-55
+lib/mutineer/pairing.rb
+  s_07d7b58ff1b9fd::t_9a9a83e8bc7f5c 3-4,8-9,25-27,34-36,40,42-43,48-76
+lib/mutineer/parser.rb
+  s_07d7b58ff1b9fd::t_605ad1d2a2009e 13-15,35-43
+lib/mutineer/runner.rb
+  s_07d7b58ff1b9fd::t_c8e48ba3605b17 417-418,421-423
+test/cli_test.rb
+  s_07d7b58ff1b9fd::t_fb4379ad50f71e 685-705
+test/equivalent_mutant_test.rb
+  s_07d7b58ff1b9fd::t_db3d21365c5e1c 47-80
+test/fixtures/nested.rb
+  s_07d7b58ff1b9fd::t_02efff632c3d04 1-10
+test/fixtures/nested_test.rb
+  s_07d7b58ff1b9fd::t_10a6a8d84935b7 1-10
+test/mutators/base_test.rb
+  s_07d7b58ff1b9fd::t_b349935a8fdede 1-34
+test/nested_redefine_test.rb
+  s_07d7b58ff1b9fd::t_063b72570ed986 1-33
+test/pairing_test.rb
+  s_07d7b58ff1b9fd::t_84fea9c9c59c6e 113-164
+test/runner_test.rb
+  s_07d7b58ff1b9fd::t_c5df99e1e10614 126-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "98920288f3f038b490c805ea7ac4e9f544690eb5",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
