@@ -413,7 +413,7 @@ module Mutineer
     rescue StandardError => e
       "parent could not read capture result: #{e.class}: #{e.message}"
     ensure
-      [rd, wr].each { |io| io.close unless io.closed? }
+      [rd, wr].compact.each { |io| io.close unless io.closed? }
     end
 
     # Human description of a child Process::Status for capture diagnostics.
@@ -709,7 +709,7 @@ module Mutineer
     rescue StandardError
       false
     ensure
-      [rd, wr].each { |io| io.close unless io.closed? }
+      [rd, wr].compact.each { |io| io.close unless io.closed? }
     end
 
     # SIGKILLs capture child `pid` and its process group, then waits for

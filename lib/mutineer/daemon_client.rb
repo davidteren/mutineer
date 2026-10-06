@@ -384,7 +384,11 @@ module Mutineer
     def close_io
       # A wedged daemon may never read the closed stdin, so the reap below would
       # wait forever: kill it first. An exited daemon makes this a no-op.
-      Process.kill(:KILL, @wait_thr.pid) if @wait_thr&.alive? rescue Errno::ESRCH # rubocop:disable Style/RescueModifier
+      begin
+        Process.kill(:KILL, @wait_thr.pid) if @wait_thr&.alive?
+      rescue Errno::ESRCH
+        nil # it exited between the check and the kill
+      end
       @drain&.kill # stop the drain BEFORE closing its fd (avoids a copy_stream EBADF)
       [@stdin, @stdout, @stderr].each { |io| io&.close rescue nil } # rubocop:disable Style/RescueModifier
       @wait_thr&.join # reap the exited daemon so respawn/quit leaves no zombie

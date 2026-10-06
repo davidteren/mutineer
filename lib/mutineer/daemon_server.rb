@@ -179,7 +179,9 @@ module Mutineer
       def exit_with_parent(parent = Process.ppid)
         Thread.new do
           sleep(0.5) while Process.ppid == parent
-          Process.kill(:KILL, 0)
+          # Group 0 only when this child leads its own group: a failed setpgid
+          # leaves it in the client's group, which must not be killed.
+          Process.kill(:KILL, Process.getpgrp == Process.pid ? 0 : Process.pid)
         end
       end
 
