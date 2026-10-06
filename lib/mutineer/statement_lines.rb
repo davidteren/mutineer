@@ -29,9 +29,9 @@ module Mutineer
       # the statement need not have run it.
       return [] if path[index..].each_cons(2).any? { |parent, child| sometimes?(parent, child) }
 
-      # Ruby counts the line of `x while c` when it checks `c`, also when `x` never runs.
-      # The path is loop, its body, statement.
-      return [] if index >= 2 && modifier_loop?(path[index - 2])
+      # Ruby counts the line of `x while c` or `x if c` when it checks `c`,
+      # also when `x` never runs. The path is the modifier, its body, statement.
+      return [] if index >= 2 && modifier?(path[index - 2])
 
       location = statement.location
       lines = (location.start_line..last_line(statement)).to_a
@@ -43,14 +43,16 @@ module Mutineer
 
     # Nodes whose code runs only when a branch, a match or an exception picks
     # it: a `when` or `in` clause (its condition or pattern), a `rescue` clause
-    # (its class list), parameters (their defaults) and `defined?` (its operand
-    # never runs). A statement in their bodies is a statement of its own, found
+    # (its class list), an `else` branch, parameters (their defaults) and
+    # `defined?` (its operand never runs). A statement in their bodies is a statement of its own, found
     # deeper on the path.
-    SOMETIMES = [Prism::WhenNode, Prism::InNode, Prism::RescueNode, Prism::ParametersNode,
+    SOMETIMES = [Prism::WhenNode, Prism::InNode, Prism::RescueNode, Prism::ElseNode, Prism::ParametersNode,
                  Prism::BlockParametersNode, Prism::DefinedNode].freeze
 
     # Whether `child` runs only sometimes when `parent` runs. Besides the
-    # {SOMETIMES} nodes: the rescue side of `x rescue y`, the value of
+    # {SOMETIMES} nodes: a branch of an `if`/`unless` inside the statement (a
+    # ternary, or `if c then a else b end` on the statement's lines), the
+    # rescue side of `x rescue y`, the value of
     # `a ||= v` or `a &&= v`, the right side of `a || b` or `a && b`, and the
     # arguments and block of `x&.m(...)` and the value of `x&.m += v`, which do
     # not run when `x` is nil.
@@ -60,6 +62,7 @@ module Mutineer
     # @return [Boolean]
     def self.sometimes?(parent, child)
       return true if SOMETIMES.any? { |klass| child.is_a?(klass) }
+      return !child.equal?(parent.predicate) if parent.is_a?(Prism::IfNode) || parent.is_a?(Prism::UnlessNode)
       return child.equal?(parent.rescue_expression) if parent.is_a?(Prism::RescueModifierNode)
       return child.equal?(parent.right) if parent.is_a?(Prism::OrNode) || parent.is_a?(Prism::AndNode)
       if parent.is_a?(Prism::CallNode) && parent.safe_navigation?
@@ -97,16 +100,22 @@ module Mutineer
       [node.location.end_line, *node.compact_child_nodes.map { |child| last_line(child) }].max
     end
 
-    # Whether `node` is a `while` or `until` modifier, such as `x while c`.
-    # The body of `begin ... end while c` runs once before the check, so it is not.
+    # Whether `node` is a modifier whose body comes before its keyword, such
+    # as `x while c` or `x if c`. The body of `begin ... end while c` runs once
+    # before the check, so it is not.
     #
     # @param node [Prism::Node, nil] the parent of the body that holds the statement.
     # @return [Boolean]
-    def self.modifier_loop?(node)
-      return false unless node.is_a?(Prism::WhileNode) || node.is_a?(Prism::UntilNode)
-      return false if node.begin_modifier? || node.statements.nil?
+    def self.modifier?(node)
+      keyword =
+        case node
+        when Prism::WhileNode, Prism::UntilNode then node.keyword_loc unless node.begin_modifier?
+        when Prism::IfNode then node.if_keyword_loc
+        when Prism::UnlessNode then node.keyword_loc
+        end
+      return false if keyword.nil? || node.statements.nil?
 
-      node.statements.location.start_offset < node.keyword_loc.start_offset
+      node.statements.location.start_offset < keyword.start_offset
     end
 
     # The text before `location` on its first line.

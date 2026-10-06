@@ -126,12 +126,21 @@ class StatementLinesTest < Minitest::Test
     "the right side of or" => ["ok = v ||\n    :m", ":m"],
     "the right side of and" => ["ok = v &&\n    :m", ":m"],
     "a safe navigation argument" => ["v&.g(:a,\n    :m)", ":m"],
-    "a safe navigation operator-assign value" => ["v&.n += g(\n    :m)", ":m"]
+    "a safe navigation operator-assign value" => ["v&.n += g(\n    :m)", ":m"],
+    "an if modifier body" => ["g(:a,\n    :m) if v", ":m"],
+    "an unless modifier body" => ["g(:a,\n    :m) unless v", ":m"],
+    "an else branch" => ["x = if v then 1 else g(:a,\n    :m) end", ":m"]
   }.each do |shape, (body, snippet)|
     define_method("test_#{shape.tr(' ?-', '___')}_has_no_lines") do
       source = "def f(v, list)\n  #{body}\nend\n"
       assert_empty lines_at(source, snippet), shape
     end
+  end
+
+  # The condition of a modifier `if` runs whenever the statement does.
+  def test_a_multi_line_condition_of_an_if_modifier_belongs_to_the_statement
+    source = "def f(v)\n  g if h(:a,\n    :b)\nend\n"
+    assert_equal [2, 3], lines_at(source, ":b")
   end
 
   def test_a_later_argument_in_a_when_body_still_belongs_to_its_statement
