@@ -2,6 +2,7 @@
 
 require "json"
 require "open3"
+require_relative "external_backend"
 
 module Mutineer
   # Raised when the daemon cannot be booted or is gone for good: a bad boot path, an
@@ -13,10 +14,12 @@ module Mutineer
 
   # Tool-side handle for the app-side daemon.
   #
-  # Spawns `daemon_server.rb` UNDER THE APP'S BUNDLE/RUBY (cleaned env so the
-  # gem's bundler context never leaks; the daemon file is loaded by absolute path
-  # with `-r`, which bypasses the app bundle that has no mutineer), completes the
-  # ready handshake, then ships per-mutant payloads and reads structured verdicts.
+  # Spawns `daemon_server.rb` UNDER THE APP'S BUNDLE/RUBY. The child gets the
+  # environment from before the tool's Bundler activated, with
+  # <tt>unsetenv_others</tt>, because Open3 keeps a key the hash omits. The
+  # daemon file is loaded by absolute path with `-r`, which bypasses the app
+  # bundle that has no mutineer. The client completes the ready handshake,
+  # then ships per-mutant payloads and reads structured verdicts.
   # If the daemon dies mid-run it respawns (bounded) and marks the in-flight
   # mutant `error` rather than corrupting the run. Reuses the cleaned-env spawn
   # and stderr-drain proven in the spike driver and the spawn discipline of
@@ -26,11 +29,15 @@ module Mutineer
     DAEMON_PATH = File.expand_path("daemon_server.rb", __dir__)
     # How many times to respawn a crashing daemon before aborting the run.
     MAX_RESTARTS = 3
+    # Bundler's marker for a variable that was unset before it activated.
+    BUNDLER_UNSET = "BUNDLER_ENVIRONMENT_PRESERVER_INTENTIONALLY_NIL"
 
     # @param boot [Hash] boot config sent to the daemon: project_root, boot,
     #   load_paths, framework, rails.
     # @param app_root [String] directory to spawn the daemon in (the app root).
-    # @param ruby_version [String, nil] RBENV_VERSION for the app's Ruby (nil = inherit).
+    # @param ruby_version [String, nil] RBENV_VERSION for the app's Ruby.
+    #   nil keeps a pin already in the environment. That pin is often the
+    #   Ruby that started the tool.
     # @param gemfile [String, nil] BUNDLE_GEMFILE for the app's bundle (nil = app_root/Gemfile).
     # @param errio [IO] where daemon stderr is drained.
     def initialize(boot:, app_root:, ruby_version: nil, gemfile: nil, errio: $stderr)
@@ -117,14 +124,161 @@ module Mutineer
 
     private
 
-    # Cleaned environment for the app bundle: strip the gem's bundler/Ruby context
-    # so `bundle exec` resolves the APP's Gemfile under the requested Ruby.
+    # Full environment for the daemon child. Spawn with +unsetenv_others+ so a
+    # key deleted here does not leak back from the parent. Undo only what
+    # Bundler saved before it activated, then point the child at the target app.
+    #
+    # @api private
+    # @return [Hash{String => String}]
     def app_env
-      env = ENV.to_h.reject { |k, _| k.start_with?("BUNDLE_", "RUBY", "GEM_") }
+      env = restored_user_env
+      scrub_managed_ruby_bins!(env)
+      env.delete("BUNDLER_SETUP")
       env["BUNDLE_GEMFILE"] = @gemfile
       env["RBENV_VERSION"] = @ruby_version if @ruby_version
-      env["RAILS_ENV"] ||= "test" if @boot[:rails] || @boot["rails"]
+      env["RAILS_ENV"] = "test" if rails_boot? && !env.key?("RAILS_ENV")
       env
+    end
+
+    # Environment with every <tt>BUNDLER_ORIG_*</tt> value put back. Bundler
+    # writes one saved key per variable it replaced. Restoring all of them
+    # undoes the tool bundle without a copied key list.
+    #
+    # @api private
+    # @return [Hash{String => String}]
+    def restored_user_env
+      env = ENV.to_h
+      restored = []
+      env.keys.each do |saved_key|
+        next unless saved_key.start_with?("BUNDLER_ORIG_")
+
+        key = saved_key.delete_prefix("BUNDLER_ORIG_")
+        saved = env.delete(saved_key)
+        restored << key
+        if saved == BUNDLER_UNSET
+          env.delete(key)
+        else
+          env[key] = saved
+        end
+      end
+      # A parent require must not run in the app, even when Bundler saved it.
+      %w[RUBYOPT RUBYLIB].each { |key| env.delete(key) }
+      # No saved original means the value belongs to the tool process.
+      %w[GEM_HOME GEM_PATH BUNDLE_PATH BUNDLE_WITHOUT BUNDLER_VERSION].each do |key|
+        env.delete(key) unless restored.include?(key)
+      end
+      env
+    end
+
+    # Drop rbenv and asdf version bins so shims can select the app Ruby.
+    # Leave those bins in place when no shim directory exists, so +bundle+
+    # stays on PATH. Leave chruby bins in place.
+    #
+    # @api private
+    # @param env [Hash{String => String}]
+    # @return [void]
+    def scrub_managed_ruby_bins!(env)
+      parts = env["PATH"].to_s.split(File::PATH_SEPARATOR)
+      rbenv = rbenv_shim_dirs(env)
+      asdf = asdf_shim_dirs(env)
+      dropped_rbenv = false
+      dropped_asdf = false
+      kept = parts.reject do |part|
+        if rbenv_version_bin?(part, env) && rbenv.any?
+          dropped_rbenv = true
+        elsif asdf_version_bin?(part, env) && asdf.any?
+          dropped_asdf = true
+        else
+          false
+        end
+      end
+      return if kept.size == parts.size
+
+      shims = []
+      shims.concat(rbenv) if dropped_rbenv
+      shims.concat(asdf) if dropped_asdf
+      env["PATH"] = (shims + kept).uniq.join(File::PATH_SEPARATOR)
+    end
+
+    # Existing rbenv shim directory. +RBENV_ROOT+ wins. Otherwise the home
+    # directory's <tt>.rbenv</tt> is used.
+    #
+    # @api private
+    # @param env [Hash{String => String}]
+    # @return [Array<String>]
+    def rbenv_shim_dirs(env)
+      root = rbenv_root(env)
+      return [] if root.nil?
+
+      dir = File.join(root, "shims")
+      File.directory?(dir) ? [dir] : []
+    end
+
+    # rbenv install root. +RBENV_ROOT+ wins over <tt>~/.rbenv</tt>.
+    #
+    # @api private
+    # @param env [Hash{String => String}]
+    # @return [String, nil]
+    def rbenv_root(env)
+      root = env["RBENV_ROOT"]
+      return File.expand_path(root) if root && !root.empty?
+
+      home = env["HOME"]
+      return nil if home.nil? || home.empty?
+
+      File.join(home, ".rbenv")
+    end
+
+    # Existing asdf shim directories. A custom install uses +ASDF_DATA_DIR+.
+    #
+    # @api private
+    # @param env [Hash{String => String}]
+    # @return [Array<String>]
+    def asdf_shim_dirs(env)
+      dirs = []
+      data = env["ASDF_DATA_DIR"]
+      dirs << File.join(data, "shims") if data && !data.empty?
+      home = env["HOME"]
+      dirs << File.join(home, ".asdf", "shims") if home && !home.empty?
+      dirs.select { |dir| File.directory?(dir) }.uniq
+    end
+
+    # True when `part` is a version bin under the active rbenv root.
+    #
+    # @api private
+    # @param part [String] one PATH entry.
+    # @param env [Hash{String => String}]
+    # @return [Boolean]
+    def rbenv_version_bin?(part, env)
+      root = rbenv_root(env)
+      return false if root.nil?
+
+      prefix = File.join(root, "versions")
+      File.expand_path(part).match?(%r{\A#{Regexp.escape(prefix)}/[^/]+/bin/?\z})
+    end
+
+    # True when `part` is an asdf Ruby version bin under ~/.asdf or +ASDF_DATA_DIR+.
+    #
+    # @api private
+    # @param part [String] one PATH entry.
+    # @param env [Hash{String => String}]
+    # @return [Boolean]
+    def asdf_version_bin?(part, env)
+      return true if part.match?(%r{/\.asdf/installs/ruby/[^/]+/bin/?\z})
+
+      data = env["ASDF_DATA_DIR"]
+      return false if data.nil? || data.empty?
+
+      prefix = File.join(File.expand_path(data), "installs", "ruby")
+      File.expand_path(part).match?(%r{\A#{Regexp.escape(prefix)}/[^/]+/bin/?\z})
+    end
+
+    # True when this daemon boots a Rails app.
+    #
+    # @api private
+    # @return [Boolean]
+    def rails_boot?
+      @boot[:rails] || @boot["rails"]
     end
 
     # Spawn the daemon under the app bundle and complete the ready handshake.
@@ -133,9 +287,11 @@ module Mutineer
     # @raise [Mutineer::DaemonBootError] when the daemon fails to boot.
     def spawn_daemon
       # Plain `bundle exec ruby`, NOT `rbenv exec`, which would break CI and any
-      # non-rbenv setup. When bundler/ruby are rbenv shims, the RBENV_VERSION
-      # carried in app_env still selects the app's Ruby; otherwise the active
-      # Ruby is used.
+      # non-rbenv setup. An explicit ruby_version replaces RBENV_VERSION.
+      # With no argument, a pin already in the environment stays. That pin is
+      # often the Ruby that started the tool. `.ruby-version` applies only
+      # when no pin is set. rbenv and asdf version bins leave PATH when a shim
+      # directory exists. chruby bins stay.
       # Everything up to the handshake is terminal, not one mutant's problem: a spawn
       # the OS refuses (EMFILE/ENOMEM under --jobs N, ENOENT when `bundle` does not
       # resolve) and a daemon that dies before accepting the boot payload (EPIPE on
@@ -145,7 +301,8 @@ module Mutineer
         begin
           @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(
             app_env, "bundle", "exec", "ruby",
-            "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run", chdir: @app_root
+            "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run",
+            unsetenv_others: true, chdir: @app_root
           )
           # Drain daemon stderr to the tool's stderr so child/boot errors are visible.
           # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn;

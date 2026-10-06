@@ -24,7 +24,7 @@ gem "mutineer", group: :test
 ## Run
 
 ```sh
-mutineer run <source...> --test <test...> [options]
+mutineer run <source...> --test <test> [--test <test>...] [options]
 ```
 
 Example — mutate a file against its test and fail CI below 90%:

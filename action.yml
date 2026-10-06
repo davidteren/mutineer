@@ -82,7 +82,14 @@ inputs:
     description: >-
       Write the report to this file instead of stdout. When unset with the
       default json format, the report is written to a temp file (for the step
-      summary and annotations) and still printed to the log.
+      summary and annotations) and still printed to the log. This path must
+      not be the same file as the baseline. The baseline is the `baseline`
+      input, a `--baseline` flag in `extra-args`, or the `baseline` key in
+      `.mutineer.yml`. That pair used to be allowed, and a failing run
+      replaced the baseline. The Action now stops before the run. Write the
+      report to a separate path. Copy that file onto the baseline in a later
+      step, and only when this step exits 0. The next release moves the `v1`
+      tag, so workflows on `@v1` get this refusal then.
     required: false
     default: ""
   extra-args:
@@ -210,8 +217,9 @@ runs:
         # report" is simply "is it non-empty": no mtime comparison (bash 3.2 /
         # whole-second filesystems misjudge same-second files), no cross-step
         # collisions, and a run that dies early can neither clobber nor
-        # impersonate the caller's existing file (`output` may even equal
-        # `baseline`). RUNNER_TEMP is cleaned up at job end.
+        # impersonate the caller's existing file. `output` and `baseline` as
+        # the same file are refused below, before the run. RUNNER_TEMP is
+        # cleaned up at job end.
         TMP_REPORT=""
         if [ "$FORMAT" = "json" ] || [ -n "$OUTPUT" ]; then
           TMP_REPORT="$(mktemp "${RUNNER_TEMP:-/tmp}/mutineer-report-XXXXXX")"
@@ -234,6 +242,72 @@ runs:
           out_dir="$(dirname "$OUTPUT")"
           if [ ! -d "$out_dir" ] || [ ! -w "$out_dir" ]; then
             echo "::error::mutineer: cannot write output '$SAFE_OUT': no such directory or not writable."
+            exit 2
+          fi
+        fi
+
+        # A finished run copies its report onto `output` even when the exit
+        # code is not 0. When that path is the baseline, the next run diffs
+        # against the failed report and the gate can pass. Stop first.
+        # The CLI uses the last --baseline it sees, then .mutineer.yml.
+        # extra-args is appended after the input, so its flag wins.
+        baseline_path="$BASELINE"
+        if [ -n "$EXTRA_ARGS" ]; then
+          pending=""
+          for extra_arg in $EXTRA_ARGS; do
+            key="${extra_arg%%=*}"
+            case "$key" in
+              --ba | --bas | --base | --basel | --baseli | --baselin | --baseline)
+                if [ "$extra_arg" = "$key" ]; then
+                  pending=1
+                else
+                  baseline_path="${extra_arg#*=}"
+                  pending=""
+                fi
+                ;;
+              *)
+                if [ -n "$pending" ]; then
+                  baseline_path="$extra_arg"
+                  pending=""
+                fi
+                ;;
+            esac
+          done
+        fi
+        if [ -n "$OUTPUT" ] && [ -z "$baseline_path" ]; then
+          baseline_path="$(ruby -ryaml -e '
+            dir = File.expand_path(Dir.pwd)
+            home = File.expand_path("~")
+            file = nil
+            loop do
+              candidate = File.join(dir, ".mutineer.yml")
+              if File.file?(candidate)
+                file = candidate
+                break
+              end
+              break if dir == home
+              parent = File.dirname(dir)
+              break if parent == dir
+              dir = parent
+            end
+            exit 0 if file.nil?
+            raw = YAML.safe_load(File.read(file)) rescue exit(0)
+            exit 0 unless raw.is_a?(Hash)
+            value = raw["baseline"]
+            print value.to_s unless [nil, true, false].include?(value) || value.to_s.empty?
+          ')"
+        fi
+        if [ -n "$OUTPUT" ] && [ -n "$baseline_path" ]; then
+          same_path="$(ruby -e '
+            left = ARGV[0]
+            right = ARGV[1]
+            print File.realpath(left) if File.exist?(left) && File.exist?(right) && File.identical?(left, right)
+          ' "$OUTPUT" "$baseline_path")"
+          if [ -n "$same_path" ]; then
+            SAFE_SAME="${same_path//%/%25}"
+            SAFE_SAME="${SAFE_SAME//$'\r'/%0D}"
+            SAFE_SAME="${SAFE_SAME//$'\n'/%0A}"
+            echo "::error::mutineer: output and baseline are the same file ('$SAFE_SAME'). That pair used to be allowed, and a failing run would replace the baseline. Write the report to a separate path. Copy that file onto the baseline in a later step, and only when this step exits 0. Refresh the baseline with the CLI, and keep that file only when the run exits 0."
             exit 2
           fi
         fi

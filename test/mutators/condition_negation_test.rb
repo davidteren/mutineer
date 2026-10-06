@@ -42,4 +42,20 @@ class ConditionNegationTest < Minitest::Test
     mutations, source = run_mutator("def f\n  if x > 0\n    y\n  end\nend\n")
     mutations.each { |m| assert m.valid?(source), "wrapped condition must re-parse" }
   end
+
+  def test_heredoc_condition_keeps_its_opener
+    source = <<~RUBY
+      def f
+        if foo(<<~X)
+          hi
+        X
+          1
+        end
+      end
+    RUBY
+    mutations, = run_mutator(source)
+    assert_equal 1, mutations.size
+    assert_includes mutations.first.replacement, "<<~X"
+    assert mutations.first.valid?(source)
+  end
 end

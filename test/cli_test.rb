@@ -120,6 +120,33 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_a_test_file_given_as_a_source_after_test_exits_two
+    with_project do |proj|
+      FileUtils.mkdir_p(File.join(proj, "test"))
+      %w[calculator_strong_test.rb calculator_weak_test.rb].each do |f|
+        FileUtils.mv(File.join(proj, f), File.join(proj, "test", f))
+      end
+      _, err, status = mutineer("run", "calculator.rb", "--test", "test/calculator_strong_test.rb",
+                                "test/calculator_weak_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "test/calculator_weak_test.rb looks like a test file, not a source"
+      assert_includes err, "repeat it for each test file"
+    end
+  end
+
+  def test_a_source_named_like_a_test_outside_test_dirs_still_runs
+    Dir.mktmpdir("mutineer-ab") do |proj|
+      FileUtils.mkdir_p(File.join(proj, "app/models"))
+      FileUtils.mkdir_p(File.join(proj, "test/models"))
+      File.write(File.join(proj, "app/models/ab_test.rb"), "class AbTest\n  def n = 1 + 1\nend\n")
+      File.write(File.join(proj, "test/models/ab_test_test.rb"), "")
+      out, err, status = mutineer("run", "--dry-run", "app/models/ab_test.rb",
+                                  "--test", "test/models/ab_test_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "AbTest#n"
+    end
+  end
+
   def test_config_file_integer_jobs_runs
     with_project do |proj|
       File.write(File.join(proj, ".mutineer.yml"), "jobs: 2\n")
@@ -344,6 +371,27 @@ class CliTest < Minitest::Test
       _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
       assert_equal 2, status.exitstatus
       assert_includes err, ".mutineer.yml: baseline must be a string (got: nil)"
+    end
+  end
+
+  # `operators:` with no value still exits 2. --operators replaces that
+  # list, including one that names only an unknown operator.
+  def test_operators_flag_replaces_a_blank_or_unknown_file_list
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "operators:\n")
+      _, err, status = mutineer("run", "calculator.rb", "--dry-run", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "operators must name at least one operator, not blank"
+
+      out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_match(/arithmetic: [1-9]/, out)
+
+      File.write(File.join(proj, ".mutineer.yml"), "operators: [bogus]\n")
+      out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "unknown operator"
+      assert_match(/arithmetic: [1-9]/, out)
     end
   end
 
@@ -623,6 +671,46 @@ class CliTest < Minitest::Test
       _, err, status = mutineer("run", "lib", chdir: proj)
       assert_equal 2, status.exitstatus
       assert_includes err, "no test files found by convention"
+    end
+  end
+
+  # #87: bar_*_test.rb is the suite when bar_test.rb does not exist. The source
+  # must run, not be skipped as if it had no tests.
+  def test_split_test_files_are_paired_and_run
+    Dir.mktmpdir("mutineer-split") do |proj|
+      FileUtils.mkdir_p(File.join(proj, "app/foo"))
+      FileUtils.mkdir_p(File.join(proj, "test/foo"))
+      File.write(File.join(proj, "app/foo/bar.rb"), "class Bar\n  def n(a)\n    a + 1\n  end\nend\n")
+      File.write(File.join(proj, "test/foo/bar_upsert_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "../../app/foo/bar"
+        class BarUpsertTest < Minitest::Test
+          def test_n
+            assert_equal 2, Bar.new.n(1)
+          end
+        end
+      RUBY
+      out, err, status = mutineer("run", "app/foo/bar.rb", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "no test found by convention"
+      doc = JSON.parse(out)
+      assert_equal ["app/foo/bar.rb"], doc["per_source"].map { |h| h["file"] }
+      assert_operator doc["summary"]["killed"], :>, 0
+    end
+  end
+
+  def test_autopair_keeps_every_split_file
+    Dir.mktmpdir("mutineer-split-list") do |proj|
+      FileUtils.mkdir_p(File.join(proj, "app/foo"))
+      FileUtils.mkdir_p(File.join(proj, "test/foo"))
+      File.write(File.join(proj, "app/foo/bar.rb"), "class Bar; def n(a); a + 1; end; end\n")
+      %w[bar_guards_test.rb bar_upsert_test.rb].each do |name|
+        File.write(File.join(proj, "test/foo", name), "# #{name}\n")
+      end
+      config = config_resolved_by_cli(proj, "run", "app/foo/bar.rb")
+      Mutineer::CLI.autopair!(config)
+      assert_equal ["app/foo/bar.rb"], config.sources
+      assert_equal ["test/foo/bar_guards_test.rb", "test/foo/bar_upsert_test.rb"], config.tests
     end
   end
 
