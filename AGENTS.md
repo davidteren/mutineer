@@ -141,8 +141,3 @@ workflow `release.yml`, no environment. Without it, `release.yml`'s `gem push` f
 `score = killed / (killed + survived)`. `no_coverage`, `uncapturable`, `ignored`,
 `skipped`, `errored` are ALL excluded from the denominator. Empty denominator → `nil`,
 never `0.0`. The exact-survivor integration oracle must stay green.
-
-## Repo mechanics
-
-- `docs/plans/` is gitignored by a global rule — plan docs need `git add -f`.
-- A git hook auto-branches commits made directly on `main`; commit on a feature branch.
