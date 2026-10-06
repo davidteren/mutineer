@@ -33,13 +33,6 @@ module Mutineer
         super
       end
 
-      # Skips a nested method definition. The project finds it as a subject of
-      # its own, so a visit here counts its connectors twice.
-      #
-      # @param node [Prism::DefNode] nested definition node.
-      # @return [void]
-      def visit_def_node(node); end
-
       private
 
       # Emits one mutation that keeps the left operand, then one that keeps
