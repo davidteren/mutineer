@@ -365,8 +365,11 @@ module Mutineer
       file = result.subject.file
       source = @source_map[file] || File.read(file)
       start_line, original_block, mutated_block, token = diff_for(m, source)
-      minus = original_block.each_line.map { |l| "-#{l.chomp}" }.join("\n")
-      plus  = mutated_block.each_line.map { |l| "+#{l.chomp}" }.join("\n")
+      # A block at the end of the file has no newline after it; elsewhere the
+      # file's next byte is one. Each side's own text decides its marker.
+      at_eof = source.byteindex("\n", m.end_offset).nil?
+      old_lines = side_lines(original_block, at_eof)
+      new_lines = side_lines(mutated_block, at_eof)
       {
         subject: result.subject.qualified_name,
         file: file,
@@ -376,8 +379,47 @@ module Mutineer
         # user can paste it straight into .mutineer.yml `ignore:`.
         id: result.id,
         token: token,
-        diff: "--- a/#{file}\n+++ b/#{file}\n@@ -#{start_line} +#{start_line} @@\n#{minus}\n#{plus}\n"
+        diff: "--- a/#{file}\n+++ b/#{file}\n" \
+              "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
+              "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
       }
+    end
+
+    # One side of the diff as the file holds it: the {#diff_for} block plus the
+    # newline that follows it, unless the block ends the file. Each line keeps
+    # its own ending, so a CRLF line keeps its "\r" and a last line with no
+    # newline is told apart from one with a newline.
+    #
+    # @api private
+    # @param block [String] the block's text.
+    # @param at_eof [Boolean] no newline follows the block in the file.
+    # @return [Array<String>] its lines, with their endings.
+    def side_lines(block, at_eof)
+      (at_eof ? block : "#{block}\n").lines
+    end
+
+    # The `-` or `+` lines of one side. A line with no newline is the file's
+    # last, so it gets the unified diff's no-newline marker (#106).
+    #
+    # @api private
+    # @param sign [String] "-" or "+".
+    # @param lines [Array<String>] the side's lines, with their endings.
+    # @return [String]
+    def diff_body(sign, lines)
+      lines.map { |l| l.end_with?("\n") ? "#{sign}#{l}" : "#{sign}#{l}\n\\ No newline at end of file\n" }.join
+    end
+
+    # One side of a unified diff hunk header: `start` for one line, else
+    # `start,count`; an empty side is `start-1,0` (#106).
+    #
+    # @api private
+    # @param start_line [Integer] 1-based first line of the block.
+    # @param lines [Array<String>] the block's lines.
+    # @return [String] the range, e.g. "3", "3,2" or "2,0".
+    def hunk_range(start_line, lines)
+      return "#{start_line - 1},0" if lines.empty? # an empty side names the line before it
+
+      lines.size == 1 ? start_line.to_s : "#{start_line},#{lines.size}"
     end
 
     # An entry under the JSON `ignored:` key: what the user already suppressed.
