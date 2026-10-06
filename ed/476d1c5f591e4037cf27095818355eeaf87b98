@@ -1,0 +1,25 @@
+README.md
+  s_49083d12a7277d::t_bd587938c7ee59 411
+docs/assets/mutineer.css
+  s_49083d12a7277d::t_fc2889146806cf 141
+docs/index.html
+  s_49083d12a7277d::t_29708e8e17e1a8 231,242
+docs/index.md
+  s_49083d12a7277d::t_cb73e8a4731416 93,103-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ed476d1c5f591e4037cf27095818355eeaf87b98",
+  "prompts": {},
+  "sessions": {
+    "s_49083d12a7277d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3116b2f4-60ff-44e7-858a-dde11624d36d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
