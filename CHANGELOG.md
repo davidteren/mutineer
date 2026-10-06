@@ -60,7 +60,8 @@ All notable changes to this project are documented here. The format is based on
 
 - **The site and README explain "clean-room" and compare Mutineer with
   Mutant**, and the landing page hero has a one-minute explainer video. It
-  plays muted while in view (not with reduced motion), pauses when it scrolls
+  plays at 55% volume while in view (not with reduced motion; muted until
+  the first click or key where the browser requires it), pauses when it scrolls
   away or the tab is hidden, and has an Enlarge button.
 
 ### Changed

@@ -37,8 +37,9 @@
       sync();
     });
 
-    // The hero explainer video plays muted while it is in view (browsers allow
-    // only muted autoplay), unless the visitor prefers reduced motion. It
+    // The hero explainer video plays at 55% volume while it is in view, unless
+    // the visitor prefers reduced motion. A browser that blocks sound before
+    // the visitor interacts gets it muted, unmuted on the first click or key. It
     // pauses when less than a quarter is in view or the tab is hidden, except
     // in Picture-in-Picture, and resumes only if this code paused it: a pause
     // by the visitor sticks. The Enlarge button widens it across the hero.
@@ -49,6 +50,15 @@
       var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       var held = false; // paused by this code, so it may resume
       var visible = false;
+      var autoMuted = false; // muted by this code, not the visitor
+      video.volume = 0.55;
+      function unmute(event) {
+        if (!autoMuted || event.target === video) return; // the video's own controls decide
+        autoMuted = false;
+        video.muted = false;
+      }
+      document.addEventListener('pointerdown', unmute);
+      document.addEventListener('keydown', unmute);
       function hold() {
         if (video.paused || document.pictureInPictureElement === video) return;
         held = true;
@@ -58,7 +68,12 @@
         if (!held || !visible || document.hidden) return;
         held = false;
         var playing = video.play();
-        if (playing && playing.catch) playing.catch(function () {});
+        if (playing && playing.catch) playing.catch(function () {
+          if (video.muted) return;
+          autoMuted = video.muted = true;
+          var retry = video.play();
+          if (retry && retry.catch) retry.catch(function () {});
+        });
       }
       if (!still) held = true; // autoplay counts as this code's choice
       if ('IntersectionObserver' in window) {
