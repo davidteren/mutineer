@@ -408,7 +408,7 @@ no code with Mutant.
 | Runtime dependencies | None (Prism + stdlib) | `parser`, `unparser`, `regexp_parser`, `sorbet-runtime` and others |
 | Ruby | 3.4 and later to run Mutineer; an app on an older Ruby works through `--test-command` (see [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34)) | 3.3 and later |
 | Test frameworks | Minitest and RSpec, in one gem | RSpec, Minitest and Test::Unit, one integration gem each |
-| What you mutate | Files (`mutineer run lib/foo.rb`), narrowed to one method with `--only 'Foo#bar'` | Subjects named by expression (`mutant run 'Foo#bar'`, `'Foo*'`) |
+| What you mutate | Files (`mutineer run lib/foo.rb --test test/foo_test.rb`), narrowed to one method with `--only 'Foo#bar'` | Subjects named by expression (`mutant run 'Foo#bar'`, `'Foo*'`) |
 | Which tests run | The test files whose coverage reaches the mutated line | The tests that declare the subject (an RSpec description or a Minitest `cover`), or the tests that ran it in a per-test coverage recording |
 | Operators | 20 (5 by default, 15 opt-in) | A larger set; the default `light` set applies almost all of it (`full` adds `#==` to `#eql?`) |
 | CI gating | `--threshold`, `--baseline` deltas, `--since`, and a GitHub Action | Incremental mode (`--since`) and a recorded session history |

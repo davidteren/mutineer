@@ -138,7 +138,7 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 caption { text-align: left; color: var(--fg-dim); padding: 16px; font-size: 12px; }
 th, td { text-align: left; vertical-align: top; padding: 14px 16px; border-bottom: 1px solid var(--border); }
 th { background: var(--bg-3); font: 11px/1.6 var(--mono); letter-spacing: .03em; text-transform: uppercase; }
-tr:last-child td { border-bottom: 0; }
+tr:last-child > * { border-bottom: 0; }
 td.op { font: 12px/1.7 var(--mono); white-space: nowrap; }
 td.rule { font: 12px/1.7 var(--mono); color: var(--fg-dim); }
 .pill { display: inline-block; font: 10px/1.7 var(--mono); padding: 2px 6px; border: 1px solid var(--border); white-space: nowrap; }

@@ -90,7 +90,7 @@ Tier 2 (off until `--operators`): `return_nil`, `literal_mutation`, `condition_n
 [Mutant](https://github.com/mbj/mutant) or any other mutation-testing tool, so
 only Mutineer's own MIT license applies.
 
-| | Mutineer | Mutant 0.17 |
+| Aspect | Mutineer | Mutant 0.17 |
 |---|---|---|
 | License | MIT, for every use | Free for open source; commercial use needs a paid subscription |
 | Runtime dependencies | None (Prism + stdlib) | `parser`, `unparser`, `sorbet-runtime` and others |
@@ -100,7 +100,8 @@ only Mutineer's own MIT license applies.
 
 Mutant is the established tool, with a deeper operator set. Mutineer trades
 that depth for an MIT license, an empty dependency list, and a JSON contract
-built for CI gates and AI agents. Full comparison:
+built for CI gates and AI agents. Checked against Mutant 0.17 on 2026-10-06.
+Full comparison:
 [README](https://github.com/davidteren/mutineer#mutineer-and-mutant).
 
 ## More docs
