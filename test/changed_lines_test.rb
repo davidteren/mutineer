@@ -102,6 +102,28 @@ class ChangedLinesTest < Minitest::Test
     end
   end
 
+  def test_git_diff_skips_ignored_files_but_keeps_untracked_files
+    in_repo do |root|
+      File.write(File.join(root, ".gitignore"), "*.rb\n!new.rb\n")
+      File.write(File.join(root, "generated.rb"), "a\nb\n")
+      File.write(File.join(root, "new.rb"), "a\nb\n")
+      map = CL.for(ref: "HEAD", files: %w[generated.rb new.rb], project_root: root)
+      assert_empty map.fetch(File.join(root, "generated.rb"))
+      assert_equal Set[1, 2], map.fetch(File.join(root, "new.rb"))
+
+      File.write(File.join(root, "old.rb"), "1\nchanged\n3\n")
+      assert_equal Set[2], CL.parse(CL.git_diff("HEAD", File.join(root, "old.rb"), root))
+    end
+  end
+
+  def test_git_diff_respects_repository_exclude_rules
+    in_repo do |root|
+      File.write(File.join(root, ".git/info/exclude"), "local.rb\n")
+      File.write(File.join(root, "local.rb"), "a\n")
+      assert_empty CL.parse(CL.git_diff("HEAD", File.join(root, "local.rb"), root))
+    end
+  end
+
   def test_git_diff_tracked_modified_file_reports_only_changed_lines
     in_repo do |root|
       File.write(File.join(root, "old.rb"), "1\n2 changed\n3\n")
