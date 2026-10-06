@@ -25,6 +25,7 @@ class TestRunnersRSpecTest < Minitest::Test
   NOISY = File.join(FIX, "noisy_spec.rb")
   # Leaves $stdout and $stderr as StringIOs, at load time and inside an example.
   STDOUT_SWAP = File.join(FIX, "calculator_stdout_swap_spec.rb")
+  GEM_SETTING = File.join(FIX, "gem_setting_spec.rb")
 
   # Returns [exitstatus, captured_real_stdout, captured_real_stderr]. The block
   # runs in the child and returns the integer exit code.
@@ -137,6 +138,17 @@ class TestRunnersRSpecTest < Minitest::Test
     assert_equal 1, c1, "first run should hold exactly its 1 example"
     assert_equal 1, r2, "failing spec should return 1"
     assert_equal 1, c2, "second run must NOT accumulate the first run's example"
+  end
+
+  # Under `rails: true`, Bundler requires the app's gems before the run, and a
+  # gem such as rspec-retry adds its setting then. The runner must keep it.
+  def test_keeps_a_setting_that_a_gem_added_before_the_run
+    code, = in_fork do
+      require "rspec/core"
+      ::RSpec.configure { |c| c.add_setting :mutineer_gem_setting }
+      Mutineer::TestRunners::RSpec.run([GEM_SETTING])
+    end
+    assert_equal 0, code
   end
 
   # --- record_to (--matrix) -------------------------------------------------
