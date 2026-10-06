@@ -10,9 +10,11 @@ module Mutineer
   #
   # Runs UNDER THE APP'S OWN BUNDLE/RUBY (the tool's DaemonClient spawns it via
   # `bundle exec ruby`). It boots the app ONCE, then serves per-mutant test-run
-  # requests over stdin/stdout as newline-delimited JSON. For each request it
-  # FORKS a child that loads the mutated source text the tool sent, runs the
-  # covering tests, and exits with a status the parent decodes into a verdict.
+  # requests over stdin/stdout as newline-delimited JSON (the protocol keeps a
+  # private copy of the original stdout; the app's own stdout goes to stderr).
+  # For each request it FORKS a child that loads the mutated source text the
+  # tool sent, runs the covering tests, and exits with a status the parent
+  # decodes into a verdict.
   #
   # HARD CONSTRAINT: this file must be loadable WITHOUT Prism or the rest of
   # mutineer. The app's Ruby may be < 3.4 (no stdlib Prism) and its bundle has no
@@ -50,10 +52,14 @@ module Mutineer
       # Serve the protocol on the given IO pair (defaults to stdio). Returns on quit.
       #
       # @param input [IO] request stream.
-      # @param output [IO] verdict stream.
+      # @param output [IO, nil] verdict stream. nil (the default) reserves the
+      #   process's original stdout for the protocol and points fd 1 at stderr.
       # @param errio [IO] diagnostics stream (never the IPC channel).
       # @return [void]
-      def run(input: $stdin, output: $stdout, errio: $stderr)
+      def run(input: $stdin, output: nil, errio: $stderr)
+        # Only a stream `run` reserved itself is the daemon's to close in a fork.
+        @protocol = output ? nil : reserve_protocol_output
+        output ||= @protocol
         @errio = errio
         @output = output
         boot_line = input.gets
@@ -92,6 +98,21 @@ module Mutineer
       end
 
       private
+
+      # Move the protocol channel off fd 1 before the app boots. The app may
+      # print through `puts`, `STDOUT`, or a raw fd 1 write (a logger, a
+      # subprocess). A line like that ahead of the ready message would break
+      # the client's JSON read. The protocol keeps a private dup of the
+      # original stdout. Fd 1 then points at stderr, so app output stays
+      # visible in the tool's diagnostics.
+      #
+      # @return [IO] the reserved protocol stream.
+      def reserve_protocol_output
+        protocol = STDOUT.dup
+        STDOUT.reopen(STDERR)
+        $stdout = STDOUT
+        protocol
+      end
 
       # BOOT ONCE. chdir + require the app's boot file so the whole app is loaded
       # and inherited by every fork. Never requires mutineer.
@@ -160,14 +181,25 @@ module Mutineer
         { "map" => {}, "failed_test_files" => [], "error" => "#{e.class}: #{e.message}" }
       end
 
-      # Fork-safety hook for coverage capture: route each capture fork to worker
-      # 0's isolated DB (captures run serially, so one worker is enough). Nil when
-      # the app has no worker-DB adapter (non-Rails). Capture then runs as before.
+      # Fork-safety hook for coverage capture. Each capture fork drops its copy
+      # of the protocol channel (see close_protocol) and, when the app has a
+      # worker-DB adapter, routes to worker 0's isolated DB (captures run
+      # serially, so one worker is enough).
       def coverage_after_fork
-        return nil unless @worker_db
-
+        worker_db = @worker_db
         schema = @schema_path
-        -> { @worker_db.after_fork(0, schema) }
+        lambda do
+          close_protocol
+          worker_db&.after_fork(0, schema)
+        end
+      end
+
+      # A forked child never answers on the protocol channel. Closing its
+      # inherited copy lets a daemon crash read as EOF on the client at once,
+      # not only after a slow or hung child exits. A caller-supplied output
+      # (for example STDOUT) is left open.
+      def close_protocol
+        @protocol&.close rescue nil # rubocop:disable Style/RescueModifier
       end
 
       # Fork a child to run one mutant in isolation; decode its exit into a verdict.
@@ -179,12 +211,13 @@ module Mutineer
         daemon = Process.pid
         pid = fork do
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
-          # and silence the child's stdout so test output never corrupts the IPC pipe.
+          # and silence the child's stdout so test output stays out of the diagnostics.
           Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
           OrphanGuard.start(daemon)
           code =
             begin
               ChildStdout.silence
+              close_protocol
               # Route THIS fork at its own worker database before any test loads.
               # A routing failure raises here and is scored `error`, never a false verdict.
               @worker_db&.after_fork(worker, schema_for_fork)

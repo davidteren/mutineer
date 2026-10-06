@@ -64,6 +64,12 @@ All notable changes to this project are documented here. The format is based on
   `workflow_dispatch` trigger), and those runs report the required checks on
   the PR's head commit. With a `RELEASE_PR_TOKEN` secret set, the push
   triggers CI as before and no dispatch is made.
+- **A boot file that prints to stdout no longer breaks the daemon handshake
+  (#102).** Output from `puts`, `STDOUT`, `$stdout`, a direct fd 1 write, or a
+  subprocess reached the JSON channel before the ready message, so the daemon
+  failed with "daemon exited before the handshake". The daemon now keeps a
+  private copy of its original stdout for the protocol and points the app's
+  stdout at stderr, where that output stays visible.
 - **A class or module opened inside `class << self` belongs to the singleton
   class (#208).** In `class App; class << self; class Q; def q1 ...` the
   subject was `App::Q.q1`, a class method of a constant Ruby never defines:
