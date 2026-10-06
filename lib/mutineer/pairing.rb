@@ -31,13 +31,16 @@ module Mutineer
     # @return [Array<String>] flattened, deduped source file list.
     def expand_sources(args, project_root:)
       root = File.expand_path(project_root)
+      # The root as typed and as its real path (macOS `/var` vs `/private/var`),
+      # resolved once for every file below.
+      roots = [root, ProjectPath.root_real(root)].uniq
       Array(args).flat_map do |arg|
         abs = File.expand_path(arg, root)
         if File.directory?(abs)
-          Dir.glob(File.join(abs, "**", "*.rb")).sort.map { |f| existing_relative(f, root) || f }
+          Dir.glob(File.join(abs, "**", "*.rb")).sort.map { |f| existing_relative(f, roots) || f }
         else
           # `..` resolves as text, as FileSwap and the daemon already read it.
-          [(existing_relative(abs, root) if File.exist?(abs)) || arg]
+          [(existing_relative(abs, roots) if File.exist?(abs)) || arg]
         end
       end.uniq
     end
@@ -48,23 +51,23 @@ module Mutineer
     # The file's own name is kept, so a symlinked file is not renamed.
     #
     # @param abs [String] expanded absolute path of an existing file.
-    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
     # @return [String, nil] root-relative path, or nil outside the root.
-    def existing_relative(abs, root)
-      root_relative(abs, root) ||
-        root_relative(File.join(File.realpath(File.dirname(abs)), File.basename(abs)), root)
+    def existing_relative(abs, roots)
+      root_relative(abs, roots) ||
+        root_relative(File.join(File.realpath(File.dirname(abs)), File.basename(abs)), roots)
     end
 
-    # `abs` relative to `root`, or nil when it is not under it. Text only: a
+    # `abs` relative to the first of `roots` it is under, or nil. Text only: a
     # symlinked source keeps its own name (realpath would rename it to its
-    # target and pair the wrong test). The root's real path is also tried, so
-    # the macOS `/var` vs `/private/var` alias still matches.
+    # target and pair the wrong test). `roots` holds the root's real path too,
+    # so the macOS `/var` vs `/private/var` alias still matches.
     #
     # @param abs [String] expanded absolute path.
-    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
     # @return [String, nil] root-relative path, or nil outside the root.
-    def root_relative(abs, root)
-      [root, ProjectPath.root_real(root)].uniq.each do |r|
+    def root_relative(abs, roots)
+      roots.each do |r|
         prefix = r.end_with?("/") ? r : "#{r}/"
         return abs.delete_prefix(prefix) if abs.start_with?(prefix)
       end

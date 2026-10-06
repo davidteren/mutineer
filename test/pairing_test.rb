@@ -146,12 +146,15 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # A missing file keeps the spelling the user typed, so the CLI's "no such
+  # file" message names it as typed.
   def test_expand_sources_keeps_a_missing_file_as_typed
     with_tree("lib/calc.rb") do |root|
       assert_equal ["./lib/nope.rb"], Mutineer::Pairing.expand_sources(["./lib/nope.rb"], project_root: root)
     end
   end
 
+  # A source outside the project is never remapped into it.
   def test_expand_sources_keeps_a_path_outside_the_root_as_typed
     with_tree("proj/lib/calc.rb", "other/x.rb") do |dir|
       root = File.join(dir, "proj")
