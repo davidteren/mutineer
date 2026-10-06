@@ -4,6 +4,7 @@ require_relative "test_helper"
 require "json"
 require "stringio"
 require "tmpdir"
+require "open3"
 
 class JsonReporterTest < Minitest::Test
   SRC = "class Pricing\n  def total(price)\n    if price >= 100\n    end\n  end\nend\n"
@@ -30,6 +31,25 @@ class JsonReporterTest < Minitest::Test
     Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { FILE => SRC })
                     .report(out: out, err: StringIO.new, format: "json")
     JSON.parse(out.string)
+  end
+
+  # Renders one survivor's JSON diff and checks that git applies it to `src`
+  # and gives the same file as Mutation#apply.
+  def assert_git_applies(subj, src, mutation, header)
+    result = Mutineer::Result.survived.with(subject: subj, mutation: mutation)
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([result]), { "foo.rb" => src })
+                      .report(out: out, err: StringIO.new, format: "json")
+    diff = JSON.parse(out.string)["survivors"].first["diff"]
+    assert_includes diff, header
+
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "foo.rb"), src)
+      File.write(File.join(dir, "m.patch"), diff)
+      _, err, status = Open3.capture3("git", "apply", "--unidiff-zero", "m.patch", chdir: dir)
+      assert status.success?, "git apply rejected #{header}: #{err}\n#{diff}"
+      assert_equal mutation.apply(src), File.read(File.join(dir, "foo.rb"))
+    end
   end
 
   def test_valid_json_with_summary_and_score
@@ -146,6 +166,77 @@ class JsonReporterTest < Minitest::Test
     assert_includes s["diff"], "@@ -3 +3 @@"
     assert_includes s["diff"], "-    if price >= 100"
     assert_includes s["diff"], "+    if price > 100"
+  end
+
+  # #106: a mutant on the last line of a file with no final newline marks both
+  # sides, so git apply does not add a newline.
+  def test_survivor_diff_at_end_of_file_without_newline_applies_with_git
+    src = "class Foo\n  def bar(x) = x >= 1\nend"
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                 singleton: false, def_node: def_node)
+    tail = Mutineer::Mutation.new(start_offset: src.index("x >= 1"), end_offset: src.bytesize,
+                                  replacement: "x > 1\nend", operator: :comparison)
+    assert_git_applies(subj, src, tail, "@@ -2,2 +2,2 @@")
+    # A one-line mutant on a last line with no final newline.
+    one_line_src = "class Foo; def bar(x) = x >= 1; end"
+    one_line = Mutineer::Mutation.new(start_offset: one_line_src.index(">="), end_offset: one_line_src.index(">=") + 2,
+                                      replacement: ">", operator: :comparison)
+    assert_git_applies(subj, one_line_src, one_line, "@@ -1 +1 @@\n-class Foo; def bar(x) = x >= 1; end\n\\ No newline")
+  end
+
+  # PR #194 review: the newline state is each side's own. A replacement that
+  # adds the missing final newline, and a range that ends right after the
+  # file's final newline, both apply.
+  def test_survivor_diff_tracks_each_sides_final_newline
+    src = "class Foo; def bar(x) = x >= 1; end"
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                 singleton: false, def_node: def_node)
+    adds_newline = Mutineer::Mutation.new(start_offset: src.index("end"), end_offset: src.bytesize,
+                                          replacement: "end\n", operator: :statement_removal)
+    assert_git_applies(subj, src, adds_newline, "@@ -1 +1 @@\n-#{src}\n\\ No newline at end of file\n+#{src}\n")
+
+    with_newline = "#{src}\n"
+    covers_final_newline = Mutineer::Mutation.new(start_offset: with_newline.index(">="),
+                                                  end_offset: with_newline.bytesize,
+                                                  replacement: "> 1; end\n", operator: :comparison)
+    assert_git_applies(subj, with_newline, covers_final_newline, "@@ -1 +1 @@")
+  end
+
+  # #106: a CRLF file keeps its "\r" in the diff, so git applies it unchanged.
+  def test_survivor_diff_of_a_crlf_file_applies_with_git
+    src = "class Foo\r\n  def bar(x)\r\n    log(x,\r\n        y)\r\n    x\r\n  end\r\nend\r\n"
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                 singleton: false, def_node: def_node)
+    multiline = Mutineer::Mutation.new(start_offset: src.index("log"), end_offset: src.index("y)") + 2,
+                                       replacement: "nil", operator: :statement_removal)
+    assert_git_applies(subj, src, multiline, "@@ -3,2 +3 @@")
+  end
+
+  # #106: the hunk header counts the lines the diff removes and adds, so an
+  # independent consumer (git apply) accepts the patch, and applying it gives
+  # the same file as Mutation#apply.
+  def test_survivor_diffs_apply_cleanly_with_git
+    src = "class Foo\n  def bar(x)\n    log(x,\n        y)\n    \"caf\u00e9\" if x >= 1\n    x\n  end\nend\n"
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                 singleton: false, def_node: def_node)
+    multiline = Mutineer::Mutation.new(start_offset: src.index("log"), end_offset: src.index("y)") + 2,
+                                       replacement: "nil", operator: :statement_removal)
+    utf8 = Mutineer::Mutation.new(start_offset: src.byteindex(">="), end_offset: src.byteindex(">=") + 2,
+                                  replacement: ">", operator: :comparison)
+    # Empties a line: the `+` side is one empty line, not zero lines.
+    line_start = src.byteindex("    x\n  end")
+    emptied = Mutineer::Mutation.new(start_offset: line_start, end_offset: line_start + 5,
+                                     replacement: "", operator: :statement_removal)
+    # A replacement ending in a newline adds a line.
+    split = Mutineer::Mutation.new(start_offset: line_start + 4, end_offset: line_start + 5,
+                                   replacement: "x\n", operator: :statement_removal)
+
+    { multiline => "@@ -3,2 +3 @@", utf8 => "@@ -5 +5 @@", emptied => "@@ -6 +6 @@\n-    x\n+\n",
+      split => "@@ -6 +6,2 @@" }.each { |m, header| assert_git_applies(subj, src, m, header) }
   end
 
   def test_empty_arrays_when_nothing_survives
