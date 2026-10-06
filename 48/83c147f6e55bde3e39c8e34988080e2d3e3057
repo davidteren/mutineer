@@ -1,0 +1,31 @@
+test/fixtures/rails_app/bin/dogfood
+  s_07d7b58ff1b9fd::t_b6bca1f7d75a9c 56
+test/fixtures/rails_app/test/models/price_list_test.rb
+  s_07d7b58ff1b9fd::t_b6bca1f7d75a9c 9-12
+test/runner_test.rb
+  s_07d7b58ff1b9fd::t_8a5e859ab559a8 183-189
+test/daemon_coverage_test.rb
+  s_07d7b58ff1b9fd::t_b6bca1f7d75a9c 61-63
+test/fixtures/rails_app/app/models/price_list.rb
+  s_07d7b58ff1b9fd::t_b6bca1f7d75a9c 10-14
+lib/mutineer/runner.rb
+  s_07d7b58ff1b9fd::t_8a5e859ab559a8 427-431,450
+lib/mutineer/daemon_backend.rb
+  s_07d7b58ff1b9fd::t_8a5e859ab559a8 120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4883c147f6e55bde3e39c8e34988080e2d3e3057",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
