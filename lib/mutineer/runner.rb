@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "pathname"
 require_relative "parser"
 require_relative "project"
@@ -218,17 +219,25 @@ module Mutineer
         ordinal = (decls[subject.def_node.location.start_offset] ||= decls.size)
         ids = MutantId.for_subject(subject, source, mutations, path: id_path, subject_ordinal: ordinal)
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
+        lines = mutations.map { |m| source.byteslice(0, m.start_offset).count("\n") + 1 }
+        keys = result_keys(mutations, source, lines)
+        # A repeat of an earlier edit on the same line is dropped (#159),
+        # separately among the run and the ignored mutants, so an ignored copy
+        # never hides a copy that should run. A dropped copy records nothing.
+        seen = { run: Set.new, ignored: Set.new }
         mutations.each_with_index do |mutation, i|
           id = ids[i]
           legacy = legacy_ids[i]
+          ignored = suppressed?(mutation.operator, lines[i], [id, legacy], disabled, ignore_set)
+          next unless seen[ignored ? :ignored : :run].add?(keys[i])
+
           id_map[id] = legacy
           # An old entry still over-matches other files even when the new id is
           # listed too, so every old-entry match is reported for migration.
           if ignore_set.include?(legacy)
             (legacy_ignore_matches[legacy] ||= []) << { id: id, file: id_path, subject: subject.qualified_name }
           end
-          line = source.byteslice(0, mutation.start_offset).count("\n") + 1
-          if suppressed?(mutation.operator, line, [id, legacy], disabled, ignore_set)
+          if ignored
             ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id)
           else
             jobs << [subject, mutation, id]
@@ -236,6 +245,33 @@ module Mutineer
         end
       end
       [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map }]
+    end
+
+    # One key per mutation; two mutations share a key exactly when they are
+    # the same operator on the same line and give the same mutated source (one
+    # edit, #159). The caller drops a repeat after ids are assigned. Only a
+    # group of same-operator, same-line mutations can repeat, so only those
+    # build a key from their text: the span from the group's earliest start to
+    # its latest end, digested. Every other mutation gets a key of its own.
+    #
+    # @param mutations [Array<Mutineer::Mutation>] one subject's mutations.
+    # @param source [String] the full, unmutated source.
+    # @param lines [Array<Integer>] each mutation's line.
+    # @return [Array<Object>] one key per mutation, in order.
+    def self.result_keys(mutations, source, lines)
+      keys = Array.new(mutations.size) { |i| i }
+      mutations.each_index.group_by { |i| [mutations[i].operator, lines[i]] }.each_value do |group|
+        next if group.size < 2
+
+        from = group.map { |i| mutations[i].start_offset }.min
+        to = group.map { |i| mutations[i].end_offset }.max
+        group.each do |i|
+          m = mutations[i]
+          span = "#{source.byteslice(from...m.start_offset)}#{m.replacement}#{source.byteslice(m.end_offset...to)}"
+          keys[i] = [m.operator, lines[i], Digest::SHA256.digest(span)]
+        end
+      end
+      keys
     end
 
     # External backend orchestration. Runs each mutant's whole-file mutation on
@@ -378,10 +414,13 @@ module Mutineer
     # sits on the same physical line as the code it silences). A bare marker
     # disables every operator on that line; `disable-line a, b` only the listed
     # operators. Block-form disable/enable ranges are intentionally not supported.
+    # Only a real `#` comment counts: Prism lists the comments, so the marker
+    # text inside a string, heredoc or regex silences nothing (#158).
     def self.suppress_map(source, file)
       map = {}
-      source.each_line.with_index(1) do |text, line|
-        next unless (m = text.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
+      Parser.comments(source).grep(Prism::InlineComment).each do |comment|
+        line = comment.location.start_line
+        next unless (m = comment.slice.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
 
         ops = m[1]&.split(",")&.map(&:strip)&.reject(&:empty?)
         # Only spaces or commas after the marker (e.g. `disable-line  -- why`)
