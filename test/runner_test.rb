@@ -123,6 +123,47 @@ class RunnerTest < Minitest::Test
     assert_predicate result, :skipped?, "expected skipped, got #{result.status}"
   end
 
+  FakeCoverageMap = Struct.new(:tests_by_line, :project_root) do
+    def tests_for(_file, line) = tests_by_line.fetch(line, [])
+    def method_uncapturable?(*) = false
+  end
+
+  def selection(source, snippet, tests_by_line)
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
+    start = source.index(snippet)
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,
+                                      replacement: "nil", operator: :test)
+    Mutineer::Runner.coverage_selection("x.rb", mutation, subject, source, FakeCoverageMap.new(tests_by_line, "/root"))
+  end
+
+  def test_coverage_selection_uses_the_tests_that_ran_the_whole_statement
+    source = <<~RUBY
+      def f(c)
+        {
+          yes: c.fetch(true, 0),
+          no: c.fetch(false, 0)
+        }
+      end
+    RUBY
+    kind, tests = selection(source, "false", { 3 => ["t_test.rb"] })
+
+    assert_equal :run, kind
+    assert_equal ["/root/t_test.rb"], tests
+  end
+
+  def test_coverage_selection_gives_a_statement_that_did_not_run_no_tests
+    source = <<~RUBY
+      def f(c)
+        c ||
+          false
+      end
+    RUBY
+    kind, = selection(source, "false", {})
+
+    assert_equal :verdict, kind
+  end
+
   # --since restricts the job list to mutations on changed lines. Deterministic:
   # stub ChangedLines.for (no real git) so only line 5 (`a + b`) is "changed",
   # then assert filter_since keeps only line-5 jobs and drops the rest.

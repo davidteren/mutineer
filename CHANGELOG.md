@@ -69,6 +69,28 @@ All notable changes to this project are documented here. The format is based on
   its Ruby escape (`\e`), and a byte that is not valid UTF-8 (a Latin-1
   source) as `\xNN`. The JSON and HTML
   reports already escaped text and do not change.
+- **`./lib/x.rb` and an absolute path pair with a test** (#104). Auto-pairing
+  found the test for `lib/calc.rb` but not for `./lib/calc.rb` or the
+  absolute path to the same file. It reported "no test found by convention"
+  and exited 2. A file argument inside the project is now made relative to
+  the project root first, so equivalent spellings (`./`, `..`, absolute)
+  pair with the same test and run once. A symlink keeps its own name, so it
+  stays a separate source from its target. Reports show that root-relative
+  path. A path outside the project stays as typed.
+- **A mutant on another line of a multi-line statement runs its tests**
+  instead of being reported as `no_coverage`. Ruby counts one line of a
+  statement only. When the mutant's own line has no count, the runner now uses
+  the tests that ran the statement that holds the mutation. A heredoc body
+  belongs to its statement. This fallback skips a first or last line that also
+  holds other code, such as the `def` line, and the body of `x while c` and
+  `x until c`. It also gives no tests to a mutant in code of the statement
+  that runs only sometimes: a `when` or `in` condition, a `rescue` class
+  list, a parameter default, the rescue side of `x rescue y`, the value of
+  `||=` or `&&=`, the operand of `defined?`, the right side of `a ||` or
+  `a &&`, a branch of `x if c`, `x unless c`, a ternary or `else`, the
+  pattern of `v in p` or `v => p`, an
+  argument or block of `x&.m(...)`, and the value of `x&.m += v`. Those
+  mutants stay `no_coverage`, as before.
 - **A survivor diff for a multi-line mutant applies with `git apply`** (#106).
   The JSON `diff` header always read `@@ -N +N @@`, even when the mutant
   removed two lines and added one, so `git apply` rejected the patch as

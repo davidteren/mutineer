@@ -4,6 +4,7 @@ require "pathname"
 require_relative "parser"
 require_relative "project"
 require_relative "result"
+require_relative "statement_lines"
 require_relative "isolation"
 require_relative "minitest_integration"
 require_relative "test_runners"
@@ -336,7 +337,10 @@ module Mutineer
     # Coverage-based test selection, shared by the in-process ({run}) and daemon
     # paths so both narrow identically (score parity). Returns
     # `[:run, abs_test_paths]` when some test covers the mutant's line, or
-    # `[:verdict, Result]` (no_coverage / uncapturable) when none do.
+    # `[:verdict, Result]` (no_coverage / uncapturable) when none do. A line
+    # Ruby does not count (a later line of a multi-line statement) uses the
+    # tests that ran the statement that holds it ({StatementLines}), unless the
+    # mutant sits in code of that statement that runs only sometimes.
     #
     # An empty selection is `:uncapturable` (not `:no_coverage`) when the
     # mutant's enclosing method body got coverage from no *successful* capture but
@@ -353,6 +357,11 @@ module Mutineer
     def self.coverage_selection(source_file, mutation, subject, source, coverage_map)
       line   = source.byteslice(0, mutation.start_offset).count("\n") + 1
       chosen = coverage_map.tests_for(source_file, line)
+      if chosen.empty? && subject
+        # A multi-line statement has a count on one of its lines only.
+        lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
+        chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq
+      end
       if chosen.empty?
         # Method BODY range, not the whole def: the def/end lines are "covered" at
         # class-load even when the body never runs (body_loc is the statements' span).
