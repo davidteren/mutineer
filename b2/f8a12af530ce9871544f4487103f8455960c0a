@@ -1,0 +1,94 @@
+test/html_reporter_test.rb
+  s_07d7b58ff1b9fd::t_5682a70ebce823 57-61
+lib/mutineer/reporter.rb
+  s_07d7b58ff1b9fd::t_d342e76c4da097 171,202-204,299,635-636,706-708,721
+test/daemon_coverage_test.rb
+  s_07d7b58ff1b9fd::t_81456dadaadeba 50-64
+test/fixtures/load_time/test/catalog_test.rb
+  s_07d7b58ff1b9fd::t_ff62fb98a11713 1-10
+test/fixtures/rails_app/test/models/price_list_test.rb
+  s_07d7b58ff1b9fd::t_59f4c06483e1c2 1-9
+test/reporter_test.rb
+  s_07d7b58ff1b9fd::t_5682a70ebce823 153-161,325-331,333
+  s_07d7b58ff1b9fd::t_6304cd654b3acb 332,334
+test/daemon_backend_contract_test.rb
+  s_07d7b58ff1b9fd::t_14fc2456bd074d 14,20,22,130-155
+  s_07d7b58ff1b9fd::t_1c28b56a5a3adf 156-158
+test/fixtures/load_time/lib/shelf.rb
+  s_07d7b58ff1b9fd::t_d07b4b0cc5c549 16-19,24
+  s_07d7b58ff1b9fd::t_ad2763d8915d66 1-15,20-23,25-26
+test/fixtures/load_time/lib/catalog.rb
+  s_07d7b58ff1b9fd::t_06d033db740b79 1-11
+AGENTS.md
+  s_07d7b58ff1b9fd::t_0673133e791f12 144
+rake/docs_contract.rb
+  s_07d7b58ff1b9fd::t_0673133e791f12 18,42
+lib/mutineer/coverage_map.rb
+  s_07d7b58ff1b9fd::t_84387e67185444 102-103,105
+  s_07d7b58ff1b9fd::t_9b915017f3681d 33-40,51,53,56,79,97-99,104,116-125,303-306,308,332,498,794,799,827,832,843-867,875,1090-1091
+  s_07d7b58ff1b9fd::t_5fbabf0616ecf1 872-873
+test/json_reporter_test.rb
+  s_07d7b58ff1b9fd::t_5682a70ebce823 334-346
+lib/mutineer/result.rb
+  s_07d7b58ff1b9fd::t_654ecd4afb20f5 4,22-28,38-40,111-115,137-138,161,187-188
+test/fixtures/load_time/autoload_boot.rb
+  s_07d7b58ff1b9fd::t_a174798944af45 1-5
+docs/json-schema.md
+  s_07d7b58ff1b9fd::t_0673133e791f12 37,56,82,89-93,148
+test/coverage_map_test.rb
+  s_07d7b58ff1b9fd::t_c28dffb64497c7 410-476
+docs/sample-report.html
+  s_07d7b58ff1b9fd::t_0673133e791f12 52
+test/runner_test.rb
+  s_07d7b58ff1b9fd::t_cac8617d557b0e 157,159-160,163,169-187
+docs/llms.txt
+  s_07d7b58ff1b9fd::t_0673133e791f12 27
+test/fixtures/load_time/boot.rb
+  s_07d7b58ff1b9fd::t_fa368eee9fbb27 1-5
+test/fixtures/load_time/test/shelf_test.rb
+  s_07d7b58ff1b9fd::t_d07b4b0cc5c549 16
+  s_07d7b58ff1b9fd::t_e7ad124a0468b5 1-15,17-22
+test/load_time_test.rb
+  s_07d7b58ff1b9fd::t_d07b4b0cc5c549 78
+  s_07d7b58ff1b9fd::t_1bbfd81e4716b0 1-77,79-82
+lib/mutineer/runner.rb
+  s_07d7b58ff1b9fd::t_5a6b70f569a491 457-461,484
+  s_07d7b58ff1b9fd::t_9a305ffc5bef0d 84,382-385,411-414,420-456,462-483,485-488,655-656
+rake/site_docs.rb
+  s_07d7b58ff1b9fd::t_0673133e791f12 23
+test/fixtures/rails_app/app/models/price_list.rb
+  s_07d7b58ff1b9fd::t_c9de002328bfed 1-11
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_bfce5431d3ab26 24-31,60-76
+lib/mutineer/daemon_server.rb
+  s_07d7b58ff1b9fd::t_af2ef4ed01598d 142
+  s_07d7b58ff1b9fd::t_75508497f4dc0b 156
+test/fixtures/rails_app/config/initializers/price_list.rb
+  s_07d7b58ff1b9fd::t_ecfff535da3bce 1-5
+test/result_test.rb
+  s_07d7b58ff1b9fd::t_5682a70ebce823 108-109
+README.md
+  s_07d7b58ff1b9fd::t_c2c40598488157 122-129
+  s_07d7b58ff1b9fd::t_0673133e791f12 238
+lib/mutineer/daemon_backend.rb
+  s_07d7b58ff1b9fd::t_e0e84bdf1e1415 120-121
+  s_07d7b58ff1b9fd::t_75508497f4dc0b 128,265-266
+test/fixtures/rails_app/bin/dogfood
+  s_07d7b58ff1b9fd::t_c9649d7e211e54 50-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2f8a12af530ce9871544f4487103f8455960c0a",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
