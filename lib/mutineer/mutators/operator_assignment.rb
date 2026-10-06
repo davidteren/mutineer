@@ -90,13 +90,6 @@ module Mutineer
         super
       end
 
-      # Skips a nested method definition. The project finds it as a subject of
-      # its own, so a visit here counts its compound assignments twice.
-      #
-      # @param node [Prism::DefNode] nested definition node.
-      # @return [void]
-      def visit_def_node(node); end
-
       private
 
       # Emits a mutation when the node's operator has a replacement.

@@ -110,6 +110,58 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # #104: equivalent spellings of one file name the same root-relative path,
+  # so they pair with the same test and run once.
+  def test_expand_sources_normalizes_equivalent_file_paths
+    with_tree("lib/calc.rb", "test/calc_test.rb") do |root|
+      spellings = ["lib/calc.rb", "./lib/calc.rb", File.join(root, "lib/calc.rb"), "lib/../lib/calc.rb"]
+      spellings.each do |arg|
+        assert_equal ["lib/calc.rb"], Mutineer::Pairing.expand_sources([arg], project_root: root), arg
+      end
+      assert_equal ["lib/calc.rb"], Mutineer::Pairing.expand_sources(spellings, project_root: root)
+      assert_equal ["test/calc_test.rb"], infer_tests("lib/calc.rb", root)
+    end
+  end
+
+  # Review of #104: a symlinked source keeps its own name, so it pairs with its
+  # own test, and a directory run and a file argument agree on that name.
+  def test_expand_sources_keeps_a_symlinked_source_name
+    with_tree("lib/shared/calc.rb", "test/calc_test.rb") do |root|
+      File.symlink(File.join(root, "lib/shared/calc.rb"), File.join(root, "lib/calc.rb"))
+      got = Mutineer::Pairing.expand_sources(["lib", "./lib/calc.rb", File.join(File.realpath(root), "lib/calc.rb")],
+                                             project_root: root)
+      assert_equal ["lib/calc.rb", "lib/shared/calc.rb"], got
+      assert_equal ["test/calc_test.rb"], infer_tests(got.first, root)
+    end
+  end
+
+  # A directory typed through a symlinked parent agrees with the file argument.
+  def test_expand_sources_resolves_a_symlinked_parent_for_dirs_and_files
+    with_tree("real/proj/lib/calc.rb") do |dir|
+      File.symlink(File.join(dir, "real"), File.join(dir, "link"))
+      root = File.join(File.realpath(dir), "real/proj")
+      typed = File.join(dir, "link/proj/lib")
+      assert_equal ["lib/calc.rb"], Mutineer::Pairing.expand_sources([typed], project_root: root)
+      assert_equal ["lib/calc.rb"], Mutineer::Pairing.expand_sources(["#{typed}/calc.rb"], project_root: root)
+    end
+  end
+
+  # A missing file keeps the spelling the user typed, so the CLI's "no such
+  # file" message names it as typed.
+  def test_expand_sources_keeps_a_missing_file_as_typed
+    with_tree("lib/calc.rb") do |root|
+      assert_equal ["./lib/nope.rb"], Mutineer::Pairing.expand_sources(["./lib/nope.rb"], project_root: root)
+    end
+  end
+
+  # A source outside the project is never remapped into it.
+  def test_expand_sources_keeps_a_path_outside_the_root_as_typed
+    with_tree("proj/lib/calc.rb", "other/x.rb") do |dir|
+      root = File.join(dir, "proj")
+      assert_equal ["../other/x.rb"], Mutineer::Pairing.expand_sources(["../other/x.rb"], project_root: root)
+    end
+  end
+
   def test_expand_sources_dedupes_and_mixes_dir_and_file
     with_tree("app/a.rb", "lib/x.rb") do |root|
       got = Mutineer::Pairing.expand_sources(["app", "app/a.rb", "lib/x.rb"], project_root: root)

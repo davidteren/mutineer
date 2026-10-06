@@ -19,13 +19,6 @@ module Mutineer
         super # nested arrays each get their own mutation
       end
 
-      # Skips a nested method definition. The project finds it as a subject of
-      # its own, so a visit here counts its arrays twice.
-      #
-      # @param node [Prism::DefNode] nested definition node.
-      # @return [void]
-      def visit_def_node(node); end
-
       private
 
       # Emits a mutation for a non-empty array with brackets.

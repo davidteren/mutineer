@@ -44,6 +44,40 @@ class EquivalentMutantTest < Minitest::Test
     assert_equal({ 1 => :all, 2 => :all, 3 => :all }, map)
   end
 
+  # #158: the marker text inside a string, heredoc or regex is not a comment.
+  def test_suppress_map_ignores_the_marker_inside_a_string
+    src = <<~RUBY
+      class Example
+        def matches?(value)
+          value == "# mutineer:disable-line"
+        end
+
+        def doc(x)
+          x > 1 && <<~TXT
+            # mutineer:disable-line
+          TXT
+        end
+
+        def real(x)
+          x == 1 # mutineer:disable-line comparison
+        end
+
+        def pattern(x)
+          x =~ /# mutineer:disable-line/
+        end
+      end
+    RUBY
+    map = Mutineer::Runner.suppress_map(src, "x.rb")
+    assert_equal({ 13 => Set[:comparison] }, map)
+  end
+
+  # PR #197 review: an =begin/=end block and the data after __END__ are not
+  # line comments, so the marker text there silences nothing.
+  def test_suppress_map_ignores_the_marker_in_embedded_docs_and_after_end
+    src = "x = 1\n=begin\n# mutineer:disable-line\n=end\ny = 2\n__END__\nz # mutineer:disable-line\n"
+    assert_empty Mutineer::Runner.suppress_map(src, "x.rb")
+  end
+
   def test_suppressed_scope_matches_only_listed_operator
     disabled = { 2 => Set[:comparison] }
     refute Mutineer::Runner.suppressed?(:arithmetic, 2, %w[id old], disabled, Set.new)
