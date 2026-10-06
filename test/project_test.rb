@@ -383,8 +383,8 @@ class ProjectTest < Minitest::Test
     with_source(src) do |path|
       subjects = Mutineer::Project.discover([path])
       assert_equal %w[#<Class:App>::Q#q1 #<Class:App>::Q::R#r1 #<Class:App>::Q::X#x1 #<Class:App>::Q::S#s1 Deep#d
-                      DeepB#e Top#t #<Class:App>::Z#z1 Foo::Mod.c App.after], subjects.map(&:qualified_name)
-      assert_equal [true] * 6 + [false, true, true, false], subjects.map(&:owner_unknown)
+                      DeepB#e Top#t #<Class:App>::Z#z1 Foo::Mod#c App.after], subjects.map(&:qualified_name)
+      assert_equal [true] * 9 + [false], subjects.map(&:owner_unknown)
     end
   end
 
@@ -442,7 +442,7 @@ class ProjectTest < Minitest::Test
       subjects = Mutineer::Project.discover([path])
       assert_equal %w[#<Class:App::P>::W#w #<Class:App::P>::Y#y #<Class:App::#<anonymous>>::W#a #<Class:App::Q>::Z#z
                       Foo::Bar#b self::S#s Top#t #<Class:App>::M.m1 #<Class:App>::N.n1], subjects.map(&:qualified_name)
-      assert_equal [true] * 6 + [false, true, true], subjects.map(&:owner_unknown)
+      assert(subjects.all?(&:owner_unknown))
     end
   end
 

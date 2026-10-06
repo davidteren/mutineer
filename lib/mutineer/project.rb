@@ -185,19 +185,17 @@ module Mutineer
 
       # True when `module_function :name` here can be promoted by its joined
       # namespace without matching another module's methods. A known owner
-      # always can. A module body opened in `class << self` (#208) can, and so
-      # can a builder block named under a singleton class (`#<Class:App>::M`).
-      # A block not assigned to a constant, one named only as written
-      # (`self::X`, `Foo::X`), and anything under an anonymous class cannot:
-      # two of them may share that name.
+      # always can, and so can a module or builder block named under a singleton
+      # class (`#<Class:App>::M`, #208). A block not assigned to a constant,
+      # anything named only as written (`self::X`, `Foo::X`, `::X`), and anything
+      # under an anonymous class cannot: another module may share that name.
       #
       # @param namespace [String] joined namespace of the call.
       # @return [Boolean]
       def promotes_module_function?(namespace)
         return true unless @owner_unknown
-        return false if @anonymous_block || namespace.include?("#<anonymous>")
 
-        @block_namespace.nil? || namespace.start_with?("#<Class:")
+        !@anonymous_block && namespace.start_with?("#<Class:") && !namespace.include?("#<anonymous>")
       end
 
       # Runs the block with `path` pushed as the current namespace. A
@@ -209,8 +207,9 @@ module Mutineer
       # block there, is a constant of the singleton class, which has no constant
       # path. It and everything nested in it is named under `#<Class:...>` with
       # its owner unknown (#208), and its body defines instance methods again.
-      # A compact `Foo::X` there is looked up at run time, so it is unknown too
-      # and named as written.
+      # A compact `Foo::X` or a top-level `::X` there is named as written, and
+      # its owner is unknown too: redefine reopens the lexical chain without the
+      # singleton class, so constants the body looks up through it would not resolve.
       #
       # @param path [Prism::Node] the class/module constant path.
       # @yield the class or module body visit.
@@ -223,7 +222,7 @@ module Mutineer
                        @namespace_unknown, @anonymous_block]
         name = extract_constant_name(path)
         root = root_anchored?(path)
-        in_singleton = !root && (!@singleton_cref.nil? || @singleton_depth.positive?)
+        in_singleton = !@singleton_cref.nil? || @singleton_depth.positive?
         @namespace_stack =
           if root then [name]
           elsif in_singleton then path.is_a?(Prism::ConstantPathNode) ? [path.slice] : [singleton_name, name]
@@ -252,15 +251,15 @@ module Mutineer
       # and the subject is named as written. Lexically inside `class << self`,
       # even within a builder block there, the constant belongs to the singleton
       # class, which has no constant path, so its owner is unknown too, as is
-      # `X` or `self::X` in a class or module opened there (#208).
+      # `X` or `self::X` in a class or module opened there (#208). A `::X` there
+      # is named `X`, still unknown (see {#with_namespace}).
       #
       # @param node [Prism::Node] constant assignment.
       # @return [Array(String, Array<String>, Boolean)] owner, namespace, unknown.
       def assigned_owner(node)
-        root = node.respond_to?(:target) && root_anchored?(node.target)
-        if (@singleton_cref || @singleton_depth.positive?) && !root
+        if @singleton_cref || @singleton_depth.positive?
           written = node.respond_to?(:target) ? node.target.slice : node.name.to_s
-          return [nil, [singleton_name, written], true]
+          return [nil, written.start_with?("::") ? [written.delete_prefix("::")] : [singleton_name, written], true]
         end
         unless node.respond_to?(:target)
           namespace = @namespace_stack + [node.name.to_s]

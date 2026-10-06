@@ -59,11 +59,11 @@ All notable changes to this project are documented here. The format is based on
   or constant there is named under it, for example `#<Class:App::P>::W`. Under
   `--strategy redefine` loading the mutant raised `NameError` and scored
   `error`; redefine now reports these mutants as `unplaceable`, and reload
-  still runs them. A compact `class Foo::X` there is also owner-unknown and
-  named as written. A `class ::X` or `::X = Class.new do` there keeps its
-  top-level name, and `class ::X` now has instance methods. Its owner is known
-  directly in `class << self`, and unknown inside a class opened there, since
-  redefine cannot reopen that class.
+  still runs them. A compact `class Foo::X` and a top-level `class ::X` or
+  `::X = Class.new do` there are named as written (`::X` as `X`, now with
+  instance methods) and are owner-unknown too: redefine reopens them without
+  the singleton class, so constants their bodies look up through it would not
+  resolve.
   Mutant ids for these subjects change: regenerate `ignore:` entries and
   baselines that name them.
 
