@@ -137,10 +137,18 @@ module Mutineer
     end
 
     # Parse a .mutineer.yml into a symbol-keyed hash of recognized keys. Unknown
-    # keys / unknown operator names emit a one-line stderr warning and are ignored.
-    # A YAML syntax error raises ConfigError: never a silent fallback to defaults,
-    # and never an exit from the lib layer.
-    def self.from_file(path)
+    # keys emit a one-line stderr warning and are ignored. Unknown operator names
+    # warn and are dropped. If that leaves no names, the file is an error: an
+    # empty operator list would run nothing and exit 0. Pass
+    # +defer_operators: true+ only when the command line replaces that list, so
+    # a blank or all-unknown file list does not block +--operators+. A YAML
+    # syntax error raises ConfigError: never a silent fallback to defaults, and
+    # never an exit from the lib layer.
+    #
+    # @param path [String] config file path.
+    # @param defer_operators [Boolean] keep an empty operator list for a CLI override.
+    # @return [Hash{Symbol => Object}]
+    def self.from_file(path, defer_operators: false)
       raw = YAML.safe_load(File.read(path)) || {}
       name = File.basename(path)
       unless raw.is_a?(Hash)
@@ -157,8 +165,13 @@ module Mutineer
           next
         end
         field = field_for(ks)
-        parsed = parse(field, value, file: name)
-        parsed = filter_operators(parsed, name) if field == :operators
+        parsed = parse(field, value, file: name, defer_operators: defer_operators)
+        if field == :operators
+          parsed = filter_operators(parsed, name)
+          if parsed.empty? && !defer_operators
+            raise ConfigError, "#{name}: operators must name at least one known operator"
+          end
+        end
         out[field] = parsed
       end
       out
@@ -230,9 +243,12 @@ module Mutineer
     # @param value [Object] raw CLI string or YAML value.
     # @param file [String, nil] config file name when the value came from it;
     #   nil when it came from the command line.
+    # @param defer_operators [Boolean] when true, a blank operator list is
+    #   returned instead of raising, so +--operators+ can replace it. The flag
+    #   itself still rejects a blank list.
     # @return [Object] the typed value.
     # @raise [Mutineer::ConfigError] when the value does not fit the field's type.
-    def self.parse(field, value, file: nil)
+    def self.parse(field, value, file: nil, defer_operators: false)
       opt = CONFIG_OPTIONS.find { |o| o.field == field } or raise ArgumentError, "unknown option #{field.inspect}"
       origin = file ? "#{file}: #{opt.yaml_key}" : opt.flag
       got = "(got: #{value.inspect})"
@@ -263,7 +279,16 @@ module Mutineer
 
         prefix = file ? "#{file}: " : ""
         raise ConfigError, "#{prefix}unknown #{field} #{value.to_s.inspect}. Expected: #{opt.values.join(', ')}"
-      when :string_list then Array(value).map(&:to_s)
+      when :string_list
+        items = Array(value).map(&:to_s)
+        # Only `operators` treats [] as "run these" rather than "use the
+        # default". A blank key then makes no mutants and exits 0. An empty
+        # `require` or `ignore` matches the default, so those stay valid.
+        if field == :operators && !defer_operators && ([nil, true, false].include?(value) || items.empty? || items.all? { |item| item.strip.empty? })
+          raise ConfigError, "#{origin} must name at least one operator, not blank #{got}"
+        end
+
+        items
       when :string
         # A key written with no value (`baseline:`) parses as nil. Keeping nil
         # would switch the feature off without a word; main failed here, so the

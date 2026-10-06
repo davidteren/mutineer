@@ -28,11 +28,12 @@ module Mutineer
       Usage: mutineer [options] <command> [args]
 
       Commands:
-        run [options] <source...> --test <test...>   Mutate, run, and report
+        run [options] <source...> --test <test> [--test <test>...]
+                                                     Mutate, run, and report
         run --dry-run [options] <source...>          Print candidate mutations only
 
       Run options:
-        --test FILE          Test file covering the sources (repeatable)
+        --test FILE          Test file covering the sources (one per flag; repeat it)
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
         --baseline FILE      Fail (exit 1) on NEW survivors / score drop vs a prior
@@ -147,7 +148,7 @@ module Mutineer
 
       begin
         file_path = Config.find_file
-        file_hash = file_path ? Config.from_file(file_path) : {}
+        file_hash = file_path ? Config.from_file(file_path, defer_operators: opts.key?(:operators)) : {}
         config = Config.resolve(opts, file_hash)
       rescue Mutineer::ConfigError => e
         # The lib layer raises instead of killing the host; the CLI maps a
@@ -159,6 +160,12 @@ module Mutineer
       case argv.first
       when "run"
         warn_config_root_mismatch(file_path, config.project_root) if file_path
+        tests_as_sources = argv[1..].grep(%r{(\A|/)(test|spec)/.*_(test|spec)\.rb\z})
+        if config.explicit?(:tests) && tests_as_sources.any?
+          warn "mutineer: #{tests_as_sources.join(', ')} looks like a test file, not a source. " \
+               "--test takes one file; repeat it for each test file (--test a_test.rb --test b_test.rb)"
+          exit 2
+        end
         # A directory source expands to its **/*.rb files; literal files pass
         # through. Test inference (when --test is omitted) happens in validate!.
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
@@ -363,9 +370,10 @@ module Mutineer
     end
 
     # Auto-pair sources to tests by path convention when no --test was given
-    # (explicit --test wins). Each source with an inferred test on disk joins the
-    # run; a source with none is dropped with a one-line stderr warning and the
-    # run continues with the rest. If every source is dropped: in boot mode the
+    # (explicit --test wins). Each source with at least one inferred test on
+    # disk joins the run; a source with none is dropped with a one-line stderr
+    # warning and the run continues with the rest. Split files for one source
+    # are all kept (#87). If every source is dropped: in boot mode the
     # dedicated --boot/--rails-requires-test check reports it; otherwise exit 2
     # with a usage message. The framework is re-detected from the inferred set
     # unless it was set explicitly (a spec-only project loads/reports as rspec).
@@ -377,14 +385,14 @@ module Mutineer
       return unless config.tests.empty?
 
       paired = config.sources.filter_map do |s|
-        t = Pairing.infer_test(s, project_root: config.project_root, prefer: config.framework)
-        [s, t] if t
+        tests = Pairing.infer_tests(s, project_root: config.project_root, prefer: config.framework)
+        [s, tests] unless tests.empty?
       end
       (config.sources - paired.map(&:first)).each do |s|
         warn "[mutineer] no test found by convention for #{s}; skipping"
       end
       config.sources = paired.map(&:first)
-      config.tests   = paired.map(&:last).uniq
+      config.tests   = paired.flat_map(&:last).uniq
       config.framework = Config.detect_framework(config.tests) unless config.explicit?(:framework)
 
       return unless config.sources.empty?

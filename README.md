@@ -33,7 +33,7 @@ gem "mutineer", group: :test
 ## Usage
 
 ```sh
-mutineer run <source...> --test <test...> [options]
+mutineer run <source...> --test <test> [--test <test>...] [options]
 ```
 
 Mutate `lib/calculator.rb`, checking it against its test, and fail CI if the
@@ -47,7 +47,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 
 | Flag | Meaning |
 |------|---------|
-| `--test FILE` | Test file covering the sources (repeatable) |
+| `--test FILE` | Test file covering the sources; one file per flag, so repeat it for each (`--test a_test.rb --test b_test.rb`) |
 | `--operators LIST` | Comma-separated operator names (default: the Tier-1 set) |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
 | `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
@@ -298,7 +298,12 @@ mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors
 `--baseline` reports which survivors are new (by [mutant id](https://github.com/davidteren/mutineer#mutant-ids)) and any score drop. It
 combines with `--threshold` (the worse of the two sets the exit code). Pass a
 directory (or several sources) to audit a whole layer in one boot — tests are
-auto-paired by convention and the report breaks down per source.
+auto-paired by convention and the report breaks down per source. A source
+`app/foo/bar.rb` pairs with `test/foo/bar_test.rb` and with unclaimed
+`test/foo/bar_*_test.rb` files in that directory, such as `bar_upsert_test.rb`.
+It does not take `user_session_test.rb` when `user_session.rb` exists in the same directory.
+It does not take `bar_upsert_guards_test.rb` when `bar_upsert.rb` exists.
+A spec that already pairs is left as that one file.
 
 ### GitHub Action
 
@@ -376,15 +381,15 @@ config file accepts these keys:
 | `timeout` | A positive integer; the per-mutant time limit in seconds (default 10) |
 | `capture_timeout` | A positive integer; the coverage-capture time limit in seconds (default 120) |
 
-In 1.4, invalid values for known scalar keys exit 2 with a message naming the
-file and key. The list keys (`operators`, `require`, `ignore`) are not checked
-this way: an unknown operator name warns and is skipped, so `operators: [bogus]`
-runs no mutants and exits 0 (#167). Boolean keys take `true` or `false` (quoted forms also work), not `"yes"`.
+Invalid values for known scalar keys, and a blank `operators` list, exit 2
+with a message naming the file and key. An unknown operator name warns and
+is skipped. If none of the names are known, the run exits 2. An empty
+`require` or `ignore` list is valid. Boolean keys take `true` or `false` (quoted forms also work), not `"yes"`.
 `jobs` must be positive; a string value contains digits only. String values for
 `threshold` and the CLI-only `--baseline-epsilon` use plain decimals such as `90`
 or `0.5`, not `+2`, `1e2`, or `1_0`. String options such as `only` and `baseline`
 cannot be null or boolean. A blank `since` is invalid; use `since: false` to turn
-scoping off. Unknown keys and operator names warn and are ignored.
+scoping off. Unknown keys warn and are ignored. Unknown operator names warn and are skipped, and the run exits 2 when none remain. `--operators` replaces a blank or unknown file list.
 
 `format`, `strategy`, `output`, `baseline_epsilon`, and `dry_run` are CLI-only.
 For JSON output, use `--format json`, not a `format:` config key. To select RSpec
