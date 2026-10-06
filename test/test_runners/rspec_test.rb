@@ -5,8 +5,8 @@ require "tmpdir"
 require "fileutils"
 
 # The RSpec runner mirrors the Minitest runner's contract: 0 = all passed,
-# 1 = any failure, RSpec's formatter output kept off stdout, and RSpec state
-# reset between runs so examples never bleed across successive invocations in
+# 1 = any failure, RSpec's formatter output kept off stdout, and RSpec's examples
+# cleared between runs so examples never bleed across successive invocations in
 # one process.
 #
 # Each case forks (mirroring real per-mutant isolation); the child reopens its
@@ -122,8 +122,8 @@ class TestRunnersRSpecTest < Minitest::Test
     assert_equal 0, code
   end
 
-  # Run two different specs sequentially in ONE process; RSpec.reset (inside the
-  # runner) must prevent the first run's example from leaking into the second.
+  # Run two different specs sequentially in ONE process; the runner's
+  # RSpec.clear_examples must keep the first run's example out of the second.
   def test_resets_state_between_runs
     _, out = in_fork do
       r1 = Mutineer::TestRunners::RSpec.run([PASS])
