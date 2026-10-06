@@ -26,7 +26,7 @@ module Mutineer
     BROKEN_FLOOR = 1
 
     # The JSON report's `schema_version` (see docs/json-schema.md).
-    SCHEMA_VERSION = "1.6"
+    SCHEMA_VERSION = "1.7"
 
     # The warning both matrix renderers give under the redundant tests.
     MATRIX_REDUNDANT_NOTE = "Delete redundant tests one at a time: two of them can be the only killers of one mutant."
@@ -167,6 +167,7 @@ module Mutineer
           total: @agg.total, killed: killed, survived: survived,
           no_coverage: @agg.no_coverage_count,
           uncapturable: @agg.uncapturable_count,
+          unplaceable: @agg.unplaceable_count,
           skipped_invalid: @agg.skipped_invalid_count,
           errored: @agg.errored_count, timeout: @agg.timeout_count,
           ignored: @agg.ignored_count,
@@ -194,6 +195,9 @@ module Mutineer
         # Same shape as no_coverage; additive key.
         uncapturable: @agg.results.select(&:uncapturable?).map { |r| mutant_json(r) }
                           .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
+        # Additive (1.7): owner-unknown mutants redefine did not run. Not in no_verdict.
+        unplaceable: @agg.results.select(&:unplaceable?).map { |r| mutant_json(r) }
+                         .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Every mutant that was attempted and produced no verdict, whatever the
         # reason — the set the --threshold completeness gate counts. Named for the
         # condition rather than one status, because summary.errored means :error
@@ -287,7 +291,8 @@ module Mutineer
       counts = {
         "total" => @agg.total, "killed" => @agg.killed_count,
         "survived" => @agg.survived_count, "no_coverage" => @agg.no_coverage_count,
-        "uncapturable" => @agg.uncapturable_count, "ignored" => @agg.ignored_count,
+        "uncapturable" => @agg.uncapturable_count, "unplaceable" => @agg.unplaceable_count,
+        "ignored" => @agg.ignored_count,
         "skipped" => @agg.skipped_invalid_count,
         "errored" => @agg.errored_count, "timeout" => @agg.timeout_count
       }
@@ -623,7 +628,7 @@ module Mutineer
     end
 
     # The fields that name one mutant, for the lists that point at mutants:
-    # `no_coverage`, `uncapturable`, `ignored` and `baseline.new_survivors`.
+    # `no_coverage`, `uncapturable`, `unplaceable`, `ignored` and `baseline.new_survivors`.
     def mutant_json(result)
       m = result.mutation
       file = result.subject.file
@@ -690,6 +695,9 @@ module Mutineer
       out.puts format("Timeout:      %-6d  (over the per-mutant time limit)", @agg.timeout_count)
       # A broken harness, not a coverage gap: report it distinctly from No coverage.
       out.puts format("Uncapturable: %-6d  (tests failed to run)", @agg.uncapturable_count)
+      # Not broken: redefine has no named class to load these onto; reload runs them.
+      out.puts format("Unplaceable:  %-6d  (class has no constant name; --strategy reload runs these)",
+                      @agg.unplaceable_count)
       # Equivalent mutants the user suppressed; excluded from the denominator.
       out.puts format("Ignored:      %-6d  (equivalent, suppressed)", @agg.ignored_count)
     end
@@ -702,6 +710,7 @@ module Mutineer
     def score_line(out, err)
       score = @agg.mutation_score
       excluded = "#{@agg.no_coverage_count} no-coverage, #{@agg.uncapturable_count} uncapturable, " \
+                 "#{@agg.unplaceable_count} unplaceable, " \
                  "#{@agg.skipped_invalid_count} skipped, " \
                  "#{@agg.errored_count} errored, #{@agg.timeout_count} timeout, " \
                  "#{@agg.ignored_count} ignored excluded"

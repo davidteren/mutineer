@@ -10,5 +10,6 @@ class NestedBuilderTest < Minitest::Test
 
   def test_twice
     assert_equal 6, NestedBuilderHost::HELPER.twice(3)
+    assert_equal 9, NestedBuilderHost::HELPER.thrice(3)
   end
 end

@@ -138,6 +138,6 @@ workflow `release.yml`, no environment. Without it, `release.yml`'s `gem push` f
 
 ## Score-model discipline (don't regress this)
 
-`score = killed / (killed + survived)`. `no_coverage`, `uncapturable`, `ignored`,
+`score = killed / (killed + survived)`. `no_coverage`, `uncapturable`, `unplaceable`, `ignored`,
 `skipped`, `errored` are ALL excluded from the denominator. Empty denominator → `nil`,
 never `0.0`. The exact-survivor integration oracle must stay green.

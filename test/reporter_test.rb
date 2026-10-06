@@ -143,6 +143,17 @@ class ReporterTest < Minitest::Test
     assert_equal 1, reporter(results).exit_code(threshold: 50.0)
   end
 
+  def test_exit_code_does_not_count_unplaceable_toward_the_no_verdict_limit
+    results = Array.new(5) { Mutineer::Result.unplaceable } +
+              Array.new(9) { Mutineer::Result.killed } + [Mutineer::Result.survived]
+
+    assert_equal 0, reporter(results).exit_code(threshold: 80.0)
+  end
+
+  def test_exit_code_nil_score_all_unplaceable_skips_gate
+    assert_equal 0, reporter([Mutineer::Result.unplaceable]).exit_code(threshold: 80.0)
+  end
+
   def test_exit_code_nil_score_pure_no_coverage_skips_gate
     assert_equal 0, reporter([Mutineer::Result.no_coverage]).exit_code(threshold: 80.0)
   end
@@ -288,6 +299,17 @@ class ReporterTest < Minitest::Test
     assert_includes s, "tests failed to run"
     assert_includes s, "No coverage:   1"
     assert_includes s, "1 uncapturable"      # listed as excluded in the score line
+    assert_includes s, "Mutation score: 50.0%"
+  end
+
+  def test_unplaceable_reported_on_its_own_line_apart_from_uncapturable
+    out = StringIO.new
+    reporter([Mutineer::Result.killed, survivor_result, Mutineer::Result.unplaceable])
+      .report(out: out, err: StringIO.new)
+    s = out.string
+    assert_includes s, "Unplaceable:  1"
+    assert_includes s, "Uncapturable: 0"
+    assert_includes s, "1 unplaceable"
     assert_includes s, "Mutation score: 50.0%"
   end
 

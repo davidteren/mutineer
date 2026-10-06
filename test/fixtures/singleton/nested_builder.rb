@@ -13,5 +13,9 @@ module NestedBuilderHost
     def twice(a)
       a * 2
     end
+
+    def thrice(a)
+      a * 3
+    end
   end.new
 end

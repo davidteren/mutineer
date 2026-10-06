@@ -80,13 +80,21 @@ class SingletonRedefineTest < Minitest::Test
                   "Class.new nested in Data.define")
   end
 
-  def test_anonymous_class_new_is_uncapturable_under_redefine_and_killed_under_reload
+  def test_anonymous_class_new_is_unplaceable_under_redefine_and_killed_under_reload
     only = "NestedBuilderHost#twice"
     redefine = run_redefine("nested_builder.rb", "nested_builder_test.rb", only: only)
-    assert_operator redefine.uncapturable_count, :>, 0
-    assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count
+    assert_operator redefine.unplaceable_count, :>, 0
+    assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count + redefine.uncapturable_count
     assert_killed(run_redefine("nested_builder.rb", "nested_builder_test.rb", strategy: "reload", only: only),
                   "anonymous Class.new (reload)")
+  end
+
+  def test_owner_unknown_mutants_over_a_tenth_of_the_run_do_not_fail_the_threshold
+    agg = run_redefine("nested_builder.rb", "nested_builder_test.rb")
+    unscored = agg.total - agg.killed_count
+    assert_operator agg.killed_count, :>, 0
+    assert_operator unscored, :>, agg.killed_count * 0.1
+    assert_equal 0, Mutineer::Reporter.new(agg, {}).exit_code(threshold: 80.0)
   end
 
   def test_parenthesized_and_or_assigned_builders_are_mutated
@@ -101,19 +109,19 @@ class SingletonRedefineTest < Minitest::Test
     end
   end
 
-  def test_relative_path_builder_is_uncapturable_under_redefine_and_killed_under_reload
+  def test_relative_path_builder_is_unplaceable_under_redefine_and_killed_under_reload
     only = "PathUser::Permission#allow?"
     redefine = run_redefine("builder_path.rb", "builder_path_test.rb", only: only)
-    assert_operator redefine.uncapturable_count, :>, 0
-    assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count
+    assert_operator redefine.unplaceable_count, :>, 0
+    assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count + redefine.uncapturable_count
     assert_killed(run_redefine("builder_path.rb", "builder_path_test.rb", strategy: "reload", only: only), only)
   end
 
-  def test_builder_in_class_self_is_uncapturable_under_redefine_and_killed_under_reload
+  def test_builder_in_class_self_is_unplaceable_under_redefine_and_killed_under_reload
     only = "#<Class:SingletonBuilderApp>::Point#m"
     redefine = run_redefine("singleton_builder.rb", "singleton_builder_test.rb", only: only)
-    assert_operator redefine.uncapturable_count, :>, 0
-    assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count
+    assert_operator redefine.unplaceable_count, :>, 0
+    assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count + redefine.uncapturable_count
     assert_killed(run_redefine("singleton_builder.rb", "singleton_builder_test.rb", strategy: "reload", only: only),
                   only)
   end

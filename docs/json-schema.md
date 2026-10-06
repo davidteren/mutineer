@@ -25,11 +25,12 @@ between reports with the same `id_format` (a missing key is the old format).
 
 ```jsonc
 {
-  "schema_version": "1.6",
+  "schema_version": "1.7",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
+  "unplaceable":  [ /* redefine mutants whose class has no constant name; not run */ ],
   "no_verdict":   [ /* mutants that were attempted and produced no verdict */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
   "per_source":   [ /* per-file roll-up */ ],
@@ -46,7 +47,8 @@ between reports with the same `id_format` (a missing key is the old format).
 | `killed` | int | Mutants a test caught (suite went red). |
 | `survived` | int | Mutants no test caught. **These are the actionable test gaps.** |
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). |
-| `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap — or, under `--strategy redefine`, whose method belongs to a class with no constant name to load it onto (excluded). |
+| `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
+| `unplaceable` | int | Under `--strategy redefine`, mutants whose method belongs to a class or module with no constant name to load the mutant onto, so they were not run (excluded). Not part of `no_verdict`, so they do not fail `--threshold`. `--strategy reload` runs them. Additive key (schema `1.7`). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). |
 | `errored` | int | Mutants whose run raised (excluded). |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
@@ -72,13 +74,13 @@ Each surviving mutant — the records an agent or reviewer acts on:
 | `token` | string | The exact code being mutated (whitespace-collapsed), e.g. `a + b`. |
 | `diff` | string | A unified diff with no context lines: `-original` / `+mutant` lines under a hunk header that gives each side's start line and, when it is not 1, its line count (`@@ -3,2 +3 @@`). For a `file` given relative to the project root, `git apply --unidiff-zero` run from that root accepts it. An absolute or `../` path needs `git apply --directory`/`-p` or an edit. Ready to hand to an agent as "write a test that fails under this change." |
 
-### `no_coverage[]` and `uncapturable[]` (array of object)
+### `no_coverage[]`, `uncapturable[]` and `unplaceable[]` (array of object)
 
 Each entry is `{ subject, file, line, operator, token, id }`, sorted by
 `(file, line, operator, id)`. `no_coverage` is a genuine coverage gap; `uncapturable` means the test that
-should cover the line errored while capturing coverage (fix the harness, not the test), or, under
-`--strategy redefine`, that the method's class has no constant name (an anonymous `Class.new`, for example),
-so the mutant could not be loaded onto it; `--strategy reload` runs these.
+should cover the line errored while capturing coverage (fix the harness, not the test). `unplaceable` (schema
+`1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module has no
+constant name (an anonymous `Class.new`, for example); `--strategy reload` runs these.
 
 Several mutants can share a line, so `operator` and `token` name the change and `id` identifies the mutant.
 The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` these entries were
@@ -133,7 +135,7 @@ matcher, so its `name` can change with the mutant; the report keeps the name the
 |-----|------|---------|
 | `complete` | bool | True when every row is complete. When false, a test in `blind[]` may have killed a mutant whose row is incomplete. |
 | `tests[]` | array | Every test that ran against at least one mutant: `{ file, name, id, kills }`, sorted by `file`, `name`, then `id`. `kills` counts the mutants the test killed. Rows refer to a test by its index here. |
-| `mutants[]` | array | One row per mutant that ran: `{ subject, file, line, operator, id, status, killed_by, ran, complete }`, sorted by `(file, line, operator, id)`. `killed_by` holds indexes into `tests[]`, and `ran` counts the tests that ran against the mutant. No-coverage, uncapturable, skipped and ignored mutants have no row: they never ran. |
+| `mutants[]` | array | One row per mutant that ran: `{ subject, file, line, operator, id, status, killed_by, ran, complete }`, sorted by `(file, line, operator, id)`. `killed_by` holds indexes into `tests[]`, and `ran` counts the tests that ran against the mutant. No-coverage, uncapturable, unplaceable, skipped and ignored mutants have no row: they never ran. |
 | `blind[]` | array | `{ file, name, id }`: tests that ran in at least one complete row and killed no mutant in any row. |
 | `redundant[]` | array | `{ file, name, id }`: tests that killed at least one mutant, where each mutant they killed has another killer. |
 
