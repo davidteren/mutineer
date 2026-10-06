@@ -61,6 +61,11 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **`# mutineer:disable-line` inside a string no longer silences a line**
+  (#158). The marker was found with a text search, so a string such as
+  `"# mutineer:disable-line"` ignored every mutant on its line and left
+  them out of the score. Only a real `#` comment counts now. A heredoc or
+  regex that holds the text is ignored too.
 - **`./lib/x.rb` and an absolute path pair with a test** (#104). Auto-pairing
   found the test for `lib/calc.rb` but not for `./lib/calc.rb` or the
   absolute path to the same file. It reported "no test found by convention"
