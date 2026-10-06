@@ -65,6 +65,20 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **One edit on a line is scored once** (#159). Some opt-in operators emitted
+  two mutants that give the same source: `literal_mutation` on `0` (the
+  "change to 1" and "add 1" rules), `negation_removal` on `!!x` (either `!`
+  removed), and `chain_link` or `operand_removal` on a repeated part such as
+  `a.b.b.c` or `x || x`. Each copy had its own id, so one surviving edit
+  counted twice. Now only the first copy on a line runs. Copies that start
+  on different lines (a multi-line chain) both stay, so `--since` never
+  loses the edit. Ids are assigned before the copy is dropped, so every kept
+  mutant keeps its id, and the dropped copy's id simply stops appearing.
+  Default runs do not change. If you use these operators with `--baseline`,
+  regenerate the baseline after upgrading: the score can move with no code
+  change, and in a full (unscoped) comparison a dropped copy that survived
+  is listed as fixed. An ignore entry for one copy's id still ignores only
+  that copy; the other copy still runs.
 - **`# mutineer:disable-line` inside a string no longer silences a line**
   (#158). The marker was found with a text search, so a string such as
   `"# mutineer:disable-line"` ignored every mutant on its line and left
