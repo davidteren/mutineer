@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "io/wait"
 require "open3"
 require_relative "external_backend"
 
@@ -29,6 +30,13 @@ module Mutineer
     DAEMON_PATH = File.expand_path("daemon_server.rb", __dir__)
     # How many times to respawn a crashing daemon before aborting the run.
     MAX_RESTARTS = 3
+    # Seconds a verdict may lag the request's own timeout. The daemon enforces
+    # that timeout on the mutant child, so a reply later than this means the
+    # daemon itself is wedged (#101): it is killed and respawned.
+    REPLY_GRACE = 30
+    # Seconds the daemon gets to boot the app and answer the handshake. A boot
+    # that never returns ends the run instead of hanging it (#101).
+    BOOT_TIMEOUT = 600
     # Bundler's marker for a variable that was unset before it activated.
     BUNDLER_UNSET = "BUNDLER_ENVIRONMENT_PRESERVER_INTENTIONALLY_NIL"
 
@@ -83,7 +91,7 @@ module Mutineer
       reply =
         begin
           send_line("id" => id, "worker" => worker, "payload" => payload, "tests" => tests, "timeout" => timeout)
-          read_line
+          read_line(timeout + REPLY_GRACE)
         rescue Errno::EPIPE, IOError
           nil
         end
@@ -117,7 +125,7 @@ module Mutineer
       return unless @stdin
 
       send_line("cmd" => "quit") rescue nil # rubocop:disable Style/RescueModifier
-      @wait_thr&.join
+      @wait_thr&.join(REPLY_GRACE) # a wedged daemon is killed by close_io
     ensure
       close_io
     end
@@ -315,14 +323,18 @@ module Mutineer
           end
 
           send_line(@boot)
-          read_line
+          read_line(BOOT_TIMEOUT)
         rescue SystemCallError, IOError => e
           close_io
           raise DaemonBootError, "daemon could not be started: #{e.class}: #{e.message}"
         end
 
       unless ready && ready["ready"]
-        detail = ready && ready["error"] ? ready["error"] : "daemon exited before the handshake"
+        detail =
+          if ready && ready["error"] then ready["error"]
+          elsif @timed_out then "the daemon did not finish booting within #{BOOT_TIMEOUT}s"
+          else "daemon exited before the handshake"
+          end
         close_io
         raise DaemonBootError, "daemon failed to boot under the app bundle: #{detail}"
       end
@@ -349,8 +361,15 @@ module Mutineer
       @stdin.flush
     end
 
-    # Read one JSON reply line; nil on EOF/dead pipe (caller treats as a crash).
-    def read_line
+    # Read one JSON reply line; nil on EOF/dead pipe, or when no line arrives
+    # within `timeout` seconds (caller treats either as a crash).
+    #
+    # @param timeout [Numeric, nil] seconds to wait; nil waits for the reply.
+    # @return [Hash, nil]
+    def read_line(timeout = nil)
+      @timed_out = timeout && !@stdout.wait_readable(timeout)
+      return nil if @timed_out
+
       line = @stdout.gets
       line && JSON.parse(line.strip)
     rescue IOError, Errno::EPIPE, JSON::ParserError
@@ -362,6 +381,9 @@ module Mutineer
     #
     # @return [void]
     def close_io
+      # A wedged daemon may never read the closed stdin, so the reap below would
+      # wait forever: kill it first. An exited daemon makes this a no-op.
+      Process.kill(:KILL, @wait_thr.pid) if @wait_thr&.alive? rescue Errno::ESRCH # rubocop:disable Style/RescueModifier
       @drain&.kill # stop the drain BEFORE closing its fd (avoids a copy_stream EBADF)
       [@stdin, @stdout, @stderr].each { |io| io&.close rescue nil } # rubocop:disable Style/RescueModifier
       @wait_thr&.join # reap the exited daemon so respawn/quit leaves no zombie
