@@ -24,8 +24,6 @@ All notable changes to this project are documented here. The format is based on
 - **The human report has a `Timeout:` row**, and the score line lists timeouts
   apart from errored mutants. Before, the `Errored:` row and the score line
   added the two together, while the JSON report kept them apart.
-
-### Changed
 - **A test file given as a source after `--test` exits 2.** `--test` takes one
   file, so in `mutineer run app/x.rb --test spec/a_spec.rb spec/b_spec.rb` the
   second spec became a source to mutate, and the run tested with one spec file
