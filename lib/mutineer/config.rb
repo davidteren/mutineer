@@ -39,6 +39,7 @@ module Mutineer
     ConfigOption.new(field: :ignore, type: :string_list, yaml_key: "ignore"),
     ConfigOption.new(field: :baseline, type: :string, yaml_key: "baseline", flag: "--baseline"),
     ConfigOption.new(field: :fail_fast, type: :bool, yaml_key: "fail_fast", flag: "--fail-fast"),
+    ConfigOption.new(field: :matrix, type: :bool, yaml_key: "matrix", flag: "--matrix"),
     ConfigOption.new(field: :test_command, type: :string, yaml_key: "test_command", flag: "--test-command"),
     ConfigOption.new(field: :daemon, type: :bool, yaml_key: "daemon", flag: "--daemon"),
     ConfigOption.new(field: :timeout, type: :positive_int, yaml_key: "timeout", flag: "--timeout"),
@@ -61,6 +62,9 @@ module Mutineer
   # Config loading and the CLI > file > default precedence merge live here; each
   # layer holds only the keys the user wrote, and Config#explicit? reports them.
   #
+  # `matrix` (--matrix) runs every covering test for each mutant and reports
+  # which tests kill it (see KillMatrix); it never changes a verdict.
+  #
   # Boot mode adds: boot (a file to require ONCE in the parent so the app env,
   # e.g. Rails, is booted before forking; sources are then NOT manually required)
   # and rails (sugar: defaults boot to config/environment, prefers redefine without
@@ -73,7 +77,7 @@ module Mutineer
     # :daemon is user-facing (--daemon flag + KNOWN_KEYS + boolean coerce).
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
-    :daemon, :daemon_timeout, :timeout, :capture_timeout,
+    :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix,
     keyword_init: true
   ) do
     # Config file name.
@@ -84,9 +88,12 @@ module Mutineer
 
     # @param explicit [Array<Symbol>] fields the user wrote (CLI or file). Derived
     #   values fill only the others; a programmatic Config.new writes none.
-    def initialize(explicit: [], **kwargs)
+    # @param from_file [Array<Symbol>] the explicit fields whose value came from
+    #   the config file (the command line did not override them).
+    def initialize(explicit: [], from_file: [], **kwargs)
       super(**kwargs)
       @explicit = explicit.to_a.dup.freeze
+      @from_file = from_file.to_a.dup.freeze
       self.sources       ||= []
       self.tests         ||= []
       self.threshold     ||= 0.0
@@ -104,6 +111,7 @@ module Mutineer
       self.baseline_epsilon ||= 0.0
       self.fail_fast     = false if fail_fast.nil?
       self.daemon        = false if daemon.nil?
+      self.matrix        = false if matrix.nil?
     end
 
     # True when the user wrote `key`, on the command line or in the config
@@ -115,6 +123,17 @@ module Mutineer
     # @return [Boolean]
     def explicit?(key)
       @explicit.include?(key)
+    end
+
+    # Where the user set `key`, for messages: the config-file key (as
+    # `name in .mutineer.yml`) when its value came from the file, else the
+    # command-line flag.
+    #
+    # @param key [Symbol] Config field name (a row of the option schema).
+    # @return [String] e.g. `"--fail-fast"` or `"fail_fast in .mutineer.yml"`.
+    def origin(key)
+      opt = CONFIG_OPTIONS.find { |o| o.field == key } or raise ArgumentError, "unknown option #{key.inspect}"
+      @from_file.include?(key) && opt.yaml_key ? "#{opt.yaml_key} in #{CONFIG_FILE}" : (opt.flag || opt.yaml_key)
     end
 
     # Walk from `start` toward `home`, returning the first .mutineer.yml path found
@@ -189,7 +208,7 @@ module Mutineer
     # @return [Mutineer::Config]
     def self.resolve(cli_opts, file_hash)
       user = file_hash.merge(cli_opts)
-      config = new(**user, explicit: user.keys)
+      config = new(**user, explicit: user.keys, from_file: file_hash.keys - cli_opts.keys)
 
       # --rails sugar: boot config/environment. Prefer redefine only for the
       # in-process path (daemon is whole-file reload only). In-process --rails

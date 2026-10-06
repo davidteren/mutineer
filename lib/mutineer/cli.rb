@@ -10,6 +10,7 @@ require_relative "pairing"
 require_relative "changed_lines"
 require_relative "runner"
 require_relative "reporter"
+require_relative "kill_matrix"
 require_relative "baseline"
 require_relative "mutator_registry"
 
@@ -65,7 +66,13 @@ module Mutineer
         --format human|json|html  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
-        --fail-fast          Stop at the first surviving mutant
+        --fail-fast          Stop at the first surviving mutant (--no-fail-fast beats a
+                             .mutineer.yml fail_fast:)
+        --matrix             Run every covering test for each mutant and report blind and
+                             redundant tests; the JSON report also lists each mutant's
+                             killers (in-process only; not with --daemon, --test-command,
+                             --fail-fast or --dry-run; --no-matrix beats a .mutineer.yml
+                             matrix:)
         --verbose            Surface the real error when a fork capture fails (alias: --debug)
 
       Options:
@@ -96,7 +103,10 @@ module Mutineer
         end
         o.on("--list-operators") { show_operators = true }
         o.on("--dry-run") { opts[:dry_run] = true }
-        o.on("--fail-fast") { opts[:fail_fast] = true }
+        # A typed --no-* beats the .mutineer.yml key, so a file key that
+        # conflicts with another flag can be turned off for one run.
+        o.on("--[no-]fail-fast") { |on| opts[:fail_fast] = on }
+        o.on("--[no-]matrix") { |on| opts[:matrix] = on }
         o.on("--only NAME") { |v| opts[:only] = v }
         o.on("--since REF") { |v| opts[:since] = Config.parse(:since, v) }
         # A typed "no" must beat a .mutineer.yml `since:` key: the key is present
@@ -240,6 +250,8 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.validate!(config)
+      # First, so a conflict is reported before another check rewrites the config.
+      validate_matrix!(config) if config.matrix
       validate_test_command!(config) if config.test_command
 
       validate_since!(config) if config.since
@@ -346,6 +358,39 @@ module Mutineer
         warn "[mutineer] #{opt.flag} (#{opt.yaml_key}: in .mutineer.yml) has no effect with #{backend} " \
              "(it applies to in-process runs only); ignoring it."
       end
+    end
+
+    # --matrix runs on the in-process backend and needs every mutant's whole
+    # covering run, so a backend that cannot name the failing test, or a run that
+    # stops early, is a usage error (exit 2), never a quietly partial matrix.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.validate_matrix!(config)
+      conflict, reason =
+        if config.dry_run
+          [:dry_run, "a dry run runs no tests, so it has no matrix"]
+        elsif config.daemon
+          [:daemon, "the kill matrix runs on the in-process backend only"]
+        elsif config.test_command
+          [:test_command, "the external suite reports pass or fail, not which test failed"]
+        elsif config.fail_fast
+          [:fail_fast, "a fail-fast run is partial, so blind and redundant tests would be wrong"]
+        end
+      return unless conflict
+
+      # Say how to turn off whichever side came from the file, for this run.
+      hint =
+        if config.origin(:matrix) != "--matrix"
+          "; pass --no-matrix to run without it"
+        elsif conflict == :fail_fast && config.origin(:fail_fast) != "--fail-fast"
+          "; pass --no-fail-fast to run without it"
+        else
+          ""
+        end
+      warn "mutineer: #{config.origin(:matrix)} cannot be combined with #{config.origin(conflict)} (#{reason}#{hint})"
+      exit 2
     end
 
     # --since needs a real git repo and a resolvable ref; either failure is a
@@ -462,7 +507,8 @@ module Mutineer
 
       aggregate, source_map, extras = Runner.execute(config)
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
-      reporter = Reporter.new(aggregate, source_map)
+      matrix = KillMatrix.new(aggregate.results) if config.matrix
+      reporter = Reporter.new(aggregate, source_map, matrix: matrix)
 
       # Diff the current run against the baseline (preflighted above) by the
       # stable survivor id. The delta is rendered inline (human section / additive
