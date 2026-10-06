@@ -234,6 +234,7 @@ module Mutineer
         else
           mutated_def
         end
+      inner = "#{subject.block_owner}.class_eval do\n#{inner}\nend" if subject.block_owner
       wrapped = "#{prefix}#{inner}#{"\nend" * keywords.size}"
 
       # A snippet that fails to reparse must NOT silently fall through to

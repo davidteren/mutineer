@@ -227,7 +227,7 @@ Tradeoffs — this path is correct but not free:
 
 The mutation score is `killed / (killed + survived)`. A mutant whose tests run
 past `--timeout` is a `timeout`. It is neither killed nor survived, so it is
-left out of the score, like `no_coverage`, `uncapturable`, `errored`, skipped
+left out of the score, like `no_coverage`, `uncapturable`, `unplaceable`, `errored`, skipped
 and ignored mutants. A timeout is not counted as a kill, because a hang the
 mutant caused and a suite that is just slow look the same. The human report
 shows the count in its `Timeout:` row, and the JSON report in `summary.timeout`.

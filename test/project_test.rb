@@ -196,6 +196,175 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def test_discover_data_define_and_struct_new_blocks_own_their_methods
+    src = <<~RUBY
+      Monitoring = Data.define(:a) do
+        def self.groups(g) = g
+      end
+      class ReleaseApp
+        Argo = Data.define(:url) do
+          def self.from_config(config) = new(url: config)
+          def host = url
+          class Inner
+            def m; end
+          end
+        end
+        Pair = Struct.new(:a, :b) do
+          def sum = a + b
+        end
+        Other = build do
+          def n; end
+        end
+      end
+      ReleaseApp::Gate = Struct.new(:open) do
+        def open? = open
+      end
+    RUBY
+    with_source(src) do |path|
+      names = Mutineer::Project.discover([path]).map(&:qualified_name)
+      assert_equal %w[Monitoring.groups ReleaseApp::Argo.from_config ReleaseApp::Argo#host
+                      ReleaseApp::Inner#m ReleaseApp::Pair#sum ReleaseApp#n ReleaseApp::Gate#open?], names
+    end
+  end
+
+  def test_discover_names_a_nested_class_new_after_its_own_constant
+    src = <<~RUBY
+      module Host
+        Argo = Data.define(:url) do
+          Other = Class.new do
+            def extra = url * 2
+          end
+          def host = url
+          helper = Module.new do
+            def anon; end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Host::Other#extra Host::Argo#host Host#anon], subjects.map(&:qualified_name)
+      assert_equal [false, false, true], subjects.map(&:owner_unknown)
+    end
+  end
+
+  def test_discover_unwraps_parentheses_and_begin_and_names_or_and_and_writes
+    src = <<~RUBY
+      Point = (Data.define(:x) do
+        def a; end
+      end)
+      Wrapped = begin
+        Data.define(:x) do
+          def b; end
+        end
+      end
+      OrA ||= Data.define(:x) do
+        def c; end
+      end
+      AndA &&= Struct.new(:x) do
+        def d; end
+      end
+      Host::OrB ||= Struct.new(:x) do
+        def e; end
+      end
+      Host::AndB &&= Struct.new(:x) do
+        def f; end
+      end
+      Sum += Struct.new(:x) do
+        def g; end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Point#a Wrapped#b OrA#c AndA#d Host::OrB#e Host::AndB#f #g], subjects.map(&:qualified_name)
+      assert_equal [false] * 6 + [true], subjects.map(&:owner_unknown)
+    end
+  end
+
+  def test_discover_resolves_a_builder_constant_path_the_way_the_assignment_does
+    src = <<~RUBY
+      module Admin
+        User::Permission = Data.define(:r) do
+          def allow? = r
+        end
+        ::Root::Gate = Struct.new(:o) do
+          def root? = o
+        end
+      end
+      class ReleaseApp
+        self::Gate = Struct.new(:open) do
+          def open? = open
+          self::Latch = Struct.new(:o) do
+            def shut? = o
+          end
+        end
+        ReleaseApp::Also = Struct.new(:open) do
+          def also? = open
+        end
+        helper = Class.new do
+          self::Lost = Struct.new(:o) do
+            def lost? = o
+          end
+        end
+      end
+      Top::Path = Data.define(:x) do
+        def top? = x
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[User::Permission#allow? Root::Gate#root? ReleaseApp::Gate#open? ReleaseApp::Gate::Latch#shut?
+                      ReleaseApp::Also#also? self::Lost#lost? Top::Path#top?], subjects.map(&:qualified_name)
+      assert_equal [true, false, false, false, true, true, false], subjects.map(&:owner_unknown)
+    end
+  end
+
+  def test_discover_names_a_builder_in_class_self_on_the_singleton_class
+    src = <<~RUBY
+      class App
+        class << self
+          Point = Data.define(:x) do
+            def m = x * 2
+            def self.build = new(x: 1)
+            Inner = Class.new do
+              def n; end
+            end
+          end
+          def after; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[#<Class:App>::Point#m #<Class:App>::Point.build #<Class:App>::Inner#n App.after],
+                   subjects.map(&:qualified_name)
+      assert_equal [true, true, true, false], subjects.map(&:owner_unknown)
+    end
+  end
+
+  def test_discover_promotes_module_function_names_in_a_module_new_block
+    src = <<~RUBY
+      module Host
+        Helpers = Module.new do
+          def calc; end
+          module_function :calc
+        end
+        def calc; end
+      end
+      module Other
+        helper = Module.new do
+          def calc; end
+          module_function :calc
+        end
+        def calc; end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[Host::Helpers.calc Host#calc Other#calc Other#calc],
+                   Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   def test_discover_nested_classes
     with_source("class Outer\n  class Inner\n    def m; end\n  end\nend\n") do |path|
       s = Mutineer::Project.discover([path]).first

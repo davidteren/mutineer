@@ -554,6 +554,7 @@ module Mutineer
       # narrow identically (score parity).
       kind, payload = coverage_selection(source_file, mutation, subject, source, coverage_map)
       return payload if kind == :verdict
+      return Result.unplaceable if strategy == "redefine" && subject&.owner_unknown
 
       abs_tests = payload
 

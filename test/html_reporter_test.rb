@@ -49,6 +49,11 @@ class HtmlReporterTest < Minitest::Test
     assert_includes html, "if price &gt; 100"  # mutated diff line, escaped
   end
 
+  def test_summary_counts_unplaceable
+    assert_includes render([Mutineer::Result.killed, Mutineer::Result.unplaceable]),
+                    "<span><strong>1</strong> unplaceable</span>"
+  end
+
   def test_source_is_html_escaped_not_raw
     html = render([survivor])
     assert_includes html, "if price &gt;= 100" # `>=` escaped in the original diff line

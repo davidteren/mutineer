@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **An `unplaceable` mutant status.** Under `--strategy redefine`, a mutant in
+  a method whose class or module has no constant name is not run. It is left
+  out of the score and, unlike `uncapturable`, out of `no_verdict`, so it does
+  not fail `--threshold`. The human report gives it an `Unplaceable:` row, the
+  HTML report a count, and the JSON report `summary.unplaceable` and an
+  `unplaceable[]` list; `schema_version` is `1.7`.
+
+### Fixed
+
+- **A method in a `Data.define`, `Struct.new`, `Class.new` or `Module.new`
+  block belongs to the class or module the block builds.** In
+  `class App; Argo = Data.define(:url) do def self.load = ...; end; end` the
+  subject is now `App::Argo.load`, not `App.load`; at the top level it was
+  `.load`, with no owner. Under `--strategy redefine` (the `--rails` default)
+  the mutated method was loaded into the wrong class, so the real method never
+  changed and every such mutant falsely survived. The class or module is
+  named after the constant it is assigned to with `=`, `||=` or `&&=`, through
+  parentheses or `begin`, resolved as Ruby resolves the assignment: `X` in the
+  current namespace, `::X` and any path at the top level from `Object`,
+  `self::X` under the current class. When it cannot be named statically (no
+  constant, a relative path such as `User::Permission` inside a namespace, or
+  a constant assigned in `class << self`), redefine reports its mutants with
+  a new status, `unplaceable`, rather than load them onto the wrong class;
+  reload still runs them. `module_function :name` in a `Module.new` block
+  promotes that module's method. Mutant ids for these subjects change:
+  regenerate `ignore:` entries and baselines that name them.
+
 ## [1.5.0] - 2026-10-06
 
 ### Added

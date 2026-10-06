@@ -58,7 +58,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.6", doc["schema_version"] # 1.6 added operator, token and id to no_coverage[] and uncapturable[]; 1.5 the --matrix block
+    assert_equal "1.7", doc["schema_version"] # 1.6 added operator, token and id to no_coverage[] and uncapturable[]; 1.5 the --matrix block
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
@@ -316,6 +316,19 @@ class JsonReporterTest < Minitest::Test
     assert_equal 3, entry["line"]
     assert_equal %w[literal_mutation 100 abc123def456], entry.values_at("operator", "token", "id")
     assert_equal [], doc["no_coverage"] # not conflated with no_coverage
+  end
+
+  def test_unplaceable_summary_count_and_list_stay_out_of_no_verdict
+    unp = Mutineer::Result.unplaceable.with(subject: subject, id: "abc123def456",
+                                            mutation: mutation_at("100", "0", :literal_mutation))
+    doc = render([Mutineer::Result.killed, survivor, unp])
+    assert_equal 1, doc["summary"]["unplaceable"]
+    assert_equal [0, 0, 2, 50.0], doc["summary"].values_at("uncapturable", "no_verdict", "attempted", "score")
+    entry = doc["unplaceable"].first
+    assert_equal ["Pricing#total", FILE, 3], entry.values_at("subject", "file", "line")
+    assert_equal %w[literal_mutation 100 abc123def456], entry.values_at("operator", "token", "id")
+    assert_equal [], doc["uncapturable"]
+    assert_equal [], doc["no_verdict"]
   end
 
   # #11: additive per_source array, sorted by file, with per-file counts + score.
