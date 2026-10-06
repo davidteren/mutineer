@@ -61,7 +61,9 @@ All notable changes to this project are documented here. The format is based on
   `error`; redefine now reports these mutants as `unplaceable`, and reload
   still runs them. A compact `class Foo::X` there is also owner-unknown and
   named as written. A `class ::X` or `::X = Class.new do` there keeps its
-  top-level name and a known owner, and `class ::X` now has instance methods.
+  top-level name, and `class ::X` now has instance methods. Its owner is known
+  directly in `class << self`, and unknown inside a class opened there, since
+  redefine cannot reopen that class.
   Mutant ids for these subjects change: regenerate `ignore:` entries and
   baselines that name them.
 

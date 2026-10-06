@@ -90,10 +90,7 @@ module Mutineer
       # forms (`:sym`, `def`) name methods promoted after the walk. A builder
       # block's defs belong to the class it builds; one not assigned to a
       # constant has no name, so its subjects are marked `owner_unknown`, and a
-      # `module_function :name` in it promotes nothing, nor does one in a block
-      # named only as written (`self::X`, `Foo::X`) or under an anonymous class,
-      # names two blocks may share.
-      # A module named under its singleton class (`#<Class:App>::M`) still promotes.
+      # `module_function :name` in it promotes only when {#promotes_module_function?}.
       #
       # @param node [Prism::CallNode] call node.
       # @return [void]
@@ -106,8 +103,7 @@ module Mutineer
           namespace = (@block_namespace || @namespace_stack).join("::")
           if args.empty?
             @module_function_active = true
-          elsif !@owner_unknown ||
-                (!@anonymous_block && namespace.start_with?("#<Class:") && !namespace.include?("#<anonymous>"))
+          elsif promotes_module_function?(namespace)
             args.each do |arg|
               @module_function_names << [namespace, arg.value.to_sym] if arg.is_a?(Prism::SymbolNode)
               @module_function_names << [namespace, arg.name] if arg.is_a?(Prism::DefNode)
@@ -187,6 +183,23 @@ module Mutineer
 
       private
 
+      # True when `module_function :name` here can be promoted by its joined
+      # namespace without matching another module's methods. A known owner
+      # always can. A module body opened in `class << self` (#208) can, and so
+      # can a builder block named under a singleton class (`#<Class:App>::M`).
+      # A block not assigned to a constant, one named only as written
+      # (`self::X`, `Foo::X`), and anything under an anonymous class cannot:
+      # two of them may share that name.
+      #
+      # @param namespace [String] joined namespace of the call.
+      # @return [Boolean]
+      def promotes_module_function?(namespace)
+        return true unless @owner_unknown
+        return false if @anonymous_block || namespace.include?("#<anonymous>")
+
+        @block_namespace.nil? || namespace.start_with?("#<Class:")
+      end
+
       # Runs the block with `path` pushed as the current namespace. A
       # root-anchored path (`module ::X` / `class ::X`) names the top-level X,
       # not X nested in the enclosing scope, so the namespace restarts there.
@@ -219,7 +232,7 @@ module Mutineer
         @lexical_stack = saved_lexical + [root ? "::#{name}" : name]
         @module_function_active = false
         @block_owner = @block_namespace = nil
-        @namespace_unknown = @owner_unknown = in_singleton || (!root && @namespace_unknown)
+        @namespace_unknown = @owner_unknown = in_singleton || @namespace_unknown # redefine reopens the lexical chain
         @singleton_depth = 0
         @singleton_cref = nil
         @anonymous_block = false
@@ -270,7 +283,9 @@ module Mutineer
           when Prism::SelfNode then @block_namespace || @namespace_stack unless @owner_unknown
           when Prism::ConstantReadNode then [path.name.to_s] if @namespace_stack.empty?
           end
-        base ? named_owner(base + names) : [nil, [node.target.slice], true]
+        return [nil, [node.target.slice], true] unless base
+
+        @namespace_unknown ? [nil, base + names, true] : named_owner(base + names)
       end
 
       # Names the singleton class that owns the constants written here: `class << self`

@@ -357,6 +357,12 @@ class ProjectTest < Minitest::Test
             self::S = Class.new do
               def s1; end
             end
+            class ::Deep
+              def d; end
+            end
+            ::DeepB = Class.new do
+              def e; end
+            end
           end
           class ::Top
             def t; end
@@ -366,15 +372,19 @@ class ProjectTest < Minitest::Test
               def z1; end
             end
           end
+          module Foo::Mod
+            def c; end
+            module_function :c
+          end
           def after; end
         end
       end
     RUBY
     with_source(src) do |path|
       subjects = Mutineer::Project.discover([path])
-      assert_equal %w[#<Class:App>::Q#q1 #<Class:App>::Q::R#r1 #<Class:App>::Q::X#x1 #<Class:App>::Q::S#s1 Top#t
-                      #<Class:App>::Z#z1 App.after], subjects.map(&:qualified_name)
-      assert_equal [true, true, true, true, false, true, false], subjects.map(&:owner_unknown)
+      assert_equal %w[#<Class:App>::Q#q1 #<Class:App>::Q::R#r1 #<Class:App>::Q::X#x1 #<Class:App>::Q::S#s1 Deep#d
+                      DeepB#e Top#t #<Class:App>::Z#z1 Foo::Mod.c App.after], subjects.map(&:qualified_name)
+      assert_equal [true] * 6 + [false, true, true, false], subjects.map(&:owner_unknown)
     end
   end
 
