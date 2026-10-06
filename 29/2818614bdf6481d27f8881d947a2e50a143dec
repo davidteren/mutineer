@@ -1,0 +1,29 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_4d60c6a93dc85a 73-92
+lib/mutineer/project.rb
+  s_07d7b58ff1b9fd::t_82816ac22ecb7a 46-48,53-55,62,69,94-95,107,109-110,116-117,180,188-198,204-210,216-247,250,259-261,268-272,281-284,291-307,352,355-364
+test/fixtures/singleton/singleton_nested_class.rb
+  s_07d7b58ff1b9fd::t_568e3da38dc783 1-22
+test/fixtures/singleton/singleton_nested_class_test.rb
+  s_07d7b58ff1b9fd::t_74d90ebde82687 1-14
+test/project_test.rb
+  s_07d7b58ff1b9fd::t_ce6b35ed8b6e55 345-520
+test/singleton_redefine_test.rb
+  s_07d7b58ff1b9fd::t_076a0a6a0609f9 129-139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "292818614bdf6481d27f8881d947a2e50a143dec",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
