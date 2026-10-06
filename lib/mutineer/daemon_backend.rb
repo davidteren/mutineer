@@ -279,6 +279,7 @@ module Mutineer
         project_root: config.project_root,
         boot: File.expand_path(config.boot || "config/environment", config.project_root),
         load_paths: Runner.test_load_roots(abs_tests),
+        cache_dir: File.expand_path(config.cache_dir, config.project_root),
         source_dirs: Runner.source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,
         rails: config.rails,
@@ -290,6 +291,8 @@ module Mutineer
         # instrumentation/memory across every mutant fork). `sources`/`tests` are the
         # map-build inputs.
         coverage: coverage,
+        # The map-building daemon's capture limit (--capture-timeout); nil = default.
+        capture_timeout: config.capture_timeout,
         sources: config.sources.map { |s| File.expand_path(s, config.project_root) },
         tests: abs_tests
       }

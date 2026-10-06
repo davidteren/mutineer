@@ -12,7 +12,7 @@ module Mutineer
       # Method-name swaps. All targets are core-Ruby Enumerable/Array methods so
       # the mutant exercises real behaviour rather than always raising.
       #
-      # ponytail: include? -> exclude? was specced but skipped — exclude? is not
+      # include? -> exclude? is left out: exclude? is not
       # core Ruby, so that mutant would always NoMethodError (a weak mutant).
       REPLACEMENTS = {
         map: "each", each: "map",

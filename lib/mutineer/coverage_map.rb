@@ -10,6 +10,7 @@ require_relative "minitest_integration"
 require_relative "test_runners"
 require_relative "child_stdout"
 require_relative "project_path"
+require_relative "pairing"
 
 module Mutineer
   # Maps `(source_file, line) -> [test_files]` so each mutant runs only against
@@ -98,8 +99,11 @@ module Mutineer
     # rather than a genuine coverage gap? True iff some capture failed this run
     # AND this file got zero coverage from any successful capture AND a failed
     # test file maps to it by the _test/_spec/test_ naming convention. Derived
-    # purely from already-persisted state (@map keys + @failed_test_files); no
-    # rerun, no new cached field, no digest change.
+    # from already-persisted state (@map keys + @failed_test_files). A split
+    # name checks the longer source files that existed when that check first
+    # ran for this map. Adding or deleting one of those files changes the
+    # coverage digest, so the next run captures again instead of retargeting
+    # a stored failure.
     #
     # File-level, convention-based attribution. A line covered only by a failed
     # test in an otherwise-covered file stays no_coverage (condition 2), and a
@@ -112,7 +116,7 @@ module Mutineer
       rel = relativize(absolute(file))
       return false if covered_source_files.include?(rel)
 
-      failed_test_targets.include?(File.basename(rel, ".rb"))
+      failed_test_blames?(rel)
     end
 
     # Per-method taint. A mutant on a line whose enclosing method got zero
@@ -131,7 +135,7 @@ module Mutineer
       return false if @failed_test_files.empty?
 
       rel = relativize(absolute(file))
-      return false unless failed_test_targets.include?(File.basename(rel, ".rb"))
+      return false unless failed_test_blames?(rel)
 
       line_range.none? { |ln| @map.key?("#{rel}:#{ln}") }
     end
@@ -143,17 +147,119 @@ module Mutineer
       @map.keys.map { |k| k.rpartition(":").first }.to_set
     end
 
-    # Basenames of the sources that failed test files pair with by convention:
-    # a trailing _test/_spec is stripped first, as pairing tries that form first.
-    def failed_test_targets
-      @failed_test_files.map do |t|
-        name = File.basename(t, ".rb")
-        case name
-        when /_(test|spec)\z/ then name.sub(/_(test|spec)\z/, "")
-        when "test_helper" then name # Minitest's support file pairs with no source
-        else name.delete_prefix("test_")
+    # True when a failed test file pairs with `source_rel` by convention.
+    # Exact `_test` / `_spec` / `test_` names match by basename, as before.
+    # A split `<name>_*_test.rb` matches only in the mirrored test directory,
+    # and only when no longer source file owns that name (#87). The answer
+    # is kept for this map, so a later delete does not move the failure.
+    #
+    # @param source_rel [String] project-relative source path.
+    # @return [Boolean]
+    def failed_test_blames?(source_rel)
+      @blame_for ||= {}
+      return @blame_for[source_rel] if @blame_for.key?(source_rel)
+
+      @blame_for[source_rel] = exact_failed_test?(source_rel) || split_failed_test?(source_rel)
+    end
+
+    # True when a failed exact `_test` / `_spec` / `test_` file pairs with
+    # this source. An `app/` or `lib/` source only accepts a `test/` or
+    # `spec/` file from its mirrored directory, so
+    # `test/foo/bar_upsert_test.rb` does not taint `app/other/bar_upsert.rb`.
+    # Any other source still matches by basename. A fixture under
+    # `test/fixtures/` and an explicit test both name their source that way.
+    #
+    # @param source_rel [String] project-relative source path.
+    # @return [Boolean]
+    def exact_failed_test?(source_rel)
+      name = File.basename(source_rel, ".rb")
+      base, lib = Pairing.logical_path(source_rel)
+      @failed_test_files.any? do |test_path|
+        next false unless failed_test_target_name(test_path) == name
+
+        rel = relativize(test_path)
+        dir = File.dirname(rel)
+        if app_or_lib_source?(source_rel) && conventional_test_dir?(dir)
+          mirrored_test_dir?(rel, base, lib) || spec_mirror?(rel, base, lib)
+        else
+          true
         end
-      end.to_set
+      end
+    end
+
+    # True when pairing gives this source a mirrored test directory.
+    #
+    # @param source_rel [String] project-relative source path.
+    # @return [Boolean]
+    def app_or_lib_source?(source_rel)
+      source_rel.start_with?("app/", "lib/")
+    end
+
+    # Basename a failed test file would pair with, before the directory check.
+    #
+    # @param test_path [String]
+    # @return [String]
+    def failed_test_target_name(test_path)
+      name = File.basename(test_path, ".rb")
+      case name
+      when /_(test|spec)\z/ then name.sub(/_(test|spec)\z/, "")
+      when "test_helper" then name
+      else name.delete_prefix("test_")
+      end
+    end
+
+    # True when `dir` is `test`, `spec`, or a directory under one of them.
+    #
+    # @param dir [String] project-relative directory.
+    # @return [Boolean]
+    def conventional_test_dir?(dir)
+      dir == "test" || dir == "spec" || dir.start_with?("test/", "spec/")
+    end
+
+    # True when a failed split test file pairs with this source. Directory and
+    # the longer-source check match {Pairing}, so a test outside the mirror, or
+    # one owned by `user_session.rb`, does not taint `user.rb`.
+    #
+    # @param source_rel [String] project-relative source path.
+    # @return [Boolean]
+    def split_failed_test?(source_rel)
+      base, lib = Pairing.logical_path(source_rel)
+      name = File.basename(base)
+      @failed_test_files.any? do |t|
+        test_rel = relativize(t)
+        entry = File.basename(test_rel)
+        next false unless Pairing.split_entry?(entry, name)
+        next false unless mirrored_test_dir?(test_rel, base, lib)
+        next false if Pairing.claimed_by_longer_source?(@project_root, base, entry, File.dirname(test_rel))
+
+        true
+      end
+    end
+
+    # True when `test_rel` sits in a mirrored test directory for `base`.
+    #
+    # @param test_rel [String] project-relative test path.
+    # @param base [String] logical source path without extension.
+    # @param lib [Boolean] whether the source originated from lib/.
+    # @return [Boolean]
+    def mirrored_test_dir?(test_rel, base, lib)
+      dirs = [Pairing.mirror_dir("test", base)]
+      dirs << Pairing.mirror_dir("test/lib", base) if lib
+      dirs.include?(File.dirname(test_rel))
+    end
+
+    # True when `test_rel` sits in a mirrored spec directory for `base`.
+    # Split Minitest names stay in {#mirrored_test_dir?}. An exact `_spec`
+    # file uses this directory.
+    #
+    # @param test_rel [String] project-relative test path.
+    # @param base [String] logical source path without extension.
+    # @param lib [Boolean] whether the source originated from lib/.
+    # @return [Boolean]
+    def spec_mirror?(test_rel, base, lib)
+      dirs = [Pairing.mirror_dir("spec", base)]
+      dirs << Pairing.mirror_dir("spec/lib", base) if lib
+      dirs.include?(File.dirname(test_rel))
     end
 
     # Shared cache dance for both build paths: hit the digest-keyed cache, else
@@ -809,9 +915,50 @@ module Mutineer
       digest_group(d, "source", @source_paths)
       digest_group(d, "test", @test_paths)
       digest_group(d, "boot", [boot_digest_path]) if @boot_path
+      ownership_paths.each do |rel|
+        d.update("owner\0")
+        d.update(rel)
+        d.update("\0")
+      end
       @load_paths.sort.each { |lp| d.update("loadpath\0#{lp}\0") }
       d.update("framework\0#{@framework}\0")
       d.hexdigest
+    end
+
+    # Longer source files that can take a split test from a configured source.
+    # Only their presence is digested. A content edit of a sibling does not
+    # change pairing, and it does not rebuild coverage. Each directory is
+    # listed once, even when many sources share it.
+    #
+    # @return [Array<String>] project-relative paths, sorted.
+    def ownership_paths
+      root = File.expand_path(@project_root)
+      listings = {}
+      paths = @source_paths.flat_map do |source|
+        rel = relativize(absolute(source))
+        next [] if rel.start_with?("/")
+
+        base, = Pairing.logical_path(rel)
+        name = File.basename(base)
+        dir = File.dirname(base)
+        folders = [dir == "." ? nil : dir]
+        %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
+        folders.uniq.flat_map do |folder|
+          abs = folder ? File.join(root, folder) : root
+          entries = listings.fetch(abs) do
+            listings[abs] = File.directory?(abs) ? Dir.children(abs) : []
+          end
+          entries.filter_map do |entry|
+            next unless entry.end_with?(".rb")
+
+            stem = entry.delete_suffix(".rb")
+            next unless stem.start_with?("#{name}_") && stem.length > name.length
+
+            folder ? File.join(folder, entry) : entry
+          end
+        end
+      end
+      paths.uniq.sort
     end
 
     # boot_path is a require-style path (e.g. "config/environment", no extension);

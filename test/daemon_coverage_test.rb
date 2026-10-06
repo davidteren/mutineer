@@ -4,6 +4,7 @@ require_relative "test_helper"
 require "mutineer/config"
 require "mutineer/runner"
 require "mutineer/daemon_client"
+require "tmpdir"
 
 # #26/U7 — coverage narrowing restored on the daemon path. The daemon builds the
 # coverage map app-side (Coverage started before boot) and ships it to the tool, which
@@ -55,5 +56,14 @@ class DaemonCoverageTest < Minitest::Test
                     "mutants on the uncovered methods come back no_coverage"
     assert_operator aggregate.covered_count, :>, 0,
                     "subtotal_cents mutants are still run (covered)"
+  end
+
+  def test_daemon_writes_the_coverage_cache_to_cache_dir
+    Dir.mktmpdir("mutineer-daemon-cache") do |dir|
+      config = config_for("order_subtotal_only_test.rb")
+      config.cache_dir = dir
+      Mutineer::Runner.execute(config)
+      assert_path_exists File.join(dir, "coverage.json")
+    end
   end
 end

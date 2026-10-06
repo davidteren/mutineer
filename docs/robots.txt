@@ -3,8 +3,6 @@
 
 User-agent: *
 Allow: /
-Disallow: /plans/
-Disallow: /reviews/
 
 # AI agents / LLM crawlers — explicitly allowed.
 User-agent: GPTBot

@@ -64,4 +64,37 @@ class StatementRemovalTest < Minitest::Test
     assert_includes removed, "b = 2"
     assert_includes removed, "a = 1"
   end
+
+  def test_statement_that_opens_a_heredoc_is_skipped
+    src = <<~RUBY
+      def f
+        plain
+        foo(<<~X)
+          body
+        X
+        bar
+      end
+    RUBY
+    mutations, source = run_mutator(src)
+    removed = mutations.map { |m| source[m.start_offset...m.end_offset] }
+    assert_equal ["plain"], removed
+    mutations.each { |m| assert m.valid?(source) }
+  end
+
+  def test_heredoc_inside_the_replaced_range_is_still_removed
+    src = <<~RUBY
+      def f
+        if foo(<<~EOS)
+            body
+          EOS
+          :yes
+        end
+        bar
+      end
+    RUBY
+    mutations, source = run_mutator(src)
+    assert_equal 1, mutations.size
+    assert_equal "def f\n  nil\n  bar\nend\n", mutations.first.apply(source)
+    assert mutations.first.valid?(source)
+  end
 end
