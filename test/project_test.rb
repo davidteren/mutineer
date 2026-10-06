@@ -383,7 +383,7 @@ class ProjectTest < Minitest::Test
     with_source(src) do |path|
       subjects = Mutineer::Project.discover([path])
       assert_equal %w[#<Class:App>::Q#q1 #<Class:App>::Q::R#r1 #<Class:App>::Q::X#x1 #<Class:App>::Q::S#s1 Deep#d
-                      DeepB#e Top#t #<Class:App>::Z#z1 Foo::Mod#c App.after], subjects.map(&:qualified_name)
+                      DeepB#e Top#t #<Class:App>::Z#z1 Foo::Mod.c App.after], subjects.map(&:qualified_name)
       assert_equal [true] * 9 + [false], subjects.map(&:owner_unknown)
     end
   end
@@ -446,7 +446,7 @@ class ProjectTest < Minitest::Test
     end
   end
 
-  def test_discover_does_not_promote_module_function_across_blocks_named_as_written
+  def test_discover_promotes_module_function_only_in_its_own_unknown_owner_body
     src = <<~RUBY
       a = Class.new do
         self::Z = Module.new do
@@ -478,7 +478,7 @@ class ProjectTest < Minitest::Test
       end
     RUBY
     with_source(src) do |path|
-      assert_equal %w[self::Z#c self::Z#c #<Class:App::#<anonymous>>::M#c #<Class:App::#<anonymous>>::M#c],
+      assert_equal %w[self::Z.c self::Z#c #<Class:App::#<anonymous>>::M.c #<Class:App::#<anonymous>>::M#c],
                    Mutineer::Project.discover([path]).map(&:qualified_name)
     end
   end
