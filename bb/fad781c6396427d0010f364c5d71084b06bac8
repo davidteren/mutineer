@@ -1,0 +1,32 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 50-53,76-89
+docs/json-schema.md
+  h_e8a5bb9272fa34 10,28,77-83,97-98
+docs/plans/issue-159-duplicate-mutations.md
+  h_e8a5bb9272fa34 1-82
+lib/mutineer/reporter.rb
+  h_e8a5bb9272fa34 29,191-193,195-196,202,215-216,523,535-536,625-627
+lib/mutineer/runner.rb
+  h_e8a5bb9272fa34 3,222-227,231-233,240,250-276
+test/baseline_test.rb
+  h_e8a5bb9272fa34 240
+test/cli_test.rb
+  h_e8a5bb9272fa34 538,677
+test/equivalent_mutant_test.rb
+  h_e8a5bb9272fa34 274
+test/json_reporter_test.rb
+  h_e8a5bb9272fa34 61,162-192,308,317
+test/runner_test.rb
+  h_e8a5bb9272fa34 294-371
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bbfad781c6396427d0010f364c5d71084b06bac8",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
