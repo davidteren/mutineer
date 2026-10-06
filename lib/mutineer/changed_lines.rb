@@ -59,6 +59,7 @@ module Mutineer
     # A file that is not in the index has no usable diff, so `new_file_diff`
     # supplies one that marks every line new. That includes a file the ref still
     # has, deleted and then written again: git prints only a deletion hunk for it.
+    # Git-ignored files outside the index contribute no changed lines.
     # Paths are literal, so a name such as `file[1].rb` is not read as a glob.
     #
     # A failure is warned, never silent: an empty result means "no changed
@@ -73,7 +74,10 @@ module Mutineer
       out, _err, status = Open3.capture3(
         "git", "--literal-pathspecs", "-C", project_root, "diff", "--unified=0", ref, "--", abs_file
       )
-      return(indexed?(abs_file, project_root) ? out : new_file_diff(abs_file)) if status.success?
+      if status.success?
+        return out if indexed?(abs_file, project_root)
+        return ignored?(abs_file, project_root) ? "" : new_file_diff(abs_file)
+      end
 
       warn "[mutineer] git diff failed for #{abs_file}; its lines will not be mutated (--since)"
       ""
@@ -93,6 +97,21 @@ module Mutineer
         "git", "--literal-pathspecs", "-C", project_root, "ls-files", "--error-unmatch", "--", abs_file
       )
       known.success?
+    end
+
+    # Tells whether Git ignores the file (`.gitignore`, `.git/info/exclude` or
+    # the global excludes file).
+    #
+    # @param abs_file [String] absolute path of the file.
+    # @param project_root [String] repository root for `git -C`.
+    # @return [Boolean] true when Git ignores the file. False when Git cannot
+    #   tell, such as for a path beyond a symlink or inside a submodule (exit
+    #   128): that file is scored in full, as a file Git does not ignore is.
+    def ignored?(abs_file, project_root)
+      _out, _err, status = Open3.capture3(
+        "git", "-C", project_root, "check-ignore", "--quiet", "--", abs_file
+      )
+      status.success?
     end
 
     # Returns a diff that marks a file as entirely new. It returns `""` when

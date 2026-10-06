@@ -124,6 +124,17 @@ class ChangedLinesTest < Minitest::Test
     end
   end
 
+  # `git check-ignore` exits 128 for a path beyond a symlink, so it cannot say
+  # whether Git ignores the file. The file is scored in full, as before.
+  def test_git_diff_scores_an_untracked_file_beyond_a_symlink_in_full
+    in_repo do |root|
+      Dir.mkdir(File.join(root, "real"))
+      File.symlink("real", File.join(root, "link"))
+      File.write(File.join(root, "real/new.rb"), "a\nb\n")
+      assert_equal Set[1, 2], CL.parse(CL.git_diff("HEAD", File.join(root, "link/new.rb"), root))
+    end
+  end
+
   def test_git_diff_tracked_modified_file_reports_only_changed_lines
     in_repo do |root|
       File.write(File.join(root, "old.rb"), "1\n2 changed\n3\n")
