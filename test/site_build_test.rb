@@ -3,6 +3,7 @@
 require "minitest/mock"
 require "tmpdir"
 require "open3"
+require "yaml"
 require_relative "test_helper"
 require_relative "../rake/site_build"
 
@@ -32,6 +33,19 @@ class SiteBuildTest < Minitest::Test
     out, status = Open3.capture2e({ "SITE_BUILD_DEST" => "#{Dir.tmpdir}/x" }, "bundle", "exec", "rake", "site:build", chdir: ROOT)
     refute status.success?
     assert_match(/SITE_BUILD_DEST/, out)
+  end
+
+  # #125: the skill lives once, at skills/mutineer/SKILL.md (the Agent Skills
+  # layout installers look for); the build publishes that file as skill.md.
+  def test_skill_is_published_from_the_agent_skills_layout
+    skill = File.join(ROOT, SiteBuild::SKILL)
+    assert_equal "skills/mutineer/SKILL.md", SiteBuild::SKILL
+    front = File.read(skill)[/\A---\n(.*?)\n---\n/m, 1]
+    refute_nil front, "#{SiteBuild::SKILL} needs YAML frontmatter"
+    meta = YAML.safe_load(front)
+    assert_equal "mutineer", meta["name"], "the name must match the skill's directory"
+    assert_includes 1..1024, meta["description"].to_s.length, "the spec limits description to 1-1024 characters"
+    refute File.exist?(File.join(ROOT, "docs/skill.md")), "one copy only: the build writes _site/skill.md"
   end
 
   def test_tracked_docs_paths_raises_outside_a_checkout
