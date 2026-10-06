@@ -7,7 +7,7 @@ worker finish order, so two runs of the same inputs produce byte-identical outpu
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.5"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.6"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -25,7 +25,7 @@ between reports with the same `id_format` (a missing key is the old format).
 
 ```jsonc
 {
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
@@ -74,8 +74,13 @@ Each surviving mutant — the records an agent or reviewer acts on:
 
 ### `no_coverage[]` and `uncapturable[]` (array of object)
 
-Both use the lean shape `{ subject, file, line }`. `no_coverage` is a genuine coverage gap; `uncapturable`
-means the test that should cover the line errored while capturing coverage (fix the harness, not the test).
+Each entry is `{ subject, file, line, operator, token, id }`, sorted by
+`(file, line, operator, id)`. `no_coverage` is a genuine coverage gap; `uncapturable` means the test that
+should cover the line errored while capturing coverage (fix the harness, not the test).
+
+Several mutants can share a line, so `operator` and `token` name the change and `id` identifies the mutant.
+The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` these entries were
+`{ subject, file, line }`.
 
 ### `no_verdict[]` (array of object)
 
@@ -89,8 +94,8 @@ A failure before the mutant could be forked has no subject or mutation, so `subj
 `id` are `null` on that entry. It still appears, because the counts must reconcile — but that means `id`
 is not a reliable join key here, unlike in `survivors[]` and `ignored[]`.
 
-Uncapturable mutants appear both here and in `uncapturable[]`, which keeps its lean shape for consumers
-that already read it.
+Uncapturable mutants appear both here and in `uncapturable[]`, which stays for consumers that already
+read it.
 
 Read this array when the score looks better than you expect: these mutants are excluded from the score's
 denominator, so a broken harness raises the score rather than lowering it. That is why `--threshold`
