@@ -229,7 +229,7 @@ class ReleaseWorkflowTest < Minitest::Test
     git.call("fetch", "-q", "origin", "+refs/heads/release/*:refs/remotes/origin/release/*")
     run_helpers("has_human_commits release/v1.2.4 && echo yes || echo no", dir: dir) == "yes"
   ensure
-    FileUtils.rm_rf(root) if root # rm_rf: Dir.mktmpdir's cleanup can raise ENOTEMPTY under load
+    FileUtils.rm_rf(root) if root # rm_rf: backstop for a git process still writing here (#174)
   end
 
   # Runs the extracted calculation in `dir`.
@@ -263,7 +263,7 @@ class ReleaseWorkflowTest < Minitest::Test
       git.call("commit", "-qm", extra_message)
       yield dir
     ensure
-      FileUtils.rm_rf(dir) # rm_rf: Dir.mktmpdir's block cleanup can raise ENOTEMPTY under load
+      FileUtils.rm_rf(dir) # rm_rf: backstop for a git process still writing here (#174)
     end
   end
 end
