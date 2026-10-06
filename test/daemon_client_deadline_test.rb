@@ -55,16 +55,22 @@ class DaemonClientDeadlineTest < Minitest::Test
     rd, wr = IO.pipe
     daemon = fork do
       rd.close
+      ready_rd, ready_wr = IO.pipe
       child = fork do
+        ready_rd.close
         Process.setpgid(0, 0)
-        Mutineer::DaemonServer.exit_with_parent
+        Mutineer::DaemonServer.send(:exit_with_parent)
+        ready_wr.puts("watching") # the watchdog is running before the daemon exits
         sleep 60
       end
-      wr.puts(child)
+      ready_wr.close
+      wr.puts("#{child} #{ready_rd.gets}")
       exit!(0)
     end
     wr.close
-    child = rd.gets.to_i
+    pid, ready = rd.gets.split
+    child = pid.to_i
+    assert_equal "watching", ready, "the mutant child failed before its watchdog started"
     Process.wait(daemon)
     gone = 50.times.any? do
       sleep 0.1
@@ -72,7 +78,7 @@ class DaemonClientDeadlineTest < Minitest::Test
     end
     assert gone, "mutant child #{child} outlived its daemon"
   ensure
-    Process.kill(:KILL, child) rescue nil if child && child.positive? # rubocop:disable Style/RescueModifier
+    Process.kill(:KILL, child) rescue nil if child&.positive? # rubocop:disable Style/RescueModifier
   end
 
   def test_close_io_kills_a_daemon_that_ignores_eof
