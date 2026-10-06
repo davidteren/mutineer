@@ -208,16 +208,29 @@ module Mutineer
 
           LOCK.synchronize do
             self.seen += 1
-            next if result.skipped?
-
-            event = result.passed? ? KillChannel::PASS : KillChannel::KILL
-            self.serial_killed = true if event == KillChannel::KILL && !parallel_marked
-            file, line = Array(result.source_location)
-            KillChannel.write(channel, event, file, *name_and_id(result, line))
+            send_result(result)
           end
         end
 
         private
+
+        # Writes one result's line. A recorder that raised would change the
+        # verdict, so a result it cannot describe (a Minitest without
+        # `source_location` or `klass` on its results) is a `lost` line, which
+        # keeps the row incomplete, as on the RSpec side.
+        #
+        # @param result [Minitest::Result] the result of one test.
+        # @return [void]
+        def send_result(result)
+          return if result.skipped?
+
+          event = result.passed? ? KillChannel::PASS : KillChannel::KILL
+          self.serial_killed = true if event == KillChannel::KILL && !parallel_marked
+          file, line = Array(result.source_location)
+          KillChannel.write(channel, event, file, *name_and_id(result, line))
+        rescue StandardError
+          KillChannel.write_lost(channel)
+        end
 
         # The test's name and id. `Class#method` is unique within a run, so the
         # name is also the id. An anonymous class has no name (Minitest records

@@ -3,6 +3,7 @@
 require_relative "../test_helper"
 require "json"
 require "tmpdir"
+require "stringio"
 
 # The Minitest runner (wrapping MinitestIntegration) must keep its 0/1 contract.
 # Run in a fork because the runner manipulates global Minitest state (autorun,
@@ -381,6 +382,23 @@ class TestRunnersMinitestTest < Minitest::Test
     assert report.parallel
     assert_equal 1, report.killed.size
     refute report.serial_kill
+  end
+
+  # #191 review: a result the recorder cannot describe is a lost line, never an
+  # exception that would change the verdict.
+  def test_a_result_the_recorder_cannot_describe_is_a_lost_line
+    io = StringIO.new
+    recorder = Mutineer::MinitestIntegration::KillRecorder
+    broken = Object.new
+    def broken.skipped? = false
+    def broken.passed? = raise("no outcome")
+    recorder.channel = io
+    recorder.send(:send_result, broken)
+    report = Mutineer::KillChannel.parse(io.string)
+    assert_equal 1, report.lost
+    assert_empty report.ran
+  ensure
+    recorder.channel = nil
   end
 
   def test_record_to_and_stop_at_first_failure_cannot_be_combined
