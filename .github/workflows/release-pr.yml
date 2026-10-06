@@ -246,16 +246,6 @@ jobs:
             gh pr create --base main --head "$branch" --title "release: v${next}" --body "$body"
           fi
 
-          # A GITHUB_TOKEN push starts no CI, so the required checks would never report
-          # and the PR would stay BLOCKED. Dispatch ci.yml on the release branch: its
-          # jobs report the same check names on the PR's head commit. Only after a new
-          # push (a branch already built on this main has its checks), and not with a
-          # PAT, whose push already triggered CI.
-          if [ "$built" = 0 ] && [ "$HAS_RELEASE_PR_TOKEN" != "true" ]; then
-            gh workflow run ci.yml --ref "$branch"
-            echo "Dispatched ci.yml on $branch for the release PR's required checks."
-          fi
-
           # Only now that the replacement exists: close an open release PR for an OLDER
           # version (for example v1.2.1 when a feat: has since made this v1.3.0). Only PRs
           # this workflow opened (body marker, same repo) and only lower versions, so a
@@ -292,4 +282,23 @@ jobs:
               gh pr close "$num" || { echo "::error::Could not close #$num ($old)."; failed=1; }
             fi
           done <<< "$olds"
+
+          # A GITHUB_TOKEN push starts no CI, so the required checks would never report
+          # and the PR would stay BLOCKED. Dispatch ci.yml on the release branch: its
+          # jobs report the same check names on the PR's head commit. Skipped with a
+          # PAT (its push already triggered CI) and when a dispatched CI run already
+          # exists for this head commit, so a run that stopped before dispatching is
+          # caught up next time. (A pull_request run waiting in action_required does
+          # not count: it reports no checks until a person approves it.)
+          head_sha="$(git rev-parse "$remote")" # the release PR head (git push updated it)
+          dispatched="$(gh run list --workflow ci.yml --event workflow_dispatch --commit "$head_sha" \
+            --json databaseId --jq length || echo 0)"
+          if [ "$HAS_RELEASE_PR_TOKEN" != "true" ] && [ "$dispatched" = 0 ]; then
+            if gh workflow run ci.yml --ref "$branch"; then
+              echo "Dispatched ci.yml on $branch for the release PR's required checks."
+            else
+              echo "::error::Could not dispatch ci.yml on $branch. Run: gh workflow run ci.yml --ref $branch"
+              failed=1
+            fi
+          fi
           exit "$failed"
