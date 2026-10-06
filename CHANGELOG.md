@@ -71,7 +71,8 @@ All notable changes to this project are documented here. The format is based on
   that runs only sometimes: a later `when` or `in` condition, a `rescue` class
   list, a parameter default, the rescue side of `x rescue y`, the value of
   `||=` or `&&=`, the operand of `defined?`, the right side of `a ||` or
-  `a &&`, a branch of `x if c`, `x unless c`, a ternary or `else`, an
+  `a &&`, a branch of `x if c`, `x unless c`, a ternary or `else`, the
+  pattern of `v in p` or `v => p`, an
   argument or block of `x&.m(...)`, and the value of `x&.m += v`. Those
   mutants stay `no_coverage`, as before.
 - **A survivor diff for a multi-line mutant applies with `git apply`** (#106).

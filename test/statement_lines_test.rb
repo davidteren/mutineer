@@ -129,7 +129,9 @@ class StatementLinesTest < Minitest::Test
     "a safe navigation operator-assign value" => ["v&.n += g(\n    :m)", ":m"],
     "an if modifier body" => ["g(:a,\n    :m) if v", ":m"],
     "an unless modifier body" => ["g(:a,\n    :m) unless v", ":m"],
-    "an else branch" => ["x = if v then 1 else g(:a,\n    :m) end", ":m"]
+    "an else branch" => ["x = if v then 1 else g(:a,\n    :m) end", ":m"],
+    "a later pattern alternative" => ["ok = v in 1 |\n    :m", ":m"],
+    "a later element of a required pattern" => ["v => [Integer,\n    :m]", ":m"]
   }.each do |shape, (body, snippet)|
     define_method("test_#{shape.tr(' ?-', '___')}_has_no_lines") do
       source = "def f(v, list)\n  #{body}\nend\n"
