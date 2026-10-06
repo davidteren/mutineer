@@ -124,17 +124,17 @@ test('explainer video pauses off screen, keeps Picture-in-Picture playing, and r
   docEvents.DOMContentLoaded();
   assert.equal(observed, video);
 
-  observerCallback([{ isIntersecting: true }]);
+  observerCallback([{ intersectionRatio: 0.6 }]);
   assert.equal(pauses, 0, 'a visible video keeps playing');
-  observerCallback([{ isIntersecting: false }]);
-  assert.equal(pauses, 1, 'scrolling away pauses it');
+  observerCallback([{ intersectionRatio: 0.2 }]);
+  assert.equal(pauses, 1, 'scrolling mostly away pauses it');
 
   document.hidden = true;
   docEvents.visibilitychange();
   assert.equal(pauses, 2, 'a hidden tab pauses it');
 
   document.pictureInPictureElement = video;
-  observerCallback([{ isIntersecting: false }]);
+  observerCallback([{ intersectionRatio: 0 }]);
   docEvents.visibilitychange();
   assert.equal(pauses, 2, 'Picture-in-Picture keeps playing');
 

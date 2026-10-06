@@ -48,7 +48,8 @@
       if ('IntersectionObserver' in window) {
         new IntersectionObserver(function (entries) {
           entries.forEach(function (entry) {
-            if (!entry.isIntersecting) pauseUnlessFloating();
+            // Less than a quarter in view counts as scrolled away.
+            if (entry.intersectionRatio < 0.25) pauseUnlessFloating();
           });
         }, { threshold: 0.25 }).observe(video);
       }
