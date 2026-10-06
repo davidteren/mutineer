@@ -297,13 +297,14 @@ module Mutineer
       # opens that of the current class (the built class inside a builder block),
       # and a builder block inside `class << self` keeps the enclosing one. A block
       # not assigned to a constant builds a class with no name, written `#<anonymous>`.
+      # Each nested `class << self` opens the singleton class of the one around it.
       #
-      # @return [String] e.g. `#<Class:App>`.
+      # @return [String] e.g. `#<Class:App>`, or `#<Class:#<Class:App>>` two deep.
       def singleton_name
         return @singleton_cref unless @singleton_depth.positive?
-        return "#<Class:#{(@namespace_stack + ["#<anonymous>"]).join("::")}>" if @anonymous_block
 
-        "#<Class:#{(@block_namespace || @namespace_stack).join("::")}>"
+        base = @anonymous_block ? @namespace_stack + ["#<anonymous>"] : @block_namespace || @namespace_stack
+        @singleton_depth.times.reduce(base.join("::")) { |name, _| "#<Class:#{name}>" }
       end
 
       # The owner for a resolved namespace, root-anchored so the redefine

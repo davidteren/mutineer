@@ -388,6 +388,41 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def test_discover_names_a_class_in_nested_class_self_on_the_inner_singleton_class
+    src = <<~RUBY
+      class App
+        class << self
+          class Q
+            def q; end
+          end
+          class << self
+            class Q
+              def q; end
+            end
+            P = Data.define do
+              class Z
+                def z; end
+              end
+            end
+          end
+        end
+        R = Data.define do
+          class << self
+            class << self
+              class W
+                def w; end
+              end
+            end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[#<Class:App>::Q#q #<Class:#<Class:App>>::Q#q #<Class:#<Class:App>>::Z#z
+                      #<Class:#<Class:App::R>>::W#w], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   def test_discover_names_class_self_in_a_builder_block_on_the_built_class
     src = <<~RUBY
       class App
