@@ -342,6 +342,29 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def test_discover_promotes_module_function_names_in_a_module_new_block
+    src = <<~RUBY
+      module Host
+        Helpers = Module.new do
+          def calc; end
+          module_function :calc
+        end
+        def calc; end
+      end
+      module Other
+        helper = Module.new do
+          def calc; end
+          module_function :calc
+        end
+        def calc; end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[Host::Helpers.calc Host#calc Other#calc Other#calc],
+                   Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   def test_discover_nested_classes
     with_source("class Outer\n  class Inner\n    def m; end\n  end\nend\n") do |path|
       s = Mutineer::Project.discover([path]).first

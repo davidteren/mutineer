@@ -87,7 +87,8 @@ module Mutineer
       # `module_function` flips all SUBSEQUENT defs in this body; the argument
       # forms (`:sym`, `def`) name methods promoted after the walk. A builder
       # block's defs belong to the class it builds; one not assigned to a
-      # constant has no name, so its subjects are marked `owner_unknown`.
+      # constant has no name, so its subjects are marked `owner_unknown`, and a
+      # `module_function :name` in it promotes nothing.
       #
       # @param node [Prism::CallNode] call node.
       # @return [void]
@@ -99,8 +100,8 @@ module Mutineer
           args = node.arguments&.arguments || []
           if args.empty?
             @module_function_active = true
-          else
-            namespace = @namespace_stack.join("::")
+          elsif !@owner_unknown
+            namespace = (@block_namespace || @namespace_stack).join("::")
             args.each do |arg|
               @module_function_names << [namespace, arg.value.to_sym] if arg.is_a?(Prism::SymbolNode)
               @module_function_names << [namespace, arg.name] if arg.is_a?(Prism::DefNode)
