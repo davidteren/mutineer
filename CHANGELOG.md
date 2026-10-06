@@ -71,6 +71,14 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **The RSpec runner keeps what gems configured before the run.** It called
+  `RSpec.reset`, which drops the whole configuration. Under `rails: true`, a
+  `--boot` file or `require:`, the app's gems load first, so a setting such as
+  rspec-retry's `verbose_retry` was gone, and a support file that set it
+  raised `NoMethodError`. The run stopped with "the unmutated suite is not
+  green". The runner now calls `RSpec.clear_examples`, which keeps the
+  configuration. Hooks that gems added now apply too: an example with
+  rspec-retry's `retry: 3` runs up to 3 times per mutant, as under `rspec`.
 - **`--since` no longer scores a file that Git ignores** (#168). A file
   outside the index is scored in full, so a new file is not missed. That
   check also caught files that Git ignores on purpose (`.gitignore`,

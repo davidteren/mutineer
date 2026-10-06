@@ -31,7 +31,9 @@ module Mutineer
         require_rspec!
 
         ::RSpec::Core::Runner.disable_autorun!
-        ::RSpec.reset
+        # Not RSpec.reset: it also drops the settings that gems added when Bundler
+        # required them, such as rspec-retry's verbose_retry.
+        ::RSpec.clear_examples
         # Added before the run reads its options, which leaves the reporter
         # unbuilt, so the run's output stream still applies. With a formatter
         # present, RSpec adds no default one; its output went to the sink anyway.
