@@ -1,0 +1,33 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_d8e851b5ce2128 45-52
+docs/json-schema.md
+  s_07d7b58ff1b9fd::t_de44fbcba23c33 73
+docs/plans/issue-106-diff-hunk-counts.md
+  s_07d7b58ff1b9fd::t_98aa8ba8bee0c6 1-74
+lib/mutineer/reporter.rb
+  s_07d7b58ff1b9fd::t_b029ea67ca48a7 566-570,580-582,586-622
+test/fixtures/action_harness.sh
+  s_07d7b58ff1b9fd::t_4eaa23b627858f 36-38,41
+test/json_reporter_test.rb
+  s_07d7b58ff1b9fd::t_e9baa4841cf933 7,40-58,175-245
+test/release_workflow_test.rb
+  s_07d7b58ff1b9fd::t_e98025687d14da 212-214,232,266
+test/test_helper.rb
+  s_07d7b58ff1b9fd::t_9a83a3840210b7 7-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0c5031837d43ea4c746b20d344d802350f9f4028",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
