@@ -89,6 +89,12 @@ class SingletonRedefineTest < Minitest::Test
                   "anonymous Class.new (reload)")
   end
 
+  def test_parenthesized_and_or_assigned_builders_are_mutated
+    %w[WrappedPoint#m WrappedOrA#m].each do |only|
+      assert_killed(run_redefine("wrapped_builder.rb", "wrapped_builder_test.rb", only: only), only)
+    end
+  end
+
   # Parity control — this form already worked; it must keep working.
   def test_def_self_methods_are_mutated
     assert_killed(run_redefine("def_self.rb", "def_self_test.rb"), "def self.")

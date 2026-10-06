@@ -248,6 +248,39 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def test_discover_unwraps_parentheses_and_begin_and_names_or_and_and_writes
+    src = <<~RUBY
+      Point = (Data.define(:x) do
+        def a; end
+      end)
+      Wrapped = begin
+        Data.define(:x) do
+          def b; end
+        end
+      end
+      OrA ||= Data.define(:x) do
+        def c; end
+      end
+      AndA &&= Struct.new(:x) do
+        def d; end
+      end
+      Host::OrB ||= Struct.new(:x) do
+        def e; end
+      end
+      Host::AndB &&= Struct.new(:x) do
+        def f; end
+      end
+      Sum += Struct.new(:x) do
+        def g; end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Point#a Wrapped#b OrA#c AndA#d Host::OrB#e Host::AndB#f #g], subjects.map(&:qualified_name)
+      assert_equal [false] * 6 + [true], subjects.map(&:owner_unknown)
+    end
+  end
+
   def test_discover_nested_classes
     with_source("class Outer\n  class Inner\n    def m; end\n  end\nend\n") do |path|
       s = Mutineer::Project.discover([path]).first

@@ -114,15 +114,21 @@ module Mutineer
 
       # Names the class a builder block assigned to this constant builds (see {#builds_class?}).
       #
-      # @param node [Prism::ConstantWriteNode, Prism::ConstantPathWriteNode] constant assignment.
+      # `=`, `||=` and `&&=` store the class, so each names it; `+=` stores what `+`
+      # returns, so its builder is left unnamed.
+      #
+      # @param node [Prism::ConstantWriteNode, Prism::ConstantPathWriteNode, Prism::ConstantOrWriteNode,
+      #   Prism::ConstantAndWriteNode, Prism::ConstantPathOrWriteNode, Prism::ConstantPathAndWriteNode]
+      #   constant assignment.
       # @return [void]
       def visit_constant_write_node(node)
-        return super unless builds_class?(node.value)
+        call = assigned_value(node.value)
+        return super unless builds_class?(call)
 
         saved = @assigned
-        owner = node.is_a?(Prism::ConstantPathWriteNode) ? node.target.slice : node.name.to_s
+        owner = node.respond_to?(:target) ? node.target.slice : node.name.to_s
         namespace = owner.start_with?("::") ? [owner.delete_prefix("::")] : @namespace_stack + [owner]
-        @assigned = [node.value, [owner, namespace, false]]
+        @assigned = [call, [owner, namespace, false]]
         begin
           super
         ensure
@@ -130,6 +136,10 @@ module Mutineer
         end
       end
       alias visit_constant_path_write_node visit_constant_write_node
+      alias visit_constant_or_write_node visit_constant_write_node
+      alias visit_constant_and_write_node visit_constant_write_node
+      alias visit_constant_path_or_write_node visit_constant_write_node
+      alias visit_constant_path_and_write_node visit_constant_write_node
 
       # Methods inside `class << self` are class methods of the enclosing
       # namespace, but their def nodes have no receiver — track the singleton
@@ -198,6 +208,24 @@ module Mutineer
         @lexical_stack = saved_lexical
         @module_function_active = saved_active
         @block_owner, @block_namespace, @owner_unknown = saved_block
+      end
+
+      # The value an assignment stores: the last statement inside parentheses or a
+      # `begin` without `rescue`, which Ruby returns from them.
+      #
+      # @param node [Prism::Node] assigned expression.
+      # @return [Prism::Node, nil]
+      def assigned_value(node)
+        loop do
+          body =
+            case node
+            when Prism::ParenthesesNode then node.body
+            when Prism::BeginNode then node.statements unless node.rescue_clause
+            end
+          return node unless body
+
+          node = body.is_a?(Prism::StatementsNode) ? body.body.last : body
+        end
       end
 
       # True when the node is `Data.define`, `Struct.new`, `Class.new` or `Module.new` with a block.
