@@ -26,8 +26,10 @@ All notable changes to this project are documented here. The format is based on
   in a `parallelize_me!` class keep the exit status. A row is complete only
   when the child's stream arrived in order and every test reported (under
   Minitest the recorder saw every test, under RSpec every planned example),
-  so a caught `Interrupt` leaves it incomplete. The reports name each
-  incomplete row and warn not to delete a blind test until it is complete.
+  so a caught `Interrupt` leaves it incomplete. The human report names up
+  to 20 incomplete rows and the HTML and JSON reports all of them; the human
+  and HTML reports warn not to delete a blind test until its rows are
+  complete.
   Minitest and RSpec 3.3+ are supported, on the in-process backend only;
   `--daemon`, `--test-command`, `--fail-fast` and `--dry-run` exit 2 with it.
   `--no-matrix` and `--no-fail-fast` beat the matching `.mutineer.yml` key,

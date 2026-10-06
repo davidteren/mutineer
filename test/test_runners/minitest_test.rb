@@ -22,6 +22,7 @@ class TestRunnersMinitestTest < Minitest::Test
   EXIT_AFTER_KILL = File.join(MATRIX, "exit_after_kill_test.rb")
   ANONYMOUS = File.join(MATRIX, "anonymous_classes_test.rb")
   ANONYMOUS_PARALLEL = File.join(MATRIX, "anonymous_parallel_test.rb")
+  NESTED_PARALLEL = File.join(MATRIX, "nested_parallel_run_test.rb")
   SEED     = File.join(FIX, "stop_at_first_failure_seed_test.rb")
   CLEANUP  = File.join(FIX, "stop_at_first_failure_cleanup_test.rb")
   LATER    = File.join(FIX, "stop_at_first_failure_later_class_test.rb")
@@ -400,6 +401,14 @@ class TestRunnersMinitestTest < Minitest::Test
     assert_empty report.ran
   ensure
     recorder.channel = nil
+  end
+
+  # PR #191 review: a test that runs a parallel class on its own reporter does
+  # not start the run's parallel phase, so a later serial failure is serial.
+  def test_record_to_ignores_a_nested_run_of_a_parallel_class
+    _code, _marker, report = record_fixture(NESTED_PARALLEL)
+    assert report.serial_kill
+    assert report.parallel
   end
 
   def test_record_to_and_stop_at_first_failure_cannot_be_combined

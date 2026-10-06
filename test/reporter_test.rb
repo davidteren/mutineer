@@ -293,7 +293,7 @@ class ReporterTest < Minitest::Test
     assert_includes text, "Redundant tests (each mutant they kill has another killer): 2\n" \
                           "  test/a_test.rb  ATest#test_a\n  test/b_test.rb  BTest#test_b\n"
     assert_includes text, "Delete redundant tests one at a time"
-    refute_includes text, "did not report every covering test"
+    refute_includes text, "could not be verified as complete"
   end
 
   # #191 review: the warning names every cause, says not to delete a blind
@@ -301,7 +301,7 @@ class ReporterTest < Minitest::Test
   def test_incomplete_matrix_names_the_rows_and_says_a_blind_test_may_be_wrong
     text = matrix_report([row(survivor_result.with(status: :timeout, id: "abc123def456"), [],
                               [["t.rb", "T#test", "T#test"]], complete: false)])
-    assert_includes text, "1 mutants did not report every covering test (a timeout, an error, an exit, " \
+    assert_includes text, "1 mutants could not be verified as complete (a timeout, an error, an exit, " \
                           "an interrupt or a broken stream), so a blind test may have killed one of them. " \
                           "Do not delete a blind test until these rows are complete:\n" \
                           "  Pricing#total (#{FILE}:3) comparison timeout abc123def456\n" \

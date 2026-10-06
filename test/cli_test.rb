@@ -278,6 +278,10 @@ class CliTest < Minitest::Test
       assert_equal 0, status.exitstatus, err
 
       File.write(File.join(proj, ".mutineer.yml"), "fail_fast: true\n")
+      _, err, status = mutineer(*args, "--matrix", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "--matrix cannot be combined with fail_fast in .mutineer.yml"
+      assert_includes err, "pass --no-fail-fast to run without it"
       _, err, status = mutineer(*args, "--matrix", "--no-fail-fast", "--format", "json", chdir: proj)
       refute_includes err, "cannot be combined"
       assert_includes [0, 1], status.exitstatus, err

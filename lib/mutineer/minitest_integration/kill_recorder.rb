@@ -41,7 +41,7 @@ module Mutineer
         # @param options [Hash]
         # @return [Object]
         def run_suite(reporter, options = {})
-          KillRecorder.class_starting(self)
+          KillRecorder.class_starting(self, reporter)
           KillRecorder.skipping { super }
         end
 
@@ -65,7 +65,7 @@ module Mutineer
         # @param options [Hash]
         # @return [Object]
         def run(reporter, options = {})
-          KillRecorder.class_starting(self)
+          KillRecorder.class_starting(self, reporter)
           KillRecorder.skipping { super }
         end
 
@@ -189,15 +189,18 @@ module Mutineer
           self.serial_killed = false
         end
 
-        # Writes the `parallel` line when the first parallel class starts. The
-        # class object is known here, so an anonymous class (which Minitest
-        # records with no name) counts too. Minitest runs every serial class
-        # first, so a kill before this line came from a serial test.
+        # Writes the `parallel` line when the first parallel class starts on the
+        # outer reporter. The class object is known here, so an anonymous class
+        # (which Minitest records with no name) counts too. Minitest runs every
+        # serial class first, so a kill before this line came from a serial
+        # test. A test that runs a class on its own reporter is not the run's
+        # parallel phase, so it marks nothing.
         #
         # @param klass [Class] the test class starting its run.
+        # @param reporter [Minitest::CompositeReporter] the reporter it runs on.
         # @return [void]
-        def class_starting(klass)
-          return unless channel && armed_here? && parallel?(klass)
+        def class_starting(klass, reporter)
+          return unless channel && outer_reporter?(reporter) && parallel?(klass)
 
           LOCK.synchronize { mark_parallel }
         end

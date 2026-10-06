@@ -355,8 +355,15 @@ module Mutineer
         end
       return unless conflict
 
-      # Set in the file: say how to turn it off for this run.
-      hint = config.origin(:matrix) == "--matrix" ? "" : "; pass --no-matrix to run without it"
+      # Say how to turn off whichever side came from the file, for this run.
+      hint =
+        if config.origin(:matrix) != "--matrix"
+          "; pass --no-matrix to run without it"
+        elsif conflict == :fail_fast && config.origin(:fail_fast) != "--fail-fast"
+          "; pass --no-fail-fast to run without it"
+        else
+          ""
+        end
       warn "mutineer: #{config.origin(:matrix)} cannot be combined with #{config.origin(conflict)} (#{reason}#{hint})"
       exit 2
     end

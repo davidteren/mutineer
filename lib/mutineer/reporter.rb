@@ -461,7 +461,8 @@ module Mutineer
     # @return [String]
     def matrix_row_label(result)
       place = [result.subject&.file, result_line(result)].compact.join(":")
-      "#{result.subject&.qualified_name} (#{place}) #{result.mutation&.operator} #{result.status} #{result.id}".squeeze(" ")
+      [result.subject&.qualified_name, ("(#{place})" unless place.empty?), result.mutation&.operator,
+       result.status, result.id].compact.join(" ")
     end
 
     # The 1-based line of a result's mutation, or nil without one (a pre-fork
@@ -509,7 +510,7 @@ module Mutineer
     # @api private
     # @return [String]
     def matrix_incomplete_note
-      "#{@matrix.incomplete_rows.size} mutants did not report every covering test (a timeout, an error, " \
+      "#{@matrix.incomplete_rows.size} mutants could not be verified as complete (a timeout, an error, " \
         "an exit, an interrupt or a broken stream), so a blind test may have killed one of them. " \
         "Do not delete a blind test until these rows are complete:"
     end
