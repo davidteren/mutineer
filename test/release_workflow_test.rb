@@ -92,6 +92,16 @@ class ReleaseWorkflowTest < Minitest::Test
     assert_equal "release-pr", YAML.load_file(WORKFLOW).dig("concurrency", "group"), "runs must not overlap"
   end
 
+  # #85: a GITHUB_TOKEN push starts no CI, so the release PR's required checks never
+  # ran. The job dispatches ci.yml on the release branch instead, unless a PAT is set.
+  def test_release_pr_dispatches_ci_when_pushed_with_github_token
+    workflow = YAML.load_file(WORKFLOW)
+    assert_equal "write", workflow.dig("permissions", "actions"), "dispatching ci.yml needs actions: write"
+    assert_includes File.read(WORKFLOW), 'gh workflow run ci.yml --ref "$branch"'
+    ci = YAML.load_file(File.expand_path("../.github/workflows/ci.yml", __dir__))
+    assert_includes (ci[true] || ci["on"]).keys, "workflow_dispatch", "ci.yml must accept the dispatch"
+  end
+
   def test_workflow_markers_wrap_the_live_calculation
     text = File.read(WORKFLOW)
     refute_nil text.index(CALC_START), "release-pr.yml needs #{CALC_START}"

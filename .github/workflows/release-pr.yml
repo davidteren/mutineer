@@ -10,11 +10,14 @@ name: Release PR
 # merge, then push the vX.Y.Z tag — release.yml tests and publishes. Cut a release
 # early with: gh workflow run release-pr.yml
 #
-# Note: a PR opened with the default GITHUB_TOKEN does NOT trigger other workflows
-# (GitHub's recursion guard), so CI won't auto-run on it. To get CI on the release
-# PR, add a PAT as the `RELEASE_PR_TOKEN` secret (repo + workflow scope); the job
-# uses it when present and falls back to GITHUB_TOKEN otherwise. Either way, merging
-# to main and tagging still run release.yml.
+# Note: a push or PR made with the default GITHUB_TOKEN does NOT trigger other
+# workflows (GitHub's recursion guard), so ci.yml would never run on the release PR
+# and its required checks would leave it BLOCKED. A workflow_dispatch is the one
+# event GITHUB_TOKEN may start, so after a GITHUB_TOKEN push this job dispatches
+# ci.yml on the release branch; those runs report the required check names on the
+# PR's head commit. With a PAT in the optional `RELEASE_PR_TOKEN` secret (repo +
+# workflow scope) the push itself triggers CI and the dispatch is skipped. Either
+# way, merging to main and tagging still run release.yml.
 on:
   schedule:
     - cron: "0 8 * * 1" # Monday 08:00 UTC — the weekly release batch
@@ -23,6 +26,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write # dispatch ci.yml on the release branch (see the note above)
 
 # One run at a time: an overlapping run must not close or overwrite a newer release PR.
 concurrency:
@@ -37,9 +41,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history + tags for git describe/log
-          # git push must use the PAT too: GitHub's recursion guard starts no workflow
-          # for a push (or PR) made with GITHUB_TOKEN, so the release PR head would get
-          # no CI. Falls back to GITHUB_TOKEN when the secret is absent.
+          # git push uses the PAT too when it is set: GitHub's recursion guard starts no
+          # workflow for a push (or PR) made with GITHUB_TOKEN. Falls back to
+          # GITHUB_TOKEN when the secret is absent; the job then dispatches CI itself.
           token: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
       - uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601 # v1
         with:
@@ -48,6 +52,7 @@ jobs:
       - name: Compute next version and open the release PR
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
+          HAS_RELEASE_PR_TOKEN: ${{ secrets.RELEASE_PR_TOKEN != '' }}
         run: |
           set -euo pipefail
 
@@ -239,6 +244,16 @@ jobs:
             echo "Refreshed the open release PR #$own_num for $branch."
           else
             gh pr create --base main --head "$branch" --title "release: v${next}" --body "$body"
+          fi
+
+          # A GITHUB_TOKEN push starts no CI, so the required checks would never report
+          # and the PR would stay BLOCKED. Dispatch ci.yml on the release branch: its
+          # jobs report the same check names on the PR's head commit. Only after a new
+          # push (a branch already built on this main has its checks), and not with a
+          # PAT, whose push already triggered CI.
+          if [ "$built" = 0 ] && [ "$HAS_RELEASE_PR_TOKEN" != "true" ]; then
+            gh workflow run ci.yml --ref "$branch"
+            echo "Dispatched ci.yml on $branch for the release PR's required checks."
           fi
 
           # Only now that the replacement exists: close an open release PR for an OLDER

@@ -34,6 +34,14 @@ All notable changes to this project are documented here. The format is based on
   reload still runs them. `module_function :name` in a `Module.new` block
   promotes that module's method. Mutant ids for these subjects change:
   regenerate `ignore:` entries and baselines that name them.
+- **The automated release PR gets its required CI checks without a token
+  secret (#85).** `release-pr.yml` pushes the release branch with the default
+  `GITHUB_TOKEN`, which starts no other workflow, so the four required checks
+  never ran and the PR stayed blocked until a person closed and reopened it.
+  The job now dispatches `ci.yml` on the release branch (CI gained a
+  `workflow_dispatch` trigger), and those runs report the required checks on
+  the PR's head commit. With a `RELEASE_PR_TOKEN` secret set, the push
+  triggers CI as before and no dispatch is made.
 
 ## [1.5.0] - 2026-10-06
 
