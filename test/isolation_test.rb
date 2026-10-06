@@ -157,6 +157,8 @@ class IsolationTest < Minitest::Test
   def send_parallel(io) = KC.write_parallel(io)
   def send_cleanup(io) = KC.write_cleanup(io)
   def send_end(io) = KC.write_end(io)
+  def send_skip(io) = KC.write_skip(io)
+  def send_unskip(io) = KC.write_unskip(io)
 
   def test_without_a_channel_the_block_gets_nil_and_the_result_no_row
     result = Mutineer::Isolation.run { |channel| channel.nil? ? 0 : 1 }
@@ -236,12 +238,13 @@ class IsolationTest < Minitest::Test
     assert result.kills.complete
   end
 
-  # The run without --matrix stops at the first failure and exits killed, so a
-  # named kill makes the mutant killed whatever happens after it.
+  # The run without --matrix skips every later test after the first failure,
+  # so an end inside a later test (a skip region) makes the mutant killed.
   def test_a_timeout_after_a_kill_is_killed_and_incomplete
     result = Mutineer::Isolation.run(timeout: 1, channel: true) do |io|
       send_start(io)
       send_kill(io, "T#test_a")
+      send_skip(io)
       sleep 30
     end
     assert_predicate result, :killed?
@@ -253,16 +256,74 @@ class IsolationTest < Minitest::Test
     result = Mutineer::Isolation.run(channel: true) do |io|
       send_start(io)
       send_kill(io, "T#test_a")
+      send_skip(io)
       exit 0
     end
     assert_predicate result, :killed?
     refute result.kills.complete
   end
 
+  # #191 review: the code around the failing test (the rest of its Minitest
+  # class wrapper, its RSpec group's after(:all) hooks) runs without --matrix
+  # too, so an end there, outside every skip region, keeps the exit status.
+  def test_an_exit_zero_after_a_kill_outside_a_skip_region_keeps_the_exit_status
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_kill(io, "T#test_a")
+      send_skip(io)
+      send_pass(io, "T#test_b")
+      send_unskip(io)
+      exit 0
+    end
+    assert_predicate result, :survived?
+    refute result.kills.complete
+  end
+
+  def test_an_error_after_a_kill_outside_a_skip_region_keeps_the_error
+    capture_subprocess_io do
+      result = Mutineer::Isolation.run(channel: true) do |io|
+        send_start(io)
+        send_kill(io, "T#test_a")
+        raise "boom"
+      end
+      assert_predicate result, :error?
+    end
+  end
+
+  # Skip regions nest (a later class, then a test in it); one still open is enough.
+  def test_an_exit_in_a_nested_skip_region_is_killed
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_kill(io, "T#test_a")
+      send_skip(io)
+      send_skip(io)
+      send_pass(io, "U#test_b")
+      send_unskip(io)
+      exit 0
+    end
+    assert_predicate result, :killed?
+  end
+
+  # An unskip without a skip is out of order: the stream is invalid, so it
+  # promotes nothing and names no test.
+  def test_an_unskip_without_a_skip_is_invalid
+    result = Mutineer::Isolation.run(channel: true) do |io|
+      send_start(io)
+      send_kill(io, "T#test_a")
+      send_unskip(io)
+      send_skip(io)
+      exit 0
+    end
+    assert_predicate result, :survived?
+    assert_empty result.kills.killed_by
+    assert_empty result.kills.ran
+  end
+
   def test_a_crash_after_a_kill_is_killed_and_incomplete
     result = Mutineer::Isolation.run(channel: true) do |io|
       send_start(io)
       send_kill(io, "T#test_a")
+      send_skip(io)
       Process.kill(:KILL, Process.pid)
     end
     assert_predicate result, :killed?
@@ -274,6 +335,7 @@ class IsolationTest < Minitest::Test
       result = Mutineer::Isolation.run(channel: true) do |io|
         send_start(io)
         send_kill(io, "T#test_a")
+        send_skip(io)
         raise "boom"
       end
       assert_predicate result, :killed?
@@ -365,6 +427,7 @@ class IsolationTest < Minitest::Test
     result = Mutineer::Isolation.run(channel: true) do |io|
       send_start(io)
       send_kill(io, "T#test_a")
+      send_skip(io)
       send_parallel(io)
       send_pass(io, "T#test_b")
       exit 0
@@ -390,6 +453,7 @@ class IsolationTest < Minitest::Test
     result = Mutineer::Isolation.run(channel: true) do |io|
       send_start(io)
       send_kill(io, "T#test_a")
+      send_skip(io)
       send_pass(io, "T#test_b")
       exit 0
     end

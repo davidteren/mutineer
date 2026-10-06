@@ -18,6 +18,7 @@ class TestRunnersMinitestTest < Minitest::Test
   MATRIX   = File.expand_path("../fixtures/matrix", __dir__)
   SERIAL_THEN_PARALLEL = File.join(MATRIX, "serial_then_parallel_test.rb")
   INTERRUPT = File.join(MATRIX, "gate_interrupt_test.rb")
+  EXIT_AFTER_KILL = File.join(MATRIX, "exit_after_kill_test.rb")
   SEED     = File.join(FIX, "stop_at_first_failure_seed_test.rb")
   CLEANUP  = File.join(FIX, "stop_at_first_failure_cleanup_test.rb")
   LATER    = File.join(FIX, "stop_at_first_failure_later_class_test.rb")
@@ -291,9 +292,13 @@ class TestRunnersMinitestTest < Minitest::Test
     wr.close
     text = rd.read
     lines = text.lines.map { |line| JSON.parse(line).first }
-    assert_equal %w[start kill parallel pass end], lines
+    assert_equal %w[start kill parallel pass end], lines - %w[skip unskip]
+    # The later class and its test run inside balanced skip regions, after the kill.
+    assert_operator lines.count("skip"), :>=, 1
+    assert_operator lines.index("skip"), :>, lines.index("kill")
     report = Mutineer::KillChannel.parse(text)
     assert report.serial_kill
+    assert_equal 0, report.skipping
     refute report.invalid
   ensure
     [rd, wr].each { |io| io.close unless io.closed? }
@@ -329,6 +334,34 @@ class TestRunnersMinitestTest < Minitest::Test
     assert_equal expected, seed_of_run(nil, record_to: wr)
   ensure
     [rd, wr].each { |io| io.close unless io.closed? }
+  end
+
+  # The verdict Isolation gives EXIT_AFTER_KILL in `mode`, plain or --matrix.
+  def exit_after_kill_verdict(mode, matrix:)
+    ENV["MUTINEER_FIXTURE_MODE"] = mode
+    capture_subprocess_io do
+      @verdict = Mutineer::Isolation.run(timeout: 10, channel: matrix) do |io|
+        if matrix
+          Mutineer::TestRunners::Minitest.run([EXIT_AFTER_KILL], record_to: io)
+        else
+          Mutineer::TestRunners::Minitest.run([EXIT_AFTER_KILL], stop_at_first_failure: true)
+        end
+      end.status
+    end
+    @verdict
+  ensure
+    ENV.delete("MUTINEER_FIXTURE_MODE")
+  end
+
+  # #191 review: after a kill, an end in code a plain run also reaches (the
+  # failing class's wrapper) keeps the exit status; an end in a test or class
+  # the plain run skips is killed, as the plain run is.
+  { "none" => :killed, "wrapper_exit" => :survived, "wrapper_raise" => :error,
+    "later_exit" => :killed, "later_exit_two" => :killed, "later_class_exit" => :killed }.each do |mode, plain|
+    define_method("test_matrix_verdict_matches_a_plain_run_when_#{mode}") do
+      assert_equal plain, exit_after_kill_verdict(mode, matrix: false), "plain run"
+      assert_equal plain, exit_after_kill_verdict(mode, matrix: true), "matrix run"
+    end
   end
 
   def test_record_to_and_stop_at_first_failure_cannot_be_combined

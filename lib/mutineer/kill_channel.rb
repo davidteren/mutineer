@@ -10,6 +10,9 @@ module Mutineer
   #   ["pass", file, name, id]          a test passed against the mutant
   #   ["kill", file, name, id]          a test failed or errored: it killed it
   #   ["parallel"]                      the run reached its parallel tests; once
+  #   ["skip"]                          what runs next, a run without --matrix
+  #                                     skips (see below)
+  #   ["unskip"]                        the matching end of a ["skip"]
   #   ["cleanup"]                       every test ran; suite hooks follow; once
   #   ["lost"]                          a test the recorder could not describe
   #   ["end"]                           the suite returned with every test seen;
@@ -30,6 +33,15 @@ module Mutineer
   # suite's own hooks begin (RSpec `after(:suite)`), which a run without
   # `--matrix` runs after a failure as well.
   #
+  # After the first serial kill, a run without `--matrix` skips every later
+  # test and every later test class or example group, but it still runs the
+  # rest of the code around the failing test: the remainder of its Minitest
+  # class `run` wrapper, the `after(:all)` hooks of its RSpec groups, and the
+  # suite hooks. The recorder writes `skip` as it enters something that run
+  # would skip and `unskip` as that returns, so a child that exits, crashes or
+  # hangs inside a skipped region is one the plain run would have stopped
+  # before (see {Isolation.finish}). The pairs nest.
+  #
   # A row is complete only with `start` and `end`, in order, and no lost line: a
   # test that exits the process, a crash, an interrupted run or a recorder that
   # never armed leaves one out. A stream out of order (a duplicate marker, a
@@ -38,7 +50,8 @@ module Mutineer
   #
   # Writing never raises: a recorder that broke the test run would change the
   # verdict, and the exit status decides the verdict. A lost line leaves the row
-  # incomplete.
+  # incomplete. After one write to a channel fails, nothing more is written to
+  # it, so a later `end` can never make a row with a missing line look complete.
   #
   # Stdlib-only, so the app-side daemon can load the files that require it.
   module KillChannel
@@ -57,6 +70,12 @@ module Mutineer
     # Event that marks the end of the tests and the start of the suite's cleanup.
     CLEANUP = "cleanup"
 
+    # Event that opens a region a run without `--matrix` would skip.
+    SKIP = "skip"
+
+    # Event that closes the latest open {SKIP} region.
+    UNSKIP = "unskip"
+
     # Event for a test the recorder could not describe.
     LOST = "lost"
 
@@ -70,9 +89,10 @@ module Mutineer
     # `[file, name, id]` tests (`ran` includes the killers); `lost` counts lines
     # that could not be read, including a partial last line. `parallel` and
     # `cleanup` say the marker arrived, and `serial_kill` that a test killed
-    # before the `parallel` marker. `invalid` is set by any line out of order.
-    Report = Struct.new(:killed, :ran, :started, :finished, :parallel, :cleanup, :serial_kill, :invalid, :lost,
-                        keyword_init: true)
+    # before the `parallel` marker. `skipping` counts the {SKIP} regions still
+    # open when the stream ended. `invalid` is set by any line out of order.
+    Report = Struct.new(:killed, :ran, :started, :finished, :parallel, :cleanup, :serial_kill, :skipping, :invalid,
+                        :lost, keyword_init: true)
 
     # Writes one test line.
     #
@@ -101,6 +121,22 @@ module Mutineer
     # @return [void]
     def self.write_parallel(io)
       emit(io, [PARALLEL])
+    end
+
+    # Writes the `skip` line.
+    #
+    # @param io [IO] the write end of the channel.
+    # @return [void]
+    def self.write_skip(io)
+      emit(io, [SKIP])
+    end
+
+    # Writes the `unskip` line.
+    #
+    # @param io [IO] the write end of the channel.
+    # @return [void]
+    def self.write_unskip(io)
+      emit(io, [UNSKIP])
     end
 
     # Writes the `cleanup` line.
@@ -133,7 +169,7 @@ module Mutineer
     # @return [Report]
     def self.parse(buffer)
       report = Report.new(killed: [], ran: [], started: false, finished: false, parallel: false, cleanup: false,
-                          serial_kill: false, invalid: false, lost: 0)
+                          serial_kill: false, skipping: 0, invalid: false, lost: 0)
       buffer.dup.force_encoding(Encoding::UTF_8).each_line do |line|
         fields = line.end_with?("\n") ? parse_line(line) : nil
         fields ? apply(report, fields) : report.lost += 1
@@ -156,8 +192,14 @@ module Mutineer
         report.invalid = true if report.started || report.ran.any? || report.parallel || report.cleanup || report.finished
         report.started = true
       when PARALLEL
-        report.invalid = true unless open?(report) && !report.parallel
+        report.invalid = true unless open?(report) && !report.parallel && !report.cleanup
         report.parallel = true
+      when SKIP
+        report.invalid = true unless open?(report) && !report.cleanup
+        report.skipping += 1
+      when UNSKIP
+        report.invalid = true unless open?(report) && !report.cleanup && report.skipping.positive?
+        report.skipping -= 1 if report.skipping.positive?
       when CLEANUP
         report.invalid = true unless open?(report) && !report.cleanup
         report.cleanup = true
@@ -197,14 +239,15 @@ module Mutineer
       valid =
         case fields[0]
         when PASS, KILL then fields.size == 4
-        when START, PARALLEL, CLEANUP, LOST, FINISH then fields.size == 1
+        when START, PARALLEL, SKIP, UNSKIP, CLEANUP, LOST, FINISH then fields.size == 1
         end
       fields if valid
     rescue JSON::ParserError
       nil
     end
 
-    # Writes one line. Never raises.
+    # Writes one line. Never raises. After a write to `io` fails, writes
+    # nothing more to it.
     #
     # @api private
     # @param io [IO] the write end of the channel.
@@ -212,7 +255,16 @@ module Mutineer
     # @return [void]
     def self.emit(io, fields)
       line = "#{JSON.generate(fields)}\n"
-      LOCK.synchronize { io.write(line) }
+      LOCK.synchronize do
+        next if @broken.equal?(io)
+
+        begin
+          io.write(line)
+        rescue StandardError
+          @broken = io
+        end
+      end
+      nil
     rescue StandardError
       nil
     end

@@ -19,6 +19,42 @@ module Mutineer
       # records from several threads in a parallel class.
       LOCK = Mutex.new
 
+      # Prepended on each loaded test class: one test's run. Serial and parallel
+      # runs both call it, in Minitest 5 and 6.
+      module MarkSkippedTest
+        # Runs the test inside a `skip` region once a serial test has killed.
+        #
+        # @return [Minitest::Result]
+        def run
+          KillRecorder.skipping { super }
+        end
+      end
+
+      # Prepended on each loaded test class's singleton under Minitest 6: one
+      # class's run, user wrappers included.
+      module MarkSkippedClass6
+        # Runs the class inside a `skip` region once a serial test has killed.
+        #
+        # @param reporter [Minitest::CompositeReporter]
+        # @param options [Hash]
+        # @return [Object]
+        def run_suite(reporter, options = {})
+          KillRecorder.skipping { super }
+        end
+      end
+
+      # The Minitest 5 form of {MarkSkippedClass6}.
+      module MarkSkippedClass5
+        # Runs the class inside a `skip` region once a serial test has killed.
+        #
+        # @param reporter [Minitest::CompositeReporter]
+        # @param options [Hash]
+        # @return [Object]
+        def run(reporter, options = {})
+          KillRecorder.skipping { super }
+        end
+      end
+
       # Prepended on `Minitest::CompositeReporter`.
       module Record
         # Records the result, then sends it to the channel.
@@ -57,6 +93,12 @@ module Mutineer
         # @return [Integer, nil]
         attr_accessor :seen
 
+        # True once a serial test killed: from then on, a run without `--matrix`
+        # skips each later test and class.
+        #
+        # @return [Boolean, nil]
+        attr_accessor :serial_killed
+
         # Installs the hooks, arms the recorder for this process, and writes the
         # channel's `start` line. Call it after the test files load, so the
         # recorder knows the test classes. An unknown Minitest shape arms
@@ -72,6 +114,11 @@ module Mutineer
 
           OuterReporter.prepend_once(::Minitest::CompositeReporter, Record)
           OuterReporter.prepend_once(::Minitest.singleton_class, outer)
+          class_hook = outer.equal?(OuterReporter::Hook6) ? MarkSkippedClass6 : MarkSkippedClass5
+          runnables.each do |klass|
+            OuterReporter.prepend_once(klass, MarkSkippedTest)
+            OuterReporter.prepend_once(klass.singleton_class, class_hook)
+          end
           OuterReporter.register(self)
           self.armed_pid = Process.pid
           self.armed_reporter = nil
@@ -80,6 +127,7 @@ module Mutineer
           self.parallel_marked = false
           self.runnables = runnables
           self.seen = 0
+          self.serial_killed = false
           KillChannel.write_start(channel)
           true
         end
@@ -117,6 +165,23 @@ module Mutineer
           self.channel = nil
           self.parallel_classes = nil
           self.runnables = nil
+          self.serial_killed = false
+        end
+
+        # Runs the block between `skip` and `unskip` when a serial test has
+        # killed in this armed process, else just runs it. No `ensure`: a block
+        # that never returns (an exit, a crash) must leave its region open, so
+        # the parent knows the child ended where a run without `--matrix`
+        # would not have been.
+        #
+        # @yieldreturn [Object]
+        # @return [Object] the block's value.
+        def skipping
+          open = channel && serial_killed && armed_here?
+          KillChannel.write_skip(channel) if open
+          value = yield
+          KillChannel.write_unskip(channel) if open
+          value
         end
 
         # Sends one result recorded on `reporter`: a pass, or a kill for a
@@ -137,6 +202,7 @@ module Mutineer
             next if result.skipped?
 
             event = result.passed? ? KillChannel::PASS : KillChannel::KILL
+            self.serial_killed = true if event == KillChannel::KILL && !parallel_marked
             # `Class#method` is unique within a run, so the name is also the id.
             KillChannel.write(channel, event, Array(result.source_location).first, "#{result.klass}##{result.name}")
           end

@@ -56,7 +56,8 @@ module Mutineer
         code = 0
         begin
           ChildStdout.silence
-          result = yield(wr)
+          # A block that takes no channel (a zero-arity lambda) still runs.
+          result = channel ? yield(wr) : yield
           code = result.is_a?(Integer) ? result : 0
         rescue SystemExit => e
           code = e.status
@@ -108,6 +109,8 @@ module Mutineer
       end
     ensure
       rd&.close
+      # Closed after the fork in the normal path; still open if fork raised.
+      wr.close if wr && !wr.closed?
     end
 
     # Reads what the channel holds now, without blocking.
@@ -130,19 +133,22 @@ module Mutineer
     # the rest of the channel is read, and the Result carries the {Kills} it
     # names.
     #
-    # The verdict matches a run without `--matrix`, which stops at the first
-    # failing test and exits `killed` there. So once a serial test has named a
-    # kill, the mutant is `killed`, whatever a later test does: exit the
-    # process, crash, or run into the timeout. Two things keep the exit status
-    # instead. A kill in the parallel tests of a Minitest run (see
-    # {KillChannel}), because the stop cannot skip tests already queued. And any
-    # end after the `cleanup` marker, because the suite's cleanup hooks run in
-    # a run without `--matrix` as well, so what they do is already the verdict.
+    # The verdict matches a run without `--matrix`, which skips everything after
+    # the first failing serial test except the code around it (see
+    # {KillChannel}). So when a serial test has named a kill and the child then
+    # ended inside a region that run would skip (an exit, a crash or the
+    # timeout in a later test, class or group), the mutant is `killed`: the
+    # plain run never reached that point. An end anywhere else keeps the exit
+    # status, because the plain run reaches that code too: the rest of the
+    # failing test's class wrapper or group hooks, or the suite hooks. A kill in
+    # the parallel tests of a Minitest run also keeps it, because the stop
+    # cannot skip tests already queued.
     #
     # The row is complete only when the child ended before the timeout, sent a
     # valid stream with both `start` and `end`, lost no line, and its kills
     # agree with the verdict (a killed mutant names a killer; a survivor names
-    # none). An invalid stream promotes nothing.
+    # none). An invalid stream promotes nothing, and its tests are dropped: an
+    # out-of-order line means the parent cannot tell which outcomes are real.
     #
     # @api private
     # @param result [Mutineer::Result] the verdict from the exit status or the timeout.
@@ -155,9 +161,11 @@ module Mutineer
 
       drain(rd, buffer)
       report = KillChannel.parse(buffer)
-      result = Result.killed if report.started && !report.invalid && report.serial_kill && !report.cleanup
+      return result.with(kills: Kills.new(killed_by: [], ran: [], complete: false)) if report.invalid
+
+      result = Result.killed if report.started && report.serial_kill && report.skipping.positive?
       agrees = result.killed? ? report.killed.any? : result.survived? && report.killed.empty?
-      complete = finished && report.started && report.finished && !report.invalid && report.lost.zero? && agrees
+      complete = finished && report.started && report.finished && report.lost.zero? && agrees
       result.with(kills: Kills.new(killed_by: report.killed, ran: report.ran, complete: complete))
     end
 
