@@ -28,6 +28,9 @@ module Mutineer
     # Walks an AST, maintaining a namespace stack, emitting Subjects.
     # Nested inside Project to signal its private role.
     class SubjectVisitor < Prism::Visitor
+      # Calls whose block is the body of the class they build: receiver name => method.
+      CLASS_BUILDERS = { "Data" => :define, "Struct" => :new, "Class" => :new, "Module" => :new }.freeze
+
       attr_reader :subjects
 
       # Builds a subject visitor.
@@ -43,6 +46,8 @@ module Mutineer
         @module_function_names = []     # [namespace, name] from `module_function :a` / `module_function def` (#98)
         @block_owner = nil
         @block_namespace = nil
+        @owner_unknown = false
+        @assigned = nil
         super()
       end
 
@@ -79,7 +84,9 @@ module Mutineer
       # Track `module_function` so its methods are recorded as singletons (#20) —
       # the called form is the singleton method on the module object. Bareword
       # `module_function` flips all SUBSEQUENT defs in this body; the argument
-      # forms (`:sym`, `def`) name methods promoted after the walk.
+      # forms (`:sym`, `def`) name methods promoted after the walk. A builder
+      # block's defs belong to the class it builds; one not assigned to a
+      # constant has no name, so its subjects are marked `owner_unknown`.
       #
       # @param node [Prism::CallNode] call node.
       # @return [void]
@@ -99,28 +106,27 @@ module Mutineer
             end
           end
         end
-        super
+        return super unless builds_class?(node)
+
+        owner = @assigned&.first.equal?(node) ? @assigned.last : [nil, @namespace_stack, true]
+        with_block_owner(owner) { super }
       end
 
-      # Names the defs in a `Data.define`/`Struct.new` block after the assigned constant.
+      # Names the class a builder block assigned to this constant builds (see {#builds_class?}).
       #
       # @param node [Prism::ConstantWriteNode, Prism::ConstantPathWriteNode] constant assignment.
       # @return [void]
       def visit_constant_write_node(node)
-        value = node.value
-        builds_class = value.is_a?(Prism::CallNode) && value.block.is_a?(Prism::BlockNode) &&
-                       { "Data" => :define, "Struct" => :new }[value.receiver&.slice&.delete_prefix("::")] == value.name
-        return super unless builds_class
+        return super unless builds_class?(node.value)
 
-        saved = [@block_owner, @block_namespace, @module_function_active]
-        @block_owner = node.is_a?(Prism::ConstantPathWriteNode) ? node.target.slice : node.name.to_s
-        @block_namespace =
-          @block_owner.start_with?("::") ? [@block_owner.delete_prefix("::")] : @namespace_stack + [@block_owner]
-        @module_function_active = false
+        saved = @assigned
+        owner = node.is_a?(Prism::ConstantPathWriteNode) ? node.target.slice : node.name.to_s
+        namespace = owner.start_with?("::") ? [owner.delete_prefix("::")] : @namespace_stack + [owner]
+        @assigned = [node.value, [owner, namespace, false]]
         begin
           super
         ensure
-          @block_owner, @block_namespace, @module_function_active = saved
+          @assigned = saved
         end
       end
       alias visit_constant_path_write_node visit_constant_write_node
@@ -153,6 +159,7 @@ module Mutineer
           namespace: (@block_namespace || @namespace_stack).dup,
           lexical: @lexical_stack.dup,
           block_owner: @block_owner,
+          owner_unknown: @owner_unknown,
           name: node.name,
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node
@@ -177,19 +184,44 @@ module Mutineer
         saved_stack = @namespace_stack
         saved_lexical = @lexical_stack
         saved_active = @module_function_active
-        saved_block = [@block_owner, @block_namespace]
+        saved_block = [@block_owner, @block_namespace, @owner_unknown]
         name = extract_constant_name(path)
         root = root_anchored?(path)
         @namespace_stack = root ? [name] : saved_stack + [name]
         @lexical_stack = saved_lexical + [root ? "::#{name}" : name]
         @module_function_active = false
         @block_owner = @block_namespace = nil
+        @owner_unknown = false
         yield
       ensure
         @namespace_stack = saved_stack
         @lexical_stack = saved_lexical
         @module_function_active = saved_active
-        @block_owner, @block_namespace = saved_block
+        @block_owner, @block_namespace, @owner_unknown = saved_block
+      end
+
+      # True when the node is `Data.define`, `Struct.new`, `Class.new` or `Module.new` with a block.
+      #
+      # @param node [Prism::Node, nil] node.
+      # @return [Boolean]
+      def builds_class?(node)
+        node.is_a?(Prism::CallNode) && node.block.is_a?(Prism::BlockNode) &&
+          CLASS_BUILDERS[node.receiver&.slice&.delete_prefix("::")] == node.name
+      end
+
+      # Runs the block with the defs it visits owned by the class a builder block builds.
+      #
+      # @param owner [Array(String, Array<String>, Boolean)] the owner as written, its namespace,
+      #   and whether that name is unknown.
+      # @yield the builder call visit.
+      # @return [void]
+      def with_block_owner(owner)
+        saved = [@block_owner, @block_namespace, @owner_unknown, @module_function_active]
+        @block_owner, @block_namespace, @owner_unknown = owner
+        @module_function_active = false
+        yield
+      ensure
+        @block_owner, @block_namespace, @owner_unknown, @module_function_active = saved
       end
 
       # True when a constant path starts with `::` (e.g. `::X` or `::A::B`).

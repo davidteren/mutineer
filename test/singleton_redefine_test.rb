@@ -75,6 +75,20 @@ class SingletonRedefineTest < Minitest::Test
     end
   end
 
+  def test_class_new_nested_in_a_data_define_block_is_mutated_on_its_own_constant
+    assert_killed(run_redefine("nested_builder.rb", "nested_builder_test.rb", only: "NestedBuilderHost::Other#extra"),
+                  "Class.new nested in Data.define")
+  end
+
+  def test_anonymous_class_new_is_uncapturable_under_redefine_and_killed_under_reload
+    only = "NestedBuilderHost#twice"
+    redefine = run_redefine("nested_builder.rb", "nested_builder_test.rb", only: only)
+    assert_operator redefine.uncapturable_count, :>, 0
+    assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count
+    assert_killed(run_redefine("nested_builder.rb", "nested_builder_test.rb", strategy: "reload", only: only),
+                  "anonymous Class.new (reload)")
+  end
+
   # Parity control — this form already worked; it must keep working.
   def test_def_self_methods_are_mutated
     assert_killed(run_redefine("def_self.rb", "def_self_test.rb"), "def self.")

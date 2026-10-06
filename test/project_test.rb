@@ -227,6 +227,27 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def test_discover_names_a_nested_class_new_after_its_own_constant
+    src = <<~RUBY
+      module Host
+        Argo = Data.define(:url) do
+          Other = Class.new do
+            def extra = url * 2
+          end
+          def host = url
+          helper = Module.new do
+            def anon; end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Host::Other#extra Host::Argo#host Host#anon], subjects.map(&:qualified_name)
+      assert_equal [false, false, true], subjects.map(&:owner_unknown)
+    end
+  end
+
   def test_discover_nested_classes
     with_source("class Outer\n  class Inner\n    def m; end\n  end\nend\n") do |path|
       s = Mutineer::Project.discover([path]).first

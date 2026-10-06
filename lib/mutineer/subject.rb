@@ -7,8 +7,11 @@ module Mutineer
   # because mutators walk the def node directly. `namespace` names the owner
   # (`module ::X` inside `Outer` owns into `X`); `lexical` is the class/module
   # chain as written (`["Outer", "::X"]`), which the redefine strategy needs to
-  # rebuild the same Module.nesting as a whole-file reload (#145).
-  Subject = Struct.new(:file, :namespace, :name, :singleton, :def_node, :lexical, :block_owner,
+  # rebuild the same Module.nesting as a whole-file reload (#145). `block_owner`
+  # is the constant a `Data.define`-style block is assigned to, as written;
+  # `owner_unknown` is true when the class that block builds cannot be named,
+  # so the redefine strategy cannot load a mutant onto it.
+  Subject = Struct.new(:file, :namespace, :name, :singleton, :def_node, :lexical, :block_owner, :owner_unknown,
                        keyword_init: true) do
     # Returns the fully-qualified subject name.
     #
