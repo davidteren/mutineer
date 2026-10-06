@@ -1,0 +1,69 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_befb877e7eeb82 27-34,36-97
+README.md
+  s_07d7b58ff1b9fd::t_356c4f8c7b195e 36,50,301-306,384-387,392
+action.yml
+  s_07d7b58ff1b9fd::t_c5e66912fe393e 85-92,220-222,249-314
+docs/index.md
+  s_07d7b58ff1b9fd::t_8514f666819603 27
+docs/skill.md
+  s_07d7b58ff1b9fd::t_dda727d92ee9da 21
+lib/mutineer/cli.rb
+  s_07d7b58ff1b9fd::t_d3c22c19761afd 31-32,36,151,163-168,373-376,388-389,395
+lib/mutineer/config.rb
+  s_07d7b58ff1b9fd::t_40687584ecc4f6 140-151,168-174,246-248,251,282-291
+lib/mutineer/coverage_map.rb
+  s_07d7b58ff1b9fd::t_fa9a80e2719788 13,102-106,119,138,150-185,187-262,918-922,928-963
+lib/mutineer/daemon_client.rb
+  s_07d7b58ff1b9fd::t_28b4fc96e0041f 5,17-22,32-33,38-40,127-132,134-136,139-169,173-283,290-294,304-305
+lib/mutineer/mutators/base.rb
+  s_07d7b58ff1b9fd::t_9fd03ab9da74b8 26-28,34-69
+lib/mutineer/mutators/return_nil.rb
+  s_07d7b58ff1b9fd::t_bfb492b67cd6fe 19-22,24
+lib/mutineer/pairing.rb
+  s_07d7b58ff1b9fd::t_a0075a58d0bcb7 7-12,39-42,49-62,64-68,108-258
+test/action_harness_test.rb
+  s_07d7b58ff1b9fd::t_500a4bda2fa9f3 12-13,27-29,42-61
+test/cli_test.rb
+  s_07d7b58ff1b9fd::t_8f436bdba0b892 123-149,319-339,619-658
+test/config_test.rb
+  s_07d7b58ff1b9fd::t_9ac3094b77b76b 222-280
+test/coverage_map_test.rb
+  s_07d7b58ff1b9fd::t_294e2424c42a4f 805-1038
+test/daemon_client_env_test.rb
+  s_07d7b58ff1b9fd::t_3d6565112b26d3 1-312
+test/fixtures/action_harness.sh
+  s_07d7b58ff1b9fd::t_885c75d7032bdd 36-38,41,124-205
+test/mutators/chain_link_test.rb
+  s_07d7b58ff1b9fd::t_c50e7813f15355 91-104
+test/mutators/condition_negation_test.rb
+  s_07d7b58ff1b9fd::t_3e231c3bd0544e 45-60
+test/mutators/literal_mutation_test.rb
+  s_07d7b58ff1b9fd::t_9c32741193ea2e 45-59
+test/mutators/return_nil_test.rb
+  s_07d7b58ff1b9fd::t_9b7e336f9bad4a 53-82
+test/mutators/statement_removal_test.rb
+  s_07d7b58ff1b9fd::t_1ceb8f5adbf41f 67-99
+test/pairing_test.rb
+  s_07d7b58ff1b9fd::t_c2dae16eb0fd00 27-30,119-266
+test/release_workflow_test.rb
+  s_07d7b58ff1b9fd::t_e5857dbe2ae2b7 212-214,232,266
+test/test_helper.rb
+  s_07d7b58ff1b9fd::t_32028f2cc2b717 7-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "943b86eeabe0a5efda7f41f586da3a68766463fc",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
