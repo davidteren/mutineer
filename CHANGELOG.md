@@ -71,15 +71,23 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
-- **A method in a `Data.define do ... end` or `Struct.new do ... end` block
-  belongs to the constant the block's class is assigned to.** In
+- **A method in a `Data.define`, `Struct.new`, `Class.new` or `Module.new`
+  block belongs to the class the block builds.** In
   `class App; Argo = Data.define(:url) do def self.load = ...; end; end` the
   subject is now `App::Argo.load`, not `App.load`; at the top level it was
   `.load`, with no owner. Under `--strategy redefine` (the `--rails` default)
   the mutated method was loaded into the wrong class, so the real method never
-  changed and every such mutant falsely survived. Redefine now re-opens the
-  assigned class inside the same nesting as the source. Mutant ids for these
-  subjects change: regenerate `ignore:` entries and baselines that name them.
+  changed and every such mutant falsely survived. The class is named after the
+  constant it is assigned to with `=`, `||=` or `&&=`, through parentheses or
+  `begin`, resolved as Ruby resolves the assignment: `X` in the current
+  namespace, `::X` and any path at the top level from `Object`, `self::X`
+  under the current class. When the class cannot be named statically (no
+  constant, a relative path such as `User::Permission` inside a namespace, or
+  a constant assigned in `class << self`), redefine reports its mutants as
+  `uncapturable` rather than load them onto the wrong class; reload still runs
+  them. `module_function :name` in a `Module.new` block promotes that
+  module's method. Mutant ids for these subjects change: regenerate `ignore:`
+  entries and baselines that name them.
 - **The human report escapes control characters from the source** (#163).
   A surviving line that held a terminal control byte (for example ESC) was
   printed as that byte, so it could change what the terminal showed. The

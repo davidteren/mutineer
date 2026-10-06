@@ -46,7 +46,7 @@ between reports with the same `id_format` (a missing key is the old format).
 | `killed` | int | Mutants a test caught (suite went red). |
 | `survived` | int | Mutants no test caught. **These are the actionable test gaps.** |
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). |
-| `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
+| `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap — or, under `--strategy redefine`, whose method belongs to a class with no constant name to load it onto (excluded). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). |
 | `errored` | int | Mutants whose run raised (excluded). |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
@@ -76,7 +76,9 @@ Each surviving mutant — the records an agent or reviewer acts on:
 
 Each entry is `{ subject, file, line, operator, token, id }`, sorted by
 `(file, line, operator, id)`. `no_coverage` is a genuine coverage gap; `uncapturable` means the test that
-should cover the line errored while capturing coverage (fix the harness, not the test).
+should cover the line errored while capturing coverage (fix the harness, not the test), or, under
+`--strategy redefine`, that the method's class has no constant name (an anonymous `Class.new`, for example),
+so the mutant could not be loaded onto it; `--strategy reload` runs these.
 
 Several mutants can share a line, so `operator` and `token` name the change and `id` identifies the mutant.
 The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` these entries were
