@@ -62,7 +62,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--verbose` | Surface the real error when a fork capture fails (alias `--debug`) |
 | `--strategy NAME` | Mutation application: `reload` whole-file (default) or `redefine` surgical (`7a`/`7b` accepted as deprecated aliases) |
 | `--timeout SECONDS` | Per-mutant time limit for in-process runs, in whole seconds (default: 10). A mutant whose tests run longer is a `timeout`; see [Timeouts and the score](https://github.com/davidteren/mutineer#timeouts-and-the-score). `--daemon` and `--test-command` keep their own limits |
-| `--capture-timeout SECONDS` | Time limit for each in-process coverage-capture subprocess and for the clean run of the unmutated tests, in whole seconds (default: 120). A suite slower than this stops the run as not green |
+| `--capture-timeout SECONDS` | Time limit for each in-process coverage-capture subprocess and for the clean run of the unmutated tests, in whole seconds (default: 120). A suite slower than this stops the run as not green. `--daemon` and `--test-command` ignore it and say so |
 | `--test-command CMD` | Run the suite as a subprocess in the app's own runtime (for apps on Ruby < 3.4); `CMD` must contain `%{files}`. See [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34) |
 | `--daemon` | Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so `--jobs N` is safe under Rails (needs `--rails`/`--boot`; not with `--test-command`). See [the daemon backend](https://github.com/davidteren/mutineer#faster-parallel-safe-rails-the---daemon-backend) |
 | `--format human\|json\|html` | Report format (default: human; `html` is a self-contained file) |
@@ -225,7 +225,9 @@ shows the count in its `Timeout:` row, and the JSON report in `summary.timeout`.
 Under `--threshold`, a timeout is a mutant with no verdict. The run exits 1 when
 more than one mutant produced no verdict and they exceed 10% of those attempted,
 or when nothing could be scored and something broke. If a slow suite times out
-mutants that its tests would catch, raise `--timeout`.
+mutants that its tests would catch, raise `--timeout`. A limit set below what
+the suite needs does not raise the score: it turns those mutants into timeouts,
+and once they pass 10% of the attempted mutants the run fails.
 
 ## Suppressing equivalent mutants
 

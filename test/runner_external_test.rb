@@ -106,6 +106,17 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
+  # PR #183 review: --test-command never reads --timeout, so it says so.
+  def test_timeout_flag_warns_that_it_has_no_effect
+    with_project("calculator_strong_test.rb") do |proj|
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                   "--timeout", "30", "--test-command", "#{RUBY} %{files}", chdir: proj)
+      assert_equal 0, status.exitstatus
+      assert_includes err, "--timeout (timeout: in .mutineer.yml) has no effect with --test-command"
+      refute_includes err, "--capture-timeout"
+    end
+  end
+
   # KTD-5: --jobs > 1 is forced to 1 with a notice (no per-worker DB isolation yet).
   def test_jobs_forced_to_one
     with_project("calculator_strong_test.rb") do |proj|

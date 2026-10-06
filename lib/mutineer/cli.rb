@@ -49,7 +49,7 @@ module Mutineer
         --timeout SECONDS    Per-mutant time limit for in-process runs (default: 10);
                              a mutant over it is a timeout, excluded from the score
         --capture-timeout SECONDS  Time limit for each coverage-capture subprocess
-                             and the clean check (default: 120)
+                             and the clean check of in-process runs (default: 120)
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then
                              fork per mutant (Rails apps; requires --test)
@@ -293,6 +293,7 @@ module Mutineer
              "(surgical redefine needs a shared VM; the subprocess has its own)"
         exit 2
       end
+      warn_unused_timeouts(config, "--test-command")
       return unless config.jobs > 1
 
       warn "[mutineer] --test-command runs serially (no per-worker DB isolation yet); forcing --jobs 1."
@@ -321,12 +322,30 @@ module Mutineer
              "(rspec is not implemented on the daemon path yet)"
         exit 2
       end
+      warn_unused_timeouts(config, "--daemon")
       return if config.strategy == "reload"
 
       # --rails defaults strategy to redefine; daemon always whole-file loads.
       warn "[mutineer] --daemon uses --strategy reload " \
            "(redefine is not supported on the daemon path); forcing reload."
       config.strategy = "reload"
+    end
+
+    # `--timeout` and `--capture-timeout` bound the in-process backend only: the
+    # daemon and --test-command paths never read them. A value the user set
+    # there would silently do nothing, so say so.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @param backend [String] the backend's flag.
+    # @return [void]
+    def self.warn_unused_timeouts(config, backend)
+      CONFIG_OPTIONS.select { |o| %i[timeout capture_timeout].include?(o.field) }.each do |opt|
+        next unless config.explicit?(opt.field)
+
+        warn "[mutineer] #{opt.flag} (#{opt.yaml_key}: in .mutineer.yml) has no effect with #{backend} " \
+             "(it applies to in-process runs only); ignoring it."
+      end
     end
 
     # --since needs a real git repo and a resolvable ref; either failure is a
