@@ -79,6 +79,24 @@ jobs:
           untagged_bump() {
             [ "v$1" != "$2" ]
           }
+          # Dispatches ci.yml on release branch $1 unless a PAT is set (its push already
+          # started CI) or a dispatched CI run already exists for head commit $2, so a run
+          # that stopped before dispatching is caught up next time. (A pull_request run
+          # waiting in action_required does not count: it reports no checks.) Returns 1
+          # and prints the manual command when the dispatch fails.
+          dispatch_ci() {
+            [ "${HAS_RELEASE_PR_TOKEN:-false}" = "true" ] && return 0
+            local dispatched
+            dispatched="$(gh run list --workflow ci.yml --event workflow_dispatch --commit "$2" \
+              --json databaseId --jq length || echo 0)"
+            [ "$dispatched" = 0 ] || return 0
+            if gh workflow run ci.yml --ref "$1"; then
+              echo "Dispatched ci.yml on $1 for the release PR's required checks."
+            else
+              echo "::error::Could not dispatch ci.yml on $1. Run: gh workflow run ci.yml --ref $1"
+              return 1
+            fi
+          }
           # MUTINEER_RELEASE_HELPERS_END
 
           # Warns and returns 0 when VERSION on main is a merged but untagged bump (the
@@ -290,15 +308,5 @@ jobs:
           # exists for this head commit, so a run that stopped before dispatching is
           # caught up next time. (A pull_request run waiting in action_required does
           # not count: it reports no checks until a person approves it.)
-          head_sha="$(git rev-parse "$remote")" # the release PR head (git push updated it)
-          dispatched="$(gh run list --workflow ci.yml --event workflow_dispatch --commit "$head_sha" \
-            --json databaseId --jq length || echo 0)"
-          if [ "$HAS_RELEASE_PR_TOKEN" != "true" ] && [ "$dispatched" = 0 ]; then
-            if gh workflow run ci.yml --ref "$branch"; then
-              echo "Dispatched ci.yml on $branch for the release PR's required checks."
-            else
-              echo "::error::Could not dispatch ci.yml on $branch. Run: gh workflow run ci.yml --ref $branch"
-              failed=1
-            fi
-          fi
+          dispatch_ci "$branch" "$(git rev-parse "$remote")" || failed=1
           exit "$failed"
