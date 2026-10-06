@@ -595,7 +595,11 @@ module Mutineer
       pid = Process.spawn(RbConfig.ruby, "-", **options)
       script_rd.close
       result_wr&.close
-      script_wr.write(script)
+      begin
+        script_wr.write(script)
+      rescue Errno::EPIPE
+        # The child exited before reading its script; await_child still reaps it.
+      end
       script_wr.close
       status, out = await_child(pid, deadline) { read_result_line(result_rd) if result }
       [status, out.to_s]
@@ -632,7 +636,7 @@ module Mutineer
     # through a pipe.
     #
     # A child that exits before the deadline has written its result, so the
-    # reader gets {RESULT_GRACE} seconds to finish even when no time is left.
+    # reader gets the time left, and at least {RESULT_GRACE} seconds, to finish.
     #
     # @api private
     # @param pid [Integer] child pid, also its process group id.
@@ -646,7 +650,7 @@ module Mutineer
       reader.report_on_exception = false
       return [nil, nil] unless waiter.join(remaining(deadline))
 
-      [waiter.value, reader.join(RESULT_GRACE)&.value]
+      [waiter.value, reader.join([remaining(deadline), RESULT_GRACE].max)&.value]
     ensure
       kill_group(pid, waiter) if waiter&.alive?
       reader&.kill

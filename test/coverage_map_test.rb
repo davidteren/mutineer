@@ -773,6 +773,8 @@ class CoverageMapTest < Minitest::Test
     assert gone, "process #{pid} survived the capture"
   end
 
+  # #101: a hung test in a forked (--boot / --daemon) capture stops at
+  # capture_timeout instead of blocking the run.
   def test_fork_capture_times_out_instead_of_hanging
     Coverage.start(lines: true) unless Coverage.running?
     hang = File.join(Dir.mktmpdir, "hang_capture_test.rb")
@@ -850,6 +852,35 @@ class CoverageMapTest < Minitest::Test
     _, err = capture_subprocess_io { payload = map.send(:capture, STRONG_TEST) }
     assert_kind_of Hash, payload, err
     assert payload["passed"]
+  end
+
+  # A result read slower than RESULT_GRACE still counts while capture time is
+  # left: the grace is a floor, not a cap.
+  def test_capture_keeps_a_slow_result_read_with_time_left
+    map = Mutineer::CoverageMap.new(
+      source_paths: [CALC], test_paths: [STRONG_TEST],
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
+    )
+    map.define_singleton_method(:read_result_line) { |io| super(io).tap { sleep 1.5 } }
+    payload = nil
+    _, err = capture_subprocess_io { payload = map.send(:capture, STRONG_TEST) }
+    assert_kind_of Hash, payload, err
+  end
+
+  # A child that exits before reading its script must not raise EPIPE out of
+  # spawn_script (and skip the reaper): the capture reports a failed run.
+  def test_spawn_script_survives_a_child_that_exits_before_reading
+    map = Mutineer::CoverageMap.new(
+      source_paths: [CALC], test_paths: [STRONG_TEST],
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
+    )
+    original = RbConfig.method(:ruby)
+    RbConfig.define_singleton_method(:ruby) { "false" }
+    status, out = map.send(:spawn_script, "#" * 1_000_000)
+    refute_predicate status, :success?
+    assert_equal "", out
+  ensure
+    RbConfig.define_singleton_method(:ruby, original) if original
   end
 
   def test_combined_clean_fails_when_files_pass_alone
