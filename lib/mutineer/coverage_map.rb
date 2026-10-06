@@ -407,8 +407,8 @@ module Mutineer
           begin
             ChildStdout.silence
             # Fork-safety hook: the in-process path reconnects AR; the daemon
-            # routes to its worker DB. Nil (non-Rails) = no-op. Injected so this
-            # file needs neither Runner (Prism) nor Rails.
+            # drops its protocol channel and routes to its worker DB. Nil =
+            # no-op. Injected so this file needs neither Runner (Prism) nor Rails.
             after_fork&.call
             Coverage.result(clear: true, stop: false) # discard pre-test delta
             passed = TestRunners.for(@framework).run([abs_test]).zero?
