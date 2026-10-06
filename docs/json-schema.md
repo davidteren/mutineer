@@ -33,7 +33,7 @@ between reports with the same `id_format` (a missing key is the old format).
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
-  "unplaceable":  [ /* redefine mutants whose class has no constant name; not run */ ],
+  "unplaceable":  [ /* redefine mutants whose class cannot be named statically; not run */ ],
   "no_verdict":   [ /* mutants that were attempted and produced no verdict */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
   "per_source":   [ /* per-file roll-up */ ],
@@ -51,7 +51,7 @@ between reports with the same `id_format` (a missing key is the old format).
 | `survived` | int | Mutants no test caught. **These are the actionable test gaps.** |
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
-| `unplaceable` | int | Under `--strategy redefine`, mutants whose method belongs to a class or module with no constant name to load the mutant onto, so they were not run (excluded). Not part of `no_verdict`, so they do not fail `--threshold`. `--strategy reload` runs them. Additive key (schema `1.7`). |
+| `unplaceable` | int | Under `--strategy redefine`, mutants whose method belongs to a class or module that cannot be named statically (no constant, a relative path inside a namespace, or a constant assigned in `class << self`), so they were not run (excluded). Not part of `no_verdict`, so they do not fail `--threshold`. `--strategy reload` runs them. Additive key (schema `1.7`). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). |
 | `errored` | int | Mutants whose run raised (excluded). |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
@@ -82,8 +82,9 @@ Each surviving mutant — the records an agent or reviewer acts on:
 Each entry is `{ subject, file, line, operator, token, id }`, sorted by
 `(file, line, operator, id)`. `no_coverage` is a genuine coverage gap; `uncapturable` means the test that
 should cover the line errored while capturing coverage (fix the harness, not the test). `unplaceable` (schema
-`1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module has no
-constant name (an anonymous `Class.new`, for example); `--strategy reload` runs these.
+`1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module cannot be
+named statically (an anonymous `Class.new`, a relative path such as `User::Permission` inside a namespace,
+or a constant assigned in `class << self`); `--strategy reload` runs these.
 
 Several mutants can share a line, so `operator` and `token` name the change and `id` identifies the mutant.
 The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` these entries were

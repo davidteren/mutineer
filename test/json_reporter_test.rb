@@ -318,7 +318,6 @@ class JsonReporterTest < Minitest::Test
     assert_equal [], doc["no_coverage"] # not conflated with no_coverage
   end
 
-  # #11: additive per_source array, sorted by file, with per-file counts + score.
   def test_unplaceable_summary_count_and_list_stay_out_of_no_verdict
     unp = Mutineer::Result.unplaceable.with(subject: subject, id: "abc123def456",
                                             mutation: mutation_at("100", "0", :literal_mutation))
@@ -332,6 +331,7 @@ class JsonReporterTest < Minitest::Test
     assert_equal [], doc["no_verdict"]
   end
 
+  # #11: additive per_source array, sorted by file, with per-file counts + score.
   def test_per_source_array_sorted_with_scores
     other = Mutineer::Subject.new(file: "z.rb", namespace: ["Z"], name: :m,
                                   singleton: false, def_node: nil)

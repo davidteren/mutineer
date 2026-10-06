@@ -696,7 +696,7 @@ module Mutineer
       # A broken harness, not a coverage gap: report it distinctly from No coverage.
       out.puts format("Uncapturable: %-6d  (tests failed to run)", @agg.uncapturable_count)
       # Not broken: redefine has no named class to load these onto; reload runs them.
-      out.puts format("Unplaceable:  %-6d  (class has no constant name; --strategy reload runs these)",
+      out.puts format("Unplaceable:  %-6d  (class cannot be named statically; --strategy reload runs these)",
                       @agg.unplaceable_count)
       # Equivalent mutants the user suppressed; excluded from the denominator.
       out.puts format("Ignored:      %-6d  (equivalent, suppressed)", @agg.ignored_count)
