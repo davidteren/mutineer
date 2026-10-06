@@ -15,7 +15,7 @@ module Mutineer
       # @param node [Prism::StringNode] node to inspect.
       # @return [void]
       def visit_string_node(node)
-        # ponytail: only plain "..." / '...' quotes. opening is nil for
+        # Only plain "..." / '...' quotes. opening is nil for
         # interpolation parts and %w[] elements; heredocs/%-literals use a
         # different opening token. Skipping them keeps mutants re-parseable.
         if %w[" '].include?(node.opening)

@@ -11,9 +11,6 @@ module Mutineer
     # Subclasses override `visit_*` methods to push `Mutation` objects onto
     # `@mutations`. Visiting only `def_node.body` is the body-only enforcement:
     # the def signature line is never touched.
-    #
-    # ponytail: one implementor in M1; Base earns its keep at M4 when
-    # comparison/boolean operators land and share this contract.
     class Base < Prism::Visitor
       # Walks the subject body and collects mutations.
       #
