@@ -1,0 +1,35 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_c4a8d56d044eb4 62-64
+docs/agentic-coding.html
+  s_07d7b58ff1b9fd::t_5c3f1039814c22 26-27
+docs/assets/mutineer.css
+  s_07d7b58ff1b9fd::t_4e48947245007f 112,114-120
+docs/assets/mutineer.js
+  s_07d7b58ff1b9fd::t_996bac2fc35619 40-55,57-63,67-68,70,73,75-82
+docs/index.html
+  s_07d7b58ff1b9fd::t_6da44985fa812a 26-27,64-71,98-108
+docs/index.md
+  s_07d7b58ff1b9fd::t_99590d6bdbd395 12
+docs/sample-report.html
+  s_07d7b58ff1b9fd::t_f5e36e1c2bacac 20-21
+rake/docs_contract.rb
+  s_07d7b58ff1b9fd::t_79fdbf13e2b3cd 482-483
+test/site_test.js
+  s_07d7b58ff1b9fd::t_806237bde9aaed 99-109,115,117,119-120,124-125,127,131-135,140-142,149-159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "26766f6bc186e282b56c0d832528f270574e72e6",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
