@@ -185,6 +185,25 @@ class JsonReporterTest < Minitest::Test
     assert_git_applies(subj, one_line_src, one_line, "@@ -1 +1 @@\n-class Foo; def bar(x) = x >= 1; end\n\\ No newline")
   end
 
+  # PR #194 review: the newline state is each side's own. A replacement that
+  # adds the missing final newline, and a range that ends right after the
+  # file's final newline, both apply.
+  def test_survivor_diff_tracks_each_sides_final_newline
+    src = "class Foo; def bar(x) = x >= 1; end"
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                 singleton: false, def_node: def_node)
+    adds_newline = Mutineer::Mutation.new(start_offset: src.index("end"), end_offset: src.bytesize,
+                                          replacement: "end\n", operator: :statement_removal)
+    assert_git_applies(subj, src, adds_newline, "@@ -1 +1 @@\n-#{src}\n\\ No newline at end of file\n+#{src}\n")
+
+    with_newline = "#{src}\n"
+    covers_final_newline = Mutineer::Mutation.new(start_offset: with_newline.index(">="),
+                                                  end_offset: with_newline.bytesize,
+                                                  replacement: "> 1; end\n", operator: :comparison)
+    assert_git_applies(subj, with_newline, covers_final_newline, "@@ -1 +1 @@")
+  end
+
   # #106: a CRLF file keeps its "\r" in the diff, so git applies it unchanged.
   def test_survivor_diff_of_a_crlf_file_applies_with_git
     src = "class Foo\r\n  def bar(x)\r\n    log(x,\r\n        y)\r\n    x\r\n  end\r\nend\r\n"

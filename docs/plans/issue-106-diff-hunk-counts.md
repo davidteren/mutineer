@@ -11,7 +11,9 @@ product_contract_source: ce-plan-bootstrap
 # Issue #106: correct unified diff hunk counts for multi-line mutations
 
 **Goal:** The JSON `survivors[].diff` header states the real number of removed and
-added lines, so `git apply --check --unidiff-zero` accepts every survivor diff.
+added lines, so `git apply --check --unidiff-zero`, run from the project root, accepts every
+survivor diff whose `file` is project-relative. A source outside the root has an absolute
+`file`, which needs `git apply --directory`/`-p` (see `docs/json-schema.md`).
 
 **Closes:** #106 · **Depth:** Lightweight
 
@@ -27,7 +29,8 @@ lines and adds one, so the header is wrong and `git apply` rejects the patch as 
 - R2. A mutated block that is empty is one empty line (the block stops before its
   final newline), so it emits one empty `+` line. Before, it emitted no `+` line.
   (Found during implementation: a block never has zero lines.)
-- R3. Single-line diffs stay byte-identical (`@@ -3 +3 @@`), so current consumers see no change.
+- R3. Single-line LF diffs stay byte-identical (`@@ -3 +3 @@`), so current consumers see no
+  change. A CRLF diff now keeps its `\r` line endings, so it applies to the CRLF file.
 - R4. The regression test checks the patch with `git apply`, not only a header string,
   and checks that the applied result equals `Mutation#apply`.
 
@@ -65,5 +68,7 @@ Build each header range as `start` or `start,count`. Update the `diff` row in
 ## Scope Boundaries
 
 - In scope after plan review: a mutant on the last line of a file with no final newline
-  (for example an endless `def`) adds `\ No newline at end of file` after both sides.
+  (for example an endless `def`) gets `\ No newline at end of file`. After PR review, each
+  side decides its own marker from its own text, so a replacement that adds or drops the
+  final newline still applies.
 - No change to the JSON schema version: the `diff` key and its meaning stay the same.
