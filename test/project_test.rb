@@ -281,6 +281,44 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def test_discover_resolves_a_builder_constant_path_the_way_the_assignment_does
+    src = <<~RUBY
+      module Admin
+        User::Permission = Data.define(:r) do
+          def allow? = r
+        end
+        ::Root::Gate = Struct.new(:o) do
+          def root? = o
+        end
+      end
+      class ReleaseApp
+        self::Gate = Struct.new(:open) do
+          def open? = open
+          self::Latch = Struct.new(:o) do
+            def shut? = o
+          end
+        end
+        ReleaseApp::Also = Struct.new(:open) do
+          def also? = open
+        end
+        helper = Class.new do
+          self::Lost = Struct.new(:o) do
+            def lost? = o
+          end
+        end
+      end
+      Top::Path = Data.define(:x) do
+        def top? = x
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[User::Permission#allow? Root::Gate#root? ReleaseApp::Gate#open? ReleaseApp::Gate::Latch#shut?
+                      ReleaseApp::Also#also? self::Lost#lost? Top::Path#top?], subjects.map(&:qualified_name)
+      assert_equal [true, false, false, false, true, true, false], subjects.map(&:owner_unknown)
+    end
+  end
+
   def test_discover_nested_classes
     with_source("class Outer\n  class Inner\n    def m; end\n  end\nend\n") do |path|
       s = Mutineer::Project.discover([path]).first

@@ -126,9 +126,7 @@ module Mutineer
         return super unless builds_class?(call)
 
         saved = @assigned
-        owner = node.respond_to?(:target) ? node.target.slice : node.name.to_s
-        namespace = owner.start_with?("::") ? [owner.delete_prefix("::")] : @namespace_stack + [owner]
-        @assigned = [call, [owner, namespace, false]]
+        @assigned = [call, assigned_owner(node)]
         begin
           super
         ensure
@@ -208,6 +206,41 @@ module Mutineer
         @lexical_stack = saved_lexical
         @module_function_active = saved_active
         @block_owner, @block_namespace, @owner_unknown = saved_block
+      end
+
+      # Resolves the constant an assignment writes the way Ruby does. `X` is in the
+      # current namespace, `::X` and a path at the top level start from Object, and
+      # `self::X` is under the current class (the built class inside a builder
+      # block). Any other path is looked up at run time, so its owner is unknown
+      # and the subject is named as written.
+      #
+      # @param node [Prism::Node] constant assignment.
+      # @return [Array(String, Array<String>, Boolean)] owner, namespace, unknown.
+      def assigned_owner(node)
+        return named_owner(@namespace_stack + [node.name.to_s]) unless node.respond_to?(:target)
+
+        names = []
+        path = node.target
+        while path.is_a?(Prism::ConstantPathNode)
+          names.unshift(path.name.to_s)
+          path = path.parent
+        end
+        base =
+          case path
+          when nil then []
+          when Prism::SelfNode then @block_namespace || @namespace_stack unless @owner_unknown
+          when Prism::ConstantReadNode then [path.name.to_s] if @namespace_stack.empty?
+          end
+        base ? named_owner(base + names) : [nil, [node.target.slice], true]
+      end
+
+      # The owner for a resolved namespace, root-anchored so the redefine
+      # wrapper loads onto that constant from any nesting.
+      #
+      # @param namespace [Array<String>] resolved namespace.
+      # @return [Array(String, Array<String>, Boolean)]
+      def named_owner(namespace)
+        ["::#{namespace.join("::")}", namespace, false]
       end
 
       # The value an assignment stores: the last statement inside parentheses or a

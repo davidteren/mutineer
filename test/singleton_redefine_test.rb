@@ -95,6 +95,20 @@ class SingletonRedefineTest < Minitest::Test
     end
   end
 
+  def test_self_path_builders_are_mutated_on_the_class_self_names
+    %w[PathRelease::Gate#open? PathRelease::Gate::Latch#shut?].each do |only|
+      assert_killed(run_redefine("builder_path.rb", "builder_path_test.rb", only: only), only)
+    end
+  end
+
+  def test_relative_path_builder_is_uncapturable_under_redefine_and_killed_under_reload
+    only = "PathUser::Permission#allow?"
+    redefine = run_redefine("builder_path.rb", "builder_path_test.rb", only: only)
+    assert_operator redefine.uncapturable_count, :>, 0
+    assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count
+    assert_killed(run_redefine("builder_path.rb", "builder_path_test.rb", strategy: "reload", only: only), only)
+  end
+
   # Parity control — this form already worked; it must keep working.
   def test_def_self_methods_are_mutated
     assert_killed(run_redefine("def_self.rb", "def_self_test.rb"), "def self.")
