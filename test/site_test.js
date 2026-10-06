@@ -85,6 +85,8 @@ test('index.md landing twin exists and sitemap lists the same Pages URLs as llms
   const llms = fs.readFileSync(`${SITE}/llms.txt`, 'utf8');
   assert.match(llms, /## Optional/);
   assert.match(llms, new RegExp(`${BASE}/skill\\.md`));
+  // #125: the site serves the one skill source, skills/mutineer/SKILL.md, as skill.md.
+  assert.equal(fs.readFileSync(`${SITE}/skill.md`, 'utf8'), fs.readFileSync('skills/mutineer/SKILL.md', 'utf8'));
   const pagesUrls = [...llms.matchAll(/https:\/\/davidteren\.github\.io\/mutineer[^)\s]*/g)].map((m) => m[0]);
   pagesUrls.push(`${BASE}/llms.txt`);
   const sitemap = fs.readFileSync(`${SITE}/sitemap.xml`, 'utf8');

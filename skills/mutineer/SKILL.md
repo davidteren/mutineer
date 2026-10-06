@@ -1,6 +1,6 @@
 ---
 name: mutineer
-description: Clean-room mutation testing for Ruby (Prism + stdlib, zero deps). Mutates source one change at a time, runs the suite against each mutant, and reports the mutants tests fail to catch — with a versioned JSON contract and CI/agent gating.
+description: Clean-room mutation testing for Ruby (Prism + stdlib, zero deps). Mutates source one change at a time, runs the suite against each mutant, and reports the mutants tests fail to catch, with a versioned JSON contract and CI/agent gating. Use when checking whether a Ruby test suite would catch a change, finding weak or missing tests, gating CI on a mutation score, or acting on mutineer's JSON report.
 ---
 
 # Mutineer

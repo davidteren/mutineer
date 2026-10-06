@@ -14,6 +14,13 @@ All notable changes to this project are documented here. The format is based on
   not fail `--threshold`. The human report gives it an `Unplaceable:` row, the
   HTML report a count, and the JSON report `summary.unplaceable` and an
   `unplaceable[]` list; `schema_version` is `1.7`.
+- **The agent skill installs with `gh skill` and `npx skills` (#125).** It
+  moved from `docs/skill.md` to `skills/mutineer/SKILL.md`, the layout of the
+  Agent Skills specification, so `gh skill install davidteren/mutineer
+  mutineer` finds it and `npx skills add davidteren/mutineer --skill mutineer`
+  installs one `SKILL.md` instead of the whole `docs/` site. The site build
+  copies that file to `skill.md`, so its URL still works. The skill's
+  description now says when to use it, and the README shows how to install it.
 
 ### Fixed
 
