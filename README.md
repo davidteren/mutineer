@@ -483,8 +483,10 @@ require:
 ```
 
 Coverage results are cached in `.mutineer/coverage.json` (digest-keyed; rebuilt
-automatically when sources change). Add `.mutineer/` to your `.gitignore`, or
-the directory you set with `--cache-dir`.
+automatically when sources change). Add `.mutineer/` to your `.gitignore`, and
+the directory you set with `--cache-dir` if it is inside the project. Keep
+`.mutineer/` ignored even then: `--test-command` writes lock files to
+`.mutineer/` beside each source file.
 
 ## License
 
