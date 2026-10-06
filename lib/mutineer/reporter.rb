@@ -25,9 +25,24 @@ module Mutineer
     # workflow, so one bad mutant never fails the gate on its own, at any size.
     BROKEN_FLOOR = 1
 
-    def initialize(aggregate, source_map)
+    # The JSON report's `schema_version` (see docs/json-schema.md).
+    SCHEMA_VERSION = "1.5"
+
+    # The warning both matrix renderers give under the redundant tests.
+    MATRIX_REDUNDANT_NOTE = "Delete redundant tests one at a time: two of them can be the only killers of one mutant."
+
+    # How many blind or redundant tests the human report lists before it points
+    # to `--format json` for the rest.
+    MATRIX_LIST_LIMIT = 20
+
+    # @param aggregate [Mutineer::AggregateResult] the run's results.
+    # @param source_map [Hash{String => String}] source file path => source text.
+    # @param matrix [Mutineer::KillMatrix, nil] the kill matrix of a `--matrix`
+    #   run; nil leaves every format exactly as it is without the flag.
+    def initialize(aggregate, source_map, matrix: nil)
       @agg = aggregate
       @source_map = source_map
+      @matrix = matrix
     end
 
     # Single entry point. Branches on `format` ("human" | "json" | "html") and
@@ -96,6 +111,7 @@ module Mutineer
       per_source(out)
 
       survivors(out)
+      matrix_section(out) if @matrix
       verdict(out, threshold) if threshold && threshold.positive?
     end
 
@@ -146,7 +162,7 @@ module Mutineer
       score = @agg.mutation_score
 
       doc = {
-        schema_version: "1.4",
+        schema_version: SCHEMA_VERSION,
         summary: {
           total: @agg.total, killed: killed, survived: survived,
           no_coverage: @agg.no_coverage_count,
@@ -202,6 +218,8 @@ module Mutineer
         per_source: @agg.by_source.map { |file, agg| per_source_json(file, agg) }
                         .sort_by { |h| h[:file] }
       }
+      # Additive (1.5): the kill matrix, present only with --matrix.
+      doc[:matrix] = matrix_json if @matrix
       # Additive baseline-delta block, present only with --baseline. Existing
       # consumers ignore the extra key; it does not move schema_version on its own.
       doc[:baseline] = baseline_json(baseline) if baseline
@@ -257,6 +275,7 @@ module Mutineer
         #{summary_html}
         #{per_source_html(per_source)}
         #{survivors_html(survivors)}
+        #{matrix_html}
         </body>
         </html>
       HTML
@@ -269,7 +288,7 @@ module Mutineer
         "survived" => @agg.survived_count, "no_coverage" => @agg.no_coverage_count,
         "uncapturable" => @agg.uncapturable_count, "ignored" => @agg.ignored_count,
         "skipped" => @agg.skipped_invalid_count,
-        "errored" => @agg.errored_count + @agg.timeout_count
+        "errored" => @agg.errored_count, "timeout" => @agg.timeout_count
       }
       spans = counts.map { |k, v| "<span><strong>#{v}</strong> #{esc(k)}</span>" }.join("\n  ")
       "<div class=\"counts\">\n  #{spans}\n</div>"
@@ -314,6 +333,186 @@ module Mutineer
         CARD
       end.join("\n")
       "<h2>Surviving Mutants</h2>\n#{cards}"
+    end
+
+    # The kill-matrix section of the HTML report: the counts, then the blind and
+    # redundant tests. Empty without --matrix.
+    #
+    # @api private
+    # @return [String] HTML.
+    def matrix_html
+      return "" unless @matrix
+
+      lists = { "Blind tests" => @matrix.blind, "Redundant tests" => @matrix.redundant }.map do |title, tests|
+        items = tests.map { |test| "<li><span class=\"id\">#{esc(test[0])}</span> #{esc(test_label(test))}</li>" }
+        body = items.empty? ? "<p>None.</p>" : "<ul>\n#{items.join("\n")}\n</ul>"
+        "<h3>#{esc(title)} (#{tests.size})</h3>\n#{body}"
+      end
+      note = @matrix.complete? ? "" : "\n<p>#{esc(matrix_incomplete_note)}</p>\n#{matrix_incomplete_html}"
+      delete = @matrix.redundant.empty? ? "" : "\n<p>#{esc(MATRIX_REDUNDANT_NOTE)}</p>"
+      "<h2>Kill matrix</h2>\n<p>#{esc(matrix_counts_line)}</p>#{note}\n#{lists.join("\n")}#{delete}"
+    end
+
+    # Every incomplete row of the HTML kill-matrix section.
+    #
+    # @api private
+    # @return [String] HTML.
+    def matrix_incomplete_html
+      items = @matrix.incomplete_rows.map { |r| "<li>#{esc(matrix_row_label(r))}</li>" }
+      "<h3>Incomplete rows (#{items.size})</h3>\n<ul>\n#{items.join("\n")}\n</ul>"
+    end
+
+    # The JSON `matrix` block: every test with its kill count, one row per
+    # mutant that ran (its killers as indexes into `tests`), and the blind and
+    # redundant tests. Rows sort like survivors, then by id, so output is
+    # byte-stable regardless of --jobs.
+    #
+    # @api private
+    # @return [Hash] the matrix JSON object.
+    def matrix_json
+      tests = @matrix.tests
+      index = tests.each_with_index.to_h
+      {
+        complete: @matrix.complete?,
+        tests: tests.map { |test| test_json(test).merge(kills: @matrix.kill_count(test)) },
+        mutants: @matrix.rows.map { |r| matrix_row_json(r, index) }
+                        .sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s, h[:id].to_s] },
+        blind: @matrix.blind.map { |test| test_json(test) },
+        redundant: @matrix.redundant.map { |test| test_json(test) }
+      }
+    end
+
+    # One test as JSON: its file, display name and id.
+    #
+    # @api private
+    # @param test [Array(String, String, String)] a `[file, name, id]` test.
+    # @return [Hash]
+    def test_json(test)
+      file, name, id = test
+      { file: file, name: name, id: id }
+    end
+
+    # A test's name for people: the display name, plus the id when it differs
+    # (an RSpec example id, which tells apart examples that share a name and
+    # runs exactly that example with `rspec`).
+    #
+    # @api private
+    # @param test [Array(String, String, String)] a `[file, name, id]` test.
+    # @return [String]
+    def test_label(test)
+      _file, name, id = test
+      id == name ? name : "#{name} (#{id})"
+    end
+
+    # One mutant's row under `matrix.mutants`.
+    #
+    # @api private
+    # @param result [Mutineer::Result] a result with a {Kills} row.
+    # @param index [Hash{Array => Integer}] test => its index in `matrix.tests`.
+    # @return [Hash] the row JSON object.
+    def matrix_row_json(result, index)
+      file = result.subject&.file
+      kills = result.kills
+      {
+        subject: result.subject&.qualified_name, file: file, line: result_line(result),
+        operator: result.mutation&.operator&.to_s, id: result.id, status: result.status.to_s,
+        killed_by: kills.killed_by.map { |test| index.fetch(test) }.sort,
+        ran: kills.ran.size, complete: kills.complete
+      }
+    end
+
+    # The kill-matrix section of the human report.
+    #
+    # @api private
+    # @param out [IO] output stream.
+    # @return [void]
+    def matrix_section(out)
+      out.puts
+      out.puts "Kill matrix"
+      out.puts "-----------"
+      out.puts matrix_counts_line
+      matrix_incomplete_section(out) unless @matrix.complete?
+      matrix_list(out, "Blind tests (ran, killed no mutant)", @matrix.blind)
+      matrix_list(out, "Redundant tests (each mutant they kill has another killer)", @matrix.redundant)
+      return if @matrix.redundant.empty?
+
+      out.puts MATRIX_REDUNDANT_NOTE
+    end
+
+    # The human report's warning about incomplete rows, with the first
+    # {MATRIX_LIST_LIMIT} of them named.
+    #
+    # @api private
+    # @param out [IO] output stream.
+    # @return [void]
+    def matrix_incomplete_section(out)
+      rows = @matrix.incomplete_rows
+      out.puts matrix_incomplete_note
+      rows.first(MATRIX_LIST_LIMIT).each { |r| out.puts "  #{matrix_row_label(r)}" }
+      rest = rows.size - MATRIX_LIST_LIMIT
+      out.puts "  and #{rest} more" if rest.positive?
+      out.puts "The HTML and JSON reports list every incomplete row (JSON: matrix.mutants with complete: false)."
+    end
+
+    # A row's label: subject, place, operator, status and id.
+    #
+    # @api private
+    # @param result [Mutineer::Result] a result with a {Kills} row.
+    # @return [String]
+    def matrix_row_label(result)
+      place = [result.subject&.file, result_line(result)].compact.join(":")
+      [result.subject&.qualified_name, ("(#{place})" unless place.empty?), result.mutation&.operator,
+       result.status, result.id].compact.join(" ")
+    end
+
+    # The 1-based line of a result's mutation, or nil without one (a pre-fork
+    # failure has no subject or mutation).
+    #
+    # @api private
+    # @param result [Mutineer::Result] any result.
+    # @return [Integer, nil]
+    def result_line(result)
+      file = result.subject&.file
+      return unless result.mutation && file
+
+      source = @source_map[file] || File.read(file)
+      source.byteslice(0, result.mutation.start_offset).count("\n") + 1
+    end
+
+    # One titled list of tests in the human kill-matrix section, cut at
+    # {MATRIX_LIST_LIMIT}; the JSON report has the whole list.
+    #
+    # @api private
+    # @param out [IO] output stream.
+    # @param title [String] the list's title.
+    # @param tests [Array<Array(String, String, String)>] `[file, name, id]` tests.
+    # @return [void]
+    def matrix_list(out, title, tests)
+      out.puts
+      out.puts "#{title}: #{tests.size}"
+      tests.first(MATRIX_LIST_LIMIT).each { |test| out.puts "  #{test[0]}  #{test_label(test)}" }
+      rest = tests.size - MATRIX_LIST_LIMIT
+      out.puts "  and #{rest} more; see --format json" if rest.positive?
+    end
+
+    # The counts sentence both matrix renderers open with.
+    #
+    # @api private
+    # @return [String]
+    def matrix_counts_line
+      "#{@matrix.tests.size} tests ran against #{@matrix.rows.size} mutants " \
+        "(every test in each mutant's covering files): " \
+        "#{@matrix.blind.size} blind, #{@matrix.redundant.size} redundant."
+    end
+
+    # The warning both matrix renderers give when a row is incomplete.
+    #
+    # @api private
+    # @return [String]
+    def matrix_incomplete_note
+      "#{@matrix.incomplete_rows.size} mutants could not be verified as complete (a timeout, an error, " \
+        "an exit, an interrupt or a broken stream), so a blind test may have killed one of them. " \
+        "Do not delete a blind test until these rows are complete:"
     end
 
     # HTML-escapes any text destined for the document (stdlib CGI).
@@ -365,8 +564,11 @@ module Mutineer
       file = result.subject.file
       source = @source_map[file] || File.read(file)
       start_line, original_block, mutated_block, token = diff_for(m, source)
-      minus = original_block.each_line.map { |l| "-#{l.chomp}" }.join("\n")
-      plus  = mutated_block.each_line.map { |l| "+#{l.chomp}" }.join("\n")
+      # A block at the end of the file has no newline after it; elsewhere the
+      # file's next byte is one. Each side's own text decides its marker.
+      at_eof = source.byteindex("\n", m.end_offset).nil?
+      old_lines = side_lines(original_block, at_eof)
+      new_lines = side_lines(mutated_block, at_eof)
       {
         subject: result.subject.qualified_name,
         file: file,
@@ -376,8 +578,47 @@ module Mutineer
         # user can paste it straight into .mutineer.yml `ignore:`.
         id: result.id,
         token: token,
-        diff: "--- a/#{file}\n+++ b/#{file}\n@@ -#{start_line} +#{start_line} @@\n#{minus}\n#{plus}\n"
+        diff: "--- a/#{file}\n+++ b/#{file}\n" \
+              "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
+              "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
       }
+    end
+
+    # One side of the diff as the file holds it: the {#diff_for} block plus the
+    # newline that follows it, unless the block ends the file. Each line keeps
+    # its own ending, so a CRLF line keeps its "\r" and a last line with no
+    # newline is told apart from one with a newline.
+    #
+    # @api private
+    # @param block [String] the block's text.
+    # @param at_eof [Boolean] no newline follows the block in the file.
+    # @return [Array<String>] its lines, with their endings.
+    def side_lines(block, at_eof)
+      (at_eof ? block : "#{block}\n").lines
+    end
+
+    # The `-` or `+` lines of one side. A line with no newline is the file's
+    # last, so it gets the unified diff's no-newline marker (#106).
+    #
+    # @api private
+    # @param sign [String] "-" or "+".
+    # @param lines [Array<String>] the side's lines, with their endings.
+    # @return [String]
+    def diff_body(sign, lines)
+      lines.map { |l| l.end_with?("\n") ? "#{sign}#{l}" : "#{sign}#{l}\n\\ No newline at end of file\n" }.join
+    end
+
+    # One side of a unified diff hunk header: `start` for one line, else
+    # `start,count`; an empty side is `start-1,0` (#106).
+    #
+    # @api private
+    # @param start_line [Integer] 1-based first line of the block.
+    # @param lines [Array<String>] the block's lines.
+    # @return [String] the range, e.g. "3", "3,2" or "2,0".
+    def hunk_range(start_line, lines)
+      return "#{start_line - 1},0" if lines.empty? # an empty side names the line before it
+
+      lines.size == 1 ? start_line.to_s : "#{start_line},#{lines.size}"
     end
 
     # An entry under the JSON `ignored:` key: what the user already suppressed.
@@ -421,14 +662,7 @@ module Mutineer
     # @param result [Mutineer::Result] result object.
     # @return [Hash] no-coverage JSON object.
     def no_coverage_json(result)
-      m = result.mutation
-      file = result.subject.file
-      source = @source_map[file] || File.read(file)
-      {
-        subject: result.subject.qualified_name,
-        file: file,
-        line: source.byteslice(0, m.start_offset).count("\n") + 1
-      }
+      { subject: result.subject.qualified_name, file: result.subject.file, line: result_line(result) }
     end
 
     # An entry under the JSON `no_verdict:` key: an attempted mutant with no verdict.
@@ -440,16 +674,10 @@ module Mutineer
     # @param result [Mutineer::Result] an errored or timed-out result.
     # @return [Hash] no-verdict JSON object.
     def no_verdict_json(result)
-      file = result.subject&.file
-      line =
-        if result.mutation && file
-          source = @source_map[file] || File.read(file)
-          source.byteslice(0, result.mutation.start_offset).count("\n") + 1
-        end
       {
         subject: result.subject&.qualified_name,
-        file: file,
-        line: line,
+        file: result.subject&.file,
+        line: result_line(result),
         id: result.id,
         status: result.status.to_s,
         details: result.details
@@ -465,8 +693,8 @@ module Mutineer
       out.puts "-------"
       out.puts format("Total:        %-6d  Killed:        %d", @agg.total, @agg.killed_count)
       out.puts format("Survived:     %-6d  No coverage:   %d", @agg.survived_count, @agg.no_coverage_count)
-      out.puts format("Skipped:      %-6d  Errored:       %d", @agg.skipped_invalid_count,
-                      @agg.errored_count + @agg.timeout_count)
+      out.puts format("Skipped:      %-6d  Errored:       %d", @agg.skipped_invalid_count, @agg.errored_count)
+      out.puts format("Timeout:      %-6d  (over the per-mutant time limit)", @agg.timeout_count)
       # A broken harness, not a coverage gap: report it distinctly from No coverage.
       out.puts format("Uncapturable: %-6d  (tests failed to run)", @agg.uncapturable_count)
       # Equivalent mutants the user suppressed; excluded from the denominator.
@@ -482,7 +710,7 @@ module Mutineer
       score = @agg.mutation_score
       excluded = "#{@agg.no_coverage_count} no-coverage, #{@agg.uncapturable_count} uncapturable, " \
                  "#{@agg.skipped_invalid_count} skipped, " \
-                 "#{@agg.errored_count + @agg.timeout_count} errored, " \
+                 "#{@agg.errored_count} errored, #{@agg.timeout_count} timeout, " \
                  "#{@agg.ignored_count} ignored excluded"
       if score.nil?
         out.puts "Mutation score: N/A  (no covered mutants)"

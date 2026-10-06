@@ -4,6 +4,7 @@ require "pathname"
 require_relative "parser"
 require_relative "project"
 require_relative "result"
+require_relative "statement_lines"
 require_relative "isolation"
 require_relative "minitest_integration"
 require_relative "test_runners"
@@ -95,7 +96,8 @@ module Mutineer
           cache_dir: config.cache_dir, project_root: config.project_root,
           load_paths: config.load_paths, framework: config.framework,
           boot_path: File.expand_path(config.boot, config.project_root),
-          verbose: config.verbose
+          verbose: config.verbose,
+          capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_via_fork(after_fork: (config.rails ? -> { reconnect_active_record } : nil))
       else
         # As in boot mode, and with lib first as `rake test` does.
@@ -107,7 +109,8 @@ module Mutineer
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: config.cache_dir, project_root: config.project_root,
-          load_paths: config.load_paths + rel_roots, framework: config.framework
+          load_paths: config.load_paths + rel_roots, framework: config.framework,
+          capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_or_load
       end
       abort_if_unclean!(coverage_map)
@@ -138,17 +141,33 @@ module Mutineer
           bare = WorkerPool.new(jobs_n).run(jobs, stop_when: stop_when,
                                                   on_result: ->(_r) { progress.tick }) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
-                subject: subject, strategy: strategy, rails: config.rails, framework: framework)
+                subject: subject, strategy: strategy, rails: config.rails, framework: framework,
+                timeout: config.timeout || Isolation::DEFAULT_TIMEOUT, matrix: config.matrix)
           end
           # The bare Results carry only status (Subjects hold live AST nodes that
           # do not marshal); reattach subject+mutation+id in the parent, in order.
           # filter_map drops nils for jobs --fail-fast left unscheduled.
-          bare.each_with_index.filter_map { |r, i| r&.with(subject: jobs[i][0], mutation: jobs[i][1], id: jobs[i][2]) }
+          share_tests(bare.each_with_index.filter_map do |r, i|
+            r = unreported_row(r) if r && config.matrix
+            r&.with(subject: jobs[i][0], mutation: jobs[i][1], id: jobs[i][2])
+          end)
         ensure
           sweep_orphans(dirs)
         end
 
       [AggregateResult.new(results + ignored_results), source_map, extras]
+    end
+
+    # A `--matrix` error that carries no {Kills} row (the worker crashed, or its
+    # result was lost) gets an empty, incomplete row: its tests never reported,
+    # so a blind test may have killed it, and the report must say so.
+    #
+    # @param result [Mutineer::Result] a worker's result.
+    # @return [Mutineer::Result]
+    def self.unreported_row(result)
+      return result unless result.error? && result.kills.nil?
+
+      result.with(kills: Kills.new(killed_by: [], ran: [], complete: false))
     end
 
     # Collect every (subject, mutation, id) up front so a backend can run them.
@@ -318,7 +337,10 @@ module Mutineer
     # Coverage-based test selection, shared by the in-process ({run}) and daemon
     # paths so both narrow identically (score parity). Returns
     # `[:run, abs_test_paths]` when some test covers the mutant's line, or
-    # `[:verdict, Result]` (no_coverage / uncapturable) when none do.
+    # `[:verdict, Result]` (no_coverage / uncapturable) when none do. A line
+    # Ruby does not count (a later line of a multi-line statement) uses the
+    # tests that ran the statement that holds it ({StatementLines}), unless the
+    # mutant sits in code of that statement that runs only sometimes.
     #
     # An empty selection is `:uncapturable` (not `:no_coverage`) when the
     # mutant's enclosing method body got coverage from no *successful* capture but
@@ -335,6 +357,11 @@ module Mutineer
     def self.coverage_selection(source_file, mutation, subject, source, coverage_map)
       line   = source.byteslice(0, mutation.start_offset).count("\n") + 1
       chosen = coverage_map.tests_for(source_file, line)
+      if chosen.empty? && subject
+        # A multi-line statement has a count on one of its lines only.
+        lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
+        chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq
+      end
       if chosen.empty?
         # Method BODY range, not the whole def: the def/end lines are "covered" at
         # class-load even when the body never runs (body_loc is the statements' span).
@@ -355,7 +382,7 @@ module Mutineer
     # text inside a string, heredoc or regex silences nothing (#158).
     def self.suppress_map(source, file)
       map = {}
-      Parser.parse_string(source).comments.grep(Prism::InlineComment).each do |comment|
+      Parser.comments(source).grep(Prism::InlineComment).each do |comment|
         line = comment.location.start_line
         next unless (m = comment.slice.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
 
@@ -474,9 +501,11 @@ module Mutineer
     # @param timeout [Integer] child timeout in seconds.
     # @param rails [Boolean] whether Rails reconnect handling is enabled.
     # @param framework [String] test framework name.
+    # @param matrix [Boolean] a `--matrix` run: run every covering test and
+    #   attach the {Kills} row, with project-relative test files.
     # @return [Mutineer::Result] mutant result.
     def self.run(mutation, source_file:, coverage_map: nil, subject: nil, strategy: "reload",
-                 timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest")
+                 timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest", matrix: false)
       source  = File.read(source_file)
       mutated = mutation.apply(source)
 
@@ -492,7 +521,7 @@ module Mutineer
 
       abs_tests = payload
 
-      Isolation.run(timeout: timeout) do
+      result = Isolation.run(timeout: timeout, channel: matrix) do |channel|
         # Forking inherits the parent's live DB connection; sharing one socket
         # across processes corrupts it. Drop it so AR reconnects per child.
         reconnect_active_record if rails
@@ -501,8 +530,57 @@ module Mutineer
         else
           Isolation.apply_whole_file(mutated, source_file)
         end
-        # One failing test already kills the mutant, so the child stops there.
-        TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
+        if channel
+          # --matrix: every covering test runs, and each outcome goes to the parent.
+          TestRunners.for(framework).run(abs_tests, record_to: channel)
+        else
+          # One failing test already kills the mutant, so the child stops there.
+          TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
+        end
+      end
+      relative_kills(result, coverage_map.project_root)
+    end
+
+    # Rewrites the test files of a result's {Kills} row relative to the project
+    # root, the form the coverage map and the report use. A result without a
+    # row comes back unchanged.
+    #
+    # @api private
+    # @param result [Mutineer::Result] a mutant result.
+    # @param root [String] project root.
+    # @return [Mutineer::Result]
+    def self.relative_kills(result, root)
+      return result unless (kills = result.kills)
+
+      paths = {}
+      rel = lambda do |tests|
+        tests.map { |file, name, id| [(paths[file] ||= ProjectPath.relative(file, root)), name, id] }.uniq.sort
+      end
+      result.with(kills: kills.with(killed_by: rel.call(kills.killed_by), ran: rel.call(kills.ran)))
+    end
+
+    # Makes every {Kills} row refer to one shared, frozen array per test. Each
+    # row arrives with its own copy of every test it ran, and a large matrix
+    # (thousands of mutants times hundreds of tests) would otherwise hold that
+    # many copies. Results without a row come back unchanged.
+    #
+    # A test is its file and its id. The name is display data and can differ
+    # between mutants (an RSpec example worded from its matcher reads
+    # differently under each mutant), so every row gets the name the first
+    # mutant reported, and one example stays one test.
+    #
+    # @api private
+    # @param results [Array<Mutineer::Result>] mutant results.
+    # @return [Array<Mutineer::Result>]
+    def self.share_tests(results)
+      shared = {}
+      share = lambda do |tests|
+        tests.map { |file, name, id| shared[[file, id]] ||= [file, name, id].map { |s| -s }.freeze }.uniq.sort.freeze
+      end
+      results.map do |r|
+        next r unless (kills = r.kills)
+
+        r.with(kills: kills.with(killed_by: share.call(kills.killed_by), ran: share.call(kills.ran)))
       end
     end
 

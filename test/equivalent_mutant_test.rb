@@ -71,6 +71,13 @@ class EquivalentMutantTest < Minitest::Test
     assert_equal({ 13 => Set[:comparison] }, map)
   end
 
+  # PR #197 review: an =begin/=end block and the data after __END__ are not
+  # line comments, so the marker text there silences nothing.
+  def test_suppress_map_ignores_the_marker_in_embedded_docs_and_after_end
+    src = "x = 1\n=begin\n# mutineer:disable-line\n=end\ny = 2\n__END__\nz # mutineer:disable-line\n"
+    assert_empty Mutineer::Runner.suppress_map(src, "x.rb")
+  end
+
   def test_suppressed_scope_matches_only_listed_operator
     disabled = { 2 => Set[:comparison] }
     refute Mutineer::Runner.suppressed?(:arithmetic, 2, %w[id old], disabled, Set.new)
@@ -264,7 +271,7 @@ class EquivalentMutantTest < Minitest::Test
                                    tests: ["test/fixtures/calculator_weak_test.rb"])
     doc = render_json(agg, source_map)
 
-    assert_equal "1.4", doc["schema_version"]
+    assert_equal "1.5", doc["schema_version"]
     assert_equal 2, doc["summary"]["survived"]
     assert_equal 0, doc["summary"]["ignored"]
     ids = doc["survivors"].map { |s| s["id"] }
