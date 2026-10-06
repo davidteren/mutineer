@@ -1,0 +1,33 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_39d8c5b9b7ff3a 72-85
+lib/mutineer/runner.rb
+  s_07d7b58ff1b9fd::t_077c7b75af9915 7,340-343,360-364
+lib/mutineer/statement_lines.rb
+  s_07d7b58ff1b9fd::t_2ce67414e84120 1-143
+test/fixtures/continuation.rb
+  s_07d7b58ff1b9fd::t_ad869c9d2ab303 1-46
+test/fixtures/continuation_test.rb
+  s_07d7b58ff1b9fd::t_4bd6f3e918dc0f 1-30
+test/runner_test.rb
+  s_07d7b58ff1b9fd::t_b8fc4efb63beab 126-166
+test/statement_coverage_test.rb
+  s_07d7b58ff1b9fd::t_125de24366abad 1-60
+test/statement_lines_test.rb
+  s_07d7b58ff1b9fd::t_4dfdd1ef528379 1-256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "26eefc78e54eeaa1ed640f34f05f7053b08a5470",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
