@@ -1,0 +1,21 @@
+lib/mutineer/mutators/collection_method.rb
+  s_07d7b58ff1b9fd::t_306e6b45162610 15
+lib/mutineer/mutators/string_literal.rb
+  s_07d7b58ff1b9fd::t_4560aa48c0c858 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "510a2ce2895b26ae04320ea9642d95184c00da91",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
