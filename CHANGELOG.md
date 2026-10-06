@@ -59,9 +59,9 @@ All notable changes to this project are documented here. The format is based on
   entries are sorted by `(file, line, operator, id)`. `schema_version` is `1.6`.
 
 - **The site and README explain "clean-room" and compare Mutineer with
-  Mutant**, and the landing page has a one-minute explainer video. The video
-  loads only when played, pauses when it scrolls out of view, and has a text
-  summary and an MP4 download.
+  Mutant**, and the landing page hero has a one-minute explainer video. It
+  plays muted while in view (not with reduced motion), pauses when it scrolls
+  away or the tab is hidden, and has an Enlarge button.
 
 ### Changed
 - **The human report has a `Timeout:` row**, and the score line lists timeouts

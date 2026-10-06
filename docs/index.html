@@ -23,8 +23,8 @@
 <meta name="twitter:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
 <meta name="twitter:image:alt" content="Mutineer — Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='1' fill='%2367286a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
-<script src="assets/mutineer.js?v=4fdff4ec5a91"></script>
-<link rel="stylesheet" href="assets/mutineer.css?v=7972aad51db2">
+<script src="assets/mutineer.js?v=dd2d178f56c5"></script>
+<link rel="stylesheet" href="assets/mutineer.css?v=e781a676ebc0">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -61,16 +61,14 @@
           </div>
           <p class="note">Open source. MIT licensed. Prism + stdlib only.</p>
         </div>
-        <figure class="specimen">
-          <figcaption><span>One change. One missed boundary.</span><span>COMPARISON</span></figcaption>
-          <div class="mutation-glyph" aria-hidden="true"><span>≥</span><span class="glyph-arrow">→</span><span>&gt;</span></div>
-          <div class="specimen-code"><span class="specimen-label">ORIGINAL</span><code>return 0 if qty &gt;= 10</code></div>
-          <div class="specimen-code mutant"><span class="specimen-label">MUTANT</span><code>return 0 if qty &gt; 10</code></div>
-          <p class="specimen-verdict"><span aria-hidden="true">↳</span> Still passes? Your tests missed <strong>qty = 10</strong>.</p>
-          <details class="boundary-test">
-            <summary>Show the test that catches it</summary>
-            <div><code>assert_equal 0, calculator.discount(10)</code><p>The original returns 0 at 10. If the changed method returns a different value, this assertion fails and kills the mutant.</p><p class="note">Illustrative example; no Ruby runs in this page.</p></div>
-          </details>
+        <figure class="explainer">
+          <video muted playsinline loop preload="metadata" width="1920" height="1080"
+                 poster="assets/mutineer-explainer-poster.jpg"
+                 aria-label="One-minute explainer: a suite with 100% line coverage misses a changed comparison, and Mutineer finds it"
+                 controls>
+            <source src="assets/mutineer-explainer.mp4" type="video/mp4">
+          </video>
+          <button hidden class="explainer-size" type="button" aria-pressed="false">Enlarge <span aria-hidden="true">⤢</span></button>
         </figure>
       </div>
       <div class="badges" aria-label="Tool facts">
@@ -89,26 +87,6 @@
     </div>
   </section>
 
-  <!-- WATCH: a one-minute explainer; nothing loads until the visitor presses play. -->
-  <section id="watch">
-    <div class="wrap">
-      <div class="sec-head">
-        <div class="kicker">In one minute</div>
-        <h2>Watch a passing suite miss a bug.</h2>
-        <p>Every test passes and every line is covered. Mutineer changes one comparison, runs the tests again, and shows the change they did not catch.</p>
-      </div>
-      <figure class="explainer">
-        <video controls preload="none" playsinline width="1920" height="1080"
-               poster="assets/mutineer-explainer-poster.jpg"
-               aria-describedby="explainer-summary">
-          <source src="assets/mutineer-explainer.mp4" type="video/mp4">
-          <p>Your browser cannot play this video. <a href="assets/mutineer-explainer.mp4">Download it (MP4, 4.7 MB)</a>.</p>
-        </video>
-        <figcaption id="explainer-summary"><span>1:03 · music, on-screen text, no narration.</span> A discount method passes its tests with 100% line coverage. Mutineer makes two mutants: the tests kill <code>*</code> → <code>/</code> but miss <code>&gt;=</code> → <code>&gt;</code>, because no test checks an order of exactly 100. The video ends with the test that closes that gap. <a href="assets/mutineer-explainer.mp4">Download MP4</a></figcaption>
-      </figure>
-    </div>
-  </section>
-
   <!-- HOW -->
   <section id="how">
     <div class="wrap">
@@ -117,6 +95,17 @@
         <h2>Mutate. Run. Report.</h2>
         <p>A surviving mutant shows a change your tests did not catch. Inspect it, strengthen the test, and run again. Some changes are equivalent and need no new test.</p>
       </div>
+      <figure class="specimen">
+          <figcaption><span>One change. One missed boundary.</span><span>COMPARISON</span></figcaption>
+          <div class="mutation-glyph" aria-hidden="true"><span>≥</span><span class="glyph-arrow">→</span><span>&gt;</span></div>
+          <div class="specimen-code"><span class="specimen-label">ORIGINAL</span><code>return 0 if qty &gt;= 10</code></div>
+          <div class="specimen-code mutant"><span class="specimen-label">MUTANT</span><code>return 0 if qty &gt; 10</code></div>
+          <p class="specimen-verdict"><span aria-hidden="true">↳</span> Still passes? Your tests missed <strong>qty = 10</strong>.</p>
+          <details class="boundary-test">
+            <summary>Show the test that catches it</summary>
+            <div><code>assert_equal 0, calculator.discount(10)</code><p>The original returns 0 at 10. If the changed method returns a different value, this assertion fails and kills the mutant.</p><p class="note">Illustrative example; no Ruby runs in this page.</p></div>
+          </details>
+        </figure>
       <div class="steps">
         <div class="step">
           <h3>Mutate</h3>

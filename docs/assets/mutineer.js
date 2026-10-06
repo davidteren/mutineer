@@ -37,26 +37,49 @@
       sync();
     });
 
-    // The explainer video plays only when the visitor asks. It pauses when it
-    // scrolls out of view or the tab is hidden, unless it plays in
-    // Picture-in-Picture, which exists to keep watching elsewhere. It shows
-    // its poster again when it ends.
-    document.querySelectorAll('.explainer video').forEach(function (video) {
-      function pauseUnlessFloating() {
-        if (!video.paused && document.pictureInPictureElement !== video) video.pause();
+    // The hero explainer video plays muted while it is in view (browsers allow
+    // only muted autoplay), unless the visitor prefers reduced motion. It
+    // pauses when less than a quarter is in view or the tab is hidden, except
+    // in Picture-in-Picture, and resumes only if this code paused it: a pause
+    // by the visitor sticks. The Enlarge button widens it across the hero.
+    document.querySelectorAll('.explainer').forEach(function (figure) {
+      var video = figure.querySelector('video');
+      var size = figure.querySelector('.explainer-size');
+      var grid = figure.parentNode;
+      var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var held = false; // paused by this code, so it may resume
+      var visible = false;
+      function hold() {
+        if (video.paused || document.pictureInPictureElement === video) return;
+        held = true;
+        video.pause();
       }
+      function resume() {
+        if (!held || !visible || document.hidden) return;
+        held = false;
+        var playing = video.play();
+        if (playing && playing.catch) playing.catch(function () {});
+      }
+      if (!still) held = true; // autoplay counts as this code's choice
       if ('IntersectionObserver' in window) {
         new IntersectionObserver(function (entries) {
           entries.forEach(function (entry) {
-            // Less than a quarter in view counts as scrolled away.
-            if (entry.intersectionRatio < 0.25) pauseUnlessFloating();
+            visible = entry.intersectionRatio >= 0.25;
+            if (visible) resume(); else hold();
           });
-        }, { threshold: 0.25 }).observe(video);
+        }, { threshold: [0, 0.25] }).observe(video);
       }
       document.addEventListener('visibilitychange', function () {
-        if (document.hidden) pauseUnlessFloating();
+        if (document.hidden) hold(); else resume();
       });
-      video.addEventListener('ended', function () { video.load(); });
+      if (size) {
+        size.hidden = false;
+        size.addEventListener('click', function () {
+          var wide = grid.classList.toggle('explainer-wide');
+          size.setAttribute('aria-pressed', wide ? 'true' : 'false');
+          size.innerHTML = (wide ? 'Smaller' : 'Enlarge') + ' <span aria-hidden="true">' + (wide ? '⤡' : '⤢') + '</span>';
+        });
+      }
     });
 
     // Copy controls report failure and remain reusable after repeated clicks.

@@ -109,11 +109,15 @@ h1 { font-size: clamp(48px, 6.8vw, 88px); line-height: .99; letter-spacing: -.06
 .badge b { font-size: 24px; font-weight: 500; color: var(--fg); margin-right: 12px; }
 /* Ruled sections replace repeated floating cards. */
 section { padding: 72px 0; border-top: 1px solid var(--border); }
-.explainer { margin: 0; }
+.explainer { margin: 0; position: relative; }
 .explainer video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); }
-.explainer video:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.explainer figcaption { margin-top: 12px; max-width: 72ch; color: var(--fg-dim); font-size: 14px; line-height: 1.55; }
-.explainer figcaption span { display: block; font: 11px/1.5 var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--fg-faint); margin-bottom: 4px; }
+.explainer video:focus-visible, .explainer-size:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.explainer-size { margin-top: 10px; padding: 6px 12px; font: 11px/1.5 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--fg-dim); background: transparent; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; }
+.explainer-size:hover { color: var(--fg); border-color: var(--fg-dim); }
+.hero-grid.explainer-wide { grid-template-columns: 1fr; }
+.hero-grid.explainer-wide .explainer { order: -1; }
+#how .specimen { max-width: 620px; margin: 0 0 40px; }
+@media (max-width: 860px) { .explainer-size { display: none; } }
 .sec-head { display: grid; grid-template-columns: 1fr 1fr; column-gap: 64px; margin-bottom: 36px; }
 .sec-head .kicker { grid-column: 1 / -1; margin-bottom: 16px; }
 .sec-head h2 { font-size: clamp(30px, 3.4vw, 44px); letter-spacing: -.045em; margin: 0; }

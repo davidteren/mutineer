@@ -9,13 +9,7 @@ for CI gates and AI coding agents.
 
 This file is the Markdown twin of the [HTML landing page](https://davidteren.github.io/mutineer/).
 
-## Watch it in one minute
-
-[A 63-second explainer](https://davidteren.github.io/mutineer/assets/mutineer-explainer.mp4)
-(MP4, music and on-screen text, no narration): a discount method passes its tests with
-100% line coverage. Mutineer makes two mutants. The tests kill `*` → `/` but miss
-`>=` → `>`, because no test checks an order of exactly 100. The video ends with the
-test that closes that gap.
+[Watch the one-minute explainer](https://davidteren.github.io/mutineer/assets/mutineer-explainer.mp4) (MP4).
 
 ## Install
 

@@ -96,55 +96,67 @@ test('index.md landing twin exists and sitemap lists the same Pages URLs as llms
 });
 
 
-// The explainer video pauses when it leaves the viewport or the tab is hidden,
-// except in Picture-in-Picture, and returns to its poster when it ends.
-test('explainer video pauses off screen, keeps Picture-in-Picture playing, and resets at the end', () => {
-  const docEvents = {}, videoEvents = {};
-  let observed, observerCallback, pauses = 0, loads = 0;
-  const video = { paused: false, pause() { pauses++; }, load() { loads++; }, addEventListener(k, fn) { videoEvents[k] = fn; } };
-  class IntersectionObserver {
-    constructor(fn) { observerCallback = fn; }
-    observe(el) { observed = el; }
-  }
+// The hero explainer autoplays muted in view, pauses off screen or in a hidden
+// tab (not in Picture-in-Picture), resumes only what it paused, keeps a
+// visitor's pause, and the Enlarge button widens it.
+test('explainer video autoplays in view, keeps the visitor in control, and enlarges', () => {
+  const docEvents = {};
+  let observerCallback, plays = 0, pauses = 0, sizeClick, wide = false;
+  const video = { paused: true, play() { plays++; this.paused = false; return Promise.resolve(); }, pause() { pauses++; this.paused = true; }, addEventListener() {} };
+  const size = { hidden: true, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(k, fn) { sizeClick = fn; } };
+  const grid = { classList: { toggle() { wide = !wide; return wide; } } };
+  const figure = { parentNode: grid, querySelector(sel) { return sel === 'video' ? video : size; } };
+  class IntersectionObserver { constructor(fn) { observerCallback = fn; } observe() {} }
   const root = { setAttribute() {}, getAttribute() { return 'dark'; }, classList: { add() {} } };
-  const media = { matches: true, addEventListener() {} };
   const document = {
     documentElement: root, hidden: false, pictureInPictureElement: null,
     getElementById() { return null; },
     addEventListener(k, fn) { docEvents[k] = fn; },
-    querySelectorAll(selector) { return selector === '.explainer video' ? [video] : []; }
+    querySelectorAll(selector) { return selector === '.explainer' ? [figure] : []; }
   };
+  const media = (q) => ({ matches: !/reduced-motion/.test(q), addEventListener() {} });
   const context = {
-    document, IntersectionObserver,
-    window: { matchMedia() { return media; }, IntersectionObserver },
+    document,
+    window: { matchMedia: media },
     localStorage: { getItem() { return null; }, setItem() {} },
     navigator: {}, setTimeout() {}, clearTimeout() {}, addEventListener() {}
   };
+  // The head check for page motion runs at load, without an observer, so the
+  // entrance animations stay off; the video code runs later and finds one.
   vm.runInNewContext(fs.readFileSync('docs/assets/mutineer.js', 'utf8'), context);
+  context.IntersectionObserver = context.window.IntersectionObserver = IntersectionObserver;
   docEvents.DOMContentLoaded();
-  assert.equal(observed, video);
 
   observerCallback([{ intersectionRatio: 0.6 }]);
-  assert.equal(pauses, 0, 'a visible video keeps playing');
-  observerCallback([{ intersectionRatio: 0.2 }]);
-  assert.equal(pauses, 1, 'scrolling mostly away pauses it');
+  assert.equal(plays, 1, 'in view, it autoplays');
+  observerCallback([{ intersectionRatio: 0.1 }]);
+  assert.equal(pauses, 1, 'mostly out of view, it pauses');
+  observerCallback([{ intersectionRatio: 0.8 }]);
+  assert.equal(plays, 2, 'back in view, it resumes what it paused');
 
   document.hidden = true;
   docEvents.visibilitychange();
   assert.equal(pauses, 2, 'a hidden tab pauses it');
+  document.hidden = false;
+  docEvents.visibilitychange();
+  assert.equal(plays, 3, 'a visible tab resumes it');
 
   document.pictureInPictureElement = video;
   observerCallback([{ intersectionRatio: 0 }]);
-  docEvents.visibilitychange();
   assert.equal(pauses, 2, 'Picture-in-Picture keeps playing');
-
-  video.paused = true;
   document.pictureInPictureElement = null;
-  docEvents.visibilitychange();
-  assert.equal(pauses, 2, 'a paused video is left alone');
 
-  videoEvents.ended();
-  assert.equal(loads, 1, 'the end shows the poster again');
+  video.pause(); // the visitor pauses
+  observerCallback([{ intersectionRatio: 0 }]);
+  observerCallback([{ intersectionRatio: 0.9 }]);
+  assert.equal(plays, 3, "the visitor's pause sticks");
+
+  assert.equal(size.hidden, false);
+  sizeClick();
+  assert.equal(wide, true);
+  assert.equal(size.attrs['aria-pressed'], 'true');
+  sizeClick();
+  assert.equal(size.attrs['aria-pressed'], 'false');
 });
 
 // A small browser boundary checks theme selection and copy feedback without a dependency.
