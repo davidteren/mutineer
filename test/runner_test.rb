@@ -154,18 +154,44 @@ class RunnerTest < Minitest::Test
     end
   end
 
-  FakeCoverageMap = Struct.new(:tests_by_line, :project_root) do
+  FakeCoverageMap = Struct.new(:tests_by_line, :project_root, :load_lines, :uncapturable) do
     def tests_for(_file, line) = tests_by_line.fetch(line, [])
-    def method_uncapturable?(*) = false
+    def method_uncapturable?(*) = uncapturable || false
+    def ran_at_load?(_file, line) = Array(load_lines).include?(line)
   end
 
-  def selection(source, snippet, tests_by_line)
+  def selection(source, snippet, tests_by_line, load_lines: [], uncapturable: false)
     def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
     subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
     start = source.index(snippet)
     mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,
                                       replacement: "nil", operator: :test)
-    Mutineer::Runner.coverage_selection("x.rb", mutation, subject, source, FakeCoverageMap.new(tests_by_line, "/root"))
+    Mutineer::Runner.coverage_selection("x.rb", mutation, subject, source,
+                                        FakeCoverageMap.new(tests_by_line, "/root", load_lines, uncapturable))
+  end
+
+  # #187: an uncovered line that ran at load is ran_at_load, not no_coverage;
+  # a lost capture still wins, since that is a broken harness.
+  def test_coverage_selection_order_is_uncapturable_then_ran_at_load_then_no_coverage
+    source = "def f(x)\n  x * 2\nend\n"
+
+    assert_equal :no_coverage, selection(source, "x * 2", {})[1].status
+    assert_equal :ran_at_load, selection(source, "x * 2", {}, load_lines: [2])[1].status
+    assert_equal :uncapturable, selection(source, "x * 2", {}, load_lines: [2], uncapturable: true)[1].status
+  end
+
+  # #187: `x if c` counts its line when `c` is checked, also when `x` never
+  # runs, so a mutant in `x` did not run at load.
+  def test_coverage_selection_does_not_count_code_that_runs_only_sometimes
+    source = "def f(k)\n  return 7 * 6 if k.nil?\n  k\nend\n"
+    assert_equal :no_coverage, selection(source, "7 * 6", {}, load_lines: [2])[1].status
+  end
+
+  # #187: the def line counts when the method is defined, so it is never a load
+  # line; a one-line def is the documented known limit.
+  def test_coverage_selection_ignores_the_def_line_load_count
+    assert_equal :no_coverage, selection("def f(x = 1)\n  x\nend\n", "1", {}, load_lines: [1])[1].status
+    assert_equal :no_coverage, selection("def f(x) = x * 2\n", "x * 2", {}, load_lines: [1])[1].status
   end
 
   def test_coverage_selection_uses_the_tests_that_ran_the_whole_statement

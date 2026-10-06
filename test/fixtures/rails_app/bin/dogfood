@@ -47,4 +47,13 @@ echo "== strong suite does NOT regress against its own baseline (exit 0) =="
 expect_exit 0 "strong --baseline (strong)" -- \
   bundle exec mutineer run "$SRC" --test "$STRONG" --rails --baseline "$BASELINE"
 
+echo "== a line that ran at boot is ran_at_load, not a false survivor (#187) =="
+REPORT="$(mktemp)"
+expect_exit 0 "price_list --rails --threshold 100" -- \
+  bundle exec mutineer run app/models/price_list.rb --test test/models/price_list_test.rb \
+  --rails --threshold 100 --format json --output "$REPORT"
+ruby -rjson -e 's = JSON.parse(File.read(ARGV[0]))["summary"]
+  abort "FAIL: expected 1 ran_at_load, got #{s.inspect}" unless s.values_at("ran_at_load", "killed", "survived", "no_coverage") == [1, 1, 0, 0]' "$REPORT"
+echo "ok: price_list mutant is ran_at_load"
+
 echo "All Rails dogfood checks passed."

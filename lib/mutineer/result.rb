@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Mutineer
-  # Immutable outcome of running one mutant. Nine distinct states:
+  # Immutable outcome of running one mutant. Ten distinct states:
   #   killed       - a test failed/errored, so the mutation was caught.
   #   survived     - every test passed, so the mutation went undetected.
   #   error        - the child crashed (unhandled exception): exit status 2.
@@ -19,6 +19,13 @@ module Mutineer
   #                  denominator and, unlike uncapturable, from the
   #                  no-verdict gate: nothing is broken. `--strategy reload`
   #                  runs these mutants.
+  #   ran_at_load  - the mutated line ran while the app booted or its class
+  #                  loaded. That run happened before the mutant was applied,
+  #                  so a test can check a value the original code computed.
+  #                  A survivor on such a line, and a line that ran only at
+  #                  load, get this status; a kill stays killed. Excluded from
+  #                  the denominator and from the no-verdict gate, like
+  #                  unplaceable. `--test-command` verifies these mutants.
   #   ignored      - a known-equivalent mutant the user suppressed, via an
   #                  inline `# mutineer:disable-line` comment or a
   #                  `.mutineer.yml` `ignore:` id. A pre-fork classification
@@ -28,8 +35,9 @@ module Mutineer
   # `error` and `skipped` are deliberately distinct: skipped is a pre-fork
   # validity failure (counted separately by the reporter), error is a runtime
   # crash. Never conflate them via `details` string parsing. `no_coverage`,
-  # `uncapturable` and `unplaceable` are pre-fork results: all excluded from the
-  # score denominator.
+  # `uncapturable` and `unplaceable` are pre-fork results, and `ran_at_load` is
+  # pre-fork or a reclassified survivor: all excluded from the score
+  # denominator.
   #
   # `subject`, `mutation`, and `id` are nil when the Result is built by
   # Isolation/Runner (which only know the outcome); the orchestrator attaches
@@ -100,6 +108,11 @@ module Mutineer
     # @return [Mutineer::Result] unplaceable result.
     def self.unplaceable = new(status: :unplaceable, details: nil, subject: nil, mutation: nil, id: nil)
 
+    # Builds a ran_at_load result.
+    #
+    # @return [Mutineer::Result] ran-at-load result.
+    def self.ran_at_load = new(status: :ran_at_load, details: nil, subject: nil, mutation: nil, id: nil)
+
     # Builds an ignored result.
     #
     # @return [Mutineer::Result] ignored result.
@@ -121,6 +134,8 @@ module Mutineer
     def uncapturable? = status == :uncapturable
     # @return [Boolean] true when the status is unplaceable.
     def unplaceable?  = status == :unplaceable
+    # @return [Boolean] true when the status is ran_at_load.
+    def ran_at_load?  = status == :ran_at_load
     # @return [Boolean] true when the status is ignored.
     def ignored?      = status == :ignored
 
@@ -143,7 +158,7 @@ module Mutineer
 
   # Aggregates a flat list of Results into counts, the mutation score, and the
   # surviving-mutant list. The score denominator is killed + survived ONLY:
-  # no-coverage, uncapturable, unplaceable, skipped (invalid), errored, timeout, and ignored
+  # no-coverage, uncapturable, unplaceable, ran-at-load, skipped (invalid), errored, timeout, and ignored
   # (equivalent-mutant suppression) are each excluded and surfaced separately,
   # so suppressing every survivor reaches 100%. An empty denominator yields a
   # nil score (rendered "N/A"), never 0.0, distinguishing "no testable mutants"
@@ -169,6 +184,8 @@ module Mutineer
     def uncapturable_count    = count(:uncapturable)
     # @return [Integer] unplaceable count.
     def unplaceable_count     = count(:unplaceable)
+    # @return [Integer] ran-at-load count.
+    def ran_at_load_count     = count(:ran_at_load)
     # @return [Integer] skipped-invalid count.
     def skipped_invalid_count = count(:skipped)
     # @return [Integer] errored count.

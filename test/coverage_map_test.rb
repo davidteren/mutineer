@@ -407,6 +407,73 @@ class CoverageMapTest < Minitest::Test
     assert mk.call.phase_a_ran, "test file changed: cache must rebuild"
   end
 
+  # --- #187: lines that ran at load ---------------------------------------
+
+  LOAD_ROOT = File.expand_path("fixtures/load_time", __dir__)
+  CATALOG = File.join(LOAD_ROOT, "lib/catalog.rb")
+
+  def build_catalog(cache_dir)
+    Mutineer::CoverageMap.new(source_paths: ["lib/catalog.rb"], test_paths: ["test/catalog_test.rb"],
+                              cache_dir: cache_dir, project_root: LOAD_ROOT).build_or_load
+  end
+
+  # Standalone capture reads the lines the source ran when it was required,
+  # before the test file loads: `base * 2` (line 7) ran to build ALL.
+  def test_standalone_capture_records_load_lines_and_the_cache_keeps_them
+    dir = Dir.mktmpdir("mutineer-cache")
+    first = build_catalog(dir)
+    assert first.phase_a_ran
+    assert first.ran_at_load?(CATALOG, 7), "base * 2 ran at load"
+    refute first.ran_at_load?(File.join(LOAD_ROOT, "test/catalog_test.rb"), 8), "only source lines are kept"
+
+    second = build_catalog(dir)
+    refute second.phase_a_ran, "digest matched: cache hit"
+    assert_equal first.load_lines, second.load_lines
+  end
+
+  def test_cache_without_load_lines_is_rebuilt_once
+    dir = Dir.mktmpdir("mutineer-cache")
+    build_catalog(dir)
+    path = File.join(dir, "coverage.json")
+    File.write(path, JSON.generate(JSON.parse(File.read(path)).except("load_lines")))
+
+    rebuilt = build_catalog(dir)
+    assert rebuilt.phase_a_ran, "a cache from before load lines were saved must rebuild"
+    assert rebuilt.ran_at_load?(CATALOG, 7)
+  end
+
+  # Boot mode reads the lines that ran during boot from the parent's Coverage,
+  # on every run: no forked capture is credited with them.
+  def test_build_via_fork_records_the_lines_that_ran_at_boot
+    Coverage.start(lines: true) unless Coverage.running?
+    dir = Dir.mktmpdir("mutineer-proj")
+    src = File.join(dir, "boot_load.rb")
+    test = File.join(dir, "boot_load_test.rb")
+    File.write(src, "class BootLoadThing\n  def self.price(x)\n    x * 2\n  end\n\n  ALL = [price(3)].freeze\nend\n")
+    File.write(test, "require \"minitest/autorun\"\nclass BootLoadThingTest < Minitest::Test\n  " \
+                     "def test_all; assert_equal [6], BootLoadThing::ALL; end\nend\n")
+    require src
+
+    cache = Dir.mktmpdir("mutineer-cache")
+    mk = lambda do
+      Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test], cache_dir: cache,
+                                project_root: dir, boot_path: src).build_via_fork
+    end
+    map = mk.call
+    assert map.ran_at_load?(src, 3), "x * 2 ran while the class loaded"
+    assert_empty map.tests_for(src, 3), "no test ran it"
+    assert mk.call.ran_at_load?(src, 3), "a cache hit still reads the boot lines"
+  end
+
+  def test_from_data_takes_load_lines
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: LOAD_ROOT,
+                                          load_lines: ["lib/catalog.rb:7"])
+    assert map.ran_at_load?(CATALOG, 7)
+    refute map.ran_at_load?(CATALOG, 6)
+    refute Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: LOAD_ROOT)
+                                .ran_at_load?(CATALOG, 7)
+  end
+
   def test_corrupt_cache_is_rebuilt
     dir = Dir.mktmpdir("mutineer-cache")
     File.write(File.join(dir, "coverage.json"), "{not valid json")

@@ -20,7 +20,7 @@ module MutineerSiteDocs
     Entry.new("/agentic-coding.html", :docs, "For AI agents & CI",
       "the agent inner loop, CI regression gating, the GitHub Action, and equivalent-mutant suppression.", "0.8", true),
     Entry.new("/json-schema.html", :docs, "JSON report schema",
-      "the versioned JSON contract — `summary`, `survivors[]`, `no_coverage[]`, `uncapturable[]`, `unplaceable[]`, `no_verdict[]`, `ignored[]`, `per_source[]`, and the `baseline` and `matrix` blocks.", "0.8", true),
+      "the versioned JSON contract — `summary`, `survivors[]`, `no_coverage[]`, `uncapturable[]`, `unplaceable[]`, `ran_at_load[]`, `no_verdict[]`, `ignored[]`, `per_source[]`, and the `baseline` and `matrix` blocks.", "0.8", true),
     Entry.new("/api/", :docs, "Ruby API (YARD)",
       "class reference generated from this checkout — tracks the shipped gem.", "0.7", true),
     Entry.new("/sample-report.html", :docs, "Sample HTML report",

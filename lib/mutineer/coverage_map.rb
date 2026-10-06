@@ -36,6 +36,14 @@ module Mutineer
 
     attr_reader :project_root, :failed_test_files, :failed_clean_tests, :phase_a_ran, :map
 
+    # The source lines that ran while the app booted or the sources loaded,
+    # before any test ran, as a Set of "file:line" keys like {#map}'s (#187).
+    # A mutant on such a line can change a value computed before the mutant was
+    # applied, so its verdict is not trusted (`ran_at_load`).
+    #
+    # @return [Set<String>]
+    attr_reader :load_lines
+
     # Build a QUERY-ONLY map from data captured elsewhere (the daemon builds the
     # map app-side and ships `map` + `failed_test_files` over IPC; the tool
     # reconstructs it here for per-mutant selection). Skips the capture machinery
@@ -46,10 +54,12 @@ module Mutineer
     # @param failed_test_files [Array<String>] test files whose capture failed.
     # @param project_root [String] project root (for path relativization).
     # @param failed_clean_tests [Array<String>] test files whose unmutated run failed.
+    # @param load_lines [Array<String>, Set<String>] "file:line" keys that ran at load ({#load_lines}).
     # @return [Mutineer::CoverageMap] a query-only map.
-    def self.from_data(map:, failed_test_files:, project_root:, failed_clean_tests: [])
+    def self.from_data(map:, failed_test_files:, project_root:, failed_clean_tests: [], load_lines: [])
       instance = allocate
       instance.instance_variable_set(:@map, map || {})
+      instance.instance_variable_set(:@load_lines, Set.new(load_lines || []))
       instance.instance_variable_set(:@failed_test_files, failed_test_files || [])
       instance.instance_variable_set(:@failed_clean_tests, failed_clean_tests || [])
       instance.instance_variable_set(:@project_root, project_root)
@@ -72,6 +82,7 @@ module Mutineer
       @map          = {}
       @failed_test_files = []
       @failed_clean_tests = []
+      @load_lines   = Set.new
       @loaded_dependencies = {}
       @phase_a_ran  = false
     end
@@ -89,8 +100,15 @@ module Mutineer
     # the booted parent instead. Inverts into the same map #tests_for reads, and
     # reuses the digest cache (the digest mixes in the boot file so a boot cache
     # never collides with a standalone one).
+    #
+    # The lines that ran during boot are read here on every run, cache or not:
+    # the boot runs every time, and no test is credited with those lines.
     def build_via_fork(after_fork: nil)
       warn_external_sources
+      # Matched by real path in #record_load: a Coverage key is the path as
+      # required, which can differ from the configured one (/var, /private/var).
+      booted = Coverage.running? ? Coverage.peek_result : {}
+      record_load(booted.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v })
       cached_or(after_fork: after_fork) { run_phase_a_via_fork(after_fork: after_fork) }
     end
 
@@ -99,6 +117,16 @@ module Mutineer
     # (requires Minitest method isolation + finer Coverage tracking).
     def tests_for(file, line)
       @map["#{relativize(file)}:#{line}"] || []
+    end
+
+    # True when `file:line` ran while the app booted or the sources loaded
+    # (see {#load_lines}).
+    #
+    # @param file [String] source file path.
+    # @param line [Integer] 1-based line.
+    # @return [Boolean]
+    def ran_at_load?(file, line)
+      @load_lines.include?("#{relativize(file)}:#{line}")
     end
 
     # Is this source file's empty coverage the result of an *errored* capture
@@ -278,8 +306,12 @@ module Mutineer
     def cached_or(after_fork: nil)
       @digest = compute_digest
       cached = read_cache
-      if cached && cached["digest"] == @digest && dependencies_match?(cached)
+      # A standalone cache from before load lines were saved rebuilds once. Boot
+      # mode reads its load lines from the live boot instead (#build_via_fork).
+      if cached && cached["digest"] == @digest && dependencies_match?(cached) &&
+         (@boot_path || cached.key?("load_lines"))
         @map = cached["map"] || {}
+        @load_lines = Set.new(cached["load_lines"]) unless @boot_path
         @failed_test_files = cached["failed_test_files"] || []
         @failed_clean_tests = []
         @loaded_dependencies = cached["dependencies"] || {}
@@ -303,6 +335,7 @@ module Mutineer
     def run_phase_a
       @phase_a_ran = true
       @map = {}
+      @load_lines = Set.new
       @failed_test_files = []
       @failed_clean_tests = []
       @loaded_dependencies = {}
@@ -488,6 +521,7 @@ module Mutineer
       end
 
       record_loaded(payload["loaded_files"])
+      record_load(payload["load_coverage"])
 
       unless payload["passed"]
         @failed_clean_tests << relativize(test_path)
@@ -822,10 +856,12 @@ module Mutineer
         Coverage.start(lines: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         #{abs_source_paths.inspect}.each { |f| require f }
+        _load = #{load_coverage_expression}
         load #{absolute(test_path).inspect}
         _passed = Minitest.run([])
         $stderr.write(_report.string) unless _passed
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => Coverage.result,
+                                    "load_coverage" => _load,
                                     "loaded_files" => #{loaded_files_expression})
         _result.close
       RUBY
@@ -853,10 +889,12 @@ module Mutineer
         Coverage.start(lines: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         #{abs_source_paths.inspect}.each { |f| require f }
+        _load = #{load_coverage_expression}
         _sink = StringIO.new
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
         $stderr.write(_sink.string) unless _status.zero?
         _result.puts JSON.generate("passed" => _status.zero?, "coverage" => Coverage.result,
+                                    "load_coverage" => _load,
                                     "loaded_files" => #{loaded_files_expression})
         _result.close
       RUBY
@@ -867,16 +905,48 @@ module Mutineer
     # path outside the project (stdlib/gem files).
     def record(coverage, test_path)
       rel_test = relativize(test_path)
+      each_covered_key(coverage) { |key| (@map[key] ||= []) << rel_test }
+    end
+
+    # Adds the configured source lines that ran at load to {#load_lines}.
+    # Lines of other files (tests, helpers, gems) are dropped.
+    #
+    # @api private
+    # @param coverage [Hash, nil] counts per absolute file, as {#record} reads them.
+    # @return [void]
+    def record_load(coverage)
+      return unless coverage.is_a?(Hash)
+
+      @source_rels ||= @source_paths.to_set { |p| relativize(absolute(p)) }
+      ours = coverage.select { |abs_file, _| @source_rels.include?(relativize(abs_file)) }
+      each_covered_key(ours) { |key| @load_lines << key }
+    end
+
+    # Ruby source of the capture child's load-time coverage: `Coverage.peek_result`
+    # for the configured sources only, matched by real path (a Coverage key is
+    # the path as required), so the payload does not carry every loaded gem.
+    #
+    # @api private
+    # @return [String] expression to embed in a capture subprocess script.
+    def load_coverage_expression
+      "Coverage.peek_result.select { |f, _| #{abs_source_paths.inspect}.include?((File.realpath(f) rescue f)) }"
+    end
+
+    # Yields a "file:line" key for every project line with a non-zero count.
+    #
+    # @api private
+    # @param coverage [Hash] counts per absolute file: an Array, or a Hash with "lines".
+    # @yieldparam key [String] the "file:line" key.
+    # @return [void]
+    def each_covered_key(coverage)
       coverage.each do |abs_file, data|
         rel = relativize(abs_file)
         next if rel.start_with?("/") # outside project_root: not our source
 
-        counts = data.is_a?(Array) ? data : data["lines"]
-        counts.each_with_index do |count, idx|
-          next unless count&.positive?
+        counts = data.is_a?(Hash) ? data["lines"] : data
+        next unless counts.is_a?(Array) # a Coverage mode without line counts
 
-          (@map["#{rel}:#{idx + 1}"] ||= []) << rel_test
-        end
+        counts.each_with_index { |count, idx| yield "#{rel}:#{idx + 1}" if count&.positive? }
       end
     end
 
@@ -1091,7 +1161,8 @@ module Mutineer
 
       FileUtils.mkdir_p(@cache_dir)
       data = { "digest" => @digest, "failed_test_files" => @failed_test_files,
-               "dependencies" => @loaded_dependencies, "map" => @map }
+               "dependencies" => @loaded_dependencies, "map" => @map,
+               "load_lines" => @load_lines.to_a.sort }
       tmp = "#{cache_path}.tmp"
       File.write(tmp, JSON.generate(data))
       File.rename(tmp, cache_path) # atomic swap

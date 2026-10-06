@@ -331,6 +331,19 @@ class JsonReporterTest < Minitest::Test
     assert_equal [], doc["no_verdict"]
   end
 
+  def test_ran_at_load_summary_count_and_list_stay_out_of_no_verdict
+    ral = Mutineer::Result.ran_at_load.with(subject: subject, id: "abc123def456",
+                                            mutation: mutation_at("100", "0", :literal_mutation))
+    doc = render([Mutineer::Result.killed, survivor, ral])
+    assert_equal 1, doc["summary"]["ran_at_load"]
+    assert_equal [0, 2, 50.0], doc["summary"].values_at("no_verdict", "attempted", "score")
+    entry = doc["ran_at_load"].first
+    assert_equal ["Pricing#total", FILE, 3], entry.values_at("subject", "file", "line")
+    assert_equal %w[literal_mutation 100 abc123def456], entry.values_at("operator", "token", "id")
+    assert_equal [], doc["survivors"].select { |h| h["id"] == "abc123def456" }
+    assert_equal [], doc["no_verdict"]
+  end
+
   # #11: additive per_source array, sorted by file, with per-file counts + score.
   def test_per_source_array_sorted_with_scores
     other = Mutineer::Subject.new(file: "z.rb", namespace: ["Z"], name: :m,

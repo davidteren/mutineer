@@ -21,6 +21,14 @@ All notable changes to this project are documented here. The format is based on
   installs one `SKILL.md` instead of the whole `docs/` site. The site build
   copies that file to `skill.md`, so its URL still works. The skill's
   description now says when to use it, and the README shows how to install it.
+- **A `ran_at_load` mutant status** (#187). A mutant on a method-body line
+  that ran while the app booted or its class loaded gets this status when it
+  survives, or when only the load ran the line. A kill stays a kill. It is
+  left out of the score and out of `no_verdict`, so it does not fail
+  `--threshold`. The human report gives it a `Ran at load:` row that points
+  to `--test-command` to verify these mutants, the HTML report a count, and
+  the JSON report `summary.ran_at_load` and a `ran_at_load[]` list, within
+  schema `1.7`.
 
 ### Fixed
 
@@ -64,6 +72,25 @@ All notable changes to this project are documented here. The format is based on
   `workflow_dispatch` trigger), and those runs report the required checks on
   the PR's head commit. With a `RELEASE_PR_TOKEN` secret set, the push
   triggers CI as before and no dispatch is made.
+- **Code that runs while the app boots or a class loads no longer gives a false
+  `survived` or `no_coverage`** (#187). A class body such as
+  `ALL = [price(3)].freeze` runs `price` before any mutant is applied. Under
+  `--strategy redefine` (the `--rails` default) the load never runs again, so
+  a test that checks `ALL` saw the original value and the mutant falsely
+  survived. Under `--rails` or `--boot` no test was credited with lines that
+  ran during boot, so those mutants were falsely `no_coverage`. Mutineer now
+  reads the lines that ran at load (from the boot, or from requiring the
+  sources in standalone capture) and reports these mutants as `ran_at_load`,
+  under both strategies and with `--daemon`: reload runs the file's class body
+  again but not an initializer or another file's code, so a survivor there is
+  not trusted either. Under `--boot` with redefine, a
+  lazily loaded class (Zeitwerk, `autoload`) is loaded before the boot lines
+  are read, so its class body counts as load too. A baseline survivor that is
+  now `ran_at_load` is listed as fixed, not as a regression. Standalone
+  coverage caches from earlier versions rebuild once. Known limit: a one-line
+  or endless `def` called at load still gives a false `survived` or
+  `no_coverage`, because its body shares the `def` line, which Ruby counts when
+  the method is defined (#209).
 - **A boot file that prints to stdout no longer breaks the daemon handshake
   (#102).** Output from `puts`, `STDOUT`, `$stdout`, a direct fd 1 write, or a
   subprocess reached the JSON channel before the ready message, so the daemon

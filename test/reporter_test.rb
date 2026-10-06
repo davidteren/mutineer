@@ -150,6 +150,15 @@ class ReporterTest < Minitest::Test
     assert_equal 0, reporter(results).exit_code(threshold: 80.0)
   end
 
+  # #187: ran_at_load is not a broken harness, so it never fails --threshold.
+  def test_exit_code_does_not_count_ran_at_load_toward_the_no_verdict_limit
+    results = Array.new(5) { Mutineer::Result.ran_at_load } +
+              Array.new(9) { Mutineer::Result.killed } + [Mutineer::Result.survived]
+
+    assert_equal 0, reporter(results).exit_code(threshold: 80.0)
+    assert_equal 0, reporter([Mutineer::Result.ran_at_load]).exit_code(threshold: 80.0)
+  end
+
   def test_exit_code_nil_score_all_unplaceable_skips_gate
     assert_equal 0, reporter([Mutineer::Result.unplaceable]).exit_code(threshold: 80.0)
   end
@@ -310,6 +319,16 @@ class ReporterTest < Minitest::Test
     assert_includes s, "Unplaceable:  1"
     assert_includes s, "Uncapturable: 0"
     assert_includes s, "1 unplaceable"
+    assert_includes s, "Mutation score: 50.0%"
+  end
+
+  def test_ran_at_load_reported_on_its_own_line_pointing_at_test_command
+    out = StringIO.new
+    reporter([Mutineer::Result.killed, survivor_result, Mutineer::Result.ran_at_load])
+      .report(out: out, err: StringIO.new)
+    s = out.string
+    assert_match(/^Ran at load:  1 .*--test-command/, s)
+    assert_includes s, "1 ran at load"
     assert_includes s, "Mutation score: 50.0%"
   end
 
