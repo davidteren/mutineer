@@ -5,6 +5,7 @@ require "rbconfig"
 
 require_relative "test_helper"
 require "mutineer/daemon_client"
+require "mutineer/daemon_server"
 
 # #101: a daemon that stops answering must not hang the run. These tests wire
 # a client to a stand-in daemon (a plain Ruby child that reads nothing and
@@ -48,10 +49,46 @@ class DaemonClientDeadlineTest < Minitest::Test
     assert restarted
   end
 
+  # A mutant child runs in its own process group, so killing the daemon does
+  # not reach it; its watchdog must end it once the daemon is gone.
+  def test_mutant_child_dies_with_its_daemon
+    rd, wr = IO.pipe
+    daemon = fork do
+      rd.close
+      child = fork do
+        Process.setpgid(0, 0)
+        Mutineer::DaemonServer.exit_with_parent
+        sleep 60
+      end
+      wr.puts(child)
+      exit!(0)
+    end
+    wr.close
+    child = rd.gets.to_i
+    Process.wait(daemon)
+    gone = 50.times.any? do
+      sleep 0.1
+      !process_alive?(child)
+    end
+    assert gone, "mutant child #{child} outlived its daemon"
+  ensure
+    Process.kill(:KILL, child) rescue nil if child && child.positive? # rubocop:disable Style/RescueModifier
+  end
+
   def test_close_io_kills_a_daemon_that_ignores_eof
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     @client.send(:close_io)
     assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 5
     assert_raises(Errno::ESRCH) { Process.kill(0, @pid) }
+  end
+
+  private
+
+  # @return [Boolean] whether `pid` still exists.
+  def process_alive?(pid)
+    Process.kill(0, pid)
+    true
+  rescue Errno::ESRCH
+    false
   end
 end

@@ -348,7 +348,8 @@ module Mutineer
         raise DaemonBootError, "daemon crashed #{@restarts} times; aborting the run"
       end
 
-      @errio.puts("[mutineer] daemon crashed — respawning (#{@restarts}/#{MAX_RESTARTS})")
+      cause = @timed_out ? "stopped answering" : "crashed"
+      @errio.puts("[mutineer] daemon #{cause} — respawning (#{@restarts}/#{MAX_RESTARTS})")
       spawn_daemon
     end
 

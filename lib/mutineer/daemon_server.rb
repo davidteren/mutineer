@@ -169,6 +169,20 @@ module Mutineer
         -> { @worker_db.after_fork(0, schema) }
       end
 
+      # Kills this mutant child's process group once the daemon that forked it
+      # is gone (it crashed, or a client that gave up on it killed it), so a
+      # test cannot outlive its daemon and keep using the worker database
+      # (#101). Polls, because a forked child gets no signal on parent death.
+      #
+      # @param parent [Integer] the daemon's pid.
+      # @return [Thread]
+      def exit_with_parent(parent = Process.ppid)
+        Thread.new do
+          sleep(0.5) while Process.ppid == parent
+          Process.kill(:KILL, 0)
+        end
+      end
+
       # Fork a child to run one mutant in isolation; decode its exit into a verdict.
       def run_mutant(req)
         timeout = req.fetch("timeout", 30)
@@ -179,6 +193,7 @@ module Mutineer
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
           # and silence the child's stdout so test output never corrupts the IPC pipe.
           Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
+          exit_with_parent
           code =
             begin
               ChildStdout.silence
