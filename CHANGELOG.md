@@ -50,7 +50,7 @@ All notable changes to this project are documented here. The format is based on
 - **`no_coverage[]` and `uncapturable[]` name each mutant.** Every entry in
   the JSON report now has `operator`, `token` and `id`, as `ignored[]` has, so
   mutants on one line can be told apart and an `id` can go in `ignore:`. The
-  entries are sorted by `(file, line, operator, id)`. `schema_version` is `1.5`.
+  entries are sorted by `(file, line, operator, id)`. `schema_version` is `1.6`.
 
 ### Changed
 - **The human report has a `Timeout:` row**, and the score line lists timeouts

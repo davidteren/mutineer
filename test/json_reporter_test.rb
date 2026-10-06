@@ -58,7 +58,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.5", doc["schema_version"] # 1.5 added operator, token and id to no_coverage[] and uncapturable[], and the --matrix block
+    assert_equal "1.6", doc["schema_version"] # 1.6 added operator, token and id to no_coverage[] and uncapturable[]; 1.5 the --matrix block
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]

@@ -26,7 +26,7 @@ module Mutineer
     BROKEN_FLOOR = 1
 
     # The JSON report's `schema_version` (see docs/json-schema.md).
-    SCHEMA_VERSION = "1.5"
+    SCHEMA_VERSION = "1.6"
 
     # The warning both matrix renderers give under the redundant tests.
     MATRIX_REDUNDANT_NOTE = "Delete redundant tests one at a time: two of them can be the only killers of one mutant."

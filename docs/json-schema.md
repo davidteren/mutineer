@@ -7,7 +7,7 @@ worker finish order, so two runs of the same inputs produce byte-identical outpu
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.5"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.6"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -25,7 +25,7 @@ between reports with the same `id_format` (a missing key is the old format).
 
 ```jsonc
 {
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
@@ -79,7 +79,7 @@ Each entry is `{ subject, file, line, operator, token, id }`, sorted by
 should cover the line errored while capturing coverage (fix the harness, not the test).
 
 Several mutants can share a line, so `operator` and `token` name the change and `id` identifies the mutant.
-The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.5` these entries were
+The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` these entries were
 `{ subject, file, line }`.
 
 ### `no_verdict[]` (array of object)
