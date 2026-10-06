@@ -788,8 +788,9 @@ class CoverageMapTest < Minitest::Test
     assert_includes err, "timed out after 0.3s"
   end
 
-  # A process the test leaves behind inherits the result pipe across fork. The
-  # capture must not wait for it to exit before it reads the result.
+  # A process the test leaves behind inherits the result pipe across fork, and
+  # setsid takes it out of the capture's process group. The capture must not
+  # wait for it to exit before it reads the result.
   def test_fork_capture_does_not_wait_for_a_process_that_holds_the_pipe
     Coverage.start(lines: true) unless Coverage.running?
     dir = Dir.mktmpdir
@@ -797,7 +798,7 @@ class CoverageMapTest < Minitest::Test
     test = File.join(dir, "leftover_capture_test.rb")
     File.write(test, <<~RUBY)
       require "minitest"
-      File.write(#{pid_file.inspect}, fork { sleep 30; exit!(0) }.to_s)
+      File.write(#{pid_file.inspect}, fork { Process.setsid; sleep 30; exit!(0) }.to_s)
       class LeftoverCaptureTest < Minitest::Test
         def test_add = assert_equal(5, Calculator.new.add(2, 3))
       end
@@ -808,7 +809,6 @@ class CoverageMapTest < Minitest::Test
     assert_operator monotonic - started, :<, 15.0, "capture waited for the leftover process"
     assert_kind_of Hash, payload
     assert payload["passed"]
-    assert_process_gone(File.read(pid_file).to_i)
   ensure
     Process.kill(:KILL, File.read(pid_file).to_i) rescue nil if pid_file && File.exist?(pid_file) # rubocop:disable Style/RescueModifier
   end

@@ -398,16 +398,18 @@ module Mutineer
         end
       end
       wr.close
-      status, data = await_child(pid, deadline) { rd.read }
+      # Marshal.load reads exactly one object, not until EOF: a process that the
+      # test leaves running (even outside the group) can hold the pipe open.
+      status, payload = await_child(pid, deadline) { read_marshal(rd) }
       return :timeout unless status
 
       # An empty pipe means the child died before writing (e.g. a hard crash,
       # OOM, or a signal from the test's own subprocess handling). Report HOW it
       # died (exit status / signal) as a diagnostic string so --verbose has
       # something actionable instead of a silent "no result".
-      return "child wrote no result (#{describe_status(status)})" if data.empty?
+      return "child wrote no result (#{describe_status(status)})" if payload.nil?
 
-      Marshal.load(data)
+      payload
     rescue StandardError => e
       "parent could not read capture result: #{e.class}: #{e.message}"
     ensure
@@ -595,7 +597,8 @@ module Mutineer
       result_wr&.close
       script_wr.write(script)
       script_wr.close
-      await_child(pid, deadline) { read_result_line(result_rd) if result }
+      status, out = await_child(pid, deadline) { read_result_line(result_rd) if result }
+      [status, out.to_s]
     ensure
       [script_rd, script_wr, result_rd, result_wr].compact.each { |io| io.close unless io.closed? }
     end
@@ -608,11 +611,25 @@ module Mutineer
     # @return [String] the line, or `""` at end of file.
     def read_result_line(io) = io.gets.to_s
 
+    # Reads the one Marshal object a forked capture child writes, without
+    # waiting for end of file.
+    #
+    # @api private
+    # @param io [IO] the parent end of the binary result pipe.
+    # @return [Object, nil] the object, or nil when the child wrote none.
+    def read_marshal(io)
+      Marshal.load(io)
+    rescue EOFError
+      nil
+    end
+
     # Waits for capture child `pid`, which leads its own process group, while
-    # a thread runs the block to read the child's result. `deadline` bounds the
-    # run. When the child exits or the deadline passes, the whole group gets
-    # SIGKILL: a process the test left behind can neither outlive the capture
-    # nor hold the result pipe open. Process.detach owns reaping.
+    # a thread runs the block to read the child's result. One `deadline`
+    # bounds the run, the read, and the reap. Past it, the whole group gets
+    # SIGKILL, so a process the test started does not outlive a hung capture.
+    # Process.detach owns reaping. The same deadline and group kill as
+    # DaemonServer#wait_verdict, plus a reader, because the child reports
+    # through a pipe.
     #
     # A child that exits before the deadline has written its result, so the
     # reader gets {RESULT_GRACE} seconds to finish even when no time is left.
@@ -620,18 +637,16 @@ module Mutineer
     # @api private
     # @param pid [Integer] child pid, also its process group id.
     # @param deadline [Float] a CLOCK_MONOTONIC time.
-    # @yieldreturn [String, nil] what the child wrote.
-    # @return [Array(Process::Status, String)] the exit status and the block's
-    #   value (`""` when the reader did not finish); `[nil, ""]` after a timeout.
+    # @yieldreturn [Object] what the child wrote.
+    # @return [Array(Process::Status, Object)] the exit status and the block's
+    #   value (nil when the reader did not finish); `[nil, nil]` after a timeout.
     def await_child(pid, deadline, &read)
       waiter = Process.detach(pid)
       reader = Thread.new(&read)
       reader.report_on_exception = false
-      finished = waiter.join(remaining(deadline))
-      kill_group(pid, waiter)
-      return [nil, ""] unless finished
+      return [nil, nil] unless waiter.join(remaining(deadline))
 
-      [waiter.value, reader.join(RESULT_GRACE)&.value.to_s]
+      [waiter.value, reader.join(RESULT_GRACE)&.value]
     ensure
       kill_group(pid, waiter) if waiter&.alive?
       reader&.kill
@@ -685,10 +700,8 @@ module Mutineer
         end
       end
       wr.close
-      _, data = await_child(pid, deadline) { rd.read }
-      return false if data.empty?
-
-      Marshal.load(data)
+      _, passed = await_child(pid, deadline) { read_marshal(rd) }
+      passed == true
     rescue StandardError
       false
     ensure
@@ -697,8 +710,7 @@ module Mutineer
 
     # SIGKILLs capture child `pid` and its process group, then waits for
     # `waiter` to reap the child. Falls back to the pid alone when the group
-    # does not exist yet. After the child exits, its pid stays reserved while any
-    # process of its group lives, so `-pid` reaches only those processes.
+    # does not exist yet.
     #
     # @api private
     # @param pid [Integer] child pid, also its process group id.

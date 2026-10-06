@@ -17,17 +17,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- **Coverage capture keeps to `capture_timeout` from start to finish, and
-  stops every process a test leaves behind.** Under `--boot` and `--daemon`,
-  a hung test file ignored the timeout and blocked the run; it is now skipped
-  as "timed out" like a standalone capture. A process that a test started and
-  left running could keep the result pipe open and make the capture wait for
-  it, and a timeout stopped only the test process, not its children. Each
-  capture now runs in its own process group, and when the capture ends or
-  times out the whole group is stopped. A capture whose test finished just
-  before the deadline could also lose its valid result and report "invalid
-  coverage output"; it now gets a short grace period to read the result.
-  (#101, #129)
+- **Coverage capture keeps to `capture_timeout` from start to finish.** Under
+  `--boot` and `--daemon`, a hung test file ignored the timeout and blocked
+  the run; it is now skipped as "timed out", like a standalone capture. A
+  process that a test started and left running could keep the result pipe
+  open and make a boot-mode capture wait for it to exit. Each capture now runs
+  in its own process group, and a timeout stops the whole group, not only the
+  test process. A capture whose test finished just before the deadline could
+  also lose its valid result and report "invalid coverage output"; it now
+  gets a short grace period to read the result. (#101, #129)
 
 - **A method in a `Data.define`, `Struct.new`, `Class.new` or `Module.new`
   block belongs to the class or module the block builds.** In

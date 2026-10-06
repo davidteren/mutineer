@@ -219,6 +219,8 @@ module Mutineer
       # pulls in Prism which is forbidden app-side). NOTE: this is the 3rd copy of
       # the waitpid2(WNOHANG)+deadline+pgroup-SIGKILL+decode discipline. A fix to
       # the kill/reap/decode logic must be applied to all three in lockstep.
+      # CoverageMap#await_child applies the same deadline and group kill to
+      # coverage capture.
       # SIGKILL the child's process group past the deadline; a signalled child
       # (nil exitstatus) is `error`.
       def wait_verdict(pid, timeout)
