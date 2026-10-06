@@ -11,7 +11,7 @@ tests would *notice if that code broke*. Mutation testing closes that gap — ex
 AI-generated code and tests are weakest (tests that execute and pass but assert nothing).
 
 Key facts:
-- **Clean-room**: written from scratch, with no code from Mutant or any other mutation-testing tool. MIT for every use.
+- **Clean-room**: written from scratch, with no code from Mutant or any other mutation-testing tool. MIT for every use. How it differs from Mutant: [README](https://github.com/davidteren/mutineer#mutineer-and-mutant).
 - **Zero runtime dependencies** — Prism + stdlib only. No `eval`. Test-framework changes stay in disposable child processes.
 - **One mutation per mutant**, validity-checked by re-parsing; 20 mutation operators.
 - **Fork-isolated, parallel** execution (Linux + macOS); coverage-guided per-line test selection.

@@ -406,7 +406,7 @@ no code with Mutant.
 |---|---|---|
 | License | MIT, for every use | Free for open source (`--usage opensource`); commercial use needs a paid subscription |
 | Runtime dependencies | None (Prism + stdlib) | `parser`, `unparser`, `regexp_parser`, `sorbet-runtime` and others |
-| Ruby | 3.4 and later | 3.2 and later |
+| Ruby | 3.4 and later to run Mutineer; an app on an older Ruby works through `--test-command` (see [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34)) | 3.3 and later |
 | Test frameworks | Minitest and RSpec, in one gem | RSpec, Minitest and Test::Unit, one integration gem each |
 | What you mutate | Files (`mutineer run lib/foo.rb`), narrowed to one method with `--only 'Foo#bar'` | Subjects named by expression (`mutant run 'Foo#bar'`, `'Foo*'`) |
 | Which tests run | The test files whose coverage reaches the mutated line | The tests that declare the subject (an RSpec description or a Minitest `cover`), or the tests that ran it in a per-test coverage recording |
@@ -416,11 +416,11 @@ no code with Mutant.
 
 Choose Mutineer when you want an MIT-licensed tool with no extra gems in your
 bundle, file-based runs, and a JSON contract built for CI gates and AI agents.
-Choose Mutant when you need its deeper operator set, Test::Unit support, Ruby
-3.2 or 3.3, or subject expressions that select whole namespaces. The two tools do not
+Choose Mutant when you need its deeper operator set, Test::Unit support, or
+subject expressions that select whole namespaces. The two tools do not
 conflict, so you can run both on one project.
 
-This comparison describes Mutant 0.17. Check
+This comparison describes Mutant 0.17 (checked on 2026-10-06). Check
 [Mutant's README](https://github.com/mbj/mutant#readme) for its current
 license terms and features.
 

@@ -90,11 +90,11 @@ Tier 2 (off until `--operators`): `return_nil`, `literal_mutation`, `condition_n
 [Mutant](https://github.com/mbj/mutant) or any other mutation-testing tool, so
 only Mutineer's own MIT license applies.
 
-| | Mutineer | Mutant |
+| | Mutineer | Mutant 0.17 |
 |---|---|---|
 | License | MIT, for every use | Free for open source; commercial use needs a paid subscription |
 | Runtime dependencies | None (Prism + stdlib) | `parser`, `unparser`, `sorbet-runtime` and others |
-| Ruby | 3.4 and later | 3.2 and later |
+| Ruby | 3.4 and later (older app Rubies via `--test-command`) | 3.3 and later |
 | Test frameworks | Minitest and RSpec | RSpec, Minitest and Test::Unit |
 | What you mutate | Files, or one method with `--only` | Subjects named by expression |
 
