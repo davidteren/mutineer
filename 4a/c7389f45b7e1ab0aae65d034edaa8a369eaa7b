@@ -1,0 +1,22 @@
+lib/mutineer/coverage_map.rb
+  s_07d7b58ff1b9fd::t_08e88f1b4ca529 355
+  s_07d7b58ff1b9fd::t_9057a4bf0ab149 356
+test/daemon_client_test.rb
+  s_07d7b58ff1b9fd::t_08e88f1b4ca529 110,112,121-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4ac7389f45b7e1ab0aae65d034edaa8a369eaa7b",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
