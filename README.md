@@ -148,9 +148,10 @@ RAILS_ENV=test bundle exec mutineer run \
 - **One backend at a time** — `--daemon` can't be combined with `--test-command`
   (choose one), and it needs an app to boot (`--rails` or `--boot`).
 
-Status: **SQLite** today (hermetic, CI-proven). **Postgres** per-worker
-provisioning is in progress (#34/#35); until it lands, use `--daemon` with a
-SQLite test database, or drop `--jobs` to run serially on other adapters.
+Status: **SQLite** only (hermetic, CI-proven). Per-worker provisioning for
+**Postgres** and other adapters is not supported: `--daemon` refuses them. Use
+`--daemon` with a SQLite test database, or drop `--daemon` to run serially on
+other adapters.
 
 ### Apps on Ruby < 3.4
 

@@ -66,6 +66,7 @@ mutineer run --dry-run lib/foo.rb
 | `--jobs N` | Parallel worker count; forced to 1 by `--test-command`, `--fail-fast`, or `--rails` without `--daemon` |
 | `--rails` | Boot `config/environment` once; without `--daemon`, defaults to `redefine` and runs serially |
 | `--daemon` | Persistent daemon + per-worker DB isolation (needs `--rails` / `--boot`) |
+| `--timeout SECONDS` | Per-mutant time limit for in-process runs (default: 10); raise it for a slow suite |
 | `--dry-run` | List candidate mutations without executing |
 | `--matrix` | Run every covering test for each mutant and name the blind and redundant tests; the JSON report also lists each mutant's killers (in-process only; RSpec 3.3+) |
 
