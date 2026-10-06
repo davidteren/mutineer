@@ -14,7 +14,8 @@ testing anything.
 - **Fork-isolated**, parallel execution (Linux + macOS).
 - **Coverage-guided** — each mutant runs only the test files that cover its line.
 - **Stops at the first failing test** — in-process runs (not `--daemon` or
-  `--test-command`) stop a mutant's test run at the first failure.
+  `--test-command`) stop a mutant's test run at the first failure, unless
+  `--matrix` asks for every covering test.
 
 📖 **[mutineer.github.io →](https://davidteren.github.io/mutineer/)** — overview, operators, and usage.
 
@@ -67,7 +68,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--dry-run` | List candidate mutations without executing (honors suppression) |
 | `--fail-fast` | Stop at the first surviving mutant |
-| `--matrix` | Run every covering test for each mutant and report which tests kill it, with the blind and redundant tests. In-process only; exits 2 with `--daemon`, `--test-command` or `--fail-fast`. See [Kill matrix](https://github.com/davidteren/mutineer#kill-matrix) |
+| `--matrix` | Run every covering test for each mutant and report the blind and redundant tests; the JSON report also lists each mutant's killers. In-process only; exits 2 with `--daemon`, `--test-command`, `--fail-fast` or `--dry-run`. RSpec needs 3.3 or later. See [Kill matrix](https://github.com/davidteren/mutineer#kill-matrix) |
 | `--list-operators` | List available operators (default vs optional) and exit |
 | `--version`, `--help` | Print version / usage and exit |
 
@@ -290,9 +291,10 @@ normally). The report
 names two kinds of test:
 
 - **Blind:** the test ran in at least one complete row and killed no mutant
-  in any row. A test that kills nothing proves nothing about the code it runs,
-  since it would still pass with that code wrong. Give it an assertion that
-  can fail, or delete it.
+  in any row. It would still pass with this run's mutations of the code, so
+  it guards none of them. It can still check behavior outside this run's
+  mutants (code in other files, or edits no operator makes), so look at what
+  it asserts before you delete it, or give it an assertion that can fail.
 - **Redundant:** every mutant the test kills, another test kills too. That
   makes it a candidate for deletion, one test at a time: two redundant tests
   can be the only killers of one mutant, so re-run after each deletion.
@@ -301,13 +303,19 @@ The answers cover this run's mutants only. A test of code outside the sources
 you passed kills nothing here, so mutate the code a test exercises before you
 call the test blind.
 
-The matrix changes no verdict, score or exit code. A mutant is `killed` as
-soon as one test fails against it, as it is without `--matrix`, even when a
-later test exits the process, crashes or runs into the time limit. Two cases
-keep the exit status, because the run without `--matrix` does not stop there
-either: a failure in a Minitest `parallelize_me!` class (those run after every
-serial class, and a failure in a serial class still stops the run), and an end
-inside the suite's own cleanup, such as RSpec's `after(:suite)`.
+The matrix changes no verdict, score or exit code: each mutant gets the
+verdict a run without `--matrix` gives. That run skips every later test,
+test class and example group after the first failure, so when a later one
+exits the process, crashes or runs into the time limit, the mutant is still
+`killed`. The run without `--matrix` still runs the code around the failing
+test (the rest of its Minitest class `run` wrapper, the `after(:all)` hooks of
+its RSpec groups) and the suite's own cleanup (RSpec's `after(:suite)`), so an
+end there keeps the exit status. A failure in a Minitest `parallelize_me!`
+class also keeps it: those run after every serial class and cannot be stopped
+once queued, while a failure in a serial class still stops the run.
+
+Under RSpec, `--matrix` needs RSpec 3.3 or later, whose example ids tell
+apart examples on one line. With an older RSpec every row is incomplete.
 
 The human report lists up to 20 blind and 20 redundant tests, and the HTML
 report lists them all. `--format json` adds a `matrix` block with every test
@@ -324,8 +332,9 @@ costs. In 1.4, stopping at the first failure cut a full run of rack's
 `lib/rack/utils.rb` from 86 to 89 seconds down to 35 to 41, so expect a matrix
 run to take 2.1 to 2.5 times as long as a normal one. A mutant that reaches the
 per-mutant time limit (10 seconds) after a test already failed stays `killed`
-with its row marked incomplete, and the report warns that a blind test may
-have killed it. The limit is fixed today;
+with its row marked incomplete. The report names each incomplete row and warns
+that a blind test may have killed one of those mutants, so do not delete a
+blind test until its rows are complete. The limit is fixed today;
 [#183](https://github.com/davidteren/mutineer/pull/183), once it lands, adds
 `--timeout` to raise it and get complete rows.
 

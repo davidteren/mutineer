@@ -59,7 +59,7 @@ mutineer run --dry-run lib/foo.rb
 | `--rails` | Boot `config/environment` once; without `--daemon`, defaults to `redefine` and runs serially |
 | `--daemon` | Persistent daemon + per-worker DB isolation (needs `--rails` / `--boot`) |
 | `--dry-run` | List candidate mutations without executing |
-| `--matrix` | Run every covering test for each mutant and name the blind and redundant tests (in-process only) |
+| `--matrix` | Run every covering test for each mutant and name the blind and redundant tests; the JSON report also lists each mutant's killers (in-process only; RSpec 3.3+) |
 
 Typed flags override `.mutineer.yml`. Full flag list: `mutineer --help` or the [README](https://github.com/davidteren/mutineer/blob/main/README.md).
 

@@ -18,15 +18,18 @@ All notable changes to this project are documented here. The format is based on
   `matrix` block that appears only with the flag. A test is its file and its
   id (the example id under RSpec), so examples that share a description stay
   apart and an example whose generated description changes with the mutant
-  stays one test. Verdicts, the score and the exit code do not change: once a
-  serial test fails against a mutant it is `killed`, as without the flag, even
-  when a later test exits, crashes or reaches the timeout. A failure in a
-  `parallelize_me!` class and an end inside the suite's own cleanup (RSpec
-  `after(:suite)`) keep the exit status, as they do without the flag. A row is
-  complete only when the child's stream arrived in order and, under Minitest,
-  the recorder saw every test, so a caught `Interrupt` leaves it incomplete. Minitest and RSpec are
-  supported, on the in-process backend only; `--daemon`, `--test-command` and
-  `--fail-fast` exit 2 with it.
+  stays one test. Verdicts, the score and the exit code do not change: each
+  mutant gets the verdict a run without the flag gives. After a serial test
+  fails, an exit, a crash or the timeout in a later test, class or group
+  leaves it `killed`; an end in the code that run still reaches (the failing
+  test's class wrapper or group hooks, the suite's own cleanup) and a failure
+  in a `parallelize_me!` class keep the exit status. A row is complete only
+  when the child's stream arrived in order and every test reported (under
+  Minitest the recorder saw every test, under RSpec every planned example),
+  so a caught `Interrupt` leaves it incomplete. The reports name each
+  incomplete row and warn not to delete a blind test until it is complete.
+  Minitest and RSpec 3.3+ are supported, on the in-process backend only;
+  `--daemon`, `--test-command`, `--fail-fast` and `--dry-run` exit 2 with it.
 
 ### Changed
 - **A test file given as a source after `--test` exits 2.** `--test` takes one

@@ -28,6 +28,9 @@ module Mutineer
     # The JSON report's `schema_version` (see docs/json-schema.md).
     SCHEMA_VERSION = "1.5"
 
+    # The warning both matrix renderers give under the redundant tests.
+    MATRIX_REDUNDANT_NOTE = "Delete redundant tests one at a time: two of them can be the only killers of one mutant."
+
     # How many blind or redundant tests the human report lists before it points
     # to `--format json` for the rest.
     MATRIX_LIST_LIMIT = 20
@@ -345,8 +348,18 @@ module Mutineer
         body = items.empty? ? "<p>None.</p>" : "<ul>\n#{items.join("\n")}\n</ul>"
         "<h3>#{esc(title)} (#{tests.size})</h3>\n#{body}"
       end
-      note = @matrix.complete? ? "" : "\n<p>#{esc(matrix_incomplete_note)}</p>"
-      "<h2>Kill matrix</h2>\n<p>#{esc(matrix_counts_line)}</p>#{note}\n#{lists.join("\n")}"
+      note = @matrix.complete? ? "" : "\n<p>#{esc(matrix_incomplete_note)}</p>\n#{matrix_incomplete_html}"
+      delete = @matrix.redundant.empty? ? "" : "\n<p>#{esc(MATRIX_REDUNDANT_NOTE)}</p>"
+      "<h2>Kill matrix</h2>\n<p>#{esc(matrix_counts_line)}</p>#{note}\n#{lists.join("\n")}#{delete}"
+    end
+
+    # Every incomplete row of the HTML kill-matrix section.
+    #
+    # @api private
+    # @return [String] HTML.
+    def matrix_incomplete_html
+      items = @matrix.incomplete_rows.map { |r| "<li>#{esc(matrix_row_label(r))}</li>" }
+      "<h3>Incomplete rows (#{items.size})</h3>\n<ul>\n#{items.join("\n")}\n</ul>"
     end
 
     # The JSON `matrix` block: every test with its kill count, one row per
@@ -399,14 +412,9 @@ module Mutineer
     # @return [Hash] the row JSON object.
     def matrix_row_json(result, index)
       file = result.subject&.file
-      line =
-        if result.mutation && file
-          source = @source_map[file] || File.read(file)
-          source.byteslice(0, result.mutation.start_offset).count("\n") + 1
-        end
       kills = result.kills
       {
-        subject: result.subject&.qualified_name, file: file, line: line,
+        subject: result.subject&.qualified_name, file: file, line: matrix_row_line(result),
         operator: result.mutation&.operator&.to_s, id: result.id, status: result.status.to_s,
         killed_by: kills.killed_by.map { |test| index.fetch(test) }.sort,
         ran: kills.ran.size, complete: kills.complete
@@ -423,12 +431,50 @@ module Mutineer
       out.puts "Kill matrix"
       out.puts "-----------"
       out.puts matrix_counts_line
-      out.puts matrix_incomplete_note unless @matrix.complete?
+      matrix_incomplete_section(out) unless @matrix.complete?
       matrix_list(out, "Blind tests (ran, killed no mutant)", @matrix.blind)
       matrix_list(out, "Redundant tests (each mutant they kill has another killer)", @matrix.redundant)
       return if @matrix.redundant.empty?
 
-      out.puts "Delete redundant tests one at a time: two of them can be the only killers of one mutant."
+      out.puts MATRIX_REDUNDANT_NOTE
+    end
+
+    # The human report's warning about incomplete rows, with the first
+    # {MATRIX_LIST_LIMIT} of them named.
+    #
+    # @api private
+    # @param out [IO] output stream.
+    # @return [void]
+    def matrix_incomplete_section(out)
+      rows = @matrix.incomplete_rows
+      out.puts matrix_incomplete_note
+      rows.first(MATRIX_LIST_LIMIT).each { |r| out.puts "  #{matrix_row_label(r)}" }
+      rest = rows.size - MATRIX_LIST_LIMIT
+      out.puts "  and #{rest} more" if rest.positive?
+      out.puts "The HTML and JSON reports list every incomplete row (JSON: matrix.mutants with complete: false)."
+    end
+
+    # A row's label: subject, place, operator, status and id.
+    #
+    # @api private
+    # @param result [Mutineer::Result] a result with a {Kills} row.
+    # @return [String]
+    def matrix_row_label(result)
+      place = [result.subject&.file, matrix_row_line(result)].compact.join(":")
+      "#{result.subject&.qualified_name} (#{place}) #{result.mutation&.operator} #{result.status} #{result.id}".squeeze(" ")
+    end
+
+    # The 1-based line of a row's mutation, or nil without one.
+    #
+    # @api private
+    # @param result [Mutineer::Result] a result with a {Kills} row.
+    # @return [Integer, nil]
+    def matrix_row_line(result)
+      file = result.subject&.file
+      return unless result.mutation && file
+
+      source = @source_map[file] || File.read(file)
+      source.byteslice(0, result.mutation.start_offset).count("\n") + 1
     end
 
     # One titled list of tests in the human kill-matrix section, cut at
@@ -462,8 +508,9 @@ module Mutineer
     # @api private
     # @return [String]
     def matrix_incomplete_note
-      "#{@matrix.incomplete_rows.size} mutants stopped before every covering test ran " \
-        "(timeout or error), so a blind test may have killed one of them."
+      "#{@matrix.incomplete_rows.size} mutants did not report every covering test (a timeout, an error, " \
+        "an exit, an interrupt or a broken stream), so a blind test may have killed one of them. " \
+        "Do not delete a blind test until these rows are complete:"
     end
 
     # HTML-escapes any text destined for the document (stdlib CGI).

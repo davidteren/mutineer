@@ -63,9 +63,10 @@ module Mutineer
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
         --fail-fast          Stop at the first surviving mutant
-        --matrix             Run every covering test for each mutant and report which
-                             tests kill it, with blind and redundant tests (in-process
-                             only; not with --daemon, --test-command or --fail-fast)
+        --matrix             Run every covering test for each mutant and report blind and
+                             redundant tests; the JSON report also lists each mutant's
+                             killers (in-process only; not with --daemon, --test-command,
+                             --fail-fast or --dry-run)
         --verbose            Surface the real error when a fork capture fails (alias: --debug)
 
       Options:
@@ -339,7 +340,9 @@ module Mutineer
     # @return [void]
     def self.validate_matrix!(config)
       conflict, reason =
-        if config.daemon
+        if config.dry_run
+          [:dry_run, "a dry run runs no tests, so it has no matrix"]
+        elsif config.daemon
           [:daemon, "the kill matrix runs on the in-process backend only"]
         elsif config.test_command
           [:test_command, "the external suite reports pass or fail, not which test failed"]

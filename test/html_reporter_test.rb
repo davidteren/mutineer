@@ -108,6 +108,25 @@ class HtmlReporterTest < Minitest::Test
     assert_includes html, "<h3>Redundant tests (0)</h3>\n<p>None.</p>"
   end
 
+  # #191 review: the HTML list is the full redundant list, so it carries the
+  # delete warning too, and an incomplete matrix names every incomplete row.
+  def test_matrix_section_warns_under_redundant_tests_and_names_incomplete_rows
+    a = ["test/a_test.rb", "ATest#test_a", "ATest#test_a"]
+    b = ["test/b_test.rb", "BTest#test_b", "BTest#test_b"]
+    killed = survivor.with(status: :killed, kills: Mutineer::Kills.new(killed_by: [a, b], ran: [a, b], complete: true))
+    stopped = survivor.with(status: :timeout, id: "abc123def456",
+                            kills: Mutineer::Kills.new(killed_by: [], ran: [a], complete: false))
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed, stopped]), { FILE => SRC },
+                           matrix: Mutineer::KillMatrix.new([killed, stopped]))
+                      .report(out: out, err: StringIO.new, format: "html")
+    html = out.string
+
+    assert_includes html, "<p>Delete redundant tests one at a time: two of them can be the only killers of one mutant.</p>"
+    assert_includes html, "Do not delete a blind test until these rows are complete:"
+    assert_includes html, "<h3>Incomplete rows (1)</h3>\n<ul>\n<li>Pricing#total (#{FILE}:3) comparison timeout abc123def456</li>"
+  end
+
   def test_no_matrix_section_without_the_flag
     refute_includes render([survivor]), "Kill matrix"
   end

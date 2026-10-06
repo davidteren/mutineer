@@ -282,25 +282,6 @@ class ReporterTest < Minitest::Test
     assert_includes out.string, "FAILED: 50.0% < threshold 80.0%"
   end
 
-  private
-
-  def reporter(results)
-    Mutineer::Reporter.new(aggregate(results), { FILE => SRC })
-  end
-
-  # --- kill matrix section (--matrix) ---------------------------------------
-
-  def matrix_report(results)
-    out = StringIO.new
-    Mutineer::Reporter.new(aggregate(results), { FILE => SRC }, matrix: Mutineer::KillMatrix.new(results))
-                      .report(out: out, err: StringIO.new)
-    out.string
-  end
-
-  def row(result, killed_by, ran, complete: true)
-    result.with(kills: Mutineer::Kills.new(killed_by: killed_by, ran: (ran + killed_by).uniq.sort, complete: complete))
-  end
-
   def test_matrix_section_names_blind_and_redundant_tests
     a = ["test/a_test.rb", "ATest#test_a", "ATest#test_a"]
     b = ["test/b_test.rb", "BTest#test_b", "BTest#test_b"]
@@ -312,12 +293,29 @@ class ReporterTest < Minitest::Test
     assert_includes text, "Redundant tests (each mutant they kill has another killer): 2\n" \
                           "  test/a_test.rb  ATest#test_a\n  test/b_test.rb  BTest#test_b\n"
     assert_includes text, "Delete redundant tests one at a time"
-    refute_includes text, "stopped before every covering test ran"
+    refute_includes text, "did not report every covering test"
   end
 
-  def test_incomplete_matrix_says_a_blind_test_may_be_wrong
-    text = matrix_report([row(survivor_result.with(status: :timeout), [], [["t.rb", "T#test", "T#test"]], complete: false)])
-    assert_includes text, "1 mutants stopped before every covering test ran (timeout or error)"
+  # #191 review: the warning names every cause, says not to delete a blind
+  # test yet, names the incomplete rows (at most 20) and points at the full lists.
+  def test_incomplete_matrix_names_the_rows_and_says_a_blind_test_may_be_wrong
+    text = matrix_report([row(survivor_result.with(status: :timeout, id: "abc123def456"), [],
+                              [["t.rb", "T#test", "T#test"]], complete: false)])
+    assert_includes text, "1 mutants did not report every covering test (a timeout, an error, an exit, " \
+                          "an interrupt or a broken stream), so a blind test may have killed one of them. " \
+                          "Do not delete a blind test until these rows are complete:\n" \
+                          "  Pricing#total (#{FILE}:3) comparison timeout abc123def456\n" \
+                          "The HTML and JSON reports list every incomplete row"
+  end
+
+  def test_incomplete_matrix_names_at_most_twenty_rows
+    rows = (1..25).map do |i|
+      row(survivor_result.with(status: :timeout, id: format("id%02d", i)), [], [["t.rb", "T#test", "T#test"]],
+          complete: false)
+    end
+    text = matrix_report(rows)
+    assert_includes text, "comparison timeout id20\n  and 5 more\n"
+    refute_includes text, "id21"
   end
 
   # An RSpec id differs from the description and tells apart examples that
@@ -340,6 +338,23 @@ class ReporterTest < Minitest::Test
     out = StringIO.new
     Mutineer::Reporter.new(aggregate([survivor_result]), { FILE => SRC }).report(out: out, err: StringIO.new)
     refute_includes out.string, "Kill matrix"
+  end
+
+  private
+
+  def matrix_report(results)
+    out = StringIO.new
+    Mutineer::Reporter.new(aggregate(results), { FILE => SRC }, matrix: Mutineer::KillMatrix.new(results))
+                      .report(out: out, err: StringIO.new)
+    out.string
+  end
+
+  def row(result, killed_by, ran, complete: true)
+    result.with(kills: Mutineer::Kills.new(killed_by: killed_by, ran: (ran + killed_by).uniq.sort, complete: complete))
+  end
+
+  def reporter(results)
+    Mutineer::Reporter.new(aggregate(results), { FILE => SRC })
   end
 
 end

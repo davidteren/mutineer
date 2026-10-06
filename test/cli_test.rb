@@ -256,6 +256,14 @@ class CliTest < Minitest::Test
     assert_includes err, "--matrix cannot be combined with --fail-fast"
   end
 
+  # #191 review: a dry run runs no tests, so --matrix with it is a usage error,
+  # not a silently dropped request.
+  def test_matrix_with_dry_run_exits_two
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--matrix", "--dry-run")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--matrix cannot be combined with --dry-run"
+  end
+
   def test_matrix_from_the_config_file_is_checked_too
     with_project do |proj|
       File.write(File.join(proj, ".mutineer.yml"), "matrix: true\n")
