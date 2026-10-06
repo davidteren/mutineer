@@ -68,7 +68,7 @@ All notable changes to this project are documented here. The format is based on
   belongs to its statement. This fallback skips a first or last line that also
   holds other code, such as the `def` line, and the body of `x while c` and
   `x until c`. It also gives no tests to a mutant in code of the statement
-  that runs only sometimes: a later `when` or `in` condition, a `rescue` class
+  that runs only sometimes: a `when` or `in` condition, a `rescue` class
   list, a parameter default, the rescue side of `x rescue y`, the value of
   `||=` or `&&=`, the operand of `defined?`, the right side of `a ||` or
   `a &&`, a branch of `x if c`, `x unless c`, a ternary or `else`, the
