@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-06
+
 ### Added
 - **`--timeout SECONDS` and `--capture-timeout SECONDS`**, also `timeout:` and
   `capture_timeout:` in `.mutineer.yml`. They set the in-process per-mutant
@@ -924,6 +926,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.5.0]: https://github.com/davidteren/mutineer/releases/tag/v1.5.0
 [1.4.0]: https://github.com/davidteren/mutineer/releases/tag/v1.4.0
 [1.3.0]: https://github.com/davidteren/mutineer/releases/tag/v1.3.0
 [1.2.0]: https://github.com/davidteren/mutineer/releases/tag/v1.2.0
