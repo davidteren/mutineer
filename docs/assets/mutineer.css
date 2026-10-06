@@ -113,6 +113,8 @@ section { padding: 72px 0; border-top: 1px solid var(--border); }
 .explainer video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); }
 .explainer video:focus-visible, .explainer-size:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .explainer-size { margin-top: 10px; padding: 6px 12px; font: 11px/1.5 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--fg-dim); background: transparent; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; }
+.explainer-sound { position: absolute; top: 14px; left: 14px; padding: 8px 14px; display: inline-flex; gap: 8px; align-items: center; font: 600 13px/1.4 var(--sans); color: #1a1420; background: #e7ed94; /* fixed: the video is dark in both themes */ border: 0; border-radius: var(--radius); cursor: pointer; box-shadow: 0 2px 12px rgba(0,0,0,.35); }
+.explainer-sound:focus-visible { outline: 2px solid #e7ed94; outline-offset: 3px; }
 .explainer-size:hover { color: var(--fg); border-color: var(--fg-dim); }
 .hero-grid.explainer-wide { grid-template-columns: 1fr; }
 .hero-grid.explainer-wide .explainer { order: -1; }

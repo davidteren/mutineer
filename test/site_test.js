@@ -105,7 +105,7 @@ test('explainer video autoplays in view, keeps the visitor in control, and enlar
   const video = { paused: true, muted: false, volume: 1, play() { plays++; this.paused = false; return Promise.resolve(); }, pause() { pauses++; this.paused = true; }, addEventListener() {} };
   const size = { hidden: true, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(k, fn) { sizeClick = fn; } };
   const grid = { classList: { toggle() { wide = !wide; return wide; } } };
-  const figure = { parentNode: grid, querySelector(sel) { return sel === 'video' ? video : size; } };
+  const figure = { parentNode: grid, querySelector(sel) { return sel === 'video' ? video : sel === '.explainer-size' ? size : null; } };
   class IntersectionObserver { constructor(fn) { observerCallback = fn; } observe() {} }
   const root = { setAttribute() {}, getAttribute() { return 'dark'; }, classList: { add() {} } };
   const document = {

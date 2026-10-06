@@ -46,6 +46,7 @@
     document.querySelectorAll('.explainer').forEach(function (figure) {
       var video = figure.querySelector('video');
       var size = figure.querySelector('.explainer-size');
+      var sound = figure.querySelector('.explainer-sound');
       var grid = figure.parentNode;
       var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       var held = false; // paused by this code, so it may resume
@@ -56,7 +57,11 @@
         if (!autoMuted || event.target === video) return; // the video's own controls decide
         autoMuted = false;
         video.muted = false;
+        if (sound) sound.hidden = true;
       }
+      video.addEventListener('volumechange', function () {
+        if (!video.muted && sound) { autoMuted = false; sound.hidden = true; }
+      });
       document.addEventListener('pointerdown', unmute);
       document.addEventListener('keydown', unmute);
       function hold() {
@@ -71,6 +76,7 @@
         if (playing && playing.catch) playing.catch(function () {
           if (video.muted) return;
           autoMuted = video.muted = true;
+          if (sound) sound.hidden = false; // say how to get sound
           var retry = video.play();
           if (retry && retry.catch) retry.catch(function () {});
         });
