@@ -1,0 +1,43 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_b0c3185f5a0e2f 72-93
+docs/plans/issue-104-normalize-source-paths.md
+  s_07d7b58ff1b9fd::t_31bceee43ccfbe 1-77
+lib/mutineer/cli.rb
+  s_07d7b58ff1b9fd::t_43f0407d5c1ecc 179-180
+lib/mutineer/pairing.rb
+  s_07d7b58ff1b9fd::t_78ac30aa656aa7 3-4,8-9,25-27,34-36,40,42-43,48-76
+lib/mutineer/runner.rb
+  s_07d7b58ff1b9fd::t_f19ce831fe366b 7,340-343,360-364
+lib/mutineer/statement_lines.rb
+  s_07d7b58ff1b9fd::t_f52757df838d24 1-143
+test/cli_test.rb
+  s_07d7b58ff1b9fd::t_0f277458bee8f8 685-705
+test/fixtures/continuation.rb
+  s_07d7b58ff1b9fd::t_660314eb8435bd 1-46
+test/fixtures/continuation_test.rb
+  s_07d7b58ff1b9fd::t_000af27a27480c 1-30
+test/pairing_test.rb
+  s_07d7b58ff1b9fd::t_30f0648d5dd899 113-164
+test/runner_test.rb
+  s_07d7b58ff1b9fd::t_d2336c29ad4489 126-166
+test/statement_coverage_test.rb
+  s_07d7b58ff1b9fd::t_191da3c2ef88c5 1-60
+test/statement_lines_test.rb
+  s_07d7b58ff1b9fd::t_a1ffe810acc91b 1-256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "478b4bbc1ff82a844f8fa55795cb1bbfda63b9e0",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
