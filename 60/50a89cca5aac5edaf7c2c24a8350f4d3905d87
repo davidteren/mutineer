@@ -1,0 +1,73 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_6044dbba066171 48
+  s_07d7b58ff1b9fd::t_2572ce0f717cab 42-44
+  s_07d7b58ff1b9fd::t_9b0d50853b57c9 37-41,45-46
+  s_07d7b58ff1b9fd::t_6bc07279c7d5f4 47
+  s_07d7b58ff1b9fd::t_6ca10f2212366b 49-51
+test/project_test.rb
+  s_07d7b58ff1b9fd::t_3da92843d376fa 375-377
+  s_07d7b58ff1b9fd::t_38a65df2c5db51 401-410,417-418
+  s_07d7b58ff1b9fd::t_8ab5cc0e367eb7 378-379,381-393,419-423,428-432,473-475
+  s_07d7b58ff1b9fd::t_b26e054865e1b2 357-359
+  s_07d7b58ff1b9fd::t_141d6cf9c2c0a2 435
+  s_07d7b58ff1b9fd::t_eaa546f3affcec 436-438
+  s_07d7b58ff1b9fd::t_f1634b056051a1 394-400,424-427
+  s_07d7b58ff1b9fd::t_dc9aae5a25f31c 434
+  s_07d7b58ff1b9fd::t_391c7a886b4292 414-416
+  s_07d7b58ff1b9fd::t_0a4c21350a8957 439-451,469-470
+  s_07d7b58ff1b9fd::t_bb67d4910031ca 452-468,471-472
+  s_07d7b58ff1b9fd::t_d4e0f2ff84d7a0 433
+  s_07d7b58ff1b9fd::t_7a527eab38ff4b 345-356,360-374
+  s_07d7b58ff1b9fd::t_75ed8e2bf931e4 411-413
+  s_07d7b58ff1b9fd::t_576c28f25f6ee0 380
+test/fixtures/singleton/singleton_nested_class_test.rb
+  s_07d7b58ff1b9fd::t_77df7ce3e5819c 1-14
+test/fixtures/singleton/singleton_nested_class.rb
+  s_07d7b58ff1b9fd::t_db7cda1353d505 1-22
+test/singleton_redefine_test.rb
+  s_07d7b58ff1b9fd::t_79cbbe4b392813 130,132,136
+  s_07d7b58ff1b9fd::t_e642ce9b685a7d 129,131,133-135,137-139
+lib/mutineer/project.rb
+  s_07d7b58ff1b9fd::t_20b927e2e45ae5 283
+  s_07d7b58ff1b9fd::t_381754002c3c28 210
+  s_07d7b58ff1b9fd::t_732264fb925724 119-120
+  s_07d7b58ff1b9fd::t_9c2d56faf209cf 251,263-266
+  s_07d7b58ff1b9fd::t_6fb5a56b0cb442 337
+  s_07d7b58ff1b9fd::t_be825b74a66e5b 331,334-336,339
+  s_07d7b58ff1b9fd::t_19c9fcd8fde2b2 106
+  s_07d7b58ff1b9fd::t_26ca089e5ce3e0 52
+  s_07d7b58ff1b9fd::t_fd003436c44b4e 242
+  s_07d7b58ff1b9fd::t_0bb584cad823dd 215-216
+  s_07d7b58ff1b9fd::t_c26ab96fc78ef1 247-248
+  s_07d7b58ff1b9fd::t_c22e29f4d2b560 213
+  s_07d7b58ff1b9fd::t_eedb0bde21b447 93,96
+  s_07d7b58ff1b9fd::t_0c7d618372870d 278-279,284-286
+  s_07d7b58ff1b9fd::t_a0b0a9cb0f9f96 94-95
+  s_07d7b58ff1b9fd::t_00b8b82e919ef0 109-110
+  s_07d7b58ff1b9fd::t_832e038917a758 250
+  s_07d7b58ff1b9fd::t_e58645efbb4f37 53
+  s_07d7b58ff1b9fd::t_7e59d8d5019f14 231-232
+  s_07d7b58ff1b9fd::t_44144d8e384dd0 195,199-200
+  s_07d7b58ff1b9fd::t_994b7df251b0a4 252-254
+  s_07d7b58ff1b9fd::t_99fdeb0d2baac7 51,224-225
+  s_07d7b58ff1b9fd::t_fb79db18c024f4 344-345
+  s_07d7b58ff1b9fd::t_c8d017cd9116c7 196-198,209,214,217-218,222-223
+  s_07d7b58ff1b9fd::t_a918b5c5ac431e 276-277,280-282,287-288
+  s_07d7b58ff1b9fd::t_d94ccef3af17a6 241
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6050a89cca5aac5edaf7c2c24a8350f4d3905d87",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
