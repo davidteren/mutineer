@@ -10,7 +10,8 @@ product_contract_source: ce-plan-bootstrap
 
 # Issue #163: escape control characters in the human report
 
-**Goal:** The human report never writes a raw terminal control byte from the source.
+**Goal:** The human report never writes a raw terminal control byte from the source,
+except tab.
 
 **Closes:** #163 · **Depth:** Lightweight
 
@@ -59,4 +60,5 @@ each diff line in `survivor` with it.
 - The JSON report for the same run keeps the raw character, JSON-escaped as before.
 - Existing human report tests stay green.
 
-**Verification:** The new test passes, and no human output line contains a control byte.
+**Verification:** The new test passes, and no human output line contains a control byte
+other than tab.

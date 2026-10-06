@@ -30,7 +30,28 @@ module Mutineer
   # them afterwards via `result.with(subject:, mutation:, id:)` so the Reporter
   # can render survivor diffs and emit the id. `id` is the content-based
   # MutantId (it includes the project-relative file path).
-  Result = Data.define(:status, :details, :subject, :mutation, :id) do
+  #
+  # `kills` is nil except in a `--matrix` run, where a mutant that was forked
+  # carries the {Kills} its child reported. It annotates the verdict and never
+  # decides it.
+  #
+  # A Result crosses a process boundary only through WorkerPool's Marshal pipe,
+  # from a fork back to the process that forked it, so both ends always run the
+  # same code. Nothing persists a marshaled Result (reports, baselines and the
+  # coverage cache are JSON), so a new field needs no Marshal compatibility.
+  Result = Data.define(:status, :details, :subject, :mutation, :id, :kills) do
+    # Every field but `status` defaults to nil.
+    #
+    # @param status [Symbol] the outcome.
+    # @param details [String, nil] error or skip details.
+    # @param subject [Mutineer::Subject, nil] the mutated subject.
+    # @param mutation [Mutineer::Mutation, nil] the mutation.
+    # @param id [String, nil] the stable mutant id.
+    # @param kills [Mutineer::Kills, nil] the matrix row of a `--matrix` run.
+    def initialize(status:, details: nil, subject: nil, mutation: nil, id: nil, kills: nil)
+      super
+    end
+
     # Builds a killed result.
     #
     # @return [Mutineer::Result] killed result.
@@ -91,6 +112,21 @@ module Mutineer
     def ignored?      = status == :ignored
 
   end
+
+  # One mutant's row of the kill matrix (`--matrix`): which tests killed it and
+  # which ran against it. A test is a `[file, name, id]` triple: the
+  # project-relative file that defines it, its name (`CalculatorTest#test_add`,
+  # or an RSpec example's full description), and an id that tells apart tests
+  # sharing a file and name (an RSpec example id; the name again for Minitest).
+  # File and id identify a test; the name is display data that a mutant can
+  # change. Both lists are sorted and unique, and `ran` includes the killers.
+  #
+  # `complete` is true when the child ran its whole suite and reported it
+  # cleanly (see Isolation.finish). It is false when the child timed out,
+  # errored or exited the process early, when the recorder never armed, when
+  # its lines arrived out of order, when Minitest returned after an Interrupt
+  # with tests unseen, or when the row does not agree with the verdict.
+  Kills = Data.define(:killed_by, :ran, :complete)
 
   # Aggregates a flat list of Results into counts, the mutation score, and the
   # surviving-mutant list. The score denominator is killed + survived ONLY:

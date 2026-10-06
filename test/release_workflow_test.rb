@@ -209,6 +209,9 @@ class ReleaseWorkflowTest < Minitest::Test
     origin = File.join(root, "origin.git")
     dir = File.join(root, "work")
     system("git", "init", "-q", "--bare", origin, exception: true)
+    # A push runs auto-maintenance in the bare repo without the suite's
+    # GIT_CONFIG_* env (see test_helper.rb, #174), so turn it off here too.
+    system("git", "-C", origin, "config", "maintenance.auto", "false", exception: true)
     system("git", "clone", "-q", origin, dir, exception: true, err: File::NULL)
     git = lambda do |*args|
       system("git", "-c", "core.hooksPath=/dev/null", *args, chdir: dir, exception: true)
@@ -226,7 +229,7 @@ class ReleaseWorkflowTest < Minitest::Test
     git.call("fetch", "-q", "origin", "+refs/heads/release/*:refs/remotes/origin/release/*")
     run_helpers("has_human_commits release/v1.2.4 && echo yes || echo no", dir: dir) == "yes"
   ensure
-    FileUtils.rm_rf(root) if root # rm_rf: Dir.mktmpdir's cleanup can raise ENOTEMPTY under load
+    FileUtils.rm_rf(root) if root # rm_rf: backstop for a git process still writing here (#174)
   end
 
   # Runs the extracted calculation in `dir`.
@@ -260,7 +263,7 @@ class ReleaseWorkflowTest < Minitest::Test
       git.call("commit", "-qm", extra_message)
       yield dir
     ensure
-      FileUtils.rm_rf(dir) # rm_rf: Dir.mktmpdir's block cleanup can raise ENOTEMPTY under load
+      FileUtils.rm_rf(dir) # rm_rf: backstop for a git process still writing here (#174)
     end
   end
 end
