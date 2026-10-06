@@ -30,8 +30,8 @@ module Mutineer
   # `--matrix` skips everything after a serial kill. `parallel` marks where the
   # parallel tests begin, so the parent can tell a kill that the stop would have
   # followed from one it could not. `cleanup` marks where the tests end and the
-  # suite's own hooks begin (RSpec `after(:suite)`), which a run without
-  # `--matrix` runs after a failure as well.
+  # suite's own hooks begin (RSpec `after(:suite)`). It decides no verdict
+  # (the `skip` regions do); it only marks a later test line as out of order.
   #
   # After the first serial kill, a run without `--matrix` skips every later
   # test and every later test class or example group, but it still runs the

@@ -273,6 +273,7 @@ class CliTest < Minitest::Test
       _, err, status = mutineer(*args, "--dry-run", chdir: proj)
       assert_equal 2, status.exitstatus, "without --no-matrix the file's matrix: applies"
       assert_includes err, "matrix in .mutineer.yml cannot be combined with --dry-run"
+      assert_includes err, "pass --no-matrix to run without it"
       _, err, status = mutineer(*args, "--dry-run", "--no-matrix", chdir: proj)
       assert_equal 0, status.exitstatus, err
 

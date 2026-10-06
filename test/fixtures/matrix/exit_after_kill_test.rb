@@ -16,14 +16,31 @@ class MatrixExitAfterKillFixture < Minitest::Test
     result
   end
 
-  # Minitest 6 runs a test class in `run_suite`, Minitest 5 in `run`.
+  # A class-level step that runs once per test: it ends the run on the
+  # later test.
+  def self.before_test(method_name)
+    exit!(0) if method_name.to_s == "test_b_later" && ENV.fetch("MUTINEER_FIXTURE_MODE", nil) == "per_test_exit"
+  end
+
+  # Minitest 6 runs a test class in `run_suite` and each test in
+  # `run(klass, name, reporter)`; Minitest 5 uses `run` and `run_one_method`.
   if Minitest::Runnable.respond_to?(:run_suite)
     def self.run_suite(*args)
       after_tests(super)
     end
+
+    def self.run(klass, method_name, reporter)
+      before_test(method_name)
+      super
+    end
   else
     def self.run(*args)
       after_tests(super)
+    end
+
+    def self.run_one_method(klass, method_name, reporter)
+      before_test(method_name)
+      super
     end
   end
 

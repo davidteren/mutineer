@@ -205,21 +205,26 @@ module Mutineer
         def example_group_started(_notification)
           return unless owner?
 
-          @groups_skipping.push(@failed)
+          # The exception in flight now: RSpec can start and finish a group
+          # inside its own `rescue` (a failed `before(:all)` with nested
+          # groups), where `$!` is already set.
+          @groups_skipping.push([@failed, $!])
           KillChannel.write_skip(@channel) if @failed
         end
 
         # Closes the group's `skip` region, if it opened one. RSpec sends this
         # after the group's `after(:all)` hooks, from an `ensure`, so it also
-        # comes while an exit or a crash unwinds the group. Then `$!` holds that
-        # exception and the region stays open: the run ended inside it.
+        # comes while an exit or a crash unwinds the group. Then `$!` holds an
+        # exception that was not in flight when the group started, and the
+        # region stays open: the run ended inside it.
         #
         # @param _notification [RSpec::Core::Notifications::GroupNotification]
         # @return [void]
         def example_group_finished(_notification)
           return unless owner?
 
-          KillChannel.write_unskip(@channel) if @groups_skipping.pop && $!.nil?
+          opened, in_flight = @groups_skipping.pop
+          KillChannel.write_unskip(@channel) if opened && $!.equal?(in_flight)
         end
 
         private

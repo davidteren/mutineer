@@ -301,6 +301,26 @@ class TestRunnersRSpecTest < Minitest::Test
     end
   end
 
+  # A failed before(:all) with a nested group: RSpec ends the nested group
+  # inside its own rescue, and the skip regions must still close, so the
+  # after(:suite) exit keeps its status, as it does without --matrix.
+  def test_matrix_verdict_matches_a_plain_run_after_a_failed_before_all
+    file = File.join(FIX, "before_all_error_spec.rb")
+    verdicts = [false, true].map do |matrix|
+      capture_subprocess_io do
+        @verdict = Mutineer::Isolation.run(timeout: 10, channel: matrix) do |io|
+          if matrix
+            Mutineer::TestRunners::RSpec.run([file], record_to: io)
+          else
+            Mutineer::TestRunners::RSpec.run([file], stop_at_first_failure: true)
+          end
+        end.status
+      end
+      @verdict
+    end
+    assert_equal %i[survived survived], verdicts
+  end
+
   # #191 review: a return proves nothing when RSpec stopped early (a first
   # Ctrl-C, or fail-fast) and skipped examples, so the run sends no `end` and
   # the row stays incomplete.

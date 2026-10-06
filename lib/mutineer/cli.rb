@@ -355,7 +355,9 @@ module Mutineer
         end
       return unless conflict
 
-      warn "mutineer: #{config.origin(:matrix)} cannot be combined with #{config.origin(conflict)} (#{reason})"
+      # Set in the file: say how to turn it off for this run.
+      hint = config.origin(:matrix) == "--matrix" ? "" : "; pass --no-matrix to run without it"
+      warn "mutineer: #{config.origin(:matrix)} cannot be combined with #{config.origin(conflict)} (#{reason}#{hint})"
       exit 2
     end
 

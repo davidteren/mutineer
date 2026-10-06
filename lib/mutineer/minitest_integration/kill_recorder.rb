@@ -31,7 +31,9 @@ module Mutineer
       end
 
       # Prepended on each loaded test class's singleton under Minitest 6: one
-      # class's run, user wrappers included.
+      # class's run and each test's class-level run, user wrappers included.
+      # A run without `--matrix` skips both after a stop (see
+      # StopAtFirstFailure::SkipAfterStop6).
       module MarkSkippedClass6
         # Runs the class inside a `skip` region once a serial test has killed.
         #
@@ -40,6 +42,17 @@ module Mutineer
         # @return [Object]
         def run_suite(reporter, options = {})
           KillRecorder.class_starting(self)
+          KillRecorder.skipping { super }
+        end
+
+        # Runs one test's class-level step inside a `skip` region once a
+        # serial test has killed.
+        #
+        # @param klass [Class]
+        # @param method_name [String]
+        # @param reporter [Minitest::CompositeReporter]
+        # @return [Object]
+        def run(klass, method_name, reporter)
           KillRecorder.skipping { super }
         end
       end
@@ -53,6 +66,17 @@ module Mutineer
         # @return [Object]
         def run(reporter, options = {})
           KillRecorder.class_starting(self)
+          KillRecorder.skipping { super }
+        end
+
+        # Runs one test's class-level step inside a `skip` region once a
+        # serial test has killed.
+        #
+        # @param klass [Class]
+        # @param method_name [String]
+        # @param reporter [Minitest::CompositeReporter]
+        # @return [Object]
+        def run_one_method(klass, method_name, reporter)
           KillRecorder.skipping { super }
         end
       end

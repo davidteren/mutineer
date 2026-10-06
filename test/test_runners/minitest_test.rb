@@ -360,7 +360,8 @@ class TestRunnersMinitestTest < Minitest::Test
   # failing class's wrapper) keeps the exit status; an end in a test or class
   # the plain run skips is killed, as the plain run is.
   { "none" => :killed, "wrapper_exit" => :survived, "wrapper_raise" => :error,
-    "later_exit" => :killed, "later_exit_two" => :killed, "later_class_exit" => :killed }.each do |mode, plain|
+    "later_exit" => :killed, "later_exit_two" => :killed, "later_class_exit" => :killed,
+    "per_test_exit" => :killed }.each do |mode, plain|
     define_method("test_matrix_verdict_matches_a_plain_run_when_#{mode}") do
       assert_equal plain, exit_after_kill_verdict(mode, matrix: false), "plain run"
       assert_equal plain, exit_after_kill_verdict(mode, matrix: true), "matrix run"
