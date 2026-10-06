@@ -203,12 +203,28 @@ module Mutineer
 
             event = result.passed? ? KillChannel::PASS : KillChannel::KILL
             self.serial_killed = true if event == KillChannel::KILL && !parallel_marked
-            # `Class#method` is unique within a run, so the name is also the id.
-            KillChannel.write(channel, event, Array(result.source_location).first, "#{result.klass}##{result.name}")
+            file, line = Array(result.source_location)
+            KillChannel.write(channel, event, file, *name_and_id(result, file, line))
           end
         end
 
         private
+
+        # The test's name and id. `Class#method` is unique within a run, so the
+        # name is also the id. An anonymous class has no name (Minitest records
+        # nil), so its tests would all merge into `#method`; their id adds where
+        # the method is defined, which no mutant changes.
+        #
+        # @param result [Minitest::Result] the result of one test.
+        # @param file [String, nil] the file that defines the test method.
+        # @param line [Integer, nil] the line that defines it.
+        # @return [Array(String, String)] name and id.
+        def name_and_id(result, file, line)
+          return ["#{result.klass}##{result.name}"] * 2 unless result.klass.to_s.empty?
+
+          name = "(anonymous)##{result.name}"
+          [name, "#{name}@#{file}:#{line}"]
+        end
 
         # Writes the `parallel` line, once.
         #

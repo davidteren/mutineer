@@ -19,6 +19,7 @@ class TestRunnersMinitestTest < Minitest::Test
   SERIAL_THEN_PARALLEL = File.join(MATRIX, "serial_then_parallel_test.rb")
   INTERRUPT = File.join(MATRIX, "gate_interrupt_test.rb")
   EXIT_AFTER_KILL = File.join(MATRIX, "exit_after_kill_test.rb")
+  ANONYMOUS = File.join(MATRIX, "anonymous_classes_test.rb")
   SEED     = File.join(FIX, "stop_at_first_failure_seed_test.rb")
   CLEANUP  = File.join(FIX, "stop_at_first_failure_cleanup_test.rb")
   LATER    = File.join(FIX, "stop_at_first_failure_later_class_test.rb")
@@ -362,6 +363,15 @@ class TestRunnersMinitestTest < Minitest::Test
       assert_equal plain, exit_after_kill_verdict(mode, matrix: false), "plain run"
       assert_equal plain, exit_after_kill_verdict(mode, matrix: true), "matrix run"
     end
+  end
+
+  # #191 review: Minitest records no name for an anonymous class, so the id
+  # adds where the method is defined, and the two tests stay apart.
+  def test_record_to_tells_apart_tests_of_anonymous_classes
+    _code, _marker, report = record_fixture(ANONYMOUS)
+    assert_equal ["(anonymous)#test_same"] * 2, names(report.ran)
+    assert_equal ["(anonymous)#test_same@#{ANONYMOUS}:7", "(anonymous)#test_same@#{ANONYMOUS}:8"],
+                 report.ran.map(&:last)
   end
 
   def test_record_to_and_stop_at_first_failure_cannot_be_combined

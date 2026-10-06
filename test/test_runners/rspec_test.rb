@@ -19,6 +19,7 @@ class TestRunnersRSpecTest < Minitest::Test
   PASS = File.join(FIX, "passing_spec.rb")
   FAIL = File.join(FIX, "failing_spec.rb")
   STOP = File.join(FIX, "stop_at_first_failure_spec.rb")
+  EXIT_AFTER_KILL = File.join(FIX, "exit_after_kill_spec.rb")
   # Wraps each expectation in to_stdout_from_any_process, which reopens $stdout.
   SUBPROCESS_IO = File.join(FIX, "calculator_subprocess_io_spec.rb")
   NOISY = File.join(FIX, "noisy_spec.rb")
@@ -271,8 +272,55 @@ class TestRunnersRSpecTest < Minitest::Test
     end
   end
 
-  # `Example#id` arrived in RSpec 3.3. Without it the test is told apart by
-  # where it is defined, which no mutant changes.
+  # The verdict Isolation gives EXIT_AFTER_KILL in `mode`, plain or --matrix.
+  def exit_after_kill_verdict(mode, matrix:)
+    ENV["MUTINEER_FIXTURE_MODE"] = mode
+    capture_subprocess_io do
+      @verdict = Mutineer::Isolation.run(timeout: 10, channel: matrix) do |io|
+        if matrix
+          Mutineer::TestRunners::RSpec.run([EXIT_AFTER_KILL], record_to: io)
+        else
+          Mutineer::TestRunners::RSpec.run([EXIT_AFTER_KILL], stop_at_first_failure: true)
+        end
+      end.status
+    end
+    @verdict
+  ensure
+    ENV.delete("MUTINEER_FIXTURE_MODE")
+  end
+
+  # #191 review: after a failure, --fail-fast still runs the failing group's
+  # after(:all) hooks and the suite hooks, so an end there keeps the exit
+  # status; an end in a later example or group is killed, as the plain run is.
+  { "none" => :killed, "later_exit" => :killed, "later_exit_two" => :killed,
+    "after_all_exit" => :survived, "after_all_exit_bang" => :survived,
+    "later_group_exit" => :killed, "suite_exit" => :survived }.each do |mode, plain|
+    define_method("test_matrix_verdict_matches_a_plain_run_when_#{mode}") do
+      assert_equal plain, exit_after_kill_verdict(mode, matrix: false), "plain run"
+      assert_equal plain, exit_after_kill_verdict(mode, matrix: true), "matrix run"
+    end
+  end
+
+  # #191 review: a return proves nothing when RSpec stopped early (a first
+  # Ctrl-C, or fail-fast) and skipped examples, so the run sends no `end` and
+  # the row stays incomplete.
+  def test_record_to_sends_no_end_when_rspec_stops_mid_run
+    rd, wr = IO.pipe
+    in_fork do
+      rd.close
+      Mutineer::TestRunners::RSpec.run([File.join(FIX, "quit_mid_run_spec.rb")], record_to: wr)
+    end
+    wr.close
+    report = Mutineer::KillChannel.parse(rd.read)
+    assert report.started
+    assert_equal 1, report.ran.size
+    refute report.finished
+  ensure
+    [rd, wr].each { |io| io.close unless io.closed? }
+  end
+
+  # `Example#id` arrived in RSpec 3.3. Before it, examples on one line share a
+  # location, so nothing tells them apart (#191 review): --matrix needs 3.3.
   FakeExample = Struct.new(:metadata, :full_description, :file_path)
   Notice = Struct.new(:example)
 
@@ -288,10 +336,20 @@ class TestRunnersRSpecTest < Minitest::Test
     Mutineer::KillChannel.parse(io.string)
   end
 
-  def test_an_example_without_an_id_is_identified_by_its_location
+  def test_without_example_ids_the_run_sends_no_start
+    require "rspec/core"
+    report = formatted do |fmt|
+      ::RSpec::Core::Example.stub(:method_defined?, ->(name, *) { name != :id }) do
+        fmt.start(Struct.new(:count).new(1))
+      end
+    end
+    refute report.started
+  end
+
+  def test_an_example_without_an_id_is_a_lost_line
     report = formatted { |fmt| fmt.example_passed(Notice.new(fake_example)) }
-    assert_equal [["/p/a_spec.rb", "A does", "./a_spec.rb:7"]], report.ran
-    assert_equal 0, report.lost
+    assert_empty report.ran
+    assert_equal 1, report.lost
   end
 
   # A recorder that raises would change the verdict; the lost test leaves the row incomplete.
