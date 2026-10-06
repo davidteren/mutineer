@@ -1,0 +1,23 @@
+docs/json-schema.md
+  s_49083d12a7277d::t_434c171cf70fda 121
+lib/mutineer/minitest_integration/kill_recorder.rb
+  s_49083d12a7277d::t_838de2c37159bd 207,215-217,220,222,226
+test/test_runners/minitest_test.rb
+  s_49083d12a7277d::t_ccc5a9b23b0a67 369,373
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62c753a9a9992c83b6c42efd11b6ddcd4e2ddc57",
+  "prompts": {},
+  "sessions": {
+    "s_49083d12a7277d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3116b2f4-60ff-44e7-858a-dde11624d36d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
