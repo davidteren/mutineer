@@ -178,14 +178,24 @@ module Mutineer
         { "map" => {}, "failed_test_files" => [], "error" => "#{e.class}: #{e.message}" }
       end
 
-      # Fork-safety hook for coverage capture: route each capture fork to worker
-      # 0's isolated DB (captures run serially, so one worker is enough). Nil when
-      # the app has no worker-DB adapter (non-Rails). Capture then runs as before.
+      # Fork-safety hook for coverage capture. Each capture fork drops its copy
+      # of the protocol channel (see close_protocol) and, when the app has a
+      # worker-DB adapter, routes to worker 0's isolated DB (captures run
+      # serially, so one worker is enough).
       def coverage_after_fork
-        return nil unless @worker_db
-
+        worker_db = @worker_db
         schema = @schema_path
-        -> { @worker_db.after_fork(0, schema) }
+        lambda do
+          close_protocol
+          worker_db&.after_fork(0, schema)
+        end
+      end
+
+      # A forked child never answers on the protocol channel. Closing its
+      # inherited copy lets a daemon crash read as EOF on the client at once,
+      # not only after a slow or hung child exits.
+      def close_protocol
+        @output.close rescue nil # rubocop:disable Style/RescueModifier
       end
 
       # Fork a child to run one mutant in isolation; decode its exit into a verdict.
@@ -201,9 +211,7 @@ module Mutineer
           code =
             begin
               ChildStdout.silence
-              # The child never answers on the protocol channel. Drop its copy so a
-              # daemon crash reads as EOF on the client without waiting for this child.
-              @output.close rescue nil # rubocop:disable Style/RescueModifier
+              close_protocol
               # Route THIS fork at its own worker database before any test loads.
               # A routing failure raises here and is scored `error`, never a false verdict.
               @worker_db&.after_fork(worker, schema_for_fork)
