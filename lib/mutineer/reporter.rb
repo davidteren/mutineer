@@ -449,7 +449,7 @@ module Mutineer
     def matrix_incomplete_section(out)
       rows = @matrix.incomplete_rows
       out.puts matrix_incomplete_note
-      rows.first(MATRIX_LIST_LIMIT).each { |r| out.puts "  #{matrix_row_label(r)}" }
+      rows.first(MATRIX_LIST_LIMIT).each { |r| out.puts "  #{printable(matrix_row_label(r))}" }
       rest = rows.size - MATRIX_LIST_LIMIT
       out.puts "  and #{rest} more" if rest.positive?
       out.puts "The HTML and JSON reports list every incomplete row (JSON: matrix.mutants with complete: false)."
@@ -491,7 +491,7 @@ module Mutineer
     def matrix_list(out, title, tests)
       out.puts
       out.puts "#{title}: #{tests.size}"
-      tests.first(MATRIX_LIST_LIMIT).each { |test| out.puts "  #{test[0]}  #{test_label(test)}" }
+      tests.first(MATRIX_LIST_LIMIT).each { |test| out.puts "  #{printable(test[0])}  #{printable(test_label(test))}" }
       rest = tests.size - MATRIX_LIST_LIMIT
       out.puts "  and #{rest} more; see --format json" if rest.positive?
     end
@@ -802,7 +802,7 @@ module Mutineer
       sources.sort.each do |file, agg|
         score = agg.mutation_score
         out.puts format("%s  %s  (%d killed / %d survived / %d no-cov)",
-                        file, score.nil? ? "N/A" : "#{score}%",
+                        printable(file), score.nil? ? "N/A" : "#{score}%",
                         agg.killed_count, agg.survived_count, agg.no_coverage_count)
       end
     end
@@ -821,7 +821,7 @@ module Mutineer
         file = r.subject.file
         source = @source_map[file] || File.read(file)
         line, = diff_for(r.mutation, source)
-        out.puts "  + #{r.subject.qualified_name} (#{file}:#{line}) #{r.mutation.operator}"
+        out.puts "  + #{printable(r.subject.qualified_name)} (#{printable(file)}:#{line}) #{r.mutation.operator}"
       end
       out.puts "score dropped #{delta.score_before}% -> #{delta.score_after}%" if delta.score_drop
       # An OK verdict must not imply a check that never ran: say when the score
@@ -843,7 +843,7 @@ module Mutineer
       out.puts "-----------------"
       mutants.group_by { |r| r.subject.file }.sort.each do |file, group|
         out.puts
-        out.puts file
+        out.puts printable(file)
         group.sort_by { |r| r.mutation.start_offset }.each { |r| survivor(out, file, r) }
       end
     end
@@ -859,10 +859,25 @@ module Mutineer
       source = @source_map[file] || File.read(file)
       start_line, original_block, mutated_block, token = diff_for(m, source)
 
-      out.puts "  #{result.subject.qualified_name} (#{File.basename(file)}:#{start_line})"
-      out.puts "  Operator: #{m.operator}  (#{token} -> #{m.replacement})"
-      original_block.each_line { |l| out.puts "  - #{l.chomp}" }
-      mutated_block.each_line  { |l| out.puts "  + #{l.chomp}" }
+      out.puts "  #{printable(result.subject.qualified_name)} (#{printable(File.basename(file))}:#{start_line})"
+      out.puts "  Operator: #{m.operator}  (#{printable(token)} -> #{printable(m.replacement)})"
+      original_block.each_line { |l| out.puts "  - #{printable(l.chomp)}" }
+      mutated_block.each_line  { |l| out.puts "  + #{printable(l.chomp)}" }
+    end
+
+    # Source text, a method name or a file path made safe for a terminal (#163):
+    # each control character except tab becomes its Ruby escape (ESC prints as
+    # `\e`). The text is read as UTF-8 whatever the locale, and each byte that is
+    # not valid UTF-8 (a Latin-1 source, say) prints as `\xNN`, so nothing is
+    # lost and the regex never raises. JSON and HTML escape on their own.
+    #
+    # @api private
+    # @param text [String] source text.
+    # @return [String] the text with control characters and invalid bytes escaped.
+    def printable(text)
+      text.dup.force_encoding(Encoding::UTF_8)
+          .scrub { |bytes| bytes.unpack("C*").map { |b| format("\\x%02X", b) }.join }
+          .gsub(/[[:cntrl:]&&[^\t]]/) { |c| c.dump[1..-2] }
     end
 
     # Writes the final verdict line.

@@ -71,6 +71,14 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **The human report escapes control characters from the source** (#163).
+  A surviving line that held a terminal control byte (for example ESC) was
+  printed as that byte, so it could change what the terminal showed. The
+  token, the replacement, the diff lines, method names, file paths and the
+  kill matrix's test names now print each control character except tab as
+  its Ruby escape (`\e`), and a byte that is not valid UTF-8 (a Latin-1
+  source) as `\xNN`. The JSON and HTML
+  reports already escaped text and do not change.
 - **One edit on a line is scored once** (#159). Some opt-in operators emitted
   two mutants that give the same source: `literal_mutation` on `0` (the
   "change to 1" and "add 1" rules), `negation_removal` on `!!x` (either `!`

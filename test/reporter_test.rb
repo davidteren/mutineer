@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "json"
 require "stringio"
 
 class ReporterTest < Minitest::Test
@@ -211,6 +212,70 @@ class ReporterTest < Minitest::Test
     refute_match(/lonil|nilx|eminil/, s) # no fragment mashing
   end
 
+  # #163: a control byte in a surviving line prints as an escape, not raw, in
+  # the human report. A tab stays. JSON keeps the raw character.
+  def test_human_survivor_escapes_control_characters
+    src = "class Foo\n  def bar(x)\n    \"\e[2J\x7F\r\u009B\" if x >= 1\t# t\n  end\nend\n"
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subject = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                    singleton: false, def_node: def_node)
+    at = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: at, end_offset: at + 2, replacement: ">", operator: :comparison)
+    agg = Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subject, mutation: mutation)])
+
+    out = StringIO.new
+    Mutineer::Reporter.new(agg, { "foo.rb" => src }).report(out: out, err: StringIO.new)
+    refute_includes out.string, "\e"
+    assert_includes out.string, %(-     "\\e[2J\\x7F\\r\\u009B" if x >= 1\t# t)
+    assert_includes out.string, %(+     "\\e[2J\\x7F\\r\\u009B" if x > 1\t# t)
+
+    # A source read under LANG=C is tagged US-ASCII; UTF-8 after the token
+    # still prints as UTF-8, not as `??`.
+    ascii_src = "class Foo\n  def bar(x)\n    x >= 1 # caf\u00e9\n  end\nend\n".dup.force_encoding(Encoding::US_ASCII)
+    ascii_at = ascii_src.byteindex(">=")
+    ascii_mutation = Mutineer::Mutation.new(start_offset: ascii_at, end_offset: ascii_at + 2, replacement: ">",
+                                            operator: :comparison)
+    ascii_agg = Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subject, mutation: ascii_mutation)])
+    out = StringIO.new
+    Mutineer::Reporter.new(ascii_agg, { "foo.rb" => ascii_src }).report(out: out, err: StringIO.new)
+    assert_includes out.string, "+     x > 1 # caf\u00e9"
+
+    # A file name and a method name with a control character are escaped too.
+    named = Mutineer::Subject.new(file: "f\eoo.rb", namespace: ["Foo"], name: :"b\u009Bar",
+                                  singleton: false, def_node: def_node)
+    named_agg = Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: named, mutation: mutation)])
+    out = StringIO.new
+    Mutineer::Reporter.new(named_agg, { "f\eoo.rb" => src }).report(out: out, err: StringIO.new)
+    refute_includes out.string, "\e"
+    assert_includes out.string, "f\\eoo.rb"
+    assert_includes out.string, "Foo#b\\u009Bar"
+
+    json = StringIO.new
+    Mutineer::Reporter.new(agg, { "foo.rb" => src }).report(out: json, err: StringIO.new, format: "json")
+    assert_includes JSON.parse(json.string)["survivors"].first["diff"], "\e[2J"
+  end
+
+  # #163: the token and replacement on the Operator line are escaped too, and
+  # an invalid UTF-8 byte after the token does not crash the report.
+  def test_human_operator_line_escapes_and_survives_invalid_utf8
+    src = "class Foo\n  def bar\n    \"\e[2J\" # caf\xE9\n  end\nend\n".b.force_encoding(Encoding::UTF_8)
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subject = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                    singleton: false, def_node: def_node)
+    at = src.byteindex("\"")
+    mutation = Mutineer::Mutation.new(start_offset: at, end_offset: at + 6, replacement: "\"\e\"",
+                                      operator: :string_literal)
+    agg = Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subject, mutation: mutation)])
+
+    out = StringIO.new
+    Mutineer::Reporter.new(agg, { "foo.rb" => src }).report(out: out, err: StringIO.new)
+    refute_includes out.string.b, "\e".b
+    assert_includes out.string, %(string_literal  ("\\e[2J" -> "\\e"))
+    # PR #196 review: a byte that is not UTF-8 (Latin-1 é) shows as an escape, not as U+FFFD.
+    assert_includes out.string, "# caf\\xE9"
+    refute_includes out.string, "\uFFFD"
+  end
+
   # #9: the human report distinguishes uncapturable (broken harness) from
   # no_coverage (genuine gap), in both the summary block and the score breakdown.
   def test_uncapturable_reported_separately_from_no_coverage
@@ -319,6 +384,15 @@ class ReporterTest < Minitest::Test
     text = matrix_report(rows)
     assert_includes text, "comparison timeout id20\n  and 5 more\n"
     refute_includes text, "id21"
+  end
+
+  # PR #196 review: test names and paths in the kill-matrix section are user
+  # text too (an RSpec description), so they are escaped like the rest.
+  def test_matrix_section_escapes_control_characters
+    blind = ["spec/s\e_spec.rb", "S clears \e[2J", "./spec/s_spec.rb[1:1]"]
+    text = matrix_report([row(survivor_result, [], [blind])])
+    refute_includes text, "\e"
+    assert_includes text, "spec/s\\e_spec.rb  S clears \\e[2J"
   end
 
   # An RSpec id differs from the description and tells apart examples that
