@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_f0f18f05015893 68-70
+test/reporter_test.rb
+  s_07d7b58ff1b9fd::t_119abad4e9c023 398-399
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3b43c8e30db722a6a040dd7df91185d15fccc6bd",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
