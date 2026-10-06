@@ -49,6 +49,21 @@ All notable changes to this project are documented here. The format is based on
   `workflow_dispatch` trigger), and those runs report the required checks on
   the PR's head commit. With a `RELEASE_PR_TOKEN` secret set, the push
   triggers CI as before and no dispatch is made.
+- **A class or module opened inside `class << self` belongs to the singleton
+  class (#208).** In `class App; class << self; class Q; def q1 ...` the
+  subject was `App::Q.q1`, a class method of a constant Ruby never defines:
+  `Q` is `App.singleton_class::Q`, and `q1` is an instance method. It is now
+  `#<Class:App>::Q#q1` with no known owner, as is a class or module opened in
+  a builder block there, and anything nested in either. Inside a builder
+  block, `class << self` opens the built class's singleton class, so a class
+  or constant there is named under it, for example `#<Class:App::P>::W`. Under
+  `--strategy redefine` loading the mutant raised `NameError` and scored
+  `error`; redefine now reports these mutants as `unplaceable`, and reload
+  still runs them. A compact `class Foo::X` there is also owner-unknown and
+  named as written. A `class ::X` or `::X = Class.new do` there keeps its
+  top-level name and a known owner, and `class ::X` now has instance methods.
+  Mutant ids for these subjects change: regenerate `ignore:` entries and
+  baselines that name them.
 
 ## [1.5.0] - 2026-10-06
 
