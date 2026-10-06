@@ -3,6 +3,7 @@
 require "json"
 require "tempfile"
 require_relative "child_stdout"
+require_relative "orphan_guard"
 
 module Mutineer
   # App-side daemon (persistent worker).
@@ -207,10 +208,12 @@ module Mutineer
         worker  = req.fetch("worker", 0)
         # Load schema until the first killed/survived fork for this worker slot.
         schema_for_fork = (@worker_db && @schema_path && !@schema_ready[worker]) ? @schema_path : nil
+        daemon = Process.pid
         pid = fork do
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
           # and silence the child's stdout so test output stays out of the diagnostics.
           Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
+          OrphanGuard.start(daemon)
           code =
             begin
               ChildStdout.silence
@@ -252,6 +255,8 @@ module Mutineer
       # pulls in Prism which is forbidden app-side). NOTE: this is the 3rd copy of
       # the waitpid2(WNOHANG)+deadline+pgroup-SIGKILL+decode discipline. A fix to
       # the kill/reap/decode logic must be applied to all three in lockstep.
+      # CoverageMap#await_child applies the same deadline and group kill to
+      # coverage capture.
       # SIGKILL the child's process group past the deadline; a signalled child
       # (nil exitstatus) is `error`.
       def wait_verdict(pid, timeout)

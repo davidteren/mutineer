@@ -754,6 +754,135 @@ class CoverageMapTest < Minitest::Test
     assert_operator elapsed, :<, 2.0
   end
 
+  # --- #101 / #129: one deadline for the whole capture ----------------------
+
+  def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+  # True once `pid` no longer runs. An orphan can stay a zombie for a moment
+  # until init reaps it, so a zombie counts as gone.
+  def process_gone?(pid)
+    Process.kill(0, pid)
+    `ps -o stat= -p #{pid}`.strip.start_with?("Z")
+  rescue Errno::ESRCH
+    true
+  end
+
+  def assert_process_gone(pid)
+    gone = false
+    50.times { (gone = process_gone?(pid)) ? break : sleep(0.1) } # rubocop:disable Style/Semicolon
+    assert gone, "process #{pid} survived the capture"
+  end
+
+  # #101: a hung test in a forked (--boot / --daemon) capture stops at
+  # capture_timeout instead of blocking the run.
+  def test_fork_capture_times_out_instead_of_hanging
+    Coverage.start(lines: true) unless Coverage.running?
+    hang = File.join(Dir.mktmpdir, "hang_capture_test.rb")
+    File.write(hang, "sleep 10\n")
+    map = Mutineer::CoverageMap.new(
+      source_paths: [CALC], test_paths: [hang],
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, capture_timeout: 0.3
+    )
+    started = monotonic
+    _, err = capture_subprocess_io { map.send(:run_phase_a_via_fork, after_fork: nil) }
+    assert_operator monotonic - started, :<, 5.0
+    assert_equal ["hang_capture_test.rb"], map.failed_test_files.map { |f| File.basename(f) }
+    assert_includes err, "timed out after 0.3s"
+  end
+
+  # A process the test leaves behind inherits the result pipe across fork, and
+  # setsid takes it out of the capture's process group. The capture must not
+  # wait for it to exit before it reads the result.
+  def test_fork_capture_does_not_wait_for_a_process_that_holds_the_pipe
+    Coverage.start(lines: true) unless Coverage.running?
+    dir = Dir.mktmpdir
+    pid_file = File.join(dir, "pid")
+    test = File.join(dir, "leftover_capture_test.rb")
+    File.write(test, <<~RUBY)
+      require "minitest"
+      File.write(#{pid_file.inspect}, fork { Process.setsid; sleep 30; exit!(0) }.to_s)
+      class LeftoverCaptureTest < Minitest::Test
+        def test_add = assert_equal(5, Calculator.new.add(2, 3))
+      end
+    RUBY
+    map = fork_map(test, verbose: true)
+    started = monotonic
+    payload = map.send(:fork_capture, test, [CALC], nil)
+    assert_operator monotonic - started, :<, 15.0, "capture waited for the leftover process"
+    assert_kind_of Hash, payload
+    assert payload["passed"]
+  ensure
+    Process.kill(:KILL, File.read(pid_file).to_i) rescue nil if pid_file && File.exist?(pid_file) # rubocop:disable Style/RescueModifier
+  end
+
+  # On timeout the capture stops the test's whole process group, not only the
+  # `ruby` it spawned.
+  def test_capture_timeout_stops_processes_the_test_started
+    dir = Dir.mktmpdir
+    pid_file = File.join(dir, "pid")
+    hang = File.join(dir, "hang_with_child_test.rb")
+    File.write(hang, "File.write(#{pid_file.inspect}, fork { sleep 30; exit!(0) }.to_s)\nsleep 30\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(
+        source_paths: [CALC], test_paths: [hang],
+        cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, capture_timeout: 3
+      ).build_or_load
+    end
+    assert_includes map.failed_test_files.map { |f| File.basename(f) }, "hang_with_child_test.rb"
+    assert File.exist?(pid_file), "the test did not start its child before the timeout"
+    assert_process_gone(File.read(pid_file).to_i)
+  ensure
+    Process.kill(:KILL, File.read(pid_file).to_i) rescue nil if pid_file && File.exist?(pid_file) # rubocop:disable Style/RescueModifier
+  end
+
+  # #129: the child exits before the deadline, but the thread that reads its
+  # result has not finished when the deadline passes. The result must still
+  # count; it is already in the pipe. The stubs put the deadline right at the
+  # child exit and slow the reader, so the edge happens every run.
+  def test_capture_keeps_a_result_the_reader_finishes_after_the_deadline
+    map = Mutineer::CoverageMap.new(
+      source_paths: [CALC], test_paths: [STRONG_TEST],
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
+    )
+    calls = 0
+    map.define_singleton_method(:remaining) { |deadline| (calls += 1) == 1 ? super(deadline) : 0 }
+    map.define_singleton_method(:read_result_line) { |io| super(io).tap { sleep 0.2 } }
+    payload = nil
+    _, err = capture_subprocess_io { payload = map.send(:capture, STRONG_TEST) }
+    assert_kind_of Hash, payload, err
+    assert payload["passed"]
+  end
+
+  # A result read slower than RESULT_GRACE still counts while capture time is
+  # left: the grace is a floor, not a cap.
+  def test_capture_keeps_a_slow_result_read_with_time_left
+    map = Mutineer::CoverageMap.new(
+      source_paths: [CALC], test_paths: [STRONG_TEST],
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
+    )
+    map.define_singleton_method(:read_result_line) { |io| super(io).tap { sleep 1.5 } }
+    payload = nil
+    _, err = capture_subprocess_io { payload = map.send(:capture, STRONG_TEST) }
+    assert_kind_of Hash, payload, err
+  end
+
+  # A child that exits before reading its script must not raise EPIPE out of
+  # spawn_script (and skip the reaper): the capture reports a failed run.
+  def test_spawn_script_survives_a_child_that_exits_before_reading
+    map = Mutineer::CoverageMap.new(
+      source_paths: [CALC], test_paths: [STRONG_TEST],
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
+    )
+    original = RbConfig.method(:ruby)
+    RbConfig.define_singleton_method(:ruby) { "false" }
+    status, out = map.send(:spawn_script, "#" * 1_000_000)
+    refute_predicate status, :success?
+    assert_equal "", out
+  ensure
+    RbConfig.define_singleton_method(:ruby, original) if original
+  end
+
   def test_combined_clean_fails_when_files_pass_alone
     Dir.mktmpdir("mutineer-combined") do |dir|
       src  = File.join(dir, "calc.rb")
