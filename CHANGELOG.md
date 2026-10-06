@@ -64,6 +64,26 @@ All notable changes to this project are documented here. The format is based on
   `workflow_dispatch` trigger), and those runs report the required checks on
   the PR's head commit. With a `RELEASE_PR_TOKEN` secret set, the push
   triggers CI as before and no dispatch is made.
+- **A class or module opened inside `class << self` belongs to the singleton
+  class (#208).** In `class App; class << self; class Q; def q1 ...` the
+  subject was `App::Q.q1`, a class method of a constant Ruby never defines:
+  `Q` is `App.singleton_class::Q`, and `q1` is an instance method. It is now
+  `#<Class:App>::Q#q1` with no known owner, as is a class or module opened in
+  a builder block there, and anything nested in either. Inside a builder
+  block, `class << self` opens the built class's singleton class, so a class
+  or constant there is named under it, for example `#<Class:App::P>::W`. Under
+  `--strategy redefine` loading the mutant raised `NameError` and scored
+  `error`; redefine now reports these mutants as `unplaceable`, and reload
+  still runs them. A compact `class Foo::X` and a top-level `class ::X` or
+  `::X = Class.new do` there are named as written (`::X` as `X`, now with
+  instance methods) and are owner-unknown too: redefine reopens them without
+  the singleton class, so constants their bodies look up through it would not
+  resolve. `module_function :name` in a body whose owner is unknown now
+  promotes that body's own methods, wherever it is: a `Foo::X = Module.new`
+  block's `c` is `Foo::X.c`, not `Foo::X#c`, and a def in an anonymous
+  `Class.new` block is no longer promoted by a `module_function` of the module
+  around it. Mutant ids for these subjects change: regenerate `ignore:`
+  entries and baselines that name them.
 
 ## [1.5.0] - 2026-10-06
 
