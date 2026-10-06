@@ -84,6 +84,25 @@ Tier 2 (off until `--operators`): `return_nil`, `literal_mutation`, `condition_n
 
 `mutineer --list-operators` prints the live set.
 
+## Mutineer and Mutant
+
+"Clean-room" means Mutineer was written from scratch. It contains no code from
+[Mutant](https://github.com/mbj/mutant) or any other mutation-testing tool, so
+only Mutineer's own MIT license applies.
+
+| | Mutineer | Mutant |
+|---|---|---|
+| License | MIT, for every use | Free for open source; commercial use needs a paid subscription |
+| Runtime dependencies | None (Prism + stdlib) | `parser`, `unparser`, `sorbet-runtime` and others |
+| Ruby | 3.4 and later | 3.2 and later |
+| Test frameworks | Minitest and RSpec | RSpec, Minitest and Test::Unit |
+| What you mutate | Files, or one method with `--only` | Subjects named by expression |
+
+Mutant is the established tool, with a deeper operator set. Mutineer trades
+that depth for an MIT license, an empty dependency list, and a JSON contract
+built for CI gates and AI agents. Full comparison:
+[README](https://github.com/davidteren/mutineer#mutineer-and-mutant).
+
 ## More docs
 
 - [Agent & CI guide](https://davidteren.github.io/mutineer/agentic-coding.html) · [Markdown](https://davidteren.github.io/mutineer/agentic-coding.md)

@@ -216,6 +216,33 @@
     </div>
   </section>
 
+  <!-- COMPARISON -->
+  <section id="mutant">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="kicker">Mutineer and Mutant</div>
+        <h2>Clean-room, not a fork.</h2>
+        <p>Mutineer was written from scratch. It contains no code from <a href="https://github.com/mbj/mutant" rel="noopener">Mutant</a> or any other mutation-testing tool, so only Mutineer’s own MIT license applies.</p>
+      </div>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Mutineer and Mutant compared">
+        <table>
+          <caption>Mutant is the established tool, with a deeper operator set. Mutineer trades that depth for an MIT license, no dependencies, and a JSON contract for CI and agents.</caption>
+          <thead>
+            <tr><th scope="col"></th><th scope="col">Mutineer</th><th scope="col">Mutant</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">License</th><td>MIT, for every use</td><td>Free for open source; commercial use needs a paid subscription</td></tr>
+            <tr><th scope="row">Runtime dependencies</th><td>None (Prism + stdlib)</td><td><code>parser</code>, <code>unparser</code>, <code>sorbet-runtime</code> and others</td></tr>
+            <tr><th scope="row">Ruby</th><td>3.4 and later</td><td>3.2 and later</td></tr>
+            <tr><th scope="row">Test frameworks</th><td>Minitest and RSpec</td><td>RSpec, Minitest and Test::Unit</td></tr>
+            <tr><th scope="row">What you mutate</th><td>Files, or one method with <code>--only</code></td><td>Subjects named by expression</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">Full comparison and when to pick each: <a href="https://github.com/davidteren/mutineer#mutineer-and-mutant" rel="noopener">README</a>.</p>
+    </div>
+  </section>
+
   <!-- INSTALL -->
   <section id="install">
     <div class="wrap">
