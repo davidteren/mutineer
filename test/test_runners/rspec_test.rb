@@ -25,6 +25,7 @@ class TestRunnersRSpecTest < Minitest::Test
   NOISY = File.join(FIX, "noisy_spec.rb")
   # Leaves $stdout and $stderr as StringIOs, at load time and inside an example.
   STDOUT_SWAP = File.join(FIX, "calculator_stdout_swap_spec.rb")
+  # Sets an RSpec setting that a gem added before the run, as rspec-retry does.
   GEM_SETTING = File.join(FIX, "gem_setting_spec.rb")
 
   # Returns [exitstatus, captured_real_stdout, captured_real_stderr]. The block
