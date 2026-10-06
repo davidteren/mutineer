@@ -319,6 +319,29 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def test_discover_names_a_builder_in_class_self_on_the_singleton_class
+    src = <<~RUBY
+      class App
+        class << self
+          Point = Data.define(:x) do
+            def m = x * 2
+            def self.build = new(x: 1)
+            Inner = Class.new do
+              def n; end
+            end
+          end
+          def after; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[#<Class:App>::Point#m #<Class:App>::Point.build #<Class:App>::Inner#n App.after],
+                   subjects.map(&:qualified_name)
+      assert_equal [true, true, true, false], subjects.map(&:owner_unknown)
+    end
+  end
+
   def test_discover_nested_classes
     with_source("class Outer\n  class Inner\n    def m; end\n  end\nend\n") do |path|
       s = Mutineer::Project.discover([path]).first

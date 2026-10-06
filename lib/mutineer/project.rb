@@ -48,6 +48,7 @@ module Mutineer
         @block_namespace = nil
         @owner_unknown = false
         @assigned = nil
+        @singleton_cref = false
         super()
       end
 
@@ -212,11 +213,17 @@ module Mutineer
       # current namespace, `::X` and a path at the top level start from Object, and
       # `self::X` is under the current class (the built class inside a builder
       # block). Any other path is looked up at run time, so its owner is unknown
-      # and the subject is named as written.
+      # and the subject is named as written. Lexically inside `class << self`,
+      # even within a builder block there, the constant belongs to the singleton
+      # class, which has no constant path, so its owner is unknown too.
       #
       # @param node [Prism::Node] constant assignment.
       # @return [Array(String, Array<String>, Boolean)] owner, namespace, unknown.
       def assigned_owner(node)
+        if @singleton_cref || @singleton_depth.positive?
+          written = node.respond_to?(:target) ? node.target.slice : node.name.to_s
+          return [nil, ["#<Class:#{@namespace_stack.join("::")}>", written], true]
+        end
         return named_owner(@namespace_stack + [node.name.to_s]) unless node.respond_to?(:target)
 
         names = []
@@ -271,18 +278,22 @@ module Mutineer
       end
 
       # Runs the block with the defs it visits owned by the class a builder block builds.
+      # The block body defines instance methods of that class, even inside `class << self`,
+      # but its constants still land where the enclosing `class << self` puts them.
       #
       # @param owner [Array(String, Array<String>, Boolean)] the owner as written, its namespace,
       #   and whether that name is unknown.
       # @yield the builder call visit.
       # @return [void]
       def with_block_owner(owner)
-        saved = [@block_owner, @block_namespace, @owner_unknown, @module_function_active]
+        saved = [@block_owner, @block_namespace, @owner_unknown, @module_function_active, @singleton_depth, @singleton_cref]
         @block_owner, @block_namespace, @owner_unknown = owner
         @module_function_active = false
+        @singleton_cref ||= @singleton_depth.positive?
+        @singleton_depth = 0
         yield
       ensure
-        @block_owner, @block_namespace, @owner_unknown, @module_function_active = saved
+        @block_owner, @block_namespace, @owner_unknown, @module_function_active, @singleton_depth, @singleton_cref = saved
       end
 
       # True when a constant path starts with `::` (e.g. `::X` or `::A::B`).
