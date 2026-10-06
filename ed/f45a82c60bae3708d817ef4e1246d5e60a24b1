@@ -1,0 +1,20 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 82-89
+README.md
+  h_e8a5bb9272fa34 56
+lib/mutineer/changed_lines.rb
+  h_e8a5bb9272fa34 62-63,78-84,106-120
+test/changed_lines_test.rb
+  h_e8a5bb9272fa34 105-149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "edf45a82c60bae3708d817ef4e1246d5e60a24b1",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
