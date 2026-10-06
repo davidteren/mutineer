@@ -10,8 +10,8 @@ ones your tests failed to catch — the gaps where your suite isn't actually
 testing anything.
 
 "Clean-room" means Mutineer was written from scratch. It contains no code from
-[Mutant](https://github.com/mbj/mutant) or any other mutation-testing tool, so
-only Mutineer's own MIT license applies. See
+[Mutant](https://github.com/mbj/mutant) or any other mutation-testing tool.
+Mutineer's own code is licensed under MIT. See
 [Mutineer and Mutant](https://github.com/davidteren/mutineer#mutineer-and-mutant)
 for how the two tools differ.
 
@@ -501,7 +501,7 @@ mutation-testing tool for Ruby. It has been in development since 2012 and is
 the subject of published research. Mutineer is a separate tool, and it shares
 no code with Mutant.
 
-| | Mutineer | Mutant |
+| Aspect | Mutineer | Mutant |
 |---|---|---|
 | License | MIT, for every use | Free for open source (`--usage opensource`); commercial use needs a paid subscription |
 | Runtime dependencies | None (Prism + stdlib) | `parser`, `unparser`, `regexp_parser`, `sorbet-runtime` and others |

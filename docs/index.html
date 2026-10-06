@@ -23,8 +23,8 @@
 <meta name="twitter:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
 <meta name="twitter:image:alt" content="Mutineer — Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='1' fill='%2367286a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
-<script src="assets/mutineer.js?v=2866f68d1f55"></script>
-<link rel="stylesheet" href="assets/mutineer.css?v=caa57d3f6e3a">
+<script src="assets/mutineer.js?v=0ba69df71715"></script>
+<link rel="stylesheet" href="assets/mutineer.css?v=7972aad51db2">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -86,6 +86,26 @@
         <a href="https://x.com/fractaledmind/status/2104277624596169083" rel="noopener">Read Stephen's post on X <span aria-hidden="true">↗</span></a>
         <div class="proof-meter" aria-hidden="true"><span style="--to: 46.2%"></span></div>
       </div>
+    </div>
+  </section>
+
+  <!-- WATCH: a one-minute explainer; nothing loads until the visitor presses play. -->
+  <section id="watch">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="kicker">In one minute</div>
+        <h2>Watch a passing suite miss a bug.</h2>
+        <p>Every test passes and every line is covered. Mutineer changes one comparison, runs the tests again, and shows the change they did not catch.</p>
+      </div>
+      <figure class="explainer">
+        <video controls preload="none" playsinline width="1920" height="1080"
+               poster="assets/mutineer-explainer-poster.jpg"
+               aria-describedby="explainer-summary">
+          <source src="assets/mutineer-explainer.mp4" type="video/mp4">
+          <p>Your browser cannot play this video. <a href="assets/mutineer-explainer.mp4">Download it (MP4, 4.7 MB)</a>.</p>
+        </video>
+        <figcaption id="explainer-summary"><span>1:03 · music, on-screen text, no narration.</span> A discount method passes its tests with 100% line coverage. Mutineer makes two mutants: the tests kill <code>*</code> → <code>/</code> but miss <code>&gt;=</code> → <code>&gt;</code>, because no test checks an order of exactly 100. The video ends with the test that closes that gap. <a href="assets/mutineer-explainer.mp4">Download MP4</a></figcaption>
+      </figure>
     </div>
   </section>
 
@@ -222,7 +242,7 @@
       <div class="sec-head">
         <div class="kicker">Mutineer and Mutant</div>
         <h2>Clean-room, not a fork.</h2>
-        <p>Mutineer was written from scratch. It contains no code from <a href="https://github.com/mbj/mutant" rel="noopener">Mutant</a> or any other mutation-testing tool, so only Mutineer’s own MIT license applies.</p>
+        <p>Mutineer was written from scratch. It contains no code from <a href="https://github.com/mbj/mutant" rel="noopener">Mutant</a> or any other mutation-testing tool. Mutineer’s own code is licensed under MIT.</p>
       </div>
       <div class="table-wrap" tabindex="0" role="region" aria-label="Mutineer and Mutant compared">
         <table>

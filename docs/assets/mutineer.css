@@ -109,6 +109,11 @@ h1 { font-size: clamp(48px, 6.8vw, 88px); line-height: .99; letter-spacing: -.06
 .badge b { font-size: 24px; font-weight: 500; color: var(--fg); margin-right: 12px; }
 /* Ruled sections replace repeated floating cards. */
 section { padding: 72px 0; border-top: 1px solid var(--border); }
+.explainer { margin: 0; }
+.explainer video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); }
+.explainer video:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.explainer figcaption { margin-top: 12px; max-width: 72ch; color: var(--fg-dim); font-size: 14px; line-height: 1.55; }
+.explainer figcaption span { display: block; font: 11px/1.5 var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--fg-faint); margin-bottom: 4px; }
 .sec-head { display: grid; grid-template-columns: 1fr 1fr; column-gap: 64px; margin-bottom: 36px; }
 .sec-head .kicker { grid-column: 1 / -1; margin-bottom: 16px; }
 .sec-head h2 { font-size: clamp(30px, 3.4vw, 44px); letter-spacing: -.045em; margin: 0; }

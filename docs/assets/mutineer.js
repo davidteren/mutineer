@@ -37,6 +37,23 @@
       sync();
     });
 
+    // The explainer video plays only when the visitor asks. It pauses when it
+    // scrolls out of view or the tab is hidden, and shows its poster again
+    // when it ends.
+    document.querySelectorAll('.explainer video').forEach(function (video) {
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (!entry.isIntersecting && !video.paused) video.pause();
+          });
+        }, { threshold: 0.25 }).observe(video);
+      }
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden && !video.paused) video.pause();
+      });
+      video.addEventListener('ended', function () { video.load(); });
+    });
+
     // Copy controls report failure and remain reusable after repeated clicks.
     document.querySelectorAll('.copy').forEach(function (button) {
       var timer, pending = false;
