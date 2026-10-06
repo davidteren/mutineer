@@ -269,7 +269,7 @@ class RunnerTest < Minitest::Test
       File.write(path, "class Zero\n  def a\n    x = 0\n    y = 0\n    !!x\n  end\nend\n")
       config = Mutineer::Config.new(sources: [path], project_root: dir)
       ops = Mutineer::MutatorRegistry.resolve(%w[literal_mutation negation_removal])
-      jobs, = Mutineer::Runner.collect_jobs(config, ops)
+      jobs, _ignored, _map, extras = Mutineer::Runner.collect_jobs(config, ops)
 
       source = File.read(path)
       mutated = jobs.map { |_s, m, _id| [m.operator, m.apply(source)] }
@@ -279,9 +279,34 @@ class RunnerTest < Minitest::Test
       subject = jobs.first[0]
       all = ops.flat_map { |k| k.new.mutations_for(subject, source) }
       before = Mutineer::MutantId.for_subject(subject, source, all, path: "zero.rb")
-      keys = Mutineer::Runner.result_keys(all, source) # each repeat here sits on one line
+      lines = all.map { |m| source.byteslice(0, m.start_offset).count("\n") + 1 }
+      keys = Mutineer::Runner.result_keys(all, source, lines)
       kept = all.each_index.select { |i| keys.index(keys[i]) == i }
       assert_equal kept.map { |i| before[i] }, jobs.map(&:last)
+
+      # PR #198 review: a dropped copy records nothing in the id map either.
+      dropped = (all.each_index.to_a - kept).map { |i| before[i] }
+      refute_empty dropped
+      assert_empty dropped & extras[:id_map].keys
+      assert_equal 3, extras[:id_map].size
+    end
+  end
+
+  # PR #198 review: operand_removal on `x || x` keeps either side, which gives
+  # the same source; it runs once and keeps its id.
+  def test_collect_jobs_runs_a_repeated_operand_removal_once
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "either.rb")
+      File.write(path, "class Either\n  def a(x)\n    x || x\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: dir)
+      ops = Mutineer::MutatorRegistry.resolve(%w[operand_removal])
+      jobs, = Mutineer::Runner.collect_jobs(config, ops)
+      source = File.read(path)
+      all = ops.first.new.mutations_for(jobs.first[0], source)
+      assert_equal 2, all.size, "operand_removal emits both sides"
+      assert_equal 1, jobs.size
+      first_id = Mutineer::MutantId.for_subject(jobs.first[0], source, all, path: "either.rb").first
+      assert_equal first_id, jobs.first.last
     end
   end
 

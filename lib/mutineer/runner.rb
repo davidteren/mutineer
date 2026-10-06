@@ -219,7 +219,8 @@ module Mutineer
         ordinal = (decls[subject.def_node.location.start_offset] ||= decls.size)
         ids = MutantId.for_subject(subject, source, mutations, path: id_path, subject_ordinal: ordinal)
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
-        keys = result_keys(mutations, source)
+        lines = mutations.map { |m| source.byteslice(0, m.start_offset).count("\n") + 1 }
+        keys = result_keys(mutations, source, lines)
         # A repeat of an earlier edit on the same line is dropped (#159),
         # separately among the run and the ignored mutants, so an ignored copy
         # never hides a copy that should run. A dropped copy records nothing.
@@ -227,9 +228,8 @@ module Mutineer
         mutations.each_with_index do |mutation, i|
           id = ids[i]
           legacy = legacy_ids[i]
-          line = source.byteslice(0, mutation.start_offset).count("\n") + 1
-          ignored = suppressed?(mutation.operator, line, [id, legacy], disabled, ignore_set)
-          next unless seen[ignored ? :ignored : :run].add?([line, keys[i]])
+          ignored = suppressed?(mutation.operator, lines[i], [id, legacy], disabled, ignore_set)
+          next unless seen[ignored ? :ignored : :run].add?(keys[i])
 
           id_map[id] = legacy
           # An old entry still over-matches other files even when the new id is
@@ -247,29 +247,31 @@ module Mutineer
       [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map }]
     end
 
-    # One key per mutation that is equal for two mutations of one subject
-    # exactly when they are the same operator and give the same mutated source:
-    # one edit (#159). `literal_mutation` on `0` ("change to 1" and "add 1"),
-    # `negation_removal` on `!!x` and `chain_link` on `a.b.b.c` emit such pairs.
-    # The caller adds each mutation's line and drops a repeat AFTER ids are
-    # assigned, so every kept mutant keeps its id and a dropped copy's id is
-    # never reused. With the line in the key, copies on different lines (a
-    # multi-line chain) both stay, so a line filter such as `--since` never
-    # loses the edit. Text outside the span from the earliest start to the
-    # latest end is the same for every mutation, so the key digests that span.
+    # One key per mutation; two mutations share a key exactly when they are
+    # the same operator on the same line and give the same mutated source (one
+    # edit, #159). The caller drops a repeat after ids are assigned. Only a
+    # group of same-operator, same-line mutations can repeat, so only those
+    # build a key from their text: the span from the group's earliest start to
+    # its latest end, digested. Every other mutation gets a key of its own.
     #
     # @param mutations [Array<Mutineer::Mutation>] one subject's mutations.
     # @param source [String] the full, unmutated source.
-    # @return [Array<Array(Symbol, String)>] one key per mutation, in order.
-    def self.result_keys(mutations, source)
-      return [] if mutations.empty?
+    # @param lines [Array<Integer>] each mutation's line.
+    # @return [Array<Object>] one key per mutation, in order.
+    def self.result_keys(mutations, source, lines)
+      keys = Array.new(mutations.size) { |i| i }
+      mutations.each_index.group_by { |i| [mutations[i].operator, lines[i]] }.each_value do |group|
+        next if group.size < 2
 
-      from = mutations.map(&:start_offset).min
-      to = mutations.map(&:end_offset).max
-      mutations.map do |m|
-        span = "#{source.byteslice(from...m.start_offset)}#{m.replacement}#{source.byteslice(m.end_offset...to)}"
-        [m.operator, Digest::SHA256.digest(span)]
+        from = group.map { |i| mutations[i].start_offset }.min
+        to = group.map { |i| mutations[i].end_offset }.max
+        group.each do |i|
+          m = mutations[i]
+          span = "#{source.byteslice(from...m.start_offset)}#{m.replacement}#{source.byteslice(m.end_offset...to)}"
+          keys[i] = [m.operator, lines[i], Digest::SHA256.digest(span)]
+        end
       end
+      keys
     end
 
     # External backend orchestration. Runs each mutant's whole-file mutation on

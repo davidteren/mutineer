@@ -42,7 +42,8 @@ does the same on `a.b.b.c`: dropping either `.b` gives `a.b.c`. Each copy gets i
 - **Drop in `Runner.collect_jobs`, after ids are assigned** (changed after code review;
   the first version dropped in `Mutators::Base`). `collect_jobs` is the only caller of
   `mutations_for`, and ids count same-token twins over the full list, so dropping after
-  that keeps every id stable (R4). The key is `[operator, span text]`, so the drop stays
+  that keeps every id stable (R4). The effective key is `[operator, start line, SHA-256 of the span]` (see the
+  next decision), so the drop stays
   per operator.
 - **Drop separately among run and ignored mutants** (cubic review). A copy whose id is
   in the ignore list must not hide the other copy, so the drop runs after the
@@ -62,7 +63,9 @@ does the same on `a.b.b.c`: dropping either `.b` gives `a.b.c`. Each copy gets i
 
 **Files:** `lib/mutineer/runner.rb`, `test/runner_test.rb`, `CHANGELOG.md`
 
-**Approach:** Add `Runner.result_keys`, one `[operator, start line, span digest]` key per mutation.
+**Approach:** Add `Runner.result_keys`, one key per mutation: `[operator, start line, span digest]`
+for a mutation that shares its operator and line with another (only those can repeat), and a key of
+its own for every other mutation, so the common case hashes nothing (PR review).
 `collect_jobs` skips a mutation whose key it already placed in the same group (run or
 ignored), after ids and the suppression check.
 
