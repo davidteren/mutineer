@@ -120,9 +120,12 @@ Safety nets:
   someone else's commit: GitHub's "Update branch" button on the release PR pauses the
   automation until that PR is merged or its branch is deleted. Review + merge it, then push the
   `vX.Y.Z` tag. Every release moves the floating major tag (`v1` today), so Action users get it at once:
-  batch changes rather than releasing after each merge. (To get CI on that auto-PR, add a
-  `RELEASE_PR_TOKEN` PAT secret — a PR opened by the default `GITHUB_TOKEN` doesn't
-  trigger other workflows.)
+  batch changes rather than releasing after each merge. CI runs on that auto-PR with no
+  secret: a push by the default `GITHUB_TOKEN` starts no other workflow, so after
+  pushing the release branch the job dispatches `ci.yml` on it, and those runs report
+  the required checks on the PR's head commit. With an optional `RELEASE_PR_TOKEN` PAT
+  secret, the push triggers CI itself and the dispatch is skipped. If the checks are
+  missing, run `gh workflow run ci.yml --ref release/vX.Y.Z`.
 - **The release-PR run stops (and opens nothing) in two cases.** If `VERSION` on `main`
   differs from the latest tag, a bump is merged but not tagged: it warns you to push
   that tag first. If the computed `vX.Y.Z` tag already exists on origin (for example
