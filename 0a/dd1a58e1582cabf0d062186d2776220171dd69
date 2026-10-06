@@ -1,0 +1,19 @@
+docs/assets/mutineer.css
+  s_49083d12a7277d::t_c633afc1484498 141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0add1a58e1582cabf0d062186d2776220171dd69",
+  "prompts": {},
+  "sessions": {
+    "s_49083d12a7277d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3116b2f4-60ff-44e7-858a-dde11624d36d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
