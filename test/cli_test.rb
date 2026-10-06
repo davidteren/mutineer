@@ -120,6 +120,16 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_cache_dir_holds_the_coverage_cache
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--cache-dir", "tmp/run-a", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_path_exists File.join(proj, "tmp/run-a/coverage.json")
+      refute_path_exists File.join(proj, ".mutineer")
+    end
+  end
+
   def test_a_test_file_given_as_a_source_after_test_exits_two
     with_project do |proj|
       FileUtils.mkdir_p(File.join(proj, "test"))

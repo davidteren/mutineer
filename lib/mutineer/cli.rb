@@ -51,6 +51,7 @@ module Mutineer
                              a mutant over it is a timeout, excluded from the score
         --capture-timeout SECONDS  Time limit for each coverage-capture subprocess
                              and the clean check (default: 120; not with --test-command)
+        --cache-dir DIR      Directory for the coverage cache (default: .mutineer)
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then
                              fork per mutant (Rails apps; requires --test)
@@ -120,6 +121,7 @@ module Mutineer
         o.on("--jobs N") { |v| opts[:jobs] = Config.parse(:jobs, v) }
         o.on("--timeout SECONDS") { |v| opts[:timeout] = Config.parse(:timeout, v) }
         o.on("--capture-timeout SECONDS") { |v| opts[:capture_timeout] = Config.parse(:capture_timeout, v) }
+        o.on("--cache-dir DIR") { |v| opts[:cache_dir] = Config.parse(:cache_dir, v) }
         o.on("--strategy STRAT") { |v| opts[:strategy] = Config.parse(:strategy, v) }
         o.on("--framework NAME") { |v| opts[:framework] = Config.parse(:framework, v) }
         o.on("--boot FILE") { |v| opts[:boot] = v }
@@ -305,7 +307,7 @@ module Mutineer
              "(surgical redefine needs a shared VM; the subprocess has its own)"
         exit 2
       end
-      warn_unused_timeouts(config, "--test-command", %i[timeout capture_timeout])
+      warn_unused_settings(config, "--test-command", %i[timeout capture_timeout cache_dir])
       return unless config.jobs > 1
 
       warn "[mutineer] --test-command runs serially (no per-worker DB isolation yet); forcing --jobs 1."
@@ -334,7 +336,7 @@ module Mutineer
              "(rspec is not implemented on the daemon path yet)"
         exit 2
       end
-      warn_unused_timeouts(config, "--daemon", %i[timeout])
+      warn_unused_settings(config, "--daemon", %i[timeout])
       return if config.strategy == "reload"
 
       # --rails defaults strategy to redefine; daemon always whole-file loads.
@@ -343,21 +345,29 @@ module Mutineer
       config.strategy = "reload"
     end
 
-    # A backend that never reads a time limit the user set would silently do
-    # nothing with it, so say so. `--test-command` reads neither limit; the
-    # daemon reads `--capture-timeout` (its coverage capture) but keeps its own
+    # Where each setting a backend may ignore applies, for the warning.
+    UNUSED_SETTING_SCOPE = {
+      timeout: "in-process runs only",
+      capture_timeout: "in-process and --daemon coverage capture",
+      cache_dir: "the in-process and --daemon coverage cache"
+    }.freeze
+
+    # A backend that never reads a setting the user set would silently do
+    # nothing with it, so say so. `--test-command` builds no coverage map and
+    # has its own runtime, so it reads none of {UNUSED_SETTING_SCOPE}; the
+    # daemon reads the capture limit and the cache directory but keeps its own
     # per-mutant limit.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
     # @param backend [String] the backend's flag.
-    # @param keys [Array<Symbol>] the limits that backend ignores.
+    # @param keys [Array<Symbol>] the settings that backend ignores.
     # @return [void]
-    def self.warn_unused_timeouts(config, backend, keys)
+    def self.warn_unused_settings(config, backend, keys)
       keys.each do |key|
         next unless config.explicit?(key)
 
-        applies = key == :capture_timeout ? "in-process and --daemon coverage capture" : "in-process runs only"
+        applies = UNUSED_SETTING_SCOPE.fetch(key)
         warn "[mutineer] #{config.origin(key)} has no effect with #{backend} (it applies to #{applies}); ignoring it."
       end
     end

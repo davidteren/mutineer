@@ -72,6 +72,18 @@ class ConfigTest < Minitest::Test
     assert_equal 4, Config.parse(:jobs, "4")
   end
 
+  # PR #184 review: a blank cache_dir (an unset CI variable) would write the
+  # cache into the project root, so it is an error from the file and the flag.
+  def test_parse_rejects_a_blank_cache_dir
+    assert_equal "tmp/run-a", Config.parse(:cache_dir, "tmp/run-a")
+    ["", "  "].each do |blank|
+      err = assert_raises(Mutineer::ConfigError) { Config.parse(:cache_dir, blank) }
+      assert_includes err.message, "--cache-dir must be a directory, not blank"
+    end
+    err = assert_raises(Mutineer::ConfigError) { Config.parse(:cache_dir, "", file: ".mutineer.yml") }
+    assert_includes err.message, ".mutineer.yml: cache_dir must be a directory, not blank"
+  end
+
   def test_parse_timeouts_take_whole_seconds
     assert_equal 300, Config.parse(:timeout, "300")
     assert_equal 600, Config.parse(:capture_timeout, 600, file: ".mutineer.yml")
@@ -510,7 +522,8 @@ class ConfigTest < Minitest::Test
     test_command: ["a %{files}", "b %{files}"],
     daemon: [false, true],
     timeout: [30, 60],
-    capture_timeout: [300, 600]
+    capture_timeout: [300, 600],
+    cache_dir: ["a", "b"]
   }.freeze
 
   def test_every_option_with_a_yaml_key_has_a_layer_sample

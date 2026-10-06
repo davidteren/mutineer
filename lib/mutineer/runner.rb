@@ -94,7 +94,7 @@ module Mutineer
         # by forking the booted parent, then select covering tests per mutant.
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
-          cache_dir: config.cache_dir, project_root: config.project_root,
+          cache_dir: File.expand_path(config.cache_dir, config.project_root), project_root: config.project_root,
           load_paths: config.load_paths, framework: config.framework,
           boot_path: File.expand_path(config.boot, config.project_root),
           verbose: config.verbose,
@@ -109,7 +109,7 @@ module Mutineer
         rel_roots = test_roots.map { |d| Pathname(d).relative_path_from(File.expand_path(config.project_root)).to_s }
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
-          cache_dir: config.cache_dir, project_root: config.project_root,
+          cache_dir: File.expand_path(config.cache_dir, config.project_root), project_root: config.project_root,
           load_paths: config.load_paths + rel_roots, framework: config.framework,
           capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_or_load
