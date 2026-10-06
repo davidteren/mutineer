@@ -180,6 +180,13 @@ class RunnerTest < Minitest::Test
     assert_equal :uncapturable, selection(source, "x * 2", {}, load_lines: [2], uncapturable: true)[1].status
   end
 
+  # #187: `x if c` counts its line when `c` is checked, also when `x` never
+  # runs, so a mutant in `x` did not run at load.
+  def test_coverage_selection_does_not_count_code_that_runs_only_sometimes
+    source = "def f(k)\n  return 7 * 6 if k.nil?\n  k\nend\n"
+    assert_equal :no_coverage, selection(source, "7 * 6", {}, load_lines: [2])[1].status
+  end
+
   # #187: the def line counts when the method is defined, so it is never a load
   # line; a one-line def is the documented known limit.
   def test_coverage_selection_ignores_the_def_line_load_count

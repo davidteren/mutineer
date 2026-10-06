@@ -424,9 +424,11 @@ module Mutineer
     # another file's class body. Shared by {coverage_selection}, {run} and the
     # daemon backend, so every backend classifies the same mutants.
     #
-    # Only lines inside the method body count, the line of the mutant and the
-    # other lines of its statement ({StatementLines}). The `def` line is never
-    # counted: Ruby counts it when the method is defined.
+    # Only the lines of the statement that holds the mutant count
+    # ({StatementLines}), and only inside the method body. So code that runs
+    # only sometimes (`x if c`, a ternary branch) never counts: its line can
+    # count at load without it. The `def` line never counts: Ruby counts it
+    # when the method is defined.
     #
     # ponytail: line coverage cannot tell a one-line or endless def that ran at
     # load from one that was only defined, so those stay `survived` or
@@ -445,8 +447,7 @@ module Mutineer
 
       def_line = subject.def_node.location.start_line
       body = (loc.start_line..loc.end_line)
-      line = source.byteslice(0, mutation.start_offset).count("\n") + 1
-      lines = [line, *StatementLines.for(subject.def_node, source, mutation.start_offset)]
+      lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
       lines.any? { |l| l != def_line && body.cover?(l) && coverage_map.ran_at_load?(source_file, l) }
     end
 

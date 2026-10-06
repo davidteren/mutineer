@@ -7,5 +7,10 @@ class PriceList
     base * 2
   end
 
+  # Runs at test time only, and the test kills its mutant.
+  def self.discount(cents)
+    cents - 1
+  end
+
   ALL = [price(3)].freeze
 end

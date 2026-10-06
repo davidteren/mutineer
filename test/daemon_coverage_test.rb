@@ -58,8 +58,9 @@ class DaemonCoverageTest < Minitest::Test
       rails: true, daemon: true, strategy: "reload", framework: "minitest"
     )
     aggregate, = Mutineer::Runner.execute(config)
-    assert_equal [:ran_at_load], aggregate.results.map(&:status).uniq
-    assert_nil aggregate.mutation_score
+    statuses = aggregate.results.to_h { |r| [r.subject.name, r.status] }
+    assert_equal({ price: :ran_at_load, discount: :killed }, statuses)
+    assert_equal 100.0, aggregate.mutation_score
   end
 
   # R8: a mutant on a line no provided test exercises is no_coverage (excluded from

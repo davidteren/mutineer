@@ -117,8 +117,7 @@ module Mutineer
         ))
       end
 
-      # Load lines alone are a real capture: every source line ran only at boot.
-      unless data && !((data["map"] || {}).empty? && Array(data["load_lines"]).empty?)
+      unless data && !(data["map"] || {}).empty?
         reason = data.is_a?(Hash) && data["error"] ? data["error"] : "empty map"
         warn_coverage_fallback(reason)
         return nil
