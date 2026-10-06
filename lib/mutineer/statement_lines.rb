@@ -52,7 +52,8 @@ module Mutineer
     # Whether `child` runs only sometimes when `parent` runs. Besides the
     # {SOMETIMES} nodes: the rescue side of `x rescue y`, the value of
     # `a ||= v` or `a &&= v`, the right side of `a || b` or `a && b`, and the
-    # arguments and block of `x&.m(...)`, which do not run when `x` is nil.
+    # arguments and block of `x&.m(...)` and the value of `x&.m += v`, which do
+    # not run when `x` is nil.
     #
     # @param parent [Prism::Node]
     # @param child [Prism::Node]
@@ -64,6 +65,9 @@ module Mutineer
       if parent.is_a?(Prism::CallNode) && parent.safe_navigation?
         return child.equal?(parent.arguments) || child.equal?(parent.block)
       end
+      # `a&.b += v` skips `v` when `a` is nil, like `a&.b ||= v`.
+      return true if parent.respond_to?(:safe_navigation?) && parent.safe_navigation? &&
+                     parent.respond_to?(:value) && child.equal?(parent.value)
 
       parent.class.name.end_with?("OrWriteNode", "AndWriteNode") && child.equal?(parent.value)
     end
