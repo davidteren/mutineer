@@ -68,6 +68,38 @@ class DaemonClientTest < Minitest::Test
     end
   end
 
+  # #102: a boot file that prints to stdout must not break the JSON handshake.
+  # Every route to fd 1 lands on stderr; mutants still run afterwards.
+  def test_boot_stdout_goes_to_stderr_not_the_protocol
+    Dir.mktmpdir("daemon-noisy-boot-") do |dir|
+      boot = File.join(dir, "noisy_boot.rb")
+      File.write(boot, <<~RUBY)
+        require #{File.join(APP, "config/environment").inspect}
+        puts "noisy puts"
+        STDOUT.puts "noisy STDOUT"
+        $stdout.puts "noisy $stdout"
+        IO.for_fd(1, autoclose: false).syswrite("noisy fd1\\n")
+        system("echo noisy subprocess")
+      RUBY
+      errio = StringIO.new
+      client = Mutineer::DaemonClient.new(boot: boot_config.merge(boot: boot), app_root: APP, errio: errio).start
+      begin
+        assert_equal "survived", run_payload(client, 1, ORIGINAL)
+        killed = ORIGINAL.sub("quantity * unit_price_cents", "quantity + unit_price_cents")
+        assert_equal "killed", run_payload(client, 2, killed)
+        expected = ["noisy puts", "noisy STDOUT", "noisy $stdout", "noisy fd1", "noisy subprocess"]
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
+        until expected.all? { |line| errio.string.include?(line) } ||
+              Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+          Thread.pass
+        end
+        expected.each { |line| assert_includes errio.string, line }
+      ensure
+        client.quit
+      end
+    end
+  end
+
   # A bad boot path surfaces as a clean DaemonBootError, not a hang.
   def test_bad_boot_raises_clean_error
     bad = boot_config.merge(boot: File.join(APP, "config/does_not_exist"))

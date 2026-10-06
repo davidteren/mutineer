@@ -50,6 +50,13 @@ All notable changes to this project are documented here. The format is based on
   the PR's head commit. With a `RELEASE_PR_TOKEN` secret set, the push
   triggers CI as before and no dispatch is made.
 
+- **A boot file that prints to stdout no longer breaks the daemon handshake
+  (#102).** Output from `puts`, `STDOUT`, `$stdout`, a direct fd 1 write, or a
+  subprocess reached the JSON channel before the ready message, so the daemon
+  failed with "daemon exited before the handshake". The daemon now keeps a
+  private copy of its original stdout for the protocol and points the app's
+  stdout at stderr, where that output stays visible.
+
 ## [1.5.0] - 2026-10-06
 
 ### Added
