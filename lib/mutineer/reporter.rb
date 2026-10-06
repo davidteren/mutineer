@@ -414,7 +414,7 @@ module Mutineer
       file = result.subject&.file
       kills = result.kills
       {
-        subject: result.subject&.qualified_name, file: file, line: matrix_row_line(result),
+        subject: result.subject&.qualified_name, file: file, line: result_line(result),
         operator: result.mutation&.operator&.to_s, id: result.id, status: result.status.to_s,
         killed_by: kills.killed_by.map { |test| index.fetch(test) }.sort,
         ran: kills.ran.size, complete: kills.complete
@@ -460,16 +460,17 @@ module Mutineer
     # @param result [Mutineer::Result] a result with a {Kills} row.
     # @return [String]
     def matrix_row_label(result)
-      place = [result.subject&.file, matrix_row_line(result)].compact.join(":")
+      place = [result.subject&.file, result_line(result)].compact.join(":")
       "#{result.subject&.qualified_name} (#{place}) #{result.mutation&.operator} #{result.status} #{result.id}".squeeze(" ")
     end
 
-    # The 1-based line of a row's mutation, or nil without one.
+    # The 1-based line of a result's mutation, or nil without one (a pre-fork
+    # failure has no subject or mutation).
     #
     # @api private
-    # @param result [Mutineer::Result] a result with a {Kills} row.
+    # @param result [Mutineer::Result] any result.
     # @return [Integer, nil]
-    def matrix_row_line(result)
+    def result_line(result)
       file = result.subject&.file
       return unless result.mutation && file
 
@@ -618,14 +619,7 @@ module Mutineer
     # @param result [Mutineer::Result] result object.
     # @return [Hash] no-coverage JSON object.
     def no_coverage_json(result)
-      m = result.mutation
-      file = result.subject.file
-      source = @source_map[file] || File.read(file)
-      {
-        subject: result.subject.qualified_name,
-        file: file,
-        line: source.byteslice(0, m.start_offset).count("\n") + 1
-      }
+      { subject: result.subject.qualified_name, file: result.subject.file, line: result_line(result) }
     end
 
     # An entry under the JSON `no_verdict:` key: an attempted mutant with no verdict.
@@ -637,16 +631,10 @@ module Mutineer
     # @param result [Mutineer::Result] an errored or timed-out result.
     # @return [Hash] no-verdict JSON object.
     def no_verdict_json(result)
-      file = result.subject&.file
-      line =
-        if result.mutation && file
-          source = @source_map[file] || File.read(file)
-          source.byteslice(0, result.mutation.start_offset).count("\n") + 1
-        end
       {
         subject: result.subject&.qualified_name,
-        file: file,
-        line: line,
+        file: result.subject&.file,
+        line: result_line(result),
         id: result.id,
         status: result.status.to_s,
         details: result.details

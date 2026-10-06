@@ -39,6 +39,7 @@ module Mutineer
         # @param options [Hash]
         # @return [Object]
         def run_suite(reporter, options = {})
+          KillRecorder.class_starting(self)
           KillRecorder.skipping { super }
         end
       end
@@ -51,6 +52,7 @@ module Mutineer
         # @param options [Hash]
         # @return [Object]
         def run(reporter, options = {})
+          KillRecorder.class_starting(self)
           KillRecorder.skipping { super }
         end
       end
@@ -72,11 +74,6 @@ module Mutineer
         #
         # @return [IO, nil]
         attr_accessor :channel
-
-        # Names of the loaded test classes that run in parallel.
-        #
-        # @return [Array<String>, nil]
-        attr_accessor :parallel_classes
 
         # True once the `parallel` line has gone out.
         #
@@ -123,7 +120,6 @@ module Mutineer
           self.armed_pid = Process.pid
           self.armed_reporter = nil
           self.channel = channel
-          self.parallel_classes = runnables.select { |klass| parallel?(klass) }.map(&:to_s)
           self.parallel_marked = false
           self.runnables = runnables
           self.seen = 0
@@ -163,9 +159,21 @@ module Mutineer
           self.armed_pid = nil
           self.armed_reporter = nil
           self.channel = nil
-          self.parallel_classes = nil
           self.runnables = nil
           self.serial_killed = false
+        end
+
+        # Writes the `parallel` line when the first parallel class starts. The
+        # class object is known here, so an anonymous class (which Minitest
+        # records with no name) counts too. Minitest runs every serial class
+        # first, so a kill before this line came from a serial test.
+        #
+        # @param klass [Class] the test class starting its run.
+        # @return [void]
+        def class_starting(klass)
+          return unless channel && armed_here? && parallel?(klass)
+
+          LOCK.synchronize { mark_parallel }
         end
 
         # Runs the block between `skip` and `unskip` when a serial test has
@@ -187,8 +195,8 @@ module Mutineer
         # Sends one result recorded on `reporter`: a pass, or a kill for a
         # failure or an error. Skips send no test line, though they count as
         # seen, and results on other reporters count for nothing. The
-        # `parallel` line goes out before the first result of a parallel class,
-        # so a kill that precedes it came from a serial test.
+        # `parallel` line goes out when the first parallel class starts (see
+        # {.class_starting}), so a kill that precedes it came from a serial test.
         #
         # @param reporter [Minitest::CompositeReporter] the recording reporter.
         # @param result [Minitest::Result] the result of one test.
@@ -198,7 +206,6 @@ module Mutineer
 
           LOCK.synchronize do
             self.seen += 1
-            mark_parallel if parallel_classes.include?(result.klass.to_s)
             next if result.skipped?
 
             event = result.passed? ? KillChannel::PASS : KillChannel::KILL

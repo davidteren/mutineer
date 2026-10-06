@@ -145,6 +145,7 @@ module Mutineer
           # do not marshal); reattach subject+mutation+id in the parent, in order.
           # filter_map drops nils for jobs --fail-fast left unscheduled.
           share_tests(bare.each_with_index.filter_map do |r, i|
+            r = unreported_row(r) if r && config.matrix
             r&.with(subject: jobs[i][0], mutation: jobs[i][1], id: jobs[i][2])
           end)
         ensure
@@ -152,6 +153,18 @@ module Mutineer
         end
 
       [AggregateResult.new(results + ignored_results), source_map, extras]
+    end
+
+    # A `--matrix` error that carries no {Kills} row (the worker crashed, or its
+    # result was lost) gets an empty, incomplete row: its tests never reported,
+    # so a blind test may have killed it, and the report must say so.
+    #
+    # @param result [Mutineer::Result] a worker's result.
+    # @return [Mutineer::Result]
+    def self.unreported_row(result)
+      return result unless result.error? && result.kills.nil?
+
+      result.with(kills: Kills.new(killed_by: [], ran: [], complete: false))
     end
 
     # Collect every (subject, mutation, id) up front so a backend can run them.

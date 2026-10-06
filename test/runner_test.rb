@@ -237,6 +237,17 @@ class RunnerTest < Minitest::Test
     refute matrix.kills.complete
   end
 
+  # #191 review: under --matrix, an error with no row (a crashed worker, a
+  # lost result) gets an empty, incomplete row, so the report warns about it.
+  # Other results keep what they have: a no-coverage mutant never ran.
+  def test_unreported_row_marks_an_error_without_a_row_incomplete
+    row = Mutineer::Runner.unreported_row(Mutineer::Result.error("worker crashed: boom")).kills
+    assert_equal [[], [], false], [row.killed_by, row.ran, row.complete]
+    assert_nil Mutineer::Runner.unreported_row(Mutineer::Result.no_coverage).kills
+    kept = Mutineer::Kills.new(killed_by: [], ran: [], complete: true)
+    assert_same kept, Mutineer::Runner.unreported_row(Mutineer::Result.survived.with(kills: kept)).kills
+  end
+
   private
 
   def with_rails_env(value)
