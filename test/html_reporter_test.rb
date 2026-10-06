@@ -127,6 +127,14 @@ class HtmlReporterTest < Minitest::Test
     assert_includes html, "<h3>Incomplete rows (1)</h3>\n<ul>\n<li>Pricing#total (#{FILE}:3) comparison timeout abc123def456</li>"
   end
 
+  # PR #183 review: the HTML summary keeps timeouts apart from errored
+  # mutants, as the human and JSON reports do.
+  def test_summary_counts_timeouts_apart_from_errors
+    html = render([Mutineer::Result.error("boom"), Mutineer::Result.timeout, Mutineer::Result.timeout])
+    assert_includes html, "<span><strong>1</strong> errored</span>"
+    assert_includes html, "<span><strong>2</strong> timeout</span>"
+  end
+
   def test_no_matrix_section_without_the_flag
     refute_includes render([survivor]), "Kill matrix"
   end

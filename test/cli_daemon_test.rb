@@ -75,9 +75,8 @@ class CliDaemonTest < Minitest::Test
   def test_daemon_warns_that_timeout_flags_have_no_effect
     _, err, = mutineer("run", "x.rb", "--test", "t.rb", "--daemon", "--rails", "--timeout", "30",
                        "--capture-timeout", "300")
-    assert_includes err, "--timeout (timeout: in .mutineer.yml) has no effect with --daemon " \
-                         "(it applies to in-process runs only); ignoring it."
-    assert_includes err, "--capture-timeout (capture_timeout: in .mutineer.yml) has no effect with --daemon"
+    assert_includes err, "--timeout has no effect with --daemon (it applies to in-process runs only); ignoring it."
+    assert_includes err, "--capture-timeout has no effect with --daemon"
   end
 
   def test_daemon_forces_reload_when_redefine_requested

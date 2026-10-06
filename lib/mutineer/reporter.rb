@@ -288,7 +288,7 @@ module Mutineer
         "survived" => @agg.survived_count, "no_coverage" => @agg.no_coverage_count,
         "uncapturable" => @agg.uncapturable_count, "ignored" => @agg.ignored_count,
         "skipped" => @agg.skipped_invalid_count,
-        "errored" => @agg.errored_count + @agg.timeout_count
+        "errored" => @agg.errored_count, "timeout" => @agg.timeout_count
       }
       spans = counts.map { |k, v| "<span><strong>#{v}</strong> #{esc(k)}</span>" }.join("\n  ")
       "<div class=\"counts\">\n  #{spans}\n</div>"

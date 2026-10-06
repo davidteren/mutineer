@@ -352,10 +352,10 @@ module Mutineer
     # @param backend [String] the backend's flag.
     # @return [void]
     def self.warn_unused_timeouts(config, backend)
-      CONFIG_OPTIONS.select { |o| %i[timeout capture_timeout].include?(o.field) }.each do |opt|
-        next unless config.explicit?(opt.field)
+      %i[timeout capture_timeout].each do |key|
+        next unless config.explicit?(key)
 
-        warn "[mutineer] #{opt.flag} (#{opt.yaml_key}: in .mutineer.yml) has no effect with #{backend} " \
+        warn "[mutineer] #{config.origin(key)} has no effect with #{backend} " \
              "(it applies to in-process runs only); ignoring it."
       end
     end
