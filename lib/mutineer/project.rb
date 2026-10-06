@@ -82,6 +82,9 @@ module Mutineer
       # @param node [Prism::CallNode] call node.
       # @return [void]
       def visit_call_node(node)
+        if %i[public private protected].include?(node.name) && node.receiver.nil? && node.arguments.nil?
+          @module_function_active = false # without arguments, Ruby goes back to instance methods
+        end
         if node.name == :module_function && node.receiver.nil?
           args = node.arguments&.arguments || []
           if args.empty?
@@ -109,7 +112,9 @@ module Mutineer
         return unless node.expression.is_a?(Prism::SelfNode)
 
         @singleton_depth += 1
+        saved_active = @module_function_active
         super
+        @module_function_active = saved_active # a visibility call in here is not the module body's
         @singleton_depth -= 1
       end
 
@@ -126,7 +131,9 @@ module Mutineer
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node
         )
+        saved_active = @module_function_active
         super
+        @module_function_active = saved_active # a visibility call in a method body runs only when it is called
       end
 
       private

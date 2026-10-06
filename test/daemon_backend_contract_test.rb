@@ -68,6 +68,10 @@ class DaemonBackendContractTest < Minitest::Test
       assert_nil boot[:schema], "no db/schema.rb in this app, so the daemon skips worker-DB schema loading"
       assert boot[:rails]
       refute boot[:coverage], "worker daemons boot with Coverage off; only the map-building daemon enables it"
+      assert_nil boot[:capture_timeout], "no --capture-timeout: the daemon uses the default"
+      config.capture_timeout = 300
+      assert_equal 300, Mutineer::DaemonBackend.boot_config(config, [test], coverage: true)[:capture_timeout],
+                   "PR #183 review: the map-building daemon gets --capture-timeout"
     end
   end
 

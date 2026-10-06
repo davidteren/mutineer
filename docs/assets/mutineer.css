@@ -246,6 +246,47 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
   .prose pre { padding: 16px; font-size: 12px; }
   .doc-lede { font-size: 18px; }
 }
+/* Field report in the hero: an outside result, with a bar showing the drop. */
+.hero-proof { position: relative; display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 12px 32px; margin: 0 0 8px; padding: 22px 24px 26px; background: var(--bg-2); border: 1px solid var(--accent); overflow: hidden; }
+.hero-proof .kicker { color: var(--accent); }
+.hero-proof-num { margin: 0; display: flex; align-items: baseline; gap: 14px; }
+.hero-proof-num .odo { display: inline-block; min-width: 5.4ch; /* room for 17,702 while it counts */ font-size: 44px; font-weight: 700; letter-spacing: -.045em; line-height: 1; color: var(--accent); }
+.hero-proof-num small { font: 12px/1.4 var(--mono); color: var(--fg-dim); max-width: 18ch; }
+.hero-proof-by { margin: 0; font-size: 14px; color: var(--fg-dim); max-width: 60ch; }
+.hero-proof > a { font-size: 13px; white-space: nowrap; }
+.proof-meter { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--bg-3); }
+.proof-meter span { display: block; height: 100%; width: var(--to, 100%); background: var(--accent); }
+.odo { font-variant-numeric: tabular-nums; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 1100px) { .hero-proof { grid-template-columns: 1fr auto; } .hero-proof-by { grid-column: 1 / -1; } }
+@media (max-width: 600px) { .hero-proof { grid-template-columns: 1fr; } }
+
+/* Motion. mutineer.js adds .motion to <html> only when the browser can observe
+   scrolling and the visitor has not asked for reduced motion, so without it
+   every element shows in its final state. */
+.scroll-progress { position: fixed; z-index: 60; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); transform-origin: left; transform: scaleX(0); pointer-events: none; }
+@media print { .scroll-progress { display: none; } }
+@media screen and (prefers-reduced-motion: no-preference) {
+  .motion .reveal:not(.is-in) { opacity: 0; transform: translateY(14px); }
+  .motion .reveal.is-in { animation: enter 560ms var(--ease-out) var(--d, 0ms) both; }
+  /* Rows only fade: moving them would spill past the table's scroll box. */
+  .motion tr.reveal:not(.is-in) { transform: none; }
+  .motion tr.reveal.is-in { animation-name: fade-in; }
+  .motion .glyph-arrow { display: inline-block; animation: glyph-nudge 2.4s ease-in-out 2; /* 4.8 s: under the 5 s limit of WCAG 2.2.2 */ }
+  .motion .step.reveal { border-top-color: transparent; position: relative; }
+  .motion .step.reveal::after { content: ""; position: absolute; left: 0; right: 0; top: -2px; height: 2px; background: var(--fg); transform: scaleX(0); transform-origin: left; transition: transform 800ms var(--ease-out) calc(var(--d, 0ms) + 120ms); }
+  .motion .step.reveal.is-in::after { transform: scaleX(1); }
+  .motion .typed { display: inline-block; }
+  .motion .typed:not(.is-in) { clip-path: inset(0 100% 0 0); }
+  .motion .typed.is-in { animation: type-in 1s steps(20) calc(var(--d, 0ms) + 250ms) both; }
+  .motion .btn span[aria-hidden] { display: inline-block; transition: transform 180ms var(--ease-out); }
+  .motion .btn:hover span[aria-hidden] { transform: translate(3px, -3px); }
+  .motion .proof-meter span.armed { width: 100%; }
+  .motion .proof-meter span.armed.go { width: var(--to); transition: width 1800ms var(--ease-out); }
+}
+@keyframes glyph-nudge { 0%, 100% { transform: none; opacity: 1; } 50% { transform: translateX(10px); opacity: .6; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes type-in { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }

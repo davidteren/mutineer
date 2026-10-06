@@ -4,6 +4,10 @@ test('theme, keyboard disclosure, copy and mobile navigation work together', asy
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.goto('/');
   const root = page.locator('html');
+  // Reduced motion: no motion layer, and every number is final at once.
+  await expect(root).not.toHaveClass(/\bmotion\b/);
+  await expect(page.locator('.scroll-progress, .visually-hidden, .reveal')).toHaveCount(0);
+  expect(await page.locator('.odo').allTextContents()).toEqual(['20', '01', '8,170', '24']);
   await expect(root).toHaveAttribute('data-theme', 'dark');
   const summary = page.locator('.boundary-test summary');
   await summary.focus();
@@ -55,4 +59,56 @@ test('content and disclosure remain usable without JavaScript', async ({ browser
   } finally {
     await context.close();
   }
+});
+
+test('printing before scrolling shows the real numbers', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+  expect(await page.locator('.evidence-strip .odo').textContent()).toBe('\u20070');
+  await page.evaluate(() => dispatchEvent(new Event('beforeprint')));
+  expect(await page.locator('.odo').allTextContents()).toEqual(['20', '01', '8,170', '24']);
+  await expect(page.locator('.visually-hidden')).toHaveCount(0);
+});
+
+test('turning on reduced motion mid-visit finishes the counts', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.setViewportSize({ width: 1280, height: 1100 });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const hero = page.locator('.hero-proof .odo');
+  // The 1.8 s count must still be running, or this test proves nothing.
+  expect(await hero.textContent()).not.toBe('8,170');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  // The change arrives asynchronously. Polling every 50 ms for 500 ms is far
+  // shorter than the 1.8 s count, so only the fix can finish it in time.
+  await expect.poll(() => hero.textContent(), { timeout: 500, intervals: [50] }).toBe('8,170');
+  await expect(page.locator('.hero-proof .visually-hidden')).toHaveCount(0);
+});
+
+test('motion keeps step labels, true numbers and every section visible', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveClass(/\bmotion\b/);
+  // Screen readers, find-in-page and copy get the real figure at once.
+  await expect(page.locator('.hero-proof .visually-hidden').first()).toHaveText('8,170');
+  const labels = await page.locator('.step').evaluateAll(steps => steps.map(s => getComputedStyle(s, '::before').content));
+  expect(labels).toEqual(Array(3).fill(expect.stringMatching(/counter\(step\)/)));
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  for (let y = 0; y < height; y += 300) {
+    await page.evaluate(top => scrollTo(0, top), y);
+    await page.waitForTimeout(40);
+  }
+  await page.waitForTimeout(2000);
+  const state = await page.evaluate(() => ({
+    hidden: [...document.querySelectorAll('.reveal, .typed')].filter(e => getComputedStyle(e).opacity === '0' || getComputedStyle(e).clipPath.includes('100%')).length,
+    numbers: [...document.querySelectorAll('.odo')].map(e => e.textContent),
+    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+  }));
+  expect(state).toEqual({ hidden: 0, numbers: ['20', '01', '8,170', '24'], overflow: 0 });
+  // After counting, each number reads once (no hidden copy left behind).
+  expect(await page.locator('.hero-proof-num').innerText()).toMatch(/^8,170\s/);
+  await expect(page.locator('.odo[aria-hidden], .visually-hidden')).toHaveCount(0);
+  expect(errors).toEqual([]);
 });

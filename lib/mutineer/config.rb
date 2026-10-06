@@ -39,8 +39,12 @@ module Mutineer
     ConfigOption.new(field: :ignore, type: :string_list, yaml_key: "ignore"),
     ConfigOption.new(field: :baseline, type: :string, yaml_key: "baseline", flag: "--baseline"),
     ConfigOption.new(field: :fail_fast, type: :bool, yaml_key: "fail_fast", flag: "--fail-fast"),
+    ConfigOption.new(field: :matrix, type: :bool, yaml_key: "matrix", flag: "--matrix"),
     ConfigOption.new(field: :test_command, type: :string, yaml_key: "test_command", flag: "--test-command"),
     ConfigOption.new(field: :daemon, type: :bool, yaml_key: "daemon", flag: "--daemon"),
+    ConfigOption.new(field: :timeout, type: :positive_int, yaml_key: "timeout", flag: "--timeout"),
+    ConfigOption.new(field: :capture_timeout, type: :positive_int, yaml_key: "capture_timeout",
+                     flag: "--capture-timeout"),
     ConfigOption.new(field: :format, type: :enum, flag: "--format", values: %w[human json html]),
     ConfigOption.new(field: :strategy, type: :enum, flag: "--strategy", values: %w[reload redefine],
                      aliases: STRATEGY_ALIASES),
@@ -58,6 +62,9 @@ module Mutineer
   # Config loading and the CLI > file > default precedence merge live here; each
   # layer holds only the keys the user wrote, and Config#explicit? reports them.
   #
+  # `matrix` (--matrix) runs every covering test for each mutant and reports
+  # which tests kill it (see KillMatrix); it never changes a verdict.
+  #
   # Boot mode adds: boot (a file to require ONCE in the parent so the app env,
   # e.g. Rails, is booted before forking; sources are then NOT manually required)
   # and rails (sugar: defaults boot to config/environment, prefers redefine without
@@ -70,7 +77,7 @@ module Mutineer
     # :daemon is user-facing (--daemon flag + KNOWN_KEYS + boolean coerce).
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
-    :daemon, :daemon_timeout,
+    :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix,
     keyword_init: true
   ) do
     # Config file name.
@@ -81,9 +88,12 @@ module Mutineer
 
     # @param explicit [Array<Symbol>] fields the user wrote (CLI or file). Derived
     #   values fill only the others; a programmatic Config.new writes none.
-    def initialize(explicit: [], **kwargs)
+    # @param from_file [Array<Symbol>] the explicit fields whose value came from
+    #   the config file (the command line did not override them).
+    def initialize(explicit: [], from_file: [], **kwargs)
       super(**kwargs)
       @explicit = explicit.to_a.dup.freeze
+      @from_file = from_file.to_a.dup.freeze
       self.sources       ||= []
       self.tests         ||= []
       self.threshold     ||= 0.0
@@ -101,6 +111,7 @@ module Mutineer
       self.baseline_epsilon ||= 0.0
       self.fail_fast     = false if fail_fast.nil?
       self.daemon        = false if daemon.nil?
+      self.matrix        = false if matrix.nil?
     end
 
     # True when the user wrote `key`, on the command line or in the config
@@ -112,6 +123,17 @@ module Mutineer
     # @return [Boolean]
     def explicit?(key)
       @explicit.include?(key)
+    end
+
+    # Where the user set `key`, for messages: the config-file key (as
+    # `name in .mutineer.yml`) when its value came from the file, else the
+    # command-line flag.
+    #
+    # @param key [Symbol] Config field name (a row of the option schema).
+    # @return [String] e.g. `"--fail-fast"` or `"fail_fast in .mutineer.yml"`.
+    def origin(key)
+      opt = CONFIG_OPTIONS.find { |o| o.field == key } or raise ArgumentError, "unknown option #{key.inspect}"
+      @from_file.include?(key) && opt.yaml_key ? "#{opt.yaml_key} in #{CONFIG_FILE}" : (opt.flag || opt.yaml_key)
     end
 
     # Walk from `start` toward `home`, returning the first .mutineer.yml path found
@@ -134,10 +156,18 @@ module Mutineer
     end
 
     # Parse a .mutineer.yml into a symbol-keyed hash of recognized keys. Unknown
-    # keys / unknown operator names emit a one-line stderr warning and are ignored.
-    # A YAML syntax error raises ConfigError: never a silent fallback to defaults,
-    # and never an exit from the lib layer.
-    def self.from_file(path)
+    # keys emit a one-line stderr warning and are ignored. Unknown operator names
+    # warn and are dropped. If that leaves no names, the file is an error: an
+    # empty operator list would run nothing and exit 0. Pass
+    # +defer_operators: true+ only when the command line replaces that list, so
+    # a blank or all-unknown file list does not block +--operators+. A YAML
+    # syntax error raises ConfigError: never a silent fallback to defaults, and
+    # never an exit from the lib layer.
+    #
+    # @param path [String] config file path.
+    # @param defer_operators [Boolean] keep an empty operator list for a CLI override.
+    # @return [Hash{Symbol => Object}]
+    def self.from_file(path, defer_operators: false)
       raw = YAML.safe_load(File.read(path)) || {}
       name = File.basename(path)
       unless raw.is_a?(Hash)
@@ -154,8 +184,13 @@ module Mutineer
           next
         end
         field = field_for(ks)
-        parsed = parse(field, value, file: name)
-        parsed = filter_operators(parsed, name) if field == :operators
+        parsed = parse(field, value, file: name, defer_operators: defer_operators)
+        if field == :operators
+          parsed = filter_operators(parsed, name)
+          if parsed.empty? && !defer_operators
+            raise ConfigError, "#{name}: operators must name at least one known operator"
+          end
+        end
         out[field] = parsed
       end
       out
@@ -173,7 +208,7 @@ module Mutineer
     # @return [Mutineer::Config]
     def self.resolve(cli_opts, file_hash)
       user = file_hash.merge(cli_opts)
-      config = new(**user, explicit: user.keys)
+      config = new(**user, explicit: user.keys, from_file: file_hash.keys - cli_opts.keys)
 
       # --rails sugar: boot config/environment. Prefer redefine only for the
       # in-process path (daemon is whole-file reload only). In-process --rails
@@ -227,9 +262,12 @@ module Mutineer
     # @param value [Object] raw CLI string or YAML value.
     # @param file [String, nil] config file name when the value came from it;
     #   nil when it came from the command line.
+    # @param defer_operators [Boolean] when true, a blank operator list is
+    #   returned instead of raising, so +--operators+ can replace it. The flag
+    #   itself still rejects a blank list.
     # @return [Object] the typed value.
     # @raise [Mutineer::ConfigError] when the value does not fit the field's type.
-    def self.parse(field, value, file: nil)
+    def self.parse(field, value, file: nil, defer_operators: false)
       opt = CONFIG_OPTIONS.find { |o| o.field == field } or raise ArgumentError, "unknown option #{field.inspect}"
       origin = file ? "#{file}: #{opt.yaml_key}" : opt.flag
       got = "(got: #{value.inspect})"
@@ -260,7 +298,16 @@ module Mutineer
 
         prefix = file ? "#{file}: " : ""
         raise ConfigError, "#{prefix}unknown #{field} #{value.to_s.inspect}. Expected: #{opt.values.join(', ')}"
-      when :string_list then Array(value).map(&:to_s)
+      when :string_list
+        items = Array(value).map(&:to_s)
+        # Only `operators` treats [] as "run these" rather than "use the
+        # default". A blank key then makes no mutants and exits 0. An empty
+        # `require` or `ignore` matches the default, so those stay valid.
+        if field == :operators && !defer_operators && ([nil, true, false].include?(value) || items.empty? || items.all? { |item| item.strip.empty? })
+          raise ConfigError, "#{origin} must name at least one operator, not blank #{got}"
+        end
+
+        items
       when :string
         # A key written with no value (`baseline:`) parses as nil. Keeping nil
         # would switch the feature off without a word; main failed here, so the

@@ -9,10 +9,10 @@ require "tmpdir"
 class RSpecIntegrationTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
-  def run_mutineer(tests:, sources: ["test/fixtures/rspec/calculator.rb"])
+  def run_mutineer(tests:, sources: ["test/fixtures/rspec/calculator.rb"], matrix: false, operators: ["arithmetic"])
     config = Mutineer::Config.new(
-      sources: sources, tests: tests,
-      framework: "rspec", operators: ["arithmetic"],
+      sources: sources, tests: tests, matrix: matrix,
+      framework: "rspec", operators: operators,
       cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
     )
     aggregate, = Mutineer::Runner.execute(config)
@@ -93,4 +93,88 @@ class RSpecIntegrationTest < Minitest::Test
       assert_match(/fails unrelated/, stderr)
     end
   end
+
+  # The RSpec mirror of the kill-matrix oracle: the weak "adds" example kills
+  # nothing, both "multiplies" examples kill the multiply mutant, and only the
+  # strong "adds" kills the add mutant.
+  def test_kill_matrix_names_blind_and_redundant_examples
+    weak = "test/fixtures/rspec/calculator_weak_spec.rb"
+    strong = "test/fixtures/rspec/calculator_strong_spec.rb"
+    result = run_mutineer(tests: [weak, strong], matrix: true)
+    matrix = Mutineer::KillMatrix.new(result.results)
+
+    assert_equal 2, result.killed_count
+    assert_predicate matrix, :complete?
+    assert_equal [[weak, "RSpecCalculator adds"]], matrix.blind.map { |file, name, _id| [file, name] }
+    assert_equal [[strong, "RSpecCalculator multiplies"], [weak, "RSpecCalculator multiplies"]],
+                 matrix.redundant.map { |file, name, _id| [file, name] }
+  end
+
+
+  def names(tests) = tests.map { |_file, name, _id| name }
+  def scoped_id(test) = test.last[/\[[\d:]+\]\z/]
+
+  # Two examples share the description "checks", and one shared group is
+  # included twice. Keyed on the example id, each is its own test: the first
+  # "checks" is blind, and the second is the only killer of `>` -> `>=`.
+  def test_kill_matrix_tells_apart_examples_that_share_a_description
+    result = run_mutineer(sources: ["test/fixtures/rspec/matrix_calc.rb"],
+                          tests: ["test/fixtures/rspec/matrix_calc_spec.rb"],
+                          operators: %w[arithmetic comparison], matrix: true)
+    km = Mutineer::KillMatrix.new(result.results)
+
+    assert_predicate km, :complete?
+    assert_equal 8, km.tests.size
+    assert_equal ["MatrixCalc dup checks"], names(km.blind)
+    assert_equal "[1:4:1]", scoped_id(km.blind.first)
+    pos = result.results.find { |r| r.subject.name == :pos? && r.mutation.replacement == ">=" }
+    assert_equal ["[1:4:2]"], pos.kills.killed_by.map { |t| scoped_id(t) }
+    assert_equal ["MatrixCalc adds again", "MatrixCalc adds first", "MatrixCalc aggregates",
+                  "MatrixCalc behaves like a matrix adder adds via shared",
+                  "MatrixCalc behaves like a matrix adder adds via shared"], names(km.redundant)
+  end
+
+  # A parameterized shared group, defined in another file, included twice in
+  # one group: the two inclusions share a full description. A before(:context)
+  # that raises under a mutant fails the examples of its group.
+  def test_kill_matrix_tells_apart_parameterized_shared_examples
+    result = run_mutineer(sources: ["test/fixtures/rspec/matrix_calc.rb"],
+                          tests: ["test/fixtures/rspec/matrix_params_spec.rb"], matrix: true)
+    km = Mutineer::KillMatrix.new(result.results)
+    shared = "test/fixtures/rspec/matrix_shared.rb"
+
+    adds = km.tests.select { |file, _name, _id| file == shared }
+    assert_equal ["MatrixCalc behaves like matrix adds adds correctly"] * 2, names(adds)
+    assert_equal ["[1:1:1]"], km.blind.map { |t| scoped_id(t) }
+    assert_equal [shared], km.blind.map(&:first)
+    mul = result.results.find { |r| r.subject.name == :mul }
+    assert_equal ["MatrixCalc multiplies", "MatrixCalc with a before(:context) that raises under a mutant inner one"],
+                 names(mul.kills.killed_by)
+  end
+
+  # The suite's after(:suite) hook exits 0, which plain RSpec runs even after
+  # a failed example, so the run without --matrix scores the mutant survived.
+  def test_matrix_keeps_the_verdict_of_a_suite_hook_that_exits
+    args = { sources: ["test/fixtures/rspec/matrix_calc.rb"], operators: ["comparison"],
+             tests: ["test/fixtures/rspec/matrix_cleanup_spec.rb"] }
+    plain = run_mutineer(**args)
+    matrix = run_mutineer(**args, matrix: true)
+
+    assert_equal plain.results.to_h { |r| [r.id, r.status] }, matrix.results.to_h { |r| [r.id, r.status] }
+    pos = matrix.results.find { |r| r.subject.name == :pos? && r.mutation.replacement == ">=" }
+    assert_predicate pos, :survived?
+    refute pos.kills.complete
+  end
+
+  # An example without a description is worded from its matcher, so its name
+  # changes with the mutant. Its example id does not, and it is one test.
+  def test_kill_matrix_keeps_one_test_for_an_example_whose_description_changes
+    result = run_mutineer(sources: ["test/fixtures/rspec/matrix_calc.rb"], operators: ["arithmetic"],
+                          tests: ["test/fixtures/rspec/matrix_generated_spec.rb"], matrix: true)
+    km = Mutineer::KillMatrix.new(result.results)
+
+    assert_equal 2, km.tests.size
+    assert_empty km.blind
+  end
+
 end
