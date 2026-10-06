@@ -291,6 +291,8 @@ module Mutineer
         # instrumentation/memory across every mutant fork). `sources`/`tests` are the
         # map-build inputs.
         coverage: coverage,
+        # The map-building daemon's capture limit (--capture-timeout); nil = default.
+        capture_timeout: config.capture_timeout,
         sources: config.sources.map { |s| File.expand_path(s, config.project_root) },
         tests: abs_tests
       }

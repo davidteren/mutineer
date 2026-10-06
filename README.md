@@ -14,7 +14,8 @@ testing anything.
 - **Fork-isolated**, parallel execution (Linux + macOS).
 - **Coverage-guided** — each mutant runs only the test files that cover its line.
 - **Stops at the first failing test** — in-process runs (not `--daemon` or
-  `--test-command`) stop a mutant's test run at the first failure.
+  `--test-command`) stop a mutant's test run at the first failure, unless
+  `--matrix` asks for every covering test.
 
 📖 **[mutineer.github.io →](https://davidteren.github.io/mutineer/)** — overview, operators, and usage.
 
@@ -33,7 +34,7 @@ gem "mutineer", group: :test
 ## Usage
 
 ```sh
-mutineer run <source...> --test <test...> [options]
+mutineer run <source...> --test <test> [--test <test>...] [options]
 ```
 
 Mutate `lib/calculator.rb`, checking it against its test, and fail CI if the
@@ -47,7 +48,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 
 | Flag | Meaning |
 |------|---------|
-| `--test FILE` | Test file covering the sources (repeatable) |
+| `--test FILE` | Test file covering the sources; one file per flag, so repeat it for each (`--test a_test.rb --test b_test.rb`) |
 | `--operators LIST` | Comma-separated operator names (default: the Tier-1 set) |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
 | `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
@@ -62,14 +63,15 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--verbose` | Surface the real error when a fork capture fails (alias `--debug`) |
 | `--strategy NAME` | Mutation application: `reload` whole-file (default) or `redefine` surgical (`7a`/`7b` accepted as deprecated aliases) |
 | `--timeout SECONDS` | Per-mutant time limit for in-process runs, in whole seconds (default: 10). A mutant whose tests run longer is a `timeout`; see [Timeouts and the score](https://github.com/davidteren/mutineer#timeouts-and-the-score). `--daemon` and `--test-command` keep their own limits |
-| `--capture-timeout SECONDS` | Time limit for each in-process coverage-capture subprocess and for the clean run of the unmutated tests, in whole seconds (default: 120). A suite slower than this stops the run as not green |
+| `--capture-timeout SECONDS` | Time limit for each in-process coverage-capture subprocess and for the clean run of the unmutated tests, in whole seconds (default: 120). A suite slower than this stops the run as not green. `--daemon` uses it for its coverage capture; `--test-command` ignores it and says so |
 | `--cache-dir DIR` | Directory for the coverage cache (default: `.mutineer`). Give two runs from the same project root different directories so they do not share `coverage.json` |
 | `--test-command CMD` | Run the suite as a subprocess in the app's own runtime (for apps on Ruby < 3.4); `CMD` must contain `%{files}`. See [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34) |
 | `--daemon` | Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so `--jobs N` is safe under Rails (needs `--rails`/`--boot`; not with `--test-command`). See [the daemon backend](https://github.com/davidteren/mutineer#faster-parallel-safe-rails-the---daemon-backend) |
 | `--format human\|json\|html` | Report format (default: human; `html` is a self-contained file) |
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--dry-run` | List candidate mutations without executing (honors suppression) |
-| `--fail-fast` | Stop at the first surviving mutant |
+| `--fail-fast` | Stop at the first surviving mutant (`--no-fail-fast` beats a `.mutineer.yml` `fail_fast:` key) |
+| `--matrix` | Run every covering test for each mutant and report the blind and redundant tests; the JSON report also lists each mutant's killers. In-process only; exits 2 with `--daemon`, `--test-command`, `--fail-fast` or `--dry-run`. RSpec needs 3.3 or later. `--no-matrix` beats a `.mutineer.yml` `matrix:` key. See [Kill matrix](https://github.com/davidteren/mutineer#kill-matrix) |
 | `--list-operators` | List available operators (default vs optional) and exit |
 | `--version`, `--help` | Print version / usage and exit |
 
@@ -226,7 +228,9 @@ shows the count in its `Timeout:` row, and the JSON report in `summary.timeout`.
 Under `--threshold`, a timeout is a mutant with no verdict. The run exits 1 when
 more than one mutant produced no verdict and they exceed 10% of those attempted,
 or when nothing could be scored and something broke. If a slow suite times out
-mutants that its tests would catch, raise `--timeout`.
+mutants that its tests would catch, raise `--timeout`. A limit set below what
+the suite needs does not raise the score: it turns those mutants into timeouts,
+and once they pass 10% of the attempted mutants the run fails.
 
 ## Suppressing equivalent mutants
 
@@ -287,6 +291,77 @@ Ids are relative to the directory you run mutineer from. mutineer finds
 (other than your home directory), it warns that the ignore ids will not match
 and tells you which directory to run from.
 
+## Kill matrix
+
+`--matrix` reports which tests kill each mutant, and from that, which tests
+add nothing to the suite.
+
+```sh
+mutineer run lib/calculator.rb --test test/calculator_test.rb --matrix
+```
+
+For each mutant, Mutineer runs every test in its covering files instead of
+stopping at the first failure, and records which tests failed. Coverage is
+recorded per test file, so that set also holds tests that never reach the
+mutated line; they pass and count as having run. A mutant's row is complete
+when its whole covering set ran and the suite returned normally (under
+Minitest, an `Interrupt` that cut the run short does not count as returning
+normally). The report
+names two kinds of test:
+
+- **Blind:** the test ran in at least one complete row and killed no mutant
+  in any row. It would still pass with this run's mutations of the code, so
+  it guards none of them. It can still check behavior outside this run's
+  mutants (code in other files, or edits no operator makes), so look at what
+  it asserts before you delete it, or give it an assertion that can fail.
+- **Redundant:** every mutant the test kills, another test kills too. That
+  makes it a candidate for deletion, one test at a time: two redundant tests
+  can be the only killers of one mutant, so re-run after each deletion.
+
+The answers cover this run's mutants only. A test of code outside the sources
+you passed kills nothing here, so mutate the code a test exercises before you
+call the test blind.
+
+The matrix changes no verdict, score or exit code: each mutant gets the
+verdict a run without `--matrix` gives. That run skips every later test,
+test class and example group after the first failure, so when a later one
+exits the process, crashes or runs into the time limit, the mutant is still
+`killed`. The run without `--matrix` still runs the code around the failing
+test (the rest of its Minitest class `run` wrapper, the `after(:all)` hooks of
+its RSpec groups) and the suite's own cleanup (RSpec's `after(:suite)`), so an
+end there keeps the exit status. A failure in a Minitest `parallelize_me!`
+class also keeps it: those run after every serial class and cannot be stopped
+once queued, while a failure in a serial class still stops the run.
+
+Under RSpec, `--matrix` needs RSpec 3.3 or later, whose example ids tell
+apart examples on one line. With an older RSpec every row is incomplete.
+
+The human report lists up to 20 blind and 20 redundant tests, and the HTML
+report lists them all. `--format json` adds a `matrix` block with every test
+and each mutant's killers (see the
+[JSON schema](https://davidteren.github.io/mutineer/json-schema.html#matrix)).
+A test is its file and its id. The name is `CalculatorTest#test_add` under
+Minitest, or the example's full description under RSpec, where the example id
+(`./spec/calc_spec.rb[1:2]`) tells apart examples that share a description
+and keeps an example whose generated description changes with the mutant as
+one test.
+
+Each mutant runs its whole covering set, so every mutant costs what a survivor
+costs. In 1.4, stopping at the first failure cut a full run of rack's
+`lib/rack/utils.rb` from 86 to 89 seconds down to 35 to 41, so expect a matrix
+run to take 2.1 to 2.5 times as long as a normal one. A mutant that reaches the
+per-mutant time limit (`--timeout`, 10 seconds by default) after a test already failed stays `killed`
+with its row marked incomplete. The report names each incomplete row and warns
+that a blind test may have killed one of those mutants, so do not delete a
+blind test until its rows are complete. Raise `--timeout` (or `timeout:` in
+`.mutineer.yml`) to get complete rows.
+
+`--matrix` runs on the in-process backend only. It exits 2 with `--daemon`,
+`--test-command`, `--fail-fast` or `--dry-run`, and the message says whether
+each setting came from the command line or `.mutineer.yml`. To run one of
+those with `matrix: true` in the file, pass `--no-matrix`; to run `--matrix`
+with `fail_fast: true` in the file, pass `--no-fail-fast`.
+
 ## CI gating
 
 Store a JSON run as a baseline, then fail the build only when a PR makes things
@@ -299,7 +374,12 @@ mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors
 `--baseline` reports which survivors are new (by [mutant id](https://github.com/davidteren/mutineer#mutant-ids)) and any score drop. It
 combines with `--threshold` (the worse of the two sets the exit code). Pass a
 directory (or several sources) to audit a whole layer in one boot — tests are
-auto-paired by convention and the report breaks down per source.
+auto-paired by convention and the report breaks down per source. A source
+`app/foo/bar.rb` pairs with `test/foo/bar_test.rb` and with unclaimed
+`test/foo/bar_*_test.rb` files in that directory, such as `bar_upsert_test.rb`.
+It does not take `user_session_test.rb` when `user_session.rb` exists in the same directory.
+It does not take `bar_upsert_guards_test.rb` when `bar_upsert.rb` exists.
+A spec that already pairs is left as that one file.
 
 ### GitHub Action
 
@@ -377,16 +457,17 @@ config file accepts these keys:
 | `timeout` | A positive integer; the per-mutant time limit in seconds (default 10) |
 | `capture_timeout` | A positive integer; the coverage-capture time limit in seconds (default 120) |
 | `cache_dir` | The coverage cache directory (default `.mutineer`) |
+| `matrix` | `true` or `false`; runs every covering test for each mutant and adds the kill matrix to the report |
 
-In 1.4, invalid values for known scalar keys exit 2 with a message naming the
-file and key. The list keys (`operators`, `require`, `ignore`) are not checked
-this way: an unknown operator name warns and is skipped, so `operators: [bogus]`
-runs no mutants and exits 0 (#167). Boolean keys take `true` or `false` (quoted forms also work), not `"yes"`.
+Invalid values for known scalar keys, and a blank `operators` list, exit 2
+with a message naming the file and key. An unknown operator name warns and
+is skipped. If none of the names are known, the run exits 2. An empty
+`require` or `ignore` list is valid. Boolean keys take `true` or `false` (quoted forms also work), not `"yes"`.
 `jobs` must be positive; a string value contains digits only. String values for
 `threshold` and the CLI-only `--baseline-epsilon` use plain decimals such as `90`
 or `0.5`, not `+2`, `1e2`, or `1_0`. String options such as `only` and `baseline`
 cannot be null or boolean. A blank `since` is invalid; use `since: false` to turn
-scoping off. Unknown keys and operator names warn and are ignored.
+scoping off. Unknown keys warn and are ignored. Unknown operator names warn and are skipped, and the run exits 2 when none remain. `--operators` replaces a blank or unknown file list.
 
 `format`, `strategy`, `output`, `baseline_epsilon`, and `dry_run` are CLI-only.
 For JSON output, use `--format json`, not a `format:` config key. To select RSpec

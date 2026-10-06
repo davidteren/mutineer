@@ -33,8 +33,12 @@ chmod +x "$SCRATCH/bin/mutineer"
 export PATH="$SCRATCH/bin:$PATH"
 
 git init -q --bare -b main "$SCRATCH/upstream.git"
+# Both repos set maintenance.auto in their own config (#174): a push runs it
+# in upstream.git, and run_step's `env -i` drops the caller's GIT_CONFIG_* env.
+git -C "$SCRATCH/upstream.git" config maintenance.auto false
 mkdir -p "$SCRATCH/repo" && cd "$SCRATCH/repo"
 git init -q -b main
+git config maintenance.auto false
 git config user.email "harness@test" && git config user.name "harness"
 git commit -q --allow-empty -m x
 git remote add origin "$SCRATCH/upstream.git" && git push -q origin main
@@ -117,3 +121,85 @@ run_step case10 STUB_REPORT="$SCRATCH/report-legacy.json"
 grep 'title=Old-format mutant ids' "$SCRATCH/case10/stdout.txt"
 [ "$(grep -c 'title=Old-format mutant ids' "$SCRATCH/case10/stdout.txt")" = "1" ] && echo "  OK: one old-format id warning" || echo "  FAIL: expected exactly one old-format id warning"
 grep -q 'title=Old-format mutant ids' "$SCRATCH/case1/stdout.txt" && echo "  FAIL: old-format id warning without legacy_id_matches" || echo "  OK: no old-format id warning when the report has no counts"
+
+echo; echo "== 11: exit 1 with output and baseline as the same file (expects exit 2, file unchanged) =="
+mkdir -p .mutineer
+cp "$SCRATCH/report.json" .mutineer/baseline.json
+ln -s baseline.json .mutineer/link.json
+before=$(cksum .mutineer/baseline.json)
+run_step case11 STUB_EXIT=1 OUTPUT=".mutineer/link.json" BASELINE="$(pwd)/.mutineer/baseline.json"
+after=$(cksum .mutineer/baseline.json)
+[ "$before" = "$after" ] && echo "  OK: same-file baseline kept" || echo "  FAIL: baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran despite the same file" || echo "  OK: same file rejected before running"
+grep -q 'Refresh the baseline with the CLI' "$SCRATCH/case11/stdout.txt" && echo "  OK: same-file message names the CLI" || echo "  FAIL: missing same-file message"
+
+echo; echo "== 11b: exit 1 with output a hard link of the baseline (expects exit 2) =="
+mkdir -p "$SCRATCH/case11b"
+cp "$SCRATCH/report.json" "$SCRATCH/case11b/baseline.json"
+ln "$SCRATCH/case11b/baseline.json" "$SCRATCH/case11b/hard.json"
+before=$(cksum "$SCRATCH/case11b/baseline.json")
+run_step case11b STUB_EXIT=1 OUTPUT="$SCRATCH/case11b/hard.json" BASELINE="$SCRATCH/case11b/baseline.json"
+after=$(cksum "$SCRATCH/case11b/baseline.json")
+[ "$before" = "$after" ] && echo "  OK: hard-link baseline kept" || echo "  FAIL: hard-link baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on a hard link" || echo "  OK: hard link rejected before running"
+
+echo; echo "== 12: exit 1 with output and baseline as two files (expects the report copied) =="
+mkdir -p "$SCRATCH/case12"
+cp "$SCRATCH/report.json" "$SCRATCH/case12/baseline.json"
+before=$(cksum "$SCRATCH/case12/baseline.json")
+run_step case12 STUB_EXIT=1 OUTPUT="$SCRATCH/case12/out.json" BASELINE="$SCRATCH/case12/baseline.json"
+after=$(cksum "$SCRATCH/case12/baseline.json")
+[ "$before" = "$after" ] && echo "  OK: distinct baseline kept" || echo "  FAIL: distinct baseline changed"
+[ -s "$SCRATCH/case12/out.json" ] && echo "  OK: distinct output delivered" || echo "  FAIL: distinct output missing"
+
+echo; echo "== 13: baseline only in .mutineer.yml, output is that file (expects exit 2) =="
+cat > .mutineer.yml <<'YAML'
+baseline: .mutineer/baseline.json
+YAML
+before=$(cksum .mutineer/baseline.json)
+run_step case13 STUB_EXIT=1 OUTPUT=".mutineer/baseline.json"
+after=$(cksum .mutineer/baseline.json)
+[ "$before" = "$after" ] && echo "  OK: yml baseline kept" || echo "  FAIL: yml baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on a yml baseline" || echo "  OK: yml baseline rejected before running"
+
+echo; echo "== 14: extra-args --baseline is the same file as output (expects exit 2) =="
+mkdir -p "$SCRATCH/case14"
+cp "$SCRATCH/report.json" "$SCRATCH/case14/baseline.json"
+before=$(cksum "$SCRATCH/case14/baseline.json")
+run_step case14 STUB_EXIT=1 OUTPUT="$SCRATCH/case14/baseline.json" EXTRA_ARGS="--baseline $SCRATCH/case14/baseline.json"
+after=$(cksum "$SCRATCH/case14/baseline.json")
+[ "$before" = "$after" ] && echo "  OK: extra-args baseline kept" || echo "  FAIL: extra-args baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on extra-args baseline" || echo "  OK: extra-args baseline rejected before running"
+
+echo; echo "== 14b: extra-args --base abbreviation is the same file (expects exit 2) =="
+run_step case14b STUB_EXIT=1 OUTPUT="$SCRATCH/case14/baseline.json" EXTRA_ARGS="--base $SCRATCH/case14/baseline.json"
+[ "$(cksum "$SCRATCH/case14/baseline.json")" = "$before" ] && echo "  OK: abbreviated baseline kept" || echo "  FAIL: abbreviated baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on abbreviated baseline" || echo "  OK: abbreviated baseline rejected before running"
+
+echo; echo "== 15: yml baseline and a different output (expects the report copied) =="
+mkdir -p "$SCRATCH/case15"
+before=$(cksum .mutineer/baseline.json)
+run_step case15 STUB_EXIT=1 OUTPUT="$SCRATCH/case15/out.json"
+after=$(cksum .mutineer/baseline.json)
+[ "$before" = "$after" ] && echo "  OK: yml baseline left in place" || echo "  FAIL: yml baseline changed on a different output"
+[ -s "$SCRATCH/case15/out.json" ] && echo "  OK: different output still delivered" || echo "  FAIL: different output was refused"
+
+echo; echo "== 16: numeric baseline in .mutineer.yml is the same file as output (expects exit 2) =="
+printf 'baseline: 123\n' > .mutineer.yml
+cp "$SCRATCH/report.json" 123
+before=$(cksum 123)
+run_step case16 STUB_EXIT=1 OUTPUT="123"
+after=$(cksum 123)
+[ "$before" = "$after" ] && echo "  OK: numeric baseline kept" || echo "  FAIL: numeric baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on a numeric baseline" || echo "  OK: numeric baseline rejected before running"
+
+echo; echo "== 17: same-file path escapes percent and newline (expects exit 2) =="
+mkdir -p "$SCRATCH/case17"
+weird="$SCRATCH/case17/a%b"$'\n'"c.json"
+cp "$SCRATCH/report.json" "$weird"
+before=$(cksum "$weird")
+run_step case17 STUB_EXIT=1 OUTPUT="$weird" BASELINE="$weird"
+after=$(cksum "$weird")
+[ "$before" = "$after" ] && echo "  OK: escaped-path baseline kept" || echo "  FAIL: escaped-path baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on an escaped path" || echo "  OK: escaped path rejected before running"
+grep '::error::' "$SCRATCH/case17/stdout.txt"
