@@ -1,0 +1,126 @@
+# frozen_string_literal: true
+
+require "open3"
+require "rbconfig"
+
+require_relative "test_helper"
+require "mutineer/daemon_client"
+require "mutineer/orphan_guard"
+require "mutineer/daemon_backend"
+require "tmpdir"
+
+# #101: a daemon that stops answering must not hang the run. These tests wire
+# a client to a stand-in daemon (a plain Ruby child that reads nothing and
+# replies nothing), so they need no app boot.
+class DaemonClientDeadlineTest < Minitest::Test
+  # A child that never replies and ignores stdin EOF, like a wedged daemon.
+  WEDGED = "trap('TERM') {}; sleep"
+
+  def setup
+    @client = Mutineer::DaemonClient.allocate
+    stdin, stdout, stderr, wait_thr = Open3.popen3(RbConfig.ruby, "-e", WEDGED)
+    @client.instance_variable_set(:@stdin, stdin)
+    @client.instance_variable_set(:@stdout, stdout)
+    @client.instance_variable_set(:@stderr, stderr)
+    @client.instance_variable_set(:@wait_thr, wait_thr)
+    @client.instance_variable_set(:@errio, StringIO.new)
+    @pid = wait_thr.pid
+  end
+
+  def teardown
+    @client.send(:close_io)
+  end
+
+  def test_read_line_gives_up_after_its_timeout
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    assert_nil @client.send(:read_line, 0.2)
+    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 5
+    assert @client.instance_variable_get(:@timed_out)
+  end
+
+  # The request waits for the mutant's own timeout plus REPLY_GRACE, then
+  # scores the mutant error and respawns, as for a crash.
+  def test_request_scores_error_and_respawns_when_the_daemon_never_replies
+    waited = nil
+    restarted = false
+    @client.define_singleton_method(:read_line) { |timeout = nil| (waited = timeout) && super(0.2) }
+    @client.define_singleton_method(:restart!) { restarted = true }
+    verdict = @client.request(id: 1, payload: { "code" => "" }, tests: [], timeout: 7)
+    assert_equal "error", verdict
+    assert_equal 7 + Mutineer::DaemonClient::REPLY_GRACE, waited
+    assert restarted
+  end
+
+  # A mutant or capture child runs in its own process group, so killing its
+  # parent does not reach it; its watchdog must end it once the parent is gone.
+  def test_mutant_child_dies_with_its_daemon
+    rd, wr = IO.pipe
+    daemon = fork do
+      rd.close
+      ready_rd, ready_wr = IO.pipe
+      parent = Process.pid
+      child = fork do
+        ready_rd.close
+        Process.setpgid(0, 0)
+        Mutineer::OrphanGuard.start(parent)
+        ready_wr.puts("watching") # the watchdog is running before the daemon exits
+        sleep 60
+      end
+      ready_wr.close
+      wr.puts("#{child} #{ready_rd.gets}")
+      exit!(0)
+    end
+    wr.close
+    pid, ready = rd.gets.split
+    child = pid.to_i
+    assert_equal "watching", ready, "the mutant child failed before its watchdog started"
+    Process.wait(daemon)
+    gone = 50.times.any? do
+      sleep 0.1
+      !process_alive?(child)
+    end
+    assert gone, "mutant child #{child} outlived its daemon"
+  ensure
+    Process.kill(:KILL, child) rescue nil if child&.positive? # rubocop:disable Style/RescueModifier
+  end
+
+  # A boot that timed out is not retried by a second daemon for the mutant
+  # runs, which would wait just as long; other boot errors still fall back.
+  def test_coverage_step_stops_on_a_boot_timeout_but_falls_back_otherwise
+    Dir.mktmpdir do |root|
+      config = Mutineer::Config.new(sources: [], tests: [], project_root: root, boot: "boot.rb")
+      [[Mutineer::DaemonBootTimeout, :raise], [Mutineer::DaemonBootError, :fallback]].each do |error, outcome|
+        original = Mutineer::DaemonClient.instance_method(:start)
+        Mutineer::DaemonClient.define_method(:start) { raise error, "boot failed" }
+        begin
+          if outcome == :raise
+            assert_raises(error) { Mutineer::DaemonBackend.build_coverage_map(config, []) }
+          else
+            _, err = capture_io { assert_nil Mutineer::DaemonBackend.build_coverage_map(config, []) }
+            assert_match(/coverage map unavailable/, err)
+          end
+        ensure
+          Mutineer::DaemonClient.define_method(:start, original)
+        end
+      end
+    end
+  end
+
+  def test_close_io_kills_a_daemon_that_ignores_eof
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    @client.send(:close_io)
+    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 5
+    assert_raises(Errno::ESRCH) { Process.kill(0, @pid) }
+  end
+
+  private
+
+  # @return [Boolean] whether `pid` still runs. A zombie waiting for init to
+  # reap it counts as gone.
+  def process_alive?(pid)
+    Process.kill(0, pid)
+    !`ps -o stat= -p #{pid}`.strip.start_with?("Z")
+  rescue Errno::ESRCH
+    false
+  end
+end

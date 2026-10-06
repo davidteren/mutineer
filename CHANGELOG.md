@@ -24,6 +24,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Coverage capture keeps to `capture_timeout` from start to finish.** Under
+  `--boot` and `--daemon`, a hung test file ignored the timeout and blocked
+  the run; it is now skipped as "timed out", like a standalone capture. A
+  process that a test started and left running could keep the result pipe
+  open and make a boot-mode capture wait for it to exit. Each capture now runs
+  in its own process group, and a timeout stops the whole group, not only the
+  test process. A capture whose test finished just before the deadline could
+  also lose its valid result and report "invalid coverage output"; it now
+  gets a short grace period to read the result. (#101, #129)
+- **`--daemon` no longer waits forever on a daemon that stops answering**
+  (#101). A mutant whose verdict has not arrived 30 seconds after its own
+  timeout is scored `error`, and the daemon is killed and respawned, as after
+  a crash. A boot that has not finished after 600 seconds ends the run with a
+  message that says so (it is not retried by a second daemon), and shutdown no longer waits on a stuck daemon.
+
 - **A method in a `Data.define`, `Struct.new`, `Class.new` or `Module.new`
   block belongs to the class or module the block builds.** In
   `class App; Argo = Data.define(:url) do def self.load = ...; end; end` the
