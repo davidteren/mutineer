@@ -88,6 +88,22 @@ All notable changes to this project are documented here. The format is based on
   them. `module_function :name` in a `Module.new` block promotes that
   module's method. Mutant ids for these subjects change: regenerate `ignore:`
   entries and baselines that name them.
+- **The RSpec runner keeps what gems configured before the run.** It called
+  `RSpec.reset`, which drops the whole configuration. Under `rails: true`, a
+  `--boot` file or `require:`, the app's gems load first, so a setting such as
+  rspec-retry's `verbose_retry` was gone, and a support file that set it
+  raised `NoMethodError`. The run stopped with "the unmutated suite is not
+  green". The runner now calls `RSpec.clear_examples`, which keeps the
+  configuration. Hooks that gems added now apply too: an example with
+  rspec-retry's `retry: 3` runs up to 3 times per mutant, as under `rspec`.
+- **`--since` no longer scores a file that Git ignores** (#168). A file
+  outside the index is scored in full, so a new file is not missed. That
+  check also caught files that Git ignores on purpose (`.gitignore`,
+  `.git/info/exclude` or the global excludes file), such as generated code
+  inside a directory run. Those files now get no mutants under `--since`,
+  and a warning names each one. Other untracked files are still scored in
+  full, and so is a file when Git cannot tell, such as one beyond a symlink or
+  inside a submodule.
 - **The human report escapes control characters from the source** (#163).
   A surviving line that held a terminal control byte (for example ESC) was
   printed as that byte, so it could change what the terminal showed. The
