@@ -75,7 +75,7 @@ All notable changes to this project are documented here. The format is based on
   coverage caches from earlier versions rebuild once. Known limit: a one-line
   or endless `def` called at load still gives a false `survived` or
   `no_coverage`, because its body shares the `def` line, which Ruby counts when
-  the method is defined.
+  the method is defined (#209).
 
 ## [1.5.0] - 2026-10-06
 

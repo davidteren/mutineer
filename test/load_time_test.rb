@@ -71,6 +71,14 @@ class LoadTimeTest < Minitest::Test
     assert_equal [["Catalog.price", "ran_at_load"]], results
   end
 
+  # A Class.new block owner has no lexical namespace, so the preload must
+  # resolve the owner itself.
+  def test_boot_redefine_preloads_a_lazily_loaded_builder_class
+    results, = run_load_time("lib/builder_catalog.rb", "test/builder_catalog_test.rb",
+                             strategy: "redefine", boot: "autoload_builder_boot.rb")
+    assert_equal [["BuilderCatalog.price", "ran_at_load"]], results
+  end
+
   def test_survivors_and_kills_that_do_not_depend_on_load_keep_their_verdict
     results, = run_load_time("lib/shelf.rb", "test/shelf_test.rb", strategy: "redefine")
     assert_equal({ "Shelf.double" => "killed", # ran at load, but the test kills it

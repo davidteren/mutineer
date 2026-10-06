@@ -156,6 +156,40 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # An empty test map still falls back to the full --test set, but the boot
+  # lines it came with must still classify a survivor on one of them.
+  def test_an_empty_map_runs_every_test_and_keeps_the_boot_lines
+    with_jobs do |jobs, config, source_map|
+      cov = Object.new
+      def cov.start = self
+      def cov.quit = nil
+      def cov.coverage = { "map" => {}, "failed_test_files" => [], "failed_clean_tests" => [],
+                           "load_lines" => ["app/order.rb:3"] }
+      coverage_map = nil
+      _, err = capture_io do
+        coverage_map = Mutineer::DaemonClient.stub(:new, ->(**) { cov }) do
+          Mutineer::DaemonBackend.build_coverage_map(config, [])
+        end
+      end
+      assert_match(/running every mutant against the full --test set/, err)
+
+      client = Object.new
+      def client.start = self
+      def client.quit = nil
+      def client.tests = @tests ||= []
+      def client.request(id:, tests:, **)
+        self.tests << tests
+        id.zero? ? "survived" : "killed"
+      end
+      results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+        Mutineer::DaemonBackend.send(:run_serial, jobs, config, ["/abs/all_test.rb"], coverage_map, source_map)
+      end
+
+      assert_equal %i[ran_at_load killed], results.map(&:status)
+      assert_equal [["/abs/all_test.rb"]] * 2, client.tests, "an empty map narrows nothing"
+    end
+  end
+
   # DaemonClient raises this only after exhausting its restart budget: the daemon is
   # gone, and close_io has already run, so every later request would fail too. Scoring
   # the rest against it would print a score covering a fraction of the run.

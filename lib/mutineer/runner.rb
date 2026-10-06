@@ -417,12 +417,9 @@ module Mutineer
       [:run, chosen.map { |t| File.expand_path(t, coverage_map.project_root) }]
     end
 
-    # True when the mutant's line ran while the app booted or its class loaded
-    # (#187). A test can then check a value the original code computed before
-    # the mutant was applied, which neither strategy re-runs in full: redefine
-    # never re-runs the class body, and reload does not re-run an initializer or
-    # another file's class body. Shared by {coverage_selection}, {run} and the
-    # daemon backend, so every backend classifies the same mutants.
+    # True when the mutant's line ran while the app booted or its class loaded,
+    # so a test can check a value the original code computed before the mutant
+    # was applied. Shared by {coverage_selection}, {run} and the daemon backend.
     #
     # Only the lines of the statement that holds the mutant count
     # ({StatementLines}), and only inside the method body. So code that runs
@@ -430,10 +427,8 @@ module Mutineer
     # count at load without it. The `def` line never counts: Ruby counts it
     # when the method is defined.
     #
-    # ponytail: line coverage cannot tell a one-line or endless def that ran at
-    # load from one that was only defined, so those stay `survived` or
-    # `no_coverage`. Upgrade path: start Coverage with `methods: true` and read
-    # the method's own call count.
+    # Known limit (#209): a one-line or endless def keeps its body on the `def`
+    # line, so a call at load is not detected.
     #
     # @param source_file [String] the mutated source file path.
     # @param mutation [Mutineer::Mutation] the mutation.
@@ -482,6 +477,9 @@ module Mutineer
         next if subject.owner_unknown
 
         Isolation.nesting_keywords(subject.lexical_namespace)
+        # The owner itself, as the child resolves it: a Class.new block owner
+        # has no lexical namespace.
+        Object.const_get(subject.namespace.join("::")) unless subject.namespace.empty?
       rescue StandardError, ScriptError
         nil
       end

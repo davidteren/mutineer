@@ -91,7 +91,8 @@ module Mutineer
     # Build the coverage map via a short-lived daemon (boots the app once, captures
     # per-test coverage app-side, ships the map back). Returns a query-only
     # CoverageMap, or nil when the build fails / returns empty. Callers then run the
-    # full --test set. Coverage-build IPC has no wall-clock (same limitation as
+    # full --test set. An empty map that came with boot lines returns a map with
+    # those lines only: it narrows nothing, but still classifies `ran_at_load`. Coverage-build IPC has no wall-clock (same limitation as
     # in-process build_via_fork). A normal nonempty map scores like in-process;
     # nil falls back to the full suite (more testing, not comparable).
     #
@@ -120,7 +121,13 @@ module Mutineer
       unless data && !(data["map"] || {}).empty?
         reason = data.is_a?(Hash) && data["error"] ? data["error"] : "empty map"
         warn_coverage_fallback(reason)
-        return nil
+        # No narrowing ({job_result} runs every test), but the lines that ran
+        # at boot still classify a survivor on one of them.
+        load_lines = data.is_a?(Hash) ? Array(data["load_lines"]) : []
+        return nil if load_lines.empty?
+
+        return CoverageMap.from_data(map: {}, failed_test_files: [], project_root: config.project_root,
+                                     load_lines: load_lines)
       end
 
       CoverageMap.from_data(map: data["map"], failed_test_files: data["failed_test_files"] || [],
@@ -247,9 +254,9 @@ module Mutineer
       # load and read as a false `killed`.
       # Narrow to covering tests (shared with the in-process path via
       # Runner.coverage_selection, so scores match). :verdict = no_coverage/uncapturable,
-      # no fork. No map (build failed) → run the full --test set (fallback, not
-      # narrowed).
-      sel = coverage_map && Runner.coverage_selection(subject.file, mutation, subject, source, coverage_map)
+      # no fork. No map, or an empty one (build failed) → run the full --test set
+      # (fallback, not narrowed).
+      sel = coverage_map && !coverage_map.map.empty? && Runner.coverage_selection(subject.file, mutation, subject, source, coverage_map)
       r =
         if Parser.parse_string(mutated).errors.any?
           Result.skipped
