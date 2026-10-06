@@ -1,0 +1,65 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_f41b263ec28de8 31-38,40-101
+README.md
+  s_07d7b58ff1b9fd::t_27255d5e442200 36,50,348-353,430-433,438
+action.yml
+  s_07d7b58ff1b9fd::t_668ab219f4f176 85-92,220-222,249-314
+docs/index.md
+  s_07d7b58ff1b9fd::t_24a4f92cf10a13 27
+docs/skill.md
+  s_07d7b58ff1b9fd::t_b4c589e244cd57 21
+lib/mutineer/cli.rb
+  s_07d7b58ff1b9fd::t_81193460c6065d 32-33,37,150,162-167,396-399,411-412,418
+lib/mutineer/config.rb
+  s_07d7b58ff1b9fd::t_0d2815ea4b7abe 156-167,184-190,262-264,267,298-307
+lib/mutineer/coverage_map.rb
+  s_07d7b58ff1b9fd::t_6d0d95952a015b 13,102-106,119,138,150-185,187-262,918-922,928-963
+lib/mutineer/daemon_client.rb
+  s_07d7b58ff1b9fd::t_8b77c14ee8c198 5,17-22,32-33,38-40,127-132,134-136,139-169,173-283,290-294,304-305
+lib/mutineer/mutators/base.rb
+  s_07d7b58ff1b9fd::t_ec0bd7fbcbf771 26-28,34-69
+lib/mutineer/mutators/return_nil.rb
+  s_07d7b58ff1b9fd::t_a828c2936c6aaa 19-22,24
+lib/mutineer/pairing.rb
+  s_07d7b58ff1b9fd::t_267bff23e45d29 7-12,39-42,49-62,64-68,108-258
+test/action_harness_test.rb
+  s_07d7b58ff1b9fd::t_ff4e158fab9da0 12-13,27-29,42-61
+test/cli_test.rb
+  s_07d7b58ff1b9fd::t_00a8be85b63086 123-149,377-397,677-716
+test/config_test.rb
+  s_07d7b58ff1b9fd::t_eaf0624b893a2b 232-290
+test/coverage_map_test.rb
+  s_07d7b58ff1b9fd::t_30f7e45851af69 805-1038
+test/daemon_client_env_test.rb
+  s_07d7b58ff1b9fd::t_2e0ba9c512e687 1-312
+test/fixtures/action_harness.sh
+  s_07d7b58ff1b9fd::t_35119c57c2fb78 120-201
+test/mutators/chain_link_test.rb
+  s_07d7b58ff1b9fd::t_34f8ed202a0ef9 91-104
+test/mutators/condition_negation_test.rb
+  s_07d7b58ff1b9fd::t_02e7ac241fea3f 45-60
+test/mutators/literal_mutation_test.rb
+  s_07d7b58ff1b9fd::t_f6b9a362e517b9 45-59
+test/mutators/return_nil_test.rb
+  s_07d7b58ff1b9fd::t_442bad898ee336 53-82
+test/mutators/statement_removal_test.rb
+  s_07d7b58ff1b9fd::t_29773e1e690cad 67-99
+test/pairing_test.rb
+  s_07d7b58ff1b9fd::t_91fcf915e64f77 27-30,119-266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "211b0451a4e90d8079f0c498bda998b4d850e270",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
