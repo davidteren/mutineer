@@ -366,12 +366,11 @@ class TestRunnersMinitestTest < Minitest::Test
   end
 
   # #191 review: Minitest records no name for an anonymous class, so the id
-  # adds where the method is defined, and the two tests stay apart.
+  # adds the line that defines the method (no path), and the two tests stay apart.
   def test_record_to_tells_apart_tests_of_anonymous_classes
     _code, _marker, report = record_fixture(ANONYMOUS)
     assert_equal ["(anonymous)#test_same"] * 2, names(report.ran)
-    assert_equal ["(anonymous)#test_same@#{ANONYMOUS}:7", "(anonymous)#test_same@#{ANONYMOUS}:8"],
-                 report.ran.map(&:last)
+    assert_equal ["(anonymous)#test_same@7", "(anonymous)#test_same@8"], report.ran.map(&:last)
   end
 
   def test_record_to_and_stop_at_first_failure_cannot_be_combined

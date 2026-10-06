@@ -118,7 +118,7 @@ A test has a `file` (relative to the project root: the file that defines the tes
 tells apart tests that share a file and name: under RSpec it is the example id
 (`./spec/calc_spec.rb[1:2]`; `--matrix` needs RSpec 3.3 or later, and an older RSpec leaves every row
 incomplete), and under Minitest it equals `name`. A test of an anonymous Minitest class is named
-`(anonymous)#test_x`, and its `id` adds the file and line of the method (`(anonymous)#test_x@test/x_test.rb:7`).
+`(anonymous)#test_x`, and its `id` adds the line of the method (`(anonymous)#test_x@7`).
 A test is identified by its `file` and `id`. An example without a description of its own is worded from its
 matcher, so its `name` can change with the mutant; the report keeps the name the first mutant gave it.
 
