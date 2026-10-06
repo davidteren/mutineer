@@ -1,0 +1,221 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_c9629f3db21cb9 9-62,64-160
+README.md
+  s_07d7b58ff1b9fd::t_1121ee881a307d 17-18,37,51,65-66,72-73,218-233,293-363,376-381,456-463,468
+action.yml
+  s_07d7b58ff1b9fd::t_e43e4eafbcd56a 85-92,220-222,249-314
+docs/agentic-coding.html
+  s_07d7b58ff1b9fd::t_e4f258522afabc 26-27
+docs/assets/mutineer.css
+  s_07d7b58ff1b9fd::t_2dcc5c91b3cadb 249-289
+docs/assets/mutineer.js
+  s_07d7b58ff1b9fd::t_53a11436fbdeb7 9-12,81-213
+docs/design-review.md
+  s_07d7b58ff1b9fd::t_4508000f48d684 74-75
+docs/index.html
+  s_07d7b58ff1b9fd::t_daf4ebf3eaea64 26-27,78-79,82-88,118,120,230
+docs/index.md
+  s_07d7b58ff1b9fd::t_40b3c4df975539 27,62
+docs/json-schema.md
+  s_07d7b58ff1b9fd::t_9a632300c0f014 10,28,36,73,109-152
+docs/plans/issue-104-normalize-source-paths.md
+  s_07d7b58ff1b9fd::t_f059b9a7659a35 1-77
+docs/plans/issue-106-diff-hunk-counts.md
+  s_07d7b58ff1b9fd::t_417f5a6def6a51 1-74
+docs/sample-report.html
+  s_07d7b58ff1b9fd::t_5e2b975d522c58 20-21,54
+docs/skill.md
+  s_07d7b58ff1b9fd::t_be7e85442aefbd 21
+lib/mutineer.rb
+  s_07d7b58ff1b9fd::t_939308205f1aa6 40
+lib/mutineer/cli.rb
+  s_07d7b58ff1b9fd::t_964c2f716414df 13,32-33,37,50-53,69-75,106-109,121-122,161,173-180,253-254,308,337,346-397,439-442,454-455,461,512-513
+lib/mutineer/config.rb
+  s_07d7b58ff1b9fd::t_0d9afb2bc86b4e 42,45-47,65-67,80,91-93,96,114,128-138,159-170,187-193,211,265-267,270,301-310
+lib/mutineer/coverage_map.rb
+  s_07d7b58ff1b9fd::t_5a6f87d7b538ed 13,102-106,119,138,150-185,187-262,918-922,928-963
+lib/mutineer/daemon_backend.rb
+  s_07d7b58ff1b9fd::t_60970b040a37d6 293-294
+lib/mutineer/daemon_client.rb
+  s_07d7b58ff1b9fd::t_5f2e4b43caccd2 5,17-22,32-33,38-40,127-132,134-136,139-169,173-283,290-294,304-305
+lib/mutineer/daemon_server.rb
+  s_07d7b58ff1b9fd::t_afa892f36b9358 152-153
+lib/mutineer/isolation.rb
+  s_07d7b58ff1b9fd::t_a8856ed7e02ddd 7,27-29,37-42,44-45,48-50,52,59-60,76-79,86,97,101-107,110-169
+lib/mutineer/kill_channel.rb
+  s_07d7b58ff1b9fd::t_5cf075861e9de9 1-284
+lib/mutineer/kill_matrix.rb
+  s_07d7b58ff1b9fd::t_36243071d7cbeb 1-88
+lib/mutineer/minitest_integration.rb
+  s_07d7b58ff1b9fd::t_267fd8530640f1 4,20-24,37-38,40-45,67-75,79-81,87
+lib/mutineer/minitest_integration/kill_recorder.rb
+  s_07d7b58ff1b9fd::t_b0c4697fce7694 1-301
+lib/mutineer/minitest_integration/outer_reporter.rb
+  s_07d7b58ff1b9fd::t_a74769add5f627 1-126
+lib/mutineer/minitest_integration/stop_at_first_failure.rb
+  s_07d7b58ff1b9fd::t_0a9c766c17aa57 3-4,15-16,18-19,31,104-107,137-139
+lib/mutineer/mutators/base.rb
+  s_07d7b58ff1b9fd::t_0fe365974996aa 26-28,58-93
+lib/mutineer/mutators/return_nil.rb
+  s_07d7b58ff1b9fd::t_f9061857a2f2e6 19-22,24
+lib/mutineer/pairing.rb
+  s_07d7b58ff1b9fd::t_76d1d5c3f8ae63 3-4,8-15,25-27,34-36,40,42-43,48-80,87-100,102-106,146-296
+lib/mutineer/project.rb
+  s_07d7b58ff1b9fd::t_5ce6f64db500c5 85-87,115,117,134,136
+lib/mutineer/reporter.rb
+  s_07d7b58ff1b9fd::t_b2378f8243ad49 28-42,45,114,165,221-222,278,291,338-517,567-571,581-583,587-623,665,679-680,696-697,713
+lib/mutineer/result.rb
+  s_07d7b58ff1b9fd::t_dde8d181b6317c 33-54,116-130
+lib/mutineer/runner.rb
+  s_07d7b58ff1b9fd::t_631d9dd53b54ba 7,99-100,112-113,144-145,150-153,161-172,340-343,360-364,501-502,505,521,530-580
+lib/mutineer/statement_lines.rb
+  s_07d7b58ff1b9fd::t_f137ea48c520b5 1-143
+lib/mutineer/test_runners.rb
+  s_07d7b58ff1b9fd::t_640676916861b9 9-10,12-14
+lib/mutineer/test_runners/minitest.rb
+  s_07d7b58ff1b9fd::t_3c50a87615a96e 14-15,17-18
+lib/mutineer/test_runners/rspec.rb
+  s_07d7b58ff1b9fd::t_97b3b9c21da9ec 4,22-23,25-30,35-39,47-54,59-276
+lib/mutineer/worker_pool.rb
+  s_07d7b58ff1b9fd::t_7b1ed4c712aceb 134-136,142
+rake/docs_contract.rb
+  s_07d7b58ff1b9fd::t_0c70eb07d62f4a 22,31,46,134-144,453,455,482-483,517
+test/action_harness_test.rb
+  s_07d7b58ff1b9fd::t_e14f5a86c5be1a 12-13,27-29,42-61
+test/baseline_test.rb
+  s_07d7b58ff1b9fd::t_d14654cf74cd94 240
+test/browser/site.spec.js
+  s_07d7b58ff1b9fd::t_0450b43e4ca4e9 7-10,63-114
+test/cli_daemon_test.rb
+  s_07d7b58ff1b9fd::t_7e42688c0d2b03 73-81
+test/cli_test.rb
+  s_07d7b58ff1b9fd::t_5d95360397ab06 123-149,238-327,409-429,538,677,685-705,730-769
+test/config_test.rb
+  s_07d7b58ff1b9fd::t_8dffb7db2e873c 75-82,210-227,240-298,509,511-513
+test/coverage_map_test.rb
+  s_07d7b58ff1b9fd::t_ef7614ecf5aabb 805-1038
+test/daemon_backend_contract_test.rb
+  s_07d7b58ff1b9fd::t_b6ac1322226d83 71-74
+test/daemon_client_env_test.rb
+  s_07d7b58ff1b9fd::t_88cdf362ceebd1 1-312
+test/docs_contract_test.rb
+  s_07d7b58ff1b9fd::t_bcc440d691628a 93-98
+test/equivalent_mutant_test.rb
+  s_07d7b58ff1b9fd::t_5ac2a2a2cc70b8 240
+test/fixtures/action_harness.sh
+  s_07d7b58ff1b9fd::t_bdaff6d83672b7 36-38,41,124-205
+test/fixtures/continuation.rb
+  s_07d7b58ff1b9fd::t_7c99fb06656ef5 1-46
+test/fixtures/continuation_test.rb
+  s_07d7b58ff1b9fd::t_f6bb55938f9ebe 1-30
+test/fixtures/matrix/acct.rb
+  s_07d7b58ff1b9fd::t_7942147e974950 1-27
+test/fixtures/matrix/acct_test.rb
+  s_07d7b58ff1b9fd::t_4ce49335285c9d 1-49
+test/fixtures/matrix/anonymous_classes_test.rb
+  s_07d7b58ff1b9fd::t_a53f6ae49a0c8a 1-8
+test/fixtures/matrix/anonymous_parallel_test.rb
+  s_07d7b58ff1b9fd::t_3c8a76e73103f2 1-11
+test/fixtures/matrix/exit_after_kill_test.rb
+  s_07d7b58ff1b9fd::t_5690493386fa44 1-66
+test/fixtures/matrix/gate.rb
+  s_07d7b58ff1b9fd::t_8967267329c034 1-16
+test/fixtures/matrix/gate_interrupt_test.rb
+  s_07d7b58ff1b9fd::t_53247f27210d26 1-23
+test/fixtures/matrix/gate_mixed_test.rb
+  s_07d7b58ff1b9fd::t_a5b35fb12292d6 1-7
+test/fixtures/matrix/gate_test.rb
+  s_07d7b58ff1b9fd::t_fcb8b75dcb5a8b 1-18
+test/fixtures/matrix/looper.rb
+  s_07d7b58ff1b9fd::t_c1d928269e3eff 1-14
+test/fixtures/matrix/looper_parallel_test.rb
+  s_07d7b58ff1b9fd::t_85d2bbe36fc138 1-18
+test/fixtures/matrix/nested_parallel_run_test.rb
+  s_07d7b58ff1b9fd::t_e202c2e8f644d7 1-29
+test/fixtures/matrix/serial_then_parallel_test.rb
+  s_07d7b58ff1b9fd::t_5797a3ccac939a 1-19
+test/fixtures/matrix/support/shared_tests.rb
+  s_07d7b58ff1b9fd::t_28f29196e79005 1-8
+test/fixtures/rspec/before_all_error_spec.rb
+  s_07d7b58ff1b9fd::t_75f7085e3fa9f3 1-18
+test/fixtures/rspec/exit_after_kill_spec.rb
+  s_07d7b58ff1b9fd::t_0a8d6dea17eefb 1-29
+test/fixtures/rspec/matrix_calc.rb
+  s_07d7b58ff1b9fd::t_b63af70f96f1cf 1-16
+test/fixtures/rspec/matrix_calc_spec.rb
+  s_07d7b58ff1b9fd::t_9577072e44e4d8 1-50
+test/fixtures/rspec/matrix_cleanup_spec.rb
+  s_07d7b58ff1b9fd::t_73a10a260832d8 1-13
+test/fixtures/rspec/matrix_generated_spec.rb
+  s_07d7b58ff1b9fd::t_ef51ca3042b69b 1-14
+test/fixtures/rspec/matrix_params_spec.rb
+  s_07d7b58ff1b9fd::t_ef82c7dea4358e 1-22
+test/fixtures/rspec/matrix_shared.rb
+  s_07d7b58ff1b9fd::t_02beddd997f38d 1-8
+test/fixtures/rspec/quit_mid_run_spec.rb
+  s_07d7b58ff1b9fd::t_a28747d534e56e 1-8
+test/html_reporter_test.rb
+  s_07d7b58ff1b9fd::t_542b086178eaa9 89-141
+test/integration_test.rb
+  s_07d7b58ff1b9fd::t_f40c30e5ed87bf 14,16,288-401
+test/isolation_test.rb
+  s_07d7b58ff1b9fd::t_e490b947a2f0f2 143-473
+test/json_reporter_test.rb
+  s_07d7b58ff1b9fd::t_ceae6a2e9fc13a 7,36-58,61,175-245,318-378
+test/kill_channel_test.rb
+  s_07d7b58ff1b9fd::t_58744ef8b397ea 1-118
+test/kill_matrix_test.rb
+  s_07d7b58ff1b9fd::t_e68cc3c7e74b5f 1-84
+test/mutators/chain_link_test.rb
+  s_07d7b58ff1b9fd::t_68cbfbba9e9030 91-104
+test/mutators/condition_negation_test.rb
+  s_07d7b58ff1b9fd::t_e8c67378622387 45-60
+test/mutators/literal_mutation_test.rb
+  s_07d7b58ff1b9fd::t_c9b162f272716e 45-59
+test/mutators/return_nil_test.rb
+  s_07d7b58ff1b9fd::t_fcd05f220fc6b2 53-82
+test/mutators/statement_removal_test.rb
+  s_07d7b58ff1b9fd::t_44d89342b8a71a 67-99
+test/pairing_test.rb
+  s_07d7b58ff1b9fd::t_a29ba326a52cfb 27-30,113-164,171-318
+test/project_test.rb
+  s_07d7b58ff1b9fd::t_7296153c315f1b 53-108
+test/release_workflow_test.rb
+  s_07d7b58ff1b9fd::t_6c31677fb8d617 212-214,232,266
+test/reporter_test.rb
+  s_07d7b58ff1b9fd::t_cf840f738b96f1 242-244,288-345,348-358,362
+test/rspec_integration_test.rb
+  s_07d7b58ff1b9fd::t_c9a1df6c47cb4f 12,14-15,96-179
+test/runner_external_test.rb
+  s_07d7b58ff1b9fd::t_c73fc2b2b437da 109-119
+test/runner_test.rb
+  s_07d7b58ff1b9fd::t_54445e32060a07 87-118,157-197,294-354
+test/statement_coverage_test.rb
+  s_07d7b58ff1b9fd::t_249147f0d7b561 1-60
+test/statement_lines_test.rb
+  s_07d7b58ff1b9fd::t_fe160e4c4222f1 1-256
+test/test_helper.rb
+  s_07d7b58ff1b9fd::t_bb39c7c4832f41 7-17
+test/test_runners/minitest_test.rb
+  s_07d7b58ff1b9fd::t_01db7e477d2370 4,6,19-25,209-422
+test/test_runners/rspec_test.rb
+  s_07d7b58ff1b9fd::t_8b49ed380d0a66 5,17,22,141-390
+test/worker_pool_test.rb
+  s_07d7b58ff1b9fd::t_bb9935babf7a84 130-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c5d701755c0a385e91e7efb80ce0753c77fc8255",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
