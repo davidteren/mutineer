@@ -239,6 +239,9 @@ class ReporterTest < Minitest::Test
     err = StringIO.new
     reporter([Mutineer::Result.error("boom"), Mutineer::Result.timeout])
       .report(out: out, err: err, threshold: 80.0)
+    assert_includes out.string, "Errored:       1"
+    assert_includes out.string, "Timeout:      1"
+    assert_includes out.string, "1 errored, 1 timeout"
     assert_includes out.string, "Mutation score: N/A"
     assert_includes err.string, "threshold gate fails"
     assert_includes out.string, "FAILED: no covered mutants"

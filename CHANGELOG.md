@@ -7,6 +7,19 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **`--timeout SECONDS` and `--capture-timeout SECONDS`**, also `timeout:` and
+  `capture_timeout:` in `.mutineer.yml`. They set the in-process per-mutant
+  time limit (default 10s) and the coverage-capture time limit (default 120s),
+  which were fixed. On a large Rails suite the clean run of the unmutated
+  tests took longer than 120s, so every run that offered the whole suite
+  stopped as not green, and a mutant on a line many tests cover took longer
+  than 10s and was scored `timeout`. `--daemon` keeps its own per-mutant
+  limit but uses `--capture-timeout` for its coverage capture;
+  `--test-command` uses neither. Either backend warns about a limit it was
+  given and does not use.
+- **The README states how timeouts affect the score** (#62): a timed-out
+  mutant is left out of the score, and counts as a mutant with no verdict
+  under `--threshold`.
 - **`--matrix` reports which tests kill each mutant** (`matrix: true` in
   `.mutineer.yml`). Each mutant runs every test in its covering files instead
   of stopping at the first failure, and the child sends each test's outcome to
@@ -36,6 +49,10 @@ All notable changes to this project are documented here. The format is based on
   so a file that sets one can still run with a flag that conflicts with it.
 
 ### Changed
+- **The human report has a `Timeout:` row**, and the score line lists timeouts
+  apart from errored mutants. Before, the `Errored:` row and the score line
+  added the two together, while the JSON report kept them apart. The HTML
+  summary now shows a `timeout` count apart from `errored` too.
 - **A test file given as a source after `--test` exits 2.** `--test` takes one
   file, so in `mutineer run app/x.rb --test spec/a_spec.rb spec/b_spec.rb` the
   second spec became a source to mutate, and the run tested with one spec file

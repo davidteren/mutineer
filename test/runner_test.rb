@@ -84,6 +84,38 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  def run_slow_suite(**limits)
+    Dir.mktmpdir("mutineer-limits") do |dir|
+      src  = File.join(dir, "slow_calc.rb")
+      test = File.join(dir, "slow_calc_test.rb")
+      File.write(src, "class SlowLimitCalculator\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(test, <<~RUBY)
+        require "minitest/autorun"
+        require_relative "slow_calc"
+        class SlowLimitCalculatorTest < Minitest::Test
+          def test_add
+            sleep 1.5
+            assert_equal 5, SlowLimitCalculator.new.add(2, 3)
+          end
+        end
+      RUBY
+      config = Mutineer::Config.new(sources: [src], tests: [test], operators: ["arithmetic"], jobs: 1,
+                                    cache_dir: File.join(dir, "cache"), project_root: dir, **limits)
+      Mutineer::Runner.execute(config).first
+    end
+  end
+
+  def test_timeout_bounds_each_mutant_run
+    agg = run_slow_suite(timeout: 1)
+    assert_equal 0, agg.killed_count
+    assert_operator agg.timeout_count, :>, 0
+  end
+
+  def test_capture_timeout_bounds_coverage_capture
+    error = assert_raises(Mutineer::SmokeCheckError) { run_slow_suite(capture_timeout: 1) }
+    assert_includes error.message, "capture failed for slow_calc_test.rb"
+  end
+
   def test_syntactically_invalid_mutation_is_skipped
     # Replacing `+` with `)` makes `a ) b` — unparseable, so no fork happens.
     result = Mutineer::Runner.run(plus_mutation(replacement: ")"),
