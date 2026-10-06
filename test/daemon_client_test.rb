@@ -107,9 +107,9 @@ class DaemonClientTest < Minitest::Test
     Dir.mktmpdir("daemon-crash-") do |dir|
       marker = File.join(dir, "child.pid")
       # exit! so a surviving child never goes on to run tests on a shared DB.
-      payload = "File.write(#{marker.inspect}, Process.pid.to_s); sleep 15; exit!(0)"
+      payload = "File.write(#{marker.inspect}, Process.pid.to_s); sleep 60; exit!(0)"
       with_client do |client|
-        reply = Thread.new { run_payload(client, 1, payload, timeout: 60) } # rubocop:disable ThreadSafety/NewThread
+        reply = Thread.new { run_payload(client, 1, payload, timeout: 120) } # rubocop:disable ThreadSafety/NewThread
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 30
         sleep 0.05 until File.size?(marker) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
         assert File.size?(marker), "the daemon never forked the mutant child"
@@ -118,7 +118,8 @@ class DaemonClientTest < Minitest::Test
         Process.kill(:KILL, client.instance_variable_get(:@wait_thr).pid)
         assert_equal "error", reply.value
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
-        assert_operator elapsed, :<, 10, "the orphaned child must not hold the protocol pipe"
+        # Includes the respawn's Rails boot; without the fix this is ~60s.
+        assert_operator elapsed, :<, 30, "the orphaned child must not hold the protocol pipe"
       ensure
         Process.kill(:KILL, File.read(marker).to_i) rescue nil # rubocop:disable Style/RescueModifier
       end
