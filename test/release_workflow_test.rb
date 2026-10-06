@@ -92,6 +92,37 @@ class ReleaseWorkflowTest < Minitest::Test
     assert_equal "release-pr", YAML.load_file(WORKFLOW).dig("concurrency", "group"), "runs must not overlap"
   end
 
+  # #85: a GITHUB_TOKEN push starts no CI, so the release PR's required checks never
+  # ran. The job dispatches ci.yml on the release branch instead, unless a PAT is set.
+  def test_release_pr_dispatches_ci_when_pushed_with_github_token
+    workflow = YAML.load_file(WORKFLOW)
+    assert_equal "write", workflow.dig("permissions", "actions"), "dispatching ci.yml needs actions: write"
+    assert_includes File.read(WORKFLOW), 'dispatch_ci "$branch"'
+    ci = YAML.load_file(File.expand_path("../.github/workflows/ci.yml", __dir__))
+    assert_includes (ci[true] || ci["on"]).keys, "workflow_dispatch", "ci.yml must accept the dispatch"
+  end
+
+  def test_dispatch_ci_runs_ci_when_no_pat_and_no_dispatched_run
+    out, calls = with_fake_gh(runs: "0") { |env| run_dispatch(env) }
+    assert_match(/Dispatched ci.yml on release\/v9.9.9/, out)
+    assert_includes calls, "workflow run ci.yml --ref release/v9.9.9"
+  end
+
+  def test_dispatch_ci_skips_when_a_dispatched_run_exists
+    _, calls = with_fake_gh(runs: "1") { |env| run_dispatch(env) }
+    refute(calls.any? { |c| c.start_with?("workflow run") }, "no second dispatch for the same head")
+  end
+
+  def test_dispatch_ci_skips_with_a_pat
+    _, calls = with_fake_gh(runs: "0") { |env| run_dispatch(env.merge("HAS_RELEASE_PR_TOKEN" => "true")) }
+    assert_empty calls, "a PAT push already started CI"
+  end
+
+  def test_dispatch_ci_reports_a_failed_dispatch
+    out, = with_fake_gh(runs: "0", dispatch_exit: 1) { |env| run_dispatch(env, expect: 1) }
+    assert_match(/::error::Could not dispatch ci.yml on release\/v9.9.9\. Run: gh workflow run ci.yml/, out)
+  end
+
   def test_workflow_markers_wrap_the_live_calculation
     text = File.read(WORKFLOW)
     refute_nil text.index(CALC_START), "release-pr.yml needs #{CALC_START}"
@@ -176,6 +207,37 @@ class ReleaseWorkflowTest < Minitest::Test
     raise "#{start_marker} / #{end_marker} missing from #{WORKFLOW}" unless start && finish
 
     text[start..finish].lines.map { |line| line.sub(/^          /, "") }.join
+  end
+
+  # Puts a fake `gh` first on PATH that logs its arguments, prints `runs` for
+  # `gh run list`, and exits `dispatch_exit` for `gh workflow run`.
+  #
+  # @return [Array(String, Array<String>)] the block's stdout and the gh calls.
+  def with_fake_gh(runs:, dispatch_exit: 0)
+    Dir.mktmpdir do |dir|
+      log = File.join(dir, "calls.log")
+      File.write(File.join(dir, "gh"), <<~SH)
+        #!/bin/bash
+        echo "$*" >> #{log}
+        [ "$1 $2" = "run list" ] && { echo #{runs}; exit 0; }
+        exit #{dispatch_exit}
+      SH
+      File.chmod(0o755, File.join(dir, "gh"))
+      out = yield("PATH" => "#{dir}:#{ENV.fetch("PATH")}")
+      [out, File.exist?(log) ? File.readlines(log, chomp: true) : []]
+    end
+  end
+
+  # Runs `dispatch_ci` from the workflow helpers with `env`; returns stdout.
+  #
+  # @param env [Hash{String=>String}]
+  # @param expect [Integer] the exit status the helper must return.
+  # @return [String]
+  def run_dispatch(env, expect: 0)
+    out, err, status = Open3.capture3(env, "bash", "-uo", "pipefail", "-c",
+                                      "#{helpers_script}\ndispatch_ci release/v9.9.9 abc123")
+    assert_equal expect, status.exitstatus, "stderr:#{err}\nstdout:#{out}"
+    out
   end
 
   # Runs the helpers, then `snippet`, in `dir`; returns stripped stdout.
