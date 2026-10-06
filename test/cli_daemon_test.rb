@@ -76,7 +76,7 @@ class CliDaemonTest < Minitest::Test
     _, err, = mutineer("run", "x.rb", "--test", "t.rb", "--daemon", "--rails", "--timeout", "30",
                        "--capture-timeout", "300")
     assert_includes err, "--timeout has no effect with --daemon (it applies to in-process runs only); ignoring it."
-    assert_includes err, "--capture-timeout has no effect with --daemon"
+    refute_includes err, "--capture-timeout has no effect", "the daemon's coverage capture reads it"
   end
 
   def test_daemon_forces_reload_when_redefine_requested

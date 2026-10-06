@@ -50,7 +50,7 @@ module Mutineer
         --timeout SECONDS    Per-mutant time limit for in-process runs (default: 10);
                              a mutant over it is a timeout, excluded from the score
         --capture-timeout SECONDS  Time limit for each coverage-capture subprocess
-                             and the clean check of in-process runs (default: 120)
+                             and the clean check (default: 120; not with --test-command)
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then
                              fork per mutant (Rails apps; requires --test)
@@ -305,7 +305,7 @@ module Mutineer
              "(surgical redefine needs a shared VM; the subprocess has its own)"
         exit 2
       end
-      warn_unused_timeouts(config, "--test-command")
+      warn_unused_timeouts(config, "--test-command", %i[timeout capture_timeout])
       return unless config.jobs > 1
 
       warn "[mutineer] --test-command runs serially (no per-worker DB isolation yet); forcing --jobs 1."
@@ -334,7 +334,7 @@ module Mutineer
              "(rspec is not implemented on the daemon path yet)"
         exit 2
       end
-      warn_unused_timeouts(config, "--daemon")
+      warn_unused_timeouts(config, "--daemon", %i[timeout])
       return if config.strategy == "reload"
 
       # --rails defaults strategy to redefine; daemon always whole-file loads.
@@ -343,16 +343,18 @@ module Mutineer
       config.strategy = "reload"
     end
 
-    # `--timeout` and `--capture-timeout` bound the in-process backend only: the
-    # daemon and --test-command paths never read them. A value the user set
-    # there would silently do nothing, so say so.
+    # A backend that never reads a time limit the user set would silently do
+    # nothing with it, so say so. `--test-command` reads neither limit; the
+    # daemon reads `--capture-timeout` (its coverage capture) but keeps its own
+    # per-mutant limit.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
     # @param backend [String] the backend's flag.
+    # @param keys [Array<Symbol>] the limits that backend ignores.
     # @return [void]
-    def self.warn_unused_timeouts(config, backend)
-      %i[timeout capture_timeout].each do |key|
+    def self.warn_unused_timeouts(config, backend, keys)
+      keys.each do |key|
         next unless config.explicit?(key)
 
         warn "[mutineer] #{config.origin(key)} has no effect with #{backend} " \

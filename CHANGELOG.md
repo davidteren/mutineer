@@ -13,9 +13,10 @@ All notable changes to this project are documented here. The format is based on
   which were fixed. On a large Rails suite the clean run of the unmutated
   tests took longer than 120s, so every run that offered the whole suite
   stopped as not green, and a mutant on a line many tests cover took longer
-  than 10s and was scored `timeout`. `--daemon` and `--test-command` keep
-  their own limits, and a run on either backend warns that a `timeout` or
-  `capture_timeout` it was given has no effect.
+  than 10s and was scored `timeout`. `--daemon` keeps its own per-mutant
+  limit but uses `--capture-timeout` for its coverage capture;
+  `--test-command` uses neither. Either backend warns about a limit it was
+  given and does not use.
 - **The README states how timeouts affect the score** (#62): a timed-out
   mutant is left out of the score, and counts as a mutant with no verdict
   under `--threshold`.
