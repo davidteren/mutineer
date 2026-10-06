@@ -1,0 +1,23 @@
+test/daemon_client_deadline_test.rb
+  s_07d7b58ff1b9fd::t_aec6c3682afcc1 1-57
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_6f50980491984f 36-40
+lib/mutineer/daemon_client.rb
+  s_07d7b58ff1b9fd::t_a1b094cd8418fc 4,33-39,94,128,326,333-337,364-372,384-386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6063518738f816c013ee41e42b90057ca86b0e1d",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
