@@ -28,6 +28,11 @@ module Mutineer
     # the parent. Stdout stays free for test output, which goes to File::NULL.
     RESULT_FD = 3
 
+    # Seconds a capture waits for its result after the child exits in time.
+    # The result is already in the pipe then; the wait only lets the reader
+    # thread run, even when the capture deadline has passed (#129).
+    RESULT_GRACE = 1
+
     attr_reader :project_root, :failed_test_files, :failed_clean_tests, :phase_a_ran, :map
 
     # Build a QUERY-ONLY map from data captured elsewhere (the daemon builds the
@@ -323,23 +328,36 @@ module Mutineer
       abs_sources = abs_source_paths
 
       @test_paths.each do |test_path|
-        # Tri-state payload: Hash = capture result, String = error diagnostic from
-        # the child, nil = pipe gone / empty. The String diagnostic is what
-        # becomes an :uncapturable status.
-        case (payload = fork_capture(absolute(test_path), abs_sources, after_fork))
-        when Hash then accept_capture_payload(test_path, payload)
-        when String
-          fail_test(test_path, @verbose ? "fork capture failed: #{payload}" :
-            "fork capture produced no result (re-run with --verbose for the error)")
-        else fail_test(test_path, "fork capture produced no result")
-        end
+        accept_fork_payload(test_path, fork_capture(absolute(test_path), abs_sources, after_fork))
+      end
+    end
+
+    # Records a {#fork_capture} result. Hash = capture result, String = error
+    # diagnostic from the child, :timeout = the capture deadline passed, nil =
+    # pipe gone / empty. The String diagnostic is what becomes an
+    # :uncapturable status.
+    #
+    # @api private
+    # @param test_path [String] test file path.
+    # @param payload [Hash, String, Symbol, nil] what {#fork_capture} returned.
+    # @return [void]
+    def accept_fork_payload(test_path, payload)
+      case payload
+      when Hash then accept_capture_payload(test_path, payload)
+      when :timeout then fail_test(test_path, "timed out after #{@capture_timeout}s")
+      when String
+        fail_test(test_path, @verbose ? "fork capture failed: #{payload}" :
+          "fork capture produced no result (re-run with --verbose for the error)")
+      else fail_test(test_path, "fork capture produced no result")
       end
     end
 
     # Fork the booted parent, run one test under the inherited Coverage, and
-    # return its per-source counts hash (or nil on failure). Reuses the same
+    # return its per-source counts hash, a String diagnostic on failure, or
+    # :timeout after `@capture_timeout` (see {#await_child}). Reuses the same
     # fork + Marshal-over-pipe + hard-exit! discipline as WorkerPool/Isolation.
     def fork_capture(abs_test, abs_sources, after_fork)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @capture_timeout
       rd, wr = IO.pipe
       # Marshal output is binary: an un-binmoded pipe can raise
       # Encoding::UndefinedConversionError on write, which the child's rescue then
@@ -348,6 +366,7 @@ module Mutineer
       wr.binmode
       pid = fork do
         rd.close
+        Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
         payload =
           begin
             ChildStdout.silence
@@ -379,9 +398,9 @@ module Mutineer
         end
       end
       wr.close
-      data = rd.read
-      rd.close
-      _, status = Process.waitpid2(pid)
+      status, data = await_child(pid, deadline) { rd.read }
+      return :timeout unless status
+
       # An empty pipe means the child died before writing (e.g. a hard crash,
       # OOM, or a signal from the test's own subprocess handling). Report HOW it
       # died (exit status / signal) as a diagnostic string so --verbose has
@@ -391,6 +410,8 @@ module Mutineer
       Marshal.load(data)
     rescue StandardError => e
       "parent could not read capture result: #{e.class}: #{e.message}"
+    ensure
+      [rd, wr].each { |io| io.close unless io.closed? }
     end
 
     # Human description of a child Process::Status for capture diagnostics.
@@ -507,14 +528,7 @@ module Mutineer
       pending.each do |rel|
         test_path = @test_paths.find { |t| relativize(t) == rel } || rel
         if @boot_path
-          payload = fork_capture(absolute(test_path), abs_sources, after_fork)
-          case payload
-          when Hash then accept_capture_payload(test_path, payload)
-          when String
-            fail_test(test_path, @verbose ? "fork capture failed: #{payload}" :
-              "fork capture produced no result (re-run with --verbose for the error)")
-          else fail_test(test_path, "fork capture produced no result")
-          end
+          accept_fork_payload(test_path, fork_capture(absolute(test_path), abs_sources, after_fork))
         else
           payload = capture(test_path)
           accept_capture_payload(test_path, payload) if payload
@@ -556,8 +570,8 @@ module Mutineer
     # or the result. With `result: true`, the child writes its result as one
     # line to fd {RESULT_FD}, a pipe that only the script uses. The child's
     # stderr is the parent's stderr, so warnings from the script reach the
-    # user. A wall clock of `@capture_timeout` bounds the whole call, so a hung
-    # test cannot wedge the run.
+    # user. A wall clock of `@capture_timeout` bounds the whole call (see
+    # {#await_child}), so a hung test cannot wedge the run.
     #
     # The parent reads one line, not until EOF: a process that a test leaves
     # running can inherit fd {RESULT_FD} (a `fork` without `exec` keeps it
@@ -574,25 +588,53 @@ module Mutineer
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @capture_timeout
       script_rd, script_wr = IO.pipe
       result_rd, result_wr = IO.pipe if result
-      options = { in: script_rd, out: File::NULL }
+      options = { in: script_rd, out: File::NULL, pgroup: true }
       options[RESULT_FD] = result_wr if result
       pid = Process.spawn(RbConfig.ruby, "-", **options)
-      waiter = Process.detach(pid)
       script_rd.close
       result_wr&.close
-      reader = Thread.new { result_rd.gets.to_s } if result
       script_wr.write(script)
       script_wr.close
-      unless waiter.join(remaining(deadline))
-        Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
-        waiter.join
-        reader&.kill
-        return [nil, ""]
-      end
-      [waiter.value, reader&.join(remaining(deadline))&.value.to_s]
+      await_child(pid, deadline) { read_result_line(result_rd) if result }
     ensure
-      reader&.kill
       [script_rd, script_wr, result_rd, result_wr].compact.each { |io| io.close unless io.closed? }
+    end
+
+    # Reads the one result line a {#spawn_script} child writes to fd
+    # {RESULT_FD}.
+    #
+    # @api private
+    # @param io [IO] the parent end of the result pipe.
+    # @return [String] the line, or `""` at end of file.
+    def read_result_line(io) = io.gets.to_s
+
+    # Waits for capture child `pid`, which leads its own process group, while
+    # a thread runs the block to read the child's result. `deadline` bounds the
+    # run. When the child exits or the deadline passes, the whole group gets
+    # SIGKILL: a process the test left behind can neither outlive the capture
+    # nor hold the result pipe open. Process.detach owns reaping.
+    #
+    # A child that exits before the deadline has written its result, so the
+    # reader gets {RESULT_GRACE} seconds to finish even when no time is left.
+    #
+    # @api private
+    # @param pid [Integer] child pid, also its process group id.
+    # @param deadline [Float] a CLOCK_MONOTONIC time.
+    # @yieldreturn [String, nil] what the child wrote.
+    # @return [Array(Process::Status, String)] the exit status and the block's
+    #   value (`""` when the reader did not finish); `[nil, ""]` after a timeout.
+    def await_child(pid, deadline, &read)
+      waiter = Process.detach(pid)
+      reader = Thread.new(&read)
+      reader.report_on_exception = false
+      finished = waiter.join(remaining(deadline))
+      kill_group(pid, waiter)
+      return [nil, ""] unless finished
+
+      [waiter.value, reader.join(RESULT_GRACE)&.value.to_s]
+    ensure
+      kill_group(pid, waiter) if waiter&.alive?
+      reader&.kill
     end
 
     # Seconds left before `deadline`, never negative.
@@ -623,6 +665,7 @@ module Mutineer
     # @param after_fork [Proc, nil] boot-mode fork hook.
     # @return [Boolean]
     def fork_clean_pass?(abs_tests, after_fork)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @capture_timeout
       rd, wr = IO.pipe
       rd.binmode
       wr.binmode
@@ -642,34 +685,35 @@ module Mutineer
         end
       end
       wr.close
-      readable, = IO.select([rd], nil, nil, @capture_timeout)
-      unless readable
-        kill_fork_clean(pid)
-        rd.close
-        return false
-      end
-      data = rd.read
-      rd.close
-      Process.waitpid2(pid)
+      _, data = await_child(pid, deadline) { rd.read }
       return false if data.empty?
 
       Marshal.load(data)
     rescue StandardError
       false
+    ensure
+      [rd, wr].each { |io| io.close unless io.closed? }
     end
 
-    # SIGKILLs a hung clean-check child (and its group) then reaps it.
+    # SIGKILLs capture child `pid` and its process group, then waits for
+    # `waiter` to reap the child. Falls back to the pid alone when the group
+    # does not exist yet. After the child exits, its pid stays reserved while any
+    # process of its group lives, so `-pid` reaches only those processes.
     #
     # @api private
-    # @param pid [Integer] child pid.
+    # @param pid [Integer] child pid, also its process group id.
+    # @param waiter [Thread] the Process.detach thread for `pid`.
     # @return [void]
-    def kill_fork_clean(pid)
+    def kill_group(pid, waiter)
       begin
         Process.kill(:KILL, -pid)
       rescue Errno::ESRCH, Errno::EPERM
-        Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
+        # No group yet: the child has not run setpgid. Never signal a reaped pid.
+        if waiter.alive?
+          Process.kill(:KILL, pid) rescue nil # rubocop:disable Style/RescueModifier
+        end
       end
-      Process.waitpid2(pid) rescue nil # rubocop:disable Style/RescueModifier
+      waiter.join
     end
 
     # Builds a pass/fail-only subprocess script (no coverage instrumentation).
