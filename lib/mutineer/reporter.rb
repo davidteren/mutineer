@@ -199,7 +199,7 @@ module Mutineer
         # condition rather than one status, because summary.errored means :error
         # alone and a key that reconciled with neither would be worse. `details`
         # carries the cause where there is one. Uncapturable mutants also appear in
-        # uncapturable[]; that key keeps its lean shape for existing consumers.
+        # uncapturable[], which stays for consumers that already read it.
         # to_s/to_i because a pre-fork failure has no subject, so its file and line
         # are null and would not compare against a real entry. id and status extend
         # the key to a total order: these entries collide on (file, line) far more
