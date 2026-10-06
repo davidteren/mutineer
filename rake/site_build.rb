@@ -7,9 +7,10 @@ require_relative "docs_contract"
 require_relative "../lib/mutineer/version"
 
 # Assemble the published GitHub Pages tree into one output directory: the
-# hand-written docs/ files copied as-is, plus the generated ones (YARD HTML,
-# llms-full.txt, json-schema.html, sitemap.xml) built straight into it. Pages
-# publishes this directory as a build artifact — nothing under it is committed.
+# hand-written docs/ files copied as-is, the agent skill copied to skill.md, plus
+# the generated ones (YARD HTML, llms-full.txt, json-schema.html, sitemap.xml)
+# built straight into it. Pages publishes this directory as a build artifact —
+# nothing under it is committed.
 module SiteBuild
   # The one directory the build removes and rewrites. It is a constant, not a
   # parameter, so no argument can aim the removal at `lib/` or `.git`.
@@ -23,6 +24,10 @@ module SiteBuild
   # so the tree copy must skip them instead of copying a (possibly absent)
   # committed version.
   GENERATED = %w[api llms-full.txt json-schema.html sitemap.xml].freeze
+
+  # The agent skill, in the Agent Skills layout that `gh skill` and
+  # `npx skills` install from. The site serves the same file as skill.md.
+  SKILL = "skills/mutineer/SKILL.md"
 
   class << self
     # Build the site into {DEST} (removed first, then rebuilt from scratch),
@@ -42,6 +47,7 @@ module SiteBuild
       FileUtils.rm_rf(DEST)
       FileUtils.mkdir_p(DEST)
       copy_docs_tree!(DEST)
+      FileUtils.cp(SKILL, File.join(DEST, "skill.md"))
       api = File.join(DEST, "api")
       YardPages.generate!(api)
       verify_api!(api)
