@@ -62,11 +62,13 @@ module Mutineer
         --format human|json|html  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
-        --fail-fast          Stop at the first surviving mutant
+        --fail-fast          Stop at the first surviving mutant (--no-fail-fast beats a
+                             .mutineer.yml fail_fast:)
         --matrix             Run every covering test for each mutant and report blind and
                              redundant tests; the JSON report also lists each mutant's
                              killers (in-process only; not with --daemon, --test-command,
-                             --fail-fast or --dry-run)
+                             --fail-fast or --dry-run; --no-matrix beats a .mutineer.yml
+                             matrix:)
         --verbose            Surface the real error when a fork capture fails (alias: --debug)
 
       Options:
@@ -97,8 +99,10 @@ module Mutineer
         end
         o.on("--list-operators") { show_operators = true }
         o.on("--dry-run") { opts[:dry_run] = true }
-        o.on("--fail-fast") { opts[:fail_fast] = true }
-        o.on("--matrix") { opts[:matrix] = true }
+        # A typed --no-* beats the .mutineer.yml key, so a file key that
+        # conflicts with another flag can be turned off for one run.
+        o.on("--[no-]fail-fast") { |on| opts[:fail_fast] = on }
+        o.on("--[no-]matrix") { |on| opts[:matrix] = on }
         o.on("--only NAME") { |v| opts[:only] = v }
         o.on("--since REF") { |v| opts[:since] = Config.parse(:since, v) }
         # A typed "no" must beat a .mutineer.yml `since:` key: the key is present

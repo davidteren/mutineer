@@ -67,8 +67,8 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--format human\|json\|html` | Report format (default: human; `html` is a self-contained file) |
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--dry-run` | List candidate mutations without executing (honors suppression) |
-| `--fail-fast` | Stop at the first surviving mutant |
-| `--matrix` | Run every covering test for each mutant and report the blind and redundant tests; the JSON report also lists each mutant's killers. In-process only; exits 2 with `--daemon`, `--test-command`, `--fail-fast` or `--dry-run`. RSpec needs 3.3 or later. See [Kill matrix](https://github.com/davidteren/mutineer#kill-matrix) |
+| `--fail-fast` | Stop at the first surviving mutant (`--no-fail-fast` beats a `.mutineer.yml` `fail_fast:` key) |
+| `--matrix` | Run every covering test for each mutant and report the blind and redundant tests; the JSON report also lists each mutant's killers. In-process only; exits 2 with `--daemon`, `--test-command`, `--fail-fast` or `--dry-run`. RSpec needs 3.3 or later. `--no-matrix` beats a `.mutineer.yml` `matrix:` key. See [Kill matrix](https://github.com/davidteren/mutineer#kill-matrix) |
 | `--list-operators` | List available operators (default vs optional) and exit |
 | `--version`, `--help` | Print version / usage and exit |
 
@@ -339,8 +339,10 @@ blind test until its rows are complete. The limit is fixed today;
 `--timeout` to raise it and get complete rows.
 
 `--matrix` runs on the in-process backend only. It exits 2 with `--daemon`,
-`--test-command` or `--fail-fast`, and the message says whether each setting
-came from the command line or `.mutineer.yml`.
+`--test-command`, `--fail-fast` or `--dry-run`, and the message says whether
+each setting came from the command line or `.mutineer.yml`. To run one of
+those with `matrix: true` in the file, pass `--no-matrix`; to run `--matrix`
+with `fail_fast: true` in the file, pass `--no-fail-fast`.
 
 ## CI gating
 

@@ -121,7 +121,9 @@ module Mutineer
           self.armed_reporter = nil
           self.channel = channel
           self.parallel_marked = false
-          self.runnables = runnables
+          # A copy: Minitest's list is live, and a class a test defines during
+          # the run joins it without running, which would break the count.
+          self.runnables = runnables.dup
           self.seen = 0
           self.serial_killed = false
           KillChannel.write_start(channel)

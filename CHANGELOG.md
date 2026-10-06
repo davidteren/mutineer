@@ -30,6 +30,8 @@ All notable changes to this project are documented here. The format is based on
   incomplete row and warn not to delete a blind test until it is complete.
   Minitest and RSpec 3.3+ are supported, on the in-process backend only;
   `--daemon`, `--test-command`, `--fail-fast` and `--dry-run` exit 2 with it.
+  `--no-matrix` and `--no-fail-fast` beat the matching `.mutineer.yml` key,
+  so a file that sets one can still run with a flag that conflicts with it.
 
 ### Changed
 - **A test file given as a source after `--test` exits 2.** `--test` takes one

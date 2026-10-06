@@ -264,6 +264,25 @@ class CliTest < Minitest::Test
     assert_includes err, "--matrix cannot be combined with --dry-run"
   end
 
+  # #191 review: a typed --no-matrix / --no-fail-fast beats the file key, so a
+  # file that sets one can still run with a flag that conflicts with it.
+  def test_no_matrix_and_no_fail_fast_beat_the_config_file
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "matrix: true\n")
+      args = ["run", "calculator.rb", "--test", "calculator_weak_test.rb"]
+      _, err, status = mutineer(*args, "--dry-run", chdir: proj)
+      assert_equal 2, status.exitstatus, "without --no-matrix the file's matrix: applies"
+      assert_includes err, "matrix in .mutineer.yml cannot be combined with --dry-run"
+      _, err, status = mutineer(*args, "--dry-run", "--no-matrix", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+
+      File.write(File.join(proj, ".mutineer.yml"), "fail_fast: true\n")
+      _, err, status = mutineer(*args, "--matrix", "--no-fail-fast", "--format", "json", chdir: proj)
+      refute_includes err, "cannot be combined"
+      assert_includes [0, 1], status.exitstatus, err
+    end
+  end
+
   def test_matrix_from_the_config_file_is_checked_too
     with_project do |proj|
       File.write(File.join(proj, ".mutineer.yml"), "matrix: true\n")
