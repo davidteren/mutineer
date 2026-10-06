@@ -35,4 +35,12 @@ class Continuation
 
   def self.untested; [:a,
     :never_called]; end
+
+  def self.kind(value)
+    case value
+    when Integer then :number
+    when :never_matched,
+         :never_matched_either then :symbol
+    end
+  end
 end

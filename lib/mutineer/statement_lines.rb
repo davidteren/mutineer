@@ -25,6 +25,10 @@ module Mutineer
       return [] unless index
 
       statement = path[index]
+      # Code that runs only sometimes inside the statement: the tests that ran
+      # the statement need not have run it.
+      return [] if path[index..].each_cons(2).any? { |parent, child| sometimes?(parent, child) }
+
       # Ruby counts the line of `x while c` when it checks `c`, also when `x` never runs.
       # The path is loop, its body, statement.
       return [] if index >= 2 && modifier_loop?(path[index - 2])
@@ -35,6 +39,29 @@ module Mutineer
       after = after(source, location).strip
       lines.delete(location.end_line) unless after.empty? || after.start_with?("#")
       lines
+    end
+
+    # Nodes whose code runs only when a branch, a match or an exception picks
+    # it: a `when` or `in` clause (its condition or pattern), a `rescue` clause
+    # (its class list), parameters (their defaults) and `defined?` (its operand
+    # never runs). A statement in their bodies is a statement of its own, found
+    # deeper on the path.
+    SOMETIMES = [Prism::WhenNode, Prism::InNode, Prism::RescueNode, Prism::ParametersNode,
+                 Prism::BlockParametersNode, Prism::DefinedNode].freeze
+
+    # Whether `child` runs only sometimes when `parent` runs. Besides the
+    # {SOMETIMES} nodes: the rescue side of `x rescue y`, and the value of
+    # `a ||= v` or `a &&= v`. The right side of `a ||` / `a &&` on its own line
+    # is not caught here; that is a known limit (see the README).
+    #
+    # @param parent [Prism::Node]
+    # @param child [Prism::Node]
+    # @return [Boolean]
+    def self.sometimes?(parent, child)
+      return true if SOMETIMES.any? { |klass| child.is_a?(klass) }
+      return child.equal?(parent.rescue_expression) if parent.is_a?(Prism::RescueModifierNode)
+
+      parent.class.name.end_with?("OrWriteNode", "AndWriteNode") && child.equal?(parent.value)
     end
 
     # The nodes from `node` down to the deepest one that holds the offset. A

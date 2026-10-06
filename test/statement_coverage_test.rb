@@ -48,6 +48,12 @@ class StatementCoverageTest < Minitest::Test
     assert_equal :verdict, selection_for(":never_counted")
   end
 
+  # PR #188 review: the tests that ran the `case` only took the first branch,
+  # so a later `when` condition on a line Ruby does not count gets none of them.
+  def test_a_later_when_condition_that_no_test_reached_has_no_tests
+    assert_equal :verdict, selection_for(":never_matched_either")
+  end
+
   def test_a_statement_on_the_def_line_of_a_method_no_test_calls_has_no_tests
     assert_equal :verdict, selection_for(":never_called")
   end

@@ -111,6 +111,30 @@ class StatementLinesTest < Minitest::Test
     assert_empty lines_at(source, "false")
   end
 
+  # PR #188 review: code inside the statement that runs only sometimes gets no
+  # lines, because the tests that ran the statement need not have run it.
+  {
+    "a later when condition" => ["case v\n  when :p then 1\n  when :q,\n       :r then 2\n  end", ":r"],
+    "a later in pattern" => ["case v\n  in Integer then 1\n  in String |\n     Symbol then 2\n  end", "Symbol"],
+    "a rescue class list" => ["begin\n    g\n  rescue ArgumentError,\n         TypeError\n    nil\n  end", "TypeError"],
+    "a lambda default" => ["l = ->(a = g(\n    :m)) { a }", ":m"],
+    "a block default" => ["list.each do |a = g(\n    :m)|\n    a\n  end", ":m"],
+    "a rescue modifier" => ["x = a rescue g(\n    :m)", ":m"],
+    "an or-assign value" => ["@x ||= g(\n    :m)", ":m"],
+    "an and-assign value" => ["@x &&= g(\n    :m)", ":m"],
+    "a defined? operand" => ["ok = defined?(g(\n    :m))", ":m"]
+  }.each do |shape, (body, snippet)|
+    define_method("test_#{shape.tr(' ?-', '___')}_has_no_lines") do
+      source = "def f(v, list)\n  #{body}\nend\n"
+      assert_empty lines_at(source, snippet), shape
+    end
+  end
+
+  def test_a_later_argument_in_a_when_body_still_belongs_to_its_statement
+    source = "def f(v)\n  case v\n  when :p\n    g(1,\n      2)\n  end\nend\n"
+    assert_equal [4, 5], lines_at(source, "2)")
+  end
+
   def test_a_default_argument_has_no_lines
     source = <<~'RUBY'
       def work(a =

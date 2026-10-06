@@ -319,7 +319,10 @@ module Mutineer
     # Coverage-based test selection, shared by the in-process ({run}) and daemon
     # paths so both narrow identically (score parity). Returns
     # `[:run, abs_test_paths]` when some test covers the mutant's line, or
-    # `[:verdict, Result]` (no_coverage / uncapturable) when none do.
+    # `[:verdict, Result]` (no_coverage / uncapturable) when none do. A line
+    # Ruby does not count (a later line of a multi-line statement) uses the
+    # tests that ran the statement that holds it ({StatementLines}), unless the
+    # mutant sits in code of that statement that runs only sometimes.
     #
     # An empty selection is `:uncapturable` (not `:no_coverage`) when the
     # mutant's enclosing method body got coverage from no *successful* capture but

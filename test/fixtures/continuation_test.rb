@@ -23,4 +23,8 @@ class ContinuationTest < Minitest::Test
   def test_empty
     assert_equal :never_counted, Continuation.empty
   end
+
+  def test_kind
+    assert_equal :number, Continuation.kind(1)
+  end
 end
