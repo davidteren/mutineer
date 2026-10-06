@@ -3,6 +3,7 @@
 require "json"
 require "tempfile"
 require_relative "child_stdout"
+require_relative "orphan_guard"
 
 module Mutineer
   # App-side daemon (persistent worker).
@@ -169,33 +170,18 @@ module Mutineer
         -> { @worker_db.after_fork(0, schema) }
       end
 
-      # Kills this mutant child's process group once the daemon that forked it
-      # is gone (it crashed, or a client that gave up on it killed it), so a
-      # test cannot outlive its daemon and keep using the worker database
-      # (#101). Polls, because a forked child gets no signal on parent death.
-      #
-      # @param parent [Integer] the daemon's pid.
-      # @return [Thread]
-      def exit_with_parent(parent = Process.ppid)
-        Thread.new do
-          sleep(0.5) while Process.ppid == parent
-          # Group 0 only when this child leads its own group: a failed setpgid
-          # leaves it in the client's group, which must not be killed.
-          Process.kill(:KILL, Process.getpgrp == Process.pid ? 0 : Process.pid)
-        end
-      end
-
       # Fork a child to run one mutant in isolation; decode its exit into a verdict.
       def run_mutant(req)
         timeout = req.fetch("timeout", 30)
         worker  = req.fetch("worker", 0)
         # Load schema until the first killed/survived fork for this worker slot.
         schema_for_fork = (@worker_db && @schema_path && !@schema_ready[worker]) ? @schema_path : nil
+        daemon = Process.pid
         pid = fork do
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
           # and silence the child's stdout so test output never corrupts the IPC pipe.
           Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
-          exit_with_parent
+          OrphanGuard.start(daemon)
           code =
             begin
               ChildStdout.silence

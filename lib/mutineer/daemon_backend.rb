@@ -91,8 +91,9 @@ module Mutineer
     # Build the coverage map via a short-lived daemon (boots the app once, captures
     # per-test coverage app-side, ships the map back). Returns a query-only
     # CoverageMap, or nil when the build fails / returns empty. Callers then run the
-    # full --test set. Coverage-build IPC has no wall-clock (same limitation as
-    # in-process build_via_fork). A normal nonempty map scores like in-process;
+    # full --test set. Each capture is bounded by capture_timeout (#101); the
+    # client's wait for the whole map is not, because its length grows with the
+    # number of test files. A normal nonempty map scores like in-process;
     # nil falls back to the full suite (more testing, not comparable).
     #
     # @param config [Mutineer::Config] the run config.

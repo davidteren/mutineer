@@ -351,7 +351,7 @@ module Mutineer
       close_io
       @restarts += 1
       if @restarts > MAX_RESTARTS
-        raise DaemonBootError, "daemon crashed #{@restarts} times; aborting the run"
+        raise DaemonBootError, "daemon crashed or stopped answering #{@restarts} times; aborting the run"
       end
 
       cause = @timed_out ? "stopped answering" : "crashed"

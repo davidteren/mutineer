@@ -9,6 +9,7 @@ require "set"
 require_relative "minitest_integration"
 require_relative "test_runners"
 require_relative "child_stdout"
+require_relative "orphan_guard"
 require_relative "project_path"
 require_relative "pairing"
 
@@ -364,9 +365,11 @@ module Mutineer
       # swallows, losing the real error and yielding a bare "no result".
       rd.binmode
       wr.binmode
+      parent = Process.pid
       pid = fork do
         rd.close
         Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
+        OrphanGuard.start(parent)
         payload =
           begin
             ChildStdout.silence
@@ -688,9 +691,11 @@ module Mutineer
       rd, wr = IO.pipe
       rd.binmode
       wr.binmode
+      parent = Process.pid
       pid = fork do
         rd.close
         Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
+        OrphanGuard.start(parent)
         begin
           ChildStdout.silence
           after_fork&.call

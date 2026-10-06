@@ -5,7 +5,7 @@ require "rbconfig"
 
 require_relative "test_helper"
 require "mutineer/daemon_client"
-require "mutineer/daemon_server"
+require "mutineer/orphan_guard"
 require "mutineer/daemon_backend"
 require "tmpdir"
 
@@ -51,17 +51,18 @@ class DaemonClientDeadlineTest < Minitest::Test
     assert restarted
   end
 
-  # A mutant child runs in its own process group, so killing the daemon does
-  # not reach it; its watchdog must end it once the daemon is gone.
+  # A mutant or capture child runs in its own process group, so killing its
+  # parent does not reach it; its watchdog must end it once the parent is gone.
   def test_mutant_child_dies_with_its_daemon
     rd, wr = IO.pipe
     daemon = fork do
       rd.close
       ready_rd, ready_wr = IO.pipe
+      parent = Process.pid
       child = fork do
         ready_rd.close
         Process.setpgid(0, 0)
-        Mutineer::DaemonServer.send(:exit_with_parent)
+        Mutineer::OrphanGuard.start(parent)
         ready_wr.puts("watching") # the watchdog is running before the daemon exits
         sleep 60
       end
@@ -114,10 +115,11 @@ class DaemonClientDeadlineTest < Minitest::Test
 
   private
 
-  # @return [Boolean] whether `pid` still exists.
+  # @return [Boolean] whether `pid` still runs. A zombie waiting for init to
+  # reap it counts as gone.
   def process_alive?(pid)
     Process.kill(0, pid)
-    true
+    !`ps -o stat= -p #{pid}`.strip.start_with?("Z")
   rescue Errno::ESRCH
     false
   end
