@@ -131,13 +131,15 @@ module Mutineer
     end
 
     # A partial/garbage Marshal stream (dead worker) must not crash the pool.
-    # Degrade to an error Result.
+    # Degrade to an error Result. The payload loads frozen, which also shares
+    # equal strings across payloads (the test names of a --matrix run repeat
+    # in every row).
     # @param data [String] marshaled payload.
     # @return [Mutineer::Result] decoded result or error result.
     def decode(data)
       return Result.error("worker produced no result") if data.empty?
 
-      Marshal.load(data)
+      Marshal.load(data, freeze: true)
     rescue StandardError => e
       Result.error("worker result unreadable: #{e.class}: #{e.message}")
     end

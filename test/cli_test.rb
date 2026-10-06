@@ -120,6 +120,43 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_cache_dir_holds_the_coverage_cache
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--cache-dir", "tmp/run-a", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_path_exists File.join(proj, "tmp/run-a/coverage.json")
+      refute_path_exists File.join(proj, ".mutineer")
+    end
+  end
+
+  def test_a_test_file_given_as_a_source_after_test_exits_two
+    with_project do |proj|
+      FileUtils.mkdir_p(File.join(proj, "test"))
+      %w[calculator_strong_test.rb calculator_weak_test.rb].each do |f|
+        FileUtils.mv(File.join(proj, f), File.join(proj, "test", f))
+      end
+      _, err, status = mutineer("run", "calculator.rb", "--test", "test/calculator_strong_test.rb",
+                                "test/calculator_weak_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "test/calculator_weak_test.rb looks like a test file, not a source"
+      assert_includes err, "repeat it for each test file"
+    end
+  end
+
+  def test_a_source_named_like_a_test_outside_test_dirs_still_runs
+    Dir.mktmpdir("mutineer-ab") do |proj|
+      FileUtils.mkdir_p(File.join(proj, "app/models"))
+      FileUtils.mkdir_p(File.join(proj, "test/models"))
+      File.write(File.join(proj, "app/models/ab_test.rb"), "class AbTest\n  def n = 1 + 1\nend\n")
+      File.write(File.join(proj, "test/models/ab_test_test.rb"), "")
+      out, err, status = mutineer("run", "--dry-run", "app/models/ab_test.rb",
+                                  "--test", "test/models/ab_test_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "AbTest#n"
+    end
+  end
+
   def test_config_file_integer_jobs_runs
     with_project do |proj|
       File.write(File.join(proj, ".mutineer.yml"), "jobs: 2\n")
@@ -208,6 +245,96 @@ class CliTest < Minitest::Test
     assert_includes err, "cannot be combined with --boot/--rails"
   end
 
+  # --matrix runs in-process and needs every covering test, so each conflict is
+  # a usage error named before any other check runs.
+  def test_matrix_with_daemon_exits_two
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--matrix", "--daemon", "--rails")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--matrix cannot be combined with --daemon"
+  end
+
+  def test_matrix_with_test_command_exits_two
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--matrix", "--test-command", "rake test %{files}")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--matrix cannot be combined with --test-command"
+    refute_includes err, "forcing --jobs 1"
+  end
+
+  def test_matrix_with_fail_fast_exits_two
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--matrix", "--fail-fast")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--matrix cannot be combined with --fail-fast"
+  end
+
+  # #191 review: a dry run runs no tests, so --matrix with it is a usage error,
+  # not a silently dropped request.
+  def test_matrix_with_dry_run_exits_two
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--matrix", "--dry-run")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--matrix cannot be combined with --dry-run"
+  end
+
+  # #191 review: a typed --no-matrix / --no-fail-fast beats the file key, so a
+  # file that sets one can still run with a flag that conflicts with it.
+  def test_no_matrix_and_no_fail_fast_beat_the_config_file
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "matrix: true\n")
+      args = ["run", "calculator.rb", "--test", "calculator_weak_test.rb"]
+      _, err, status = mutineer(*args, "--dry-run", chdir: proj)
+      assert_equal 2, status.exitstatus, "without --no-matrix the file's matrix: applies"
+      assert_includes err, "matrix in .mutineer.yml cannot be combined with --dry-run"
+      assert_includes err, "pass --no-matrix to run without it"
+      _, err, status = mutineer(*args, "--dry-run", "--no-matrix", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+
+      File.write(File.join(proj, ".mutineer.yml"), "fail_fast: true\n")
+      _, err, status = mutineer(*args, "--matrix", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "--matrix cannot be combined with fail_fast in .mutineer.yml"
+      assert_includes err, "pass --no-fail-fast to run without it"
+      _, err, status = mutineer(*args, "--matrix", "--no-fail-fast", "--format", "json", chdir: proj)
+      refute_includes err, "cannot be combined"
+      assert_includes [0, 1], status.exitstatus, err
+    end
+  end
+
+  def test_matrix_from_the_config_file_is_checked_too
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "matrix: true\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb", "--fail-fast", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "matrix in .mutineer.yml cannot be combined with --fail-fast"
+    end
+  end
+
+  def test_matrix_names_a_conflict_set_in_the_config_file
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "fail_fast: true\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb", "--matrix", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "--matrix cannot be combined with fail_fast in .mutineer.yml"
+    end
+  end
+
+  def test_matrix_adds_the_json_block_and_keeps_the_exit_code
+    with_project do |proj|
+      args = ["run", "calculator.rb", "--test", "calculator_weak_test.rb", "--operators", "arithmetic",
+              "--format", "json", "--threshold", "50"]
+      plain_out, _, plain_status = mutineer(*args, chdir: proj)
+      out, _, status = mutineer(*args, "--matrix", chdir: proj)
+
+      assert_equal plain_status.exitstatus, status.exitstatus
+      plain = JSON.parse(plain_out)
+      doc = JSON.parse(out)
+      refute plain.key?("matrix")
+      assert_equal plain["summary"], doc["summary"]
+      assert_equal(%w[test_add test_subtract].map do |m|
+        { "file" => "calculator_weak_test.rb", "name" => "CalculatorWeakTest##{m}", "id" => "CalculatorWeakTest##{m}" }
+      end, doc.dig("matrix", "blind"))
+      assert_equal 6, doc.dig("matrix", "mutants").size
+    end
+  end
+
   # R5: a missing source/test path is a clean usage error, not an ENOENT backtrace.
   def test_missing_source_path_exits_two
     _, err, status = mutineer("run", "no_such_source.rb", "--test", "no_such_test.rb")
@@ -286,6 +413,27 @@ class CliTest < Minitest::Test
       _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
       assert_equal 2, status.exitstatus
       assert_includes err, ".mutineer.yml: baseline must be a string (got: nil)"
+    end
+  end
+
+  # `operators:` with no value still exits 2. --operators replaces that
+  # list, including one that names only an unknown operator.
+  def test_operators_flag_replaces_a_blank_or_unknown_file_list
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "operators:\n")
+      _, err, status = mutineer("run", "calculator.rb", "--dry-run", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "operators must name at least one operator, not blank"
+
+      out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_match(/arithmetic: [1-9]/, out)
+
+      File.write(File.join(proj, ".mutineer.yml"), "operators: [bogus]\n")
+      out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "unknown operator"
+      assert_match(/arithmetic: [1-9]/, out)
     end
   end
 
@@ -397,7 +545,7 @@ class CliTest < Minitest::Test
                               "--format", "json", "--output", "report.json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(File.read(File.join(proj, "report.json")))
-      assert_equal "1.4", doc["schema_version"]
+      assert_equal "1.6", doc["schema_version"]
       assert_equal 100.0, doc["summary"]["score"]
     end
   end
@@ -536,11 +684,32 @@ class CliTest < Minitest::Test
       out, _, status = mutineer("run", "lib", "--format", "json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(out)
-      assert_equal "1.4", doc["schema_version"]
+      assert_equal "1.6", doc["schema_version"]
       per = doc["per_source"].sort_by { |h| h["file"] }
       assert_equal ["lib/calc.rb", "lib/greeter.rb"], per.map { |h| h["file"] }
       assert_equal 100.0, per.find { |h| h["file"] == "lib/greeter.rb" }["score"]
       assert_operator per.find { |h| h["file"] == "lib/calc.rb" }["score"], :<, 100.0
+    end
+  end
+
+  # #104: `./lib/calc.rb`, its absolute path and `lib/calc.rb` pair with the
+  # same test, and given together they run the source once.
+  def test_equivalent_source_spellings_autopair_once
+    with_autopair_project do |proj|
+      out, err, status = mutineer("run", "./lib/calc.rb", File.join(proj, "lib/calc.rb"), "lib/calc.rb",
+                                  "--format", "json", chdir: proj)
+      refute_includes err, "no test found"
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal ["lib/calc.rb"], doc["per_source"].map { |h| h["file"] }
+
+      single, = mutineer("run", "lib/calc.rb", "--format", "json", chdir: proj)
+      assert_equal JSON.parse(single)["summary"]["total"], doc["summary"]["total"]
+
+      explicit, err, status = mutineer("run", "./lib/calc.rb", "--test", "./test/calc_test.rb",
+                                       "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal JSON.parse(single)["summary"], JSON.parse(explicit)["summary"]
     end
   end
 
@@ -565,6 +734,46 @@ class CliTest < Minitest::Test
       _, err, status = mutineer("run", "lib", chdir: proj)
       assert_equal 2, status.exitstatus
       assert_includes err, "no test files found by convention"
+    end
+  end
+
+  # #87: bar_*_test.rb is the suite when bar_test.rb does not exist. The source
+  # must run, not be skipped as if it had no tests.
+  def test_split_test_files_are_paired_and_run
+    Dir.mktmpdir("mutineer-split") do |proj|
+      FileUtils.mkdir_p(File.join(proj, "app/foo"))
+      FileUtils.mkdir_p(File.join(proj, "test/foo"))
+      File.write(File.join(proj, "app/foo/bar.rb"), "class Bar\n  def n(a)\n    a + 1\n  end\nend\n")
+      File.write(File.join(proj, "test/foo/bar_upsert_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "../../app/foo/bar"
+        class BarUpsertTest < Minitest::Test
+          def test_n
+            assert_equal 2, Bar.new.n(1)
+          end
+        end
+      RUBY
+      out, err, status = mutineer("run", "app/foo/bar.rb", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "no test found by convention"
+      doc = JSON.parse(out)
+      assert_equal ["app/foo/bar.rb"], doc["per_source"].map { |h| h["file"] }
+      assert_operator doc["summary"]["killed"], :>, 0
+    end
+  end
+
+  def test_autopair_keeps_every_split_file
+    Dir.mktmpdir("mutineer-split-list") do |proj|
+      FileUtils.mkdir_p(File.join(proj, "app/foo"))
+      FileUtils.mkdir_p(File.join(proj, "test/foo"))
+      File.write(File.join(proj, "app/foo/bar.rb"), "class Bar; def n(a); a + 1; end; end\n")
+      %w[bar_guards_test.rb bar_upsert_test.rb].each do |name|
+        File.write(File.join(proj, "test/foo", name), "# #{name}\n")
+      end
+      config = config_resolved_by_cli(proj, "run", "app/foo/bar.rb")
+      Mutineer::CLI.autopair!(config)
+      assert_equal ["app/foo/bar.rb"], config.sources
+      assert_equal ["test/foo/bar_guards_test.rb", "test/foo/bar_upsert_test.rb"], config.tests
     end
   end
 

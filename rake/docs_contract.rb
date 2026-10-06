@@ -19,6 +19,7 @@ module DocsContract
     "`no_verdict[]` (array of object)" => "no-verdict",
     "`ignored[]` (array of object)" => "ignored",
     "`per_source[]` (array of object)" => "per-source",
+    "`matrix` (object, only with `--matrix`)" => "matrix",
     "`baseline` (object, only with `--baseline`)" => "baseline",
     "Exit codes" => "exit-codes"
   }.freeze
@@ -27,6 +28,7 @@ module DocsContract
   TABLE_ARIA = {
     "summary" => "Summary fields",
     "survivors" => "Survivor fields",
+    "matrix" => "Matrix fields",
     "baseline" => "Baseline fields",
     "exit-codes" => "Exit codes"
   }.freeze
@@ -41,6 +43,7 @@ module DocsContract
     "no-verdict" => "no_verdict[]",
     "ignored" => "ignored[]",
     "per-source" => "per_source[]",
+    "matrix" => "matrix",
     "baseline" => "baseline",
     "exit-codes" => "Exit codes"
   }.freeze
@@ -128,7 +131,17 @@ module DocsContract
     def json_schema_html
       md = File.read(SCHEMA_MD)
       body, toc = render_schema_article(md)
-      page_wrap(body, toc)
+      page_wrap(body, toc, schema_version(md))
+    end
+
+    # The `schema_version` in json-schema.md's top-level shape block, so the
+    # page header cannot drift from the documented schema.
+    #
+    # @param md [String] json-schema.md source.
+    # @return [String] e.g. `"1.5"`.
+    # @raise [RuntimeError] when the shape block names no version.
+    def schema_version(md)
+      md[/"schema_version":\s*"([^"]+)"/, 1] or raise "docs/json-schema.md: no schema_version in the shape block"
     end
 
     # Apply the contract to every derived surface and write them.
@@ -437,8 +450,9 @@ module DocsContract
     #
     # @param article [String]
     # @param toc [String]
+    # @param version [String] the documented schema_version.
     # @return [String]
-    def page_wrap(article, toc)
+    def page_wrap(article, toc, version)
       <<~HTML
         <!DOCTYPE html>
         <html lang="en" data-theme="dark">
@@ -500,7 +514,7 @@ module DocsContract
             </aside>
 
             <article class="prose">
-              <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Reference · schema_version 1.4</span>
+              <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Reference · schema_version #{version}</span>
               <h1>JSON report schema reference</h1>
               #{article}
               <div class="callout"><span class="ico" aria-hidden="true">→</span><p>See the <a href="agentic-coding.html">agent &amp; CI recipes</a> for how to consume this in a loop or a PR gate.</p></div>

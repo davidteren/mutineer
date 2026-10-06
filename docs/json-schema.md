@@ -7,7 +7,7 @@ worker finish order, so two runs of the same inputs produce byte-identical outpu
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.4"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.6"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -25,7 +25,7 @@ between reports with the same `id_format` (a missing key is the old format).
 
 ```jsonc
 {
-  "schema_version": "1.4",
+  "schema_version": "1.6",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
@@ -33,6 +33,7 @@ between reports with the same `id_format` (a missing key is the old format).
   "no_verdict":   [ /* mutants that were attempted and produced no verdict */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
   "per_source":   [ /* per-file roll-up */ ],
+  "matrix":       { /* present ONLY with --matrix: which tests kill which mutants */ },
   "baseline":     { /* present ONLY with --baseline: the delta vs a prior run */ }
 }
 ```
@@ -69,12 +70,17 @@ Each surviving mutant — the records an agent or reviewer acts on:
 | `operator` | string | Operator name, e.g. `arithmetic`, `comparison`. |
 | `id` | string | **Offset-free id** (12 hex chars). Includes the file path relative to the project root (a source outside the root uses its absolute real path, so its ids differ between machines). Unrelated edits preserve it when the path, qualified method name, mutated token, and repeated-name/mutation order stay the same. File moves, renames, and root changes can change it. See [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
 | `token` | string | The exact code being mutated (whitespace-collapsed), e.g. `a + b`. |
-| `diff` | string | A unified diff (`@@ -line +line @@` with `-original` / `+mutant`). Ready to hand to an agent as "write a test that fails under this change." |
+| `diff` | string | A unified diff with no context lines: `-original` / `+mutant` lines under a hunk header that gives each side's start line and, when it is not 1, its line count (`@@ -3,2 +3 @@`). For a `file` given relative to the project root, `git apply --unidiff-zero` run from that root accepts it. An absolute or `../` path needs `git apply --directory`/`-p` or an edit. Ready to hand to an agent as "write a test that fails under this change." |
 
 ### `no_coverage[]` and `uncapturable[]` (array of object)
 
-Both use the lean shape `{ subject, file, line }`. `no_coverage` is a genuine coverage gap; `uncapturable`
-means the test that should cover the line errored while capturing coverage (fix the harness, not the test).
+Each entry is `{ subject, file, line, operator, token, id }`, sorted by
+`(file, line, operator, id)`. `no_coverage` is a genuine coverage gap; `uncapturable` means the test that
+should cover the line errored while capturing coverage (fix the harness, not the test).
+
+Several mutants can share a line, so `operator` and `token` name the change and `id` identifies the mutant.
+The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` these entries were
+`{ subject, file, line }`.
 
 ### `no_verdict[]` (array of object)
 
@@ -88,8 +94,8 @@ A failure before the mutant could be forked has no subject or mutation, so `subj
 `id` are `null` on that entry. It still appears, because the counts must reconcile — but that means `id`
 is not a reliable join key here, unlike in `survivors[]` and `ignored[]`.
 
-Uncapturable mutants appear both here and in `uncapturable[]`, which keeps its lean shape for consumers
-that already read it.
+Uncapturable mutants appear both here and in `uncapturable[]`, which stays for consumers that already
+read it.
 
 Read this array when the score looks better than you expect: these mutants are excluded from the score's
 denominator, so a broken harness raises the score rather than lowering it. That is why `--threshold`
@@ -104,6 +110,50 @@ Suppressed (equivalent) mutants, so you can audit what's silenced: `{ subject, f
 Per-file roll-up: `{ file, total, killed, survived, no_coverage, score }` (`score` is `float | null` as above).
 `total` counts classified results for that file. A `--fail-fast` report is partial:
 unscheduled candidates are omitted from these counts and from the top-level totals.
+
+### `matrix` (object, only with `--matrix`)
+
+Which tests kill which mutants. A `--matrix` run runs every test in each mutant's covering files, so a
+mutant's row names every test that kills it. Coverage is recorded per test file, and a test that never runs
+the mutated line cannot kill the mutant. Added in schema `1.5` and absent without the flag. The block never
+changes `summary`, the score or the exit code.
+
+A test has a `file` (relative to the project root: the file that defines the test), a `name`
+(`CalculatorTest#test_add` under Minitest, the example's full description under RSpec) and an `id`. The `id`
+tells apart tests that share a file and name: under RSpec it is the example id
+(`./spec/calc_spec.rb[1:2]`; `--matrix` needs RSpec 3.3 or later, and an older RSpec leaves every row
+incomplete), and under Minitest it equals `name`. A test of an anonymous Minitest class is named
+`(anonymous)#test_x`, and its `id` adds the line of the method (`(anonymous)#test_x@7`).
+A test is identified by its `file` and `id`. An example without a description of its own is worded from its
+matcher, so its `name` can change with the mutant; the report keeps the name the first mutant gave it.
+
+| Key | Type | Meaning |
+|-----|------|---------|
+| `complete` | bool | True when every row is complete. When false, a test in `blind[]` may have killed a mutant whose row is incomplete. |
+| `tests[]` | array | Every test that ran against at least one mutant: `{ file, name, id, kills }`, sorted by `file`, `name`, then `id`. `kills` counts the mutants the test killed. Rows refer to a test by its index here. |
+| `mutants[]` | array | One row per mutant that ran: `{ subject, file, line, operator, id, status, killed_by, ran, complete }`, sorted by `(file, line, operator, id)`. `killed_by` holds indexes into `tests[]`, and `ran` counts the tests that ran against the mutant. No-coverage, uncapturable, skipped and ignored mutants have no row: they never ran. |
+| `blind[]` | array | `{ file, name, id }`: tests that ran in at least one complete row and killed no mutant in any row. |
+| `redundant[]` | array | `{ file, name, id }`: tests that killed at least one mutant, where each mutant they killed has another killer. |
+
+A row is complete (`complete: true`) only when the mutant's whole covering set ran and the suite returned
+normally before the per-mutant timeout, every line the child sent was read and arrived in order, and the row
+agrees with the verdict: a killed mutant names a killer and a survivor names none. Under Minitest the
+recorder also counts: it must have seen every test its classes run, so an `Interrupt` that Minitest caught and
+returned from leaves the row incomplete; under RSpec, every planned example must have reported, so a run that
+RSpec stopped early does too. A test that exits the process, a crash, the timeout, a failed write to the
+channel, or a test framework Mutineer could not hook each leave the row incomplete too. A row whose lines
+arrived out of order names no tests (`killed_by` and `ran` are empty).
+
+`status` is the verdict a run without `--matrix` gives. After the first failing test, that run skips every
+later test, test class and example group, so an exit, a crash or the timeout in one of those leaves the status
+`"killed"`. It still runs the code around the failing test (the rest of its Minitest class `run` wrapper, the
+`after(:all)` hooks of its RSpec groups) and the suite's own cleanup (RSpec `after(:suite)`), so an end there
+keeps the exit status (or `"timeout"`). A failure in the tests of a Minitest `parallelize_me!` class keeps it
+too: those run after every serial class and cannot be stopped once queued, while a failure in a serial class
+still stops the run, even in a suite that also has a parallel class.
+
+Each redundant test is judged on its own. Two redundant tests can be the only killers of one mutant, so
+delete them one at a time and re-run after each. Every answer covers this run's mutants only.
 
 ### `baseline` (object, only with `--baseline`)
 

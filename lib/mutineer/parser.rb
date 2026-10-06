@@ -10,9 +10,9 @@ module Mutineer
 
   # Thin boundary around Prism.
   #
-  # Both methods return a Prism::ParseResult so all callers use result.value,
-  # result.source.source (raw bytes), and result.errors uniformly. No wrapping
-  # struct.
+  # The parse methods return a Prism::ParseResult so all callers use
+  # result.value, result.source.source (raw bytes), and result.errors
+  # uniformly. No wrapping struct.
   class Parser
     # Parses a file with Prism.
     #
@@ -31,6 +31,15 @@ module Mutineer
     # @return [Prism::ParseResult] Prism parse result.
     def self.parse_string(source)
       Prism.parse(source)
+    end
+
+    # The comments of source text, without building its syntax tree: a few
+    # times cheaper than {.parse_string} for a caller that needs only these.
+    #
+    # @param source [String] source text.
+    # @return [Array<Prism::Comment>] its comments, in source order.
+    def self.comments(source)
+      Prism.parse_comments(source)
     end
   end
 end

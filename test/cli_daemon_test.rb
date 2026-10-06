@@ -70,6 +70,15 @@ class CliDaemonTest < Minitest::Test
     end
   end
 
+  # PR #183 review: the daemon never reads the in-process time limits, so a
+  # value the user set says it is ignored instead of doing nothing silently.
+  def test_daemon_warns_that_timeout_flags_have_no_effect
+    _, err, = mutineer("run", "x.rb", "--test", "t.rb", "--daemon", "--rails", "--timeout", "30",
+                       "--capture-timeout", "300")
+    assert_includes err, "--timeout has no effect with --daemon (it applies to in-process runs only); ignoring it."
+    refute_includes err, "--capture-timeout has no effect", "the daemon's coverage capture reads it"
+  end
+
   def test_daemon_forces_reload_when_redefine_requested
     _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--daemon", "--rails",
                               "--strategy", "redefine")

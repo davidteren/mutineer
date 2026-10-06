@@ -11,9 +11,9 @@ require "fileutils"
 class IntegrationTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
-  def run_mutineer(sources:, tests:, operators: nil)
+  def run_mutineer(sources:, tests:, operators: nil, matrix: false)
     config = Mutineer::Config.new(
-      sources: sources, tests: tests, operators: operators,
+      sources: sources, tests: tests, operators: operators, matrix: matrix,
       cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
     )
     aggregate, = Mutineer::Runner.execute(config)
@@ -285,4 +285,118 @@ class IntegrationTest < Minitest::Test
     assert_equal 0, result.survived_count
     assert_equal 1, result.killed_count
   end
+
+  # --- kill matrix (--matrix) oracle -----------------------------------------
+  # calculator.rb against the weak and the strong suite together. The weak
+  # add/subtract tests use a 0 operand, so they kill nothing (blind). Both
+  # suites kill multiply, divide, modulo and power, so each of those eight
+  # tests is redundant on its own. Only the strong add/subtract tests kill the
+  # add and subtract mutants.
+  CALC_TESTS = ["test/fixtures/calculator_weak_test.rb", "test/fixtures/calculator_strong_test.rb"].freeze
+
+  def weak(name) = ["test/fixtures/calculator_weak_test.rb", "CalculatorWeakTest##{name}", "CalculatorWeakTest##{name}"]
+  def strong(name) = ["test/fixtures/calculator_strong_test.rb", "CalculatorStrongTest##{name}",
+                      "CalculatorStrongTest##{name}"]
+
+  def test_kill_matrix_oracle
+    result = run_mutineer(sources: ["test/fixtures/calculator.rb"], tests: CALC_TESTS,
+                          operators: ["arithmetic"], matrix: true)
+    matrix = Mutineer::KillMatrix.new(result.results)
+
+    assert_equal 6, matrix.rows.size
+    assert_predicate matrix, :complete?
+    assert_equal 12, matrix.tests.size
+    assert_equal [weak("test_add"), weak("test_subtract")], matrix.blind
+    expected = %w[test_divide test_modulo test_multiply test_power]
+    assert_equal (expected.map { |n| strong(n) } + expected.map { |n| weak(n) }).sort, matrix.redundant
+
+    add = result.results.find { |r| r.subject.name == :add }
+    assert_equal [strong("test_add")], add.kills.killed_by
+    assert_equal 12, add.kills.ran.size
+  end
+
+  # The matrix annotates verdicts and never decides them: every mutant gets the
+  # same status with and without --matrix, so the score is the same.
+  def test_matrix_leaves_every_verdict_unchanged
+    [["test/fixtures/calculator_weak_test.rb"], CALC_TESTS].each do |tests|
+      plain = run_mutineer(sources: ["test/fixtures/calculator.rb"], tests: tests)
+      matrix = run_mutineer(sources: ["test/fixtures/calculator.rb"], tests: tests, matrix: true)
+
+      assert_equal plain.results.to_h { |r| [r.id, r.status] }, matrix.results.to_h { |r| [r.id, r.status] }
+      assert_equal plain.mutation_score, matrix.mutation_score
+      assert(plain.results.none?(&:kills))
+      assert(matrix.results.select { |r| r.killed? || r.survived? }.all?(&:kills))
+    end
+  end
+
+
+  # --- regressions from the review of the first --matrix cut ------------------
+
+  def statuses(aggregate) = aggregate.results.to_h { |r| [r.id, r.status] }
+  def names(tests) = tests.map { |_file, name, _id| name }
+
+  # A test fails, then the next test exits the process with status 0. The run
+  # without --matrix stops at the failure and scores the mutant killed, and so
+  # must the matrix: the exit is past the point where the verdict was decided.
+  def test_matrix_keeps_a_kill_that_a_later_exit_would_erase
+    sources = ["test/fixtures/matrix/gate.rb"]
+    tests = ["test/fixtures/matrix/gate_test.rb"]
+    plain = run_mutineer(sources: sources, tests: tests)
+    matrix = run_mutineer(sources: sources, tests: tests, matrix: true)
+
+    assert_equal statuses(plain), statuses(matrix)
+    assert_equal plain.mutation_score, matrix.mutation_score
+    big = matrix.results.find { |r| r.subject.name == :big? }
+    assert_predicate big, :killed?
+    assert_equal ["MatrixGateTest#test_a_boundary"], names(big.kills.killed_by)
+    refute big.kills.complete, "the suite never returned, so the row cannot be complete"
+  end
+
+  # Setup errors, a skip, an error, a blind test, a module included in two
+  # classes, and a parallel class, in one suite.
+  def test_matrix_on_a_mixed_suite
+    sources = ["test/fixtures/matrix/acct.rb"]
+    tests = ["test/fixtures/matrix/acct_test.rb"]
+    plain = run_mutineer(sources: sources, tests: tests)
+    matrix = run_mutineer(sources: sources, tests: tests, matrix: true)
+    km = Mutineer::KillMatrix.new(matrix.results)
+
+    assert_equal statuses(plain), statuses(matrix)
+    assert_equal 16, km.tests.size
+    refute_includes names(km.tests), "MatrixAcctSetupTest#test_skipped"
+    shared = km.tests.select { |_file, name, _id| name.end_with?("#test_shared_deposit") }
+    assert_equal %w[MatrixAcctA#test_shared_deposit MatrixAcctB#test_shared_deposit], names(shared)
+    assert_equal ["test/fixtures/matrix/support/shared_tests.rb"], shared.map(&:first).uniq
+    assert_equal %w[MatrixAcctParallel#test_p0 MatrixAcctSetupTest#test_blind], names(km.blind)
+    fee = matrix.results.select { |r| r.subject.name == :fee }.flat_map { |r| names(r.kills.killed_by) }
+    assert_includes fee, "MatrixAcctSetupTest#test_errors_on_mutant"
+  end
+
+  # Minitest runs a serial class first, so a kill there still stops the run
+  # without --matrix; the parallel class loaded beside it must not turn the
+  # matrix run into one that keeps the exit status.
+  def test_matrix_keeps_a_serial_kill_in_a_suite_that_also_has_a_parallel_class
+    sources = ["test/fixtures/matrix/gate.rb"]
+    tests = ["test/fixtures/matrix/gate_mixed_test.rb"]
+    plain = run_mutineer(sources: sources, tests: tests)
+    matrix = run_mutineer(sources: sources, tests: tests, matrix: true)
+
+    assert_equal statuses(plain), statuses(matrix)
+    big = matrix.results.find { |r| r.subject.name == :big? }
+    assert_predicate big, :killed?
+    refute big.kills.complete
+  end
+
+  # Minitest catches an Interrupt in a test and returns after the tests so far,
+  # so a returned run proves nothing: the row must not claim every test ran.
+  def test_matrix_row_is_incomplete_when_an_interrupt_cut_the_run_short
+    sources = ["test/fixtures/matrix/gate.rb"]
+    tests = ["test/fixtures/matrix/gate_interrupt_test.rb"]
+    matrix = run_mutineer(sources: sources, tests: tests, matrix: true)
+    big = matrix.results.find { |r| r.subject.name == :big? }
+
+    assert_predicate big, :killed?
+    refute big.kills.complete
+  end
+
 end
