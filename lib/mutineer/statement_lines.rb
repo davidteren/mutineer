@@ -50,9 +50,9 @@ module Mutineer
                  Prism::BlockParametersNode, Prism::DefinedNode].freeze
 
     # Whether `child` runs only sometimes when `parent` runs. Besides the
-    # {SOMETIMES} nodes: the rescue side of `x rescue y`, and the value of
-    # `a ||= v` or `a &&= v`. The right side of `a ||` / `a &&` on its own line
-    # is not caught here; that is a known limit (see the README).
+    # {SOMETIMES} nodes: the rescue side of `x rescue y`, the value of
+    # `a ||= v` or `a &&= v`, the right side of `a || b` or `a && b`, and the
+    # arguments and block of `x&.m(...)`, which do not run when `x` is nil.
     #
     # @param parent [Prism::Node]
     # @param child [Prism::Node]
@@ -60,6 +60,10 @@ module Mutineer
     def self.sometimes?(parent, child)
       return true if SOMETIMES.any? { |klass| child.is_a?(klass) }
       return child.equal?(parent.rescue_expression) if parent.is_a?(Prism::RescueModifierNode)
+      return child.equal?(parent.right) if parent.is_a?(Prism::OrNode) || parent.is_a?(Prism::AndNode)
+      if parent.is_a?(Prism::CallNode) && parent.safe_navigation?
+        return child.equal?(parent.arguments) || child.equal?(parent.block)
+      end
 
       parent.class.name.end_with?("OrWriteNode", "AndWriteNode") && child.equal?(parent.value)
     end

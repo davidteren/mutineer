@@ -122,7 +122,10 @@ class StatementLinesTest < Minitest::Test
     "a rescue modifier" => ["x = a rescue g(\n    :m)", ":m"],
     "an or-assign value" => ["@x ||= g(\n    :m)", ":m"],
     "an and-assign value" => ["@x &&= g(\n    :m)", ":m"],
-    "a defined? operand" => ["ok = defined?(g(\n    :m))", ":m"]
+    "a defined? operand" => ["ok = defined?(g(\n    :m))", ":m"],
+    "the right side of or" => ["ok = v ||\n    :m", ":m"],
+    "the right side of and" => ["ok = v &&\n    :m", ":m"],
+    "a safe navigation argument" => ["v&.g(:a,\n    :m)", ":m"]
   }.each do |shape, (body, snippet)|
     define_method("test_#{shape.tr(' ?-', '___')}_has_no_lines") do
       source = "def f(v, list)\n  #{body}\nend\n"

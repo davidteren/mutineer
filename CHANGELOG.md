@@ -24,8 +24,9 @@ All notable changes to this project are documented here. The format is based on
   `x until c`. It also gives no tests to a mutant in code of the statement
   that runs only sometimes: a later `when` or `in` condition, a `rescue` class
   list, a parameter default, the rescue side of `x rescue y`, the value of
-  `||=` or `&&=`, and the operand of `defined?`. The right side of `a ||` or
-  `a &&` on its own line still takes the statement's tests.
+  `||=` or `&&=`, the operand of `defined?`, the right side of `a ||` or
+  `a &&`, and an argument of `x&.m(...)`. Those mutants stay `no_coverage`,
+  as before.
 - **A survivor diff for a multi-line mutant applies with `git apply`** (#106).
   The JSON `diff` header always read `@@ -N +N @@`, even when the mutant
   removed two lines and added one, so `git apply` rejected the patch as
