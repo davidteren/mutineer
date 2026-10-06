@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "mutineer/daemon_client"
+require "mutineer/daemon_server"
 
 # #26/#27 Phase 2a (U2 + U3): the tool-side DaemonClient spawns the app-side daemon
 # under the fixture app's bundle, boots it once, and gets structured verdicts. Real
@@ -124,6 +125,18 @@ class DaemonClientTest < Minitest::Test
         Process.kill(:KILL, File.read(marker).to_i) rescue nil # rubocop:disable Style/RescueModifier
       end
     end
+  end
+
+  # A caller-supplied output (here STDOUT) is not the daemon's to close. Only the
+  # protocol copy that `run` reserved itself is closed in a fork.
+  def test_forks_leave_a_caller_supplied_output_open
+    pid = fork do
+      Mutineer::DaemonServer.instance_variable_set(:@output, STDOUT)
+      Mutineer::DaemonServer.send(:close_protocol)
+      exit!(STDOUT.closed? ? 1 : 0)
+    end
+    _pid, status = Process.wait2(pid)
+    assert_equal 0, status.exitstatus, "close_protocol closed a caller-supplied STDOUT"
   end
 
   # A bad boot path surfaces as a clean DaemonBootError, not a hang.

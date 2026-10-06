@@ -56,7 +56,9 @@ module Mutineer
       # @param errio [IO] diagnostics stream (never the IPC channel).
       # @return [void]
       def run(input: $stdin, output: nil, errio: $stderr)
-        output ||= reserve_protocol_output
+        # Only a stream `run` reserved itself is the daemon's to close in a fork.
+        @protocol = output ? nil : reserve_protocol_output
+        output ||= @protocol
         @errio = errio
         @output = output
         boot_line = input.gets
@@ -193,9 +195,10 @@ module Mutineer
 
       # A forked child never answers on the protocol channel. Closing its
       # inherited copy lets a daemon crash read as EOF on the client at once,
-      # not only after a slow or hung child exits.
+      # not only after a slow or hung child exits. A caller-supplied output
+      # (for example STDOUT) is left open.
       def close_protocol
-        @output.close rescue nil # rubocop:disable Style/RescueModifier
+        @protocol&.close rescue nil # rubocop:disable Style/RescueModifier
       end
 
       # Fork a child to run one mutant in isolation; decode its exit into a verdict.
