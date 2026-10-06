@@ -61,6 +61,14 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **`./lib/x.rb` and an absolute path pair with a test** (#104). Auto-pairing
+  found the test for `lib/calc.rb` but not for `./lib/calc.rb` or the
+  absolute path to the same file. It reported "no test found by convention"
+  and exited 2. A file argument inside the project is now made relative to
+  the project root first, so equivalent spellings (`./`, `..`, absolute)
+  pair with the same test and run once. A symlink keeps its own name, so it
+  stays a separate source from its target. Reports show that root-relative
+  path. A path outside the project stays as typed.
 - **A mutant on another line of a multi-line statement runs its tests**
   instead of being reported as `no_coverage`. Ruby counts one line of a
   statement only. When the mutant's own line has no count, the runner now uses
