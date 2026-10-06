@@ -29,8 +29,11 @@ out of the score.
 
 ## Key Technical Decisions
 
-- **Read comments from `Parser.parse_string`** (the repo's Prism boundary; changed from `Prism.parse_comments` after code review). Prism ships with Ruby 3.4 (the gem has zero runtime
-  dependencies) and already parses this source. It returns each comment with its line, so a string never counts.
+- **Read comments through `Parser.comments`**, a new method on the repo's Prism boundary
+  that wraps `Prism.parse_comments`. Prism ships with Ruby 3.4 (the gem has zero runtime
+  dependencies). It returns each comment with its line, so a string never counts, and it
+  builds no syntax tree, so it costs about a third of a full parse (PR review asked not to
+  parse each source twice).
 - **Only inline (`#`) comments.** An `=begin`/`=end` block spans many lines, and the
   marker is documented as a line comment.
 - **Keep the existing regex,** applied to the comment text instead of the whole line.
@@ -40,10 +43,10 @@ out of the score.
 
 ### U1. Comment-only marker detection
 
-**Files:** `lib/mutineer/runner.rb`, `test/equivalent_mutant_test.rb` (where the
+**Files:** `lib/mutineer/runner.rb`, `lib/mutineer/parser.rb`, `test/equivalent_mutant_test.rb` (where the
 existing `suppress_map` tests live), `CHANGELOG.md`
 
-**Approach:** In `suppress_map`, iterate the inline comments from `Parser.parse_string(source).comments`
+**Approach:** In `suppress_map`, iterate the inline comments from `Parser.comments(source)`
 instead of the source lines. Use each comment's start line as the key. Update the docstring.
 
 **Test scenarios:**
