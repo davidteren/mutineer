@@ -10,6 +10,7 @@ require_relative "pairing"
 require_relative "changed_lines"
 require_relative "runner"
 require_relative "reporter"
+require_relative "kill_matrix"
 require_relative "baseline"
 require_relative "mutator_registry"
 
@@ -46,6 +47,11 @@ module Mutineer
                              --test-command, --fail-fast, or --rails
                              without --daemon forces 1
         --strategy NAME      reload (whole-file) or redefine (surgical); default: reload
+        --timeout SECONDS    Per-mutant time limit for in-process runs (default: 10);
+                             a mutant over it is a timeout, excluded from the score
+        --capture-timeout SECONDS  Time limit for each coverage-capture subprocess
+                             and the clean check (default: 120; not with --test-command)
+        --cache-dir DIR      Directory for the coverage cache (default: .mutineer)
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then
                              fork per mutant (Rails apps; requires --test)
@@ -61,7 +67,13 @@ module Mutineer
         --format human|json|html  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
-        --fail-fast          Stop at the first surviving mutant
+        --fail-fast          Stop at the first surviving mutant (--no-fail-fast beats a
+                             .mutineer.yml fail_fast:)
+        --matrix             Run every covering test for each mutant and report blind and
+                             redundant tests; the JSON report also lists each mutant's
+                             killers (in-process only; not with --daemon, --test-command,
+                             --fail-fast or --dry-run; --no-matrix beats a .mutineer.yml
+                             matrix:)
         --verbose            Surface the real error when a fork capture fails (alias: --debug)
 
       Options:
@@ -92,7 +104,10 @@ module Mutineer
         end
         o.on("--list-operators") { show_operators = true }
         o.on("--dry-run") { opts[:dry_run] = true }
-        o.on("--fail-fast") { opts[:fail_fast] = true }
+        # A typed --no-* beats the .mutineer.yml key, so a file key that
+        # conflicts with another flag can be turned off for one run.
+        o.on("--[no-]fail-fast") { |on| opts[:fail_fast] = on }
+        o.on("--[no-]matrix") { |on| opts[:matrix] = on }
         o.on("--only NAME") { |v| opts[:only] = v }
         o.on("--since REF") { |v| opts[:since] = Config.parse(:since, v) }
         # A typed "no" must beat a .mutineer.yml `since:` key: the key is present
@@ -104,6 +119,9 @@ module Mutineer
         end
         o.on("--threshold FLOAT") { |v| opts[:threshold] = Config.parse(:threshold, v) }
         o.on("--jobs N") { |v| opts[:jobs] = Config.parse(:jobs, v) }
+        o.on("--timeout SECONDS") { |v| opts[:timeout] = Config.parse(:timeout, v) }
+        o.on("--capture-timeout SECONDS") { |v| opts[:capture_timeout] = Config.parse(:capture_timeout, v) }
+        o.on("--cache-dir DIR") { |v| opts[:cache_dir] = Config.parse(:cache_dir, v) }
         o.on("--strategy STRAT") { |v| opts[:strategy] = Config.parse(:strategy, v) }
         o.on("--framework NAME") { |v| opts[:framework] = Config.parse(:framework, v) }
         o.on("--boot FILE") { |v| opts[:boot] = v }
@@ -160,8 +178,8 @@ module Mutineer
                "--test takes one file; repeat it for each test file (--test a_test.rb --test b_test.rb)"
           exit 2
         end
-        # A directory source expands to its **/*.rb files; literal files pass
-        # through. Test inference (when --test is omitted) happens in validate!.
+        # A directory source expands to its **/*.rb files; a file inside the
+        # project becomes its root-relative path (#104). Test inference (when --test is omitted) happens in validate!.
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
         run(config)
       else
@@ -234,6 +252,8 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.validate!(config)
+      # First, so a conflict is reported before another check rewrites the config.
+      validate_matrix!(config) if config.matrix
       validate_test_command!(config) if config.test_command
 
       validate_since!(config) if config.since
@@ -287,6 +307,7 @@ module Mutineer
              "(surgical redefine needs a shared VM; the subprocess has its own)"
         exit 2
       end
+      warn_unused_settings(config, "--test-command", %i[timeout capture_timeout cache_dir])
       return unless config.jobs > 1
 
       warn "[mutineer] --test-command runs serially (no per-worker DB isolation yet); forcing --jobs 1."
@@ -315,12 +336,73 @@ module Mutineer
              "(rspec is not implemented on the daemon path yet)"
         exit 2
       end
+      warn_unused_settings(config, "--daemon", %i[timeout])
       return if config.strategy == "reload"
 
       # --rails defaults strategy to redefine; daemon always whole-file loads.
       warn "[mutineer] --daemon uses --strategy reload " \
            "(redefine is not supported on the daemon path); forcing reload."
       config.strategy = "reload"
+    end
+
+    # Where each setting a backend may ignore applies, for the warning.
+    UNUSED_SETTING_SCOPE = {
+      timeout: "in-process runs only",
+      capture_timeout: "in-process and --daemon coverage capture",
+      cache_dir: "the in-process and --daemon coverage cache"
+    }.freeze
+
+    # A backend that never reads a setting the user set would silently do
+    # nothing with it, so say so. `--test-command` builds no coverage map and
+    # has its own runtime, so it reads none of {UNUSED_SETTING_SCOPE}; the
+    # daemon reads the capture limit and the cache directory but keeps its own
+    # per-mutant limit.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @param backend [String] the backend's flag.
+    # @param keys [Array<Symbol>] the settings that backend ignores.
+    # @return [void]
+    def self.warn_unused_settings(config, backend, keys)
+      keys.each do |key|
+        next unless config.explicit?(key)
+
+        applies = UNUSED_SETTING_SCOPE.fetch(key)
+        warn "[mutineer] #{config.origin(key)} has no effect with #{backend} (it applies to #{applies}); ignoring it."
+      end
+    end
+
+    # --matrix runs on the in-process backend and needs every mutant's whole
+    # covering run, so a backend that cannot name the failing test, or a run that
+    # stops early, is a usage error (exit 2), never a quietly partial matrix.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.validate_matrix!(config)
+      conflict, reason =
+        if config.dry_run
+          [:dry_run, "a dry run runs no tests, so it has no matrix"]
+        elsif config.daemon
+          [:daemon, "the kill matrix runs on the in-process backend only"]
+        elsif config.test_command
+          [:test_command, "the external suite reports pass or fail, not which test failed"]
+        elsif config.fail_fast
+          [:fail_fast, "a fail-fast run is partial, so blind and redundant tests would be wrong"]
+        end
+      return unless conflict
+
+      # Say how to turn off whichever side came from the file, for this run.
+      hint =
+        if config.origin(:matrix) != "--matrix"
+          "; pass --no-matrix to run without it"
+        elsif conflict == :fail_fast && config.origin(:fail_fast) != "--fail-fast"
+          "; pass --no-fail-fast to run without it"
+        else
+          ""
+        end
+      warn "mutineer: #{config.origin(:matrix)} cannot be combined with #{config.origin(conflict)} (#{reason}#{hint})"
+      exit 2
     end
 
     # --since needs a real git repo and a resolvable ref; either failure is a
@@ -437,7 +519,8 @@ module Mutineer
 
       aggregate, source_map, extras = Runner.execute(config)
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
-      reporter = Reporter.new(aggregate, source_map)
+      matrix = KillMatrix.new(aggregate.results) if config.matrix
+      reporter = Reporter.new(aggregate, source_map, matrix: matrix)
 
       # Diff the current run against the baseline (preflighted above) by the
       # stable survivor id. The delta is rendered inline (human section / additive

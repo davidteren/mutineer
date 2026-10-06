@@ -50,13 +50,6 @@ module Mutineer
         super
       end
 
-      # Nested method definitions are discovered as their own subjects; do not
-      # recurse into them (prevents double-counting their conditions).
-      #
-      # @param node [Prism::DefNode] nested definition node.
-      # @return [void]
-      def visit_def_node(node); end
-
       private
 
       # Emits the forced condition unless the condition is a literal or holds a

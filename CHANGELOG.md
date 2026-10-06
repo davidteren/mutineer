@@ -6,7 +6,63 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **`--timeout SECONDS` and `--capture-timeout SECONDS`**, also `timeout:` and
+  `capture_timeout:` in `.mutineer.yml`. They set the in-process per-mutant
+  time limit (default 10s) and the coverage-capture time limit (default 120s),
+  which were fixed. On a large Rails suite the clean run of the unmutated
+  tests took longer than 120s, so every run that offered the whole suite
+  stopped as not green, and a mutant on a line many tests cover took longer
+  than 10s and was scored `timeout`. `--daemon` keeps its own per-mutant
+  limit but uses `--capture-timeout` for its coverage capture;
+  `--test-command` uses neither. Either backend warns about a limit it was
+  given and does not use.
+- **`--cache-dir DIR`**, also `cache_dir:` in `.mutineer.yml`, sets where the
+  coverage cache is written (default `.mutineer`, as before). Two runs from the
+  same project root shared `.mutineer/coverage.json` and could overwrite each
+  other's map; each can now have its own directory. `--daemon` uses it too.
+  A blank value (an unset CI variable) exits 2 rather than writing the cache
+  into the project root.
+- **The README states how timeouts affect the score** (#62): a timed-out
+  mutant is left out of the score, and counts as a mutant with no verdict
+  under `--threshold`.
+- **`--matrix` reports which tests kill each mutant** (`matrix: true` in
+  `.mutineer.yml`). Each mutant runs every test in its covering files instead
+  of stopping at the first failure, and the child sends each test's outcome to
+  the parent as it is recorded. The report names blind tests, which ran in a
+  complete row and killed no mutant, and redundant tests, whose every kill
+  another test also makes. Redundancy is judged one test at a time, so delete
+  redundant tests one at a time. The human report lists up to 20 of each, the
+  HTML report all of them, and the JSON report moves to schema `1.5` with a
+  `matrix` block that appears only with the flag. A test is its file and its
+  id (the example id under RSpec), so examples that share a description stay
+  apart and an example whose generated description changes with the mutant
+  stays one test. Verdicts, the score and the exit code do not change: each
+  mutant gets the verdict a run without the flag gives. After a serial test
+  fails, an exit, a crash or the timeout in a later test, class or group
+  leaves it `killed`; an end in the code that run still reaches (the failing
+  test's class wrapper or group hooks, the suite's own cleanup) and a failure
+  in a `parallelize_me!` class keep the exit status. A row is complete only
+  when the child's stream arrived in order and every test reported (under
+  Minitest the recorder saw every test, under RSpec every planned example),
+  so a caught `Interrupt` leaves it incomplete. The human report names up
+  to 20 incomplete rows and the HTML and JSON reports all of them; the human
+  and HTML reports warn not to delete a blind test until its rows are
+  complete.
+  Minitest and RSpec 3.3+ are supported, on the in-process backend only;
+  `--daemon`, `--test-command`, `--fail-fast` and `--dry-run` exit 2 with it.
+  `--no-matrix` and `--no-fail-fast` beat the matching `.mutineer.yml` key,
+  so a file that sets one can still run with a flag that conflicts with it.
+- **`no_coverage[]` and `uncapturable[]` name each mutant.** Every entry in
+  the JSON report now has `operator`, `token` and `id`, as `ignored[]` has, so
+  mutants on one line can be told apart and an `id` can go in `ignore:`. The
+  entries are sorted by `(file, line, operator, id)`. `schema_version` is `1.6`.
+
 ### Changed
+- **The human report has a `Timeout:` row**, and the score line lists timeouts
+  apart from errored mutants. Before, the `Errored:` row and the score line
+  added the two together, while the JSON report kept them apart. The HTML
+  summary now shows a `timeout` count apart from `errored` too.
 - **A test file given as a source after `--test` exits 2.** `--test` takes one
   file, so in `mutineer run app/x.rb --test spec/a_spec.rb spec/b_spec.rb` the
   second spec became a source to mutate, and the run tested with one spec file
@@ -15,6 +71,63 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **The human report escapes control characters from the source** (#163).
+  A surviving line that held a terminal control byte (for example ESC) was
+  printed as that byte, so it could change what the terminal showed. The
+  token, the replacement, the diff lines, method names, file paths and the
+  kill matrix's test names now print each control character except tab as
+  its Ruby escape (`\e`), and a byte that is not valid UTF-8 (a Latin-1
+  source) as `\xNN`. The JSON and HTML
+  reports already escaped text and do not change.
+- **One edit on a line is scored once** (#159). Some opt-in operators emitted
+  two mutants that give the same source: `literal_mutation` on `0` (the
+  "change to 1" and "add 1" rules), `negation_removal` on `!!x` (either `!`
+  removed), and `chain_link` or `operand_removal` on a repeated part such as
+  `a.b.b.c` or `x || x`. Each copy had its own id, so one surviving edit
+  counted twice. Now only the first copy on a line runs. Copies that start
+  on different lines (a multi-line chain) both stay, so `--since` never
+  loses the edit. Ids are assigned before the copy is dropped, so every kept
+  mutant keeps its id, and the dropped copy's id simply stops appearing.
+  Default runs do not change. If you use these operators with `--baseline`,
+  regenerate the baseline after upgrading: the score can move with no code
+  change, and in a full (unscoped) comparison a dropped copy that survived
+  is listed as fixed. An ignore entry for one copy's id still ignores only
+  that copy; the other copy still runs.
+- **`# mutineer:disable-line` inside a string no longer silences a line**
+  (#158). The marker was found with a text search, so a string such as
+  `"# mutineer:disable-line"` ignored every mutant on its line and left
+  them out of the score. Only a real `#` comment counts now. A heredoc or
+  regex that holds the text is ignored too.
+- **`./lib/x.rb` and an absolute path pair with a test** (#104). Auto-pairing
+  found the test for `lib/calc.rb` but not for `./lib/calc.rb` or the
+  absolute path to the same file. It reported "no test found by convention"
+  and exited 2. A file argument inside the project is now made relative to
+  the project root first, so equivalent spellings (`./`, `..`, absolute)
+  pair with the same test and run once. A symlink keeps its own name, so it
+  stays a separate source from its target. Reports show that root-relative
+  path. A path outside the project stays as typed.
+- **A mutant on another line of a multi-line statement runs its tests**
+  instead of being reported as `no_coverage`. Ruby counts one line of a
+  statement only. When the mutant's own line has no count, the runner now uses
+  the tests that ran the statement that holds the mutation. A heredoc body
+  belongs to its statement. This fallback skips a first or last line that also
+  holds other code, such as the `def` line, and the body of `x while c` and
+  `x until c`. It also gives no tests to a mutant in code of the statement
+  that runs only sometimes: a `when` or `in` condition, a `rescue` class
+  list, a parameter default, the rescue side of `x rescue y`, the value of
+  `||=` or `&&=`, the operand of `defined?`, the right side of `a ||` or
+  `a &&`, a branch of `x if c`, `x unless c`, a ternary or `else`, the
+  pattern of `v in p` or `v => p`, an
+  argument or block of `x&.m(...)`, and the value of `x&.m += v`. Those
+  mutants stay `no_coverage`, as before.
+- **A survivor diff for a multi-line mutant applies with `git apply`** (#106).
+  The JSON `diff` header always read `@@ -N +N @@`, even when the mutant
+  removed two lines and added one, so `git apply` rejected the patch as
+  corrupt. The header now carries each side's line count (`@@ -3,2 +3 @@`).
+  A one-line diff keeps its old header. A mutant that empties a line now
+  shows that empty line as a `+` line. A side whose last line has no final
+  newline gets `\ No newline at end of file`. Lines of a CRLF file now keep
+  their `\r`, so the patch applies to that file.
 - **Split test files pair with their source** (#87). A source such as
   `app/foo/bar.rb` now also uses `test/foo/bar_upsert_test.rb` and
   `test/foo/bar_guards_test.rb`, together with `test/foo/bar_test.rb` when
@@ -93,6 +206,30 @@ All notable changes to this project are documented here. The format is based on
   rules. API README links work outside GitHub, repeated changelog headings have
   unique anchors, and the website checks validate built links and anchors.
   Mutant-id wording and the gem's Minitest/RSpec description are also corrected.
+- **A mutant in a nested method counts once** (#157). A `def` inside
+  another method is a subject of its own, but most operators also mutated
+  its code on the outer method. The same edit then counted twice in the
+  score, with two ids. Every operator now skips a nested `def` when it
+  mutates the outer method. A `def` inside `class << obj`, where `obj` is
+  not `self`, is not a subject, so the outer method still mutates its code.
+  `array_literal`, `chain_link`, `condition_true`, `condition_false`,
+  `operand_removal`, `operator_assignment` and `return_nil` skipped that
+  code before. Their new mutants there can show as new survivors against a
+  baseline.
+
+  A mutant id includes an ordinal among the mutants with the same operator
+  and token in a subject. When the duplicates leave the outer method, the
+  ordinals of its own mutants change. An old duplicate id can then name a
+  different mutant on the outer method, and an `ignore:` entry or a
+  baseline entry with that id applies to that mutant with no warning. If
+  your code has nested methods, regenerate the `ignore:` entries and the
+  baseline for the outer methods.
+
+  Under `--strategy redefine` (the `--rails` default), a mutant in a nested
+  method can survive or error even when a test would catch it. `redefine`
+  loads only the inner method, and a call to the outer method defines the
+  original inner method again. Before, the copy of the edit on the outer
+  method was killed. Now each edit has one verdict, from the inner method.
 
 ## [1.4.0] - 2026-09-30
 
