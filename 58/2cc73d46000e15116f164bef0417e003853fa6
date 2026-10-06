@@ -1,0 +1,31 @@
+docs/agentic-coding.html
+  s_07d7b58ff1b9fd::t_d37b3b264ed8f2 26
+docs/assets/mutineer.js
+  s_07d7b58ff1b9fd::t_f3816e428da146 51-52
+docs/index.html
+  s_07d7b58ff1b9fd::t_910787608c8347 26
+docs/sample-report.html
+  s_07d7b58ff1b9fd::t_781c8a960367be 20
+lib/mutineer/rails_worker_db.rb
+  s_07d7b58ff1b9fd::t_125e5546c69b7b 68
+rake/docs_contract.rb
+  s_07d7b58ff1b9fd::t_36ea4c32ee686a 482
+test/site_test.js
+  s_07d7b58ff1b9fd::t_c8424898051d1e 127,129-130,137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "582cc73d46000e15116f164bef0417e003853fa6",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
