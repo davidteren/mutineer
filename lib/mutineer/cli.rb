@@ -357,8 +357,8 @@ module Mutineer
       keys.each do |key|
         next unless config.explicit?(key)
 
-        warn "[mutineer] #{config.origin(key)} has no effect with #{backend} " \
-             "(it applies to in-process runs only); ignoring it."
+        applies = key == :capture_timeout ? "in-process and --daemon coverage capture" : "in-process runs only"
+        warn "[mutineer] #{config.origin(key)} has no effect with #{backend} (it applies to #{applies}); ignoring it."
       end
     end
 
