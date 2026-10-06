@@ -52,7 +52,7 @@ module DocsContract
     README.md
     docs/json-schema.md
     docs/agentic-coding.md
-    docs/skill.md
+    skills/mutineer/SKILL.md
     docs/index.md
   ].freeze
 

@@ -435,6 +435,10 @@ structured exit codes, and diff-scoped runs. See:
   [source](https://davidteren.github.io/mutineer/json-schema.md)
 - **Ruby API (YARD)** — class reference for the shipped gem:
   [https://davidteren.github.io/mutineer/api/](https://davidteren.github.io/mutineer/api/)
+- **Agent skill** ([`skills/mutineer/SKILL.md`](https://github.com/davidteren/mutineer/blob/main/skills/mutineer/SKILL.md)): a short
+  card for coding agents with install, the agent loop, and exit codes. Install it
+  with `gh skill install davidteren/mutineer mutineer` or
+  `npx skills add davidteren/mutineer --skill mutineer`.
 
 ## Configuration
 
