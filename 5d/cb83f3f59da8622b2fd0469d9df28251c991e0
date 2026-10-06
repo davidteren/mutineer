@@ -1,0 +1,39 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_ae1a873dac5d66 72-76,185-208
+docs/plans/issue-158-disable-marker-in-string.md
+  s_07d7b58ff1b9fd::t_4f7c4dc65aa568 1-59
+lib/mutineer/mutators/base.rb
+  s_07d7b58ff1b9fd::t_d63c7b59e483f6 32-55
+lib/mutineer/parser.rb
+  s_07d7b58ff1b9fd::t_4ff7ab99ff1cfc 13-15,35-43
+lib/mutineer/runner.rb
+  s_07d7b58ff1b9fd::t_705ee84220cd12 381-382,385-387
+test/equivalent_mutant_test.rb
+  s_07d7b58ff1b9fd::t_ba45a48384c3a0 47-80
+test/fixtures/nested.rb
+  s_07d7b58ff1b9fd::t_8d107e3439e06d 1-10
+test/fixtures/nested_test.rb
+  s_07d7b58ff1b9fd::t_f1076af122ce21 1-10
+test/mutators/base_test.rb
+  s_07d7b58ff1b9fd::t_b1f3fcad4ca911 1-34
+test/nested_redefine_test.rb
+  s_07d7b58ff1b9fd::t_9622d30f90df7a 1-33
+test/runner_test.rb
+  s_07d7b58ff1b9fd::t_f385bec0a0c561 126-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5dcb83f3f59da8622b2fd0469d9df28251c991e0",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
