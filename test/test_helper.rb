@@ -8,7 +8,9 @@ require "mutineer"
 # A commit can start git's auto-maintenance as a detached background process.
 # In a test's temp repo it can still write into .git while Dir.mktmpdir deletes
 # the directory, which fails the test with ENOTEMPTY (#174). Turn it off for
-# every git process the suite starts, after any GIT_CONFIG_* entries already set.
+# the git processes the suite starts, after any GIT_CONFIG_* entries already
+# set. A push to a local bare repo drops this env on the receiving side, so a
+# test that creates a bare repo sets maintenance.auto there as well.
 git_config_count = ENV.fetch("GIT_CONFIG_COUNT", "0").to_i
 ENV["GIT_CONFIG_KEY_#{git_config_count}"] = "maintenance.auto"
 ENV["GIT_CONFIG_VALUE_#{git_config_count}"] = "false"

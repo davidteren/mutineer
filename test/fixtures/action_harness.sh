@@ -33,6 +33,8 @@ chmod +x "$SCRATCH/bin/mutineer"
 export PATH="$SCRATCH/bin:$PATH"
 
 git init -q --bare -b main "$SCRATCH/upstream.git"
+# A push runs auto-maintenance here without the caller's GIT_CONFIG_* env (#174).
+git -C "$SCRATCH/upstream.git" config maintenance.auto false
 mkdir -p "$SCRATCH/repo" && cd "$SCRATCH/repo"
 git init -q -b main
 git config user.email "harness@test" && git config user.name "harness"

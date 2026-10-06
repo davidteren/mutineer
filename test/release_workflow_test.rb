@@ -209,6 +209,9 @@ class ReleaseWorkflowTest < Minitest::Test
     origin = File.join(root, "origin.git")
     dir = File.join(root, "work")
     system("git", "init", "-q", "--bare", origin, exception: true)
+    # A push runs auto-maintenance in the bare repo without the suite's
+    # GIT_CONFIG_* env (see test_helper.rb, #174), so turn it off here too.
+    system("git", "-C", origin, "config", "maintenance.auto", "false", exception: true)
     system("git", "clone", "-q", origin, dir, exception: true, err: File::NULL)
     git = lambda do |*args|
       system("git", "-c", "core.hooksPath=/dev/null", *args, chdir: dir, exception: true)
