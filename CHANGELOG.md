@@ -7,12 +7,56 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **`--timeout SECONDS` and `--capture-timeout SECONDS`**, also `timeout:` and
+  `capture_timeout:` in `.mutineer.yml`. They set the in-process per-mutant
+  time limit (default 10s) and the coverage-capture time limit (default 120s),
+  which were fixed. On a large Rails suite the clean run of the unmutated
+  tests took longer than 120s, so every run that offered the whole suite
+  stopped as not green, and a mutant on a line many tests cover took longer
+  than 10s and was scored `timeout`. `--daemon` keeps its own per-mutant
+  limit but uses `--capture-timeout` for its coverage capture;
+  `--test-command` uses neither. Either backend warns about a limit it was
+  given and does not use.
+- **The README states how timeouts affect the score** (#62): a timed-out
+  mutant is left out of the score, and counts as a mutant with no verdict
+  under `--threshold`.
+- **`--matrix` reports which tests kill each mutant** (`matrix: true` in
+  `.mutineer.yml`). Each mutant runs every test in its covering files instead
+  of stopping at the first failure, and the child sends each test's outcome to
+  the parent as it is recorded. The report names blind tests, which ran in a
+  complete row and killed no mutant, and redundant tests, whose every kill
+  another test also makes. Redundancy is judged one test at a time, so delete
+  redundant tests one at a time. The human report lists up to 20 of each, the
+  HTML report all of them, and the JSON report moves to schema `1.5` with a
+  `matrix` block that appears only with the flag. A test is its file and its
+  id (the example id under RSpec), so examples that share a description stay
+  apart and an example whose generated description changes with the mutant
+  stays one test. Verdicts, the score and the exit code do not change: each
+  mutant gets the verdict a run without the flag gives. After a serial test
+  fails, an exit, a crash or the timeout in a later test, class or group
+  leaves it `killed`; an end in the code that run still reaches (the failing
+  test's class wrapper or group hooks, the suite's own cleanup) and a failure
+  in a `parallelize_me!` class keep the exit status. A row is complete only
+  when the child's stream arrived in order and every test reported (under
+  Minitest the recorder saw every test, under RSpec every planned example),
+  so a caught `Interrupt` leaves it incomplete. The human report names up
+  to 20 incomplete rows and the HTML and JSON reports all of them; the human
+  and HTML reports warn not to delete a blind test until its rows are
+  complete.
+  Minitest and RSpec 3.3+ are supported, on the in-process backend only;
+  `--daemon`, `--test-command`, `--fail-fast` and `--dry-run` exit 2 with it.
+  `--no-matrix` and `--no-fail-fast` beat the matching `.mutineer.yml` key,
+  so a file that sets one can still run with a flag that conflicts with it.
 - **`no_coverage[]` and `uncapturable[]` name each mutant.** Every entry in
   the JSON report now has `operator`, `token` and `id`, as `ignored[]` has, so
   mutants on one line can be told apart and an `id` can go in `ignore:`. The
   entries are sorted by `(file, line, operator, id)`. `schema_version` is `1.5`.
 
 ### Changed
+- **The human report has a `Timeout:` row**, and the score line lists timeouts
+  apart from errored mutants. Before, the `Errored:` row and the score line
+  added the two together, while the JSON report kept them apart. The HTML
+  summary now shows a `timeout` count apart from `errored` too.
 - **A test file given as a source after `--test` exits 2.** `--test` takes one
   file, so in `mutineer run app/x.rb --test spec/a_spec.rb spec/b_spec.rb` the
   second spec became a source to mutate, and the run tested with one spec file
@@ -21,6 +65,83 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
+- **`./lib/x.rb` and an absolute path pair with a test** (#104). Auto-pairing
+  found the test for `lib/calc.rb` but not for `./lib/calc.rb` or the
+  absolute path to the same file. It reported "no test found by convention"
+  and exited 2. A file argument inside the project is now made relative to
+  the project root first, so equivalent spellings (`./`, `..`, absolute)
+  pair with the same test and run once. A symlink keeps its own name, so it
+  stays a separate source from its target. Reports show that root-relative
+  path. A path outside the project stays as typed.
+- **A mutant on another line of a multi-line statement runs its tests**
+  instead of being reported as `no_coverage`. Ruby counts one line of a
+  statement only. When the mutant's own line has no count, the runner now uses
+  the tests that ran the statement that holds the mutation. A heredoc body
+  belongs to its statement. This fallback skips a first or last line that also
+  holds other code, such as the `def` line, and the body of `x while c` and
+  `x until c`. It also gives no tests to a mutant in code of the statement
+  that runs only sometimes: a `when` or `in` condition, a `rescue` class
+  list, a parameter default, the rescue side of `x rescue y`, the value of
+  `||=` or `&&=`, the operand of `defined?`, the right side of `a ||` or
+  `a &&`, a branch of `x if c`, `x unless c`, a ternary or `else`, the
+  pattern of `v in p` or `v => p`, an
+  argument or block of `x&.m(...)`, and the value of `x&.m += v`. Those
+  mutants stay `no_coverage`, as before.
+- **A survivor diff for a multi-line mutant applies with `git apply`** (#106).
+  The JSON `diff` header always read `@@ -N +N @@`, even when the mutant
+  removed two lines and added one, so `git apply` rejected the patch as
+  corrupt. The header now carries each side's line count (`@@ -3,2 +3 @@`).
+  A one-line diff keeps its old header. A mutant that empties a line now
+  shows that empty line as a `+` line. A side whose last line has no final
+  newline gets `\ No newline at end of file`. Lines of a CRLF file now keep
+  their `\r`, so the patch applies to that file.
+- **Split test files pair with their source** (#87). A source such as
+  `app/foo/bar.rb` now also uses `test/foo/bar_upsert_test.rb` and
+  `test/foo/bar_guards_test.rb`, together with `test/foo/bar_test.rb` when
+  that file exists. The same names under `test/lib/` pair with a `lib/`
+  source. Before, only the exact `bar_test.rb` name was tried, so a suite
+  split across `bar_*_test.rb` files was skipped and a gate could pass with
+  no mutants run. A spec the old rules already find is unchanged. The
+  split name is left for `user_session.rb` when that file exists, so
+  `user.rb` does not run `user_session_test.rb`. The same rule holds outside
+  `app/` and `lib/`: `src/user.rb` does not take `test/src/user_session_test.rb`
+  when `src/user_session.rb` exists. A longer source claims a split file
+  only when that source itself searches the directory the file is in.
+  A failed capture of `test/foo/bar_upsert_test.rb` can mark `app/foo/bar.rb`
+  uncapturable only when no successful capture covered that source and
+  `bar_upsert.rb` does not exist. A test outside that directory does not,
+  and neither does a source that only shares the test basename.
+  `user_session__test.rb` stays with `user.rb` when `user_session.rb`
+  exists, because that name is not the exact test or a split test for
+  `user_session`. A failed exact spec in the mirrored `spec/` or `spec/lib/` directory
+  marks an `app/` or `lib/` source the same way. A failed spec in another
+  directory does not. A project rooted at `/` still finds split tests
+  inside that root. A stored failure keeps the pairing from the moment it
+  was checked. Adding or deleting a longer source rebuilds the coverage
+  map, so that failure is not moved onto the shorter source.
+- **A blank `operators` key no longer runs zero mutants and exits 0** (#167).
+  `operators:` with no value became an empty list. The run made no mutants
+  and the gate passed. A blank operator list is now an error, and so is a
+  list of only unknown operator names. An empty `require` or `ignore` list
+  is still valid. `--operators` on the command line still replaces the
+  file list, including a blank or unknown file list.
+- **The daemon no longer runs the tool's Ruby settings inside the app** (#100).
+  Open3 keeps a variable when the spawn hash omits it, so a parent `RUBYOPT`
+  ran inside the app. The child now gets the environment Bundler saved before
+  it activated, passed with `unsetenv_others`. The app keeps its gem home,
+  excluded groups, Bundler config, and chruby path. An `RBENV_VERSION` or
+  `ASDF_RUBY_VERSION` already in the environment stays. That pin is often
+  the Ruby that started the tool. `.ruby-version` applies only when no pin
+  is set. The tool's `RUBYOPT` and `RUBYLIB` do not reach the child, including
+  a value Bundler had saved. A gem home, `BUNDLE_PATH`, or `BUNDLE_WITHOUT`
+  reaches the child only when Bundler saved the app's value. The same
+  rule covers `GEM_PATH` and `BUNDLER_VERSION`. An rbenv version
+  bin under `RBENV_ROOT`, or under `~/.rbenv` when that variable is unset,
+  leaves `PATH` only when that root has a shim directory. An asdf version
+  bin leaves only when an asdf shim directory exists, including
+  `ASDF_DATA_DIR/shims`. Without that shim, the bin stays and `bundle` can
+  still be found. The app Gemfile, an explicit Ruby pin, and Rails env are
+  applied after that.
 - **The Action refuses to run when `output` and `baseline` are the same file** (#160).
   That setup used to work, and a failing run copied its report onto the
   baseline. The next run then treated the failed report as the baseline, so

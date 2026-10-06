@@ -4,6 +4,7 @@ require_relative "test_helper"
 require "json"
 require "stringio"
 require "tmpdir"
+require "open3"
 
 class JsonReporterTest < Minitest::Test
   SRC = "class Pricing\n  def total(price)\n    if price >= 100\n    end\n  end\nend\n"
@@ -32,9 +33,32 @@ class JsonReporterTest < Minitest::Test
     JSON.parse(out.string)
   end
 
+  def test_schema_version_is_the_reporter_constant
+    assert_equal Mutineer::Reporter::SCHEMA_VERSION, render([survivor])["schema_version"]
+  end
+
+  # Renders one survivor's JSON diff and checks that git applies it to `src`
+  # and gives the same file as Mutation#apply.
+  def assert_git_applies(subj, src, mutation, header)
+    result = Mutineer::Result.survived.with(subject: subj, mutation: mutation)
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([result]), { "foo.rb" => src })
+                      .report(out: out, err: StringIO.new, format: "json")
+    diff = JSON.parse(out.string)["survivors"].first["diff"]
+    assert_includes diff, header
+
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "foo.rb"), src)
+      File.write(File.join(dir, "m.patch"), diff)
+      _, err, status = Open3.capture3("git", "apply", "--unidiff-zero", "m.patch", chdir: dir)
+      assert status.success?, "git apply rejected #{header}: #{err}\n#{diff}"
+      assert_equal mutation.apply(src), File.read(File.join(dir, "foo.rb"))
+    end
+  end
+
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.5", doc["schema_version"] # 1.5 added operator, token and id to no_coverage[] and uncapturable[]
+    assert_equal "1.5", doc["schema_version"] # 1.5 added operator, token and id to no_coverage[] and uncapturable[], and the --matrix block
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
@@ -179,6 +203,77 @@ class JsonReporterTest < Minitest::Test
     assert_includes s["diff"], "+    if price > 100"
   end
 
+  # #106: a mutant on the last line of a file with no final newline marks both
+  # sides, so git apply does not add a newline.
+  def test_survivor_diff_at_end_of_file_without_newline_applies_with_git
+    src = "class Foo\n  def bar(x) = x >= 1\nend"
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                 singleton: false, def_node: def_node)
+    tail = Mutineer::Mutation.new(start_offset: src.index("x >= 1"), end_offset: src.bytesize,
+                                  replacement: "x > 1\nend", operator: :comparison)
+    assert_git_applies(subj, src, tail, "@@ -2,2 +2,2 @@")
+    # A one-line mutant on a last line with no final newline.
+    one_line_src = "class Foo; def bar(x) = x >= 1; end"
+    one_line = Mutineer::Mutation.new(start_offset: one_line_src.index(">="), end_offset: one_line_src.index(">=") + 2,
+                                      replacement: ">", operator: :comparison)
+    assert_git_applies(subj, one_line_src, one_line, "@@ -1 +1 @@\n-class Foo; def bar(x) = x >= 1; end\n\\ No newline")
+  end
+
+  # PR #194 review: the newline state is each side's own. A replacement that
+  # adds the missing final newline, and a range that ends right after the
+  # file's final newline, both apply.
+  def test_survivor_diff_tracks_each_sides_final_newline
+    src = "class Foo; def bar(x) = x >= 1; end"
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                 singleton: false, def_node: def_node)
+    adds_newline = Mutineer::Mutation.new(start_offset: src.index("end"), end_offset: src.bytesize,
+                                          replacement: "end\n", operator: :statement_removal)
+    assert_git_applies(subj, src, adds_newline, "@@ -1 +1 @@\n-#{src}\n\\ No newline at end of file\n+#{src}\n")
+
+    with_newline = "#{src}\n"
+    covers_final_newline = Mutineer::Mutation.new(start_offset: with_newline.index(">="),
+                                                  end_offset: with_newline.bytesize,
+                                                  replacement: "> 1; end\n", operator: :comparison)
+    assert_git_applies(subj, with_newline, covers_final_newline, "@@ -1 +1 @@")
+  end
+
+  # #106: a CRLF file keeps its "\r" in the diff, so git applies it unchanged.
+  def test_survivor_diff_of_a_crlf_file_applies_with_git
+    src = "class Foo\r\n  def bar(x)\r\n    log(x,\r\n        y)\r\n    x\r\n  end\r\nend\r\n"
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                 singleton: false, def_node: def_node)
+    multiline = Mutineer::Mutation.new(start_offset: src.index("log"), end_offset: src.index("y)") + 2,
+                                       replacement: "nil", operator: :statement_removal)
+    assert_git_applies(subj, src, multiline, "@@ -3,2 +3 @@")
+  end
+
+  # #106: the hunk header counts the lines the diff removes and adds, so an
+  # independent consumer (git apply) accepts the patch, and applying it gives
+  # the same file as Mutation#apply.
+  def test_survivor_diffs_apply_cleanly_with_git
+    src = "class Foo\n  def bar(x)\n    log(x,\n        y)\n    \"caf\u00e9\" if x >= 1\n    x\n  end\nend\n"
+    def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar,
+                                 singleton: false, def_node: def_node)
+    multiline = Mutineer::Mutation.new(start_offset: src.index("log"), end_offset: src.index("y)") + 2,
+                                       replacement: "nil", operator: :statement_removal)
+    utf8 = Mutineer::Mutation.new(start_offset: src.byteindex(">="), end_offset: src.byteindex(">=") + 2,
+                                  replacement: ">", operator: :comparison)
+    # Empties a line: the `+` side is one empty line, not zero lines.
+    line_start = src.byteindex("    x\n  end")
+    emptied = Mutineer::Mutation.new(start_offset: line_start, end_offset: line_start + 5,
+                                     replacement: "", operator: :statement_removal)
+    # A replacement ending in a newline adds a line.
+    split = Mutineer::Mutation.new(start_offset: line_start + 4, end_offset: line_start + 5,
+                                   replacement: "x\n", operator: :statement_removal)
+
+    { multiline => "@@ -3,2 +3 @@", utf8 => "@@ -5 +5 @@", emptied => "@@ -6 +6 @@\n-    x\n+\n",
+      split => "@@ -6 +6,2 @@" }.each { |m, header| assert_git_applies(subj, src, m, header) }
+  end
+
   def test_empty_arrays_when_nothing_survives
     doc = render([Mutineer::Result.killed])
     assert_equal [], doc["survivors"]
@@ -252,4 +347,65 @@ class JsonReporterTest < Minitest::Test
       assert JSON.parse(File.read(path))
     end
   end
+
+  # --- matrix (schema 1.5, only with --matrix) --------------------------------
+
+  MT_A = ["test/pricing_test.rb", "PricingTest#test_a", "PricingTest#test_a"].freeze
+  MT_B = ["test/pricing_test.rb", "PricingTest#test_b", "PricingTest#test_b"].freeze
+  MT_C = ["test/other_test.rb", "OtherTest#test_c", "OtherTest#test_c"].freeze
+
+  def mt(test) = { "file" => test[0], "name" => test[1], "id" => test[2] }
+
+  def with_row(result, killed_by, ran, complete: true)
+    result.with(kills: Mutineer::Kills.new(killed_by: killed_by.sort, ran: (ran + killed_by).uniq.sort,
+                                           complete: complete))
+  end
+
+  # A killed mutant both MT_A and MT_B kill, and a survivor; MT_C kills nothing.
+  def matrix_results
+    killed = Mutineer::Result.killed.with(subject: subject, mutation: mutation_at("100", "0", :literal_mutation),
+                                          id: "killedid0001")
+    [with_row(killed, [MT_A, MT_B], [MT_C]), with_row(survivor.with(id: "survivorid01"), [], [MT_A, MT_C])]
+  end
+
+  def render_matrix(results)
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { FILE => SRC },
+                           matrix: Mutineer::KillMatrix.new(results))
+                      .report(out: out, err: StringIO.new, format: "json")
+    out.string
+  end
+
+  def test_no_matrix_key_without_the_flag
+    refute render(matrix_results).key?("matrix")
+  end
+
+  def test_matrix_block_lists_tests_rows_blind_and_redundant
+    m = JSON.parse(render_matrix(matrix_results))["matrix"]
+
+    assert_equal true, m["complete"]
+    assert_equal [mt(MT_C).merge("kills" => 0), mt(MT_A).merge("kills" => 1), mt(MT_B).merge("kills" => 1)],
+                 m["tests"]
+    # Same file and line: rows sort by operator, so the comparison survivor is first.
+    assert_equal [{ "subject" => "Pricing#total", "file" => FILE, "line" => 3, "operator" => "comparison",
+                    "id" => "survivorid01", "status" => "survived", "killed_by" => [], "ran" => 2, "complete" => true },
+                  { "subject" => "Pricing#total", "file" => FILE, "line" => 3, "operator" => "literal_mutation",
+                    "id" => "killedid0001", "status" => "killed", "killed_by" => [1, 2], "ran" => 3,
+                    "complete" => true }], m["mutants"]
+    assert_equal [mt(MT_C)], m["blind"]
+    assert_equal [mt(MT_A), mt(MT_B)], m["redundant"]
+  end
+
+  def test_matrix_block_is_byte_stable_across_result_order
+    assert_equal render_matrix(matrix_results), render_matrix(matrix_results.reverse)
+  end
+
+  def test_matrix_block_marks_an_incomplete_run
+    rows = [with_row(survivor, [], [MT_A], complete: false)]
+    m = JSON.parse(render_matrix(rows))["matrix"]
+    assert_equal false, m["complete"]
+    assert_equal false, m["mutants"].first["complete"]
+    assert_empty m["blind"]
+  end
+
 end

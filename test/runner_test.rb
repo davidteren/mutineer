@@ -84,11 +84,84 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  def run_slow_suite(**limits)
+    Dir.mktmpdir("mutineer-limits") do |dir|
+      src  = File.join(dir, "slow_calc.rb")
+      test = File.join(dir, "slow_calc_test.rb")
+      File.write(src, "class SlowLimitCalculator\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(test, <<~RUBY)
+        require "minitest/autorun"
+        require_relative "slow_calc"
+        class SlowLimitCalculatorTest < Minitest::Test
+          def test_add
+            sleep 1.5
+            assert_equal 5, SlowLimitCalculator.new.add(2, 3)
+          end
+        end
+      RUBY
+      config = Mutineer::Config.new(sources: [src], tests: [test], operators: ["arithmetic"], jobs: 1,
+                                    cache_dir: File.join(dir, "cache"), project_root: dir, **limits)
+      Mutineer::Runner.execute(config).first
+    end
+  end
+
+  def test_timeout_bounds_each_mutant_run
+    agg = run_slow_suite(timeout: 1)
+    assert_equal 0, agg.killed_count
+    assert_operator agg.timeout_count, :>, 0
+  end
+
+  def test_capture_timeout_bounds_coverage_capture
+    error = assert_raises(Mutineer::SmokeCheckError) { run_slow_suite(capture_timeout: 1) }
+    assert_includes error.message, "capture failed for slow_calc_test.rb"
+  end
+
   def test_syntactically_invalid_mutation_is_skipped
     # Replacing `+` with `)` makes `a ) b` — unparseable, so no fork happens.
     result = Mutineer::Runner.run(plus_mutation(replacement: ")"),
                                 source_file: CALC, coverage_map: coverage_map(STRONG_TEST))
     assert_predicate result, :skipped?, "expected skipped, got #{result.status}"
+  end
+
+  FakeCoverageMap = Struct.new(:tests_by_line, :project_root) do
+    def tests_for(_file, line) = tests_by_line.fetch(line, [])
+    def method_uncapturable?(*) = false
+  end
+
+  def selection(source, snippet, tests_by_line)
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
+    start = source.index(snippet)
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,
+                                      replacement: "nil", operator: :test)
+    Mutineer::Runner.coverage_selection("x.rb", mutation, subject, source, FakeCoverageMap.new(tests_by_line, "/root"))
+  end
+
+  def test_coverage_selection_uses_the_tests_that_ran_the_whole_statement
+    source = <<~RUBY
+      def f(c)
+        {
+          yes: c.fetch(true, 0),
+          no: c.fetch(false, 0)
+        }
+      end
+    RUBY
+    kind, tests = selection(source, "false", { 3 => ["t_test.rb"] })
+
+    assert_equal :run, kind
+    assert_equal ["/root/t_test.rb"], tests
+  end
+
+  def test_coverage_selection_gives_a_statement_that_did_not_run_no_tests
+    source = <<~RUBY
+      def f(c)
+        c ||
+          false
+      end
+    RUBY
+    kind, = selection(source, "false", {})
+
+    assert_equal :verdict, kind
   end
 
   # --since restricts the job list to mutations on changed lines. Deterministic:
@@ -185,6 +258,67 @@ class RunnerTest < Minitest::Test
     map = Mutineer::CoverageMap.from_data(map: { "lib/calc.rb:2" => ["test/ok_test.rb"] },
                                           failed_test_files: ["test/calc_test.rb"], project_root: ROOT)
     assert_nil Mutineer::Runner.abort_if_unclean!(map)
+  end
+
+
+  # Every row of a large matrix names the same tests; after share_tests they
+  # are one frozen array per test, whatever row they came from.
+  def test_share_tests_gives_every_row_the_same_test_objects
+    row = lambda do |status|
+      test = ["t_test.rb".dup, "T#test_a".dup, "T#test_a".dup]
+      kills = Mutineer::Kills.new(killed_by: status == :killed ? [test] : [], ran: [test.dup], complete: true)
+      Mutineer::Result.new(status: status, kills: kills)
+    end
+    shared = Mutineer::Runner.share_tests([row.(:killed), row.(:survived), Mutineer::Result.no_coverage])
+
+    assert_same shared[0].kills.ran.first, shared[1].kills.ran.first
+    assert_same shared[0].kills.killed_by.first, shared[0].kills.ran.first
+    assert_predicate shared[0].kills.ran.first, :frozen?
+    assert_nil shared[2].kills
+  end
+
+  # A test is its file and id. An example worded from its matcher has a new
+  # name under each mutant, and it stays one test under the first name.
+  def test_share_tests_keeps_one_test_when_only_the_name_changes
+    row = lambda do |name|
+      test = ["s_spec.rb", name, "./s_spec.rb[1:1]"]
+      Mutineer::Result.new(status: :survived, kills: Mutineer::Kills.new(killed_by: [], ran: [test], complete: true))
+    end
+    shared = Mutineer::Runner.share_tests([row.("is expected to eq 1"), row.("is expected to eq -1")])
+
+    assert_equal [["s_spec.rb", "is expected to eq 1", "./s_spec.rb[1:1]"]], shared.flat_map { |r| r.kills.ran }.uniq
+  end
+
+  # parallelize_me! queues every test before the first one fails, so the run
+  # without --matrix cannot stop at test_a's failure and reaches the timeout
+  # while test_b loops. The matrix keeps that verdict.
+  def test_matrix_keeps_the_timeout_of_a_parallel_run
+    looper = File.expand_path("fixtures/matrix/looper.rb", __dir__)
+    looper_test = File.expand_path("fixtures/matrix/looper_parallel_test.rb", __dir__)
+    require looper # R5/KTD4: keep the child's require_relative from reloading it
+    map = Mutineer::CoverageMap.new(source_paths: [looper], test_paths: [looper_test],
+                                    cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT).build_or_load
+    plus = File.read(looper).index("i + 1") + 2
+    mutation = Mutineer::Mutation.new(start_offset: plus, end_offset: plus + 1, replacement: "-", operator: :arithmetic)
+
+    plain = Mutineer::Runner.run(mutation, source_file: looper, coverage_map: map, timeout: 2)
+    matrix = Mutineer::Runner.run(mutation, source_file: looper, coverage_map: map, timeout: 2, matrix: true)
+
+    assert_predicate plain, :timeout?
+    assert_predicate matrix, :timeout?
+    assert_equal ["MatrixLooperParallelTest#test_a_next"], matrix.kills.killed_by.map { |_file, name, _id| name }
+    refute matrix.kills.complete
+  end
+
+  # #191 review: under --matrix, an error with no row (a crashed worker, a
+  # lost result) gets an empty, incomplete row, so the report warns about it.
+  # Other results keep what they have: a no-coverage mutant never ran.
+  def test_unreported_row_marks_an_error_without_a_row_incomplete
+    row = Mutineer::Runner.unreported_row(Mutineer::Result.error("worker crashed: boom")).kills
+    assert_equal [[], [], false], [row.killed_by, row.ran, row.complete]
+    assert_nil Mutineer::Runner.unreported_row(Mutineer::Result.no_coverage).kills
+    kept = Mutineer::Kills.new(killed_by: [], ran: [], complete: true)
+    assert_same kept, Mutineer::Runner.unreported_row(Mutineer::Result.survived.with(kills: kept)).kills
   end
 
   private
