@@ -386,8 +386,6 @@ class ReporterTest < Minitest::Test
     refute_includes text, "id21"
   end
 
-  # An RSpec id differs from the description and tells apart examples that
-  # share one, so the human report shows it.
   # PR #196 review: test names and paths in the kill-matrix section are user
   # text too (an RSpec description), so they are escaped like the rest.
   def test_matrix_section_escapes_control_characters
@@ -397,6 +395,8 @@ class ReporterTest < Minitest::Test
     assert_includes text, "spec/s\\e_spec.rb  S clears \\e[2J"
   end
 
+  # An RSpec id differs from the description and tells apart examples that
+  # share one, so the human report shows it.
   def test_matrix_section_shows_an_id_that_differs_from_the_name
     blind = ["spec/s_spec.rb", "S checks", "./spec/s_spec.rb[1:1]"]
     text = matrix_report([row(survivor_result, [], [blind])])
