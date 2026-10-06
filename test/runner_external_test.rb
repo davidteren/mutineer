@@ -114,6 +114,10 @@ class RunnerExternalTest < Minitest::Test
       assert_equal 0, status.exitstatus
       assert_includes err, "--timeout has no effect with --test-command"
       refute_includes err, "--capture-timeout"
+
+      _out, err, = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                            "--cache-dir", "tmp/c", "--test-command", "#{RUBY} %{files}", chdir: proj)
+      assert_includes err, "--cache-dir has no effect with --test-command"
     end
   end
 
