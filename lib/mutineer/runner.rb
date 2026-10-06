@@ -81,6 +81,7 @@ module Mutineer
         config.sources.each { |f| require File.expand_path(f, config.project_root) }
       end
       config.require_paths.each { |f| require File.expand_path(f, config.project_root) }
+      preload_owners(config) if config.boot && config.strategy == "redefine"
 
       if config.boot
         # Rails/Minitest test files do `require "test_helper"`, which needs the
@@ -378,6 +379,10 @@ module Mutineer
     # tests that ran the statement that holds it ({StatementLines}), unless the
     # mutant sits in code of that statement that runs only sometimes.
     #
+    # An empty selection is `:ran_at_load` when the mutant's line ran while the
+    # app booted or its class loaded ({ran_at_load?}): no test ran it, but the
+    # load did, so it is not a coverage gap.
+    #
     # An empty selection is `:uncapturable` (not `:no_coverage`) when the
     # mutant's enclosing method body got coverage from no *successful* capture but
     # a sibling test failed to capture: the coverage was lost, not absent. Both are
@@ -403,10 +408,82 @@ module Mutineer
         # class-load even when the body never runs (body_loc is the statements' span).
         loc   = subject&.body_loc
         range = loc ? (loc.start_line..loc.end_line) : (line..line)
-        return [:verdict, coverage_map.method_uncapturable?(source_file, range) ? Result.uncapturable : Result.no_coverage]
+        return [:verdict, Result.uncapturable] if coverage_map.method_uncapturable?(source_file, range)
+        return [:verdict, Result.ran_at_load] if ran_at_load?(source_file, mutation, subject, source, coverage_map)
+
+        return [:verdict, Result.no_coverage]
       end
 
       [:run, chosen.map { |t| File.expand_path(t, coverage_map.project_root) }]
+    end
+
+    # True when the mutant's line ran while the app booted or its class loaded
+    # (#187). A test can then check a value the original code computed before
+    # the mutant was applied, which neither strategy re-runs in full: redefine
+    # never re-runs the class body, and reload does not re-run an initializer or
+    # another file's class body. Shared by {coverage_selection}, {run} and the
+    # daemon backend, so every backend classifies the same mutants.
+    #
+    # Only lines inside the method body count, the line of the mutant and the
+    # other lines of its statement ({StatementLines}). The `def` line is never
+    # counted: Ruby counts it when the method is defined.
+    #
+    # ponytail: line coverage cannot tell a one-line or endless def that ran at
+    # load from one that was only defined, so those stay `survived` or
+    # `no_coverage`. Upgrade path: start Coverage with `methods: true` and read
+    # the method's own call count.
+    #
+    # @param source_file [String] the mutated source file path.
+    # @param mutation [Mutineer::Mutation] the mutation.
+    # @param subject [Mutineer::Subject, nil] the subject (for its method body range).
+    # @param source [String] the original source text.
+    # @param coverage_map [Mutineer::CoverageMap, nil] the coverage map.
+    # @return [Boolean]
+    def self.ran_at_load?(source_file, mutation, subject, source, coverage_map)
+      loc = subject&.body_loc
+      return false unless loc && coverage_map
+
+      def_line = subject.def_node.location.start_line
+      body = (loc.start_line..loc.end_line)
+      line = source.byteslice(0, mutation.start_offset).count("\n") + 1
+      lines = [line, *StatementLines.for(subject.def_node, source, mutation.start_offset)]
+      lines.any? { |l| l != def_line && body.cover?(l) && coverage_map.ran_at_load?(source_file, l) }
+    end
+
+    # A survivor whose line ran at load becomes `ran_at_load` ({ran_at_load?});
+    # any other result comes back unchanged. A `--matrix` row is kept.
+    #
+    # @param result [Mutineer::Result] the mutant's verdict.
+    # @param source_file [String] the mutated source file path.
+    # @param mutation [Mutineer::Mutation] the mutation.
+    # @param subject [Mutineer::Subject, nil] the subject.
+    # @param source [String] the original source text.
+    # @param coverage_map [Mutineer::CoverageMap, nil] the coverage map.
+    # @return [Mutineer::Result]
+    def self.load_verdict(result, source_file, mutation, subject, source, coverage_map)
+      return result unless result.survived? && ran_at_load?(source_file, mutation, subject, source, coverage_map)
+
+      result.with(status: :ran_at_load)
+    end
+
+    # Loads the class or module of every subject in the booted parent, before
+    # the boot coverage is read. Under redefine a child resolves the owner by
+    # name ({Isolation.nesting_keywords}), so a lazily loaded class (Zeitwerk,
+    # `autoload`) would run its class body there, with the original method,
+    # and that run would count as no load at all. Loading it here makes its
+    # class-body calls load lines, the same as an eager load. A constant that
+    # fails to load stays lazy.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.preload_owners(config)
+      Project.discover(config.sources, only: config.only).each do |subject|
+        next if subject.owner_unknown
+
+        Isolation.nesting_keywords(subject.lexical_namespace)
+      rescue StandardError, ScriptError
+        nil
+      end
     end
 
     # Map each line number to :all or a set of operator symbols, using
@@ -575,7 +652,8 @@ module Mutineer
           TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
         end
       end
-      relative_kills(result, coverage_map.project_root)
+      result = relative_kills(result, coverage_map.project_root)
+      load_verdict(result, source_file, mutation, subject, source, coverage_map)
     end
 
     # Rewrites the test files of a result's {Kills} row relative to the project

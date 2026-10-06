@@ -11,15 +11,15 @@ require "mutineer/daemon_backend"
 # share (job collection, --since, coverage selection, path helpers). The split turned
 # those intra-class calls into a cross-module contract, and every test that exercises
 # it lives in DAEMON_TESTS — excluded from the zero-dep suite. So renaming or
-# privatising one of the five would leave `rake test`, the load smoke and yard:strict
+# privatising one of these would leave `rake test`, the load smoke and yard:strict
 # all green while the daemon path raises at runtime. These checks are Rails-free and
 # daemon-free on purpose: they run in the default suite and fail the moment the
 # contract moves.
 class DaemonBackendContractTest < Minitest::Test
   # The Runner methods DaemonBackend calls across the module boundary.
-  SHARED = %i[collect_jobs filter_since coverage_selection test_load_roots source_dirs].freeze
+  SHARED = %i[collect_jobs filter_since coverage_selection load_verdict test_load_roots source_dirs].freeze
 
-  # Cheapest possible tripwire: privatising or renaming any of the five breaks the
+  # Cheapest possible tripwire: privatising or renaming any of them breaks the
   # daemon path at runtime, and nothing else in the zero-dep suite would notice.
   def test_runner_publicly_answers_every_shared_invariant
     SHARED.each do |m|
@@ -124,6 +124,35 @@ class DaemonBackendContractTest < Minitest::Test
         assert_predicate results[1], :killed?
         assert_equal jobs[1][0], results[1].subject
       end
+    end
+  end
+
+  # #187: the daemon's map ships the lines that ran at boot, and a survivor on
+  # one of them is ran_at_load, as in-process. --fail-fast stops on a survivor
+  # only, so it runs on past these.
+  def test_a_survivor_on_a_line_that_ran_at_boot_is_ran_at_load
+    with_jobs do |jobs, config, source_map|
+      config.fail_fast = true
+      cov = Object.new
+      def cov.start = self
+      def cov.quit = nil
+      def cov.coverage = { "map" => { "app/order.rb:3" => ["test/order_test.rb"] }, "failed_test_files" => [],
+                           "failed_clean_tests" => [], "load_lines" => ["app/order.rb:3"] }
+      coverage_map = Mutineer::DaemonClient.stub(:new, ->(**) { cov }) do
+        Mutineer::DaemonBackend.build_coverage_map(config, [])
+      end
+      assert coverage_map.ran_at_load?(File.join(config.project_root, "app/order.rb"), 3)
+
+      client = Object.new
+      def client.start = self
+      def client.quit = nil
+      def client.request(id:, **) = id.zero? ? "survived" : "killed"
+      results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+        Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], coverage_map, source_map)
+      end
+
+      assert_equal %i[ran_at_load killed], results.map(&:status)
+      assert_equal %w[id-0 id-1], results.map(&:id)
     end
   end
 

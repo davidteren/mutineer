@@ -168,6 +168,7 @@ module Mutineer
           no_coverage: @agg.no_coverage_count,
           uncapturable: @agg.uncapturable_count,
           unplaceable: @agg.unplaceable_count,
+          ran_at_load: @agg.ran_at_load_count,
           skipped_invalid: @agg.skipped_invalid_count,
           errored: @agg.errored_count, timeout: @agg.timeout_count,
           ignored: @agg.ignored_count,
@@ -197,6 +198,9 @@ module Mutineer
                           .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Additive (1.7): owner-unknown mutants redefine did not run. Not in no_verdict.
         unplaceable: @agg.results.select(&:unplaceable?).map { |r| mutant_json(r) }
+                         .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
+        # Additive (1.7, #187): mutants on a line that ran at load. Not in no_verdict.
+        ran_at_load: @agg.results.select(&:ran_at_load?).map { |r| mutant_json(r) }
                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Every mutant that was attempted and produced no verdict, whatever the
         # reason — the set the --threshold completeness gate counts. Named for the
@@ -292,7 +296,7 @@ module Mutineer
         "total" => @agg.total, "killed" => @agg.killed_count,
         "survived" => @agg.survived_count, "no_coverage" => @agg.no_coverage_count,
         "uncapturable" => @agg.uncapturable_count, "unplaceable" => @agg.unplaceable_count,
-        "ignored" => @agg.ignored_count,
+        "ran_at_load" => @agg.ran_at_load_count, "ignored" => @agg.ignored_count,
         "skipped" => @agg.skipped_invalid_count,
         "errored" => @agg.errored_count, "timeout" => @agg.timeout_count
       }
@@ -628,7 +632,8 @@ module Mutineer
     end
 
     # The fields that name one mutant, for the lists that point at mutants:
-    # `no_coverage`, `uncapturable`, `unplaceable`, `ignored` and `baseline.new_survivors`.
+    # `no_coverage`, `uncapturable`, `unplaceable`, `ran_at_load`, `ignored` and
+    # `baseline.new_survivors`.
     def mutant_json(result)
       m = result.mutation
       file = result.subject.file
@@ -698,6 +703,9 @@ module Mutineer
       # Not broken: redefine has no named class to load these onto; reload runs them.
       out.puts format("Unplaceable:  %-6d  (class cannot be named statically; --strategy reload runs these)",
                       @agg.unplaceable_count)
+      # Not a verdict: the line ran before the mutant was applied (#187).
+      out.puts format("Ran at load:  %-6d  (ran while the app or class loaded; mutineer cannot re-run that; " \
+                      "verify with --test-command)", @agg.ran_at_load_count)
       # Equivalent mutants the user suppressed; excluded from the denominator.
       out.puts format("Ignored:      %-6d  (equivalent, suppressed)", @agg.ignored_count)
     end
@@ -710,7 +718,7 @@ module Mutineer
     def score_line(out, err)
       score = @agg.mutation_score
       excluded = "#{@agg.no_coverage_count} no-coverage, #{@agg.uncapturable_count} uncapturable, " \
-                 "#{@agg.unplaceable_count} unplaceable, " \
+                 "#{@agg.unplaceable_count} unplaceable, #{@agg.ran_at_load_count} ran at load, " \
                  "#{@agg.skipped_invalid_count} skipped, " \
                  "#{@agg.errored_count} errored, #{@agg.timeout_count} timeout, " \
                  "#{@agg.ignored_count} ignored excluded"

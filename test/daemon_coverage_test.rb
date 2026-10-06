@@ -47,6 +47,21 @@ class DaemonCoverageTest < Minitest::Test
            "the map covers order.rb lines"
   end
 
+  # #187: PriceList's class body runs at boot (a to_prepare initializer), so its
+  # `price` line ran before any test. The daemon ships those load lines, and the
+  # mutant is ran_at_load, not a false no_coverage.
+  def test_a_line_that_ran_at_boot_is_ran_at_load_on_the_daemon_path
+    config = Mutineer::Config.new(
+      sources: [File.join(APP, "app/models/price_list.rb")],
+      tests: [File.join(APP, "test/models/price_list_test.rb")],
+      project_root: APP, boot: "config/environment",
+      rails: true, daemon: true, strategy: "reload", framework: "minitest"
+    )
+    aggregate, = Mutineer::Runner.execute(config)
+    assert_equal [:ran_at_load], aggregate.results.map(&:status).uniq
+    assert_nil aggregate.mutation_score
+  end
+
   # R8: a mutant on a line no provided test exercises is no_coverage (excluded from
   # score), NOT run as a false survivor. The subtotal-only suite leaves total_cents
   # and free_shipping? uncovered, so their mutants must be no_coverage.

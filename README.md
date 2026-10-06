@@ -119,6 +119,14 @@ different entry point. Boot mode requires at least one `--test` file and is
 coverage-guided — each mutant runs only the test files that exercise its line
 (coverage is captured by forking the booted app, then cached).
 
+Some code runs while the app boots or a class loads, for example a class body
+that calls a method to build a constant, or a `to_prepare` initializer. That run
+happens before the mutant is applied, and the forked test does not repeat it.
+A mutant on such a line is `ran_at_load`, not `survived` or `no_coverage`. It is
+left out of the score and does not fail `--threshold`; a kill still counts.
+Run those mutants with `--test-command`, which boots a fresh process per mutant,
+to get a verdict.
+
 Add Mutineer to your Gemfile's test group:
 
 ```ruby
@@ -227,7 +235,7 @@ Tradeoffs — this path is correct but not free:
 
 The mutation score is `killed / (killed + survived)`. A mutant whose tests run
 past `--timeout` is a `timeout`. It is neither killed nor survived, so it is
-left out of the score, like `no_coverage`, `uncapturable`, `unplaceable`, `errored`, skipped
+left out of the score, like `no_coverage`, `uncapturable`, `unplaceable`, `ran_at_load`, `errored`, skipped
 and ignored mutants. A timeout is not counted as a kill, because a hang the
 mutant caused and a suite that is just slow look the same. The human report
 shows the count in its `Timeout:` row, and the JSON report in `summary.timeout`.

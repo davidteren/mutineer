@@ -54,6 +54,11 @@ class HtmlReporterTest < Minitest::Test
                     "<span><strong>1</strong> unplaceable</span>"
   end
 
+  def test_summary_counts_ran_at_load
+    assert_includes render([Mutineer::Result.killed, Mutineer::Result.ran_at_load]),
+                    "<span><strong>1</strong> ran_at_load</span>"
+  end
+
   def test_source_is_html_escaped_not_raw
     html = render([survivor])
     assert_includes html, "if price &gt;= 100" # `>=` escaped in the original diff line

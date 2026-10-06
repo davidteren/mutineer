@@ -117,14 +117,15 @@ module Mutineer
         ))
       end
 
-      unless data && !(data["map"] || {}).empty?
+      # Load lines alone are a real capture: every source line ran only at boot.
+      unless data && !((data["map"] || {}).empty? && Array(data["load_lines"]).empty?)
         reason = data.is_a?(Hash) && data["error"] ? data["error"] : "empty map"
         warn_coverage_fallback(reason)
         return nil
       end
 
       CoverageMap.from_data(map: data["map"], failed_test_files: data["failed_test_files"] || [],
-                            project_root: config.project_root)
+                            project_root: config.project_root, load_lines: data["load_lines"] || [])
     rescue DaemonBootError => e
       warn_coverage_fallback("#{e.class}: #{e.message}")
       nil
@@ -261,7 +262,8 @@ module Mutineer
             payload: { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) },
             tests: sel ? sel[1] : abs_tests
           )
-          result_for(verdict)
+          # A survivor whose line ran at load, as in-process (Runner.run).
+          Runner.load_verdict(result_for(verdict), subject.file, mutation, subject, source, coverage_map)
         end
       r.with(subject: subject, mutation: mutation, id: id)
     end

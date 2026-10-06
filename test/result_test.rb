@@ -105,7 +105,8 @@ class ResultTest < Minitest::Test
     statuses = [
       Mutineer::Result.killed, Mutineer::Result.survived, Mutineer::Result.error,
       Mutineer::Result.timeout, Mutineer::Result.skipped, Mutineer::Result.no_coverage,
-      Mutineer::Result.uncapturable, Mutineer::Result.unplaceable, Mutineer::Result.ignored
+      Mutineer::Result.uncapturable, Mutineer::Result.unplaceable, Mutineer::Result.ran_at_load,
+      Mutineer::Result.ignored
     ].map(&:status)
     assert_equal statuses, statuses.uniq
   end

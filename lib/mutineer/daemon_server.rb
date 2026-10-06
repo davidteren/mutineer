@@ -139,7 +139,7 @@ module Mutineer
       end
 
       # Build the coverage map app-side (Coverage was started at boot) and return
-      # it as `{map, failed_test_files}` for the tool to select covering tests.
+      # it as `{map, failed_test_files, load_lines}` for the tool to select covering tests.
       # Capture forks route to worker 0's DB (isolated, serial). On any failure
       # return an empty map + an error string. The tool then falls back to the
       # full test set rather than mis-scoring everything as no_coverage.
@@ -153,7 +153,7 @@ module Mutineer
           capture_timeout: @cfg["capture_timeout"] || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_via_fork(after_fork: coverage_after_fork)
         { "map" => cmap.map, "failed_test_files" => cmap.failed_test_files,
-          "failed_clean_tests" => cmap.failed_clean_tests }
+          "failed_clean_tests" => cmap.failed_clean_tests, "load_lines" => cmap.load_lines.to_a }
       rescue Exception => e # rubocop:disable Lint/RescueException
         @errio.puts("[daemon] coverage build failed: #{e.class}: #{e.message}")
         { "map" => {}, "failed_test_files" => [], "error" => "#{e.class}: #{e.message}" }
