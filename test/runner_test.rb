@@ -291,6 +291,84 @@ class RunnerTest < Minitest::Test
     assert_nil Mutineer::Runner.abort_if_unclean!(map)
   end
 
+  # #159: an operator that emits one edit twice runs it once, and every kept
+  # mutant keeps the id it had before (ids are assigned before the drop, so a
+  # dropped copy's id is never handed to the next twin).
+  def test_collect_jobs_runs_a_repeated_edit_once_and_keeps_ids
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "zero.rb")
+      File.write(path, "class Zero\n  def a\n    x = 0\n    y = 0\n    !!x\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: dir)
+      ops = Mutineer::MutatorRegistry.resolve(%w[literal_mutation negation_removal])
+      jobs, _ignored, _map, extras = Mutineer::Runner.collect_jobs(config, ops)
+
+      source = File.read(path)
+      mutated = jobs.map { |_s, m, _id| [m.operator, m.apply(source)] }
+      assert_equal mutated.uniq, mutated
+      assert_equal 3, jobs.size # x = 1, y = 1, !x
+
+      subject = jobs.first[0]
+      all = ops.flat_map { |k| k.new.mutations_for(subject, source) }
+      before = Mutineer::MutantId.for_subject(subject, source, all, path: "zero.rb")
+      lines = all.map { |m| source.byteslice(0, m.start_offset).count("\n") + 1 }
+      keys = Mutineer::Runner.result_keys(all, source, lines)
+      kept = all.each_index.select { |i| keys.index(keys[i]) == i }
+      assert_equal kept.map { |i| before[i] }, jobs.map(&:last)
+
+      # PR #198 review: a dropped copy records nothing in the id map either.
+      dropped = (all.each_index.to_a - kept).map { |i| before[i] }
+      refute_empty dropped
+      assert_empty dropped & extras[:id_map].keys
+      assert_equal 3, extras[:id_map].size
+    end
+  end
+
+  # PR #198 review: operand_removal on `x || x` keeps either side, which gives
+  # the same source; it runs once and keeps its id.
+  def test_collect_jobs_runs_a_repeated_operand_removal_once
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "either.rb")
+      File.write(path, "class Either\n  def a(x)\n    x || x\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: dir)
+      ops = Mutineer::MutatorRegistry.resolve(%w[operand_removal])
+      jobs, = Mutineer::Runner.collect_jobs(config, ops)
+      source = File.read(path)
+      all = ops.first.new.mutations_for(jobs.first[0], source)
+      assert_equal 2, all.size, "operand_removal emits both sides"
+      assert_equal 1, jobs.size
+      first_id = Mutineer::MutantId.for_subject(jobs.first[0], source, all, path: "either.rb").first
+      assert_equal first_id, jobs.first.last
+    end
+  end
+
+  # #159: copies of one edit that start on different lines both stay, so a
+  # line-based filter such as --since never loses the edit.
+  def test_collect_jobs_keeps_copies_on_different_lines
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "chain.rb")
+      File.write(path, "class Chain\n  def m\n    a\n      .b\n      .b\n      .c\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: dir)
+      jobs, = Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[chain_link]))
+      assert_equal 2, jobs.size
+    end
+  end
+
+  # #159: an ignore entry for one copy's id does not hide the other copy of the
+  # same edit. The copies are dropped separately among run and ignored mutants.
+  def test_collect_jobs_keeps_an_unsuppressed_copy_of_a_suppressed_edit
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "zero.rb")
+      File.write(path, "class Zero\n  def a\n    0\n  end\nend\n")
+      ops = Mutineer::MutatorRegistry.resolve(%w[literal_mutation])
+      first_id = Mutineer::Runner.collect_jobs(Mutineer::Config.new(sources: [path], project_root: dir), ops)
+                                 .first.first.last
+      config = Mutineer::Config.new(sources: [path], project_root: dir, ignore: [first_id])
+      jobs, ignored, = Mutineer::Runner.collect_jobs(config, ops)
+      assert_equal [first_id], ignored.map(&:id)
+      assert_equal 1, jobs.size
+      refute_equal first_id, jobs.first.last
+    end
+  end
 
   # Every row of a large matrix names the same tests; after share_tests they
   # are one frozen array per test, whatever row they came from.

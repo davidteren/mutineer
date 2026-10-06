@@ -47,6 +47,10 @@ All notable changes to this project are documented here. The format is based on
   `--daemon`, `--test-command`, `--fail-fast` and `--dry-run` exit 2 with it.
   `--no-matrix` and `--no-fail-fast` beat the matching `.mutineer.yml` key,
   so a file that sets one can still run with a flag that conflicts with it.
+- **`no_coverage[]` and `uncapturable[]` name each mutant.** Every entry in
+  the JSON report now has `operator`, `token` and `id`, as `ignored[]` has, so
+  mutants on one line can be told apart and an `id` can go in `ignore:`. The
+  entries are sorted by `(file, line, operator, id)`. `schema_version` is `1.6`.
 
 ### Changed
 - **The human report has a `Timeout:` row**, and the score line lists timeouts
@@ -69,6 +73,20 @@ All notable changes to this project are documented here. The format is based on
   its Ruby escape (`\e`), and a byte that is not valid UTF-8 (a Latin-1
   source) as `\xNN`. The JSON and HTML
   reports already escaped text and do not change.
+- **One edit on a line is scored once** (#159). Some opt-in operators emitted
+  two mutants that give the same source: `literal_mutation` on `0` (the
+  "change to 1" and "add 1" rules), `negation_removal` on `!!x` (either `!`
+  removed), and `chain_link` or `operand_removal` on a repeated part such as
+  `a.b.b.c` or `x || x`. Each copy had its own id, so one surviving edit
+  counted twice. Now only the first copy on a line runs. Copies that start
+  on different lines (a multi-line chain) both stay, so `--since` never
+  loses the edit. Ids are assigned before the copy is dropped, so every kept
+  mutant keeps its id, and the dropped copy's id simply stops appearing.
+  Default runs do not change. If you use these operators with `--baseline`,
+  regenerate the baseline after upgrading: the score can move with no code
+  change, and in a full (unscoped) comparison a dropped copy that survived
+  is listed as fixed. An ignore entry for one copy's id still ignores only
+  that copy; the other copy still runs.
 - **`# mutineer:disable-line` inside a string no longer silences a line**
   (#158). The marker was found with a text search, so a string such as
   `"# mutineer:disable-line"` ignored every mutant on its line and left
