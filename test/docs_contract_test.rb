@@ -90,6 +90,12 @@ class DocsContractTest < Minitest::Test
     assert_match(/target missing/, error.message)
   end
 
+  def test_json_schema_page_and_source_name_the_reporter_schema_version
+    version = Mutineer::Reporter::SCHEMA_VERSION
+    assert_equal version, DocsContract.schema_version(File.read("docs/json-schema.md"))
+    assert_includes DocsContract.json_schema_html, "schema_version #{version}</span>"
+  end
+
   def test_json_schema_html_carries_markdown_source_content
     md = File.read("docs/json-schema.md")
     html = DocsContract.json_schema_html

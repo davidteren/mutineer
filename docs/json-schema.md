@@ -7,7 +7,7 @@ worker finish order, so two runs of the same inputs produce byte-identical outpu
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.4"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.5"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -25,7 +25,7 @@ between reports with the same `id_format` (a missing key is the old format).
 
 ```jsonc
 {
-  "schema_version": "1.4",
+  "schema_version": "1.5",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
@@ -33,6 +33,7 @@ between reports with the same `id_format` (a missing key is the old format).
   "no_verdict":   [ /* mutants that were attempted and produced no verdict */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
   "per_source":   [ /* per-file roll-up */ ],
+  "matrix":       { /* present ONLY with --matrix: which tests kill which mutants */ },
   "baseline":     { /* present ONLY with --baseline: the delta vs a prior run */ }
 }
 ```
@@ -104,6 +105,50 @@ Suppressed (equivalent) mutants, so you can audit what's silenced: `{ subject, f
 Per-file roll-up: `{ file, total, killed, survived, no_coverage, score }` (`score` is `float | null` as above).
 `total` counts classified results for that file. A `--fail-fast` report is partial:
 unscheduled candidates are omitted from these counts and from the top-level totals.
+
+### `matrix` (object, only with `--matrix`)
+
+Which tests kill which mutants. A `--matrix` run runs every test in each mutant's covering files, so a
+mutant's row names every test that kills it. Coverage is recorded per test file, and a test that never runs
+the mutated line cannot kill the mutant. Added in schema `1.5` and absent without the flag. The block never
+changes `summary`, the score or the exit code.
+
+A test has a `file` (relative to the project root: the file that defines the test), a `name`
+(`CalculatorTest#test_add` under Minitest, the example's full description under RSpec) and an `id`. The `id`
+tells apart tests that share a file and name: under RSpec it is the example id
+(`./spec/calc_spec.rb[1:2]`; `--matrix` needs RSpec 3.3 or later, and an older RSpec leaves every row
+incomplete), and under Minitest it equals `name`. A test of an anonymous Minitest class is named
+`(anonymous)#test_x`, and its `id` adds the line of the method (`(anonymous)#test_x@7`).
+A test is identified by its `file` and `id`. An example without a description of its own is worded from its
+matcher, so its `name` can change with the mutant; the report keeps the name the first mutant gave it.
+
+| Key | Type | Meaning |
+|-----|------|---------|
+| `complete` | bool | True when every row is complete. When false, a test in `blind[]` may have killed a mutant whose row is incomplete. |
+| `tests[]` | array | Every test that ran against at least one mutant: `{ file, name, id, kills }`, sorted by `file`, `name`, then `id`. `kills` counts the mutants the test killed. Rows refer to a test by its index here. |
+| `mutants[]` | array | One row per mutant that ran: `{ subject, file, line, operator, id, status, killed_by, ran, complete }`, sorted by `(file, line, operator, id)`. `killed_by` holds indexes into `tests[]`, and `ran` counts the tests that ran against the mutant. No-coverage, uncapturable, skipped and ignored mutants have no row: they never ran. |
+| `blind[]` | array | `{ file, name, id }`: tests that ran in at least one complete row and killed no mutant in any row. |
+| `redundant[]` | array | `{ file, name, id }`: tests that killed at least one mutant, where each mutant they killed has another killer. |
+
+A row is complete (`complete: true`) only when the mutant's whole covering set ran and the suite returned
+normally before the per-mutant timeout, every line the child sent was read and arrived in order, and the row
+agrees with the verdict: a killed mutant names a killer and a survivor names none. Under Minitest the
+recorder also counts: it must have seen every test its classes run, so an `Interrupt` that Minitest caught and
+returned from leaves the row incomplete; under RSpec, every planned example must have reported, so a run that
+RSpec stopped early does too. A test that exits the process, a crash, the timeout, a failed write to the
+channel, or a test framework Mutineer could not hook each leave the row incomplete too. A row whose lines
+arrived out of order names no tests (`killed_by` and `ran` are empty).
+
+`status` is the verdict a run without `--matrix` gives. After the first failing test, that run skips every
+later test, test class and example group, so an exit, a crash or the timeout in one of those leaves the status
+`"killed"`. It still runs the code around the failing test (the rest of its Minitest class `run` wrapper, the
+`after(:all)` hooks of its RSpec groups) and the suite's own cleanup (RSpec `after(:suite)`), so an end there
+keeps the exit status (or `"timeout"`). A failure in the tests of a Minitest `parallelize_me!` class keeps it
+too: those run after every serial class and cannot be stopped once queued, while a failure in a serial class
+still stops the run, even in a suite that also has a parallel class.
+
+Each redundant test is judged on its own. Two redundant tests can be the only killers of one mutant, so
+delete them one at a time and re-run after each. Every answer covers this run's mutants only.
 
 ### `baseline` (object, only with `--baseline`)
 
