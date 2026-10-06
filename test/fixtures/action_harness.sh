@@ -48,7 +48,8 @@ run_step() { # name, then env overrides as KEY=VAL...
   local out="$SCRATCH/$name"
   mkdir -p "$out"
   : > "$SCRATCH/stub-args.txt"
-  env -i PATH="$PATH" HOME="$HOME" \
+  # env -i drops the suite's trace2 overrides (#174), so pass them on.
+  env -i PATH="$PATH" HOME="$HOME" GIT_TRACE2=0 GIT_TRACE2_EVENT=0 GIT_TRACE2_PERF=0 \
     SOURCES="lib/calc.rb" TESTS="" THRESHOLD="90" BASELINE="" BASELINE_EPSILON="" \
     OPERATORS="" FRAMEWORK="" STRATEGY="" JOBS="" RAILS="false" FORMAT="json" \
     OUTPUT="" EXTRA_ARGS="" USE_BUNDLER="false" SINCE="" WORKING_DIRECTORY="." \

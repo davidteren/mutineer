@@ -7,12 +7,37 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+
 - **An `unplaceable` mutant status.** Under `--strategy redefine`, a mutant in
   a method whose class or module has no constant name is not run. It is left
   out of the score and, unlike `uncapturable`, out of `no_verdict`, so it does
   not fail `--threshold`. The human report gives it an `Unplaceable:` row, the
   HTML report a count, and the JSON report `summary.unplaceable` and an
   `unplaceable[]` list; `schema_version` is `1.7`.
+
+### Fixed
+
+- **A method in a `Data.define`, `Struct.new`, `Class.new` or `Module.new`
+  block belongs to the class or module the block builds.** In
+  `class App; Argo = Data.define(:url) do def self.load = ...; end; end` the
+  subject is now `App::Argo.load`, not `App.load`; at the top level it was
+  `.load`, with no owner. Under `--strategy redefine` (the `--rails` default)
+  the mutated method was loaded into the wrong class, so the real method never
+  changed and every such mutant falsely survived. The class or module is
+  named after the constant it is assigned to with `=`, `||=` or `&&=`, through
+  parentheses or `begin`, resolved as Ruby resolves the assignment: `X` in the
+  current namespace, `::X` and any path at the top level from `Object`,
+  `self::X` under the current class. When it cannot be named statically (no
+  constant, a relative path such as `User::Permission` inside a namespace, or
+  a constant assigned in `class << self`), redefine reports its mutants with
+  a new status, `unplaceable`, rather than load them onto the wrong class;
+  reload still runs them. `module_function :name` in a `Module.new` block
+  promotes that module's method. Mutant ids for these subjects change:
+  regenerate `ignore:` entries and baselines that name them.
+
+## [1.5.0] - 2026-10-06
+
+### Added
 - **`--timeout SECONDS` and `--capture-timeout SECONDS`**, also `timeout:` and
   `capture_timeout:` in `.mutineer.yml`. They set the in-process per-mutant
   time limit (default 10s) and the coverage-capture time limit (default 120s),
@@ -64,6 +89,12 @@ All notable changes to this project are documented here. The format is based on
   mutants on one line can be told apart and an `id` can go in `ignore:`. The
   entries are sorted by `(file, line, operator, id)`. `schema_version` is `1.6`.
 
+- **The site and README explain "clean-room" and compare Mutineer with
+  Mutant**, and the landing page hero has a one-minute explainer video. It
+  plays at 55% volume while in view (not with reduced motion; muted until
+  the first click or key where the browser requires it), pauses when it scrolls
+  away or the tab is hidden, and has an Enlarge button.
+
 ### Changed
 - **The human report has a `Timeout:` row**, and the score line lists timeouts
   apart from errored mutants. Before, the `Errored:` row and the score line
@@ -77,23 +108,6 @@ All notable changes to this project are documented here. The format is based on
   to repeat `--test`. The usage line now reads `--test <test> [--test <test>...]`.
 
 ### Fixed
-- **A method in a `Data.define`, `Struct.new`, `Class.new` or `Module.new`
-  block belongs to the class or module the block builds.** In
-  `class App; Argo = Data.define(:url) do def self.load = ...; end; end` the
-  subject is now `App::Argo.load`, not `App.load`; at the top level it was
-  `.load`, with no owner. Under `--strategy redefine` (the `--rails` default)
-  the mutated method was loaded into the wrong class, so the real method never
-  changed and every such mutant falsely survived. The class or module is
-  named after the constant it is assigned to with `=`, `||=` or `&&=`, through
-  parentheses or `begin`, resolved as Ruby resolves the assignment: `X` in the
-  current namespace, `::X` and any path at the top level from `Object`,
-  `self::X` under the current class. When it cannot be named statically (no
-  constant, a relative path such as `User::Permission` inside a namespace, or
-  a constant assigned in `class << self`), redefine reports its mutants with
-  a new status, `unplaceable`, rather than load them onto the wrong class;
-  reload still runs them. `module_function :name` in a `Module.new` block
-  promotes that module's method. Mutant ids for these subjects change:
-  regenerate `ignore:` entries and baselines that name them.
 - **The RSpec runner keeps what gems configured before the run.** It called
   `RSpec.reset`, which drops the whole configuration. Under `rails: true`, a
   `--boot` file or `require:`, the app's gems load first, so a setting such as
@@ -941,6 +955,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.5.0]: https://github.com/davidteren/mutineer/releases/tag/v1.5.0
 [1.4.0]: https://github.com/davidteren/mutineer/releases/tag/v1.4.0
 [1.3.0]: https://github.com/davidteren/mutineer/releases/tag/v1.3.0
 [1.2.0]: https://github.com/davidteren/mutineer/releases/tag/v1.2.0

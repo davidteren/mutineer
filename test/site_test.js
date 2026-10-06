@@ -96,6 +96,71 @@ test('index.md landing twin exists and sitemap lists the same Pages URLs as llms
 });
 
 
+// The hero explainer autoplays muted in view, pauses off screen or in a hidden
+// tab (not in Picture-in-Picture), resumes only what it paused, keeps a
+// visitor's pause, and the Enlarge button widens it.
+test('explainer video autoplays in view, keeps the visitor in control, and enlarges', () => {
+  const docEvents = {};
+  let observerCallback, plays = 0, pauses = 0, sizeClick, wide = false;
+  const video = { paused: true, muted: false, volume: 1, play() { plays++; this.paused = false; return Promise.resolve(); }, pause() { pauses++; this.paused = true; }, addEventListener() {} };
+  const size = { hidden: true, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(k, fn) { sizeClick = fn; } };
+  const grid = { classList: { toggle() { wide = !wide; return wide; } } };
+  const figure = { parentNode: grid, querySelector(sel) { return sel === 'video' ? video : sel === '.explainer-size' ? size : null; } };
+  class IntersectionObserver { constructor(fn) { observerCallback = fn; } observe() {} }
+  const root = { setAttribute() {}, getAttribute() { return 'dark'; }, classList: { add() {} } };
+  const document = {
+    documentElement: root, hidden: false, pictureInPictureElement: null,
+    getElementById() { return null; },
+    addEventListener(k, fn) { docEvents[k] = fn; },
+    querySelectorAll(selector) { return selector === '.explainer' ? [figure] : []; }
+  };
+  const media = (q) => ({ matches: !/reduced-motion/.test(q), addEventListener() {} });
+  const context = {
+    document,
+    window: { matchMedia: media },
+    localStorage: { getItem() { return null; }, setItem() {} },
+    navigator: {}, setTimeout() {}, clearTimeout() {}, addEventListener() {}
+  };
+  // The head check for page motion runs at load, without an observer, so the
+  // entrance animations stay off; the video code runs later and finds one.
+  vm.runInNewContext(fs.readFileSync('docs/assets/mutineer.js', 'utf8'), context);
+  context.IntersectionObserver = context.window.IntersectionObserver = IntersectionObserver;
+  docEvents.DOMContentLoaded();
+
+  observerCallback([{ intersectionRatio: 0.6 }]);
+  assert.equal(plays, 1, 'in view, it autoplays');
+  assert.equal(video.volume, 0.55, 'at about half volume');
+  assert.equal(video.muted, false, 'with sound');
+  observerCallback([{ intersectionRatio: 0.1 }]);
+  assert.equal(pauses, 1, 'mostly out of view, it pauses');
+  observerCallback([{ intersectionRatio: 0.8 }]);
+  assert.equal(plays, 2, 'back in view, it resumes what it paused');
+
+  document.hidden = true;
+  docEvents.visibilitychange();
+  assert.equal(pauses, 2, 'a hidden tab pauses it');
+  document.hidden = false;
+  docEvents.visibilitychange();
+  assert.equal(plays, 3, 'a visible tab resumes it');
+
+  document.pictureInPictureElement = video;
+  observerCallback([{ intersectionRatio: 0 }]);
+  assert.equal(pauses, 2, 'Picture-in-Picture keeps playing');
+  document.pictureInPictureElement = null;
+
+  video.pause(); // the visitor pauses
+  observerCallback([{ intersectionRatio: 0 }]);
+  observerCallback([{ intersectionRatio: 0.9 }]);
+  assert.equal(plays, 3, "the visitor's pause sticks");
+
+  assert.equal(size.hidden, false);
+  sizeClick();
+  assert.equal(wide, true);
+  assert.equal(size.attrs['aria-pressed'], 'true');
+  sizeClick();
+  assert.equal(size.attrs['aria-pressed'], 'false');
+});
+
 // A small browser boundary checks theme selection and copy feedback without a dependency.
 test('site follows system theme until chosen, tolerates blocked storage, and reports copy failures', async () => {
   for (const saved of [null, 'invalid', 'dark', 'light']) {

@@ -23,8 +23,8 @@
 <meta name="twitter:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
 <meta name="twitter:image:alt" content="Mutineer — Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='1' fill='%2367286a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
-<script src="assets/mutineer.js?v=2866f68d1f55"></script>
-<link rel="stylesheet" href="assets/mutineer.css?v=caa57d3f6e3a">
+<script src="assets/mutineer.js?v=e2f61c6ed52e"></script>
+<link rel="stylesheet" href="assets/mutineer.css?v=bbe02d1403bf">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -61,16 +61,15 @@
           </div>
           <p class="note">Open source. MIT licensed. Prism + stdlib only.</p>
         </div>
-        <figure class="specimen">
-          <figcaption><span>One change. One missed boundary.</span><span>COMPARISON</span></figcaption>
-          <div class="mutation-glyph" aria-hidden="true"><span>≥</span><span class="glyph-arrow">→</span><span>&gt;</span></div>
-          <div class="specimen-code"><span class="specimen-label">ORIGINAL</span><code>return 0 if qty &gt;= 10</code></div>
-          <div class="specimen-code mutant"><span class="specimen-label">MUTANT</span><code>return 0 if qty &gt; 10</code></div>
-          <p class="specimen-verdict"><span aria-hidden="true">↳</span> Still passes? Your tests missed <strong>qty = 10</strong>.</p>
-          <details class="boundary-test">
-            <summary>Show the test that catches it</summary>
-            <div><code>assert_equal 0, calculator.discount(10)</code><p>The original returns 0 at 10. If the changed method returns a different value, this assertion fails and kills the mutant.</p><p class="note">Illustrative example; no Ruby runs in this page.</p></div>
-          </details>
+        <figure class="explainer">
+          <video playsinline loop preload="none" width="1920" height="1080"
+                 poster="assets/mutineer-explainer-poster.jpg"
+                 aria-label="One-minute explainer: a suite with 100% line coverage misses a changed comparison, and Mutineer finds it"
+                 controls>
+            <source src="assets/mutineer-explainer.mp4" type="video/mp4">
+          </video>
+          <button hidden class="explainer-sound" type="button"><span aria-hidden="true">🔊</span> Sound on</button>
+          <button hidden class="explainer-size" type="button" aria-pressed="false">Enlarge <span aria-hidden="true">⤢</span></button>
         </figure>
       </div>
       <div class="badges" aria-label="Tool facts">
@@ -97,6 +96,17 @@
         <h2>Mutate. Run. Report.</h2>
         <p>A surviving mutant shows a change your tests did not catch. Inspect it, strengthen the test, and run again. Some changes are equivalent and need no new test.</p>
       </div>
+      <figure class="specimen">
+          <figcaption><span>One change. One missed boundary.</span><span>COMPARISON</span></figcaption>
+          <div class="mutation-glyph" aria-hidden="true"><span>≥</span><span class="glyph-arrow">→</span><span>&gt;</span></div>
+          <div class="specimen-code"><span class="specimen-label">ORIGINAL</span><code>return 0 if qty &gt;= 10</code></div>
+          <div class="specimen-code mutant"><span class="specimen-label">MUTANT</span><code>return 0 if qty &gt; 10</code></div>
+          <p class="specimen-verdict"><span aria-hidden="true">↳</span> Still passes? Your tests missed <strong>qty = 10</strong>.</p>
+          <details class="boundary-test">
+            <summary>Show the test that catches it</summary>
+            <div><code>assert_equal 0, calculator.discount(10)</code><p>The original returns 0 at 10. If the changed method returns a different value, this assertion fails and kills the mutant.</p><p class="note">Illustrative example; no Ruby runs in this page.</p></div>
+          </details>
+        </figure>
       <div class="steps">
         <div class="step">
           <h3>Mutate</h3>
@@ -216,6 +226,33 @@
     </div>
   </section>
 
+  <!-- COMPARISON -->
+  <section id="mutant">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="kicker">Mutineer and Mutant</div>
+        <h2>Clean-room, not a fork.</h2>
+        <p>Mutineer was written from scratch. It contains no code from <a href="https://github.com/mbj/mutant" rel="noopener">Mutant</a> or any other mutation-testing tool. Mutineer’s own code is licensed under MIT.</p>
+      </div>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Mutineer and Mutant compared">
+        <table>
+          <caption>Mutant is the established tool, with a deeper operator set. Mutineer trades that depth for an MIT license, no dependencies, and a JSON contract for CI and agents.</caption>
+          <thead>
+            <tr><th scope="col">Aspect</th><th scope="col">Mutineer</th><th scope="col">Mutant 0.17</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">License</th><td>MIT, for every use</td><td>Free for open source; commercial use needs a paid subscription</td></tr>
+            <tr><th scope="row">Runtime dependencies</th><td>None (Prism + stdlib)</td><td><code>parser</code>, <code>unparser</code>, <code>sorbet-runtime</code> and others</td></tr>
+            <tr><th scope="row">Ruby</th><td>3.4 and later (older app Rubies via <code>--test-command</code>)</td><td>3.3 and later</td></tr>
+            <tr><th scope="row">Test frameworks</th><td>Minitest and RSpec</td><td>RSpec, Minitest and Test::Unit</td></tr>
+            <tr><th scope="row">What you mutate</th><td>Files, or one method with <code>--only</code></td><td>Subjects named by expression</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">Checked against Mutant 0.17 on 2026-10-06. Full comparison and when to pick each: <a href="https://github.com/davidteren/mutineer#mutineer-and-mutant" rel="noopener">README</a>.</p>
+    </div>
+  </section>
+
   <!-- INSTALL -->
   <section id="install">
     <div class="wrap">
@@ -255,7 +292,7 @@ jobs: 8</div>
           <div class="codeblock"><button hidden class="copy" data-copy="mutineer run lib/foo.rb --test test/foo_test.rb --format json">Copy</button><span class="p">$</span> mutineer run lib/foo.rb <span class="c">--test</span> test/foo_test.rb <span class="c">--format</span> json</div>
         </div>
       </div>
-      <p class="note">Key flags: <code>--operators</code>, <code>--threshold</code>, <code>--baseline</code>, <code>--since</code>, <code>--rails</code>, <code>--only</code>, <code>--jobs</code>, <code>--format human|json|html</code>, <code>--output FILE</code>, <code>--dry-run</code>, <code>--fail-fast</code>. Typed flags override <code>.mutineer.yml</code>.</p>
+      <p class="note">Key flags: <code>--test FILE</code>, <code>--threshold</code>, <code>--since</code>, <code>--baseline</code>, <code>--format human|json|html</code>, <code>--output FILE</code>, <code>--jobs</code>, <code>--rails</code>, <code>--daemon</code>, <code>--timeout SECONDS</code>, <code>--dry-run</code>, <code>--matrix</code>. Typed flags override <code>.mutineer.yml</code>. Full list: <code>mutineer --help</code> or the <a href="https://github.com/davidteren/mutineer#options">README</a>.</p>
     </div>
   </section>
 

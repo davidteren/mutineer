@@ -47,11 +47,13 @@ module Mutineer
                              --test-command, --fail-fast, or --rails
                              without --daemon forces 1
         --strategy NAME      reload (whole-file) or redefine (surgical); default: reload
-        --timeout SECONDS    Per-mutant time limit for in-process runs (default: 10);
-                             a mutant over it is a timeout, excluded from the score
+        --timeout SECONDS    Per-mutant time limit for in-process runs (default: 10;
+                             not with --daemon or --test-command); a mutant over it
+                             is a timeout, excluded from the score
         --capture-timeout SECONDS  Time limit for each coverage-capture subprocess
                              and the clean check (default: 120; not with --test-command)
-        --cache-dir DIR      Directory for the coverage cache (default: .mutineer)
+        --cache-dir DIR      Directory for the coverage cache (default: .mutineer;
+                             not with --test-command)
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then
                              fork per mutant (Rails apps; requires --test)

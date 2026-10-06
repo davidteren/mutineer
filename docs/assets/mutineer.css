@@ -109,6 +109,17 @@ h1 { font-size: clamp(48px, 6.8vw, 88px); line-height: .99; letter-spacing: -.06
 .badge b { font-size: 24px; font-weight: 500; color: var(--fg); margin-right: 12px; }
 /* Ruled sections replace repeated floating cards. */
 section { padding: 72px 0; border-top: 1px solid var(--border); }
+.explainer { margin: 0; position: relative; }
+.explainer video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); }
+.explainer video:focus-visible, .explainer-size:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.explainer-size { margin-top: 10px; padding: 6px 12px; font: 11px/1.5 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--fg-dim); background: transparent; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; }
+.explainer-sound { position: absolute; top: 14px; left: 14px; padding: 8px 14px; display: inline-flex; gap: 8px; align-items: center; font: 600 13px/1.4 var(--sans); color: #1a1420; background: #e7ed94; /* fixed: the video is dark in both themes */ border: 0; border-radius: var(--radius); cursor: pointer; box-shadow: 0 2px 12px rgba(0,0,0,.35); }
+.explainer-sound:focus-visible { outline: 2px solid #e7ed94; outline-offset: 3px; }
+.explainer-size:hover { color: var(--fg); border-color: var(--fg-dim); }
+.hero-grid.explainer-wide { grid-template-columns: 1fr; }
+.hero-grid.explainer-wide .explainer { order: -1; }
+#how .specimen { max-width: 620px; margin: 0 0 40px; }
+@media (max-width: 860px) { .explainer-size { display: none; } }
 .sec-head { display: grid; grid-template-columns: 1fr 1fr; column-gap: 64px; margin-bottom: 36px; }
 .sec-head .kicker { grid-column: 1 / -1; margin-bottom: 16px; }
 .sec-head h2 { font-size: clamp(30px, 3.4vw, 44px); letter-spacing: -.045em; margin: 0; }
@@ -138,7 +149,7 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 caption { text-align: left; color: var(--fg-dim); padding: 16px; font-size: 12px; }
 th, td { text-align: left; vertical-align: top; padding: 14px 16px; border-bottom: 1px solid var(--border); }
 th { background: var(--bg-3); font: 11px/1.6 var(--mono); letter-spacing: .03em; text-transform: uppercase; }
-tr:last-child td { border-bottom: 0; }
+tr:last-child td, tbody tr:last-child th { border-bottom: 0; }
 td.op { font: 12px/1.7 var(--mono); white-space: nowrap; }
 td.rule { font: 12px/1.7 var(--mono); color: var(--fg-dim); }
 .pill { display: inline-block; font: 10px/1.7 var(--mono); padding: 2px 6px; border: 1px solid var(--border); white-space: nowrap; }

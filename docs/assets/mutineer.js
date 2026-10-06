@@ -37,6 +37,72 @@
       sync();
     });
 
+    // The hero explainer video plays at 55% volume while it is in view, unless
+    // the visitor prefers reduced motion. A browser that blocks sound before
+    // the visitor interacts gets it muted, unmuted on the first click or key. It
+    // pauses when less than a quarter is in view or the tab is hidden, except
+    // in Picture-in-Picture, and resumes only if this code paused it: a pause
+    // by the visitor sticks. The Enlarge button widens it across the hero.
+    document.querySelectorAll('.explainer').forEach(function (figure) {
+      var video = figure.querySelector('video');
+      var size = figure.querySelector('.explainer-size');
+      var sound = figure.querySelector('.explainer-sound');
+      var grid = figure.parentNode;
+      var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var held = false; // paused by this code, so it may resume
+      var visible = false;
+      var autoMuted = false; // muted by this code, not the visitor
+      video.volume = 0.55;
+      function unmute(event) {
+        if (!autoMuted || event.target === video) return; // the video's own controls decide
+        autoMuted = false;
+        video.muted = false;
+        if (sound) sound.hidden = true;
+      }
+      video.addEventListener('volumechange', function () {
+        if (!video.muted && sound) { autoMuted = false; sound.hidden = true; }
+      });
+      document.addEventListener('pointerdown', unmute);
+      document.addEventListener('keydown', unmute);
+      function hold() {
+        if (video.paused || document.pictureInPictureElement === video) return;
+        held = true;
+        video.pause();
+      }
+      function resume() {
+        if (!held || !visible || document.hidden) return;
+        held = false;
+        var playing = video.play();
+        if (playing && playing.catch) playing.catch(function () {
+          if (video.muted) return;
+          autoMuted = video.muted = true;
+          if (sound) sound.hidden = false; // say how to get sound
+          var retry = video.play();
+          if (retry && retry.catch) retry.catch(function () {});
+        });
+      }
+      if (!still) held = true; // autoplay counts as this code's choice
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            visible = entry.intersectionRatio >= 0.25;
+            if (visible) resume(); else hold();
+          });
+        }, { threshold: [0, 0.25] }).observe(video);
+      }
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) hold(); else resume();
+      });
+      if (size) {
+        size.hidden = false;
+        size.addEventListener('click', function () {
+          var wide = grid.classList.toggle('explainer-wide');
+          size.setAttribute('aria-pressed', wide ? 'true' : 'false');
+          size.innerHTML = (wide ? 'Smaller' : 'Enlarge') + ' <span aria-hidden="true">' + (wide ? '⤡' : '⤢') + '</span>';
+        });
+      }
+    });
+
     // Copy controls report failure and remain reusable after repeated clicks.
     document.querySelectorAll('.copy').forEach(function (button) {
       var timer, pending = false;

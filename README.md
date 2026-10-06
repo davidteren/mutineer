@@ -9,6 +9,12 @@ change at a time, runs your test suite (Minitest or RSpec) against each mutant, 
 ones your tests failed to catch — the gaps where your suite isn't actually
 testing anything.
 
+"Clean-room" means Mutineer was written from scratch. It contains no code from
+[Mutant](https://github.com/mbj/mutant) or any other mutation-testing tool.
+Mutineer's own code is licensed under MIT. See
+[Mutineer and Mutant](https://github.com/davidteren/mutineer#mutineer-and-mutant)
+for how the two tools differ.
+
 - **Prism + stdlib only** — zero runtime dependencies (Ruby ≥ 3.4).
 - **One mutation per mutant**, validity-checked by re-parsing.
 - **Fork-isolated**, parallel execution (Linux + macOS).
@@ -142,9 +148,10 @@ RAILS_ENV=test bundle exec mutineer run \
 - **One backend at a time** — `--daemon` can't be combined with `--test-command`
   (choose one), and it needs an app to boot (`--rails` or `--boot`).
 
-Status: **SQLite** today (hermetic, CI-proven). **Postgres** per-worker
-provisioning is in progress (#34/#35); until it lands, use `--daemon` with a
-SQLite test database, or drop `--jobs` to run serially on other adapters.
+Status: **SQLite** only (hermetic, CI-proven). Per-worker provisioning for
+**Postgres** and other adapters is not supported: on those, `--daemon` scores
+every mutant as `error`. Use `--daemon` with a SQLite test database, or drop
+`--daemon` to run serially on other adapters.
 
 ### Apps on Ruby < 3.4
 
@@ -487,6 +494,35 @@ automatically when sources change). Add `.mutineer/` to your `.gitignore`, and
 the directory you set with `--cache-dir` if it is inside the project. Keep
 `.mutineer/` ignored even then: `--test-command` writes lock files to
 `.mutineer/` beside each source file.
+
+## Mutineer and Mutant
+
+[Mutant](https://github.com/mbj/mutant), by Markus Schirp, is the established
+mutation-testing tool for Ruby. It has been in development since 2012 and is
+the subject of published research. Mutineer is a separate tool, and it shares
+no code with Mutant.
+
+| Aspect | Mutineer | Mutant |
+|---|---|---|
+| License | MIT, for every use | Free for open source (`--usage opensource`); commercial use needs a paid subscription |
+| Runtime dependencies | None (Prism + stdlib) | `parser`, `unparser`, `regexp_parser`, `sorbet-runtime` and others |
+| Ruby | 3.4 and later to run Mutineer; an app on an older Ruby works through `--test-command` (see [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34)) | 3.3 and later |
+| Test frameworks | Minitest and RSpec, in one gem | RSpec, Minitest and Test::Unit, one integration gem each |
+| What you mutate | Files (`mutineer run lib/foo.rb --test test/foo_test.rb`), narrowed to one method with `--only 'Foo#bar'` | Subjects named by expression (`mutant run 'Foo#bar'`, `'Foo*'`) |
+| Which tests run | The test files whose coverage reaches the mutated line | The tests that declare the subject (an RSpec description or a Minitest `cover`), or the tests that ran it in a per-test coverage recording |
+| Operators | 20 (5 by default, 15 opt-in) | A larger set; the default `light` set applies almost all of it (`full` adds `#==` to `#eql?`) |
+| CI gating | `--threshold`, `--baseline` deltas, `--since`, and a GitHub Action | Incremental mode (`--since`) and a recorded session history |
+| Machine-readable output | Versioned JSON report schema | Session JSON schema |
+
+Choose Mutineer when you want an MIT-licensed tool with no extra gems in your
+bundle, file-based runs, and a JSON contract built for CI gates and AI agents.
+Choose Mutant when you need its deeper operator set, Test::Unit support, or
+subject expressions that select whole namespaces. The two tools do not
+conflict, so you can run both on one project.
+
+This comparison describes Mutant 0.17 (checked on 2026-10-06). Check
+[Mutant's README](https://github.com/mbj/mutant#readme) for its current
+license terms and features.
 
 ## License
 
