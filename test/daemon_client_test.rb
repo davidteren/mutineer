@@ -100,6 +100,21 @@ class DaemonClientTest < Minitest::Test
     end
   end
 
+  # #102: a mutant fork must not hold the protocol channel open. If the daemon
+  # dies while a child still runs, the client sees EOF at once and scores
+  # `error`, rather than waiting for the orphaned child to finish.
+  def test_daemon_crash_is_seen_while_a_child_still_runs
+    with_client do |client|
+      reply = Thread.new { run_payload(client, 1, "sleep 15", timeout: 60) } # rubocop:disable ThreadSafety/NewThread
+      sleep 1.5 # let the daemon fork the child
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      Process.kill(:KILL, client.instance_variable_get(:@wait_thr).pid)
+      assert_equal "error", reply.value
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      assert_operator elapsed, :<, 10, "the orphaned child must not hold the protocol pipe"
+    end
+  end
+
   # A bad boot path surfaces as a clean DaemonBootError, not a hang.
   def test_bad_boot_raises_clean_error
     bad = boot_config.merge(boot: File.join(APP, "config/does_not_exist"))
