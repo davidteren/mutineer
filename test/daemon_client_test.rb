@@ -104,14 +104,24 @@ class DaemonClientTest < Minitest::Test
   # dies while a child still runs, the client sees EOF at once and scores
   # `error`, rather than waiting for the orphaned child to finish.
   def test_daemon_crash_is_seen_while_a_child_still_runs
-    with_client do |client|
-      reply = Thread.new { run_payload(client, 1, "sleep 15", timeout: 60) } # rubocop:disable ThreadSafety/NewThread
-      sleep 1.5 # let the daemon fork the child
-      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      Process.kill(:KILL, client.instance_variable_get(:@wait_thr).pid)
-      assert_equal "error", reply.value
-      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
-      assert_operator elapsed, :<, 10, "the orphaned child must not hold the protocol pipe"
+    Dir.mktmpdir("daemon-crash-") do |dir|
+      marker = File.join(dir, "child.pid")
+      # exit! so a surviving child never goes on to run tests on a shared DB.
+      payload = "File.write(#{marker.inspect}, Process.pid.to_s); sleep 15; exit!(0)"
+      with_client do |client|
+        reply = Thread.new { run_payload(client, 1, payload, timeout: 60) } # rubocop:disable ThreadSafety/NewThread
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 30
+        sleep 0.05 until File.size?(marker) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+        assert File.size?(marker), "the daemon never forked the mutant child"
+
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        Process.kill(:KILL, client.instance_variable_get(:@wait_thr).pid)
+        assert_equal "error", reply.value
+        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+        assert_operator elapsed, :<, 10, "the orphaned child must not hold the protocol pipe"
+      ensure
+        Process.kill(:KILL, File.read(marker).to_i) rescue nil # rubocop:disable Style/RescueModifier
+      end
     end
   end
 
