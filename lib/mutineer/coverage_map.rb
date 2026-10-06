@@ -791,7 +791,7 @@ module Mutineer
         Coverage.start(lines: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         #{abs_source_paths.inspect}.each { |f| require f }
-        _load = Coverage.peek_result
+        _load = #{load_coverage_expression}
         load #{absolute(test_path).inspect}
         _passed = Minitest.run([])
         $stderr.write(_report.string) unless _passed
@@ -824,7 +824,7 @@ module Mutineer
         Coverage.start(lines: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         #{abs_source_paths.inspect}.each { |f| require f }
-        _load = Coverage.peek_result
+        _load = #{load_coverage_expression}
         _sink = StringIO.new
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
         $stderr.write(_sink.string) unless _status.zero?
@@ -852,10 +852,19 @@ module Mutineer
     def record_load(coverage)
       return unless coverage.is_a?(Hash)
 
-      sources = @source_paths.to_set { |p| relativize(absolute(p)) }
-      each_covered_key(coverage) do |key|
-        @load_lines << key if sources.include?(key.rpartition(":").first)
-      end
+      @source_rels ||= @source_paths.to_set { |p| relativize(absolute(p)) }
+      ours = coverage.select { |abs_file, _| @source_rels.include?(relativize(abs_file)) }
+      each_covered_key(ours) { |key| @load_lines << key }
+    end
+
+    # Ruby source of the capture child's load-time coverage: `Coverage.peek_result`
+    # for the configured sources only, matched by real path (a Coverage key is
+    # the path as required), so the payload does not carry every loaded gem.
+    #
+    # @api private
+    # @return [String] expression to embed in a capture subprocess script.
+    def load_coverage_expression
+      "Coverage.peek_result.select { |f, _| #{abs_source_paths.inspect}.include?((File.realpath(f) rescue f)) }"
     end
 
     # Yields a "file:line" key for every project line with a non-zero count.

@@ -89,7 +89,8 @@ named statically (an anonymous `Class.new`, a relative path such as `User::Permi
 or a constant assigned in `class << self`); `--strategy reload` runs these. `ran_at_load` (schema `1.7`)
 means the mutant's line ran while the app booted or its class loaded (for example a class body that calls the
 method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
-only at load, gets this status instead of `survived` or `no_coverage`; run `--test-command` to verify these.
+only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
+file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.
 A one-line or endless `def` is not detected: its body shares the `def` line, which counts when the method is defined.
 
 Several mutants can share a line, so `operator` and `token` name the change and `id` identifies the mutant.

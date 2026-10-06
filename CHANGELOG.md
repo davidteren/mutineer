@@ -66,7 +66,9 @@ All notable changes to this project are documented here. The format is based on
   ran during boot, so those mutants were falsely `no_coverage`. Mutineer now
   reads the lines that ran at load (from the boot, or from requiring the
   sources in standalone capture) and reports these mutants as `ran_at_load`,
-  under both strategies and with `--daemon`. Under `--boot` with redefine, a
+  under both strategies and with `--daemon`: reload runs the file's class body
+  again but not an initializer or another file's code, so a survivor there is
+  not trusted either. Under `--boot` with redefine, a
   lazily loaded class (Zeitwerk, `autoload`) is loaded before the boot lines
   are read, so its class body counts as load too. A baseline survivor that is
   now `ran_at_load` is listed as fixed, not as a regression. Standalone

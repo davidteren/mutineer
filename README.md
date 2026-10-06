@@ -124,6 +124,9 @@ that calls a method to build a constant, or a `to_prepare` initializer. That run
 happens before the mutant is applied, and the forked test does not repeat it.
 A mutant on such a line is `ran_at_load`, not `survived` or `no_coverage`. It is
 left out of the score and does not fail `--threshold`; a kill still counts.
+This holds under both strategies: `reload` runs the mutated file's class body
+again, but not an initializer or another file's code, so a survivor on such a
+line is not trusted there either.
 Run those mutants with `--test-command`, which boots a fresh process per mutant,
 to get a verdict.
 
