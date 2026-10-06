@@ -33,8 +33,12 @@ chmod +x "$SCRATCH/bin/mutineer"
 export PATH="$SCRATCH/bin:$PATH"
 
 git init -q --bare -b main "$SCRATCH/upstream.git"
+# Both repos set maintenance.auto in their own config (#174): a push runs it
+# in upstream.git, and run_step's `env -i` drops the caller's GIT_CONFIG_* env.
+git -C "$SCRATCH/upstream.git" config maintenance.auto false
 mkdir -p "$SCRATCH/repo" && cd "$SCRATCH/repo"
 git init -q -b main
+git config maintenance.auto false
 git config user.email "harness@test" && git config user.name "harness"
 git commit -q --allow-empty -m x
 git remote add origin "$SCRATCH/upstream.git" && git push -q origin main
