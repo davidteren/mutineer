@@ -75,9 +75,10 @@ All notable changes to this project are documented here. The format is based on
   outside the index is scored in full, so a new file is not missed. That
   check also caught files that Git ignores on purpose (`.gitignore`,
   `.git/info/exclude` or the global excludes file), such as generated code
-  inside a directory run. Those files now get no mutants under `--since`.
-  Other untracked files are still scored in full, and so is a file when Git
-  cannot tell, such as one beyond a symlink or inside a submodule.
+  inside a directory run. Those files now get no mutants under `--since`,
+  and a warning names each one. Other untracked files are still scored in
+  full, and so is a file when Git cannot tell, such as one beyond a symlink or
+  inside a submodule.
 - **The human report escapes control characters from the source** (#163).
   A surviving line that held a terminal control byte (for example ESC) was
   printed as that byte, so it could change what the terminal showed. The

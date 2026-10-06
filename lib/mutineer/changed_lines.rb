@@ -59,7 +59,8 @@ module Mutineer
     # A file that is not in the index has no usable diff, so `new_file_diff`
     # supplies one that marks every line new. That includes a file the ref still
     # has, deleted and then written again: git prints only a deletion hunk for it.
-    # Git-ignored files outside the index contribute no changed lines.
+    # A Git-ignored file outside the index contributes no changed lines, with a
+    # warning, so the skip does not look like a file with no changes.
     # Paths are literal, so a name such as `file[1].rb` is not read as a glob.
     #
     # A failure is warned, never silent: an empty result means "no changed
@@ -76,7 +77,10 @@ module Mutineer
       )
       if status.success?
         return out if indexed?(abs_file, project_root)
-        return ignored?(abs_file, project_root) ? "" : new_file_diff(abs_file)
+        return new_file_diff(abs_file) unless ignored?(abs_file, project_root)
+
+        warn "[mutineer] #{abs_file} is ignored by Git; its lines will not be mutated (--since)"
+        return ""
       end
 
       warn "[mutineer] git diff failed for #{abs_file}; its lines will not be mutated (--since)"
