@@ -63,9 +63,12 @@ All notable changes to this project are documented here. The format is based on
   `::X = Class.new do` there are named as written (`::X` as `X`, now with
   instance methods) and are owner-unknown too: redefine reopens them without
   the singleton class, so constants their bodies look up through it would not
-  resolve.
-  Mutant ids for these subjects change: regenerate `ignore:` entries and
-  baselines that name them.
+  resolve. `module_function :name` in a body whose owner is unknown now
+  promotes that body's own methods, wherever it is: a `Foo::X = Module.new`
+  block's `c` is `Foo::X.c`, not `Foo::X#c`, and a def in an anonymous
+  `Class.new` block is no longer promoted by a `module_function` of the module
+  around it. Mutant ids for these subjects change: regenerate `ignore:`
+  entries and baselines that name them.
 
 ## [1.5.0] - 2026-10-06
 
