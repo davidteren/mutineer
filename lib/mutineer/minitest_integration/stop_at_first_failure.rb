@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "outer_reporter"
+
 module Mutineer
   class MinitestIntegration
     # Stops a Minitest run at the first failing test: one failure already
@@ -10,8 +12,11 @@ module Mutineer
     # remaining tests and classes then return before they start.
     #
     # Minitest 5 and 6 need different hook points. An unknown shape installs
-    # no hook, and the run is a full run.
+    # no hook, and the run is a full run. The outer reporter comes from
+    # {OuterReporter}, shared with {KillRecorder}.
     module StopAtFirstFailure
+      extend OuterReporter::Client
+
       # Prepended on `Minitest::CompositeReporter`.
       module RecordFailure
         # Records the result, then sets the stop flag on a failure or an
@@ -23,37 +28,9 @@ module Mutineer
         def record(result)
           super
           return if result.passed? || result.skipped?
-          return unless equal?(StopAtFirstFailure.armed_reporter)
-          return unless StopAtFirstFailure.armed_here?
+          return unless StopAtFirstFailure.outer_reporter?(self)
 
           StopAtFirstFailure.stopped = true
-        end
-      end
-
-      # Prepended on the `Minitest` singleton class for Minitest 6.
-      module OuterReporter6
-        # Keeps the outer reporter. Only the first call counts, because a test
-        # can call this method with its own reporter.
-        #
-        # @param reporter [Minitest::CompositeReporter] the outer reporter.
-        # @param options [Hash] the Minitest options.
-        # @return [Object] whatever Minitest returns.
-        def run_all_suites(reporter, options)
-          StopAtFirstFailure.armed_reporter ||= reporter if StopAtFirstFailure.armed_here?
-          super
-        end
-      end
-
-      # Prepended on the `Minitest` singleton class for Minitest 5.
-      module OuterReporter5
-        # The Minitest 5 form of OuterReporter6#run_all_suites.
-        #
-        # @param reporter [Minitest::CompositeReporter] the outer reporter.
-        # @param options [Hash] the Minitest options.
-        # @return [Object] whatever Minitest returns.
-        def __run(reporter, options)
-          StopAtFirstFailure.armed_reporter ||= reporter if StopAtFirstFailure.armed_here?
-          super
         end
       end
 
@@ -110,17 +87,6 @@ module Mutineer
       end
 
       class << self
-        # The pid of the armed process. Forked workers inherit the other
-        # state, and the pid keeps them from acting on it.
-        #
-        # @return [Integer, nil]
-        attr_accessor :armed_pid
-
-        # The outer reporter of the armed run.
-        #
-        # @return [Minitest::CompositeReporter, nil]
-        attr_accessor :armed_reporter
-
         # True after the outer reporter records a failure or an error.
         #
         # @return [Boolean, nil]
@@ -135,9 +101,10 @@ module Mutineer
           outer, skip = hooks_for_loaded_minitest
           return false unless outer
 
-          prepend_once(::Minitest::CompositeReporter, RecordFailure)
-          prepend_once(::Minitest.singleton_class, outer)
-          runnables.each { |klass| prepend_once(klass.singleton_class, skip) }
+          OuterReporter.prepend_once(::Minitest::CompositeReporter, RecordFailure)
+          OuterReporter.prepend_once(::Minitest.singleton_class, outer)
+          runnables.each { |klass| OuterReporter.prepend_once(klass.singleton_class, skip) }
+          OuterReporter.register(self)
           self.armed_pid = Process.pid
           self.armed_reporter = nil
           self.stopped = false
@@ -151,13 +118,6 @@ module Mutineer
           self.armed_pid = nil
           self.armed_reporter = nil
           self.stopped = false
-        end
-
-        # True when the run is armed in this process.
-        #
-        # @return [Boolean]
-        def armed_here?
-          armed_pid == Process.pid
         end
 
         # True when the armed run in this process has stopped.
@@ -174,24 +134,10 @@ module Mutineer
         # @return [Array(Module, Module), nil] the outer reporter hook and the
         #   skip hook, or nil for an unknown shape.
         def hooks_for_loaded_minitest
-          runnable = ::Minitest::Runnable
-          if ::Minitest.respond_to?(:run_all_suites) && runnable.respond_to?(:run_suite)
-            [OuterReporter6, SkipAfterStop6]
-          elsif ::Minitest.respond_to?(:__run) && runnable.respond_to?(:run_one_method)
-            [OuterReporter5, SkipAfterStop5]
+          outer = OuterReporter.hook_for_loaded_minitest
+          if outer.equal?(OuterReporter::Hook6) then [outer, SkipAfterStop6]
+          elsif outer.equal?(OuterReporter::Hook5) then [outer, SkipAfterStop5]
           end
-        end
-
-        # Prepends `mod` on `target` once. A copy on a superclass does not
-        # count, because it comes after the own methods of `target`.
-        #
-        # @param target [Module] the class or singleton class.
-        # @param mod [Module] the module to prepend.
-        # @return [void]
-        def prepend_once(target, mod)
-          return if target.ancestors.take_while { |a| !a.equal?(target) }.include?(mod)
-
-          target.prepend(mod)
         end
       end
     end

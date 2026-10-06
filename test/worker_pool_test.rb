@@ -127,4 +127,15 @@ class WorkerPoolTest < Minitest::Test
     assert_predicate pool.send(:decode, "\x04\x08not-a-valid-marshal-payload"), :error?
     assert_predicate pool.send(:decode, ""), :error?
   end
+
+  # Results load frozen, which shares equal strings across payloads: the test
+  # names of a --matrix run repeat in every row.
+  def test_results_load_frozen_with_shared_strings
+    results = Mutineer::WorkerPool.new(2).run([[1], [2]]) do |_|
+      Mutineer::Result.error(+"same details")
+    end
+    assert(results.all? { |r| r.details.frozen? })
+    assert_same results[0].details, results[1].details
+  end
+
 end
