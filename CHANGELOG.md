@@ -64,7 +64,8 @@ All notable changes to this project are documented here. The format is based on
 - **The human report escapes control characters from the source** (#163).
   A surviving line that held a terminal control byte (for example ESC) was
   printed as that byte, so it could change what the terminal showed. The
-  token, the replacement, the diff lines, method names and file paths now print each
+  token, the replacement, the diff lines, method names, file paths and the
+  kill matrix's test names now print each
   control character except tab as its Ruby escape (`\e`), and a byte that
   is not valid UTF-8 (a Latin-1 source) as `\xNN`. The JSON and HTML
   reports already escaped text and do not change.

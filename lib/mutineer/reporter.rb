@@ -448,7 +448,7 @@ module Mutineer
     def matrix_incomplete_section(out)
       rows = @matrix.incomplete_rows
       out.puts matrix_incomplete_note
-      rows.first(MATRIX_LIST_LIMIT).each { |r| out.puts "  #{matrix_row_label(r)}" }
+      rows.first(MATRIX_LIST_LIMIT).each { |r| out.puts "  #{printable(matrix_row_label(r))}" }
       rest = rows.size - MATRIX_LIST_LIMIT
       out.puts "  and #{rest} more" if rest.positive?
       out.puts "The HTML and JSON reports list every incomplete row (JSON: matrix.mutants with complete: false)."
@@ -490,7 +490,7 @@ module Mutineer
     def matrix_list(out, title, tests)
       out.puts
       out.puts "#{title}: #{tests.size}"
-      tests.first(MATRIX_LIST_LIMIT).each { |test| out.puts "  #{test[0]}  #{test_label(test)}" }
+      tests.first(MATRIX_LIST_LIMIT).each { |test| out.puts "  #{printable(test[0])}  #{printable(test_label(test))}" }
       rest = tests.size - MATRIX_LIST_LIMIT
       out.puts "  and #{rest} more; see --format json" if rest.positive?
     end
