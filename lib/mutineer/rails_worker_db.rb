@@ -65,7 +65,7 @@ module Mutineer
       unless adapter.start_with?("sqlite")
         raise NotImplementedError,
               "worker-DB isolation currently provisions SQLite only (got adapter #{adapter.inspect}); " \
-              "Postgres per-worker provisioning is not yet supported. Use a SQLite test DB, or drop --jobs."
+              "Postgres per-worker provisioning is not yet supported. Use a SQLite test DB with --daemon, or drop --daemon to run serially."
       end
 
       per_worker_config(hash, worker)

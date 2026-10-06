@@ -58,6 +58,12 @@ All notable changes to this project are documented here. The format is based on
   mutants on one line can be told apart and an `id` can go in `ignore:`. The
   entries are sorted by `(file, line, operator, id)`. `schema_version` is `1.6`.
 
+- **The site and README explain "clean-room" and compare Mutineer with
+  Mutant**, and the landing page hero has a one-minute explainer video. It
+  plays at 55% volume while in view (not with reduced motion; muted until
+  the first click or key where the browser requires it), pauses when it scrolls
+  away or the tab is hidden, and has an Enlarge button.
+
 ### Changed
 - **The human report has a `Timeout:` row**, and the score line lists timeouts
   apart from errored mutants. Before, the `Errored:` row and the score line

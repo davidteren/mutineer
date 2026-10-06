@@ -73,7 +73,7 @@ inputs:
     default: "false"
   format:
     description: >-
-      Report format: human or json (default: json so the report is
+      Report format: human, json or html (default: json so the report is
       machine-readable). The json format also feeds the job step summary and the
       per-survivor PR annotations; human/html formats skip both.
     required: false

@@ -2,8 +2,11 @@
 
 `mutineer run --format json` emits a single JSON object (one line, newline-terminated) describing the
 whole run. It is the **machine-readable contract** for tooling — CI gates, dashboards, and AI coding
-agents. Output is deterministic: arrays are sorted by `(file, line, operator)` regardless of `--jobs`
-worker finish order, so two runs of the same inputs produce byte-identical output.
+agents. Output is deterministic: every array has a fixed sort order regardless of `--jobs` worker
+finish order, so two runs of the same inputs produce byte-identical output. `survivors[]` sorts by
+`(file, line, operator)`; `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
+add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`;
+`no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`.
 
 ## Versioning contract
 
@@ -65,7 +68,7 @@ Each surviving mutant — the records an agent or reviewer acts on:
 | Key | Type | Meaning |
 |-----|------|---------|
 | `subject` | string | Fully-qualified subject, e.g. `Calculator#add`. |
-| `file` | string | Source file path (as passed to the run). |
+| `file` | string | Source file path, relative to the project root for a file inside the project (`./lib/x.rb` and an absolute path both report `lib/x.rb`); a file outside the project keeps the path as passed. |
 | `line` | int | 1-based line of the mutation. |
 | `operator` | string | Operator name, e.g. `arithmetic`, `comparison`. |
 | `id` | string | **Offset-free id** (12 hex chars). Includes the file path relative to the project root (a source outside the root uses its absolute real path, so its ids differ between machines). Unrelated edits preserve it when the path, qualified method name, mutated token, and repeated-name/mutation order stay the same. File moves, renames, and root changes can change it. See [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |

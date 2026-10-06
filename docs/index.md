@@ -9,6 +9,8 @@ for CI gates and AI coding agents.
 
 This file is the Markdown twin of the [HTML landing page](https://davidteren.github.io/mutineer/).
 
+[Watch the one-minute explainer](https://davidteren.github.io/mutineer/assets/mutineer-explainer.mp4) (MP4).
+
 ## Install
 
 ```sh
@@ -58,6 +60,7 @@ mutineer run --dry-run lib/foo.rb
 | `--jobs N` | Parallel worker count; forced to 1 by `--test-command`, `--fail-fast`, or `--rails` without `--daemon` |
 | `--rails` | Boot `config/environment` once; without `--daemon`, defaults to `redefine` and runs serially |
 | `--daemon` | Persistent daemon + per-worker DB isolation (needs `--rails` / `--boot`) |
+| `--timeout SECONDS` | Per-mutant time limit for in-process runs (default: 10); raise it for a slow suite |
 | `--dry-run` | List candidate mutations without executing |
 | `--matrix` | Run every covering test for each mutant and name the blind and redundant tests; the JSON report also lists each mutant's killers (in-process only; RSpec 3.3+) |
 
@@ -84,6 +87,26 @@ Tier 2 (off until `--operators`): `return_nil`, `literal_mutation`, `condition_n
 `array_literal`, `condition_true`, `condition_false`, `operator_assignment`.
 
 `mutineer --list-operators` prints the live set.
+
+## Mutineer and Mutant
+
+"Clean-room" means Mutineer was written from scratch. It contains no code from
+[Mutant](https://github.com/mbj/mutant) or any other mutation-testing tool.
+Mutineer's own code is licensed under MIT.
+
+| Aspect | Mutineer | Mutant 0.17 |
+|---|---|---|
+| License | MIT, for every use | Free for open source; commercial use needs a paid subscription |
+| Runtime dependencies | None (Prism + stdlib) | `parser`, `unparser`, `sorbet-runtime` and others |
+| Ruby | 3.4 and later (older app Rubies via `--test-command`) | 3.3 and later |
+| Test frameworks | Minitest and RSpec | RSpec, Minitest and Test::Unit |
+| What you mutate | Files, or one method with `--only` | Subjects named by expression |
+
+Mutant is the established tool, with a deeper operator set. Mutineer trades
+that depth for an MIT license, an empty dependency list, and a JSON contract
+built for CI gates and AI agents. Checked against Mutant 0.17 on 2026-10-06.
+Full comparison:
+[README](https://github.com/davidteren/mutineer#mutineer-and-mutant).
 
 ## More docs
 
