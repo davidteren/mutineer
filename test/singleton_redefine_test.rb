@@ -126,6 +126,17 @@ class SingletonRedefineTest < Minitest::Test
                   only)
   end
 
+  def test_class_opened_in_class_self_is_unplaceable_under_redefine_and_killed_under_reload
+    files = %w[singleton_nested_class.rb singleton_nested_class_test.rb]
+    %w[#<Class:SingletonNestedApp>::Q#q1 #<Class:SingletonNestedApp>::Z#z1].each do |only|
+      redefine = run_redefine(*files, only: only)
+      assert_operator redefine.unplaceable_count, :>, 0, only
+      assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count +
+                      redefine.uncapturable_count, only
+      assert_killed(run_redefine(*files, strategy: "reload", only: only), only)
+    end
+  end
+
   def test_module_function_in_a_module_new_block_is_mutated
     %w[ModuleNewHost::Helpers.calc ModuleNewHost::Helpers.twice].each do |only|
       assert_killed(run_redefine("module_new_function.rb", "module_new_function_test.rb", only: only), only)
