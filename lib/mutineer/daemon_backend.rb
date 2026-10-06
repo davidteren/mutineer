@@ -125,6 +125,8 @@ module Mutineer
 
       CoverageMap.from_data(map: data["map"], failed_test_files: data["failed_test_files"] || [],
                             project_root: config.project_root)
+    rescue DaemonBootTimeout
+      raise # a second daemon for the mutant runs would hang just as long
     rescue DaemonBootError => e
       warn_coverage_fallback("#{e.class}: #{e.message}")
       nil

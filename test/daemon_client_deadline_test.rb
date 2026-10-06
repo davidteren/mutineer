@@ -6,6 +6,8 @@ require "rbconfig"
 require_relative "test_helper"
 require "mutineer/daemon_client"
 require "mutineer/daemon_server"
+require "mutineer/daemon_backend"
+require "tmpdir"
 
 # #101: a daemon that stops answering must not hang the run. These tests wire
 # a client to a stand-in daemon (a plain Ruby child that reads nothing and
@@ -79,6 +81,28 @@ class DaemonClientDeadlineTest < Minitest::Test
     assert gone, "mutant child #{child} outlived its daemon"
   ensure
     Process.kill(:KILL, child) rescue nil if child&.positive? # rubocop:disable Style/RescueModifier
+  end
+
+  # A boot that timed out is not retried by a second daemon for the mutant
+  # runs, which would wait just as long; other boot errors still fall back.
+  def test_coverage_step_stops_on_a_boot_timeout_but_falls_back_otherwise
+    Dir.mktmpdir do |root|
+      config = Mutineer::Config.new(sources: [], tests: [], project_root: root, boot: "boot.rb")
+      [[Mutineer::DaemonBootTimeout, :raise], [Mutineer::DaemonBootError, :fallback]].each do |error, outcome|
+        original = Mutineer::DaemonClient.instance_method(:start)
+        Mutineer::DaemonClient.define_method(:start) { raise error, "boot failed" }
+        begin
+          if outcome == :raise
+            assert_raises(error) { Mutineer::DaemonBackend.build_coverage_map(config, []) }
+          else
+            _, err = capture_io { assert_nil Mutineer::DaemonBackend.build_coverage_map(config, []) }
+            assert_match(/coverage map unavailable/, err)
+          end
+        ensure
+          Mutineer::DaemonClient.define_method(:start, original)
+        end
+      end
+    end
   end
 
   def test_close_io_kills_a_daemon_that_ignores_eof

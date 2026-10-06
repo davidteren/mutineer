@@ -13,6 +13,11 @@ module Mutineer
   # to a runtime error (exit 1).
   class DaemonBootError < StandardError; end
 
+  # A boot that has not answered the handshake within DaemonClient::BOOT_TIMEOUT
+  # (#101). Unlike other boot errors it is not worth retrying with a second
+  # daemon, which would wait just as long.
+  class DaemonBootTimeout < DaemonBootError; end
+
   # Tool-side handle for the app-side daemon.
   #
   # Spawns `daemon_server.rb` UNDER THE APP'S BUNDLE/RUBY. The child gets the
@@ -335,8 +340,9 @@ module Mutineer
           elsif @timed_out then "the daemon did not finish booting within #{BOOT_TIMEOUT}s"
           else "daemon exited before the handshake"
           end
+        timed_out = @timed_out
         close_io
-        raise DaemonBootError, "daemon failed to boot under the app bundle: #{detail}"
+        raise (timed_out ? DaemonBootTimeout : DaemonBootError), "daemon failed to boot under the app bundle: #{detail}"
       end
     end
 
