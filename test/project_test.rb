@@ -342,6 +342,182 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def test_discover_names_a_class_opened_in_class_self_on_the_singleton_class
+    src = <<~RUBY
+      class App
+        class << self
+          class Q
+            def q1 = 1
+            class R
+              def r1; end
+            end
+            X = Class.new do
+              def x1; end
+            end
+            self::S = Class.new do
+              def s1; end
+            end
+            class ::Deep
+              def d; end
+            end
+            ::DeepB = Class.new do
+              def e; end
+            end
+          end
+          class ::Top
+            def t; end
+          end
+          P = Data.define do
+            module Z
+              def z1; end
+            end
+          end
+          module Foo::Mod
+            def c; end
+            module_function :c
+          end
+          def after; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[#<Class:App>::Q#q1 #<Class:App>::Q::R#r1 #<Class:App>::Q::X#x1 #<Class:App>::Q::S#s1 Deep#d
+                      DeepB#e Top#t #<Class:App>::Z#z1 Foo::Mod.c App.after], subjects.map(&:qualified_name)
+      assert_equal [true] * 9 + [false], subjects.map(&:owner_unknown)
+    end
+  end
+
+  def test_discover_names_a_class_in_nested_class_self_on_the_inner_singleton_class
+    src = <<~RUBY
+      class App
+        class << self
+          class Q
+            def q; end
+          end
+          class << self
+            class Q
+              def q; end
+            end
+            P = Data.define do
+              class Z
+                def z; end
+              end
+            end
+          end
+        end
+        R = Data.define do
+          class << self
+            class << self
+              class W
+                def w; end
+              end
+            end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[#<Class:App>::Q#q #<Class:#<Class:App>>::Q#q #<Class:#<Class:App>>::Z#z
+                      #<Class:#<Class:App::R>>::W#w], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
+  def test_discover_names_class_self_in_a_builder_block_on_the_built_class
+    src = <<~RUBY
+      class App
+        P = Data.define do
+          class << self
+            class W
+              def w; end
+            end
+            Y = Class.new do
+              def y; end
+            end
+          end
+        end
+        Class.new do
+          class << self
+            class W
+              def a; end
+            end
+          end
+        end
+        Q = Class.new do
+          class << self
+            P = Data.define do
+              class Z
+                def z; end
+              end
+            end
+            class Foo::Bar
+              def b; end
+            end
+            class self::S
+              def s; end
+            end
+            ::Top = Class.new do
+              def t; end
+            end
+          end
+        end
+        class << self
+          module M
+            def m1; end
+            module_function :m1
+          end
+          N = Module.new do
+            def n1; end
+            module_function :n1
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[#<Class:App::P>::W#w #<Class:App::P>::Y#y #<Class:App::#<anonymous>>::W#a #<Class:App::Q>::Z#z
+                      Foo::Bar#b self::S#s Top#t #<Class:App>::M.m1 #<Class:App>::N.n1], subjects.map(&:qualified_name)
+      assert(subjects.all?(&:owner_unknown))
+    end
+  end
+
+  def test_discover_promotes_module_function_only_in_its_own_unknown_owner_body
+    src = <<~RUBY
+      a = Class.new do
+        self::Z = Module.new do
+          def c; end
+          module_function :c
+        end
+      end
+      b = Class.new do
+        self::Z = Module.new do
+          def c; end
+        end
+      end
+      class App
+        Class.new do
+          class << self
+            module M
+              def c; end
+              module_function :c
+            end
+          end
+        end
+        Class.new do
+          class << self
+            module M
+              def c; end
+            end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[self::Z.c self::Z#c #<Class:App::#<anonymous>>::M.c #<Class:App::#<anonymous>>::M#c],
+                   Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   def test_discover_promotes_module_function_names_in_a_module_new_block
     src = <<~RUBY
       module Host

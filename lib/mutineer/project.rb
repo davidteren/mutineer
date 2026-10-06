@@ -43,27 +43,30 @@ module Mutineer
         @subjects = []
         @singleton_depth = 0
         @module_function_active = false # bareword `module_function` seen in this module body
-        @module_function_names = []     # [namespace, name] from `module_function :a` / `module_function def` (#98)
+        @module_function_names = []     # [module key, name] from `module_function :a` / `module_function def` (#98)
+        @subject_keys = []              # the module key of each subject, by index
+        @body = Object.new              # identifies the class/module body or builder block being visited
         @block_owner = nil
         @block_namespace = nil
         @owner_unknown = false
         @assigned = nil
-        @singleton_cref = false
+        @singleton_cref = nil # the singleton class name, in a builder block inside `class << self`
+        @namespace_unknown = false # the namespace is lexically under a singleton class (#208)
+        @anonymous_block = false   # inside a builder block not assigned to a constant
         super()
       end
 
       # Promote `module_function :name` / `module_function def name` subjects to
       # singleton after the full walk — the naming call may appear before or after
       # the def, so it can't be decided at visit_def_node time (#20). Only methods
-      # of the module that made the call are promoted (#98); namespaces compare
-      # joined, since `module A::B` and nested `module A; module B` differ as arrays.
+      # of the module that made the call are promoted (#98), matched by {#module_key}.
       #
       # @return [void]
       def promote_module_functions!
         return if @module_function_names.empty?
 
         named = @module_function_names.to_set
-        @subjects.each { |s| s.singleton = true if named.include?([s.namespace.join("::"), s.name]) }
+        @subjects.each_with_index { |s, i| s.singleton = true if named.include?([@subject_keys[i], s.name]) }
       end
 
       # Visits class nodes and tracks namespace nesting.
@@ -88,7 +91,8 @@ module Mutineer
       # forms (`:sym`, `def`) name methods promoted after the walk. A builder
       # block's defs belong to the class it builds; one not assigned to a
       # constant has no name, so its subjects are marked `owner_unknown`, and a
-      # `module_function :name` in it promotes nothing.
+      # `module_function :name` in it promotes nothing. Elsewhere it promotes the
+      # methods of the same module, matched by {#module_key}.
       #
       # @param node [Prism::CallNode] call node.
       # @return [void]
@@ -100,18 +104,17 @@ module Mutineer
           args = node.arguments&.arguments || []
           if args.empty?
             @module_function_active = true
-          elsif !@owner_unknown
-            namespace = (@block_namespace || @namespace_stack).join("::")
+          elsif !@anonymous_block
             args.each do |arg|
-              @module_function_names << [namespace, arg.value.to_sym] if arg.is_a?(Prism::SymbolNode)
-              @module_function_names << [namespace, arg.name] if arg.is_a?(Prism::DefNode)
+              @module_function_names << [module_key, arg.value.to_sym] if arg.is_a?(Prism::SymbolNode)
+              @module_function_names << [module_key, arg.name] if arg.is_a?(Prism::DefNode)
             end
           end
         end
         return super unless builds_class?(node)
 
-        owner = @assigned&.first.equal?(node) ? @assigned.last : [nil, @namespace_stack, true]
-        with_block_owner(owner) { super }
+        anonymous = !@assigned&.first.equal?(node)
+        with_block_owner(anonymous ? [nil, @namespace_stack, true] : @assigned.last, anonymous) { super }
       end
 
       # Names the class a builder block assigned to this constant builds (see {#builds_class?}).
@@ -174,6 +177,7 @@ module Mutineer
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node
         )
+        @subject_keys << module_key
         saved_active = @module_function_active
         super
         @module_function_active = saved_active # a visibility call in a method body runs only when it is called
@@ -181,33 +185,69 @@ module Mutineer
 
       private
 
+      # The module a `module_function` call and a def are matched by. A known
+      # owner is its joined namespace, so a module reopened later in the file
+      # matches, and `module A::B` matches nested `module A; module B`. An unknown
+      # owner's name may be shared by another module (`self::X`, `Foo::X`, or a
+      # name under an anonymous class), so it is matched only within this body (#208).
+      #
+      # @return [String, Object]
+      def module_key
+        @owner_unknown ? @body : (@block_namespace || @namespace_stack).join("::")
+      end
+
       # Runs the block with `path` pushed as the current namespace. A
       # root-anchored path (`module ::X` / `class ::X`) names the top-level X,
       # not X nested in the enclosing scope, so the namespace restarts there.
       # Bareword `module_function` state does not cross a class or module
       # boundary: each body starts without it, and the outer state returns after.
+      # A class or module `X` opened inside `class << self`, even within a builder
+      # block there, is a constant of the singleton class, which has no constant
+      # path. It and everything nested in it is named under `#<Class:...>` with
+      # its owner unknown (#208), and its body defines instance methods again.
+      # A compact `Foo::X` or a top-level `::X` there is named as written, and
+      # its owner is unknown too: redefine reopens the lexical chain without the
+      # singleton class, so constants the body looks up through it would not resolve.
       #
       # @param path [Prism::Node] the class/module constant path.
       # @yield the class or module body visit.
       # @return [void]
       def with_namespace(path)
-        saved_stack = @namespace_stack
-        saved_lexical = @lexical_stack
-        saved_active = @module_function_active
-        saved_block = [@block_owner, @block_namespace, @owner_unknown]
-        name = extract_constant_name(path)
-        root = root_anchored?(path)
-        @namespace_stack = root ? [name] : saved_stack + [name]
-        @lexical_stack = saved_lexical + [root ? "::#{name}" : name]
-        @module_function_active = false
-        @block_owner = @block_namespace = nil
-        @owner_unknown = false
+        preserving_scope do
+          name = extract_constant_name(path)
+          root = root_anchored?(path)
+          in_singleton = !@singleton_cref.nil? || @singleton_depth.positive?
+          @namespace_stack =
+            if root then [name]
+            elsif in_singleton then path.is_a?(Prism::ConstantPathNode) ? [path.slice] : [singleton_name, name]
+            else @namespace_stack + [name]
+            end
+          @lexical_stack += [root ? "::#{name}" : name]
+          @module_function_active = false
+          @block_owner = @block_namespace = nil
+          @namespace_unknown = @owner_unknown = in_singleton || @namespace_unknown # redefine reopens the lexical chain
+          @singleton_depth = 0
+          @singleton_cref = nil
+          @anonymous_block = false
+          @body = Object.new
+          yield
+        end
+      end
+
+      # Visitor state a class/module body or builder block sets for what it contains.
+      SCOPE_STATE = %i[@namespace_stack @lexical_stack @module_function_active @block_owner @block_namespace
+                       @owner_unknown @singleton_depth @singleton_cref @namespace_unknown @anonymous_block @body].freeze
+
+      # Runs the block and then restores every {SCOPE_STATE} variable, so a
+      # nested body's state never leaks out of it.
+      #
+      # @yield the nested visit.
+      # @return [void]
+      def preserving_scope
+        saved = SCOPE_STATE.map { |name| instance_variable_get(name) }
         yield
       ensure
-        @namespace_stack = saved_stack
-        @lexical_stack = saved_lexical
-        @module_function_active = saved_active
-        @block_owner, @block_namespace, @owner_unknown = saved_block
+        SCOPE_STATE.zip(saved) { |name, value| instance_variable_set(name, value) }
       end
 
       # Resolves the constant an assignment writes the way Ruby does. `X` is in the
@@ -216,16 +256,21 @@ module Mutineer
       # block). Any other path is looked up at run time, so its owner is unknown
       # and the subject is named as written. Lexically inside `class << self`,
       # even within a builder block there, the constant belongs to the singleton
-      # class, which has no constant path, so its owner is unknown too.
+      # class, which has no constant path, so its owner is unknown too, as is
+      # `X` or `self::X` in a class or module opened there (#208). A `::X` there
+      # is named `X`, still unknown (see {#with_namespace}).
       #
       # @param node [Prism::Node] constant assignment.
       # @return [Array(String, Array<String>, Boolean)] owner, namespace, unknown.
       def assigned_owner(node)
         if @singleton_cref || @singleton_depth.positive?
           written = node.respond_to?(:target) ? node.target.slice : node.name.to_s
-          return [nil, ["#<Class:#{@namespace_stack.join("::")}>", written], true]
+          return [nil, written.start_with?("::") ? [written.delete_prefix("::")] : [singleton_name, written], true]
         end
-        return named_owner(@namespace_stack + [node.name.to_s]) unless node.respond_to?(:target)
+        unless node.respond_to?(:target)
+          namespace = @namespace_stack + [node.name.to_s]
+          return @namespace_unknown ? [nil, namespace, true] : named_owner(namespace)
+        end
 
         names = []
         path = node.target
@@ -233,13 +278,33 @@ module Mutineer
           names.unshift(path.name.to_s)
           path = path.parent
         end
+        if path.is_a?(Prism::SelfNode) && @namespace_unknown && !@anonymous_block
+          return [nil, (@block_namespace || @namespace_stack) + names, true]
+        end
+
         base =
           case path
           when nil then []
           when Prism::SelfNode then @block_namespace || @namespace_stack unless @owner_unknown
           when Prism::ConstantReadNode then [path.name.to_s] if @namespace_stack.empty?
           end
-        base ? named_owner(base + names) : [nil, [node.target.slice], true]
+        return [nil, [node.target.slice], true] unless base
+
+        @namespace_unknown ? [nil, base + names, true] : named_owner(base + names)
+      end
+
+      # Names the singleton class that owns the constants written here: `class << self`
+      # opens that of the current class (the built class inside a builder block),
+      # and a builder block inside `class << self` keeps the enclosing one. A block
+      # not assigned to a constant builds a class with no name, written `#<anonymous>`.
+      # Each nested `class << self` opens the singleton class of the one around it.
+      #
+      # @return [String] e.g. `#<Class:App>`, or `#<Class:#<Class:App>>` two deep.
+      def singleton_name
+        return @singleton_cref unless @singleton_depth.positive?
+
+        base = @anonymous_block ? @namespace_stack + ["#<anonymous>"] : @block_namespace || @namespace_stack
+        @singleton_depth.times.reduce(base.join("::")) { |name, _| "#<Class:#{name}>" }
       end
 
       # The owner for a resolved namespace, root-anchored so the redefine
@@ -284,17 +349,19 @@ module Mutineer
       #
       # @param owner [Array(String, Array<String>, Boolean)] the owner as written, its namespace,
       #   and whether that name is unknown.
+      # @param anonymous [Boolean] true when the block is not assigned to a constant.
       # @yield the builder call visit.
       # @return [void]
-      def with_block_owner(owner)
-        saved = [@block_owner, @block_namespace, @owner_unknown, @module_function_active, @singleton_depth, @singleton_cref]
-        @block_owner, @block_namespace, @owner_unknown = owner
-        @module_function_active = false
-        @singleton_cref ||= @singleton_depth.positive?
-        @singleton_depth = 0
-        yield
-      ensure
-        @block_owner, @block_namespace, @owner_unknown, @module_function_active, @singleton_depth, @singleton_cref = saved
+      def with_block_owner(owner, anonymous)
+        preserving_scope do
+          @singleton_cref = singleton_name if @singleton_depth.positive?
+          @block_owner, @block_namespace, @owner_unknown = owner
+          @anonymous_block = anonymous
+          @module_function_active = false
+          @singleton_depth = 0
+          @body = Object.new
+          yield
+        end
       end
 
       # True when a constant path starts with `::` (e.g. `::X` or `::A::B`).
