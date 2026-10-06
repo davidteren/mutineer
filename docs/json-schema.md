@@ -5,7 +5,8 @@ whole run. It is the **machine-readable contract** for tooling — CI gates, das
 agents. Output is deterministic: every array has a fixed sort order regardless of `--jobs` worker
 finish order, so two runs of the same inputs produce byte-identical output. `survivors[]` sorts by
 `(file, line, operator)`; `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
-add `id`; `no_verdict[]` sorts by `(file, line, id, status, details)`; `per_source[]` by `file`.
+add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`;
+`no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`.
 
 ## Versioning contract
 

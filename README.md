@@ -149,9 +149,9 @@ RAILS_ENV=test bundle exec mutineer run \
   (choose one), and it needs an app to boot (`--rails` or `--boot`).
 
 Status: **SQLite** only (hermetic, CI-proven). Per-worker provisioning for
-**Postgres** and other adapters is not supported: `--daemon` refuses them. Use
-`--daemon` with a SQLite test database, or drop `--daemon` to run serially on
-other adapters.
+**Postgres** and other adapters is not supported: on those, `--daemon` scores
+every mutant as `error`. Use `--daemon` with a SQLite test database, or drop
+`--daemon` to run serially on other adapters.
 
 ### Apps on Ruby < 3.4
 

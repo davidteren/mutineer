@@ -96,6 +96,57 @@ test('index.md landing twin exists and sitemap lists the same Pages URLs as llms
 });
 
 
+// The explainer video pauses when it leaves the viewport or the tab is hidden,
+// except in Picture-in-Picture, and returns to its poster when it ends.
+test('explainer video pauses off screen, keeps Picture-in-Picture playing, and resets at the end', () => {
+  const docEvents = {}, videoEvents = {};
+  let observed, observerCallback, pauses = 0, loads = 0;
+  const video = { paused: false, pause() { pauses++; }, load() { loads++; }, addEventListener(k, fn) { videoEvents[k] = fn; } };
+  class IntersectionObserver {
+    constructor(fn) { observerCallback = fn; }
+    observe(el) { observed = el; }
+  }
+  const root = { setAttribute() {}, getAttribute() { return 'dark'; }, classList: { add() {} } };
+  const media = { matches: true, addEventListener() {} };
+  const document = {
+    documentElement: root, hidden: false, pictureInPictureElement: null,
+    getElementById() { return null; },
+    addEventListener(k, fn) { docEvents[k] = fn; },
+    querySelectorAll(selector) { return selector === '.explainer video' ? [video] : []; }
+  };
+  const context = {
+    document, IntersectionObserver,
+    window: { matchMedia() { return media; }, IntersectionObserver },
+    localStorage: { getItem() { return null; }, setItem() {} },
+    navigator: {}, setTimeout() {}, clearTimeout() {}, addEventListener() {}
+  };
+  vm.runInNewContext(fs.readFileSync('docs/assets/mutineer.js', 'utf8'), context);
+  docEvents.DOMContentLoaded();
+  assert.equal(observed, video);
+
+  observerCallback([{ isIntersecting: true }]);
+  assert.equal(pauses, 0, 'a visible video keeps playing');
+  observerCallback([{ isIntersecting: false }]);
+  assert.equal(pauses, 1, 'scrolling away pauses it');
+
+  document.hidden = true;
+  docEvents.visibilitychange();
+  assert.equal(pauses, 2, 'a hidden tab pauses it');
+
+  document.pictureInPictureElement = video;
+  observerCallback([{ isIntersecting: false }]);
+  docEvents.visibilitychange();
+  assert.equal(pauses, 2, 'Picture-in-Picture keeps playing');
+
+  video.paused = true;
+  document.pictureInPictureElement = null;
+  docEvents.visibilitychange();
+  assert.equal(pauses, 2, 'a paused video is left alone');
+
+  videoEvents.ended();
+  assert.equal(loads, 1, 'the end shows the poster again');
+});
+
 // A small browser boundary checks theme selection and copy feedback without a dependency.
 test('site follows system theme until chosen, tolerates blocked storage, and reports copy failures', async () => {
   for (const saved of [null, 'invalid', 'dark', 'light']) {

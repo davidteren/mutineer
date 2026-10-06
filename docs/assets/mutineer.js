@@ -38,18 +38,22 @@
     });
 
     // The explainer video plays only when the visitor asks. It pauses when it
-    // scrolls out of view or the tab is hidden, and shows its poster again
-    // when it ends.
+    // scrolls out of view or the tab is hidden, unless it plays in
+    // Picture-in-Picture, which exists to keep watching elsewhere. It shows
+    // its poster again when it ends.
     document.querySelectorAll('.explainer video').forEach(function (video) {
+      function pauseUnlessFloating() {
+        if (!video.paused && document.pictureInPictureElement !== video) video.pause();
+      }
       if ('IntersectionObserver' in window) {
         new IntersectionObserver(function (entries) {
           entries.forEach(function (entry) {
-            if (!entry.isIntersecting && !video.paused) video.pause();
+            if (!entry.isIntersecting) pauseUnlessFloating();
           });
         }, { threshold: 0.25 }).observe(video);
       }
       document.addEventListener('visibilitychange', function () {
-        if (document.hidden && !video.paused) video.pause();
+        if (document.hidden) pauseUnlessFloating();
       });
       video.addEventListener('ended', function () { video.load(); });
     });
