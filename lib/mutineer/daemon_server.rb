@@ -178,6 +178,9 @@ module Mutineer
           framework: @framework, cache_dir: @cfg["cache_dir"] || File.join(root, ".mutineer"),
           capture_timeout: @cfg["capture_timeout"] || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_via_fork(after_fork: coverage_after_fork)
+        # Nothing reads Coverage after the map, so a mutant forked from this
+        # daemon does not pay for it (#228).
+        Coverage.suspend if Coverage.running?
         { "map" => cmap.map, "failed_test_files" => cmap.failed_test_files,
           "failed_clean_tests" => cmap.failed_clean_tests, "load_lines" => cmap.load_lines.to_a,
           "load_methods" => cmap.load_methods.to_a }
