@@ -119,7 +119,7 @@ module Mutineer
       return unless available?
 
       config = worker_db_config(worker)
-      seed_from_base(worker) if seed
+      seed_from_base(config[:database]) if seed
       ActiveRecord::Base.establish_connection(config)
       load_schema(schema_path) if schema_path && !schema_current?(schema_path)
       verify_connection!
@@ -131,12 +131,16 @@ module Mutineer
     # copy a timeout interrupted) is removed first, since `VACUUM INTO` needs an
     # absent or empty target.
     #
-    # @param worker [Integer] the worker slot index.
+    # The target is resolved the way the SQLite adapter resolves the worker
+    # config's path (against `Rails.root`, else the working directory), so the
+    # copy lands in the file the worker then connects to.
+    #
+    # @param database [String] the worker database path from {worker_db_config}.
     # @return [void]
-    def self.seed_from_base(worker)
+    def self.seed_from_base(database)
       conn   = ActiveRecord::Base.connection
-      base   = conn.select_value("SELECT file FROM pragma_database_list WHERE name = 'main'")
-      target = worker_database_path(base, worker)
+      root   = defined?(Rails.root) && Rails.root ? Rails.root.to_s : Dir.pwd
+      target = File.expand_path(database, root)
       ["", "-wal", "-shm", "-journal"].each { |suffix| FileUtils.rm_f(target + suffix) }
       conn.execute("VACUUM INTO #{conn.quote(target)}")
     end
