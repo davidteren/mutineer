@@ -538,6 +538,14 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #216: a Unicode constant name is a constant name too.
+  def test_discover_module_function_in_reopened_module_under_unicode_class_self
+    src = "class Å\n  class << self\n    module M\n      def c; end\n    end\n    module M\n      module_function :c\n    end\n  end\nend\n"
+    with_source(src) do |path|
+      assert_equal %w[#<Class:Å>::M.c], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   # #216: modules that share a short name under different singleton classes stay apart.
   def test_discover_module_function_does_not_cross_modules_sharing_a_name_under_class_self
     src = <<~RUBY

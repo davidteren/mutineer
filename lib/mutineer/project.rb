@@ -31,6 +31,9 @@ module Mutineer
       # Calls whose block is the body of the class they build: receiver name => method.
       CLASS_BUILDERS = { "Data" => :define, "Struct" => :new, "Class" => :new, "Module" => :new }.freeze
 
+      # A constant name, or a path of them; Ruby allows Unicode in both.
+      CONSTANT_PATH = /\A[[:upper:]][[:word:]]*(?:::[[:upper:]][[:word:]]*)*\z/
+
       # A name that reads like a constant name but may not be one (#216). It is
       # the singleton class name of a `class << self` opened inside a def or a
       # block that does not build a class, or built on a written path or
@@ -268,7 +271,7 @@ module Mutineer
       # @param segment [String] namespace segment.
       # @return [Boolean]
       def named_segment?(segment)
-        !segment.is_a?(WrittenName) && segment.gsub(/#<Class:|>/, "").match?(/\A[A-Z]\w*(?:::[A-Z]\w*)*\z/) &&
+        !segment.is_a?(WrittenName) && segment.gsub(/#<Class:|>/, "").match?(CONSTANT_PATH) &&
           (segment.start_with?("#<Class:") || !segment.include?("::"))
       end
 
