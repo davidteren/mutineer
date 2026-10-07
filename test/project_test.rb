@@ -518,6 +518,56 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #216: a module opened twice inside `class << self` is one module, so a later
+  # `module_function :c` promotes the `c` of the earlier opening.
+  def test_discover_module_function_in_reopened_module_under_class_self_promotes_earlier_def
+    src = <<~RUBY
+      class App
+        class << self
+          module M
+            def c; end
+          end
+          module M
+            module_function :c
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[#<Class:App>::M.c], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
+  # #216: modules that share a short name under different singleton classes stay apart.
+  def test_discover_module_function_does_not_cross_modules_sharing_a_name_under_class_self
+    src = <<~RUBY
+      class A
+        class << self
+          module Helpers
+            def h; end
+            module_function :h
+          end
+        end
+      end
+      class B
+        class << self
+          module Helpers
+            def h; end
+          end
+          class << self
+            module Helpers
+              def h; end
+            end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[#<Class:A>::Helpers.h #<Class:B>::Helpers#h #<Class:#<Class:B>>::Helpers#h],
+                   Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   def test_discover_promotes_module_function_names_in_a_module_new_block
     src = <<~RUBY
       module Host

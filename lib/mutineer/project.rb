@@ -185,15 +185,28 @@ module Mutineer
 
       private
 
-      # The module a `module_function` call and a def are matched by. A known
-      # owner is its joined namespace, so a module reopened later in the file
-      # matches, and `module A::B` matches nested `module A; module B`. An unknown
-      # owner's name may be shared by another module (`self::X`, `Foo::X`, or a
-      # name under an anonymous class), so it is matched only within this body (#208).
+      # The module a `module_function` call and a def are matched by: its joined
+      # namespace, so a module reopened later in the file matches (#216), and
+      # `module A::B` matches nested `module A; module B`. An unknown owner whose
+      # name is written as a path (`self::X`, `Foo::X`) or sits under an anonymous
+      # class may be shared by another module, so it is matched only within this body (#208).
       #
       # @return [String, Object]
       def module_key
-        @owner_unknown ? @body : (@block_namespace || @namespace_stack).join("::")
+        namespace = @block_namespace || @namespace_stack
+        return @body if @owner_unknown && (@anonymous_block || !namespace.all? { |s| named_segment?(s) })
+
+        namespace.join("::")
+      end
+
+      # True when a namespace segment is a constant name, or a singleton class
+      # (`#<Class:App::M>`) of constant names. A written path or `#<anonymous>` is not.
+      #
+      # @param segment [String] namespace segment.
+      # @return [Boolean]
+      def named_segment?(segment)
+        segment.gsub(/#<Class:|>/, "").match?(/\A[A-Z]\w*(?:::[A-Z]\w*)*\z/) &&
+          (segment.start_with?("#<Class:") || !segment.include?("::"))
       end
 
       # Runs the block with `path` pushed as the current namespace. A
