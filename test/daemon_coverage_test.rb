@@ -63,6 +63,25 @@ class DaemonCoverageTest < Minitest::Test
     assert_equal 100.0, aggregate.mutation_score
   end
 
+  # #220: the daemon loads the --require files after the boot. TaxTable.rate runs
+  # only when test/support/tax_setup.rb loads, so its mutant is ran_at_load, and
+  # the test that reads that file's constant passes on the unmutated suite.
+  def test_the_daemon_loads_the_require_files
+    Dir.mktmpdir("mutineer-daemon-require") do |dir|
+      config = Mutineer::Config.new(
+        sources: [File.join(APP, "app/models/tax_table.rb")],
+        tests: [File.join(APP, "test/models/tax_table_test.rb")],
+        require_paths: ["test/support/tax_setup"], cache_dir: dir,
+        project_root: APP, boot: "config/environment",
+        rails: true, daemon: true, strategy: "reload", framework: "minitest"
+      )
+      aggregate, = Mutineer::Runner.execute(config)
+      statuses = aggregate.results.to_h { |r| [r.subject.name, r.status] }
+      assert_equal({ rate: :ran_at_load, round: :killed }, statuses)
+      assert_equal 100.0, aggregate.mutation_score
+    end
+  end
+
   # R8: a mutant on a line no provided test exercises is no_coverage (excluded from
   # score), NOT run as a false survivor. The subtotal-only suite leaves total_cents
   # and free_shipping? uncovered, so their mutants must be no_coverage.

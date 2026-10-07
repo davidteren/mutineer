@@ -59,9 +59,11 @@ class DaemonBackendContractTest < Minitest::Test
       File.binwrite(File.join(root, "test/test_helper.rb"), "\n")
 
       config = Mutineer::Config.new(sources: [source], tests: [test], project_root: root,
-                                    framework: "minitest", rails: true)
+                                    framework: "minitest", rails: true, require_paths: ["test/support/setup"])
       boot = Mutineer::DaemonBackend.boot_config(config, [test])
 
+      assert_equal [File.join(root, "test/support/setup")], boot[:require_paths],
+                   "#220: the daemon loads the --require files after the boot"
       assert_includes boot[:load_paths], File.join(root, "test"),
                       "the test_helper root must reach the daemon so `require \"test_helper\"` resolves in each fork"
       assert_equal [File.join(root, "app/models")], boot[:source_dirs]

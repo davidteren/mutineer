@@ -278,9 +278,10 @@ module Mutineer
       r.with(subject: subject, mutation: mutation, id: id)
     end
 
-    # The boot config the daemon needs to boot the app once: where to boot, the test
-    # load roots (so `require "test_helper"` resolves in every fork), framework, and
-    # whether this is Rails.
+    # The boot config the daemon needs to boot the app once: where to boot, the
+    # --require files to load after it, the test load roots (so
+    # `require "test_helper"` resolves in every fork), framework, and whether this
+    # is Rails.
     #
     # @param config [Mutineer::Config] the run config.
     # @param abs_tests [Array<String>] absolute --test paths.
@@ -290,6 +291,9 @@ module Mutineer
       {
         project_root: config.project_root,
         boot: File.expand_path(config.boot || "config/environment", config.project_root),
+        # Required after the boot, as in-process (Runner.execute); also part of
+        # the coverage digest.
+        require_paths: config.require_paths.map { |f| File.expand_path(f, config.project_root) },
         load_paths: Runner.test_load_roots(abs_tests),
         cache_dir: File.expand_path(config.cache_dir, config.project_root),
         source_dirs: Runner.source_dirs(config), # so the daemon can sweep orphan mutant temps
