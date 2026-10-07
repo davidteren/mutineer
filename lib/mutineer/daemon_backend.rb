@@ -120,17 +120,19 @@ module Mutineer
       unless data && !(data["map"] || {}).empty?
         reason = data.is_a?(Hash) && data["error"] ? data["error"] : "empty map"
         warn_coverage_fallback(reason)
-        # No narrowing ({job_result} runs every test), but the lines that ran
-        # at boot still classify a survivor on one of them.
+        # No narrowing ({job_result} runs every test), but the lines and
+        # methods that ran at boot still classify a survivor on one of them.
         load_lines = data.is_a?(Hash) ? Array(data["load_lines"]) : []
-        return nil if load_lines.empty?
+        load_methods = data.is_a?(Hash) ? Array(data["load_methods"]) : []
+        return nil if load_lines.empty? && load_methods.empty?
 
         return CoverageMap.from_data(map: {}, failed_test_files: [], project_root: config.project_root,
-                                     load_lines: load_lines)
+                                     load_lines: load_lines, load_methods: load_methods)
       end
 
       CoverageMap.from_data(map: data["map"], failed_test_files: data["failed_test_files"] || [],
-                            project_root: config.project_root, load_lines: data["load_lines"] || [])
+                            project_root: config.project_root, load_lines: data["load_lines"] || [],
+                            load_methods: data["load_methods"] || [])
     rescue DaemonBootTimeout
       raise # a second daemon for the mutant runs would hang just as long
     rescue DaemonBootError => e

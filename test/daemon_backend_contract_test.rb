@@ -162,11 +162,13 @@ class DaemonBackendContractTest < Minitest::Test
       def cov.start = self
       def cov.quit = nil
       def cov.coverage = { "map" => { "app/order.rb:3" => ["test/order_test.rb"] }, "failed_test_files" => [],
-                           "failed_clean_tests" => [], "load_lines" => ["app/order.rb:3"] }
+                           "failed_clean_tests" => [], "load_lines" => ["app/order.rb:3"],
+                           "load_methods" => ["app/order.rb:2:2"] }
       coverage_map = Mutineer::DaemonClient.stub(:new, ->(**) { cov }) do
         Mutineer::DaemonBackend.build_coverage_map(config, [])
       end
       assert coverage_map.ran_at_load?(File.join(config.project_root, "app/order.rb"), 3)
+      assert coverage_map.method_ran_at_load?(File.join(config.project_root, "app/order.rb"), 2, 2)
 
       client = Object.new
       def client.start = self

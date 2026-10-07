@@ -71,7 +71,7 @@ module Mutineer
         # the boot require so the entire app loaded during boot is instrumented;
         # forked children then measure each test's coverage delta against it.
         require "coverage"
-        Coverage.start(lines: true) unless Coverage.running?
+        Coverage.start(lines: true, methods: true) unless Coverage.running?
         require File.expand_path(config.boot, config.project_root)
       else
         config.sources.each { |f| require File.expand_path(f, config.project_root) }

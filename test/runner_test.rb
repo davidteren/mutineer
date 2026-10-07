@@ -194,21 +194,23 @@ class RunnerTest < Minitest::Test
     end
   end
 
-  FakeCoverageMap = Struct.new(:tests_by_line, :project_root, :load_lines, :uncapturable) do
+  FakeCoverageMap = Struct.new(:tests_by_line, :project_root, :load_lines, :uncapturable, :load_methods) do
     def tests_for(_file, line) = tests_by_line.fetch(line, [])
     def method_uncapturable?(*) = uncapturable || false
     def ran_at_load?(_file, line) = Array(load_lines).include?(line)
+    def method_ran_at_load?(_file, line, column) = Array(load_methods).include?([line, column])
     def order_tests(_file, tests) = tests
   end
 
-  def selection(source, snippet, tests_by_line, load_lines: [], uncapturable: false)
+  def selection(source, snippet, tests_by_line, load_lines: [], uncapturable: false, load_methods: [])
     def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
     subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
     start = source.index(snippet)
     mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,
                                       replacement: "nil", operator: :test)
     Mutineer::JobPlan.coverage_selection("x.rb", mutation, subject, source,
-                                        FakeCoverageMap.new(tests_by_line, "/root", load_lines, uncapturable))
+                                         FakeCoverageMap.new(tests_by_line, "/root", load_lines, uncapturable,
+                                                             load_methods))
   end
 
   # #187: an uncovered line that ran at load is ran_at_load, not no_coverage;
@@ -229,10 +231,23 @@ class RunnerTest < Minitest::Test
   end
 
   # #187: the def line counts when the method is defined, so it is never a load
-  # line; a one-line def is the documented known limit.
+  # line.
   def test_coverage_selection_ignores_the_def_line_load_count
     assert_equal :no_coverage, selection("def f(x = 1)\n  x\nend\n", "1", {}, load_lines: [1])[1].status
     assert_equal :no_coverage, selection("def f(x) = x * 2\n", "x * 2", {}, load_lines: [1])[1].status
+  end
+
+  # #209: a one-line or endless def ran at load when the method was called at
+  # load, for code that runs each time the method does.
+  def test_coverage_selection_uses_the_load_call_count_of_a_one_line_def
+    called = { load_methods: [[1, 0]] }
+    assert_equal :ran_at_load, selection("def f(x) = x * 2\n", "x * 2", {}, **called)[1].status
+    assert_equal :ran_at_load, selection("def f(x); x + 2; end\n", "x + 2", {}, **called)[1].status
+    assert_equal :no_coverage, selection("def f(x) = x * 2\n", "x * 2", {}, load_methods: [[2, 0]])[1].status
+    assert_equal :no_coverage, selection("def f(x) = x ? 1 : 2\n", "1", {}, **called)[1].status
+    assert_equal :no_coverage, selection("def f(x) = x.map { _1 * 2 }\n", "_1 * 2", {}, **called)[1].status
+    assert_equal :no_coverage, selection("def f(x); x; x + 2; end\n", "x + 2", {}, **called)[1].status
+    assert_equal :no_coverage, selection("def f(x = 1) = x\n", "1", {}, **called)[1].status
   end
 
   def test_coverage_selection_uses_the_tests_that_ran_the_whole_statement

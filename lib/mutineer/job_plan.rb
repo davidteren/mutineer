@@ -200,8 +200,9 @@ module Mutineer
     # count at load without it. The `def` line never counts: Ruby counts it
     # when the method is defined.
     #
-    # Known limit (#209): a one-line or endless def keeps its body on the `def`
-    # line, so a call at load is not detected.
+    # A one-line or endless def keeps its body on the `def` line, so it uses
+    # the method's own call count at load instead (#209), for code that runs
+    # each time the method does ({StatementLines.runs_with_method?}).
     #
     # @param source_file [String] the mutated source file path.
     # @param mutation [Mutineer::Mutation] the mutation.
@@ -213,7 +214,13 @@ module Mutineer
       loc = subject&.body_loc
       return false unless loc && coverage_map
 
-      def_line = subject.def_node.location.start_line
+      def_loc = subject.def_node.location
+      def_line = def_loc.start_line
+      if loc.end_line == def_line
+        return coverage_map.method_ran_at_load?(source_file, def_line, def_loc.start_column) &&
+               StatementLines.runs_with_method?(subject.def_node, mutation.start_offset)
+      end
+
       body = (loc.start_line..loc.end_line)
       lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
       lines.any? { |l| l != def_line && body.cover?(l) && coverage_map.ran_at_load?(source_file, l) }

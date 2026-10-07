@@ -61,6 +61,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **An endless method that only the tests call is no longer `no_coverage`
+  under `--rails`, `--boot` or `--daemon` (#209).** Ruby counts no line when
+  an endless method such as `def half(x) = x / 2` runs, only its `def` line
+  when it is defined. The boot defines it before any test runs, so the forked
+  coverage capture never saw that line run. Coverage now also
+  counts methods (`Coverage.start(lines: true, methods: true)`), and a test
+  that calls such a method covers its `def` line. Coverage caches from earlier
+  versions rebuild once.
 - **`module_function :name` in a reopened module inside `class << self`
   promotes the method from the earlier opening (#216).** Ruby treats both
   openings as one module, but Mutineer matched them only within one body, so
@@ -163,10 +171,10 @@ All notable changes to this project are documented here. The format is based on
   lazily loaded class (Zeitwerk, `autoload`) is loaded before the boot lines
   are read, so its class body counts as load too. A baseline survivor that is
   now `ran_at_load` is listed as fixed, not as a regression. Standalone
-  coverage caches from earlier versions rebuild once. Known limit: a one-line
-  or endless `def` called at load still gives a false `survived` or
-  `no_coverage`, because its body shares the `def` line, which Ruby counts when
-  the method is defined (#209).
+  coverage caches from earlier versions rebuild once. A one-line or endless
+  `def` keeps its body on the `def` line, which Ruby counts when the method is
+  defined, so Mutineer reads the method's call count at load for it instead
+  (#209).
 - **A boot file that prints to stdout no longer breaks the daemon handshake
   (#102).** Output from `puts`, `STDOUT`, `$stdout`, a direct fd 1 write, or a
   subprocess reached the JSON channel before the ready message, so the daemon

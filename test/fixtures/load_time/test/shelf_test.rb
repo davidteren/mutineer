@@ -19,4 +19,12 @@ class ShelfTest < Minitest::Test
   def test_short
     assert_equal 3, Shelf::SHORT
   end
+
+  def test_half
+    assert_equal 4, Shelf.half(8)
+  end
+
+  def test_ping
+    assert Shelf.ping(1)
+  end
 end
