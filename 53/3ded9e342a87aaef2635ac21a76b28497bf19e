@@ -1,0 +1,26 @@
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_dfb4980026d420 63-65
+README.md
+  s_07d7b58ff1b9fd::t_dfb4980026d420 165-166
+lib/mutineer/rails_worker_db.rb
+  s_07d7b58ff1b9fd::t_ed2ae7353821d8 158-160,173,175-176
+test/daemon_worker_db_test.rb
+  s_07d7b58ff1b9fd::t_ed2ae7353821d8 63-64
+  s_07d7b58ff1b9fd::t_0c29a465261f09 80,101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "533ded9e342a87aaef2635ac21a76b28497bf19e",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
