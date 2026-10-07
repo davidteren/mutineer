@@ -1103,8 +1103,9 @@ module Mutineer
 
     # boot_path and require_paths are require-style paths (e.g. "config/environment",
     # no extension); resolve one to the real file for reading, appending ".rb" when needed.
+    # A folder of the same name (lib/my_gem/ next to lib/my_gem.rb) is not the file.
     def digest_path(path)
-      File.exist?(absolute(path)) ? path : "#{path}.rb"
+      File.file?(absolute(path)) ? path : "#{path}.rb"
     end
 
     # Groups a digest with its role and paths.

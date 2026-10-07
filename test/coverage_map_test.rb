@@ -452,6 +452,7 @@ class CoverageMapTest < Minitest::Test
     test = File.join(dir, "req_price_test.rb")
     File.write(src, "class ReqPrice\n  def self.price(x)\n    x * 2\n  end\nend\n")
     File.write(setup, "REQ_TABLE = [ReqPrice.price(3)].freeze\n")
+    FileUtils.mkdir_p(File.join(dir, "req_setup")) # a gem-style folder beside req_setup.rb
     File.write(test, "require \"minitest/autorun\"\nclass ReqPriceTest < Minitest::Test\n  " \
                      "def test_table; assert_equal [6], REQ_TABLE; end\nend\n")
     mk = lambda do |requires|
