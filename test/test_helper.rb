@@ -43,5 +43,14 @@ module ChildWait
     Process.waitpid(pid)
     flunk "child process #{pid} did not exit within #{timeout}s, so it was killed"
   end
+
+  # @return [Boolean] whether `pid` still runs. A zombie waiting for init to
+  # reap it counts as gone.
+  def process_alive?(pid)
+    Process.kill(0, pid)
+    !`ps -o stat= -p #{pid}`.strip.start_with?("Z")
+  rescue Errno::ESRCH
+    false
+  end
 end
 Minitest::Test.include(ChildWait)

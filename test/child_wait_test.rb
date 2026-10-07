@@ -28,29 +28,24 @@ class ChildWaitTest < Minitest::Test
     assert rd.wait_readable(5), "the child did not report its grandchild"
     grandchild = rd.gets.to_i
     assert_predicate grandchild, :positive?, "the child did not report its grandchild"
-    rd.close
-    assert_raises(Minitest::Assertion) { wait_child(pid, timeout: 0.2) }
-    pid = nil # reaped, so its number may now belong to another process
+    begin
+      assert_raises(Minitest::Assertion) { wait_child(pid, timeout: 0.2) }
+    ensure
+      pid = nil # wait_child reaped it, so its number may now belong to another process
+    end
     gone = 50.times.any? do
       sleep 0.05
-      gone?(grandchild)
+      !process_alive?(grandchild)
     end
     assert gone, "the group kill left the grandchild running"
   ensure
-    # A failed step above must not leave either sleeper running. Pid 0 would
-    # kill this run's own process group, so only positive pids are killed.
+    # A failed step above must not leave a sleeper running. Pid 0 would kill
+    # this run's own process group, so only positive pids are signalled.
     unless gone
-      [pid, grandchild].select { |stray| stray&.positive? }.each { |stray| Process.kill(:KILL, stray) rescue nil } # rubocop:disable Style/RescueModifier
+      Process.kill(:KILL, -pid) rescue nil if pid # rubocop:disable Style/RescueModifier
+      Process.kill(:KILL, pid) rescue nil if pid # rubocop:disable Style/RescueModifier
+      Process.kill(:KILL, grandchild) rescue nil if grandchild&.positive? # rubocop:disable Style/RescueModifier
       Process.waitpid(pid) rescue nil if pid # rubocop:disable Style/RescueModifier
     end
-  end
-
-  private
-
-  def gone?(pid)
-    Process.kill(0, pid)
-    false
-  rescue Errno::ESRCH
-    true
   end
 end
