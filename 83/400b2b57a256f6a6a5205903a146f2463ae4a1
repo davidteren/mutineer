@@ -1,0 +1,26 @@
+test/statement_lines_test.rb
+  s_07d7b58ff1b9fd::t_5e0717c568fff6 264-267
+lib/mutineer/statement_lines.rb
+  s_07d7b58ff1b9fd::t_85b9e7e276117d 47-50,60-63,67-76
+  s_07d7b58ff1b9fd::t_bf60feca57e1db 77-78
+test/coverage_map_test.rb
+  s_07d7b58ff1b9fd::t_a8427f643b8203 547-555
+lib/mutineer/coverage_map.rb
+  s_07d7b58ff1b9fd::t_a8427f643b8203 1026-1028,1038-1042
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "83400b2b57a256f6a6a5205903a146f2463ae4a1",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
