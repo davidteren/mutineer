@@ -35,9 +35,21 @@ module Mutineer
       # the singleton class name of a `class << self` opened inside a def or a
       # block that does not build a class, or built on a written path or
       # `#<anonymous>` (`#<Class:Foo::X>` from `class Foo::X` inside `class << self`);
-      # or the `X` of `module self::X` or `self::X = ...` in a block. The segment
-      # carries that mark (see {#singleton_name}, {#with_namespace}, {#assigned_owner}).
-      class WrittenName < String; end
+      # or the `X` of `module self::X` in a block, or of `self::X = ...` in a def or
+      # a block that does not build a class. The segment carries that mark (see
+      # {#singleton_name}, {#with_namespace}, {#assigned_owner}), and `scope`, the
+      # def or block whose `self` the name is under, or a new object when unknown.
+      class WrittenName < String
+        # @return [Object] the def or block node whose `self` the name is under.
+        attr_reader :scope
+
+        # @param name [String] the name as built.
+        # @param scope [Object] the def or block node whose `self` the name is under.
+        def initialize(name, scope = Object.new)
+          super(name)
+          @scope = scope
+        end
+      end
 
       attr_reader :subjects
 
@@ -62,7 +74,7 @@ module Mutineer
         @namespace_unknown = false # the namespace is lexically under a singleton class (#208)
         @anonymous_block = false   # inside a builder block not assigned to a constant
         @self_unknown = false      # inside a def or a block that is not a builder, so `self` is not the namespace
-        @builder_block = nil       # the block of the builder call being visited
+        @self_scope = nil          # the def or block whose `self` the code runs with
         @singleton_uncertain = false # the open `class << self` was inside a def or a non-builder block
         super()
       end
@@ -126,7 +138,7 @@ module Mutineer
 
         anonymous = !@assigned&.first.equal?(node)
         with_block_owner(anonymous ? [nil, @namespace_stack, true] : @assigned.last, anonymous) do
-          @builder_block = node.block
+          @self_scope = node.block
           super
         end
       end
@@ -138,12 +150,13 @@ module Mutineer
       # @param node [Prism::BlockNode, Prism::LambdaNode] block or lambda node.
       # @return [void]
       def visit_block_node(node)
-        return super if node.equal?(@builder_block)
+        return super if node.equal?(@self_scope) # a builder block
 
-        saved_self = @self_unknown
+        saved_self = [@self_unknown, @self_scope]
         @self_unknown = true
+        @self_scope = node
         super
-        @self_unknown = saved_self
+        @self_unknown, @self_scope = saved_self
       end
       alias visit_lambda_node visit_block_node
 
@@ -212,11 +225,12 @@ module Mutineer
         )
         @subject_keys << module_key
         saved_active = @module_function_active
-        saved_self = @self_unknown
+        saved_self = [@self_unknown, @self_scope]
         @self_unknown = true # `self` in a method body is the receiver it is called on
+        @self_scope = node
         super
         @module_function_active = saved_active # a visibility call in a method body runs only when it is called
-        @self_unknown = saved_self
+        @self_unknown, @self_scope = saved_self
       end
 
       private
@@ -227,8 +241,8 @@ module Mutineer
       # name is not built only from constant names (see {#named_segment?}), or that
       # an anonymous builder block owns, may be shared by another module, so it is
       # matched only within this body (#208). A known owner with a {WrittenName}
-      # in its name is matched by that segment's identity, so modules nested in
-      # one opening of it still match each other, but not those of another opening.
+      # in its name is matched by that segment's scope and text, so openings under
+      # one `self` match each other, but not those under another.
       #
       # @return [String, Object]
       def module_key
@@ -236,7 +250,7 @@ module Mutineer
         return @body if @owner_unknown && (@anonymous_block || !namespace.all? { |s| named_segment?(s) })
         return namespace.join("::") unless written?(namespace)
 
-        namespace.map { |s| s.is_a?(WrittenName) ? s.object_id : s }.join("::") # no constant name is a number
+        namespace.map { |s| s.is_a?(WrittenName) ? "#{s.scope.object_id}:#{s}" : s }.join("::")
       end
 
       # True when any segment of the namespace is a {WrittenName}.
@@ -285,7 +299,7 @@ module Mutineer
             if root then [name]
             elsif in_singleton then path.is_a?(Prism::ConstantPathNode) ? [path.slice] : [singleton_name, name]
             elsif self_rooted?(path) && (@block_namespace || @self_unknown)
-              @namespace_stack + [WrittenName.new(name)]
+              @namespace_stack + [WrittenName.new(name, @self_scope)]
             else @namespace_stack + [name]
             end
           @lexical_stack += [root ? "::#{name}" : name]
@@ -303,7 +317,7 @@ module Mutineer
       # Visitor state a class/module body or builder block sets for what it contains.
       SCOPE_STATE = %i[@namespace_stack @lexical_stack @module_function_active @block_owner @block_namespace
                        @owner_unknown @singleton_depth @singleton_cref @namespace_unknown @anonymous_block @body
-                       @self_unknown @builder_block @singleton_uncertain].freeze
+                       @self_unknown @self_scope @singleton_uncertain].freeze
 
       # Runs the block and then restores every {SCOPE_STATE} variable, so a
       # nested body's state never leaks out of it.
@@ -345,7 +359,8 @@ module Mutineer
           names.unshift(path.name.to_s)
           path = path.parent
         end
-        names[0] = WrittenName.new(names[0]) if path.is_a?(Prism::SelfNode) && @self_unknown # see {#with_namespace}
+        # see {#with_namespace}
+        names[0] = WrittenName.new(names[0], @self_scope) if path.is_a?(Prism::SelfNode) && @self_unknown
         if path.is_a?(Prism::SelfNode) && @namespace_unknown && !@anonymous_block
           return [nil, (@block_namespace || @namespace_stack) + names, true]
         end

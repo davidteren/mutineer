@@ -640,7 +640,7 @@ class ProjectTest < Minitest::Test
   end
 
   # #216: the same holds outside `class << self`, and for a module under the
-  # singleton class of such a `self::X`. A module reopened inside one `self::X` still matches.
+  # singleton class of such a `self::X`. Openings under one `self` still match.
   def test_discover_module_function_does_not_cross_self_path_in_a_builder_block_with_known_owner
     src = <<~RUBY
       module Outer
@@ -667,6 +667,12 @@ class ProjectTest < Minitest::Test
               end
             end
           end
+          module self::X
+            def g; end
+          end
+          module self::X
+            module_function :g
+          end
         end
         module X
           module_function :c
@@ -679,7 +685,7 @@ class ProjectTest < Minitest::Test
       end
     RUBY
     with_source(src) do |path|
-      assert_equal %w[Outer::X#c #<Class:Outer::X>::M#d Outer::X::N.e Outer::X::A::B.f],
+      assert_equal %w[Outer::X#c #<Class:Outer::X>::M#d Outer::X::N.e Outer::X::A::B.f Outer::X.g],
                    Mutineer::Project.discover([path]).map(&:qualified_name)
     end
   end
