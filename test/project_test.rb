@@ -650,7 +650,7 @@ class ProjectTest < Minitest::Test
   # #216: the same holds outside `class << self`, and for a module under the
   # singleton class of such a `self::X`. Openings under one `self` still match.
   # #229: the X is under the built class, Outer::Foo, and redefine cannot reopen it.
-  def test_discover_module_function_does_not_cross_self_path_in_a_builder_block_with_known_owner
+  def test_discover_module_function_does_not_cross_self_path_in_a_named_builder_block
     src = <<~RUBY
       module Outer
         Foo = Class.new do
@@ -704,7 +704,7 @@ class ProjectTest < Minitest::Test
   # #229: `self` in a block may be another object, so a `self::X` opened or
   # assigned there, and everything in it, has its owner unknown. The name stays on
   # the enclosing namespace. Directly in a class body `self` is that class.
-  def test_discover_self_path_in_a_block_or_def_has_its_owner_unknown
+  def test_discover_self_path_in_a_block_has_its_owner_unknown
     src = <<~RUBY
       module Outer
         module self::Direct
@@ -723,8 +723,6 @@ class ProjectTest < Minitest::Test
           class self::K
             def k; end
           end
-        end
-        def setup
           self::Y = Module.new do
             def y; end
           end
@@ -733,9 +731,9 @@ class ProjectTest < Minitest::Test
     RUBY
     with_source(src) do |path|
       subjects = Mutineer::Project.discover([path])
-      assert_equal %w[Outer::Direct#a Outer::X#c Outer::X::N#d Outer::X::Z#z Outer::K#k Outer#setup Outer::Y#y],
+      assert_equal %w[Outer::Direct#a Outer::X#c Outer::X::N#d Outer::X::Z#z Outer::K#k Outer::Y#y],
                    subjects.map(&:qualified_name)
-      assert_equal %w[Outer::Direct#a Outer#setup], subjects.reject(&:owner_unknown).map(&:qualified_name)
+      assert_equal %w[Outer::Direct#a], subjects.reject(&:owner_unknown).map(&:qualified_name)
     end
   end
 

@@ -88,7 +88,7 @@ All notable changes to this project are documented here. The format is based on
   known owner on the enclosing namespace, so redefine loaded the mutant onto
   a module the tests never use, and the mutant could falsely survive or
   score `error`. Such a module, everything nested in it, and a
-  `self::X = ...` in a method or a block that does not build a class now have
+  `self::X = ...` in a block that does not build a class now have
   their owner unknown: redefine reports their mutants as `unplaceable`, and
   `--strategy reload` still runs them. In a `Data.define`, `Struct.new`,
   `Class.new` or `Module.new` block, the module is now named under the

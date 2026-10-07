@@ -292,8 +292,8 @@ module Mutineer
       # A `self::X` in any block is under the block's `self`, not the namespace
       # around the block (#229). In a builder block that is the built class, so
       # it is named under the builder's constant; in any other block (`class_eval`,
-      # a callback) `self` may be any object, so it is named on the enclosing
-      # namespace. Either way the last segment is a {WrittenName}, and it and
+      # a callback) `self` may be any object, so it is named under the innermost
+      # enclosing builder's constant, or else the enclosing namespace. Either way the last segment is a {WrittenName}, and it and
       # everything nested in it has its owner unknown: redefine reopens the
       # lexical chain, which never reaches the block's `self` (a builder's class
       # is not even assigned to its constant yet while the block runs).
@@ -346,8 +346,8 @@ module Mutineer
       # Resolves the constant an assignment writes the way Ruby does. `X` is in the
       # current namespace, `::X` and a path at the top level start from Object, and
       # `self::X` is under the current class (the built class inside a builder
-      # block). In a def or a block that does not build a class, `self` may be any
-      # object, so `self::X` there has its owner unknown (#229). Any other path is
+      # block). In a block that does not build a class, `self` may be any object,
+      # so `self::X` there has its owner unknown (#229). Any other path is
       # looked up at run time, so its owner is unknown
       # and the subject is named as written. Lexically inside `class << self`,
       # even within a builder block there, the constant belongs to the singleton
