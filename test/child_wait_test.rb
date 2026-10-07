@@ -27,6 +27,7 @@ class ChildWaitTest < Minitest::Test
     wr.close
     assert rd.wait_readable(5), "the child did not report its grandchild"
     grandchild = rd.gets.to_i
+    assert_predicate grandchild, :positive?, "the child did not report its grandchild"
     rd.close
     assert_raises(Minitest::Assertion) { wait_child(pid, timeout: 0.2) }
     gone = 50.times.any? do
@@ -35,9 +36,12 @@ class ChildWaitTest < Minitest::Test
     end
     assert gone, "the group kill left the grandchild running"
   ensure
-    # A failed assertion above must not leave either sleeper running.
-    [pid, grandchild].compact.each { |stray| Process.kill(:KILL, stray) rescue nil } # rubocop:disable Style/RescueModifier
-    Process.waitpid(pid) rescue nil if pid # rubocop:disable Style/RescueModifier
+    # A failed step above must not leave either sleeper running. Pid 0 would
+    # kill this run's own process group, so only positive pids are killed.
+    unless gone
+      [pid, grandchild].select { |stray| stray&.positive? }.each { |stray| Process.kill(:KILL, stray) rescue nil } # rubocop:disable Style/RescueModifier
+      Process.waitpid(pid) rescue nil if pid # rubocop:disable Style/RescueModifier
+    end
   end
 
   private
