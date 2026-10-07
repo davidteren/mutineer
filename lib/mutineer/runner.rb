@@ -375,7 +375,8 @@ module Mutineer
 
     # Coverage-based test selection, shared by the in-process ({run}) and daemon
     # paths so both narrow identically (score parity). Returns
-    # `[:run, abs_test_paths]` when some test covers the mutant's line, or
+    # `[:run, abs_test_paths]` when some test covers the mutant's line, in the
+    # order of {CoverageMap#order_tests} (paired files, then cheapest), or
     # `[:verdict, Result]` (no_coverage / uncapturable) when none do. A line
     # Ruby does not count (a later line of a multi-line statement) uses the
     # tests that ran the statement that holds it ({StatementLines}), unless the
@@ -416,7 +417,7 @@ module Mutineer
         return [:verdict, Result.no_coverage]
       end
 
-      [:run, chosen.map { |t| File.expand_path(t, coverage_map.project_root) }]
+      [:run, coverage_map.order_tests(source_file, chosen).map { |t| File.expand_path(t, coverage_map.project_root) }]
     end
 
     # True when the mutant's line ran while the app booted or its class loaded,

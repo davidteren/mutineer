@@ -392,6 +392,32 @@ class TestRunnersRSpecTest < Minitest::Test
     assert_equal 1, report.lost
   end
 
+  # #203: a mutant run keeps its files in run order, even when the suite
+  # orders its groups in another way (here: reversed). Within one file, the
+  # suite's order still applies. Returns the marker text.
+  def group_order(files, **kwargs)
+    Dir.mktmpdir("mutineer-order") do |dir|
+      marker = File.join(dir, "marker")
+      paths = files.to_h do |letter|
+        path = File.join(dir, "#{letter}_order_spec.rb")
+        body = (1..2).map do |n|
+          "RSpec.describe \"#{letter}#{n}\" do\n" \
+            "  it { File.write(#{marker.dump}, \"#{letter}#{n}\", mode: \"a\") }\nend\n"
+        end.join
+        File.write(path, "RSpec.configure { |c| c.register_ordering(:global, &:reverse) }\n#{body}")
+        [letter, path]
+      end
+      in_fork { Mutineer::TestRunners::RSpec.run(files.map { |l| paths[l] }, **kwargs) }
+      File.read(marker)
+    end
+  end
+
+  def test_mutant_run_keeps_spec_files_in_run_order
+    assert_equal "a2a1b2b1", group_order(%w[a b], stop_at_first_failure: true)
+    assert_equal "b2b1a2a1", group_order(%w[b a], stop_at_first_failure: true)
+    IO.pipe { |_rd, wr| assert_equal "b2b1a2a1", group_order(%w[b a], record_to: wr) }
+  end
+
   def test_record_to_and_stop_at_first_failure_cannot_be_combined
     code, = in_fork do
       Mutineer::TestRunners::RSpec.run([STOP], stop_at_first_failure: true, record_to: $stderr)

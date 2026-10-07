@@ -30,6 +30,26 @@ All notable changes to this project are documented here. The format is based on
   the JSON report `summary.ran_at_load` and a `ran_at_load[]` list, within
   schema `1.7`.
 
+### Changed
+
+- **A mutant runs its paired test files first, then the cheapest (#203).** The
+  covering test files used to run in the order the coverage map stored them,
+  so a mutant that one fast file kills could still score `timeout` when slow
+  files ran first. Now the files that pairing finds for the source run first,
+  then the rest from fastest to slowest by the time each file took during
+  coverage capture, less the fastest file's time (the startup cost each
+  capture pays). The order is fixed for a given cache. Costs compare in
+  doubling buckets, so files of close cost keep their path order when a
+  rebuilt cache measures them again; a file near a bucket edge can still move,
+  so keep `.mutineer/` between CI runs for the most stable `--baseline`. The
+  order applies to Minitest (after the seeded class shuffle, with
+  `parallelize_me!` classes still last) and to RSpec. `--daemon` runs every
+  covering test with no stop, so the order does not change its verdicts. The
+  coverage cache now saves these timings, so a cache from an earlier version
+  rebuilds once. A complete run gives the same verdicts and `--matrix` rows,
+  but the new order can change which mutants time out, so a `--baseline` gate
+  can see a one-time change on upgrade.
+
 ### Fixed
 
 - **`--daemon` worker databases start as a copy of the test database
