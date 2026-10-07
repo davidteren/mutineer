@@ -1,0 +1,20 @@
+docs/json-schema.md
+  s_07d7b58ff1b9fd::t_f34193d2ff8ee6 55
+  s_07d7b58ff1b9fd::t_25e91d525b8b7d 89-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ba9584bf7795a0bf0979cbd56897802d9100c226",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
