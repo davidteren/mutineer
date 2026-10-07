@@ -47,12 +47,15 @@ class TestRunnersRSpecTest < Minitest::Test
     end
     wr.close
     err_wr.close
+    # Drain both pipes on threads so the deadline in wait_child also covers a
+    # child that hangs with its pipes open (#132).
+    out_reader = Thread.new { rd.read }
     err_reader = Thread.new { err_rd.read }
-    out = rd.read
+    status = wait_child(pid)
+    out = out_reader.value
     err = err_reader.value
     rd.close
     err_rd.close
-    _, status = Process.waitpid2(pid)
     [status.exitstatus, out, err]
   end
 
