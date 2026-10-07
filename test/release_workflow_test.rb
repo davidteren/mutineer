@@ -15,6 +15,9 @@ class ReleaseWorkflowTest < Minitest::Test
   CALC_END = "# MUTINEER_VERSION_CALC_END"
   HELPERS_START = "# MUTINEER_RELEASE_HELPERS_START"
   HELPERS_END = "# MUTINEER_RELEASE_HELPERS_END"
+  RELEASE_WORKFLOW = File.expand_path("../.github/workflows/release.yml", __dir__)
+  STABLE_TAG_START = "# MUTINEER_STABLE_TAG_START"
+  STABLE_TAG_END = "# MUTINEER_STABLE_TAG_END"
   BOT = "41898282+github-actions[bot]@users.noreply.github.com"
   BOT_ENV = {
     "GIT_AUTHOR_NAME" => "github-actions[bot]", "GIT_AUTHOR_EMAIL" => BOT,
@@ -183,7 +186,50 @@ class ReleaseWorkflowTest < Minitest::Test
     assert_equal "no", run_helpers("version_lt 1.3.0 1.3.0 && echo yes || echo no")
   end
 
+  # #161: the release trigger glob v*.*.* also matches prereleases. Only a
+  # stable vMAJOR.MINOR.PATCH tag may publish and move the floating major tag.
+  def test_release_guard_accepts_a_stable_tag
+    out, status = run_stable_tag_guard("v1.3.1")
+    assert_equal 0, status.exitstatus, out
+  end
+
+  def test_release_guard_refuses_a_prerelease_tag
+    out, status = run_stable_tag_guard("v1.3.1-rc1")
+    assert_equal 1, status.exitstatus
+    assert_match(/::error::Tag v1\.3\.1-rc1 is not a stable vMAJOR\.MINOR\.PATCH tag/, out)
+  end
+
+  def test_release_guard_refuses_a_malformed_tag
+    %w[v1.2.3.4 v1.2 vx.y.z].each do |tag|
+      out, status = run_stable_tag_guard(tag)
+      assert_equal 1, status.exitstatus, tag
+      assert_match(/::error::Tag #{Regexp.escape(tag)} is not a stable/, out)
+    end
+  end
+
+  # The guard must run before anything publishes or moves the major tag.
+  def test_release_guard_runs_before_publishing
+    steps = YAML.load_file(RELEASE_WORKFLOW).dig("jobs", "release", "steps").map { |s| "#{s["uses"]}#{s["run"]}" }
+    guard = steps.index { |s| s.include?(STABLE_TAG_START) }
+    refute_nil guard, "release.yml needs #{STABLE_TAG_START}"
+    ["configure-rubygems-credentials", "gem push", "gh release create", "git push -f"].each do |marker|
+      step = steps.index { |s| s.include?(marker) }
+      refute_nil step, marker
+      assert_operator guard, :<, step, "the stable-tag guard must run before #{marker}"
+    end
+  end
+
   private
+
+  # Runs the stable-tag guard extracted from release.yml for `tag`.
+  #
+  # @param tag [String] the pushed tag name.
+  # @return [Array(String, Process::Status)] stdout and exit status.
+  def run_stable_tag_guard(tag)
+    script = marked_block(STABLE_TAG_START, STABLE_TAG_END, workflow: RELEASE_WORKFLOW)
+    out, _err, status = Open3.capture3({ "GITHUB_REF_NAME" => tag }, "bash", "-euo", "pipefail", "-c", script)
+    [out, status]
+  end
 
   # Extracts the marked calculation block from the workflow, dropping YAML indent.
   #
@@ -200,11 +246,11 @@ class ReleaseWorkflowTest < Minitest::Test
   end
 
   # @return [String] the workflow text between two marker comments, unindented.
-  def marked_block(start_marker, end_marker)
-    text = File.read(WORKFLOW)
+  def marked_block(start_marker, end_marker, workflow: WORKFLOW)
+    text = File.read(workflow)
     start = text.index(start_marker)
     finish = text.index(end_marker)
-    raise "#{start_marker} / #{end_marker} missing from #{WORKFLOW}" unless start && finish
+    raise "#{start_marker} / #{end_marker} missing from #{workflow}" unless start && finish
 
     text[start..finish].lines.map { |line| line.sub(/^          /, "") }.join
   end

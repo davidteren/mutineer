@@ -41,6 +41,12 @@ All notable changes to this project are documented here. The format is based on
   now load the `--require` files after the sources. With or without
   `--boot`, the coverage cache rebuilds when one of them changes, is added,
   or is removed.
+- **The release workflow publishes only stable tags** (#161). Its trigger,
+  `v*.*.*`, also matches a prerelease tag such as `v1.3.1-rc1`, and the only
+  guard checked that the tag matched `Mutineer::VERSION`. A prerelease tag
+  could then publish the gem and move the floating major tag (`v1`) that
+  Action users pin. The workflow now stops with a clear error before any
+  publish step unless the tag is a stable `vMAJOR.MINOR.PATCH`.
 - **Coverage capture keeps to `capture_timeout` from start to finish.** Under
   `--boot` and `--daemon`, a hung test file ignored the timeout and blocked
   the run; it is now skipped as "timed out", like a standalone capture. A

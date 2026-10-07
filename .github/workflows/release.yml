@@ -33,10 +33,18 @@ jobs:
           ruby-version: "3.4"
           bundler-cache: true
 
-      # A mistyped tag must never publish the wrong version.
-      - name: Guard — tag must match Mutineer::VERSION
+      # A mistyped tag must never publish the wrong version. The trigger glob
+      # also matches prereleases (v1.3.1-rc1) and junk (v1.2.3.4), which must
+      # neither publish nor move the floating major tag that Action users pin.
+      - name: "Guard: stable tag matching Mutineer::VERSION"
         run: |
           set -euo pipefail
+          # MUTINEER_STABLE_TAG_START
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} is not a stable vMAJOR.MINOR.PATCH tag. Prereleases and malformed tags are not published and do not move the major tag. Aborting release."
+            exit 1
+          fi
+          # MUTINEER_STABLE_TAG_END
           tag="${GITHUB_REF_NAME#v}"
           ver="$(ruby -r ./lib/mutineer/version -e 'print Mutineer::VERSION')"
           if [ "$tag" != "$ver" ]; then
