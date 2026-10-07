@@ -473,6 +473,30 @@ class CoverageMapTest < Minitest::Test
     assert dropped.phase_a_ran, "require file dropped: cache must rebuild"
   end
 
+  # The `--require` files load in the order given, and the order can change
+  # what they build, so it is part of the digest.
+  def test_digest_is_require_order_sensitive
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "a.rb"), "A = 1\n")
+      File.write(File.join(dir, "b.rb"), "B = 2\n")
+      mk = lambda do |reqs|
+        Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
+                                  require_paths: reqs)
+      end
+      refute_equal mk.call(%w[a b]).send(:compute_digest), mk.call(%w[b a]).send(:compute_digest)
+    end
+  end
+
+  # `require` also finds a native extension without its suffix.
+  def test_digest_reads_an_extensionless_native_require
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "native.#{RbConfig::CONFIG['DLEXT']}"), "binary")
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
+                                      require_paths: ["native"])
+      assert_kind_of String, map.send(:compute_digest)
+    end
+  end
+
   # Boot mode reads the lines that ran during boot from the parent's Coverage,
   # on every run: no forked capture is credited with them.
   def test_build_via_fork_records_the_lines_that_ran_at_boot

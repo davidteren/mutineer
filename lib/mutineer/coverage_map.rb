@@ -1053,7 +1053,8 @@ module Mutineer
       d = Digest::SHA256.new
       digest_group(d, "source", @source_paths)
       digest_group(d, "test", @test_paths)
-      digest_group(d, "require", @require_paths.map { |p| digest_path(p) })
+      # One group per file: digest_group sorts, and the load order matters.
+      @require_paths.each { |p| digest_group(d, "require", [digest_path(p)]) }
       digest_group(d, "boot", [digest_path(@boot_path)]) if @boot_path
       ownership_paths.each do |rel|
         d.update("owner\0")
@@ -1102,10 +1103,12 @@ module Mutineer
     end
 
     # boot_path and require_paths are require-style paths (e.g. "config/environment",
-    # no extension); resolve one to the real file for reading, appending ".rb" when needed.
-    # A folder of the same name (lib/my_gem/ next to lib/my_gem.rb) is not the file.
+    # no extension); resolve one to the file `require` loads: the path itself, then
+    # ".rb", then a native extension. A folder of the same name (lib/my_gem/ next to
+    # lib/my_gem.rb) is not the file.
     def digest_path(path)
-      File.file?(absolute(path)) ? path : "#{path}.rb"
+      ["", ".rb", ".#{RbConfig::CONFIG['DLEXT']}"].map { |ext| "#{path}#{ext}" }
+                                                .find { |p| File.file?(absolute(p)) } || "#{path}.rb"
     end
 
     # Groups a digest with its role and paths.
