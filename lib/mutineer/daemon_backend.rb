@@ -299,8 +299,8 @@ module Mutineer
         source_dirs: Runner.source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,
         rails: config.rails,
-        # Schema for per-worker DB isolation. Sent when present; the daemon
-        # skips worker-DB schema loading if the path is absent (e.g. structure.sql apps).
+        # Schema for per-worker DB isolation. Sent when present; the daemon loads
+        # it over a worker's copy of the test DB only when that copy is out of date.
         schema: schema_path(config),
         # Coverage narrowing. Only the short-lived map-building daemon starts
         # Coverage (before boot); worker daemons boot with it OFF (no wasted
@@ -314,10 +314,10 @@ module Mutineer
       }
     end
 
-    # Absolute path to the app's `db/schema.rb` if it exists, else nil. Used by the
-    # daemon to schema-load each fork's isolated worker database. Only `schema.rb`
-    # is supported this pass; `structure.sql` apps get nil and fall back to
-    # whatever the worker DB already holds.
+    # Absolute path to the app's `db/schema.rb` if it exists, else nil. Each worker
+    # DB starts as a copy of the test DB; the daemon loads this file over the copy
+    # when the copy's schema differs. `structure.sql` apps get nil and keep the
+    # copy as it is.
     #
     # @param config [Mutineer::Config] the run config.
     # @api private

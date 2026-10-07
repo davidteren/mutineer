@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "fileutils"
 
 module Mutineer
@@ -139,17 +140,23 @@ module Mutineer
       conn.execute("VACUUM INTO #{conn.quote(target)}")
     end
 
-    # True when the current database already holds the schema version that
-    # `schema.rb` declares (its newest `schema_migrations` row matches).
+    # True when the current database already holds the schema that `schema.rb`
+    # declares: its newest `schema_migrations` row matches the declared version,
+    # and the `schema_sha1` Rails stores in `ar_internal_metadata` (when present)
+    # matches the file, which catches an edited schema with the same version.
     #
     # @param schema_path [String] absolute path to `db/schema.rb`.
     # @return [Boolean]
     def self.schema_current?(schema_path)
-      version = schema_file_version(File.read(schema_path))
+      text    = File.read(schema_path)
+      version = schema_file_version(text)
       conn = ActiveRecord::Base.connection
       return false unless version && conn.table_exists?(:schema_migrations)
+      return false unless conn.select_values("SELECT version FROM schema_migrations").map(&:to_i).max == version
+      return true unless conn.table_exists?(:ar_internal_metadata)
 
-      conn.select_values("SELECT version FROM schema_migrations").map(&:to_i).max == version
+      stored = conn.select_value("SELECT value FROM ar_internal_metadata WHERE key = 'schema_sha1'")
+      stored.nil? || stored == Digest::SHA1.hexdigest(text)
     end
 
     # The version a `schema.rb` declares in `define(version: ...)`, or nil. Pure
