@@ -568,6 +568,36 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #216: `class Foo::Bar` inside `class << self` may not be the top-level Foo::Bar,
+  # so a module under its singleton class matches only within its own body.
+  def test_discover_module_function_does_not_cross_a_singleton_class_built_on_a_written_path
+    src = <<~RUBY
+      class App
+        class << self
+          class Foo::Bar
+            class << self
+              module M
+                def c; end
+              end
+            end
+          end
+        end
+      end
+      class Foo::Bar
+        class << self
+          module M
+            def c; end
+            module_function :c
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[#<Class:Foo::Bar>::M#c #<Class:Foo::Bar>::M.c],
+                   Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   def test_discover_promotes_module_function_names_in_a_module_new_block
     src = <<~RUBY
       module Host
