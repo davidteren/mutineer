@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "digest"
-require "fileutils"
 
 module Mutineer
   # Per-worker database isolation for the daemon path.
@@ -119,35 +118,36 @@ module Mutineer
       return unless available?
 
       config = worker_db_config(worker)
-      seed_from_base(config[:database]) if seed
+      base   = ActiveRecord::Base.connection.select_value("SELECT file FROM pragma_database_list WHERE name = 'main'") if seed
       ActiveRecord::Base.establish_connection(config)
+      seed_from(base) if seed
       load_schema(schema_path) if schema_path && !schema_current?(schema_path)
       verify_connection!
     end
 
-    # Copy the base test database (the connection this fork inherited) into the
-    # worker's database file with `VACUUM INTO`: one consistent snapshot of the
-    # committed data, WAL included. A stale worker file (an earlier run, or a
-    # copy a timeout interrupted) is removed first, since `VACUUM INTO` needs an
-    # absent or empty target.
+    # Copy the base test database file into the worker database this fork is
+    # now connected to, with the SQLite online backup API: one consistent
+    # snapshot of the committed data (WAL included) that replaces whatever the
+    # worker file held (an earlier run, or a copy a timeout interrupted). Both
+    # ends are files SQLite itself opened, so no path rules are re-derived here.
     #
-    # The target is resolved the way the SQLite adapter resolves the worker
-    # config's path (against `Rails.root`, else the working directory; a
-    # `file:` URI is left relative to the working directory), so the copy lands
-    # in the file the worker then connects to.
-    #
-    # @param database [String] the worker database path from {worker_db_config}.
+    # @param base_file [String] the base database file, from `pragma_database_list`.
     # @return [void]
-    def self.seed_from_base(database)
-      conn   = ActiveRecord::Base.connection
-      target =
-        if database.start_with?("file:")
-          database.delete_prefix("file:").split("?").first
-        else
-          File.expand_path(database, (Rails.root.to_s if defined?(Rails.root) && Rails.root) || Dir.pwd)
-        end
-      ["", "-wal", "-shm", "-journal"].each { |suffix| FileUtils.rm_f(target + suffix) }
-      conn.execute("VACUUM INTO #{conn.quote(target)}")
+    def self.seed_from(base_file)
+      codes  = SQLite3::Constants::ErrorCode
+      source = SQLite3::Database.new(base_file, readonly: true)
+      source.busy_timeout = 5000
+      backup = SQLite3::Backup.new(ActiveRecord::Base.connection.raw_connection, "main", source, "main")
+      # Another worker's process can hold a lock on the base file for a moment;
+      # BUSY/LOCKED steps are retried. The daemon's per-fork timeout bounds this.
+      until (status = backup.step(-1)) == codes::DONE
+        raise "copying #{base_file} into the worker database failed (SQLite code #{status})" unless [codes::BUSY, codes::LOCKED].include?(status)
+
+        sleep 0.01
+      end
+    ensure
+      backup&.finish
+      source&.close
     end
 
     # True when the current database already holds the schema that `schema.rb`
