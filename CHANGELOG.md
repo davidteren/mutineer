@@ -76,9 +76,10 @@ All notable changes to this project are documented here. The format is based on
   The two openings now match by the module's full name. A module whose name
   Mutineer cannot be sure of still matches only within its own body: a path
   such as `self::X` or `Foo::X` written directly inside `class << self`, a
-  name under an anonymous class, a module in a `class << self` inside a method
-  or a `class_eval` block, a `module self::X` in a block, or a `self::X = ...`
-  in a `class_eval` block. A `self::X` like these now also stays apart from a
+  name under an anonymous class, or a module in a `class << self` inside a
+  method or a `class_eval` block. A `module self::X` in a block, or a
+  `self::X = ...` in a `class_eval` block, matches only openings in the same
+  block. A `self::X` like these now also stays apart from a
   module of the same name outside `class << self`, where a `module_function`
   in that module used to promote its methods.
 - **A `module self::X` or `class self::X` in a block is `unplaceable` under

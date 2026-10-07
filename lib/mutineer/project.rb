@@ -240,10 +240,11 @@ module Mutineer
 
       # The module a `module_function` call and a def are matched by: its joined
       # namespace, so a module reopened later in the file matches (#216), and
-      # `module A::B` matches nested `module A; module B`. An unknown owner whose
-      # name is not built only from constant names (see {#named_segment?}), or that
-      # an anonymous builder block owns, may be shared by another module, so it is
-      # matched only within this body (#208). Otherwise a name with a {WrittenName}
+      # `module A::B` matches nested `module A; module B`. An unknown owner that an
+      # anonymous builder block owns, or whose name has no {WrittenName} segment
+      # and is not built only from constant names (see {#named_segment?}), may be
+      # shared by another module, so it is matched only within this body (#208).
+      # Otherwise a name with a {WrittenName}
       # segment is matched by that segment's scope and text, so openings under one
       # `self` match each other, but not those under another, whether the owner is
       # known or not (#229).
