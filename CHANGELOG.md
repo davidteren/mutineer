@@ -38,8 +38,9 @@ All notable changes to this project are documented here. The format is based on
   initializers or `--require` files, were only in the base test database, so
   a test that read them passed in-process but failed under `--daemon`. On its
   first use, a worker database is now a copy of the base test database (schema
-  and rows, made with SQLite `VACUUM INTO`). The schema is loaded only when the
-  base database has no tables.
+  and rows, made with SQLite `VACUUM INTO`). The worker still loads
+  `db/schema.rb` when the copy's schema version differs from it, for example
+  when the test database is empty or out of date.
 - **Standalone coverage capture loads the `--require` files (#217).** A run
   without `--boot` requires the sources and then each `--require` (or
   `require:`) file before it forks the mutants, but the coverage capture

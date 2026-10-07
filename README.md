@@ -159,7 +159,8 @@ RAILS_ENV=test bundle exec mutineer run \
   parallel verdicts equal serial (no fixture cross-talk). On first use, a
   worker's database is a copy of the test database after the app boots, so rows
   written by initializers or `--require` files are there, as in-process. When
-  the test database has no tables, the worker loads `db/schema.rb` instead.
+  the copy's schema version differs from `db/schema.rb` (an empty or out-of-date
+  test database), the worker loads `db/schema.rb` over it.
 - **One backend at a time** — `--daemon` can't be combined with `--test-command`
   (choose one), and it needs an app to boot (`--rails` or `--boot`).
 

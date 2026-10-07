@@ -104,9 +104,10 @@ module Mutineer
     # With `seed: true` (the slot's first use) the worker database first becomes
     # a copy of the base test database, schema and rows, so rows the daemon
     # parent wrote while it booted (initializers, `--require` files) are there,
-    # as they are for the in-process backend (#222). The schema is loaded only
-    # when the base database has no tables to copy: `schema.rb` runs with
-    # `force: true`, which would drop the copied rows.
+    # as they are for the in-process backend (#222). The schema is then loaded
+    # only when the worker's schema version differs from `schema.rb` (a stale
+    # or empty base database): `schema.rb` runs with `force: true`, which drops
+    # the copied rows of the tables it defines.
     #
     # @param worker [Integer] the worker slot index.
     # @param schema_path [String, nil] absolute path to `db/schema.rb`, or nil to skip.
@@ -116,9 +117,9 @@ module Mutineer
       return unless available?
 
       config = worker_db_config(worker)
-      seeded = seed && seed_from_base(worker)
+      seed_from_base(worker) if seed
       ActiveRecord::Base.establish_connection(config)
-      load_schema(schema_path) if schema_path && !seeded
+      load_schema(schema_path) if schema_path && !schema_current?(schema_path)
       verify_connection!
     end
 
@@ -129,16 +130,35 @@ module Mutineer
     # absent or empty target.
     #
     # @param worker [Integer] the worker slot index.
-    # @return [Boolean] true when copied; false when the base database has no tables.
+    # @return [void]
     def self.seed_from_base(worker)
-      conn = ActiveRecord::Base.connection
-      return false if conn.tables.empty?
-
+      conn   = ActiveRecord::Base.connection
       base   = conn.select_value("SELECT file FROM pragma_database_list WHERE name = 'main'")
       target = worker_database_path(base, worker)
       ["", "-wal", "-shm", "-journal"].each { |suffix| FileUtils.rm_f(target + suffix) }
       conn.execute("VACUUM INTO #{conn.quote(target)}")
-      true
+    end
+
+    # True when the current database already holds the schema version that
+    # `schema.rb` declares (its newest `schema_migrations` row matches).
+    #
+    # @param schema_path [String] absolute path to `db/schema.rb`.
+    # @return [Boolean]
+    def self.schema_current?(schema_path)
+      version = schema_file_version(File.read(schema_path))
+      conn = ActiveRecord::Base.connection
+      return false unless version && conn.table_exists?(:schema_migrations)
+
+      conn.select_values("SELECT version FROM schema_migrations").map(&:to_i).max == version
+    end
+
+    # The version a `schema.rb` declares in `define(version: ...)`, or nil. Pure
+    # string parse (no AR) so it is unit-testable in the zero-dep suite.
+    #
+    # @param text [String] the `schema.rb` source.
+    # @return [Integer, nil]
+    def self.schema_file_version(text)
+      text[/define\(version:\s*([\d_]+)/, 1]&.delete("_")&.to_i
     end
 
     # Load a Rails `schema.rb` into the current connection with output silenced
