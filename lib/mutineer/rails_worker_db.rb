@@ -151,8 +151,9 @@ module Mutineer
       text    = File.read(schema_path)
       version = schema_file_version(text)
       conn = ActiveRecord::Base.connection
-      migrations = ActiveRecord::Base.schema_migrations_table_name
-      metadata   = ActiveRecord::Base.internal_metadata_table_name
+      base       = ActiveRecord::Base
+      migrations = "#{base.table_name_prefix}#{base.schema_migrations_table_name}#{base.table_name_suffix}"
+      metadata   = "#{base.table_name_prefix}#{base.internal_metadata_table_name}#{base.table_name_suffix}"
       return false unless version && conn.table_exists?(migrations)
       return false unless conn.select_values("SELECT version FROM #{conn.quote_table_name(migrations)}").map(&:to_i).max == version
       return true unless conn.table_exists?(metadata)
