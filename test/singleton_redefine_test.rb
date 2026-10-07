@@ -137,6 +137,20 @@ class SingletonRedefineTest < Minitest::Test
     end
   end
 
+  # #229: `module self::X` in a block is under the block's `self`, which the
+  # redefine wrapper cannot reopen; before the fix it loaded the mutant onto a new
+  # SelfPathApp::Calc, so the mutants falsely survived.
+  def test_self_path_module_in_a_block_is_unplaceable_under_redefine_and_killed_under_reload
+    files = %w[self_path_block.rb self_path_block_test.rb]
+    %w[SelfPathApp::Calc.sum SelfPathApp::Built::Calc.product].each do |only|
+      redefine = run_redefine(*files, only: only)
+      assert_operator redefine.unplaceable_count, :>, 0, only
+      assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count +
+                      redefine.uncapturable_count, only
+      assert_killed(run_redefine(*files, strategy: "reload", only: only), only)
+    end
+  end
+
   def test_module_function_in_a_module_new_block_is_mutated
     %w[ModuleNewHost::Helpers.calc ModuleNewHost::Helpers.twice].each do |only|
       assert_killed(run_redefine("module_new_function.rb", "module_new_function_test.rb", only: only), only)

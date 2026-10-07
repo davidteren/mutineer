@@ -649,6 +649,7 @@ class ProjectTest < Minitest::Test
 
   # #216: the same holds outside `class << self`, and for a module under the
   # singleton class of such a `self::X`. Openings under one `self` still match.
+  # #229: the X is under the built class, Outer::Foo, and redefine cannot reopen it.
   def test_discover_module_function_does_not_cross_self_path_in_a_builder_block_with_known_owner
     src = <<~RUBY
       module Outer
@@ -693,8 +694,48 @@ class ProjectTest < Minitest::Test
       end
     RUBY
     with_source(src) do |path|
-      assert_equal %w[Outer::X#c #<Class:Outer::X>::M#d Outer::X::N.e Outer::X::A::B.f Outer::X.g],
-                   Mutineer::Project.discover([path]).map(&:qualified_name)
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Outer::Foo::X#c #<Class:Outer::Foo::X>::M#d Outer::Foo::X::N.e Outer::Foo::X::A::B.f
+                      Outer::Foo::X.g], subjects.map(&:qualified_name)
+      assert(subjects.all?(&:owner_unknown))
+    end
+  end
+
+  # #229: `self` in a block may be another object, so a `self::X` opened or
+  # assigned there, and everything in it, has its owner unknown. The name stays on
+  # the enclosing namespace. Directly in a class body `self` is that class.
+  def test_discover_self_path_in_a_block_or_def_has_its_owner_unknown
+    src = <<~RUBY
+      module Outer
+        module self::Direct
+          def a; end
+        end
+        configure do
+          module self::X
+            def c; end
+            module N
+              def d; end
+            end
+            Z = Module.new do
+              def z; end
+            end
+          end
+          class self::K
+            def k; end
+          end
+        end
+        def setup
+          self::Y = Module.new do
+            def y; end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Outer::Direct#a Outer::X#c Outer::X::N#d Outer::X::Z#z Outer::K#k Outer#setup Outer::Y#y],
+                   subjects.map(&:qualified_name)
+      assert_equal %w[Outer::Direct#a Outer#setup], subjects.reject(&:owner_unknown).map(&:qualified_name)
     end
   end
 
@@ -744,8 +785,11 @@ class ProjectTest < Minitest::Test
       end
     RUBY
     with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
       assert_equal %w[App#setup #<Class:App>::M#c #<Class:App>::M#d App::X#x App::Y#y #<Class:App>::M.e],
-                   Mutineer::Project.discover([path]).map(&:qualified_name)
+                   subjects.map(&:qualified_name)
+      # #229: X and Y are under Other at run time, so redefine cannot place them.
+      assert_equal %w[App#setup], subjects.reject(&:owner_unknown).map(&:qualified_name)
     end
   end
 

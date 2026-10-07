@@ -81,6 +81,20 @@ All notable changes to this project are documented here. The format is based on
   in a `class_eval` block. A `self::X` like these now also stays apart from a
   module of the same name outside `class << self`, where a `module_function`
   in that module used to promote its methods.
+- **A `module self::X` or `class self::X` in a block is `unplaceable` under
+  `--strategy redefine` (#229).** In a block, `self` is not always the
+  enclosing class: in `Other.class_eval do` it is `Other`, and in
+  `Foo = Class.new do` it is the new class. Mutineer gave these modules a
+  known owner on the enclosing namespace, so redefine loaded the mutant onto
+  a module the tests never use, and the mutant could falsely survive or
+  score `error`. Such a module, everything nested in it, and a
+  `self::X = ...` in a method or a block that does not build a class now have
+  their owner unknown: redefine reports their mutants as `unplaceable`, and
+  `--strategy reload` still runs them. In a `Data.define`, `Struct.new`,
+  `Class.new` or `Module.new` block, the module is now named under the
+  builder's constant (`Outer::Foo::X#c`, was `Outer::X#c`), so the subject
+  names and mutant ids of those methods change. `self::X` directly in a class
+  or module body is unchanged.
 
 - **`--daemon` worker databases start as a copy of the test database
   (#222).** Each worker slot's SQLite database used to start from

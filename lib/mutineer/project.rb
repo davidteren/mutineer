@@ -74,7 +74,7 @@ module Mutineer
         @owner_unknown = false
         @assigned = nil
         @singleton_cref = nil # the singleton class name, in a builder block inside `class << self`
-        @namespace_unknown = false # the namespace is lexically under a singleton class (#208)
+        @namespace_unknown = false # the namespace is under a singleton class (#208) or a block's `self` (#229)
         @anonymous_block = false   # inside a builder block not assigned to a constant
         @self_unknown = false      # inside a def or a block that is not a builder, so `self` is not the namespace
         @self_scope = nil          # the def or block whose `self` the code runs with
@@ -243,15 +243,17 @@ module Mutineer
       # `module A::B` matches nested `module A; module B`. An unknown owner whose
       # name is not built only from constant names (see {#named_segment?}), or that
       # an anonymous builder block owns, may be shared by another module, so it is
-      # matched only within this body (#208). A known owner with a {WrittenName}
-      # in its name is matched by that segment's scope and text, so openings under
-      # one `self` match each other, but not those under another.
+      # matched only within this body (#208). Otherwise a name with a {WrittenName}
+      # segment is matched by that segment's scope and text, so openings under one
+      # `self` match each other, but not those under another, whether the owner is
+      # known or not (#229).
       #
       # @return [String, Object]
       def module_key
         namespace = @block_namespace || @namespace_stack
-        return @body if @owner_unknown && (@anonymous_block || !namespace.all? { |s| named_segment?(s) })
-        return namespace.join("::") unless written?(namespace)
+        written = written?(namespace)
+        return @body if @owner_unknown && (@anonymous_block || !written && !namespace.all? { |s| named_segment?(s) })
+        return namespace.join("::") unless written
 
         namespace.map { |s| s.is_a?(WrittenName) ? "#{s.scope.object_id}:#{s}" : s }.join("::")
       end
@@ -287,8 +289,14 @@ module Mutineer
       # A compact `Foo::X` or a top-level `::X` there is named as written, and
       # its owner is unknown too: redefine reopens the lexical chain without the
       # singleton class, so constants the body looks up through it would not resolve.
-      # A `self::X` in a block is under the block's `self` (the class a builder
-      # builds, or any object), not the namespace it is named in, so its name is a {WrittenName}.
+      # A `self::X` in any block is under the block's `self`, not the namespace
+      # around the block (#229). In a builder block that is the built class, so
+      # it is named under the builder's constant; in any other block (`class_eval`,
+      # a callback) `self` may be any object, so it is named on the enclosing
+      # namespace. Either way the last segment is a {WrittenName}, and it and
+      # everything nested in it has its owner unknown: redefine reopens the
+      # lexical chain, which never reaches the block's `self` (a builder's class
+      # is not even assigned to its constant yet while the block runs).
       #
       # @param path [Prism::Node] the class/module constant path.
       # @yield the class or module body visit.
@@ -298,17 +306,18 @@ module Mutineer
           name = extract_constant_name(path)
           root = root_anchored?(path)
           in_singleton = !@singleton_cref.nil? || @singleton_depth.positive?
+          self_in_block = !in_singleton && !root && self_rooted?(path) && (@block_namespace || @self_unknown)
           @namespace_stack =
             if root then [name]
             elsif in_singleton then path.is_a?(Prism::ConstantPathNode) ? [path.slice] : [singleton_name, name]
-            elsif self_rooted?(path) && (@block_namespace || @self_unknown)
-              @namespace_stack + [WrittenName.new(name, @self_scope)]
+            elsif self_in_block then (@block_namespace || @namespace_stack) + [WrittenName.new(name, @self_scope)]
             else @namespace_stack + [name]
             end
           @lexical_stack += [root ? "::#{name}" : name]
           @module_function_active = false
           @block_owner = @block_namespace = nil
-          @namespace_unknown = @owner_unknown = in_singleton || @namespace_unknown # redefine reopens the lexical chain
+          # redefine reopens the lexical chain, which does not pass through the block's `self`
+          @namespace_unknown = @owner_unknown = in_singleton || self_in_block || @namespace_unknown
           @singleton_depth = 0
           @singleton_cref = nil
           @anonymous_block = @self_unknown = @singleton_uncertain = false
@@ -337,7 +346,9 @@ module Mutineer
       # Resolves the constant an assignment writes the way Ruby does. `X` is in the
       # current namespace, `::X` and a path at the top level start from Object, and
       # `self::X` is under the current class (the built class inside a builder
-      # block). Any other path is looked up at run time, so its owner is unknown
+      # block). In a def or a block that does not build a class, `self` may be any
+      # object, so `self::X` there has its owner unknown (#229). Any other path is
+      # looked up at run time, so its owner is unknown
       # and the subject is named as written. Lexically inside `class << self`,
       # even within a builder block there, the constant belongs to the singleton
       # class, which has no constant path, so its owner is unknown too, as is
@@ -364,7 +375,7 @@ module Mutineer
         end
         # see {#with_namespace}
         names[0] = WrittenName.new(names[0], @self_scope) if path.is_a?(Prism::SelfNode) && @self_unknown
-        if path.is_a?(Prism::SelfNode) && @namespace_unknown && !@anonymous_block
+        if path.is_a?(Prism::SelfNode) && (@self_unknown || @namespace_unknown && !@anonymous_block)
           return [nil, (@block_namespace || @namespace_stack) + names, true]
         end
 
