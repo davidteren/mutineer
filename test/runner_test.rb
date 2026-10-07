@@ -168,7 +168,7 @@ class RunnerTest < Minitest::Test
       path = File.join(root, "nested.rb")
       File.write(path, "class Nested\n  def outer\n    def inner\n      true\n    end\n    false\n  end\nend\n")
       config = Mutineer::Config.new(sources: [path], project_root: root)
-      jobs, = Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::ALL.keys))
+      jobs, = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::ALL.keys))
 
       edits = jobs.map { |_s, m, _id| [m.start_offset, m.end_offset, m.replacement] }
       assert_equal edits.uniq, edits, "an edit is emitted on more than one subject"
@@ -184,7 +184,7 @@ class RunnerTest < Minitest::Test
       File.write(path, "class Nested\n  def outer(obj)\n    class << obj\n      def hidden\n        true\n      end\n    end\n" \
                        "    class << self\n      def shown\n        true\n      end\n    end\n  end\nend\n")
       config = Mutineer::Config.new(sources: [path], project_root: root)
-      jobs, = Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::ALL.keys))
+      jobs, = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::ALL.keys))
 
       edits = jobs.map { |_s, m, _id| [m.start_offset, m.end_offset, m.replacement] }
       assert_equal edits.uniq, edits, "an edit is emitted on more than one subject"
@@ -207,7 +207,7 @@ class RunnerTest < Minitest::Test
     start = source.index(snippet)
     mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,
                                       replacement: "nil", operator: :test)
-    Mutineer::Runner.coverage_selection("x.rb", mutation, subject, source,
+    Mutineer::JobPlan.coverage_selection("x.rb", mutation, subject, source,
                                         FakeCoverageMap.new(tests_by_line, "/root", load_lines, uncapturable))
   end
 
@@ -275,7 +275,7 @@ class RunnerTest < Minitest::Test
     assert_operator lines.length, :>, 1, "fixture should yield mutations on several lines"
 
     Mutineer::ChangedLines.stub(:for, { CALC => Set[5] }) do
-      kept = Mutineer::Runner.filter_since(jobs, source_map, config)
+      kept = Mutineer::JobPlan.filter_since(jobs, source_map, config)
       assert kept.length.positive?, "line 5 mutations should survive"
       assert kept.length < jobs.length, "off-line mutations should be filtered out"
       assert(kept.all? { |_s, m| line_of(m, source_map[CALC]) == 5 })
@@ -288,7 +288,7 @@ class RunnerTest < Minitest::Test
     jobs = build_jobs(config, source_map)
 
     Mutineer::ChangedLines.stub(:for, {}) do
-      assert_empty Mutineer::Runner.filter_since(jobs, source_map, config)
+      assert_empty Mutineer::JobPlan.filter_since(jobs, source_map, config)
     end
   end
 
@@ -348,14 +348,14 @@ class RunnerTest < Minitest::Test
 
   def test_abort_if_unclean_raises_when_no_test_recorded_coverage
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["test/calc_test.rb"], project_root: ROOT)
-    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::Runner.abort_if_unclean!(map) }
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
     assert_match(%r{capture failed for test/calc_test\.rb}, err.message)
   end
 
   def test_abort_if_unclean_passes_when_another_test_recorded_coverage
     map = Mutineer::CoverageMap.from_data(map: { "lib/calc.rb:2" => ["test/ok_test.rb"] },
                                           failed_test_files: ["test/calc_test.rb"], project_root: ROOT)
-    assert_nil Mutineer::Runner.abort_if_unclean!(map)
+    assert_nil Mutineer::JobPlan.abort_if_unclean!(map)
   end
 
   # #159: an operator that emits one edit twice runs it once, and every kept
@@ -367,7 +367,7 @@ class RunnerTest < Minitest::Test
       File.write(path, "class Zero\n  def a\n    x = 0\n    y = 0\n    !!x\n  end\nend\n")
       config = Mutineer::Config.new(sources: [path], project_root: dir)
       ops = Mutineer::MutatorRegistry.resolve(%w[literal_mutation negation_removal])
-      jobs, _ignored, _map, extras = Mutineer::Runner.collect_jobs(config, ops)
+      jobs, _ignored, _map, extras = Mutineer::JobPlan.collect_jobs(config, ops)
 
       source = File.read(path)
       mutated = jobs.map { |_s, m, _id| [m.operator, m.apply(source)] }
@@ -378,7 +378,7 @@ class RunnerTest < Minitest::Test
       all = ops.flat_map { |k| k.new.mutations_for(subject, source) }
       before = Mutineer::MutantId.for_subject(subject, source, all, path: "zero.rb")
       lines = all.map { |m| source.byteslice(0, m.start_offset).count("\n") + 1 }
-      keys = Mutineer::Runner.result_keys(all, source, lines)
+      keys = Mutineer::JobPlan.result_keys(all, source, lines)
       kept = all.each_index.select { |i| keys.index(keys[i]) == i }
       assert_equal kept.map { |i| before[i] }, jobs.map(&:last)
 
@@ -398,7 +398,7 @@ class RunnerTest < Minitest::Test
       File.write(path, "class Either\n  def a(x)\n    x || x\n  end\nend\n")
       config = Mutineer::Config.new(sources: [path], project_root: dir)
       ops = Mutineer::MutatorRegistry.resolve(%w[operand_removal])
-      jobs, = Mutineer::Runner.collect_jobs(config, ops)
+      jobs, = Mutineer::JobPlan.collect_jobs(config, ops)
       source = File.read(path)
       all = ops.first.new.mutations_for(jobs.first[0], source)
       assert_equal 2, all.size, "operand_removal emits both sides"
@@ -415,7 +415,7 @@ class RunnerTest < Minitest::Test
       path = File.join(dir, "chain.rb")
       File.write(path, "class Chain\n  def m\n    a\n      .b\n      .b\n      .c\n  end\nend\n")
       config = Mutineer::Config.new(sources: [path], project_root: dir)
-      jobs, = Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[chain_link]))
+      jobs, = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[chain_link]))
       assert_equal 2, jobs.size
     end
   end
@@ -427,10 +427,10 @@ class RunnerTest < Minitest::Test
       path = File.join(dir, "zero.rb")
       File.write(path, "class Zero\n  def a\n    0\n  end\nend\n")
       ops = Mutineer::MutatorRegistry.resolve(%w[literal_mutation])
-      first_id = Mutineer::Runner.collect_jobs(Mutineer::Config.new(sources: [path], project_root: dir), ops)
+      first_id = Mutineer::JobPlan.collect_jobs(Mutineer::Config.new(sources: [path], project_root: dir), ops)
                                  .first.first.last
       config = Mutineer::Config.new(sources: [path], project_root: dir, ignore: [first_id])
-      jobs, ignored, = Mutineer::Runner.collect_jobs(config, ops)
+      jobs, ignored, = Mutineer::JobPlan.collect_jobs(config, ops)
       assert_equal [first_id], ignored.map(&:id)
       assert_equal 1, jobs.size
       refute_equal first_id, jobs.first.last

@@ -7,7 +7,7 @@ require "tmpdir"
 require "mutineer/config"
 require "mutineer/daemon_backend"
 
-# #58: DaemonBackend reaches back into Runner for the invariants both backends must
+# #58: DaemonBackend calls JobPlan (#75) for the invariants both backends must
 # share (job collection, --since, coverage selection, path helpers). The split turned
 # those intra-class calls into a cross-module contract, and every test that exercises
 # it lives in DAEMON_TESTS — excluded from the zero-dep suite. So renaming or
@@ -16,15 +16,16 @@ require "mutineer/daemon_backend"
 # daemon-free on purpose: they run in the default suite and fail the moment the
 # contract moves.
 class DaemonBackendContractTest < Minitest::Test
-  # The Runner methods DaemonBackend calls across the module boundary.
-  SHARED = %i[collect_jobs filter_since coverage_selection load_verdict test_load_roots source_dirs].freeze
+  # The JobPlan methods DaemonBackend calls across the module boundary.
+  SHARED = %i[collect_jobs filter_since coverage_selection load_verdict test_load_roots source_dirs
+              sweep_orphans abort_if_unclean!].freeze
 
   # Cheapest possible tripwire: privatising or renaming any of them breaks the
   # daemon path at runtime, and nothing else in the zero-dep suite would notice.
-  def test_runner_publicly_answers_every_shared_invariant
+  def test_job_plan_publicly_answers_every_shared_invariant
     SHARED.each do |m|
-      assert_respond_to Mutineer::Runner, m,
-                        "DaemonBackend calls Runner.#{m}; making it private or renaming it " \
+      assert_respond_to Mutineer::JobPlan, m,
+                        "DaemonBackend calls JobPlan.#{m}; making it private or renaming it " \
                         "breaks the daemon backend without failing the zero-dep suite"
     end
   end
@@ -46,8 +47,30 @@ class DaemonBackendContractTest < Minitest::Test
                  "a require cycle between runner.rb and daemon_backend.rb warns on every -w load")
   end
 
+  # #75: every require_relative edge in lib/mutineer forms a DAG. Loading every
+  # file enters every load-time cycle, wherever it is, and Ruby warns on each one.
+  def test_loading_every_lib_file_emits_no_circular_require_warning
+    lib = File.expand_path("../lib", __dir__)
+    files = Dir[File.join(lib, "mutineer/**/*.rb")]
+    script = 'ARGV.sort.each { |f| require f }; print $LOADED_FEATURES.size'
+    out = IO.popen([RbConfig.ruby, "-w", "-I#{lib}", "-e", script, *files], err: %i[child out], &:read)
+
+    assert_predicate $CHILD_STATUS, :success?, "the child failed to load every file, so this proved nothing:\n#{out}"
+    refute_match(/circular require/, out, "a require_relative cycle in lib/mutineer warns on every -w load")
+  end
+
+  # #75: daemon_backend.rb requires what it references, so loading it alone
+  # defines the shared job vocabulary it calls.
+  def test_daemon_backend_loads_job_plan_on_its_own
+    lib = File.expand_path("../lib", __dir__)
+    script = 'require "mutineer/daemon_backend"; print Mutineer::JobPlan.respond_to?(:collect_jobs)'
+    out = IO.popen([RbConfig.ruby, "-w", "-I#{lib}", "-e", script], err: %i[child out], &:read)
+
+    assert_equal "true", out
+  end
+
   # Exercises the shared helpers for real rather than by respond_to? alone:
-  # boot_config routes through Runner.test_load_roots and Runner.source_dirs.
+  # boot_config routes through JobPlan.test_load_roots and JobPlan.source_dirs.
   def test_boot_config_resolves_load_roots_and_source_dirs
     Dir.mktmpdir("mutineer-contract") do |root|
       FileUtils.mkdir_p(File.join(root, "app/models"))
@@ -308,7 +331,7 @@ class DaemonBackendContractTest < Minitest::Test
       File.binwrite(source, SOURCE)
       ops = Mutineer::MutatorRegistry.resolve(%w[arithmetic])
       probe = Mutineer::Config.new(sources: [source], project_root: root)
-      jobs, = Mutineer::Runner.collect_jobs(probe, ops)
+      jobs, = Mutineer::JobPlan.collect_jobs(probe, ops)
       refute_empty jobs
       subject = jobs.first[0]
       legacy = Mutineer::MutantId.legacy_for_subject(subject, SOURCE, jobs.select { |j| j[0] == subject }.map { |j| j[1] })
@@ -316,7 +339,7 @@ class DaemonBackendContractTest < Minitest::Test
 
       config = ->(**kw) { Mutineer::Config.new(sources: [source], project_root: root, framework: "minitest",
                                                 operators: %w[arithmetic], ignore: ignore, **kw) }
-      _, expected_ignored, _, extras = Mutineer::Runner.collect_jobs(config.(), ops)
+      _, expected_ignored, _, extras = Mutineer::JobPlan.collect_jobs(config.(), ops)
       refute_empty extras[:legacy_ignore_matches]
 
       daemon = Mutineer::DaemonClient.stub(:new, ->(**) { flunk "booted a daemon" }) do

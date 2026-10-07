@@ -21,7 +21,7 @@ module Mutineer
   # which makes leaving the file mutated the one genuinely dangerous failure mode.
   #
   # Defense in depth, mirroring the tempfile-orphan discipline
-  # (`Runner.sweep_orphans`, `isolation.rb` tempfiles):
+  # (`JobPlan.sweep_orphans`, `isolation.rb` tempfiles):
   #   - exclusive OS ownership (flock) is acquired before swap or recovery;
   #   - the original bytes are held in memory AND written to a sibling backup;
   #   - `ensure` restores from memory around every mutant;

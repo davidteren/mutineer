@@ -25,7 +25,7 @@ class StatementCoverageTest < Minitest::Test
     subject = @subjects.find { |s| s.def_node.location.start_offset <= start && start < s.def_node.location.end_offset }
     mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,
                                       replacement: "nil", operator: :test)
-    Mutineer::Runner.coverage_selection(SOURCE, mutation, subject, @source, @map).first
+    Mutineer::JobPlan.coverage_selection(SOURCE, mutation, subject, @source, @map).first
   end
 
   def test_a_later_entry_of_a_hash_runs_its_tests
