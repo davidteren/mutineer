@@ -98,6 +98,7 @@ module Mutineer
           cache_dir: File.expand_path(config.cache_dir, config.project_root), project_root: config.project_root,
           load_paths: config.load_paths, framework: config.framework,
           boot_path: File.expand_path(config.boot, config.project_root),
+          require_paths: config.require_paths, # loaded above; here only for the cache digest
           verbose: config.verbose,
           capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_via_fork(after_fork: (config.rails ? -> { reconnect_active_record } : nil))
