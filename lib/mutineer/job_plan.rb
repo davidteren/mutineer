@@ -16,8 +16,9 @@ module Mutineer
   # The job vocabulary every backend shares: which mutants run, which are
   # ignored, which lines `--since` keeps, which tests cover a mutant, and the
   # source and test directories a run touches. {Runner}, {DaemonBackend} and
-  # {CLI} each require this file, so no backend requires another and job
-  # selection cannot drift between them (score parity, #75).
+  # {CLI} each require this file, so job selection cannot drift between them
+  # (score parity), and the require graph has no cycles (#75). Never require
+  # runner.rb, daemon_backend.rb or cli.rb from here: each requires this file.
   module JobPlan
     # Collect every (subject, mutation, id) up front so a backend can run them.
     # A mutant the user marked known-equivalent (inline disable-line comment or
