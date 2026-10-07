@@ -697,7 +697,7 @@ class ProjectTest < Minitest::Test
       subjects = Mutineer::Project.discover([path])
       assert_equal %w[Outer::Foo::X#c #<Class:Outer::Foo::X>::M#d Outer::Foo::X::N.e Outer::Foo::X::A::B.f
                       Outer::Foo::X.g], subjects.map(&:qualified_name)
-      assert(subjects.all?(&:owner_unknown))
+      assert_equal [true] * 5, subjects.map(&:owner_unknown)
     end
   end
 

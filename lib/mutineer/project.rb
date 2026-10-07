@@ -306,7 +306,7 @@ module Mutineer
           name = extract_constant_name(path)
           root = root_anchored?(path)
           in_singleton = !@singleton_cref.nil? || @singleton_depth.positive?
-          self_in_block = !in_singleton && !root && self_rooted?(path) && (@block_namespace || @self_unknown)
+          self_in_block = !in_singleton && !root && self_rooted?(path) && (!@block_namespace.nil? || @self_unknown)
           @namespace_stack =
             if root then [name]
             elsif in_singleton then path.is_a?(Prism::ConstantPathNode) ? [path.slice] : [singleton_name, name]
