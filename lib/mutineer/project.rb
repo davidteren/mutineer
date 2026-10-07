@@ -38,8 +38,7 @@ module Mutineer
       # the singleton class name of a `class << self` opened inside a def or a
       # block that does not build a class, or built on a written path or
       # `#<anonymous>` (`#<Class:Foo::X>` from `class Foo::X` inside `class << self`);
-      # or the `X` of `module self::X` in a block, or of `self::X = ...` in a def or
-      # a block that does not build a class. The segment carries that mark (see
+      # or the `X` of `module self::X` or `self::X = ...` in a def or a block. The segment carries that mark (see
       # {#singleton_name}, {#with_namespace}, {#assigned_owner}), and `scope`, the
       # def or block whose `self` the name is under, or a new object when unknown.
       class WrittenName < String
@@ -376,8 +375,10 @@ module Mutineer
           names.unshift(path.name.to_s)
           path = path.parent
         end
-        # see {#with_namespace}
-        names[0] = WrittenName.new(names[0], @self_scope) if path.is_a?(Prism::SelfNode) && @self_unknown
+        # see {#with_namespace}; in a builder block too, so a later `module self::X` there matches it
+        if path.is_a?(Prism::SelfNode) && (@self_unknown || @block_namespace)
+          names[0] = WrittenName.new(names[0], @self_scope)
+        end
         if path.is_a?(Prism::SelfNode) && (@self_unknown || @namespace_unknown && !@anonymous_block)
           return [nil, (@block_namespace || @namespace_stack) + names, true]
         end

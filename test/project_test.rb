@@ -704,6 +704,26 @@ class ProjectTest < Minitest::Test
   # #229: `self` in a block may be another object, so a `self::X` opened or
   # assigned there, and everything in it, has its owner unknown. The name stays on
   # the enclosing namespace. Directly in a class body `self` is that class.
+  # #229: in a builder block, `self::X = Module.new` and a later `module self::X`
+  # are the same module, so `module_function` in one promotes the other's method.
+  def test_discover_module_function_matches_self_path_assigned_and_reopened_in_a_builder_block
+    src = <<~RUBY
+      module Outer
+        Foo = Class.new do
+          self::X = Module.new do
+            def c; end
+          end
+          module self::X
+            module_function :c
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[Outer::Foo::X.c], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   def test_discover_self_path_in_a_block_has_its_owner_unknown
     src = <<~RUBY
       module Outer
