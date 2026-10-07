@@ -217,18 +217,20 @@ module Mutineer
 
       # The module a `module_function` call and a def are matched by: its joined
       # namespace, so a module reopened later in the file matches (#216), and
-      # `module A::B` matches nested `module A; module B`. A name with a
-      # {WrittenName} in it, or an unknown owner whose name is not built only from
-      # constant names (see {#named_segment?}) or that an anonymous builder block
-      # owns, may be shared by another module, so it is matched only within this body (#208).
+      # `module A::B` matches nested `module A; module B`. An unknown owner whose
+      # name is not built only from constant names (see {#named_segment?}), or that
+      # an anonymous builder block owns, may be shared by another module, so it is
+      # matched only within this body (#208). A known owner with a {WrittenName}
+      # in its name is matched by that segment's identity, so modules nested in
+      # one opening of it still match each other, but not those of another opening.
       #
-      # @return [String, Object]
+      # @return [String, Array, Object]
       def module_key
         namespace = @block_namespace || @namespace_stack
-        return @body if written?(namespace)
         return @body if @owner_unknown && (@anonymous_block || !namespace.all? { |s| named_segment?(s) })
+        return namespace.join("::") unless written?(namespace)
 
-        namespace.join("::")
+        namespace.map { |s| s.is_a?(WrittenName) ? s.object_id : s }
       end
 
       # True when any segment of the namespace is a {WrittenName}.
