@@ -537,16 +537,21 @@ class CoverageMapTest < Minitest::Test
     FileUtils.mkdir_p(File.join(dir, "test/shop"))
     File.write(File.join(dir, "lib/shop/cart.rb"), "")
     File.write(File.join(dir, "test/shop/cart_test.rb"), "")
-    timings = { "test/shop/cart_test.rb" => 9.0, "test/slow_test.rb" => 8.0,
+    timings = { "test/shop/cart_test.rb" => 9.0, "test/a0_slow_test.rb" => 8.0,
                 "test/fast_test.rb" => 0.5, "test/b_tie_test.rb" => 2.0, "test/a_tie_test.rb" => 2.4 }
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: dir, timings: timings)
-    tests = %w[test/untimed_test.rb test/slow_test.rb test/b_tie_test.rb test/shop/cart_test.rb
+    tests = %w[test/untimed_test.rb test/a0_slow_test.rb test/b_tie_test.rb test/shop/cart_test.rb
                test/a_tie_test.rb test/fast_test.rb]
 
     expected = %w[test/shop/cart_test.rb test/fast_test.rb test/a_tie_test.rb test/b_tie_test.rb
-                  test/slow_test.rb test/untimed_test.rb]
+                  test/a0_slow_test.rb test/untimed_test.rb]
     assert_equal expected, map.order_tests(File.join(dir, "lib/shop/cart.rb"), tests)
     assert_equal expected, map.order_tests("lib/shop/cart.rb", tests.reverse)
+
+    # A startup cost that every capture pays does not blur the buckets.
+    slow_start = timings.transform_values { |t| t + 30 }
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: dir, timings: slow_start)
+    assert_equal expected, map.order_tests("lib/shop/cart.rb", tests)
   end
 
   def test_capture_records_a_timing_per_test_file_and_the_cache_keeps_them

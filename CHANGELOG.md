@@ -37,7 +37,8 @@ All notable changes to this project are documented here. The format is based on
   so a mutant that one fast file kills could still score `timeout` when slow
   files ran first. Now the files that pairing finds for the source run first,
   then the rest from fastest to slowest by the time each file took during
-  coverage capture. The order is fixed for a given cache. Costs compare in
+  coverage capture, less the fastest file's time (the startup cost each
+  capture pays). The order is fixed for a given cache. Costs compare in
   doubling buckets, so files of close cost keep their path order when a
   rebuilt cache measures them again; a file near a bucket edge can still move,
   so keep `.mutineer/` between CI runs for the most stable `--baseline`. The order
