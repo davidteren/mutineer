@@ -14,6 +14,7 @@ class BootModeTest < Minitest::Test
   STRONG = File.join(BOOT, "widget_strong_test.rb")
   WEAK   = File.join(BOOT, "widget_weak_test.rb")
   FAILING = File.join(BOOT, "widget_unrelated_failing_test.rb")
+  STATE  = File.join(BOOT, "widget_coverage_state_test.rb")
 
   def run_boot(*test_files, cache_dir:)
     config = Mutineer::Config.new(
@@ -71,6 +72,40 @@ class BootModeTest < Minitest::Test
       err = assert_raises(Mutineer::SmokeCheckError) { run_boot(WEAK, FAILING, cache_dir: cache) }
       assert_match(/unmutated suite is not green/, err.message)
     end
+  end
+
+  # #228: Coverage runs while the map is built, then is suspended, so no mutant
+  # fork pays for it. The second run resumes it for a cache hit, which
+  # suspends it again.
+  def test_coverage_is_suspended_in_mutants_after_the_map_is_built
+    # Another test in this process may have left Coverage running, which reads
+    # as a host's Coverage (see the test below).
+    Coverage.suspend if Coverage.running?
+    Dir.mktmpdir("mutineer-boot") do |cache|
+      log = File.join(cache, "states.log")
+      ENV["MUTINEER_COVERAGE_STATE_LOG"] = log
+      2.times do |i|
+        File.write(log, "")
+        run_boot(STATE, cache_dir: cache)
+        states = File.readlines(log, chomp: true)
+        # The capture (or the cache-hit clean check) first, then the mutant.
+        assert_equal %w[running suspended], states.chunk_while(&:==).map(&:first),
+                     "run #{i}: map built under Coverage, mutants run without it: #{states}"
+      end
+    ensure
+      ENV.delete("MUTINEER_COVERAGE_STATE_LOG")
+    end
+  end
+
+  # #228: Coverage a host started before the run is the host's, so the run
+  # leaves it running for the host's own report.
+  def test_coverage_a_host_started_keeps_running
+    case Coverage.state
+    when :idle then Coverage.start(lines: true, methods: true)
+    when :suspended then Coverage.resume
+    end
+    Dir.mktmpdir("mutineer-boot") { |cache| run_boot(STRONG, cache_dir: cache) }
+    assert Coverage.running?, "the host's Coverage is still running after the run"
   end
 
   # The AR reconnect hook is a guarded no-op when ActiveRecord is absent (as here).

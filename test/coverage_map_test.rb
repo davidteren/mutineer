@@ -276,6 +276,14 @@ class CoverageMapTest < Minitest::Test
     f
   end
 
+  # A boot-mode run earlier in this process leaves Coverage suspended (#228).
+  def ensure_coverage_running
+    case Coverage.state
+    when :idle then Coverage.start(lines: true, methods: true)
+    when :suspended then Coverage.resume
+    end
+  end
+
   def fork_map(test_path, verbose:)
     Mutineer::CoverageMap.new(
       source_paths: [CALC], test_paths: [test_path],
@@ -284,7 +292,7 @@ class CoverageMapTest < Minitest::Test
   end
 
   def test_fork_capture_returns_string_diagnostic_for_raising_child
-    Coverage.start(lines: true, methods: true) unless Coverage.running?
+    ensure_coverage_running
     map = fork_map(raising_test, verbose: true)
     payload = map.send(:fork_capture, raising_test, [CALC], nil)
     assert_kind_of String, payload
@@ -294,7 +302,7 @@ class CoverageMapTest < Minitest::Test
   # #19: a child that dies WITHOUT writing (hard crash / signal) must yield a
   # diagnostic string naming how it died — not a bare nil/"no result".
   def test_fork_capture_reports_child_death_when_no_output
-    Coverage.start(lines: true, methods: true) unless Coverage.running?
+    ensure_coverage_running
     killed = File.join(Dir.mktmpdir, "suicide_test.rb")
     File.write(killed, %(Process.kill("KILL", Process.pid)\n))
     map = fork_map(killed, verbose: true)
@@ -316,7 +324,7 @@ class CoverageMapTest < Minitest::Test
   end
 
   def test_build_via_fork_surfaces_real_error_under_verbose
-    Coverage.start(lines: true, methods: true) unless Coverage.running?
+    ensure_coverage_running
     rt = raising_test
     map = fork_map(rt, verbose: true)
     _, err = capture_subprocess_io { map.build_via_fork(after_fork: nil) }
@@ -325,7 +333,7 @@ class CoverageMapTest < Minitest::Test
   end
 
   def test_build_via_fork_suppresses_error_without_verbose
-    Coverage.start(lines: true, methods: true) unless Coverage.running?
+    ensure_coverage_running
     rt = raising_test
     map = fork_map(rt, verbose: false)
     _, err = capture_subprocess_io { map.build_via_fork(after_fork: nil) }
@@ -517,7 +525,7 @@ class CoverageMapTest < Minitest::Test
   # Boot mode reads the lines that ran during boot from the parent's Coverage,
   # on every run: no forked capture is credited with them.
   def test_build_via_fork_records_the_lines_that_ran_at_boot
-    Coverage.start(lines: true, methods: true) unless Coverage.running?
+    ensure_coverage_running
     dir = Dir.mktmpdir("mutineer-proj")
     src = File.join(dir, "boot_load.rb")
     test = File.join(dir, "boot_load_test.rb")
@@ -679,7 +687,7 @@ class CoverageMapTest < Minitest::Test
   # Boot mode forks the parent instead of spawning a subprocess; the fork
   # boundary silences stdout there.
   def test_fork_capture_and_fork_clean_check_silence_stdout
-    Coverage.start(lines: true, methods: true) unless Coverage.running?
+    ensure_coverage_running
     noisy = File.expand_path("fixtures/noisy_minitest_test.rb", __dir__)
     map = fork_map(noisy, verbose: true)
     payload = clean = nil
@@ -950,7 +958,7 @@ class CoverageMapTest < Minitest::Test
   end
 
   def test_fork_clean_pass_times_out_instead_of_hanging
-    Coverage.start(lines: true, methods: true) unless Coverage.running?
+    ensure_coverage_running
     hang = File.join(Dir.mktmpdir, "hang_clean_test.rb")
     File.write(hang, "sleep 5\n")
     map = Mutineer::CoverageMap.new(
@@ -985,7 +993,7 @@ class CoverageMapTest < Minitest::Test
   # #101: a hung test in a forked (--boot / --daemon) capture stops at
   # capture_timeout instead of blocking the run.
   def test_fork_capture_times_out_instead_of_hanging
-    Coverage.start(lines: true, methods: true) unless Coverage.running?
+    ensure_coverage_running
     hang = File.join(Dir.mktmpdir, "hang_capture_test.rb")
     File.write(hang, "sleep 10\n")
     map = Mutineer::CoverageMap.new(
@@ -1003,7 +1011,7 @@ class CoverageMapTest < Minitest::Test
   # setsid takes it out of the capture's process group. The capture must not
   # wait for it to exit before it reads the result.
   def test_fork_capture_does_not_wait_for_a_process_that_holds_the_pipe
-    Coverage.start(lines: true, methods: true) unless Coverage.running?
+    ensure_coverage_running
     dir = Dir.mktmpdir
     pid_file = File.join(dir, "pid")
     test = File.join(dir, "leftover_capture_test.rb")

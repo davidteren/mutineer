@@ -32,6 +32,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Mutants no longer run under Coverage with `--boot` or `--rails` (#228).** Coverage
+  starts before the app boots so the coverage map can be built, and it used to
+  keep running in every mutant fork after that, though nothing read it. It is
+  now suspended once the map is built, from a fresh capture or from the cache.
+  Coverage that a host process started before the run is left running.
+  On a small app whose test calls tiny methods in a loop, the CPU time of a
+  whole in-process `--boot` run fell from 0.76s to 0.57s (median of five). On
+  the Rails fixture app the run is mostly boot, and the change is within noise
+  (1.61s before, 1.60s after). `--daemon` runs its mutants in worker daemons
+  that never start Coverage, so its time does not change (3.48s before, 3.44s
+  after); the map-building daemon now suspends Coverage after the map too.
 - **A mutant runs its paired test files first, then the cheapest (#203).** The
   covering test files used to run in the order the coverage map stored them,
   so a mutant that one fast file kills could still score `timeout` when slow
