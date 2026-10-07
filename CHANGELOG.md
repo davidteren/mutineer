@@ -65,9 +65,10 @@ All notable changes to this project are documented here. The format is based on
   promotes the method from the earlier opening (#216).** Ruby treats both
   openings as one module, but Mutineer matched them only within one body, so
   it named the method `#<Class:App>::M#c` instead of `#<Class:App>::M.c`.
-  The two openings now match by the module's full name. A module whose name is
-  written as a path (`self::X`, `Foo::X`) or sits under an anonymous class
-  still matches only within its own body.
+  The two openings now match by the module's full name. A module whose name
+  Mutineer cannot be sure of still matches only within its own body: a path
+  such as `self::X` or `Foo::X` written directly inside `class << self`, a
+  `module self::X` in a `Class.new` block, or a name under an anonymous class.
 
 - **`--daemon` worker databases start as a copy of the test database
   (#222).** Each worker slot's SQLite database used to start from

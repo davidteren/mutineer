@@ -608,6 +608,32 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #216: `module self::X` in a builder block is under the built class, so it does
+  # not match the enclosing module's own X, though both are named the same.
+  def test_discover_module_function_does_not_cross_self_path_in_a_builder_block
+    src = <<~RUBY
+      class App
+        class << self
+          module M
+            Class.new do
+              module self::X
+                def c; end
+              end
+            end
+            module X
+              def c; end
+              module_function :c
+            end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[#<Class:App>::M::X#c #<Class:App>::M::X.c],
+                   Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   def test_discover_promotes_module_function_names_in_a_module_new_block
     src = <<~RUBY
       module Host

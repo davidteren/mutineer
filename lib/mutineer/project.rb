@@ -31,9 +31,10 @@ module Mutineer
       # Calls whose block is the body of the class they build: receiver name => method.
       CLASS_BUILDERS = { "Data" => :define, "Struct" => :new, "Class" => :new, "Module" => :new }.freeze
 
-      # A singleton class name built on a written path or `#<anonymous>`, such as
-      # `#<Class:Foo::X>` from `class Foo::X` inside `class << self`. It reads like
-      # a constant name, so the segment carries that it may not be one (#216).
+      # A name that reads like a constant name but may not be one (#216): a
+      # singleton class name built on a written path or `#<anonymous>`, such as
+      # `#<Class:Foo::X>` from `class Foo::X` inside `class << self`, or the `X`
+      # of `module self::X` in a builder block. The segment carries that mark.
       class WrittenName < String; end
 
       attr_reader :subjects
@@ -193,8 +194,9 @@ module Mutineer
       # The module a `module_function` call and a def are matched by: its joined
       # namespace, so a module reopened later in the file matches (#216), and
       # `module A::B` matches nested `module A; module B`. An unknown owner whose
-      # name is written as a path (`self::X`, `Foo::X`) or sits under an anonymous
-      # class may be shared by another module, so it is matched only within this body (#208).
+      # name is not built only from constant names (see {#named_segment?}), or that
+      # an anonymous builder block owns, may be shared by another module, so it is
+      # matched only within this body (#208).
       #
       # @return [String, Object]
       def module_key
@@ -227,6 +229,8 @@ module Mutineer
       # A compact `Foo::X` or a top-level `::X` there is named as written, and
       # its owner is unknown too: redefine reopens the lexical chain without the
       # singleton class, so constants the body looks up through it would not resolve.
+      # A `self::X` in a builder block is under the class the block builds, not
+      # the enclosing namespace it is named in, so its name is a {WrittenName}.
       #
       # @param path [Prism::Node] the class/module constant path.
       # @yield the class or module body visit.
@@ -239,7 +243,7 @@ module Mutineer
           @namespace_stack =
             if root then [name]
             elsif in_singleton then path.is_a?(Prism::ConstantPathNode) ? [path.slice] : [singleton_name, name]
-            else @namespace_stack + [name]
+            else @namespace_stack + [@block_namespace && self_rooted?(path) ? WrittenName.new(name) : name]
             end
           @lexical_stack += [root ? "::#{name}" : name]
           @module_function_active = false
@@ -383,6 +387,15 @@ module Mutineer
           @body = Object.new
           yield
         end
+      end
+
+      # True when a constant path starts with `self` (e.g. `self::X`).
+      #
+      # @param node [Prism::Node] constant path node.
+      # @return [Boolean]
+      def self_rooted?(node)
+        node = node.parent while node.is_a?(Prism::ConstantPathNode)
+        node.is_a?(Prism::SelfNode)
       end
 
       # True when a constant path starts with `::` (e.g. `::X` or `::A::B`).
