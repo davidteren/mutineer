@@ -52,7 +52,7 @@ between reports with the same `id_format` (a missing key is the old format).
 | `survived` | int | Mutants no test caught. **These are the actionable test gaps.** |
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
-| `unplaceable` | int | Under `--strategy redefine`, mutants whose method belongs to a class or module that cannot be named statically (no constant, a relative path inside a namespace, a class or module opened or assigned in `class << self`, or a `self::X` opened in a block), so they were not run (excluded). Not part of `no_verdict`, so they do not fail `--threshold`. `--strategy reload` runs them. Additive key (schema `1.7`). |
+| `unplaceable` | int | Under `--strategy redefine`, mutants whose method belongs to a class or module that cannot be named statically (no constant, a relative path inside a namespace, a class or module opened or assigned in `class << self`, or a `self::X` opened or assigned in a block), so they were not run (excluded). Not part of `no_verdict`, so they do not fail `--threshold`. `--strategy reload` runs them. Additive key (schema `1.7`). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). |
 | `errored` | int | Mutants whose run raised (excluded). |
@@ -86,7 +86,7 @@ Each entry is `{ subject, file, line, operator, token, id }`, sorted by
 should cover the line errored while capturing coverage (fix the harness, not the test). `unplaceable` (schema
 `1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module cannot be
 named statically (an anonymous `Class.new`, a relative path such as `User::Permission` inside a namespace,
-a class or module opened or assigned in `class << self`, or a `self::X` opened in a block); `--strategy reload`
+a class or module opened or assigned in `class << self`, or a `self::X` opened or assigned in a block); `--strategy reload`
 runs these. `ran_at_load` (schema `1.7`) means the mutant's line ran while the app booted or its class loaded (for example a class body that calls the
 method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
