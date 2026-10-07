@@ -78,6 +78,7 @@ class DaemonCoverageTest < Minitest::Test
       aggregate, = Mutineer::Runner.execute(config)
       statuses = aggregate.results.to_h { |r| [r.subject.name, r.status] }
       assert_equal({ rate: :ran_at_load, round: :killed }, statuses)
+      assert_equal 100.0, aggregate.mutation_score
     end
   end
 
