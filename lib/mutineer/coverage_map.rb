@@ -134,10 +134,10 @@ module Mutineer
     # loads them (#203): the files {Pairing.infer_tests} pairs with `file`
     # first, then the cheapest by {#timings}. A file with no timing comes
     # after the timed ones, and the path breaks a tie, so the same cache gives
-    # the same order on every run. A rebuild measures the timings again, so
-    # files of close cost can swap places then. A run that stops at the first
-    # failure then reaches a fast killing test before a slow file uses up the
-    # timeout.
+    # the same order on every run. Costs compare in doubling buckets
+    # (`log2(seconds + 1)`), so files of close cost keep their path order when
+    # a rebuild measures them again. A run that stops at the first failure
+    # then reaches a fast killing test before a slow file uses up the timeout.
     #
     # @param file [String] the mutated source file path.
     # @param tests [Array<String>] project-relative test paths from {#tests_for}.
@@ -147,7 +147,10 @@ module Mutineer
       @paired ||= {}
       paired = @paired[rel] ||= Pairing.infer_tests(rel, project_root: @project_root,
                                                          prefer: @framework || "minitest")
-      tests.sort_by { |t| [paired.include?(t) ? 0 : 1, @timings.fetch(t, Float::INFINITY), t] }
+      tests.sort_by do |t|
+        cost = @timings[t]
+        [paired.include?(t) ? 0 : 1, cost ? Math.log2(cost + 1).floor : Float::INFINITY, t]
+      end
     end
 
     # True when `file:line` ran while the app booted or the sources loaded

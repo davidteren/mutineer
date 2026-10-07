@@ -529,8 +529,8 @@ class CoverageMapTest < Minitest::Test
                                 .ran_at_load?(CATALOG, 7)
   end
 
-  # #203: the paired file first, then the cheapest; a file with no timing last,
-  # and the path breaks a tie.
+  # #203: the paired file first, then the cheapest; a file with no timing last.
+  # Costs in one doubling bucket (2.0 s and 2.4 s) tie, and the path breaks it.
   def test_order_tests_puts_paired_files_first_then_the_cheapest
     dir = Dir.mktmpdir("mutineer-order")
     FileUtils.mkdir_p(File.join(dir, "lib/shop"))
@@ -538,7 +538,7 @@ class CoverageMapTest < Minitest::Test
     File.write(File.join(dir, "lib/shop/cart.rb"), "")
     File.write(File.join(dir, "test/shop/cart_test.rb"), "")
     timings = { "test/shop/cart_test.rb" => 9.0, "test/slow_test.rb" => 8.0,
-                "test/fast_test.rb" => 0.5, "test/b_tie_test.rb" => 2.0, "test/a_tie_test.rb" => 2.0 }
+                "test/fast_test.rb" => 0.5, "test/b_tie_test.rb" => 2.0, "test/a_tie_test.rb" => 2.4 }
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: dir, timings: timings)
     tests = %w[test/untimed_test.rb test/slow_test.rb test/b_tie_test.rb test/shop/cart_test.rb
                test/a_tie_test.rb test/fast_test.rb]

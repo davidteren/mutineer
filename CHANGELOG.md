@@ -37,9 +37,10 @@ All notable changes to this project are documented here. The format is based on
   so a mutant that one fast file kills could still score `timeout` when slow
   files ran first. Now the files that pairing finds for the source run first,
   then the rest from fastest to slowest by the time each file took during
-  coverage capture. The order is fixed for a given cache. A rebuilt cache
-  measures the timings again, so two files of close cost can swap places; keep
-  `.mutineer/` between CI runs for the most stable `--baseline`. The order
+  coverage capture. The order is fixed for a given cache. Costs compare in
+  doubling buckets, so files of close cost keep their path order when a
+  rebuilt cache measures them again; a file near a bucket edge can still move,
+  so keep `.mutineer/` between CI runs for the most stable `--baseline`. The order
   applies to Minitest (after the seeded class shuffle, with `parallelize_me!`
   classes still last) and to RSpec. `--daemon` runs every covering test with
   no stop, so the order does not change its verdicts. The coverage cache now
