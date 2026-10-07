@@ -294,10 +294,12 @@ module Mutineer
       # around the block (#229). In a builder block that is the built class, so
       # it is named under the builder's constant; in any other block (`class_eval`,
       # a callback) `self` may be any object, so it is named under the innermost
-      # enclosing builder's constant, or else the enclosing namespace. Either way the last segment is a {WrittenName}, and it and
-      # everything nested in it has its owner unknown: redefine reopens the
-      # lexical chain, which never reaches the block's `self` (a builder's class
-      # is not even assigned to its constant yet while the block runs).
+      # enclosing builder's constant, or else the enclosing namespace. Either way
+      # the last segment is a {WrittenName}, and it and everything nested in it
+      # has its owner unknown. Redefine reopens the lexical chain (`module Outer;
+      # module X`), which never reaches the block's `self`; reopening X through
+      # its constant with `class_eval`, as for `self::X = ...` in a builder block,
+      # would drop X from `Module.nesting`, so constants its body looks up would not resolve.
       #
       # @param path [Prism::Node] the class/module constant path.
       # @yield the class or module body visit.
