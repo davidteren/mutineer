@@ -228,13 +228,13 @@ module Mutineer
       # in its name is matched by that segment's identity, so modules nested in
       # one opening of it still match each other, but not those of another opening.
       #
-      # @return [String, Array, Object]
+      # @return [String, Object]
       def module_key
         namespace = @block_namespace || @namespace_stack
         return @body if @owner_unknown && (@anonymous_block || !namespace.all? { |s| named_segment?(s) })
         return namespace.join("::") unless written?(namespace)
 
-        namespace.map { |s| s.is_a?(WrittenName) ? s.object_id : s }
+        namespace.map { |s| s.is_a?(WrittenName) ? s.object_id : s }.join("::") # no constant name is a number
       end
 
       # True when any segment of the namespace is a {WrittenName}.

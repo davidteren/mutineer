@@ -658,6 +658,14 @@ class ProjectTest < Minitest::Test
             module N
               module_function :e
             end
+            module A::B
+              module_function :f
+            end
+            module A
+              module B
+                def f; end
+              end
+            end
           end
         end
         module X
@@ -671,7 +679,7 @@ class ProjectTest < Minitest::Test
       end
     RUBY
     with_source(src) do |path|
-      assert_equal %w[Outer::X#c #<Class:Outer::X>::M#d Outer::X::N.e],
+      assert_equal %w[Outer::X#c #<Class:Outer::X>::M#d Outer::X::N.e Outer::X::A::B.f],
                    Mutineer::Project.discover([path]).map(&:qualified_name)
     end
   end
