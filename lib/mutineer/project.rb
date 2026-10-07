@@ -31,6 +31,11 @@ module Mutineer
       # Calls whose block is the body of the class they build: receiver name => method.
       CLASS_BUILDERS = { "Data" => :define, "Struct" => :new, "Class" => :new, "Module" => :new }.freeze
 
+      # A singleton class name built on a written path or `#<anonymous>`, such as
+      # `#<Class:Foo::X>` from `class Foo::X` inside `class << self`. It reads like
+      # a constant name, so the segment carries that it may not be one (#216).
+      class WrittenName < String; end
+
       attr_reader :subjects
 
       # Builds a subject visitor.
@@ -53,7 +58,6 @@ module Mutineer
         @singleton_cref = nil # the singleton class name, in a builder block inside `class << self`
         @namespace_unknown = false # the namespace is lexically under a singleton class (#208)
         @anonymous_block = false   # inside a builder block not assigned to a constant
-        @written_singletons = Set.new # singleton class names built on a written path or `#<anonymous>` (#216)
         super()
       end
 
@@ -202,12 +206,12 @@ module Mutineer
 
       # True when a namespace segment is a constant name, or a singleton class
       # (`#<Class:App::M>`) of constant names. A written path or `#<anonymous>` is
-      # not, nor is a singleton class name built on one anywhere in this file.
+      # not, nor is a singleton class name built on one ({WrittenName}).
       #
       # @param segment [String] namespace segment.
       # @return [Boolean]
       def named_segment?(segment)
-        !@written_singletons.include?(segment) && segment.gsub(/#<Class:|>/, "").match?(/\A[A-Z]\w*(?:::[A-Z]\w*)*\z/) &&
+        !segment.is_a?(WrittenName) && segment.gsub(/#<Class:|>/, "").match?(/\A[A-Z]\w*(?:::[A-Z]\w*)*\z/) &&
           (segment.start_with?("#<Class:") || !segment.include?("::"))
       end
 
@@ -313,7 +317,7 @@ module Mutineer
       # and a builder block inside `class << self` keeps the enclosing one. A block
       # not assigned to a constant builds a class with no name, written `#<anonymous>`.
       # Each nested `class << self` opens the singleton class of the one around it.
-      # A name built on a written path or `#<anonymous>` is recorded as such (see {#module_key}).
+      # A name built on a written path or `#<anonymous>` is a {WrittenName} (see {#module_key}).
       #
       # @return [String] e.g. `#<Class:App>`, or `#<Class:#<Class:App>>` two deep.
       def singleton_name
@@ -321,8 +325,7 @@ module Mutineer
 
         base = @anonymous_block ? @namespace_stack + ["#<anonymous>"] : @block_namespace || @namespace_stack
         name = @singleton_depth.times.reduce(base.join("::")) { |inner, _| "#<Class:#{inner}>" }
-        @written_singletons << name unless base.all? { |s| named_segment?(s) }
-        name
+        !@owner_unknown || base.all? { |s| named_segment?(s) } ? name : WrittenName.new(name)
       end
 
       # The owner for a resolved namespace, root-anchored so the redefine
