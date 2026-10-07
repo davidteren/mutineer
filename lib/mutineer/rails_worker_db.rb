@@ -139,9 +139,12 @@ module Mutineer
       source.busy_timeout = 5000
       backup = SQLite3::Backup.new(ActiveRecord::Base.connection.raw_connection, "main", source, "main")
       # Another worker's process can hold a lock on the base file for a moment;
-      # BUSY/LOCKED steps are retried. The daemon's per-fork timeout bounds this.
+      # BUSY/LOCKED steps are retried for up to 5 seconds, then the copy fails
+      # with a message that names the database (scored `error`).
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
       until (status = backup.step(-1)) == codes::DONE
-        raise "copying #{base_file} into the worker database failed (SQLite code #{status})" unless [codes::BUSY, codes::LOCKED].include?(status)
+        retry_ok = [codes::BUSY, codes::LOCKED].include?(status) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+        raise "copying #{base_file} into the worker database failed (SQLite code #{status})" unless retry_ok
 
         sleep 0.01
       end
