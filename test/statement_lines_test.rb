@@ -253,4 +253,28 @@ class StatementLinesTest < Minitest::Test
     RUBY
     assert_equal [3, 4], lines_at(source, ":b")
   end
+
+  # #209: the code of a one-line def that runs each time the method runs.
+  def test_runs_with_method_only_for_code_that_runs_on_every_call
+    {
+      ["def f(c) = c + 1", "c + 1"] => true,
+      ["def f(c); c + 1; end", "c + 1"] => true,
+      ["def f(c); a; b; end", "a"] => true,
+      ["def f(c); a; b; end", "b"] => false, # not the first statement
+      ["def f(c) = (a; b)", "a"] => false, # a statement nested in the body
+      ["def f(c) = c.map { _1 * 2 }", "_1 * 2"] => false, # a block body
+      ["def f(c); a += 1 while c; end", "1"] => false, # a loop body
+      ["def f(c); a += 1 while c; end", "c;"] => true, # the loop condition
+      ["def f(c); 7 if c; end", "7"] => false,
+      ["def f(c) = c ? 1 : 2", "1"] => false,
+      ["def f(c) = case c when 1 then :x end", ":x"] => false,
+      ["def f(c) = g(c) rescue 1", "1"] => false,
+      ["def f(c) = g(c) rescue 1", "g(c)"] => true,
+      ["def f(c = 1) = c", "1"] => false # a default parameter
+    }.each do |(source, snippet), expected|
+      def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+      actual = Mutineer::StatementLines.runs_with_method?(def_node, source.index(snippet))
+      assert_equal expected, actual, "#{source} at #{snippet}"
+    end
+  end
 end
