@@ -104,9 +104,10 @@ class ParallelStrategyTest < Minitest::Test
       exit!(0)
     end
     wr.close
-    out = rd.read
+    reader = Thread.new { rd.read }
+    wait_child(pid)
+    out = reader.value
     rd.close
-    Process.wait(pid)
     assert_equal "9", out
   end
 
@@ -131,9 +132,10 @@ class ParallelStrategyTest < Minitest::Test
       exit!(0)
     end
     wr.close
-    out = rd.read
+    reader = Thread.new { rd.read }
+    wait_child(pid)
+    out = reader.value
     rd.close
-    Process.wait(pid)
     out
   end
 end

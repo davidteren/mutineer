@@ -34,6 +34,7 @@ class TestRunnersRSpecTest < Minitest::Test
     rd, wr = IO.pipe
     err_rd, err_wr = IO.pipe
     pid = fork do
+      Process.setpgid(0, 0) # lead a group, so the deadline kill reaches descendants
       rd.close
       err_rd.close
       $stdout.reopen(wr) # capture anything written to the real fd 1
@@ -47,13 +48,34 @@ class TestRunnersRSpecTest < Minitest::Test
     end
     wr.close
     err_wr.close
+    # Drain both pipes on threads so the deadline in wait_child also covers a
+    # child that hangs with its pipes open (#132).
+    out_reader = Thread.new { rd.read }
     err_reader = Thread.new { err_rd.read }
-    out = rd.read
+    status = wait_child(pid)
+    # A descendant left in the child's group can hold the pipes open after the
+    # child exits; kill it so the reads reach EOF.
+    Process.kill(:KILL, -pid) rescue nil # rubocop:disable Style/RescueModifier
+    out = out_reader.value
     err = err_reader.value
     rd.close
     err_rd.close
-    _, status = Process.waitpid2(pid)
     [status.exitstatus, out, err]
+  end
+
+  # #132: a descendant that outlives the child and holds its output pipes open
+  # must not keep in_fork reading until that descendant exits.
+  def test_in_fork_returns_when_a_descendant_holds_the_pipes_open
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    code, = in_fork do
+      fork do
+        sleep 30
+        exit!
+      end
+      0
+    end
+    assert_equal 0, code
+    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 10
   end
 
   def test_passing_spec_returns_zero_and_is_silent

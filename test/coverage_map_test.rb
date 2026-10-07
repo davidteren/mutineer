@@ -307,7 +307,7 @@ class CoverageMapTest < Minitest::Test
   # #19: describe_status formats exit codes and signals for capture diagnostics.
   def test_describe_status_formats_exit_and_signal
     map = fork_map(raising_test, verbose: false)
-    _, exit_st = Process.waitpid2(fork { exit!(3) })
+    exit_st = wait_child(fork { exit!(3) })
     assert_match(/exit status 3/, map.send(:describe_status, exit_st))
     pid = fork { sleep 5 }
     Process.kill("KILL", pid)

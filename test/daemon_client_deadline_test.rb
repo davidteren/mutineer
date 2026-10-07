@@ -74,7 +74,7 @@ class DaemonClientDeadlineTest < Minitest::Test
     pid, ready = rd.gets.split
     child = pid.to_i
     assert_equal "watching", ready, "the mutant child failed before its watchdog started"
-    Process.wait(daemon)
+    wait_child(daemon)
     gone = 50.times.any? do
       sleep 0.1
       !process_alive?(child)
@@ -111,16 +111,5 @@ class DaemonClientDeadlineTest < Minitest::Test
     @client.send(:close_io)
     assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 5
     assert_raises(Errno::ESRCH) { Process.kill(0, @pid) }
-  end
-
-  private
-
-  # @return [Boolean] whether `pid` still runs. A zombie waiting for init to
-  # reap it counts as gone.
-  def process_alive?(pid)
-    Process.kill(0, pid)
-    !`ps -o stat= -p #{pid}`.strip.start_with?("Z")
-  rescue Errno::ESRCH
-    false
   end
 end

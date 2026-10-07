@@ -112,7 +112,7 @@ class FileSwapTest < Minitest::Test
       backup_kept = File.exist?(path + Mutineer::FileSwap::BACKUP_SUFFIX)
       wr_resume.write("1")
       wr_resume.close
-      Process.wait(pid)
+      wait_child(pid)
       assert_equal "mutant", File.binread(File.join(dir, "observed"))
       assert backup_kept, "live owner must keep its recovery backup"
       assert_equal "original", File.binread(path)
@@ -149,7 +149,7 @@ class FileSwapTest < Minitest::Test
       end
       wr_resume.write("1")
       wr_resume.close
-      Process.wait(pid)
+      wait_child(pid)
       assert_equal "original", File.binread(path)
     end
   end
@@ -194,7 +194,7 @@ class FileSwapTest < Minitest::Test
       assert_equal "mutant", File.binread(path)
       wr_resume.write("1")
       wr_resume.close
-      Process.wait(pid)
+      wait_child(pid)
       assert_equal "original", File.binread(path)
     end
   end
@@ -215,7 +215,7 @@ class FileSwapTest < Minitest::Test
       wr_ready.close
       rd_ready.read(1)
       Process.kill("KILL", pid)
-      Process.wait(pid)
+      wait_child(pid)
       assert_equal "mutant", File.binread(path)
       capture_io { Mutineer::FileSwap.restore_orphans([dir]) }
       assert_equal "original", File.binread(path)
