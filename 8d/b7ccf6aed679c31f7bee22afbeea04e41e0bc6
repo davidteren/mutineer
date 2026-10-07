@@ -1,0 +1,46 @@
+test/test_runners/rspec_test.rb
+  s_07d7b58ff1b9fd::t_753ad68907aac4 395-420
+lib/mutineer/runner.rb
+  s_07d7b58ff1b9fd::t_ae233d68871a0a 376-377,418
+test/daemon_backend_contract_test.rb
+  s_07d7b58ff1b9fd::t_df28f9ee5f13e5 159-174
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_943f25295f0f53 33-47
+lib/mutineer/daemon_server.rb
+  s_07d7b58ff1b9fd::t_ae233d68871a0a 164,178-179
+test/runner_test.rb
+  s_07d7b58ff1b9fd::t_ecafb13d9ea76a 87-126
+  s_07d7b58ff1b9fd::t_c6936773cd8795 201
+test/test_runners/minitest_test.rb
+  s_07d7b58ff1b9fd::t_321cd7bcfed41b 240-243
+  s_07d7b58ff1b9fd::t_debc536ce63f67 210-239,244-245
+README.md
+  s_07d7b58ff1b9fd::t_943f25295f0f53 24-25
+lib/mutineer/minitest_integration.rb
+  s_07d7b58ff1b9fd::t_fe99edf2685c13 65-70,81,95-110
+  s_07d7b58ff1b9fd::t_5bd2c8ceb11ce3 111
+test/coverage_map_test.rb
+  s_07d7b58ff1b9fd::t_678af608c82bb3 477-519
+lib/mutineer/test_runners/rspec.rb
+  s_07d7b58ff1b9fd::t_fe99edf2685c13 47,60-97
+lib/mutineer/coverage_map.rb
+  s_07d7b58ff1b9fd::t_ae233d68871a0a 47-52,64,66,69,94,131-148,338,340,342,368,374,389,396,400-414,616,618,1211
+lib/mutineer/daemon_backend.rb
+  s_07d7b58ff1b9fd::t_ae233d68871a0a 136-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8db7ccf6aed679c31f7bee22afbeea04e41e0bc6",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
