@@ -245,7 +245,7 @@ module Mutineer
       end
 
       # Remove orphaned mutant tempfiles from the source dirs (parent-side; the
-      # SIGKILL path cannot run the child's ensure). Mirrors Runner.sweep_orphans.
+      # SIGKILL path cannot run the child's ensure). Mirrors JobPlan.sweep_orphans.
       def sweep_temps
         @source_dirs.to_a.each do |dir|
           Dir.glob(File.join(dir, "mutineer_daemon*.rb")).each do |f|

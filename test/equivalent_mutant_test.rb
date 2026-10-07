@@ -27,20 +27,20 @@ class EquivalentMutantTest < Minitest::Test
     src = "a + b # mutineer:disable-line\n" \
           "c - d # mutineer:disable-line arithmetic, comparison\n" \
           "e * f\n"
-    map = Mutineer::Runner.suppress_map(src, "x.rb")
+    map = Mutineer::JobPlan.suppress_map(src, "x.rb")
     assert_equal :all, map[1]
     assert_equal Set[:arithmetic, :comparison], map[2]
     assert_nil map[3]
   end
 
   def test_suppress_map_warns_on_an_unknown_operator
-    _, err = capture_io { Mutineer::Runner.suppress_map("a # mutineer:disable-line comparison because\n", "x.rb") }
+    _, err = capture_io { Mutineer::JobPlan.suppress_map("a # mutineer:disable-line comparison because\n", "x.rb") }
     assert_match(/unknown operator "comparison because" in x.rb:1 \(known: .*\bcomparison\b/, err)
   end
 
   def test_suppress_map_treats_an_empty_operator_list_as_bare
     src = "a # mutineer:disable-line \nb # mutineer:disable-line  -- why\nc # mutineer:disable-line , \n"
-    map = Mutineer::Runner.suppress_map(src, "x.rb")
+    map = Mutineer::JobPlan.suppress_map(src, "x.rb")
     assert_equal({ 1 => :all, 2 => :all, 3 => :all }, map)
   end
 
@@ -67,7 +67,7 @@ class EquivalentMutantTest < Minitest::Test
         end
       end
     RUBY
-    map = Mutineer::Runner.suppress_map(src, "x.rb")
+    map = Mutineer::JobPlan.suppress_map(src, "x.rb")
     assert_equal({ 13 => Set[:comparison] }, map)
   end
 
@@ -75,27 +75,27 @@ class EquivalentMutantTest < Minitest::Test
   # line comments, so the marker text there silences nothing.
   def test_suppress_map_ignores_the_marker_in_embedded_docs_and_after_end
     src = "x = 1\n=begin\n# mutineer:disable-line\n=end\ny = 2\n__END__\nz # mutineer:disable-line\n"
-    assert_empty Mutineer::Runner.suppress_map(src, "x.rb")
+    assert_empty Mutineer::JobPlan.suppress_map(src, "x.rb")
   end
 
   def test_suppressed_scope_matches_only_listed_operator
     disabled = { 2 => Set[:comparison] }
-    refute Mutineer::Runner.suppressed?(:arithmetic, 2, %w[id old], disabled, Set.new)
-    assert Mutineer::Runner.suppressed?(:comparison, 2, %w[id old], disabled, Set.new)
+    refute Mutineer::JobPlan.suppressed?(:arithmetic, 2, %w[id old], disabled, Set.new)
+    assert Mutineer::JobPlan.suppressed?(:comparison, 2, %w[id old], disabled, Set.new)
   end
 
   def test_suppressed_bare_disables_every_operator
     disabled = { 4 => :all }
-    assert Mutineer::Runner.suppressed?(:arithmetic, 4, %w[id old], disabled, Set.new)
+    assert Mutineer::JobPlan.suppressed?(:arithmetic, 4, %w[id old], disabled, Set.new)
   end
 
   def test_suppressed_by_ignore_id
-    assert Mutineer::Runner.suppressed?(:arithmetic, 1, %w[abc123 old], {}, Set["abc123"])
-    refute Mutineer::Runner.suppressed?(:arithmetic, 1, %w[abc123 old], {}, Set["other"])
+    assert Mutineer::JobPlan.suppressed?(:arithmetic, 1, %w[abc123 old], {}, Set["abc123"])
+    refute Mutineer::JobPlan.suppressed?(:arithmetic, 1, %w[abc123 old], {}, Set["other"])
   end
 
   def test_suppressed_by_legacy_ignore_id
-    assert Mutineer::Runner.suppressed?(:arithmetic, 1, %w[abc123 old], {}, Set["old"])
+    assert Mutineer::JobPlan.suppressed?(:arithmetic, 1, %w[abc123 old], {}, Set["old"])
   end
 
   # --- #126: old-format ignore entries keep working, reported as data ---
@@ -148,7 +148,7 @@ class EquivalentMutantTest < Minitest::Test
   end
 
   def test_suppressed_accepts_a_single_id
-    assert Mutineer::Runner.suppressed?(:arithmetic, 1, "abc123", {}, Set["abc123"])
+    assert Mutineer::JobPlan.suppressed?(:arithmetic, 1, "abc123", {}, Set["abc123"])
   end
 
   def test_entry_matching_nothing_is_not_a_legacy_match
@@ -207,7 +207,7 @@ class EquivalentMutantTest < Minitest::Test
   def test_in_process_run_carries_the_collect_jobs_ids
     sources = ["test/fixtures/calculator.rb"]
     config = Mutineer::Config.new(sources: sources, tests: [], project_root: ROOT)
-    jobs, ignored, = Mutineer::Runner.collect_jobs(
+    jobs, ignored, = Mutineer::JobPlan.collect_jobs(
       config, Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::DEFAULT_NAMES)
     )
     agg, = run_mutineer(sources: sources, tests: ["test/fixtures/calculator_weak_test.rb"])
@@ -330,7 +330,7 @@ class EquivalentMutantTest < Minitest::Test
   def collect(root, files, ignore: [])
     config = Mutineer::Config.new(sources: files.map { |f| File.join(root, f) }, ignore: ignore,
                                   project_root: root)
-    Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(["arithmetic"]))
+    Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(["arithmetic"]))
   end
 
   # The first arithmetic mutant of `file`, as [subject, mutation, source].
