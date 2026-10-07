@@ -212,7 +212,7 @@ class MutantIdTest < Minitest::Test
              "describe 'b' do\n  def index(a, b)\n    a + b\n  end\nend\n"
       write(root, "spec/r.rb", body)
       config = Mutineer::Config.new(sources: [File.join(root, "spec/r.rb")], project_root: root)
-      jobs, = Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic]))
+      jobs, = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic]))
       assert_equal 2, jobs.size
       assert_equal ["#index"], jobs.map { |j| j[0].qualified_name }.uniq
       assert_equal 2, jobs.map { |j| j[2] }.uniq.size

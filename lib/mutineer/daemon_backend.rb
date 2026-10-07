@@ -5,10 +5,7 @@ require_relative "result"
 require_relative "coverage_map"
 require_relative "daemon_client"
 require_relative "progress"
-# No require_relative "runner" on purpose: runner.rb requires this file, and the
-# reverse edge makes Ruby warn "circular require considered harmful" on every -w
-# load. Runner is loaded first on every real path; requiring this file alone leaves
-# it undefined. Rationale and the real fix: #75.
+require_relative "job_plan"
 
 module Mutineer
   # Daemon execution backend. Boots the app ONCE in a persistent subprocess under
@@ -19,12 +16,12 @@ module Mutineer
   # When jobs > 1 each worker runs against its OWN database, which is what makes
   # `--jobs N` safe under Rails (#26): parallel verdicts are identical to serial.
   #
-  # Job collection, `--since` filtering and coverage selection stay on {Runner} and
-  # are called from here, so the daemon path can never drift from the in-process
-  # path on which mutants run or which tests narrow a mutant (score parity).
+  # Job collection, `--since` filtering and coverage selection live in {JobPlan},
+  # which the in-process path calls too, so the daemon path can never drift from
+  # it on which mutants run or which tests narrow a mutant (score parity).
   #
   # Unlike {ExternalBackend}, which is a leaf {Runner} calls into, this module owns
-  # its orchestration and calls back for that shared vocabulary.
+  # its orchestration and takes that shared vocabulary from {JobPlan}.
   module DaemonBackend
     # Default per-mutant timeout on the daemon path (seconds), overridden by
     # config.daemon_timeout. Coverage narrowing usually keeps each job short; this
@@ -44,10 +41,10 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration (daemon set).
     # @param operator_classes [Array<Class>] resolved operators.
     # @return [Array(Mutineer::AggregateResult, Hash<String,String>, Hash)] aggregate,
-    #   source map, and the {Runner.collect_jobs} extras.
+    #   source map, and the {JobPlan.collect_jobs} extras.
     def self.execute(config, operator_classes)
-      jobs, ignored_results, source_map, extras = Runner.collect_jobs(config, operator_classes)
-      jobs = Runner.filter_since(jobs, source_map, config) if config.since
+      jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
+      jobs = JobPlan.filter_since(jobs, source_map, config) if config.since
       abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
 
       # Nothing to mutate (`--since` matched no changed line, or every mutant is
@@ -58,7 +55,7 @@ module Mutineer
         # The daemon sweeps orphaned temps at boot and nothing boots here, so sweep
         # tool-side. A file a hard-killed run left in app/models breaks the app's own
         # Zeitwerk boot, not just Mutineer's next run.
-        Runner.sweep_orphans(Runner.source_dirs(config), DAEMON_TEMP_GLOB)
+        JobPlan.sweep_orphans(JobPlan.source_dirs(config), DAEMON_TEMP_GLOB)
         return [AggregateResult.new(ignored_results), source_map, extras]
       end
 
@@ -112,7 +109,7 @@ module Mutineer
       # A red unmutated suite must abort, even when the shipped map is empty.
       # Falling back to the full --test set would treat those failures as kills.
       if data.is_a?(Hash) && Array(data["failed_clean_tests"]).any?
-        Runner.abort_if_unclean!(CoverageMap.from_data(
+        JobPlan.abort_if_unclean!(CoverageMap.from_data(
           map: data["map"] || {},
           failed_test_files: data["failed_test_files"] || [],
           project_root: config.project_root,
@@ -259,10 +256,10 @@ module Mutineer
       # Skip an invalid mutant tool-side: never ship a payload that would fail to
       # load and read as a false `killed`.
       # Narrow to covering tests (shared with the in-process path via
-      # Runner.coverage_selection, so scores match). :verdict = no_coverage/uncapturable,
+      # JobPlan.coverage_selection, so scores match). :verdict = no_coverage/uncapturable,
       # no fork. No map, or an empty one (build failed) → run the full --test set
       # (fallback, not narrowed).
-      sel = coverage_map && !coverage_map.map.empty? && Runner.coverage_selection(subject.file, mutation, subject, source, coverage_map)
+      sel = coverage_map && !coverage_map.map.empty? && JobPlan.coverage_selection(subject.file, mutation, subject, source, coverage_map)
       r =
         if Parser.parse_string(mutated).errors.any?
           Result.skipped
@@ -275,7 +272,7 @@ module Mutineer
             tests: sel ? sel[1] : abs_tests
           )
           # A survivor whose line ran at load, as in-process (Runner.run).
-          Runner.load_verdict(result_for(verdict), subject.file, mutation, subject, source, coverage_map)
+          JobPlan.load_verdict(result_for(verdict), subject.file, mutation, subject, source, coverage_map)
         end
       r.with(subject: subject, mutation: mutation, id: id)
     end
@@ -296,9 +293,9 @@ module Mutineer
         # Required after the boot, as in-process (Runner.execute); also part of
         # the coverage digest.
         require_paths: config.require_paths.map { |f| File.expand_path(f, config.project_root) },
-        load_paths: Runner.test_load_roots(abs_tests),
+        load_paths: JobPlan.test_load_roots(abs_tests),
         cache_dir: File.expand_path(config.cache_dir, config.project_root),
-        source_dirs: Runner.source_dirs(config), # so the daemon can sweep orphan mutant temps
+        source_dirs: JobPlan.source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,
         rails: config.rails,
         # Schema for per-worker DB isolation. Sent when present; the daemon loads

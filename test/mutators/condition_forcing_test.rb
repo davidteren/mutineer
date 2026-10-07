@@ -107,7 +107,7 @@ class ConditionForcingTest < Minitest::Test
       File.write(path, "def m(a)\n  return :none if a\n  :some\nend\n")
       config = Mutineer::Config.new(sources: [path], project_root: dir)
       forced = lambda do |names|
-        jobs, = Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(names))
+        jobs, = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(names))
         jobs.filter_map { |_, m, id| [m.operator, id] if m.operator == :condition_false }
       end
       assert_equal 1, forced.(%w[condition_false]).size
