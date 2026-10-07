@@ -1,0 +1,34 @@
+lib/mutineer/daemon_backend.rb
+  s_07d7b58ff1b9fd::t_b040ddf362e86c 281-284,294-296
+test/fixtures/rails_app/app/models/tax_table.rb
+  s_07d7b58ff1b9fd::t_de80f8115493e8 1-14
+test/fixtures/rails_app/test/support/tax_setup.rb
+  s_07d7b58ff1b9fd::t_e9050faafbc8fb 1-4
+test/fixtures/rails_app/test/models/tax_table_test.rb
+  s_07d7b58ff1b9fd::t_7a8aa2bf1c148b 1-14
+CHANGELOG.md
+  s_07d7b58ff1b9fd::t_2084dffb376e12 43-50
+lib/mutineer/daemon_server.rb
+  s_07d7b58ff1b9fd::t_b040ddf362e86c 27,137-139
+  s_07d7b58ff1b9fd::t_a4698306328a98 177-178
+test/daemon_backend_contract_test.rb
+  s_07d7b58ff1b9fd::t_c6fd6ce3fd724b 62,65-66
+test/daemon_coverage_test.rb
+  s_07d7b58ff1b9fd::t_3cfb093f9598b4 66-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "58bbd9c544ea403518c49c4a189864f869be3a25",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
