@@ -82,9 +82,10 @@ class DaemonCoverageTest < Minitest::Test
     end
   end
 
-  # #222: each worker DB starts as a copy of the base test DB after the daemon
-  # boots, so a row the --require file wrote (in a table with no fixture) is
-  # visible to the tests, as in-process, on every worker slot.
+  # #222: the coverage capture's worker DB starts as a copy of the base test DB
+  # after the daemon boots, so the clean run sees the row the --require file
+  # wrote (in a table with no fixture) and the run is not aborted as unclean.
+  # DaemonWorkerDbTest proves the mutant forks on each worker slot.
   def test_worker_dbs_see_rows_written_while_the_daemon_boots
     [1, 2].each do |jobs|
       Dir.mktmpdir("mutineer-daemon-seed") do |dir|

@@ -106,9 +106,10 @@ module Mutineer
     # a copy of the base test database, schema and rows, so rows the daemon
     # parent wrote while it booted (initializers, `--require` files) are there,
     # as they are for the in-process backend (#222). The schema is then loaded
-    # only when the worker's schema version differs from `schema.rb` (a stale
-    # or empty base database): `schema.rb` runs with `force: true`, which drops
-    # the copied rows of the tables it defines.
+    # only when the copy differs from `schema.rb` ({schema_current?}: schema
+    # version or stored `schema_sha1`, as in a stale or empty base database):
+    # `schema.rb` runs with `force: true`, which drops the copied rows of the
+    # tables it defines.
     #
     # @param worker [Integer] the worker slot index.
     # @param schema_path [String, nil] absolute path to `db/schema.rb`, or nil to skip.
