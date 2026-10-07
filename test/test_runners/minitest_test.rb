@@ -38,6 +38,7 @@ class TestRunnersMinitestTest < Minitest::Test
   # never a false 1.
   def fork_status
     pid = fork do
+      Process.setpgid(0, 0) # lead a group, so the deadline kill reaches descendants
       Mutineer::ChildStdout.silence
       code = begin
         yield
@@ -66,6 +67,12 @@ class TestRunnersMinitestTest < Minitest::Test
   # Runs one stop fixture file. Returns [exit status, marker written?].
   def run_fixture(file, first: "fail", **kwargs)
     with_fixture_env(first) { Mutineer::TestRunners::Minitest.run([file], **kwargs) }
+  end
+
+  # #132: the deadline in wait_child kills the child's process group, so the
+  # child must lead one for a hung descendant to die with it.
+  def test_fork_status_child_leads_its_own_process_group
+    assert_equal 0, fork_status { Process.getpgrp == Process.pid ? 0 : 1 }
   end
 
   def test_passing_suite_returns_zero
