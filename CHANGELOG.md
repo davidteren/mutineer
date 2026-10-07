@@ -61,6 +61,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`module_function :name` in a reopened module inside `class << self`
+  promotes the method from the earlier opening (#216).** Ruby treats both
+  openings as one module, but Mutineer matched them only within one body, so
+  it named the method `#<Class:App>::M#c` instead of `#<Class:App>::M.c`.
+  The two openings now match by the module's full name. A module whose name
+  Mutineer cannot be sure of still matches only within its own body: a path
+  such as `self::X` or `Foo::X` written directly inside `class << self`, a
+  name under an anonymous class, a module in a `class << self` inside a method
+  or a `class_eval` block, a `module self::X` in a block, or a `self::X = ...`
+  in a `class_eval` block. A `self::X` like these now also stays apart from a
+  module of the same name outside `class << self`, where a `module_function`
+  in that module used to promote its methods.
+
 - **`--daemon` worker databases start as a copy of the test database
   (#222).** Each worker slot's SQLite database used to start from
   `db/schema.rb` alone. Rows the daemon wrote while it booted, in

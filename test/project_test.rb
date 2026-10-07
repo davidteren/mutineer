@@ -518,6 +518,237 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #216: a module opened twice inside `class << self` is one module, so a later
+  # `module_function :c` promotes the `c` of the earlier opening.
+  def test_discover_module_function_in_reopened_module_under_class_self_promotes_earlier_def
+    src = <<~RUBY
+      class App
+        class << self
+          module M
+            def c; end
+          end
+          module M
+            module_function :c
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[#<Class:App>::M.c], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
+  # #216: a Unicode constant name is a constant name too.
+  def test_discover_module_function_in_reopened_module_under_unicode_class_self
+    src = "class Å\n  class << self\n    module M\n      def c; end\n    end\n    module M\n      module_function :c\n    end\n  end\nend\n"
+    with_source(src) do |path|
+      assert_equal %w[#<Class:Å>::M.c], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
+  # #216: modules that share a short name under different singleton classes stay apart.
+  def test_discover_module_function_does_not_cross_modules_sharing_a_name_under_class_self
+    src = <<~RUBY
+      class A
+        class << self
+          module Helpers
+            def h; end
+            module_function :h
+          end
+        end
+      end
+      class B
+        class << self
+          module Helpers
+            def h; end
+          end
+          class << self
+            module Helpers
+              def h; end
+            end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[#<Class:A>::Helpers.h #<Class:B>::Helpers#h #<Class:#<Class:B>>::Helpers#h],
+                   Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
+  # #216: `class Foo::Bar` inside `class << self` may not be the top-level Foo::Bar,
+  # so a module under its singleton class matches only within its own body. The
+  # top-level Foo::Bar, compact or nested, is one class and its openings match.
+  def test_discover_module_function_does_not_cross_a_singleton_class_built_on_a_written_path
+    src = <<~RUBY
+      class App
+        class << self
+          class Foo::Bar
+            class << self
+              module M
+                def c; end
+              end
+            end
+          end
+        end
+      end
+      class Foo::Bar
+        class << self
+          module M
+            def c; end
+            module_function :c, :d
+          end
+        end
+      end
+      module Foo
+        class Bar
+          class << self
+            module M
+              def d; end
+            end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[#<Class:Foo::Bar>::M#c #<Class:Foo::Bar>::M.c #<Class:Foo::Bar>::M.d],
+                   Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
+  # #216: `module self::X` in a builder block is under the built class, so it does
+  # not match the enclosing module's own X, though both are named the same.
+  def test_discover_module_function_does_not_cross_self_path_in_a_builder_block
+    src = <<~RUBY
+      class App
+        class << self
+          module M
+            Class.new do
+              module self::X
+                def c; end
+              end
+            end
+            Other.class_eval do
+              self::X = Module.new do
+                def c; end
+              end
+            end
+            module X
+              def c; end
+              module_function :c
+            end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[#<Class:App>::M::X#c #<Class:App>::M::X#c #<Class:App>::M::X.c],
+                   Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
+  # #216: the same holds outside `class << self`, and for a module under the
+  # singleton class of such a `self::X`. Openings under one `self` still match.
+  def test_discover_module_function_does_not_cross_self_path_in_a_builder_block_with_known_owner
+    src = <<~RUBY
+      module Outer
+        Foo = Class.new do
+          module self::X
+            def c; end
+            class << self
+              module M
+                def d; end
+              end
+            end
+            module N
+              def e; end
+            end
+            module N
+              module_function :e
+            end
+            module A::B
+              module_function :f
+            end
+            module A
+              module B
+                def f; end
+              end
+            end
+          end
+          module self::X
+            def g; end
+          end
+          module self::X
+            module_function :g
+          end
+        end
+        module X
+          module_function :c
+          class << self
+            module M
+              module_function :d
+            end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[Outer::X#c #<Class:Outer::X>::M#d Outer::X::N.e Outer::X::A::B.f Outer::X.g],
+                   Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
+  # #216: `class << self` in a def or a `class_eval` block opens the singleton class
+  # of whatever `self` is then, so its modules do not match App's own; nor does a
+  # `self::X` there. A block inside App's own `class << self` does not change where
+  # a module goes, so its M is App's M.
+  def test_discover_module_function_does_not_cross_class_self_in_a_def_or_block
+    src = <<~RUBY
+      class App
+        def setup
+          class << self
+            module M
+              def c; end
+            end
+          end
+        end
+        Other.class_eval do
+          class << self
+            module M
+              def d; end
+            end
+          end
+          module self::X
+            def x; end
+          end
+          self::Y = Module.new do
+            def y; end
+          end
+        end
+        class << self
+          module M
+            module_function :c, :d, :e
+          end
+          setup do
+            module M
+              def e; end
+            end
+          end
+        end
+        module X
+          module_function :x
+        end
+        module Y
+          module_function :y
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[App#setup #<Class:App>::M#c #<Class:App>::M#d App::X#x App::Y#y #<Class:App>::M.e],
+                   Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   def test_discover_promotes_module_function_names_in_a_module_new_block
     src = <<~RUBY
       module Host
