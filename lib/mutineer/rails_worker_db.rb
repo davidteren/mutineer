@@ -151,11 +151,13 @@ module Mutineer
       text    = File.read(schema_path)
       version = schema_file_version(text)
       conn = ActiveRecord::Base.connection
-      return false unless version && conn.table_exists?(:schema_migrations)
-      return false unless conn.select_values("SELECT version FROM schema_migrations").map(&:to_i).max == version
-      return true unless conn.table_exists?(:ar_internal_metadata)
+      migrations = ActiveRecord::Base.schema_migrations_table_name
+      metadata   = ActiveRecord::Base.internal_metadata_table_name
+      return false unless version && conn.table_exists?(migrations)
+      return false unless conn.select_values("SELECT version FROM #{conn.quote_table_name(migrations)}").map(&:to_i).max == version
+      return true unless conn.table_exists?(metadata)
 
-      stored = conn.select_value("SELECT value FROM ar_internal_metadata WHERE key = 'schema_sha1'")
+      stored = conn.select_value("SELECT value FROM #{conn.quote_table_name(metadata)} WHERE key = 'schema_sha1'")
       stored.nil? || stored == Digest::SHA1.hexdigest(text)
     end
 
