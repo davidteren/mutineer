@@ -34,6 +34,10 @@ class ChildWaitTest < Minitest::Test
       gone?(grandchild)
     end
     assert gone, "the group kill left the grandchild running"
+  ensure
+    # A failed assertion above must not leave either sleeper running.
+    [pid, grandchild].compact.each { |stray| Process.kill(:KILL, stray) rescue nil } # rubocop:disable Style/RescueModifier
+    Process.waitpid(pid) rescue nil if pid # rubocop:disable Style/RescueModifier
   end
 
   private
