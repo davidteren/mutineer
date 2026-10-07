@@ -24,7 +24,7 @@ module Mutineer
   # tool-side; the daemon only `load`s text.
   #
   # Protocol (one JSON object per line, both directions):
-  #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment",
+  #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment","require_paths":[...],
   #               "load_paths":["test"],"framework":"minitest","rails":true,"schema":"db/schema.rb"}
   #   ready out: {"ready":true,"ruby":"3.3.6"}   (or {"ready":false,"error":"..."} then exit)
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
@@ -134,6 +134,9 @@ module Mutineer
         # tempfile's non-constant name during autoload setup.
         sweep_temps
         require File.expand_path(cfg["boot"]) if cfg["boot"]
+        # The --require files, after the boot as in-process (Runner.execute), so
+        # the coverage peek sees what they ran at load.
+        Array(cfg["require_paths"]).each { |f| require File.expand_path(f) }
         setup_worker_db(cfg) if cfg["rails"]
       rescue Exception => e # rubocop:disable Lint/RescueException
         # Boot failed (bad boot path, app error). Tell the client and exit so it
@@ -171,7 +174,8 @@ module Mutineer
         cmap = CoverageMap.new(
           source_paths: Array(@cfg["sources"]), test_paths: Array(@cfg["tests"]),
           load_paths: Array(@cfg["load_paths"]), project_root: root,
-          boot_path: @cfg["boot"], framework: @framework, cache_dir: @cfg["cache_dir"] || File.join(root, ".mutineer"),
+          boot_path: @cfg["boot"], require_paths: Array(@cfg["require_paths"]),
+          framework: @framework, cache_dir: @cfg["cache_dir"] || File.join(root, ".mutineer"),
           capture_timeout: @cfg["capture_timeout"] || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_via_fork(after_fork: coverage_after_fork)
         { "map" => cmap.map, "failed_test_files" => cmap.failed_test_files,
