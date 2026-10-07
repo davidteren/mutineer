@@ -46,7 +46,7 @@ class TestRunnersMinitestTest < Minitest::Test
       end
       exit!(code)
     end
-    _, status = Process.waitpid2(pid)
+    status = wait_child(pid)
     status.exitstatus
   end
 

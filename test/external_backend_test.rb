@@ -121,7 +121,7 @@ class ExternalBackendTest < Minitest::Test
     pid = Process.spawn(Backend.child_env, RUBY, "-e",
                         "print ENV['RBENV_VERSION'].inspect",
                         out: out, err: out)
-    Process.wait(pid)
+    wait_child(pid)
     out.rewind
     assert_equal "nil", out.read.strip
   ensure

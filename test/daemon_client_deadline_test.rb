@@ -74,7 +74,7 @@ class DaemonClientDeadlineTest < Minitest::Test
     pid, ready = rd.gets.split
     child = pid.to_i
     assert_equal "watching", ready, "the mutant child failed before its watchdog started"
-    Process.wait(daemon)
+    wait_child(daemon)
     gone = 50.times.any? do
       sleep 0.1
       !process_alive?(child)
