@@ -931,7 +931,7 @@ class CliTest < Minitest::Test
   # each survivor stored under its old-format id (no file path in the hash).
   def downgrade_baseline(proj, path)
     config = Mutineer::Config.new(sources: [File.join(proj, "calculator.rb")], project_root: proj)
-    id_map = Mutineer::Runner.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic])).last[:id_map]
+    id_map = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic])).last[:id_map]
     doc = JSON.parse(File.read(path))
     doc["summary"].delete("id_format")
     doc["survivors"].each { |h| h["id"] = id_map.fetch(h["id"]) }

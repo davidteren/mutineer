@@ -49,6 +49,15 @@ All notable changes to this project are documented here. The format is based on
   rebuilds once. A complete run gives the same verdicts and `--matrix` rows,
   but the new order can change which mutants time out, so a `--baseline` gate
   can see a one-time change on upgrade.
+- **Job selection moved from `Mutineer::Runner` to a new `Mutineer::JobPlan`
+  module (#75).** The in-process runner, the `--daemon` backend and
+  `--dry-run` share it, so each file now requires what it uses and no
+  `require_relative` cycle exists in `lib/mutineer`. The moved methods are
+  `collect_jobs`, `filter_since`, `coverage_selection`, `ran_at_load?`,
+  `load_verdict`, `abort_if_unclean!`, `test_load_roots`, `source_dirs`,
+  `sweep_orphans`, `suppress_map`, `suppressed?` and `result_keys`. These were
+  internal methods, so `Runner` keeps no copies. Runs, reports and caches do
+  not change.
 
 ### Fixed
 

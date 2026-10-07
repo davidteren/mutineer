@@ -23,7 +23,7 @@ class TempfileLeakTest < Minitest::Test
       wait_child(pid)
 
       refute_empty Dir.glob(File.join(dir, "mutineer_mutant*.rb")), "leak reproduced"
-      Mutineer::Runner.sweep_orphans([dir])
+      Mutineer::JobPlan.sweep_orphans([dir])
       assert_empty Dir.glob(File.join(dir, "mutineer_mutant*.rb")), "parent sweep removed the orphan"
     end
   end

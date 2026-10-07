@@ -9,6 +9,7 @@ require_relative "project"
 require_relative "pairing"
 require_relative "changed_lines"
 require_relative "runner"
+require_relative "job_plan"
 require_relative "reporter"
 require_relative "kill_matrix"
 require_relative "baseline"
@@ -639,20 +640,20 @@ module Mutineer
            "it runs this mutineer version or later."
     end
 
-    # Runs dry-run mode. Reuses Runner.collect_jobs (+ filter_since) so the
+    # Runs dry-run mode. Reuses JobPlan.collect_jobs (+ filter_since) so the
     # candidate list cannot drift from a real run's job selection.
     #
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.dry_run(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
-      jobs, ignored_results, source_map, extras = Runner.collect_jobs(config, operator_classes)
+      jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
       # Narrow jobs and ignored the same way so the summary matches the printed list.
       if config.since
-        jobs = Runner.filter_since(jobs, source_map, config)
+        jobs = JobPlan.filter_since(jobs, source_map, config)
         ignored_jobs = ignored_results.map { |r| [r.subject, r.mutation, r.id] }
-        ignored = Runner.filter_since(ignored_jobs, source_map, config).size
+        ignored = JobPlan.filter_since(ignored_jobs, source_map, config).size
       else
         ignored = ignored_results.size
       end
