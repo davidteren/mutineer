@@ -84,6 +84,46 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # #203: only the fast file kills the mutant, and the slow file sleeps past
+  # the timeout. The map lists the slow file first, but the recorded timings
+  # run the fast file first, so the run stops at its failure.
+  def test_cheapest_covering_file_runs_first_so_a_fast_kill_beats_the_timeout
+    Dir.mktmpdir("mutineer-order") do |dir|
+      src = File.join(dir, "order_calc.rb")
+      File.write(src, "class CostOrderCalculator\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(File.join(dir, "a_slow_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "order_calc"
+        class ASlowCostOrderTest < Minitest::Test
+          def test_slow
+            sleep 60
+            CostOrderCalculator.new.add(2, 3)
+          end
+        end
+      RUBY
+      File.write(File.join(dir, "z_fast_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "order_calc"
+        class ZFastCostOrderTest < Minitest::Test
+          def test_add
+            assert_equal 5, CostOrderCalculator.new.add(2, 3)
+          end
+        end
+      RUBY
+      require src # R5/KTD4: keep the child's require_relative from reloading it
+      map = Mutineer::CoverageMap.from_data(
+        map: { "order_calc.rb:3" => %w[a_slow_test.rb z_fast_test.rb] }, failed_test_files: [],
+        project_root: dir, timings: { "a_slow_test.rb" => 8.0, "z_fast_test.rb" => 1.0 }
+      )
+      plus = File.read(src).index("a + b") + 2
+      mutation = Mutineer::Mutation.new(start_offset: plus, end_offset: plus + 1,
+                                        replacement: "-", operator: :arithmetic)
+
+      result = Mutineer::Runner.run(mutation, source_file: src, coverage_map: map, timeout: 5)
+      assert_predicate result, :killed?, "expected killed, got #{result.status} (#{result.details})"
+    end
+  end
+
   def run_slow_suite(**limits)
     Dir.mktmpdir("mutineer-limits") do |dir|
       src  = File.join(dir, "slow_calc.rb")
@@ -158,6 +198,7 @@ class RunnerTest < Minitest::Test
     def tests_for(_file, line) = tests_by_line.fetch(line, [])
     def method_uncapturable?(*) = uncapturable || false
     def ran_at_load?(_file, line) = Array(load_lines).include?(line)
+    def order_tests(_file, tests) = tests
   end
 
   def selection(source, snippet, tests_by_line, load_lines: [], uncapturable: false)

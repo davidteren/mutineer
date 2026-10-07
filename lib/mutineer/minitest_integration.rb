@@ -62,7 +62,12 @@ module Mutineer
       # Drop runnables inherited from the parent suite (this is the child's
       # private copy — the parent is unaffected) so only the target test runs.
       Minitest::Runnable.reset
-      Array(test_files).each { |f| load f }
+      # Each test class's file position: the file that first defined it.
+      rank = {}
+      Array(test_files).each_with_index do |f, i|
+        load f
+        Minitest::Runnable.runnables.each { |klass| rank[klass] ||= i }
+      end
 
       armed =
         if record_to
@@ -73,6 +78,7 @@ module Mutineer
       # Pin the seed only when a hook is armed; an unknown Minitest shape gets
       # the normal full, randomly ordered run.
       args = armed && !ENV["SEED"] ? ["--seed", STOP_AT_FIRST_FAILURE_SEED.to_s] : []
+      keep_file_order(rank) if armed
       # No silencing here: the fork boundary that calls this method has already
       # pointed stdout at File::NULL (see ChildStdout).
       passed = Minitest.run(args)
@@ -85,6 +91,47 @@ module Mutineer
     ensure
       StopAtFirstFailure.disarm!
       KillRecorder.disarm!
+    end
+
+    # Runs the test classes in the order of their files (#203). Minitest
+    # shuffles the classes with the seed, then runs the serial classes before
+    # the parallel (`parallelize_me!`) ones. A stable sort by file position
+    # after that shuffle puts the files in the given order and keeps the
+    # seeded order within one file. The serial-then-parallel split is
+    # unchanged. Only the child's own class list gets {FileOrder}.
+    #
+    # @api private
+    # @param rank [Hash{Class => Integer}] each class's file position.
+    # @return [void]
+    def self.keep_file_order(rank)
+      FileOrder.rank = rank
+      ::Minitest::Runnable.runnables.extend(FileOrder)
+    end
+
+    # Extends the list of test classes: its `shuffle` keeps the file order.
+    module FileOrder
+      class << self
+        # Each test class's file position.
+        #
+        # @return [Hash{Class => Integer}, nil]
+        attr_accessor :rank
+      end
+
+      # The seeded shuffle, then a stable sort by file position.
+      #
+      # @return [Array<Class>]
+      def shuffle(...)
+        rank = FileOrder.rank || {}
+        super.sort_by.with_index { |klass, i| [rank.fetch(klass, rank.size), i] }
+      end
+
+      # Minitest 5.15 and older drop empty classes before the shuffle, so the
+      # filtered list keeps the file order too.
+      #
+      # @return [Array<Class>]
+      def reject(...)
+        super.extend(FileOrder)
+      end
     end
   end
 end

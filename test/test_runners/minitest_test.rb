@@ -207,6 +207,54 @@ class TestRunnersMinitestTest < Minitest::Test
     rd&.close
   end
 
+  # #203: a mutant run loads its files in run order. Each class appends its
+  # file's letter to the marker. File "a" also holds a parallel class ("p"),
+  # which still runs after every serial class. Returns the marker text.
+  def class_order(files, **kwargs)
+    Dir.mktmpdir("mutineer-order") do |dir|
+      marker = File.join(dir, "marker")
+      paths = files.to_h do |letter|
+        path = File.join(dir, "#{letter}_order_test.rb")
+        body = (1..3).map do |n|
+          "class FileOrder#{letter.upcase}#{n}Test < Minitest::Test\n" \
+            "  def test_mark; File.write(#{marker.dump}, #{letter.dump}, mode: \"a\"); end\nend\n"
+        end.join
+        if letter == "a"
+          body += "class FileOrderParallelTest < Minitest::Test\n  parallelize_me!\n" \
+                  "  def test_mark; File.write(#{marker.dump}, \"p\", mode: \"a\"); end\nend\n"
+        end
+        File.write(path, "require \"minitest\"\n#{body}")
+        [letter, path]
+      end
+      fork_status { Mutineer::TestRunners::Minitest.run(files.map { |l| paths[l] }, **kwargs) }
+      File.read(marker)
+    end
+  end
+
+  def test_stop_at_first_failure_runs_classes_in_file_order
+    assert_equal "aaabbbp", class_order(%w[a b], stop_at_first_failure: true)
+    assert_equal "bbbaaap", class_order(%w[b a], stop_at_first_failure: true)
+  end
+
+  # Minitest 5.15 and older shuffle `runnables.reject { ... }`, a new array.
+  def test_file_order_survives_the_filter_of_older_minitest
+    code = fork_status do
+      classes = Array.new(6) { Class.new }
+      Minitest::Runnable.runnables.replace(classes)
+      Mutineer::MinitestIntegration.keep_file_order(classes.each_with_index.to_h)
+      srand(1)
+      Minitest::Runnable.runnables.reject { false }.shuffle == classes ? 0 : 1
+    end
+    assert_equal 0, code
+  end
+
+  def test_record_to_runs_classes_in_file_order
+    IO.pipe do |_rd, wr|
+      assert_equal "aaabbbp", class_order(%w[a b], record_to: wr)
+      assert_equal "bbbaaap", class_order(%w[b a], record_to: wr)
+    end
+  end
+
   # --- record_to (--matrix) -------------------------------------------------
   # A matrix run never stops: every test runs, and each outcome goes to the
   # KillChannel pipe between a `start` and an `end` line. Only the outer
