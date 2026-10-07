@@ -1,0 +1,23 @@
+test/test_runners/minitest_test.rb
+  s_07d7b58ff1b9fd::t_fc35ccf32de6c8 41
+  s_07d7b58ff1b9fd::t_b22a042d2b0ef2 72-77
+test/test_runners/rspec_test.rb
+  s_07d7b58ff1b9fd::t_fc35ccf32de6c8 37,56-58
+  s_07d7b58ff1b9fd::t_b22a042d2b0ef2 66-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8882382be607d12171ceda4b413b60984af418d3",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
