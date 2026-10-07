@@ -31,10 +31,12 @@ module Mutineer
       # Calls whose block is the body of the class they build: receiver name => method.
       CLASS_BUILDERS = { "Data" => :define, "Struct" => :new, "Class" => :new, "Module" => :new }.freeze
 
-      # A name that reads like a constant name but may not be one (#216): a
-      # singleton class name built on a written path or `#<anonymous>`, such as
-      # `#<Class:Foo::X>` from `class Foo::X` inside `class << self`, or the `X`
-      # of `module self::X` in a builder block. The segment carries that mark.
+      # A name that reads like a constant name but may not be one (#216). It is
+      # the singleton class name of a `class << self` opened inside a def or a
+      # block that does not build a class, or built on a written path or
+      # `#<anonymous>` (`#<Class:Foo::X>` from `class Foo::X` inside `class << self`);
+      # or the `X` of `module self::X` or `self::X = ...` in a block. The segment
+      # carries that mark (see {#singleton_name}, {#with_namespace}, {#assigned_owner}).
       class WrittenName < String; end
 
       attr_reader :subjects
