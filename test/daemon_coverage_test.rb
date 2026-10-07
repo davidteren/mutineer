@@ -47,6 +47,23 @@ class DaemonCoverageTest < Minitest::Test
            "the map covers order.rb lines"
   end
 
+  # #228: the map-building daemon suspends Coverage once the map is built, so a
+  # mutant forked after it does not pay for it. The payload raises (an `error`
+  # verdict) if Coverage still runs in the mutant.
+  def test_coverage_is_suspended_in_a_mutant_after_the_map_is_built
+    src = File.join(APP, "app/models/order.rb")
+    client = Mutineer::DaemonClient.new(boot: boot_config("order_test.rb"), app_root: APP).start
+    begin
+      refute_empty client.coverage["map"]
+      code = %(raise "Coverage is running" if Coverage.running?\n#{File.read(src)})
+      verdict = client.request(id: 1, payload: { "code" => code, "source_file" => src },
+                               tests: [File.join(APP, "test/models/order_test.rb")], timeout: 30)
+      assert_equal "survived", verdict
+    ensure
+      client.quit
+    end
+  end
+
   # #187: PriceList's class body runs at boot (a to_prepare initializer), so its
   # `price` line ran before any test. The daemon ships those load lines, and the
   # mutant is ran_at_load, not a false no_coverage.
