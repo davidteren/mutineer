@@ -87,7 +87,7 @@ class RunnerExternalTest < Minitest::Test
                                    "--test-command", "#{RUBY} %{files}", chdir: proj)
       wr_resume.write("1")
       wr_resume.close
-      Process.wait(pid)
+      wait_child(pid)
       assert_equal 1, status.exitstatus, err
       assert_match(/another mutineer run owns/, err)
       assert_equal original, File.binread(path)

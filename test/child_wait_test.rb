@@ -9,7 +9,7 @@ class ChildWaitTest < Minitest::Test
   end
 
   def test_kills_and_fails_on_a_child_that_outlives_the_deadline
-    pid = fork { sleep 30 }
+    pid = fork { sleep 30; exit! }
     error = assert_raises(Minitest::Assertion) { wait_child(pid, timeout: 0.2) }
     assert_match(/did not exit within 0.2s/, error.message)
     assert_raises(Errno::ECHILD) { Process.waitpid(pid, Process::WNOHANG) }
@@ -20,10 +20,12 @@ class ChildWaitTest < Minitest::Test
     pid = fork do
       rd.close
       Process.setpgid(0, 0)
-      wr.puts(fork { sleep 30 })
+      wr.puts(fork { sleep 30; exit! })
       sleep 30
+      exit!
     end
     wr.close
+    assert rd.wait_readable(5), "the child did not report its grandchild"
     grandchild = rd.gets.to_i
     rd.close
     assert_raises(Minitest::Assertion) { wait_child(pid, timeout: 0.2) }
