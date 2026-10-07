@@ -156,8 +156,8 @@ module Mutineer
         @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
         schema = cfg["schema"] && File.expand_path(cfg["schema"])
         @schema_path = schema if schema && File.exist?(schema)
-        # Schema is loaded once per worker slot on first use (not every mutant fork).
-        @schema_ready = {}
+        # Each worker slot is seeded once, on first use (not every mutant fork).
+        @slot_ready = {}
       rescue LoadError => e
         @errio.puts("[daemon] worker-DB routing unavailable: #{e.message}")
         @worker_db = nil
@@ -187,14 +187,14 @@ module Mutineer
 
       # Fork-safety hook for coverage capture. Each capture fork drops its copy
       # of the protocol channel (see close_protocol) and, when the app has a
-      # worker-DB adapter, routes to worker 0's isolated DB (captures run
-      # serially, so one worker is enough).
+      # worker-DB adapter, routes to a fresh copy of the base DB in worker 0's
+      # slot (captures run serially, so one worker is enough).
       def coverage_after_fork
         worker_db = @worker_db
         schema = @schema_path
         lambda do
           close_protocol
-          worker_db&.after_fork(0, schema)
+          worker_db&.after_fork(0, schema, seed: true)
         end
       end
 
@@ -210,8 +210,8 @@ module Mutineer
       def run_mutant(req)
         timeout = req.fetch("timeout", 30)
         worker  = req.fetch("worker", 0)
-        # Load schema until the first killed/survived fork for this worker slot.
-        schema_for_fork = (@worker_db && @schema_path && !@schema_ready[worker]) ? @schema_path : nil
+        # Seed the slot's DB until the first killed/survived fork for this worker slot.
+        first_use = @worker_db && !@slot_ready[worker]
         daemon = Process.pid
         pid = fork do
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
@@ -224,7 +224,7 @@ module Mutineer
               close_protocol
               # Route THIS fork at its own worker database before any test loads.
               # A routing failure raises here and is scored `error`, never a false verdict.
-              @worker_db&.after_fork(worker, schema_for_fork)
+              @worker_db&.after_fork(worker, first_use ? @schema_path : nil, seed: first_use)
               apply_payload(req["payload"])
               run_tests(Array(req["tests"]))
             rescue Exception => e # rubocop:disable Lint/RescueException
@@ -234,10 +234,10 @@ module Mutineer
           exit!(code)
         end
         verdict = wait_verdict(pid, timeout)
-        # Mark ready only when the child finished cleanly after schema load
-        # (killed/survived). Timeout can interrupt mid-load_schema; error is a
-        # routing failure. Both leave the slot unready so the next fork reloads.
-        @schema_ready[worker] = true if schema_for_fork && %w[killed survived].include?(verdict)
+        # Mark ready only when the child finished cleanly after seeding
+        # (killed/survived). Timeout can interrupt mid-copy; error is a routing
+        # failure. Both leave the slot unready so the next fork seeds again.
+        @slot_ready[worker] = true if first_use && %w[killed survived].include?(verdict)
         # A SIGKILLed timeout child skipped its Tempfile unlink. Sweep the orphan
         # so it cannot outlive the run or trip Zeitwerk on a later fork.
         sweep_temps if verdict == "timeout"

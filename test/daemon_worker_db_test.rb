@@ -40,6 +40,23 @@ class DaemonWorkerDbTest < Minitest::Test
                    tests: [TEST])
   end
 
+  # #222: every worker slot's DB starts as a copy of the base DB after boot, so a
+  # row the --require file wrote is visible, and the clean suite survives, on each.
+  def test_each_worker_db_sees_rows_written_while_the_daemon_boots
+    boot = boot_config.merge(require_paths: [File.join(APP, "test/support/seed_setup")])
+    client = Mutineer::DaemonClient.new(boot: boot, app_root: APP).start
+    tax = File.join(APP, "app/models/tax_table.rb")
+    [0, 1].each do |w|
+      assert_equal "survived",
+                   client.request(id: 30 + w, worker: w, timeout: 60,
+                                  payload: { "code" => File.read(tax), "source_file" => tax },
+                                  tests: [File.join(APP, "test/models/seeded_row_test.rb")]),
+                   "worker #{w}'s DB holds the boot-time row"
+    end
+  ensure
+    client&.quit
+  end
+
   def test_verdicts_are_correct_across_distinct_worker_dbs
     original = File.read(ORDER)
     # `*` -> `+`: subtotal 2*1000 becomes 1002, so the strong suite's

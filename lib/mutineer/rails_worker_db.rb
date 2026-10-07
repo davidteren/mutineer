@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "fileutils"
+
 module Mutineer
   # Per-worker database isolation for the daemon path.
   #
@@ -14,7 +16,9 @@ module Mutineer
   # forks cannot clobber each other's transactional fixtures. {after_fork} runs
   # inside a freshly-forked child and points that child's connection at the
   # worker's database BEFORE any test loads; transactional fixtures then
-  # repopulate that isolated database per test.
+  # repopulate that isolated database per test. On a slot's first use the worker
+  # database starts as a copy of the base test database, so it holds what the
+  # booted parent wrote, as the in-process backend sees it.
   #
   # Scope: SQLite adapter only (per-worker file, hermetic). Postgres per-worker
   # DBs (`CREATE DATABASE <db>-<worker>`) are not implemented yet; a non-SQLite
@@ -95,20 +99,46 @@ module Mutineer
 
     # Child-side (after fork): route this process's ActiveRecord at the worker's
     # own database and confirm it is reachable, so a routing failure reads as
-    # `error` (via the daemon's child rescue) rather than a false verdict. Loads
-    # the schema into the worker database when a schema path is given
-    # (idempotent: schema.rb runs with `force: true`), covering a fresh worker
-    # file.
+    # `error` (via the daemon's child rescue) rather than a false verdict.
+    #
+    # With `seed: true` (the slot's first use) the worker database first becomes
+    # a copy of the base test database, schema and rows, so rows the daemon
+    # parent wrote while it booted (initializers, `--require` files) are there,
+    # as they are for the in-process backend (#222). The schema is loaded only
+    # when the base database has no tables to copy: `schema.rb` runs with
+    # `force: true`, which would drop the copied rows.
     #
     # @param worker [Integer] the worker slot index.
     # @param schema_path [String, nil] absolute path to `db/schema.rb`, or nil to skip.
+    # @param seed [Boolean] copy the base database into the worker database first.
     # @return [void]
-    def self.after_fork(worker, schema_path = nil)
+    def self.after_fork(worker, schema_path = nil, seed: false)
       return unless available?
 
-      ActiveRecord::Base.establish_connection(worker_db_config(worker))
-      load_schema(schema_path) if schema_path
+      config = worker_db_config(worker)
+      seeded = seed && seed_from_base(worker)
+      ActiveRecord::Base.establish_connection(config)
+      load_schema(schema_path) if schema_path && !seeded
       verify_connection!
+    end
+
+    # Copy the base test database (the connection this fork inherited) into the
+    # worker's database file with `VACUUM INTO`: one consistent snapshot of the
+    # committed data, WAL included. A stale worker file (an earlier run, or a
+    # copy a timeout interrupted) is removed first, since `VACUUM INTO` needs an
+    # absent or empty target.
+    #
+    # @param worker [Integer] the worker slot index.
+    # @return [Boolean] true when copied; false when the base database has no tables.
+    def self.seed_from_base(worker)
+      conn = ActiveRecord::Base.connection
+      return false if conn.tables.empty?
+
+      base   = conn.select_value("SELECT file FROM pragma_database_list WHERE name = 'main'")
+      target = worker_database_path(base, worker)
+      ["", "-wal", "-shm", "-journal"].each { |suffix| FileUtils.rm_f(target + suffix) }
+      conn.execute("VACUUM INTO #{conn.quote(target)}")
+      true
     end
 
     # Load a Rails `schema.rb` into the current connection with output silenced

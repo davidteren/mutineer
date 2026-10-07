@@ -32,6 +32,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`--daemon` worker databases start as a copy of the test database
+  (#222).** Each worker slot's SQLite database used to start from
+  `db/schema.rb` alone. Rows the daemon wrote while it booted, in
+  initializers or `--require` files, were only in the base test database, so
+  a test that read them passed in-process but failed under `--daemon`. On its
+  first use, a worker database is now a copy of the base test database (schema
+  and rows, made with SQLite `VACUUM INTO`). The schema is loaded only when the
+  base database has no tables.
 - **Standalone coverage capture loads the `--require` files (#217).** A run
   without `--boot` requires the sources and then each `--require` (or
   `require:`) file before it forks the mutants, but the coverage capture

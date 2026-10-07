@@ -82,6 +82,26 @@ class DaemonCoverageTest < Minitest::Test
     end
   end
 
+  # #222: each worker DB starts as a copy of the base test DB after the daemon
+  # boots, so a row the --require file wrote (in a table with no fixture) is
+  # visible to the tests, as in-process, on every worker slot.
+  def test_worker_dbs_see_rows_written_while_the_daemon_boots
+    [1, 2].each do |jobs|
+      Dir.mktmpdir("mutineer-daemon-seed") do |dir|
+        config = Mutineer::Config.new(
+          sources: [File.join(APP, "app/models/tax_table.rb")],
+          tests: [File.join(APP, "test/models/seeded_row_test.rb")],
+          require_paths: ["test/support/seed_setup"], cache_dir: dir, jobs: jobs,
+          project_root: APP, boot: "config/environment",
+          rails: true, daemon: true, strategy: "reload", framework: "minitest"
+        )
+        aggregate, = Mutineer::Runner.execute(config)
+        statuses = aggregate.results.to_h { |r| [r.subject.name, r.status] }
+        assert_equal({ rate: :no_coverage, round: :killed }, statuses, "--jobs #{jobs}")
+      end
+    end
+  end
+
   # R8: a mutant on a line no provided test exercises is no_coverage (excluded from
   # score), NOT run as a false survivor. The subtotal-only suite leaves total_cents
   # and free_shipping? uncovered, so their mutants must be no_coverage.
