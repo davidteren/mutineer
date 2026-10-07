@@ -94,12 +94,33 @@ class LoadTimeTest < Minitest::Test
     end
   end
 
+  # #209: a one-line or endless def called at load is ran_at_load (by its
+  # method call count), and one that only the tests call keeps its verdict.
   def test_survivors_and_kills_that_do_not_depend_on_load_keep_their_verdict
     results, = run_load_time("lib/shelf.rb", "test/shelf_test.rb", strategy: "redefine")
-    assert_equal({ "Shelf.double" => "killed", # ran at load, but the test kills it
-                   "Shelf.tax" => "survived", # runs at test time only
-                   "Shelf.bump" => "survived", # known limit: one-line def
-                   "Shelf.short" => "survived" }, # known limit: endless def
-                 results.to_h)
+    assert_equal({ "Shelf.double" => %w[killed], # ran at load, but the test kills it
+                   "Shelf.tax" => %w[survived], # runs at test time only
+                   "Shelf.bump" => %w[ran_at_load], # one-line def called at load
+                   "Shelf.short" => %w[ran_at_load], # endless def called at load
+                   "Shelf.half" => %w[killed], # endless def, test time only
+                   "Shelf.ping" => %w[survived] }, # one-line def, test time only
+                 statuses_by_subject(results))
+  end
+
+  # #209: under --boot the forked tests do not repeat the load, so a one-line
+  # or endless def called only at load was a false no_coverage.
+  def test_boot_reports_one_line_defs_called_at_load_as_ran_at_load
+    %w[reload redefine].each do |strategy|
+      results, = run_load_time("lib/shelf.rb", "test/shelf_test.rb", strategy: strategy, boot: "shelf_boot.rb")
+      statuses = statuses_by_subject(results)
+      assert_equal %w[ran_at_load], statuses["Shelf.bump"], strategy
+      assert_equal %w[ran_at_load], statuses["Shelf.short"], strategy
+      assert_equal %w[killed], statuses["Shelf.half"], strategy
+      assert_equal %w[survived], statuses["Shelf.ping"], strategy
+    end
+  end
+
+  def statuses_by_subject(results)
+    results.group_by(&:first).transform_values { |rows| rows.map(&:last).uniq.sort }
   end
 end

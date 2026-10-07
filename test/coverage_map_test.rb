@@ -284,7 +284,7 @@ class CoverageMapTest < Minitest::Test
   end
 
   def test_fork_capture_returns_string_diagnostic_for_raising_child
-    Coverage.start(lines: true) unless Coverage.running?
+    Coverage.start(lines: true, methods: true) unless Coverage.running?
     map = fork_map(raising_test, verbose: true)
     payload = map.send(:fork_capture, raising_test, [CALC], nil)
     assert_kind_of String, payload
@@ -294,7 +294,7 @@ class CoverageMapTest < Minitest::Test
   # #19: a child that dies WITHOUT writing (hard crash / signal) must yield a
   # diagnostic string naming how it died — not a bare nil/"no result".
   def test_fork_capture_reports_child_death_when_no_output
-    Coverage.start(lines: true) unless Coverage.running?
+    Coverage.start(lines: true, methods: true) unless Coverage.running?
     killed = File.join(Dir.mktmpdir, "suicide_test.rb")
     File.write(killed, %(Process.kill("KILL", Process.pid)\n))
     map = fork_map(killed, verbose: true)
@@ -316,7 +316,7 @@ class CoverageMapTest < Minitest::Test
   end
 
   def test_build_via_fork_surfaces_real_error_under_verbose
-    Coverage.start(lines: true) unless Coverage.running?
+    Coverage.start(lines: true, methods: true) unless Coverage.running?
     rt = raising_test
     map = fork_map(rt, verbose: true)
     _, err = capture_subprocess_io { map.build_via_fork(after_fork: nil) }
@@ -325,7 +325,7 @@ class CoverageMapTest < Minitest::Test
   end
 
   def test_build_via_fork_suppresses_error_without_verbose
-    Coverage.start(lines: true) unless Coverage.running?
+    Coverage.start(lines: true, methods: true) unless Coverage.running?
     rt = raising_test
     map = fork_map(rt, verbose: false)
     _, err = capture_subprocess_io { map.build_via_fork(after_fork: nil) }
@@ -435,11 +435,28 @@ class CoverageMapTest < Minitest::Test
     dir = Dir.mktmpdir("mutineer-cache")
     build_catalog(dir)
     path = File.join(dir, "coverage.json")
-    File.write(path, JSON.generate(JSON.parse(File.read(path)).except("load_lines")))
+    File.write(path, JSON.generate(JSON.parse(File.read(path)).except("load_lines", "load_methods")))
 
     rebuilt = build_catalog(dir)
     assert rebuilt.phase_a_ran, "a cache from before load lines were saved must rebuild"
     assert rebuilt.ran_at_load?(CATALOG, 7)
+  end
+
+  # #209: the capture records which methods were called at load, by the
+  # line and column of their def, and a cache from before #209 rebuilds once.
+  def test_standalone_capture_records_load_methods_and_an_old_cache_rebuilds
+    dir = Dir.mktmpdir("mutineer-cache")
+    first = build_catalog(dir)
+    assert first.method_ran_at_load?(CATALOG, 6, 2), "Catalog.price ran at load"
+    refute first.method_ran_at_load?(CATALOG, 6, 0)
+
+    path = File.join(dir, "coverage.json")
+    File.write(path, JSON.generate(JSON.parse(File.read(path)).except("load_methods")))
+    rebuilt = build_catalog(dir)
+    assert rebuilt.phase_a_ran, "a cache from before load methods were saved must rebuild"
+    assert rebuilt.method_ran_at_load?(CATALOG, 6, 2)
+    refute build_catalog(dir).phase_a_ran, "the rebuilt cache keeps them"
+    assert build_catalog(dir).method_ran_at_load?(CATALOG, 6, 2)
   end
 
   # #217: the capture loads the `--require` files after the sources and before
@@ -500,14 +517,16 @@ class CoverageMapTest < Minitest::Test
   # Boot mode reads the lines that ran during boot from the parent's Coverage,
   # on every run: no forked capture is credited with them.
   def test_build_via_fork_records_the_lines_that_ran_at_boot
-    Coverage.start(lines: true) unless Coverage.running?
+    Coverage.start(lines: true, methods: true) unless Coverage.running?
     dir = Dir.mktmpdir("mutineer-proj")
     src = File.join(dir, "boot_load.rb")
     test = File.join(dir, "boot_load_test.rb")
-    File.write(src, "class BootLoadThing\n  def self.price(x)\n    x * 2\n  end\n\n  ALL = [price(3)].freeze\nend\n")
+    File.write(src, "class BootLoadThing\n  def self.price(x)\n    x * 2\n  end\n\n  ALL = [price(3)].freeze\n" \
+                    "  def self.half(x) = x / 2\nend\n")
     File.write(test, "require \"minitest/autorun\"\nclass BootLoadThingTest < Minitest::Test\n  " \
-                     "def test_all; assert_equal [6], BootLoadThing::ALL; end\nend\n")
-    require src
+                     "def test_all; assert_equal [6], BootLoadThing::ALL; end\n  " \
+                     "def test_half; assert_equal 2, BootLoadThing.half(4); end\nend\n")
+    require File.realpath(src) # the fork capture matches the source by its real path
 
     cache = Dir.mktmpdir("mutineer-cache")
     mk = lambda do
@@ -517,13 +536,19 @@ class CoverageMapTest < Minitest::Test
     map = mk.call
     assert map.ran_at_load?(src, 3), "x * 2 ran while the class loaded"
     assert_empty map.tests_for(src, 3), "no test ran it"
+    # #209: price was called at boot, half only by the test, which gets the
+    # credit for the def line of the endless half.
+    assert map.method_ran_at_load?(src, 2, 2)
+    refute map.method_ran_at_load?(src, 7, 2)
+    assert_equal [File.basename(test)], map.tests_for(src, 7)
     assert mk.call.ran_at_load?(src, 3), "a cache hit still reads the boot lines"
   end
 
   def test_from_data_takes_load_lines
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: LOAD_ROOT,
-                                          load_lines: ["lib/catalog.rb:7"])
+                                          load_lines: ["lib/catalog.rb:7"], load_methods: ["lib/catalog.rb:6:2"])
     assert map.ran_at_load?(CATALOG, 7)
+    assert map.method_ran_at_load?(CATALOG, 6, 2)
     refute map.ran_at_load?(CATALOG, 6)
     refute Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: LOAD_ROOT)
                                 .ran_at_load?(CATALOG, 7)
@@ -645,7 +670,7 @@ class CoverageMapTest < Minitest::Test
   # Boot mode forks the parent instead of spawning a subprocess; the fork
   # boundary silences stdout there.
   def test_fork_capture_and_fork_clean_check_silence_stdout
-    Coverage.start(lines: true) unless Coverage.running?
+    Coverage.start(lines: true, methods: true) unless Coverage.running?
     noisy = File.expand_path("fixtures/noisy_minitest_test.rb", __dir__)
     map = fork_map(noisy, verbose: true)
     payload = clean = nil
@@ -916,7 +941,7 @@ class CoverageMapTest < Minitest::Test
   end
 
   def test_fork_clean_pass_times_out_instead_of_hanging
-    Coverage.start(lines: true) unless Coverage.running?
+    Coverage.start(lines: true, methods: true) unless Coverage.running?
     hang = File.join(Dir.mktmpdir, "hang_clean_test.rb")
     File.write(hang, "sleep 5\n")
     map = Mutineer::CoverageMap.new(
@@ -951,7 +976,7 @@ class CoverageMapTest < Minitest::Test
   # #101: a hung test in a forked (--boot / --daemon) capture stops at
   # capture_timeout instead of blocking the run.
   def test_fork_capture_times_out_instead_of_hanging
-    Coverage.start(lines: true) unless Coverage.running?
+    Coverage.start(lines: true, methods: true) unless Coverage.running?
     hang = File.join(Dir.mktmpdir, "hang_capture_test.rb")
     File.write(hang, "sleep 10\n")
     map = Mutineer::CoverageMap.new(
@@ -969,7 +994,7 @@ class CoverageMapTest < Minitest::Test
   # setsid takes it out of the capture's process group. The capture must not
   # wait for it to exit before it reads the result.
   def test_fork_capture_does_not_wait_for_a_process_that_holds_the_pipe
-    Coverage.start(lines: true) unless Coverage.running?
+    Coverage.start(lines: true, methods: true) unless Coverage.running?
     dir = Dir.mktmpdir
     pid_file = File.join(dir, "pid")
     test = File.join(dir, "leftover_capture_test.rb")
