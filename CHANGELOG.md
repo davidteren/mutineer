@@ -40,10 +40,10 @@ All notable changes to this project are documented here. The format is based on
   during coverage capture. The order is fixed for a given cache. A rebuilt
   cache measures the timings again, so two files of close cost can swap
   places; keep `.mutineer/` between CI runs for the most stable `--baseline`.
-  The order applies to Minitest (after the seeded
-  class shuffle, with `parallelize_me!` classes still last) and to RSpec. The
-  coverage cache now saves these timings, so a cache from an earlier version
-  rebuilds once. A complete run gives the same verdicts and `--matrix` rows,
+  The order applies to Minitest (after the seeded class shuffle, with
+  `parallelize_me!` classes still last) and to RSpec. `--daemon` runs every
+  covering test with no stop, so it keeps its order. The coverage cache now
+  saves these timings, so a cache from an earlier version rebuilds once. A complete run gives the same verdicts and `--matrix` rows,
   but the new order can change which mutants time out, so a `--baseline` gate
   can see a one-time change on upgrade.
 

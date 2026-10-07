@@ -98,15 +98,39 @@ module Mutineer
     # the parallel (`parallelize_me!`) ones. A stable sort by file position
     # after that shuffle puts the files in the given order and keeps the
     # seeded order within one file. The serial-then-parallel split is
-    # unchanged. Only the child's own class list gets this `shuffle`.
+    # unchanged. Only the child's own class list gets {FileOrder}.
     #
     # @api private
     # @param rank [Hash{Class => Integer}] each class's file position.
     # @return [void]
     def self.keep_file_order(rank)
-      last = rank.size
-      ::Minitest::Runnable.runnables.define_singleton_method(:shuffle) do |*args, **opts|
-        super(*args, **opts).sort_by.with_index { |klass, i| [rank.fetch(klass, last), i] }
+      FileOrder.rank = rank
+      ::Minitest::Runnable.runnables.extend(FileOrder)
+    end
+
+    # Extends the list of test classes: its `shuffle` keeps the file order.
+    module FileOrder
+      class << self
+        # Each test class's file position.
+        #
+        # @return [Hash{Class => Integer}, nil]
+        attr_accessor :rank
+      end
+
+      # The seeded shuffle, then a stable sort by file position.
+      #
+      # @return [Array<Class>]
+      def shuffle(...)
+        rank = FileOrder.rank || {}
+        super.sort_by.with_index { |klass, i| [rank.fetch(klass, rank.size), i] }
+      end
+
+      # Minitest 5.15 and older drop empty classes before the shuffle, so the
+      # filtered list keeps the file order too.
+      #
+      # @return [Array<Class>]
+      def reject(...)
+        super.extend(FileOrder)
       end
     end
   end

@@ -236,6 +236,18 @@ class TestRunnersMinitestTest < Minitest::Test
     assert_equal "bbbaaap", class_order(%w[b a], stop_at_first_failure: true)
   end
 
+  # Minitest 5.15 and older shuffle `runnables.reject { ... }`, a new array.
+  def test_file_order_survives_the_filter_of_older_minitest
+    code = fork_status do
+      classes = Array.new(6) { Class.new }
+      Minitest::Runnable.runnables.replace(classes)
+      Mutineer::MinitestIntegration.keep_file_order(classes.each_with_index.to_h)
+      srand(1)
+      Minitest::Runnable.runnables.reject { false }.shuffle == classes ? 0 : 1
+    end
+    assert_equal 0, code
+  end
+
   def test_record_to_runs_classes_in_file_order
     IO.pipe do |_rd, wr|
       assert_equal "aaabbbp", class_order(%w[a b], record_to: wr)

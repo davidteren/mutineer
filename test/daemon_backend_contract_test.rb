@@ -156,22 +156,6 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
-  # #203: the daemon's map ships the capture timings, so the tool orders a
-  # mutant's tests the same way as in-process.
-  def test_the_daemon_map_keeps_the_capture_timings
-    with_jobs do |_jobs, config, _source_map|
-      cov = Object.new
-      def cov.start = self
-      def cov.quit = nil
-      def cov.coverage = { "map" => { "app/order.rb:3" => ["test/order_test.rb"] }, "failed_test_files" => [],
-                           "failed_clean_tests" => [], "timings" => { "test/order_test.rb" => 1.5 } }
-      coverage_map = Mutineer::DaemonClient.stub(:new, ->(**) { cov }) do
-        Mutineer::DaemonBackend.build_coverage_map(config, [])
-      end
-      assert_equal({ "test/order_test.rb" => 1.5 }, coverage_map.timings)
-    end
-  end
-
   # An empty test map still falls back to the full --test set, but the boot
   # lines it came with must still classify a survivor on one of them.
   def test_an_empty_map_runs_every_test_and_keeps_the_boot_lines
