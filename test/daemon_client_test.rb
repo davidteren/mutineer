@@ -135,7 +135,7 @@ class DaemonClientTest < Minitest::Test
       Mutineer::DaemonServer.send(:close_protocol)
       exit!(STDOUT.closed? ? 1 : 0)
     end
-    _pid, status = Process.wait2(pid)
+    status = wait_child(pid)
     assert_equal 0, status.exitstatus, "close_protocol closed a caller-supplied STDOUT"
   end
 

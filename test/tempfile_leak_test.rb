@@ -20,7 +20,7 @@ class TempfileLeakTest < Minitest::Test
       pid = fork { Mutineer::Isolation.apply_whole_file("sleep 30\n", src) }
       sleep 0.02 until Dir.glob(File.join(dir, "mutineer_mutant*.rb")).any?
       Process.kill(:KILL, pid)
-      Process.wait(pid)
+      wait_child(pid)
 
       refute_empty Dir.glob(File.join(dir, "mutineer_mutant*.rb")), "leak reproduced"
       Mutineer::JobPlan.sweep_orphans([dir])
