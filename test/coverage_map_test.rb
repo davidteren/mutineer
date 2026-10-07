@@ -552,6 +552,11 @@ class CoverageMapTest < Minitest::Test
     slow_start = timings.transform_values { |t| t + 30 }
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: dir, timings: slow_start)
     assert_equal expected, map.order_tests("lib/shop/cart.rb", tests)
+
+    # A failed capture, timed again on each run, does not set that startup cost.
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["test/crash_test.rb"], project_root: dir,
+                                          timings: slow_start.merge("test/crash_test.rb" => 0.01))
+    assert_equal expected, map.order_tests("lib/shop/cart.rb", tests)
   end
 
   def test_capture_records_a_timing_per_test_file_and_the_cache_keeps_them

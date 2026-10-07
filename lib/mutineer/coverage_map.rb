@@ -136,9 +136,11 @@ module Mutineer
     # after the timed ones, and the path breaks a tie, so the same cache gives
     # the same order on every run. Costs compare in doubling buckets
     # (`log2(seconds - fastest + 1)`), so files of close cost keep their path
-    # order when a rebuild measures them again. Taking off the fastest file's
-    # time removes the startup cost every standalone capture pays. A run that stops at the first failure
-    # then reaches a fast killing test before a slow file uses up the timeout.
+    # order when a rebuild measures them again. Taking off the fastest
+    # captured file's time removes the startup cost every standalone capture
+    # pays; a failed capture is timed again on each run, so it does not count.
+    # A run that stops at the first failure then reaches a fast killing test
+    # before a slow file uses up the timeout.
     #
     # @param file [String] the mutated source file path.
     # @param tests [Array<String>] project-relative test paths from {#tests_for}.
@@ -148,7 +150,7 @@ module Mutineer
       @paired ||= {}
       paired = @paired[rel] ||= Pairing.infer_tests(rel, project_root: @project_root,
                                                          prefer: @framework || "minitest")
-      base = @timings.values.min || 0
+      base = @timings.except(*@failed_test_files).values.min || 0
       tests.sort_by do |t|
         cost = @timings[t]
         [paired.include?(t) ? 0 : 1, cost ? Math.log2(cost - base + 1).floor : Float::INFINITY, t]
