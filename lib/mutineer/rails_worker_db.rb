@@ -155,8 +155,9 @@ module Mutineer
 
     # True when the current database already holds the schema that `schema.rb`
     # declares: its newest `schema_migrations` row matches the declared version,
-    # and the `schema_sha1` Rails stores in `ar_internal_metadata` (when present)
-    # matches the file, which catches an edited schema with the same version.
+    # and the `schema_sha1` Rails stores in `ar_internal_metadata` matches the
+    # file, which catches an edited schema with the same version. No stored
+    # checksum counts as out of date, as in Rails' own `schema_up_to_date?`.
     #
     # @param schema_path [String] absolute path to `db/schema.rb`.
     # @return [Boolean]
@@ -169,10 +170,10 @@ module Mutineer
       metadata   = "#{base.table_name_prefix}#{base.internal_metadata_table_name}#{base.table_name_suffix}"
       return false unless version && conn.table_exists?(migrations)
       return false unless conn.select_values("SELECT version FROM #{conn.quote_table_name(migrations)}").map(&:to_i).max == version
-      return true unless conn.table_exists?(metadata)
+      return false unless conn.table_exists?(metadata)
 
-      stored = conn.select_value("SELECT value FROM #{conn.quote_table_name(metadata)} WHERE key = 'schema_sha1'")
-      stored.nil? || stored == Digest::SHA1.hexdigest(text)
+      conn.select_value("SELECT value FROM #{conn.quote_table_name(metadata)} WHERE key = 'schema_sha1'") ==
+        Digest::SHA1.hexdigest(text)
     end
 
     # The version a `schema.rb` declares in `define(version: ...)`, or nil. Pure

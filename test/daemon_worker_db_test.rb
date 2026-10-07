@@ -60,7 +60,8 @@ class DaemonWorkerDbTest < Minitest::Test
 
   # #222: a seeded worker keeps the copied rows when the base schema is current,
   # and reloads schema.rb (dropping them) when the schema version or the stored
-  # schema_sha1 differs. Runs under the fixture bundle against a temp base DB.
+  # schema_sha1 differs, or no schema_sha1 is stored (a plain `load schema.rb`).
+  # Runs under the fixture bundle against a temp base DB.
   SCHEMA_CHECK = <<~RUBY
     require "./config/environment"
     require #{File.expand_path("../lib/mutineer/rails_worker_db", __dir__).inspect}
@@ -76,7 +77,7 @@ class DaemonWorkerDbTest < Minitest::Test
       c.execute("INSERT INTO orders (created_at, updated_at) VALUES (datetime(), datetime())")
       set_sha = ->(v) { c.execute("INSERT OR REPLACE INTO ar_internal_metadata VALUES ('schema_sha1', \#{c.quote(v)}, datetime(), datetime())") }
       steps = {
-        current: -> {},
+        no_sha1: -> {},
         old_version: -> { c.execute("UPDATE schema_migrations SET version = '0'") },
         old_sha1: -> { c.execute("UPDATE schema_migrations SET version = '1'"); set_sha.("stale") },
         same_sha1: -> { set_sha.(Digest::SHA1.hexdigest(File.read(schema))) }
@@ -97,7 +98,7 @@ class DaemonWorkerDbTest < Minitest::Test
     out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", SCHEMA_CHECK,
                                   chdir: APP, unsetenv_others: true)
     assert status.success?, out
-    assert_includes out, { current: 1, old_version: 0, old_sha1: 0, same_sha1: 1 }.inspect
+    assert_includes out, { no_sha1: 0, old_version: 0, old_sha1: 0, same_sha1: 1 }.inspect
   end
 
   def test_verdicts_are_correct_across_distinct_worker_dbs

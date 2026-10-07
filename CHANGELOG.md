@@ -60,8 +60,9 @@ All notable changes to this project are documented here. The format is based on
   first use, a worker database is now a copy of the base test database (schema
   and rows, made with the SQLite online backup API). The worker still loads
   `db/schema.rb` when the copy's schema differs from it (another schema
-  version, or another `schema_sha1` checksum in `ar_internal_metadata`), for
-  example when the test database is empty or out of date. That load drops the
+  version, or another or no `schema_sha1` checksum in `ar_internal_metadata`),
+  for example when the test database is empty, out of date, or set up with a
+  plain `load "db/schema.rb"`. That load drops the
   copied rows of the tables it defines.
 - **Standalone coverage capture loads the `--require` files (#217).** A run
   without `--boot` requires the sources and then each `--require` (or
