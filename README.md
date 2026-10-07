@@ -22,8 +22,8 @@ for how the two tools differ.
 - **Stops at the first failing test** — in-process runs (not `--daemon` or
   `--test-command`) stop a mutant's test run at the first failure, unless
   `--matrix` asks for every covering test. The source's paired test files run
-  first, then the rest from fastest to slowest in doubling steps (files within
-  about a second of each other run in path order).
+  first, then the rest from fastest to slowest in doubling steps (under 1 s,
+  1 to 3 s, 3 to 7 s, and so on); files in one step run in path order.
 
 📖 **[mutineer.github.io →](https://davidteren.github.io/mutineer/)** — overview, operators, and usage.
 
