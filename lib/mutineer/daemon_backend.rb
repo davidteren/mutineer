@@ -133,7 +133,8 @@ module Mutineer
       end
 
       CoverageMap.from_data(map: data["map"], failed_test_files: data["failed_test_files"] || [],
-                            project_root: config.project_root, load_lines: data["load_lines"] || [])
+                            project_root: config.project_root, load_lines: data["load_lines"] || [],
+                            timings: data["timings"] || {})
     rescue DaemonBootTimeout
       raise # a second daemon for the mutant runs would hang just as long
     rescue DaemonBootError => e

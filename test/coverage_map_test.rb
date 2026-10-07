@@ -529,6 +529,49 @@ class CoverageMapTest < Minitest::Test
                                 .ran_at_load?(CATALOG, 7)
   end
 
+  # #203: the paired file first, then the cheapest; a file with no timing last,
+  # and the path breaks a tie.
+  def test_order_tests_puts_paired_files_first_then_the_cheapest
+    dir = Dir.mktmpdir("mutineer-order")
+    FileUtils.mkdir_p(File.join(dir, "lib/shop"))
+    FileUtils.mkdir_p(File.join(dir, "test/shop"))
+    File.write(File.join(dir, "lib/shop/cart.rb"), "")
+    File.write(File.join(dir, "test/shop/cart_test.rb"), "")
+    timings = { "test/shop/cart_test.rb" => 9.0, "test/slow_test.rb" => 8.0,
+                "test/fast_test.rb" => 0.5, "test/b_tie_test.rb" => 2.0, "test/a_tie_test.rb" => 2.0 }
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: dir, timings: timings)
+    tests = %w[test/untimed_test.rb test/slow_test.rb test/b_tie_test.rb test/shop/cart_test.rb
+               test/a_tie_test.rb test/fast_test.rb]
+
+    expected = %w[test/shop/cart_test.rb test/fast_test.rb test/a_tie_test.rb test/b_tie_test.rb
+                  test/slow_test.rb test/untimed_test.rb]
+    assert_equal expected, map.order_tests(File.join(dir, "lib/shop/cart.rb"), tests)
+    assert_equal expected, map.order_tests("lib/shop/cart.rb", tests.reverse)
+  end
+
+  def test_capture_records_a_timing_per_test_file_and_the_cache_keeps_them
+    dir = Dir.mktmpdir("mutineer-cache")
+    first = build_catalog(dir)
+    assert_equal ["test/catalog_test.rb"], first.timings.keys
+    assert_kind_of Float, first.timings["test/catalog_test.rb"]
+
+    second = build_catalog(dir)
+    refute second.phase_a_ran, "digest matched: cache hit"
+    assert_equal first.timings, second.timings
+  end
+
+  def test_cache_without_timings_is_rebuilt_once
+    dir = Dir.mktmpdir("mutineer-cache")
+    build_catalog(dir)
+    path = File.join(dir, "coverage.json")
+    File.write(path, JSON.generate(JSON.parse(File.read(path)).except("timings")))
+
+    rebuilt = build_catalog(dir)
+    assert rebuilt.phase_a_ran, "a cache from before timings were saved must rebuild"
+    assert_equal ["test/catalog_test.rb"], rebuilt.timings.keys
+    refute build_catalog(dir).phase_a_ran, "the rebuilt cache is a hit"
+  end
+
   def test_corrupt_cache_is_rebuilt
     dir = Dir.mktmpdir("mutineer-cache")
     File.write(File.join(dir, "coverage.json"), "{not valid json")

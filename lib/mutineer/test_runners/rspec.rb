@@ -44,6 +44,7 @@ module Mutineer
         # silenced here: the fork boundary that calls this method has already
         # pointed stdout at File::NULL (see ChildStdout).
         sink = StringIO.new
+        keep_file_order(spec_files) if stop_at_first_failure || record_to
         args = ["--no-color"]
         args << "--fail-fast" if stop_at_first_failure
         status = with_fail_fast_off(record_to) do
@@ -56,6 +57,44 @@ module Mutineer
         KillChannel.write_end(record_to) if record_to && KillFormatter.last&.saw_every_example?
 
         status.zero? ? 0 : 1
+      ensure
+        FileOrder.rank = nil
+      end
+
+      # Runs the top-level example groups in the order of `spec_files` (#203),
+      # after RSpec's own ordering, which then decides the order within a file.
+      #
+      # @api private
+      # @param spec_files [String, Array<String>] the files, in run order.
+      # @return [void]
+      def self.keep_file_order(spec_files)
+        FileOrder.rank = Array(spec_files).each_with_index.to_h { |f, i| [File.expand_path(f), i] }
+        ::RSpec::Core::World.prepend(FileOrder) unless ::RSpec::Core::World <= FileOrder
+      end
+
+      # Prepended on `RSpec::Core::World`: a stable sort of the ordered
+      # top-level groups by their file's position. Does nothing without a rank.
+      module FileOrder
+        class << self
+          # Each spec file's position, keyed by absolute path, or nil.
+          #
+          # @return [Hash{String => Integer}, nil]
+          attr_accessor :rank
+        end
+
+        # The groups RSpec ordered, sorted by file position.
+        #
+        # @return [Array<RSpec::Core::ExampleGroup>]
+        def ordered_example_groups
+          groups = super
+          rank = FileOrder.rank
+          return groups unless rank
+
+          groups.sort_by.with_index do |group, i|
+            file = group.metadata[:absolute_file_path] || File.expand_path(group.file_path)
+            [rank.fetch(file, rank.size), i]
+          end
+        end
       end
 
       # Runs the block with fail-fast forced off when `record_to` is set: a

@@ -30,6 +30,21 @@ All notable changes to this project are documented here. The format is based on
   the JSON report `summary.ran_at_load` and a `ran_at_load[]` list, within
   schema `1.7`.
 
+### Changed
+
+- **A mutant runs its paired test files first, then the cheapest (#203).**
+  The covering test files used to run in the order the coverage map stored
+  them, so a mutant that one fast file kills could still score `timeout`
+  when slow files ran first. Now the files that pairing finds for the source
+  run first, then the rest from fastest to slowest by the time each file took
+  during coverage capture. The order is fixed for a given cache, so
+  `--baseline` stays stable, and it applies to Minitest (after the seeded
+  class shuffle, with `parallelize_me!` classes still last) and to RSpec. The
+  coverage cache now saves these timings, so a cache from an earlier version
+  rebuilds once. A complete run gives the same verdicts and `--matrix` rows,
+  but the new order can change which mutants time out, so a `--baseline` gate
+  can see a one-time change on upgrade.
+
 ### Fixed
 
 - **Standalone coverage capture loads the `--require` files (#217).** A run

@@ -45,6 +45,12 @@ module Mutineer
     # @return [Set<String>]
     attr_reader :load_lines
 
+    # Seconds each test file took to capture, keyed by project-relative path
+    # (#203). {#order_tests} runs the cheaper files first.
+    #
+    # @return [Hash{String => Float}]
+    attr_reader :timings
+
     # Build a QUERY-ONLY map from data captured elsewhere (the daemon builds the
     # map app-side and ships `map` + `failed_test_files` over IPC; the tool
     # reconstructs it here for per-mutant selection). Skips the capture machinery
@@ -56,10 +62,12 @@ module Mutineer
     # @param project_root [String] project root (for path relativization).
     # @param failed_clean_tests [Array<String>] test files whose unmutated run failed.
     # @param load_lines [Array<String>, Set<String>] "file:line" keys that ran at load ({#load_lines}).
+    # @param timings [Hash{String => Float}] capture seconds per test file ({#timings}).
     # @return [Mutineer::CoverageMap] a query-only map.
-    def self.from_data(map:, failed_test_files:, project_root:, failed_clean_tests: [], load_lines: [])
+    def self.from_data(map:, failed_test_files:, project_root:, failed_clean_tests: [], load_lines: [], timings: {})
       instance = allocate
       instance.instance_variable_set(:@map, map || {})
+      instance.instance_variable_set(:@timings, timings || {})
       instance.instance_variable_set(:@load_lines, Set.new(load_lines || []))
       instance.instance_variable_set(:@failed_test_files, failed_test_files || [])
       instance.instance_variable_set(:@failed_clean_tests, failed_clean_tests || [])
@@ -85,6 +93,7 @@ module Mutineer
       @failed_test_files = []
       @failed_clean_tests = []
       @load_lines   = Set.new
+      @timings      = {}
       @loaded_dependencies = {}
       @phase_a_ran  = false
     end
@@ -119,6 +128,24 @@ module Mutineer
     # (requires Minitest method isolation + finer Coverage tracking).
     def tests_for(file, line)
       @map["#{relativize(file)}:#{line}"] || []
+    end
+
+    # The covering `tests` of a mutant in `file`, in the order a mutant run
+    # loads them (#203): the files {Pairing.infer_tests} pairs with `file`
+    # first, then the cheapest by {#timings}. A file with no timing comes
+    # after the timed ones, and the path breaks a tie, so the same cache gives
+    # the same order on every run. A run that stops at the first failure then
+    # reaches a fast killing test before a slow file uses up the timeout.
+    #
+    # @param file [String] the mutated source file path.
+    # @param tests [Array<String>] project-relative test paths from {#tests_for}.
+    # @return [Array<String>] the same paths, reordered.
+    def order_tests(file, tests)
+      rel = relativize(absolute(file))
+      @paired ||= {}
+      paired = @paired[rel] ||= Pairing.infer_tests(rel, project_root: @project_root,
+                                                         prefer: @framework || "minitest")
+      tests.sort_by { |t| [paired.include?(t) ? 0 : 1, @timings.fetch(t, Float::INFINITY), t] }
     end
 
     # True when `file:line` ran while the app booted or the sources loaded
@@ -310,9 +337,11 @@ module Mutineer
       cached = read_cache
       # A standalone cache from before load lines were saved rebuilds once. Boot
       # mode reads its load lines from the live boot instead (#build_via_fork).
+      # A cache from before test timings were saved also rebuilds once (#203).
       if cached && cached["digest"] == @digest && dependencies_match?(cached) &&
-         (@boot_path || cached.key?("load_lines"))
+         (@boot_path || cached.key?("load_lines")) && cached.key?("timings")
         @map = cached["map"] || {}
+        @timings = cached["timings"] || {}
         @load_lines = Set.new(cached["load_lines"]) unless @boot_path
         @failed_test_files = cached["failed_test_files"] || []
         @failed_clean_tests = []
@@ -338,12 +367,13 @@ module Mutineer
       @phase_a_ran = true
       @map = {}
       @load_lines = Set.new
+      @timings = {}
       @failed_test_files = []
       @failed_clean_tests = []
       @loaded_dependencies = {}
 
       @test_paths.each do |test_path|
-        payload = capture(test_path)
+        payload = timed(test_path) { capture(test_path) }
         next unless payload
 
         accept_capture_payload(test_path, payload)
@@ -358,14 +388,30 @@ module Mutineer
     def run_phase_a_via_fork(after_fork:)
       @phase_a_ran = true
       @map = {}
+      @timings = {}
       @failed_test_files = []
       @failed_clean_tests = []
       @loaded_dependencies = {}
       abs_sources = abs_source_paths
 
       @test_paths.each do |test_path|
-        accept_fork_payload(test_path, fork_capture(absolute(test_path), abs_sources, after_fork))
+        accept_fork_payload(test_path, timed(test_path) { fork_capture(absolute(test_path), abs_sources, after_fork) })
       end
+    end
+
+    # Runs the block, a capture of `test_path`, and records its wall-clock
+    # seconds in {#timings}. The parent times the whole capture, so the
+    # numbers compare files, not exact test cost.
+    #
+    # @api private
+    # @param test_path [String] test file path.
+    # @yieldreturn [Object] the capture result.
+    # @return [Object] the block's value.
+    def timed(test_path)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      value = yield
+      @timings[relativize(test_path)] = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).round(3)
+      value
     end
 
     # Records a {#fork_capture} result. Hash = capture result, String = error
@@ -569,9 +615,9 @@ module Mutineer
       pending.each do |rel|
         test_path = @test_paths.find { |t| relativize(t) == rel } || rel
         if @boot_path
-          accept_fork_payload(test_path, fork_capture(absolute(test_path), abs_sources, after_fork))
+          accept_fork_payload(test_path, timed(test_path) { fork_capture(absolute(test_path), abs_sources, after_fork) })
         else
-          payload = capture(test_path)
+          payload = timed(test_path) { capture(test_path) }
           accept_capture_payload(test_path, payload) if payload
         end
       end
@@ -1171,7 +1217,7 @@ module Mutineer
       FileUtils.mkdir_p(@cache_dir)
       data = { "digest" => @digest, "failed_test_files" => @failed_test_files,
                "dependencies" => @loaded_dependencies, "map" => @map,
-               "load_lines" => @load_lines.to_a.sort }
+               "load_lines" => @load_lines.to_a.sort, "timings" => @timings }
       tmp = "#{cache_path}.tmp"
       File.write(tmp, JSON.generate(data))
       File.rename(tmp, cache_path) # atomic swap

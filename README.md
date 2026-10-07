@@ -21,7 +21,8 @@ for how the two tools differ.
 - **Coverage-guided** — each mutant runs only the test files that cover its line.
 - **Stops at the first failing test** — in-process runs (not `--daemon` or
   `--test-command`) stop a mutant's test run at the first failure, unless
-  `--matrix` asks for every covering test.
+  `--matrix` asks for every covering test. The source's paired test files run
+  first, then the rest from fastest to slowest.
 
 📖 **[mutineer.github.io →](https://davidteren.github.io/mutineer/)** — overview, operators, and usage.
 
