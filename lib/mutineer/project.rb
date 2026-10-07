@@ -343,6 +343,7 @@ module Mutineer
           names.unshift(path.name.to_s)
           path = path.parent
         end
+        names[0] = WrittenName.new(names[0]) if path.is_a?(Prism::SelfNode) && @self_unknown # see {#with_namespace}
         if path.is_a?(Prism::SelfNode) && @namespace_unknown && !@anonymous_block
           return [nil, (@block_namespace || @namespace_stack) + names, true]
         end

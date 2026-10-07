@@ -620,6 +620,11 @@ class ProjectTest < Minitest::Test
                 def c; end
               end
             end
+            Other.class_eval do
+              self::X = Module.new do
+                def c; end
+              end
+            end
             module X
               def c; end
               module_function :c
@@ -629,7 +634,7 @@ class ProjectTest < Minitest::Test
       end
     RUBY
     with_source(src) do |path|
-      assert_equal %w[#<Class:App>::M::X#c #<Class:App>::M::X.c],
+      assert_equal %w[#<Class:App>::M::X#c #<Class:App>::M::X#c #<Class:App>::M::X.c],
                    Mutineer::Project.discover([path]).map(&:qualified_name)
     end
   end
@@ -694,6 +699,9 @@ class ProjectTest < Minitest::Test
           module self::X
             def x; end
           end
+          self::Y = Module.new do
+            def y; end
+          end
         end
         class << self
           module M
@@ -708,10 +716,13 @@ class ProjectTest < Minitest::Test
         module X
           module_function :x
         end
+        module Y
+          module_function :y
+        end
       end
     RUBY
     with_source(src) do |path|
-      assert_equal %w[App#setup #<Class:App>::M#c #<Class:App>::M#d App::X#x #<Class:App>::M.e],
+      assert_equal %w[App#setup #<Class:App>::M#c #<Class:App>::M#d App::X#x App::Y#y #<Class:App>::M.e],
                    Mutineer::Project.discover([path]).map(&:qualified_name)
     end
   end
