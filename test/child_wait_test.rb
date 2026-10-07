@@ -30,6 +30,7 @@ class ChildWaitTest < Minitest::Test
     assert_predicate grandchild, :positive?, "the child did not report its grandchild"
     rd.close
     assert_raises(Minitest::Assertion) { wait_child(pid, timeout: 0.2) }
+    pid = nil # reaped, so its number may now belong to another process
     gone = 50.times.any? do
       sleep 0.05
       gone?(grandchild)
