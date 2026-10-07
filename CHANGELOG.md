@@ -41,14 +41,14 @@ All notable changes to this project are documented here. The format is based on
   capture pays). The order is fixed for a given cache. Costs compare in
   doubling buckets, so files of close cost keep their path order when a
   rebuilt cache measures them again; a file near a bucket edge can still move,
-  so keep `.mutineer/` between CI runs for the most stable `--baseline`. The order
-  applies to Minitest (after the seeded class shuffle, with `parallelize_me!`
-  classes still last) and to RSpec. `--daemon` runs every covering test with
-  no stop, so the order does not change its verdicts. The coverage cache now
-  saves these timings, so a cache from an earlier version rebuilds once. A
-  complete run gives the same verdicts and `--matrix` rows, but the new order
-  can change which mutants time out, so a `--baseline` gate can see a one-time
-  change on upgrade.
+  so keep `.mutineer/` between CI runs for the most stable `--baseline`. The
+  order applies to Minitest (after the seeded class shuffle, with
+  `parallelize_me!` classes still last) and to RSpec. `--daemon` runs every
+  covering test with no stop, so the order does not change its verdicts. The
+  coverage cache now saves these timings, so a cache from an earlier version
+  rebuilds once. A complete run gives the same verdicts and `--matrix` rows,
+  but the new order can change which mutants time out, so a `--baseline` gate
+  can see a one-time change on upgrade.
 
 ### Fixed
 
