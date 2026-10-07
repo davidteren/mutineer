@@ -59,6 +59,8 @@ module Mutineer
         @singleton_cref = nil # the singleton class name, in a builder block inside `class << self`
         @namespace_unknown = false # the namespace is lexically under a singleton class (#208)
         @anonymous_block = false   # inside a builder block not assigned to a constant
+        @self_unknown = false      # inside a def or a block that is not a builder, so `self` is not the namespace
+        @builder_block = nil       # the block of the builder call being visited
         super()
       end
 
@@ -120,8 +122,27 @@ module Mutineer
         return super unless builds_class?(node)
 
         anonymous = !@assigned&.first.equal?(node)
-        with_block_owner(anonymous ? [nil, @namespace_stack, true] : @assigned.last, anonymous) { super }
+        with_block_owner(anonymous ? [nil, @namespace_stack, true] : @assigned.last, anonymous) do
+          @builder_block = node.block
+          super
+        end
       end
+
+      # A block that does not build a class may run with any `self` (`class_eval`,
+      # `instance_eval`, a callback), so a `class << self` in it names a singleton
+      # class Mutineer cannot be sure of (#216). A lambda is treated the same.
+      #
+      # @param node [Prism::BlockNode, Prism::LambdaNode] block or lambda node.
+      # @return [void]
+      def visit_block_node(node)
+        return super if node.equal?(@builder_block)
+
+        saved_self = @self_unknown
+        @self_unknown = true
+        super
+        @self_unknown = saved_self
+      end
+      alias visit_lambda_node visit_block_node
 
       # Names the class a builder block assigned to this constant builds (see {#builds_class?}).
       #
@@ -185,8 +206,11 @@ module Mutineer
         )
         @subject_keys << module_key
         saved_active = @module_function_active
+        saved_self = @self_unknown
+        @self_unknown = true # `self` in a method body is the receiver it is called on
         super
         @module_function_active = saved_active # a visibility call in a method body runs only when it is called
+        @self_unknown = saved_self
       end
 
       private
@@ -260,7 +284,7 @@ module Mutineer
           @namespace_unknown = @owner_unknown = in_singleton || @namespace_unknown # redefine reopens the lexical chain
           @singleton_depth = 0
           @singleton_cref = nil
-          @anonymous_block = false
+          @anonymous_block = @self_unknown = false
           @body = Object.new
           yield
         end
@@ -268,7 +292,8 @@ module Mutineer
 
       # Visitor state a class/module body or builder block sets for what it contains.
       SCOPE_STATE = %i[@namespace_stack @lexical_stack @module_function_active @block_owner @block_namespace
-                       @owner_unknown @singleton_depth @singleton_cref @namespace_unknown @anonymous_block @body].freeze
+                       @owner_unknown @singleton_depth @singleton_cref @namespace_unknown @anonymous_block @body
+                       @self_unknown @builder_block].freeze
 
       # Runs the block and then restores every {SCOPE_STATE} variable, so a
       # nested body's state never leaks out of it.
@@ -330,7 +355,8 @@ module Mutineer
       # and a builder block inside `class << self` keeps the enclosing one. A block
       # not assigned to a constant builds a class with no name, written `#<anonymous>`.
       # Each nested `class << self` opens the singleton class of the one around it.
-      # A name built on a written path or `#<anonymous>` is a {WrittenName} (see {#module_key}).
+      # A name built on a written path or `#<anonymous>`, or opened where `self` may
+      # be another object (in a def or a non-builder block), is a {WrittenName} (see {#module_key}).
       #
       # @return [String] e.g. `#<Class:App>`, or `#<Class:#<Class:App>>` two deep.
       def singleton_name
@@ -338,7 +364,7 @@ module Mutineer
 
         base = @anonymous_block ? @namespace_stack + ["#<anonymous>"] : @block_namespace || @namespace_stack
         name = @singleton_depth.times.reduce(base.join("::")) { |inner, _| "#<Class:#{inner}>" }
-        named = @owner_unknown ? base.all? { |s| named_segment?(s) } : !written?(base)
+        named = !@self_unknown && (@owner_unknown ? base.all? { |s| named_segment?(s) } : !written?(base))
         named ? name : WrittenName.new(name)
       end
 
@@ -392,6 +418,7 @@ module Mutineer
           @singleton_cref = singleton_name if @singleton_depth.positive?
           @block_owner, @block_namespace, @owner_unknown = owner
           @anonymous_block = anonymous
+          @self_unknown = false
           @module_function_active = false
           @singleton_depth = 0
           @body = Object.new

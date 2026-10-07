@@ -664,6 +664,37 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #216: `class << self` in a def or a `class_eval` block opens the singleton class
+  # of whatever `self` is then, so its modules do not match App's own.
+  def test_discover_module_function_does_not_cross_class_self_in_a_def_or_block
+    src = <<~RUBY
+      class App
+        def setup
+          class << self
+            module M
+              def c; end
+            end
+          end
+        end
+        Other.class_eval do
+          class << self
+            module M
+              def d; end
+            end
+          end
+        end
+        class << self
+          module M
+            module_function :c, :d
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[App#setup #<Class:App>::M#c #<Class:App>::M#d], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   def test_discover_promotes_module_function_names_in_a_module_new_block
     src = <<~RUBY
       module Host
