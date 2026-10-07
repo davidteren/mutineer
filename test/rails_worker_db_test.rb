@@ -47,4 +47,12 @@ class RailsWorkerDbTest < Minitest::Test
       Mutineer::RailsWorkerDb.per_worker_config({ adapter: "sqlite3", database: ":memory:" }, 0)
     end
   end
+
+  # #222: a seeded worker reloads schema.rb only when its version differs.
+  def test_schema_file_version_reads_the_declared_version
+    assert_equal 20_240_102_030_405,
+                 Mutineer::RailsWorkerDb.schema_file_version("ActiveRecord::Schema[7.1].define(version: 2024_01_02_030405) do")
+    assert_equal 1, Mutineer::RailsWorkerDb.schema_file_version("ActiveRecord::Schema.define(version: 1) do")
+    assert_nil Mutineer::RailsWorkerDb.schema_file_version("ActiveRecord::Schema.define do")
+  end
 end

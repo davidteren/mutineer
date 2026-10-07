@@ -158,7 +158,14 @@ RAILS_ENV=test bundle exec mutineer run \
   a mutant on an uncovered line is `no_coverage`, so the score stays comparable to
   the in-process `--rails` score.
 - **Safe `--jobs N`** — each worker routes to its own copy of the test database, so
-  parallel verdicts equal serial (no fixture cross-talk).
+  parallel verdicts equal serial (no fixture cross-talk). On first use, a
+  worker's database is a copy of the test database after the app boots, so rows
+  written by initializers or `--require` files are there, as in-process. When
+  the copy's schema differs from `db/schema.rb` (another schema version or
+  `schema_sha1` checksum, or no stored checksum, as in an empty or out-of-date
+  test database, or one set up with a plain `load "db/schema.rb"`), the
+  worker loads `db/schema.rb` over it, which drops the copied rows of the
+  tables it defines.
 - **One backend at a time** — `--daemon` can't be combined with `--test-command`
   (choose one), and it needs an app to boot (`--rails` or `--boot`).
 

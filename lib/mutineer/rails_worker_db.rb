@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "digest"
+
 module Mutineer
   # Per-worker database isolation for the daemon path.
   #
@@ -14,7 +16,9 @@ module Mutineer
   # forks cannot clobber each other's transactional fixtures. {after_fork} runs
   # inside a freshly-forked child and points that child's connection at the
   # worker's database BEFORE any test loads; transactional fixtures then
-  # repopulate that isolated database per test.
+  # repopulate that isolated database per test. On a slot's first use the worker
+  # database starts as a copy of the base test database, so it holds what the
+  # booted parent wrote, as the in-process backend sees it.
   #
   # Scope: SQLite adapter only (per-worker file, hermetic). Postgres per-worker
   # DBs (`CREATE DATABASE <db>-<worker>`) are not implemented yet; a non-SQLite
@@ -95,20 +99,90 @@ module Mutineer
 
     # Child-side (after fork): route this process's ActiveRecord at the worker's
     # own database and confirm it is reachable, so a routing failure reads as
-    # `error` (via the daemon's child rescue) rather than a false verdict. Loads
-    # the schema into the worker database when a schema path is given
-    # (idempotent: schema.rb runs with `force: true`), covering a fresh worker
-    # file.
+    # `error` (via the daemon's child rescue) rather than a false verdict.
+    #
+    # With `seed: true` (the slot's first use) the worker database first becomes
+    # a copy of the base test database, schema and rows, so rows the daemon
+    # parent wrote while it booted (initializers, `--require` files) are there,
+    # as they are for the in-process backend (#222). The schema is then loaded
+    # only when the copy differs from `schema.rb` ({schema_current?}: schema
+    # version or stored `schema_sha1`, as in a stale or empty base database):
+    # `schema.rb` runs with `force: true`, which drops the copied rows of the
+    # tables it defines.
     #
     # @param worker [Integer] the worker slot index.
     # @param schema_path [String, nil] absolute path to `db/schema.rb`, or nil to skip.
+    # @param seed [Boolean] copy the base database into the worker database first.
     # @return [void]
-    def self.after_fork(worker, schema_path = nil)
+    def self.after_fork(worker, schema_path = nil, seed: false)
       return unless available?
 
-      ActiveRecord::Base.establish_connection(worker_db_config(worker))
-      load_schema(schema_path) if schema_path
+      config = worker_db_config(worker)
+      base   = ActiveRecord::Base.connection.select_value("SELECT file FROM pragma_database_list WHERE name = 'main'") if seed
+      ActiveRecord::Base.establish_connection(config)
+      seed_from(base) if seed
+      load_schema(schema_path) if schema_path && !schema_current?(schema_path)
       verify_connection!
+    end
+
+    # Copy the base test database file into the worker database this fork is
+    # now connected to, with the SQLite online backup API: one consistent
+    # snapshot of the committed data (WAL included) that replaces whatever the
+    # worker file held (an earlier run, or a copy a timeout interrupted). Both
+    # ends are files SQLite itself opened, so no path rules are re-derived here.
+    #
+    # @param base_file [String] the base database file, from `pragma_database_list`.
+    # @return [void]
+    def self.seed_from(base_file)
+      codes  = SQLite3::Constants::ErrorCode
+      source = SQLite3::Database.new(base_file, readonly: true)
+      source.busy_timeout = 5000
+      backup = SQLite3::Backup.new(ActiveRecord::Base.connection.raw_connection, "main", source, "main")
+      # Another worker's process can hold a lock on the base file for a moment;
+      # BUSY/LOCKED steps are retried for up to 5 seconds, then the copy fails
+      # with a message that names the database (scored `error`).
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
+      until (status = backup.step(-1)) == codes::DONE
+        retry_ok = [codes::BUSY, codes::LOCKED].include?(status) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+        raise "copying #{base_file} into the worker database failed (SQLite code #{status})" unless retry_ok
+
+        sleep 0.01
+      end
+    ensure
+      backup&.finish
+      source&.close
+    end
+
+    # True when the current database already holds the schema that `schema.rb`
+    # declares: its newest `schema_migrations` row matches the declared version,
+    # and the `schema_sha1` Rails stores in `ar_internal_metadata` matches the
+    # file, which catches an edited schema with the same version. No stored
+    # checksum counts as out of date, as in Rails' own `schema_up_to_date?`.
+    #
+    # @param schema_path [String] absolute path to `db/schema.rb`.
+    # @return [Boolean]
+    def self.schema_current?(schema_path)
+      text    = File.read(schema_path)
+      version = schema_file_version(text)
+      conn = ActiveRecord::Base.connection
+      base       = ActiveRecord::Base
+      migrations = "#{base.table_name_prefix}#{base.schema_migrations_table_name}#{base.table_name_suffix}"
+      metadata   = "#{base.table_name_prefix}#{base.internal_metadata_table_name}#{base.table_name_suffix}"
+      return false unless version && conn.table_exists?(migrations)
+      return false unless conn.select_values("SELECT version FROM #{conn.quote_table_name(migrations)}").map(&:to_i).max == version
+      return false unless conn.table_exists?(metadata)
+
+      conn.select_value("SELECT value FROM #{conn.quote_table_name(metadata)} WHERE key = 'schema_sha1'") ==
+        Digest::SHA1.hexdigest(text)
+    end
+
+    # The version a `schema.rb` declares in `define(version: ...)`, or nil. Pure
+    # string parse (no AR) so it is unit-testable in the zero-dep suite.
+    #
+    # @param text [String] the `schema.rb` source.
+    # @return [Integer, nil]
+    def self.schema_file_version(text)
+      text[/define\(version:\s*([\d_]+)/, 1]&.delete("_")&.to_i
     end
 
     # Load a Rails `schema.rb` into the current connection with output silenced

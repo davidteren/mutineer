@@ -52,6 +52,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`--daemon` worker databases start as a copy of the test database
+  (#222).** Each worker slot's SQLite database used to start from
+  `db/schema.rb` alone. Rows the daemon wrote while it booted, in
+  initializers or `--require` files, were only in the base test database, so
+  a test that read them passed in-process but failed under `--daemon`. On its
+  first use, a worker database is now a copy of the base test database (schema
+  and rows, made with the SQLite online backup API). The worker still loads
+  `db/schema.rb` when the copy's schema differs from it (another schema
+  version, or another or no `schema_sha1` checksum in `ar_internal_metadata`),
+  for example when the test database is empty, out of date, or set up with a
+  plain `load "db/schema.rb"`. That load drops the
+  copied rows of the tables it defines.
 - **Standalone coverage capture loads the `--require` files (#217).** A run
   without `--boot` requires the sources and then each `--require` (or
   `require:`) file before it forks the mutants, but the coverage capture
