@@ -1,0 +1,21 @@
+test/child_wait_test.rb
+  s_07d7b58ff1b9fd::t_2b1ba9127838f2 12,23,25,28
+test/runner_external_test.rb
+  s_07d7b58ff1b9fd::t_2b1ba9127838f2 90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "73d38980aa6146a7fcf717c07c1b95f0ef40fede",
+  "prompts": {},
+  "sessions": {
+    "s_07d7b58ff1b9fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e94abe96-04b1-405f-9d80-f7ba131633a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
