@@ -71,7 +71,9 @@ module Mutineer
         # the boot require so the entire app loaded during boot is instrumented;
         # forked children then measure each test's coverage delta against it.
         # An earlier run in this process leaves Coverage suspended (see below).
+        # Coverage a host started is the host's: it is left running.
         require "coverage"
+        own_coverage = !Coverage.running?
         case Coverage.state
         when :idle then Coverage.start(lines: true, methods: true)
         when :suspended then Coverage.resume
@@ -104,7 +106,7 @@ module Mutineer
         ).build_via_fork(after_fork: (config.rails ? -> { reconnect_active_record } : nil))
         # Nothing reads Coverage once the map is built (cache hit or not), so
         # stop paying for it in every mutant fork (#228).
-        Coverage.suspend if Coverage.running?
+        Coverage.suspend if own_coverage && Coverage.running?
       else
         # As in boot mode, and with lib first as `rake test` does.
         test_roots = JobPlan.test_load_roots(config.tests.map { |t| File.expand_path(t, config.project_root) })
