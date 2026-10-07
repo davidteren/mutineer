@@ -69,9 +69,9 @@ All notable changes to this project are documented here. The format is based on
   Mutineer cannot be sure of still matches only within its own body: a path
   such as `self::X` or `Foo::X` written directly inside `class << self`, a
   name under an anonymous class, a module in a `class << self` inside a method
-  or a `class_eval` block, or a `module self::X` in a `Class.new` block.
-  The last one now also stays apart outside `class << self`, where a
-  `module_function` in a module of the same name used to promote its methods.
+  or a `class_eval` block, or a `module self::X` in a block. The last one now
+  also stays apart outside `class << self`, where a `module_function` in a
+  module of the same name used to promote its methods.
 
 - **`--daemon` worker databases start as a copy of the test database
   (#222).** Each worker slot's SQLite database used to start from

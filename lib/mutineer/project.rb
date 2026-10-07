@@ -61,6 +61,7 @@ module Mutineer
         @anonymous_block = false   # inside a builder block not assigned to a constant
         @self_unknown = false      # inside a def or a block that is not a builder, so `self` is not the namespace
         @builder_block = nil       # the block of the builder call being visited
+        @singleton_uncertain = false # the open `class << self` was inside a def or a non-builder block
         super()
       end
 
@@ -184,8 +185,11 @@ module Mutineer
 
         @singleton_depth += 1
         saved_active = @module_function_active
+        saved_uncertain = @singleton_uncertain
+        @singleton_uncertain ||= @self_unknown # `self` here may be another object (#216)
         super
         @module_function_active = saved_active # a visibility call in here is not the module body's
+        @singleton_uncertain = saved_uncertain
         @singleton_depth -= 1
       end
 
@@ -264,8 +268,8 @@ module Mutineer
       # A compact `Foo::X` or a top-level `::X` there is named as written, and
       # its owner is unknown too: redefine reopens the lexical chain without the
       # singleton class, so constants the body looks up through it would not resolve.
-      # A `self::X` in a builder block is under the class the block builds, not
-      # the enclosing namespace it is named in, so its name is a {WrittenName}.
+      # A `self::X` in a block is under the block's `self` (the class a builder
+      # builds, or any object), not the namespace it is named in, so its name is a {WrittenName}.
       #
       # @param path [Prism::Node] the class/module constant path.
       # @yield the class or module body visit.
@@ -278,7 +282,9 @@ module Mutineer
           @namespace_stack =
             if root then [name]
             elsif in_singleton then path.is_a?(Prism::ConstantPathNode) ? [path.slice] : [singleton_name, name]
-            else @namespace_stack + [@block_namespace && self_rooted?(path) ? WrittenName.new(name) : name]
+            elsif self_rooted?(path) && (@block_namespace || @self_unknown)
+              @namespace_stack + [WrittenName.new(name)]
+            else @namespace_stack + [name]
             end
           @lexical_stack += [root ? "::#{name}" : name]
           @module_function_active = false
@@ -286,7 +292,7 @@ module Mutineer
           @namespace_unknown = @owner_unknown = in_singleton || @namespace_unknown # redefine reopens the lexical chain
           @singleton_depth = 0
           @singleton_cref = nil
-          @anonymous_block = @self_unknown = false
+          @anonymous_block = @self_unknown = @singleton_uncertain = false
           @body = Object.new
           yield
         end
@@ -295,7 +301,7 @@ module Mutineer
       # Visitor state a class/module body or builder block sets for what it contains.
       SCOPE_STATE = %i[@namespace_stack @lexical_stack @module_function_active @block_owner @block_namespace
                        @owner_unknown @singleton_depth @singleton_cref @namespace_unknown @anonymous_block @body
-                       @self_unknown @builder_block].freeze
+                       @self_unknown @builder_block @singleton_uncertain].freeze
 
       # Runs the block and then restores every {SCOPE_STATE} variable, so a
       # nested body's state never leaks out of it.
@@ -366,7 +372,7 @@ module Mutineer
 
         base = @anonymous_block ? @namespace_stack + ["#<anonymous>"] : @block_namespace || @namespace_stack
         name = @singleton_depth.times.reduce(base.join("::")) { |inner, _| "#<Class:#{inner}>" }
-        named = !@self_unknown && (@owner_unknown ? base.all? { |s| named_segment?(s) } : !written?(base))
+        named = !@singleton_uncertain && (@owner_unknown ? base.all? { |s| named_segment?(s) } : !written?(base))
         named ? name : WrittenName.new(name)
       end
 
@@ -420,7 +426,7 @@ module Mutineer
           @singleton_cref = singleton_name if @singleton_depth.positive?
           @block_owner, @block_namespace, @owner_unknown = owner
           @anonymous_block = anonymous
-          @self_unknown = false
+          @self_unknown = @singleton_uncertain = false
           @module_function_active = false
           @singleton_depth = 0
           @body = Object.new
