@@ -32,6 +32,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Standalone coverage capture loads the `--require` files (#217).** A run
+  without `--boot` requires the sources and then each `--require` (or
+  `require:`) file before it forks the mutants, but the coverage capture
+  loaded only the sources. A source method that a `--require` file called
+  while it loaded was then not seen as run at load, so its mutant was a false
+  `survived` instead of `ran_at_load`. The capture and the clean-suite check
+  now load the `--require` files after the sources. With or without
+  `--boot`, the coverage cache rebuilds when one of them changes, is added,
+  is removed, or moves in the load order. Under `--daemon` the `--require`
+  files are not passed to the daemon yet (#220).
 - **The release workflow publishes only stable tags** (#161). Its trigger,
   `v*.*.*`, also matches a prerelease tag such as `v1.3.1-rc1`, and the only
   guard checked that the tag matched `Mutineer::VERSION`. A prerelease tag

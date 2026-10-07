@@ -120,7 +120,8 @@ coverage-guided — each mutant runs only the test files that exercise its line
 (coverage is captured by forking the booted app, then cached).
 
 Some code runs while the app boots or a class loads, for example a class body
-that calls a method to build a constant, or a `to_prepare` initializer. That run
+that calls a method to build a constant, a `to_prepare` initializer, or a
+`--require` file that calls a source method. That run
 happens before the mutant is applied, and the forked test does not repeat it.
 A mutant on such a line is `ran_at_load`, not `survived` or `no_coverage`. It is
 left out of the score and does not fail `--threshold`; a kill still counts.

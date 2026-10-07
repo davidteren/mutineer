@@ -442,6 +442,61 @@ class CoverageMapTest < Minitest::Test
     assert rebuilt.ran_at_load?(CATALOG, 7)
   end
 
+  # #217: the capture loads the `--require` files after the sources and before
+  # it reads the load coverage, and the files are part of the cache digest.
+  def test_require_paths_run_at_load_and_invalidate_the_cache
+    dir = Dir.mktmpdir("mutineer-proj")
+    cache = Dir.mktmpdir("mutineer-cache")
+    src = File.join(dir, "req_price.rb")
+    setup = File.join(dir, "req_setup.rb")
+    test = File.join(dir, "req_price_test.rb")
+    File.write(src, "class ReqPrice\n  def self.price(x)\n    x * 2\n  end\nend\n")
+    File.write(setup, "REQ_TABLE = [ReqPrice.price(3)].freeze\n")
+    FileUtils.mkdir_p(File.join(dir, "req_setup")) # a gem-style folder beside req_setup.rb
+    File.write(test, "require \"minitest/autorun\"\nclass ReqPriceTest < Minitest::Test\n  " \
+                     "def test_table; assert_equal [6], REQ_TABLE; end\nend\n")
+    mk = lambda do |requires|
+      Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test], cache_dir: cache,
+                                project_root: dir, require_paths: requires).build_or_load
+    end
+
+    first = mk.call(["req_setup"])
+    assert first.phase_a_ran
+    assert_empty first.failed_test_files, "the test sees the constant the require file built"
+    assert first.ran_at_load?(src, 3), "x * 2 ran while the require file loaded"
+    refute mk.call(["req_setup"]).phase_a_ran, "unchanged: cache hit"
+
+    File.write(setup, "REQ_TABLE = [ReqPrice.price(1 + 2)].freeze\n")
+    assert mk.call(["req_setup"]).phase_a_ran, "require file changed: cache must rebuild"
+    dropped = nil
+    capture_subprocess_io { dropped = mk.call([]) } # the test now fails: REQ_TABLE is undefined
+    assert dropped.phase_a_ran, "require file dropped: cache must rebuild"
+  end
+
+  # The `--require` files load in the order given, and the order can change
+  # what they build, so it is part of the digest.
+  def test_digest_is_require_order_sensitive
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "a.rb"), "A = 1\n")
+      File.write(File.join(dir, "b.rb"), "B = 2\n")
+      mk = lambda do |reqs|
+        Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
+                                  require_paths: reqs)
+      end
+      refute_equal mk.call(%w[a b]).send(:compute_digest), mk.call(%w[b a]).send(:compute_digest)
+    end
+  end
+
+  # `require` also finds a native extension without its suffix.
+  def test_digest_reads_an_extensionless_native_require
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "native.#{RbConfig::CONFIG['DLEXT']}"), "binary")
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
+                                      require_paths: ["native"])
+      assert_kind_of String, map.send(:compute_digest)
+    end
+  end
+
   # Boot mode reads the lines that ran during boot from the parent's Coverage,
   # on every run: no forked capture is credited with them.
   def test_build_via_fork_records_the_lines_that_ran_at_boot
