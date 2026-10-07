@@ -442,6 +442,36 @@ class CoverageMapTest < Minitest::Test
     assert rebuilt.ran_at_load?(CATALOG, 7)
   end
 
+  # #217: the capture loads the `--require` files after the sources and before
+  # it reads the load coverage, and the files are part of the cache digest.
+  def test_require_paths_run_at_load_and_invalidate_the_cache
+    dir = Dir.mktmpdir("mutineer-proj")
+    cache = Dir.mktmpdir("mutineer-cache")
+    src = File.join(dir, "req_price.rb")
+    setup = File.join(dir, "req_setup.rb")
+    test = File.join(dir, "req_price_test.rb")
+    File.write(src, "class ReqPrice\n  def self.price(x)\n    x * 2\n  end\nend\n")
+    File.write(setup, "REQ_TABLE = [ReqPrice.price(3)].freeze\n")
+    File.write(test, "require \"minitest/autorun\"\nclass ReqPriceTest < Minitest::Test\n  " \
+                     "def test_table; assert_equal [6], REQ_TABLE; end\nend\n")
+    mk = lambda do |requires|
+      Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test], cache_dir: cache,
+                                project_root: dir, require_paths: requires).build_or_load
+    end
+
+    first = mk.call(["req_setup"])
+    assert first.phase_a_ran
+    assert_empty first.failed_test_files, "the test sees the constant the require file built"
+    assert first.ran_at_load?(src, 3), "x * 2 ran while the require file loaded"
+    refute mk.call(["req_setup"]).phase_a_ran, "unchanged: cache hit"
+
+    File.write(setup, "REQ_TABLE = [ReqPrice.price(1 + 2)].freeze\n")
+    assert mk.call(["req_setup"]).phase_a_ran, "require file changed: cache must rebuild"
+    dropped = nil
+    capture_subprocess_io { dropped = mk.call([]) } # the test now fails: REQ_TABLE is undefined
+    assert dropped.phase_a_ran, "require file dropped: cache must rebuild"
+  end
+
   # Boot mode reads the lines that ran during boot from the parent's Coverage,
   # on every run: no forked capture is credited with them.
   def test_build_via_fork_records_the_lines_that_ran_at_boot

@@ -32,6 +32,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Standalone coverage capture loads the `--require` files (#217).** A run
+  without `--boot` requires the sources and then each `--require` (or
+  `require:`) file before it forks the mutants, but the coverage capture
+  loaded only the sources. A source method that a `--require` file called
+  while it loaded was then not seen as run at load, so its mutant was a false
+  `survived` instead of `ran_at_load`. The capture and the clean-suite check
+  now load the `--require` files after the sources, and the coverage cache
+  rebuilds when one of them changes, is added, or is removed.
 - **Coverage capture keeps to `capture_timeout` from start to finish.** Under
   `--boot` and `--daemon`, a hung test file ignored the timeout and blocked
   the run; it is now skipped as "timed out", like a standalone capture. A

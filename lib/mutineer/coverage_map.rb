@@ -36,8 +36,9 @@ module Mutineer
 
     attr_reader :project_root, :failed_test_files, :failed_clean_tests, :phase_a_ran, :map
 
-    # The source lines that ran while the app booted or the sources loaded,
-    # before any test ran, as a Set of "file:line" keys like {#map}'s (#187).
+    # The source lines that ran while the app booted or the sources and the
+    # `--require` files loaded, before any test ran, as a Set of "file:line"
+    # keys like {#map}'s (#187, #217).
     # A mutant on such a line can change a value computed before the mutant was
     # applied, so its verdict is not trusted (`ran_at_load`).
     #
@@ -69,8 +70,9 @@ module Mutineer
     def initialize(source_paths:, test_paths:, cache_dir: ".mutineer",
                    load_paths: ["lib"], project_root: Dir.pwd,
                    capture_timeout: DEFAULT_CAPTURE_TIMEOUT, boot_path: nil,
-                   framework: "minitest", verbose: false)
+                   framework: "minitest", verbose: false, require_paths: [])
       @source_paths = Array(source_paths)
+      @require_paths = Array(require_paths)
       @test_paths   = Array(test_paths)
       @cache_dir    = cache_dir
       @load_paths   = Array(load_paths)
@@ -780,8 +782,9 @@ module Mutineer
       @framework == "rspec" ? rspec_clean_check_script(test_paths) : minitest_clean_check_script(test_paths)
     end
 
-    # Minitest clean-suite check. Preloads configured sources like capture and
-    # standalone {Runner.execute}, so tests that rely on that preload stay green.
+    # Minitest clean-suite check. Preloads configured sources and `--require`
+    # files like capture and standalone {Runner.execute}, so tests that rely on
+    # that preload stay green.
     #
     # @api private
     # @param test_paths [Array<String>] test file paths.
@@ -796,7 +799,7 @@ module Mutineer
         Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
         Minitest.extensions << "mutineer_report"
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| require f }
+        #{abs_preload_paths.inspect}.each { |f| require f }
         #{loads}
         _passed = Minitest.run([])
         $stderr.write(_report.string) unless _passed
@@ -804,7 +807,8 @@ module Mutineer
       RUBY
     end
 
-    # RSpec clean-suite check. Preloads configured sources like capture.
+    # RSpec clean-suite check. Preloads configured sources and `--require`
+    # files like capture.
     #
     # @api private
     # @param test_paths [Array<String>] spec file paths.
@@ -820,7 +824,7 @@ module Mutineer
         end
         RSpec::Core::Runner.disable_autorun!
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| require f }
+        #{abs_preload_paths.inspect}.each { |f| require f }
         _sink = StringIO.new
         status = RSpec::Core::Runner.run(["--no-color", #{specs}], _sink, _sink)
         $stderr.write(_sink.string) unless status.zero?
@@ -855,7 +859,7 @@ module Mutineer
         Minitest.extensions << "mutineer_report"
         Coverage.start(lines: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| require f }
+        #{abs_preload_paths.inspect}.each { |f| require f }
         _load = #{load_coverage_expression}
         load #{absolute(test_path).inspect}
         _passed = Minitest.run([])
@@ -888,7 +892,7 @@ module Mutineer
         RSpec::Core::Runner.disable_autorun!
         Coverage.start(lines: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_source_paths.inspect}.each { |f| require f }
+        #{abs_preload_paths.inspect}.each { |f| require f }
         _load = #{load_coverage_expression}
         _sink = StringIO.new
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
@@ -1049,7 +1053,8 @@ module Mutineer
       d = Digest::SHA256.new
       digest_group(d, "source", @source_paths)
       digest_group(d, "test", @test_paths)
-      digest_group(d, "boot", [boot_digest_path]) if @boot_path
+      digest_group(d, "require", @require_paths.map { |p| digest_path(p) })
+      digest_group(d, "boot", [digest_path(@boot_path)]) if @boot_path
       ownership_paths.each do |rel|
         d.update("owner\0")
         d.update(rel)
@@ -1096,10 +1101,10 @@ module Mutineer
       paths.uniq.sort
     end
 
-    # boot_path is a require-style path (e.g. "config/environment", no extension);
-    # resolve it to the real file for reading, appending ".rb" when needed.
-    def boot_digest_path
-      File.exist?(absolute(@boot_path)) ? @boot_path : "#{@boot_path}.rb"
+    # boot_path and require_paths are require-style paths (e.g. "config/environment",
+    # no extension); resolve one to the real file for reading, appending ".rb" when needed.
+    def digest_path(path)
+      File.exist?(absolute(path)) ? path : "#{path}.rb"
     end
 
     # Groups a digest with its role and paths.
@@ -1181,6 +1186,13 @@ module Mutineer
     #
     # @return [Array<String>] absolute source paths.
     def abs_source_paths = @source_paths.map { |p| absolute(p) }
+
+    # The sources, then the `--require` files, in the order standalone
+    # {Runner.execute} requires them before it forks the mutants (#217).
+    #
+    # @api private
+    # @return [Array<String>] absolute paths.
+    def abs_preload_paths = abs_source_paths + @require_paths.map { |p| absolute(p) }
 
     # Returns absolute load paths.
     #

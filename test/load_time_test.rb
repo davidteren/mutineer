@@ -20,13 +20,14 @@ class LoadTimeTest < Minitest::Test
 
   # Runs Runner.execute in a child ruby and returns [[subject, status], ...]
   # plus the score.
-  def run_load_time(source, test, strategy:, boot: nil)
+  def run_load_time(source, test, strategy:, boot: nil, requires: [], framework: "minitest")
     Dir.mktmpdir("mutineer-load-time") do |cache|
       script = <<~RUBY
         require "mutineer"
         require "json"
         config = Mutineer::Config.new(sources: [#{source.inspect}], tests: [#{test.inspect}],
                                       boot: #{boot.inspect}, strategy: #{strategy.inspect},
+                                      require_paths: #{requires.inspect}, framework: #{framework.inspect},
                                       project_root: #{ROOT.inspect}, cache_dir: #{cache.inspect}, jobs: 1)
         agg = Mutineer::Runner.execute(config).first
         $stdout.puts JSON.generate("results" => agg.results.map { |r| [r.subject.qualified_name, r.status] },
@@ -77,6 +78,20 @@ class LoadTimeTest < Minitest::Test
     results, = run_load_time("lib/builder_catalog.rb", "test/builder_catalog_test.rb",
                              strategy: "redefine", boot: "autoload_builder_boot.rb")
     assert_equal [["BuilderCatalog.price", "ran_at_load"]], results
+  end
+
+  # #217: a `--require` file runs in the parent before the mutants fork, so
+  # the standalone capture must load it too, before it reads the load
+  # coverage. Otherwise `price` is missed and the mutant falsely survives.
+  def test_standalone_require_file_that_calls_a_source_at_load_reports_ran_at_load
+    [%w[minitest test/price_list_test.rb], %w[rspec spec/price_list_spec.rb]].each do |framework, test|
+      %w[reload redefine].each do |strategy|
+        results, score = run_load_time("lib/price_list.rb", test, strategy: strategy,
+                                                                  requires: ["setup/price_table"], framework: framework)
+        assert_equal [["PriceList.price", "ran_at_load"]], results, "#{framework} #{strategy}"
+        assert_nil score, "#{framework} #{strategy}"
+      end
+    end
   end
 
   def test_survivors_and_kills_that_do_not_depend_on_load_keep_their_verdict

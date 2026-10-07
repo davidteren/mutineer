@@ -112,6 +112,7 @@ module Mutineer
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: File.expand_path(config.cache_dir, config.project_root), project_root: config.project_root,
           load_paths: config.load_paths + rel_roots, framework: config.framework,
+          require_paths: config.require_paths,
           capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_or_load
       end
