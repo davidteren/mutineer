@@ -132,15 +132,20 @@ module Mutineer
     # absent or empty target.
     #
     # The target is resolved the way the SQLite adapter resolves the worker
-    # config's path (against `Rails.root`, else the working directory), so the
-    # copy lands in the file the worker then connects to.
+    # config's path (against `Rails.root`, else the working directory; a
+    # `file:` URI is left relative to the working directory), so the copy lands
+    # in the file the worker then connects to.
     #
     # @param database [String] the worker database path from {worker_db_config}.
     # @return [void]
     def self.seed_from_base(database)
       conn   = ActiveRecord::Base.connection
-      root   = defined?(Rails.root) && Rails.root ? Rails.root.to_s : Dir.pwd
-      target = File.expand_path(database, root)
+      target =
+        if database.start_with?("file:")
+          database.delete_prefix("file:").split("?").first
+        else
+          File.expand_path(database, (Rails.root.to_s if defined?(Rails.root) && Rails.root) || Dir.pwd)
+        end
       ["", "-wal", "-shm", "-journal"].each { |suffix| FileUtils.rm_f(target + suffix) }
       conn.execute("VACUUM INTO #{conn.quote(target)}")
     end
