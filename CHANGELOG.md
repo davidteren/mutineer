@@ -60,8 +60,14 @@ All notable changes to this project are documented here. The format is based on
   `survived` instead of `ran_at_load`. The capture and the clean-suite check
   now load the `--require` files after the sources. With or without
   `--boot`, the coverage cache rebuilds when one of them changes, is added,
-  is removed, or moves in the load order. Under `--daemon` the `--require`
-  files are not passed to the daemon yet (#220).
+  is removed, or moves in the load order.
+- **`--daemon` loads the `--require` files (#220).** The daemon booted the app
+  but never loaded the `--require` (or `require:`) files, so a test that
+  needs one failed under `--daemon` and passed in-process. A source method
+  that such a file called while it loaded was also not seen as run at load,
+  so its mutant could be a false `survived` instead of `ran_at_load`. The
+  daemon now loads the files after the app boots, as an in-process run does,
+  and the daemon's coverage cache rebuilds when one of them changes.
 - **The release workflow publishes only stable tags** (#161). Its trigger,
   `v*.*.*`, also matches a prerelease tag such as `v1.3.1-rc1`, and the only
   guard checked that the tag matched `Mutineer::VERSION`. A prerelease tag
