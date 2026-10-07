@@ -634,6 +634,36 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #216: the same holds outside `class << self`, and for a module under the
+  # singleton class of such a `self::X`.
+  def test_discover_module_function_does_not_cross_self_path_in_a_builder_block_with_known_owner
+    src = <<~RUBY
+      module Outer
+        Foo = Class.new do
+          module self::X
+            def c; end
+            class << self
+              module M
+                def d; end
+              end
+            end
+          end
+        end
+        module X
+          module_function :c
+          class << self
+            module M
+              module_function :d
+            end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      assert_equal %w[Outer::X#c #<Class:Outer::X>::M#d], Mutineer::Project.discover([path]).map(&:qualified_name)
+    end
+  end
+
   def test_discover_promotes_module_function_names_in_a_module_new_block
     src = <<~RUBY
       module Host
