@@ -1023,7 +1023,9 @@ module Mutineer
     # called counted too (#209). A forked capture does not see the `def` lines
     # run, since the boot defined the methods before the test. Ruby counts no
     # line when an endless method runs, so without this its mutants would be
-    # `no_coverage` even when a test calls it.
+    # `no_coverage` even when a test calls it. A line where more than one
+    # method starts is not counted: the map keys tests by line, so the test
+    # would also be credited with the methods it did not call.
     #
     # @api private
     # @param data [Hash] `Coverage` result for one file, with `:lines` and `:methods`.
@@ -1033,7 +1035,11 @@ module Mutineer
       return lines unless lines && data[:methods]
 
       lines = lines.dup
-      data[:methods].each { |key, count| lines[key[2] - 1] = [lines[key[2] - 1].to_i, count].max if count.positive? }
+      starts = data[:methods].keys.map { |key| key[2] }.tally
+      data[:methods].each do |key, count|
+        line = key[2]
+        lines[line - 1] = [lines[line - 1].to_i, count].max if count.positive? && starts[line] == 1
+      end
       lines
     end
 

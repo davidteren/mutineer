@@ -261,7 +261,10 @@ class StatementLinesTest < Minitest::Test
       ["def f(c); c + 1; end", "c + 1"] => true,
       ["def f(c); a; b; end", "a"] => true,
       ["def f(c); a; b; end", "b"] => false, # not the first statement
-      ["def f(c) = (a; b)", "a"] => false, # a statement nested in the body
+      ["def f(c) = (c + 1)", "c + 1"] => true, # parentheses run their first statement
+      ["def f(c) = begin; c + 1; end", "c + 1"] => true,
+      ["def f(c) = (a; b)", "a"] => true,
+      ["def f(c) = (a; b)", "b"] => false, # not the first statement in them
       ["def f(c) = c.map { _1 * 2 }", "_1 * 2"] => false, # a block body
       ["def f(c); a += 1 while c; end", "1"] => false, # a loop body
       ["def f(c); a += 1 while c; end", "c;"] => true, # the loop condition

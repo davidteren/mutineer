@@ -544,6 +544,15 @@ class CoverageMapTest < Minitest::Test
     assert mk.call.ran_at_load?(src, 3), "a cache hit still reads the boot lines"
   end
 
+  # #209: a test is credited with the def line of a method it called, but not
+  # when another method starts on that line, since the map keys tests by line.
+  def test_lines_with_called_defs_skips_a_line_shared_by_two_methods
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [])
+    data = { lines: [0, 0, nil], methods: { [Object, :a, 1, 0, 1, 18] => 0, [Object, :b, 1, 20, 1, 38] => 1,
+                                           [Object, :c, 2, 0, 2, 18] => 2 } }
+    assert_equal [0, 2, nil], map.send(:lines_with_called_defs, data)
+  end
+
   def test_from_data_takes_load_lines
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: LOAD_ROOT,
                                           load_lines: ["lib/catalog.rb:7"], load_methods: ["lib/catalog.rb:6:2"])

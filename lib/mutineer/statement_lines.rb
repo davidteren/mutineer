@@ -44,9 +44,10 @@ module Mutineer
     # Whether the code at `offset` runs each time the method runs: it is in
     # the first statement of the body, not in a statement nested in it or in
     # a {NESTED} node (a block or loop body), and not in code that runs only
-    # sometimes ({sometimes?}, the body of `x if c`). Used for a method whose
-    # body shares the `def` line, where only the method's call count tells
-    # that the code ran (#209).
+    # sometimes ({sometimes?}, the body of `x if c`). The first statement in
+    # parentheses or `begin ... end` runs with them, so it counts
+    # ({grouped_first?}). Used for a method whose body shares the `def` line,
+    # where only the method's call count tells that the code ran (#209).
     #
     # @param def_node [Prism::DefNode] the method that holds the position.
     # @param offset [Integer] byte offset of the position.
@@ -56,8 +57,23 @@ module Mutineer
       path = first && path_to(first, offset)
       return false unless path
 
-      path.drop(1).none? { |node| node.newline? || NESTED.any? { |klass| node.is_a?(klass) } } &&
+      return false if path.drop(1).any? { |node| NESTED.any? { |klass| node.is_a?(klass) } }
+      return false if path[1]&.newline?
+
+      path.each_cons(3).none? { |grand, parent, node| node.newline? && !grouped_first?(grand, parent, node) } &&
         path.each_cons(2).none? { |parent, child| sometimes?(parent, child) }
+    end
+
+    # Whether `node` is the first statement in parentheses or `begin ... end`,
+    # which runs each time they do.
+    #
+    # @param grand [Prism::Node] the parent of `parent`.
+    # @param parent [Prism::Node] the parent of `node`.
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.grouped_first?(grand, parent, node)
+      (grand.is_a?(Prism::ParenthesesNode) || grand.is_a?(Prism::BeginNode)) &&
+        parent.is_a?(Prism::StatementsNode) && parent.body.first.equal?(node)
     end
 
     # Nodes whose code can run any number of times, or not at all, when the
