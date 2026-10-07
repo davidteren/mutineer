@@ -134,8 +134,10 @@ module Mutineer
     # loads them (#203): the files {Pairing.infer_tests} pairs with `file`
     # first, then the cheapest by {#timings}. A file with no timing comes
     # after the timed ones, and the path breaks a tie, so the same cache gives
-    # the same order on every run. A run that stops at the first failure then
-    # reaches a fast killing test before a slow file uses up the timeout.
+    # the same order on every run. A rebuild measures the timings again, so
+    # files of close cost can swap places then. A run that stops at the first
+    # failure then reaches a fast killing test before a slow file uses up the
+    # timeout.
     #
     # @param file [String] the mutated source file path.
     # @param tests [Array<String>] project-relative test paths from {#tests_for}.
