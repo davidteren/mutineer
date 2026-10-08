@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-08
+
 ### Added
 
 - **An `unplaceable` mutant status.** Under `--strategy redefine`, a mutant in
@@ -1148,6 +1150,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.6.0]: https://github.com/davidteren/mutineer/releases/tag/v1.6.0
 [1.5.0]: https://github.com/davidteren/mutineer/releases/tag/v1.5.0
 [1.4.0]: https://github.com/davidteren/mutineer/releases/tag/v1.4.0
 [1.3.0]: https://github.com/davidteren/mutineer/releases/tag/v1.3.0
