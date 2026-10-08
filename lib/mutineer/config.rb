@@ -238,7 +238,9 @@ module Mutineer
           config.strategy = "redefine"
         end
         unless config.daemon
-          if config.jobs.to_i > 1
+          # A typed --no-daemon already chose the serial run; only an explicit
+          # --jobs N still needs telling that --daemon is the way to get N.
+          if config.jobs.to_i > 1 && (!config.explicit?(:daemon) || config.explicit?(:jobs))
             warn "[mutineer] --rails without --daemon runs serially (shared test DB); " \
                  "forcing --jobs 1. Use --daemon for safe --jobs N."
           end
@@ -266,6 +268,8 @@ module Mutineer
     def self.warn_rails_default_change(config)
       return unless config.rails && !config.explicit?(:daemon) && config.framework == "minitest"
       return if config.test_command || config.matrix || config.fail_fast || config.dry_run
+      # A written jobs: 1 stays serial under the 2.0 daemon too.
+      return if config.explicit?(:jobs) && config.jobs.to_i == 1
 
       warn "[mutineer] in Mutineer 2.0, --rails uses --daemon by default, so this run becomes parallel. " \
            "Pass --no-daemon (or daemon: false) to keep it serial."

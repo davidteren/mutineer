@@ -628,6 +628,14 @@ class ConfigTest < Minitest::Test
     refute_includes rails_notice(base.merge(matrix: true)), RAILS_2_0_NOTICE
     refute_includes rails_notice(base.merge(fail_fast: true)), RAILS_2_0_NOTICE
     refute_includes rails_notice({ tests: ["test/a_test.rb"] }), RAILS_2_0_NOTICE
+    refute_includes rails_notice(base.merge(jobs: 1)), RAILS_2_0_NOTICE
+  end
+
+  def test_no_daemon_does_not_tell_the_user_to_use_the_daemon
+    _, err = capture_io { Config.resolve({ rails: true, daemon: false }, {}) }
+    refute_includes err, "Use --daemon"
+    _, err = capture_io { Config.resolve({ rails: true, daemon: false, jobs: 4 }, {}) }
+    assert_includes err, "Use --daemon"
   end
 
   private
