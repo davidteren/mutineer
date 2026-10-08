@@ -67,7 +67,8 @@ module Mutineer
         --daemon             Boot the app ONCE in a persistent daemon and fork per
                              mutant, with per-worker DB isolation so --jobs N is safe
                              under Rails (needs --rails/--boot; not with --test-command).
-                             --no-daemon keeps the serial --rails path (2.0 default change)
+                             --no-daemon beats a .mutineer.yml daemon: (2.0 will default
+                             --rails to --daemon; --no-daemon keeps it serial)
         --format human|json|html  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
@@ -145,8 +146,8 @@ module Mutineer
         o.on("--test-command CMD") { |v| opts[:test_command] = v }
         # Boot the app ONCE in a persistent daemon and fork per mutant, with
         # per-worker DB isolation so --jobs N is safe under Rails.
-        # --no-daemon changes nothing in 1.x; it pins the serial --rails path
-        # before 2.0 makes the daemon the default.
+        # A typed --no-daemon beats a .mutineer.yml `daemon: true`, and pins the
+        # serial --rails path before 2.0 makes the daemon the default.
         o.on("--[no-]daemon") { |on| opts[:daemon] = on }
       end
 

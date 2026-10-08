@@ -425,6 +425,19 @@ class CliTest < Minitest::Test
     end
   end
 
+  # Like --no-fail-fast, a typed --no-daemon beats the file key: without it the
+  # file's daemon: true reaches the daemon checks, which need --rails/--boot.
+  def test_no_daemon_flag_beats_a_daemon_true_file_key
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "daemon: true\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--no-daemon", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+    end
+  end
+
   def test_misspelled_operators_flag_exits_two_with_a_hint
     with_project do |proj|
       _, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "comparsion", chdir: proj)

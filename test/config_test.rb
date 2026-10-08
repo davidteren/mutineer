@@ -603,7 +603,7 @@ class ConfigTest < Minitest::Test
 
   # --- 2.0 notice: --rails becomes parallel by default (plan 011) ---
 
-  RAILS_2_0_NOTICE = "in Mutineer 2.0, --rails runs in parallel by default"
+  RAILS_2_0_NOTICE = "in Mutineer 2.0, --rails uses --daemon by default"
 
   def rails_notice(cli, file = {})
     _, err = capture_io { Config.resolve(cli, file) }

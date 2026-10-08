@@ -191,8 +191,8 @@ class ReporterTest < Minitest::Test
     results = [Mutineer::Result.error("boom"), Mutineer::Result.error("boom"), Mutineer::Result.killed]
     err = StringIO.new
     reporter(results).report(out: StringIO.new, err: err)
-    assert_includes err.string, "2 mutants errored. Errors are not in the score, so this run passes."
-    assert_includes err.string, "With --threshold, the run fails when more than 10% of the mutants have no verdict"
+    assert_includes err.string, "2 mutants errored. Errors are not in the score, so they do not fail a run without --threshold."
+    assert_includes err.string, "more than one mutant has no verdict and they exceed 10% of those attempted"
 
     err = StringIO.new
     reporter([Mutineer::Result.error("boom"), Mutineer::Result.killed]).report(out: StringIO.new, err: err)

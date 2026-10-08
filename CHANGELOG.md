@@ -8,14 +8,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
-- **`--allow-empty` and `allow_empty:`.** An empty full scan (no mutants at
-  all) now warns that Mutineer 2.0 will fail it, unless `--allow-empty` marks
-  it as expected. An empty `--since` run never warns: it says the changes hold
-  nothing to test. The exit code does not change in 1.x.
-- **`--no-daemon`.** It changes nothing in 1.x. A Minitest `--rails` run
-  without `--daemon` now prints a notice that 2.0 runs `--rails` in parallel
-  by default; `--no-daemon` (or `daemon: false`) keeps the serial path and
-  stops the notice.
+- **`--allow-empty` and `allow_empty:`.** A run with no mutants now warns
+  that Mutineer 2.0 will fail it, unless `--allow-empty` marks it as expected.
+  A `--since` run whose changes hold no mutants does not warn: it says the
+  changes hold nothing to test. A `--since` run with no mutants even before
+  scoping still warns. The exit code does not change in 1.x.
+- **`--no-daemon`.** It beats a `.mutineer.yml` `daemon: true` for one run,
+  like `--no-fail-fast`. A Minitest `--rails` run without a `daemon` value now
+  prints a notice that 2.0 uses `--daemon` by default for `--rails`;
+  `--no-daemon` (or `daemon: false`) keeps the run serial and stops the
+  notice.
 - **"Did you mean" hints.** Unknown names in `--operators`, in
   `.mutineer.yml` `operators:` and keys, and in `# mutineer:disable-line`
   markers get the closest valid name. The `.mutineer.yml` warnings also say
@@ -28,8 +30,8 @@ All notable changes to this project are documented here. The format is based on
   `--threshold`, such a run can now score lower or fail the no-verdict limit,
   where before it passed on false kills.
 - **A run with errored mutants and no `--threshold` says so.** Errors are not
-  in the score, so the run passes; the message says what `--threshold` would
-  enforce.
+  in the score, so they do not fail the run; the message says what
+  `--threshold` would enforce.
 - **The empty-run message moved from the human report to one stderr warning
   for every format.** "No mutations generated" is gone. An empty `--since`
   run prints "nothing to test in the changes since REF" instead.

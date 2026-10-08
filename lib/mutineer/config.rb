@@ -267,8 +267,8 @@ module Mutineer
       return unless config.rails && !config.explicit?(:daemon) && config.framework == "minitest"
       return if config.test_command || config.matrix || config.fail_fast || config.dry_run
 
-      warn "[mutineer] in Mutineer 2.0, --rails runs in parallel by default (the --daemon backend). " \
-           "Pass --no-daemon (or daemon: false) to keep this serial run."
+      warn "[mutineer] in Mutineer 2.0, --rails uses --daemon by default, so this run becomes parallel. " \
+           "Pass --no-daemon (or daemon: false) to keep it serial."
     end
 
     # Pick rspec when a MAJORITY of the given test files end with _spec.rb;
