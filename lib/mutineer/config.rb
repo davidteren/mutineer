@@ -62,6 +62,7 @@ module Mutineer
     ConfigOption.new(field: :capture_timeout, type: :positive_int, yaml_key: "capture_timeout",
                      flag: "--capture-timeout"),
     ConfigOption.new(field: :cache_dir, type: :string, yaml_key: "cache_dir", flag: "--cache-dir"),
+    ConfigOption.new(field: :allow_empty, type: :bool, yaml_key: "allow_empty", flag: "--allow-empty"),
     ConfigOption.new(field: :format, type: :enum, flag: "--format", values: %w[human json html]),
     ConfigOption.new(field: :strategy, type: :enum, flag: "--strategy", values: %w[reload redefine],
                      aliases: STRATEGY_ALIASES),
@@ -94,7 +95,7 @@ module Mutineer
     # :daemon is user-facing (--daemon flag + KNOWN_KEYS + boolean coerce).
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
-    :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix,
+    :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix, :allow_empty,
     keyword_init: true
   ) do
     # Config file name.
@@ -129,6 +130,7 @@ module Mutineer
       self.fail_fast     = false if fail_fast.nil?
       self.daemon        = false if daemon.nil?
       self.matrix        = false if matrix.nil?
+      self.allow_empty   = false if allow_empty.nil?
     end
 
     # True when the user wrote `key`, on the command line or in the config

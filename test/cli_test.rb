@@ -531,6 +531,46 @@ class CliTest < Minitest::Test
     end
   end
 
+  # W1.2 (1.x phase): an empty full scan still exits 0, but says that 2.0
+  # fails it unless --allow-empty marks it as expected.
+  def test_empty_full_scan_warns_unless_allow_empty
+    with_project do |proj|
+      args = ["run", "calculator.rb", "--test", "calculator_strong_test.rb", "--operators", "regex"]
+      _, err, status = mutineer(*args, chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "no mutants were generated"
+      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      assert_includes err, "--allow-empty"
+
+      _, err, status = mutineer(*args, "--allow-empty", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+
+      File.write(File.join(proj, ".mutineer.yml"), "allow_empty: true\n")
+      _, err, = mutineer(*args, chdir: proj)
+      refute_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      _, err, = mutineer(*args, "--no-allow-empty", chdir: proj)
+      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+    end
+  end
+
+  # An empty --since run is a stated success: a pull request that touched no
+  # Ruby code has nothing to test, and that is not a mistake.
+  def test_empty_since_run_says_nothing_changed_and_does_not_warn
+    with_project do |proj|
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--since", "HEAD", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "nothing to test in the changes since HEAD"
+      refute_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      refute_includes err, "No mutations generated"
+    end
+  end
+
   # An untracked source has no git diff. --since must still mutate it, or a
   # weak suite passes the threshold with zero mutants scored.
   def test_since_keeps_untracked_source_and_fails_a_weak_suite

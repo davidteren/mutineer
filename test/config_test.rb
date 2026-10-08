@@ -544,6 +544,7 @@ class ConfigTest < Minitest::Test
     baseline: ["a.json", "b.json"],
     fail_fast: [false, true],
     matrix: [false, true],
+    allow_empty: [false, true],
     test_command: ["a %{files}", "b %{files}"],
     daemon: [false, true],
     timeout: [30, 60],

@@ -77,6 +77,8 @@ module Mutineer
                              killers (in-process only; not with --daemon, --test-command,
                              --fail-fast or --dry-run; --no-matrix beats a .mutineer.yml
                              matrix:)
+        --allow-empty        A run with no mutants is expected; do not warn (--no-allow-empty
+                             beats a .mutineer.yml allow_empty:)
         --verbose            Surface the real error when a fork capture fails (alias: --debug)
 
       Options:
@@ -111,6 +113,7 @@ module Mutineer
         # conflicts with another flag can be turned off for one run.
         o.on("--[no-]fail-fast") { |on| opts[:fail_fast] = on }
         o.on("--[no-]matrix") { |on| opts[:matrix] = on }
+        o.on("--[no-]allow-empty") { |on| opts[:allow_empty] = on }
         o.on("--only NAME") { |v| opts[:only] = v }
         o.on("--since REF") { |v| opts[:since] = Config.parse(:since, v) }
         # A typed "no" must beat a .mutineer.yml `since:` key: the key is present
@@ -544,6 +547,7 @@ module Mutineer
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
                       scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches)
+      warn_empty_run(config) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
@@ -566,6 +570,22 @@ module Mutineer
       # `max` of two 0/1 codes is the OR; usage (2) is handled earlier and wins.
       baseline_exit = delta&.regressed ? 1 : 0
       exit [reporter.exit_code(threshold: config.threshold), baseline_exit].max
+    end
+
+    # Says why a run has no mutants, on stderr for every format. A --since run
+    # with nothing to test is a stated success: the changes held no mutable Ruby
+    # code. Any other empty run is a likely mistake (wrong path, operators that
+    # never match), which 2.0 fails unless --allow-empty says it is expected.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.warn_empty_run(config)
+      if config.since
+        warn "mutineer: nothing to test in the changes since #{config.since}"
+      elsif !config.allow_empty
+        warn "mutineer: no mutants were generated; the run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
+             "Pass --allow-empty (or allow_empty: true) if an empty run is expected."
+      end
     end
 
     # The tier-2 operators not in the active set, as a one-line hint (or nil when

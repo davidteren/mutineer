@@ -79,6 +79,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--dry-run` | List candidate mutations without executing (honors suppression) |
 | `--fail-fast` | Stop at the first surviving mutant (`--no-fail-fast` beats a `.mutineer.yml` `fail_fast:` key) |
+| `--allow-empty` | A run with no mutants is expected. Without it, an empty full scan warns that Mutineer 2.0 will fail it. An empty `--since` run never warns: it reports that the changes hold nothing to test. `--no-allow-empty` beats a `.mutineer.yml` `allow_empty:` key |
 | `--matrix` | Run every covering test for each mutant and report the blind and redundant tests; the JSON report also lists each mutant's killers. In-process only; exits 2 with `--daemon`, `--test-command`, `--fail-fast` or `--dry-run`. RSpec needs 3.3 or later. `--no-matrix` beats a `.mutineer.yml` `matrix:` key. See [Kill matrix](https://github.com/davidteren/mutineer#kill-matrix) |
 | `--list-operators` | List available operators (default vs optional) and exit |
 | `--version`, `--help` | Print version / usage and exit |
@@ -490,6 +491,7 @@ config file accepts these keys:
 | `capture_timeout` | A positive integer; the coverage-capture time limit in seconds (default 120) |
 | `cache_dir` | The coverage cache directory (default `.mutineer`) |
 | `matrix` | `true` or `false`; runs every covering test for each mutant and adds the kill matrix to the report |
+| `allow_empty` | `true` or `false`; a run with no mutants is expected, so it does not warn |
 
 Invalid values for known scalar keys, and a blank `operators` list, exit 2
 with a message naming the file and key. An unknown operator name warns and
@@ -499,7 +501,7 @@ is skipped. If none of the names are known, the run exits 2. An empty
 `threshold` and the CLI-only `--baseline-epsilon` use plain decimals such as `90`
 or `0.5`, not `+2`, `1e2`, or `1_0`. String options such as `only` and `baseline`
 cannot be null or boolean. A blank `since` is invalid; use `since: false` to turn
-scoping off. Unknown keys warn and are ignored. Unknown operator names warn and are skipped, and the run exits 2 when none remain. `--operators` replaces a blank or unknown file list.
+scoping off. Unknown keys warn and are ignored. Unknown operator names warn and are skipped, and the run exits 2 when none remain. Both warnings suggest the closest valid name, and both become errors in Mutineer 2.0. `--operators` replaces a blank or unknown file list.
 
 `format`, `strategy`, `output`, `baseline_epsilon`, and `dry_run` are CLI-only.
 For JSON output, use `--format json`, not a `format:` config key. To select RSpec

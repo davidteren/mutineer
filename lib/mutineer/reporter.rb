@@ -61,7 +61,7 @@ module Mutineer
           html_report
         else
           sio = StringIO.new
-          human_report(sio, err, threshold)
+          human_report(sio, err, threshold, scoped: scoped)
           baseline_section(sio, baseline) if baseline
           sio.string
         end
@@ -94,11 +94,14 @@ module Mutineer
     # @param out [IO] output stream.
     # @param err [IO] error stream.
     # @param threshold [Float] score threshold.
+    # @param scoped [Boolean] a --since run; the CLI explains its empty result.
     # @return [void]
-    def human_report(out, err, threshold)
+    def human_report(out, err, threshold, scoped: false)
       if @agg.total.zero?
-        err.puts "No mutations generated — verify target files contain in-scope " \
-                 "operators and are reached by the suite."
+        unless scoped
+          err.puts "No mutations generated — verify target files contain in-scope " \
+                   "operators and are reached by the suite."
+        end
         return
       end
 
