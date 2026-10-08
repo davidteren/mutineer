@@ -286,20 +286,18 @@ module Mutineer
       end
     end
 
-    # Narrows jobs to --since when it is set, and records in `extras` how many
-    # jobs there were before narrowing (`:unscoped_jobs`), so the CLI can tell
-    # "the changes held nothing to test" from "nothing was mutable at all".
+    # Narrows jobs to --since when it is set. Also returns how many jobs there
+    # were before narrowing (nil without --since), so the CLI can tell "the
+    # changes held nothing to test" from "nothing was mutable at all".
     #
     # @param jobs [Array] (subject, mutation) pairs.
     # @param source_map [Hash{String => String}] source text by file.
     # @param config [Mutineer::Config] run configuration.
-    # @param extras [Hash] the {collect_jobs} extras, updated in place.
-    # @return [Array] the jobs to run.
-    def self.scope_since(jobs, source_map, config, extras)
-      return jobs unless config.since
+    # @return [Array(Array, Integer), Array(Array, nil)] the jobs to run, and the count before --since.
+    def self.scope_since(jobs, source_map, config)
+      return [jobs, nil] unless config.since
 
-      extras[:unscoped_jobs] = jobs.size
-      filter_since(jobs, source_map, config)
+      [filter_since(jobs, source_map, config), jobs.size]
     end
 
     # --since: keep only jobs whose mutation lands on a line changed since the git

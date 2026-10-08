@@ -100,7 +100,7 @@ module Mutineer
       return unless count.positive?
 
       err.puts "[mutineer] #{count} #{count == 1 ? 'mutant' : 'mutants'} errored. Errors are not in the " \
-               "score, so they do not fail a run without --threshold. With --threshold, the run fails " \
+               "score, so they do not fail a run without a positive --threshold. With one, the run fails " \
                "when nothing can be scored, or when more than one mutant has no verdict and they exceed " \
                "#{(BROKEN_SHARE_LIMIT * 100).round}% of those attempted (no_verdict[] in --format json)."
     end
