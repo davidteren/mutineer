@@ -417,6 +417,15 @@ class CliTest < Minitest::Test
   end
 
   # `operators:` with no value still exits 2. --operators replaces that
+  # --no-daemon is accepted in 1.x (it changes nothing yet) so a user can pin
+  # the serial --rails path before 2.0 makes the daemon the default.
+  def test_no_daemon_flag_is_accepted
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--dry-run", "--no-daemon", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+    end
+  end
+
   def test_misspelled_operators_flag_exits_two_with_a_hint
     with_project do |proj|
       _, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "comparsion", chdir: proj)

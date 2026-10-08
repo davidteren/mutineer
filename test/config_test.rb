@@ -600,6 +600,34 @@ class ConfigTest < Minitest::Test
     assert_operator cfg.jobs, :>=, 1    # Etc.nprocessors
   end
 
+
+  # --- 2.0 notice: --rails becomes parallel by default (plan 011) ---
+
+  RAILS_2_0_NOTICE = "in Mutineer 2.0, --rails runs in parallel by default"
+
+  def rails_notice(cli, file = {})
+    _, err = capture_io { Config.resolve(cli, file) }
+    err
+  end
+
+  def test_minitest_rails_without_daemon_prints_the_2_0_notice_once
+    err = rails_notice({ rails: true, tests: ["test/a_test.rb"] })
+    assert_equal 1, err.scan(RAILS_2_0_NOTICE).size
+    assert_includes err, "--no-daemon"
+  end
+
+  def test_no_rails_2_0_notice_when_the_user_chose_or_cannot_use_the_daemon
+    base = { rails: true, tests: ["test/a_test.rb"] }
+    refute_includes rails_notice(base.merge(daemon: true)), RAILS_2_0_NOTICE
+    refute_includes rails_notice(base.merge(daemon: false)), RAILS_2_0_NOTICE
+    refute_includes rails_notice(base, { daemon: false }), RAILS_2_0_NOTICE
+    refute_includes rails_notice({ rails: true, tests: ["spec/a_spec.rb"] }), RAILS_2_0_NOTICE
+    refute_includes rails_notice(base.merge(test_command: "bin/rails test %{files}")), RAILS_2_0_NOTICE
+    refute_includes rails_notice(base.merge(matrix: true)), RAILS_2_0_NOTICE
+    refute_includes rails_notice(base.merge(fail_fast: true)), RAILS_2_0_NOTICE
+    refute_includes rails_notice({ tests: ["test/a_test.rb"] }), RAILS_2_0_NOTICE
+  end
+
   private
 
   def with_config(yaml)

@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`--allow-empty` and `allow_empty:`.** An empty full scan (no mutants at
+  all) now warns that Mutineer 2.0 will fail it, unless `--allow-empty` marks
+  it as expected. An empty `--since` run never warns: it says the changes hold
+  nothing to test. The exit code does not change in 1.x.
+- **`--no-daemon`.** It changes nothing in 1.x. A Minitest `--rails` run
+  without `--daemon` now prints a notice that 2.0 runs `--rails` in parallel
+  by default; `--no-daemon` (or `daemon: false`) keeps the serial path and
+  stops the notice.
+- **"Did you mean" hints.** Unknown names in `--operators`, in
+  `.mutineer.yml` `operators:` and keys, and in `# mutineer:disable-line`
+  markers get the closest valid name. The `.mutineer.yml` warnings also say
+  that 2.0 makes them errors.
+
+### Changed
+
+- **`--test-command` exit codes 126 and 127 are scored `error`, not
+  `killed`.** A wrapper that could not start the suite ran no test.
+- **A run with errored mutants and no `--threshold` says so.** Errors are not
+  in the score, so the run exits 0; the message names `--threshold`.
+
 ## [1.6.0] - 2026-10-08
 
 ### Added

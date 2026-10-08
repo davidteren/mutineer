@@ -250,7 +250,24 @@ module Mutineer
       # either layer is already on config.framework and always wins. Default
       # minitest unless the test files clearly look RSpec.
       config.framework ||= detect_framework(config.tests)
+      warn_rails_default_change(config)
       config
+    end
+
+    # Mutineer 2.0 makes the daemon the default under --rails for Minitest, so a
+    # run that would change says so now. The runs that 2.0 keeps on this path
+    # stay quiet: RSpec, --test-command, --matrix and --fail-fast cannot use the
+    # daemon, and a written `daemon` value (true or false) is the user's choice.
+    #
+    # @api private
+    # @param config [Mutineer::Config] the resolved config.
+    # @return [void]
+    def self.warn_rails_default_change(config)
+      return unless config.rails && !config.explicit?(:daemon) && config.framework == "minitest"
+      return if config.test_command || config.matrix || config.fail_fast
+
+      warn "[mutineer] in Mutineer 2.0, --rails runs in parallel by default (the --daemon backend). " \
+           "Pass --no-daemon (or daemon: false) to keep this serial run."
     end
 
     # Pick rspec when a MAJORITY of the given test files end with _spec.rb;
