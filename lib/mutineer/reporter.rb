@@ -74,10 +74,18 @@ module Mutineer
         out.print rendered
       end
 
+      # Errors are out of the score, so without a gate a run full of them exits 0.
+      unless threshold&.positive?
+        if @agg.errored_count.positive?
+          err.puts "[mutineer] #{@agg.errored_count} mutants errored; errors are not in the score. " \
+                   "Use --threshold to fail CI on them."
+        end
+        return
+      end
+
       # Both ways a run can fail the gate on completeness, said here rather than in
       # the human renderer: --format json is the documented CI path, and a run that
       # exits 1 must say why on every format, not only the one a person reads.
-      return unless threshold&.positive?
 
       if @agg.mutation_score.nil? && broken_nil_score?
         err.puts "[mutineer] nothing could be scored (#{broken_counts_detail}), so the " \

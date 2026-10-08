@@ -239,7 +239,8 @@ Tradeoffs — this path is correct but not free:
 - **No coverage narrowing:** every mutant runs the *full* `--test` set, so the
   score is an **upper bound and not comparable to an in-process (`--rails`)
   score** — uncovered mutants count as survivors, and an infrastructure failure
-  is scored as a kill. Mutineer prints this caveat on every run and aborts up
+  is scored as a kill. Exit codes 126 and 127 (the command could not start) are
+  scored `error` instead. Mutineer prints this caveat on every run and aborts up
   front (a "smoke check") if your unmutated suite isn't green.
 - **Reload strategy only** (`--strategy redefine` is rejected on this path) and
   **serial** (`--jobs` is forced to 1). For apps on Ruby ≥ 3.4, `--daemon` gives

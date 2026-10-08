@@ -185,6 +185,23 @@ class ReporterTest < Minitest::Test
 
   # --- rendering / streams ---
 
+  # Errors are out of the score, so a run without --threshold exits 0 however
+  # many mutants errored. Say so, and name the flag that fails CI on them.
+  def test_errors_without_a_threshold_point_at_the_threshold_flag
+    results = [Mutineer::Result.error("boom"), Mutineer::Result.error("boom"), Mutineer::Result.killed]
+    err = StringIO.new
+    reporter(results).report(out: StringIO.new, err: err)
+    assert_includes err.string, "2 mutants errored; errors are not in the score. Use --threshold to fail CI on them."
+
+    err = StringIO.new
+    reporter(results).report(out: StringIO.new, err: err, threshold: 50.0)
+    refute_includes err.string, "Use --threshold"
+
+    err = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: StringIO.new, err: err)
+    refute_includes err.string, "errored"
+  end
+
   def test_zero_mutations_message_on_stderr
     out = StringIO.new
     err = StringIO.new
