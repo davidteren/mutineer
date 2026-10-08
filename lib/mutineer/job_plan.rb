@@ -261,7 +261,7 @@ module Mutineer
         ops = nil if ops&.empty?
         unknown = ops.to_a.reject { |o| MutatorRegistry::ALL.key?(o) }
         unknown.each do |o|
-          warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line} " \
+          warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line}#{Mutineer.did_you_mean(o, MutatorRegistry::ALL.keys)} " \
                "(known: #{MutatorRegistry::ALL.keys.join(', ')}); write a reason after --"
         end
         map[line] = ops ? ops.map(&:to_sym).to_set : :all

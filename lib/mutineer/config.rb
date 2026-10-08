@@ -1,9 +1,25 @@
 # frozen_string_literal: true
 
+require "did_you_mean"
 require "etc"
 require "yaml"
 
 module Mutineer
+  # The phrase every 1.x warning uses for behaviour that 2.0 turns into an
+  # error, so the 2.0 release can find each of those sites with one search.
+  BECOMES_ERROR_IN_2_0 = "this becomes an error in Mutineer 2.0"
+
+  # A "did you mean" hint for a misspelled name, using the stdlib spell
+  # checker that Ruby itself uses for NameError.
+  #
+  # @param word [String] the name the user wrote.
+  # @param candidates [Array<String>] the names that are valid here.
+  # @return [String] ` (did you mean "x"?)` for the closest candidate, or "" when none is close.
+  def self.did_you_mean(word, candidates)
+    match = DidYouMean::SpellChecker.new(dictionary: candidates).correct(word.to_s).first
+    match ? " (did you mean #{match.inspect}?)" : ""
+  end
+
   # Raised by the config layer instead of calling exit/abort. A data class must
   # never kill the host process. The CLI rescues this and maps it to exit 2.
   class ConfigError < StandardError; end
@@ -180,8 +196,8 @@ module Mutineer
       raw.each do |key, value|
         ks = key.to_s
         unless KNOWN_KEYS.include?(ks)
-          warn "mutineer: unknown config key #{ks.inspect} in #{name} " \
-               "(known: #{KNOWN_KEYS.join(', ')}); ignored"
+          warn "mutineer: unknown config key #{ks.inspect} in #{name}#{Mutineer.did_you_mean(ks, KNOWN_KEYS)}; " \
+               "ignored, and #{BECOMES_ERROR_IN_2_0} (known: #{KNOWN_KEYS.join(', ')})"
           next
         end
         field = field_for(ks)
@@ -363,8 +379,8 @@ module Mutineer
       names.select do |n|
         next true if known.include?(n)
 
-        warn "mutineer: unknown operator #{n.inspect} in #{file_name} " \
-             "(known: #{known.join(', ')}); ignored"
+        warn "mutineer: unknown operator #{n.inspect} in #{file_name}#{Mutineer.did_you_mean(n, known)}; " \
+             "ignored, and #{BECOMES_ERROR_IN_2_0} (known: #{known.join(', ')})"
         false
       end
     end

@@ -54,6 +54,31 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  def test_unknown_key_warning_suggests_a_close_key_and_names_2_0
+    with_config("threshhold: 80\n") do |path|
+      _, err = capture_io { Config.from_file(path) }
+      assert_includes err, 'did you mean "threshold"?'
+      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+    end
+  end
+
+  def test_unknown_operator_warning_suggests_a_close_name_and_names_2_0
+    with_config("operators: [comparsion, arithmetic]\n") do |path|
+      _, err = capture_io { @hash = Config.from_file(path) }
+      assert_includes err, 'did you mean "comparison"?'
+      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      assert_equal ["arithmetic"], @hash[:operators]
+    end
+  end
+
+  def test_unknown_operator_with_no_close_name_gets_no_hint
+    with_config("operators: [zzzzzz, arithmetic]\n") do |path|
+      _, err = capture_io { Config.from_file(path) }
+      assert_includes err, "unknown operator"
+      refute_includes err, "did you mean"
+    end
+  end
+
   def test_from_file_rejects_non_numeric_threshold
     with_config("threshold: abc\n") do |path|
       err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }

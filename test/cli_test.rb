@@ -417,6 +417,14 @@ class CliTest < Minitest::Test
   end
 
   # `operators:` with no value still exits 2. --operators replaces that
+  def test_misspelled_operators_flag_exits_two_with_a_hint
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "comparsion", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, 'Unknown operator: "comparsion" (did you mean "comparison"?)'
+    end
+  end
+
   # list, including one that names only an unknown operator.
   def test_operators_flag_replaces_a_blank_or_unknown_file_list
     with_project do |proj|
