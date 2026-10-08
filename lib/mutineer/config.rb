@@ -133,12 +133,6 @@ module Mutineer
       self.allow_empty   = false if allow_empty.nil?
     end
 
-    # The `jobs` value the user wrote (command line or file), or nil. The
-    # resolved `jobs` can differ: --rails without --daemon forces 1.
-    #
-    # @return [Integer, nil]
-    attr_accessor :requested_jobs
-
     # True when the user wrote `key`, on the command line or in the config
     # file, whatever the value (`false` and `nil` count). The answer comes from
     # which keys the layers held, so a new option needs no bookkeeping to be
@@ -234,7 +228,6 @@ module Mutineer
     def self.resolve(cli_opts, file_hash)
       user = file_hash.merge(cli_opts)
       config = new(**user, explicit: user.keys, from_file: file_hash.keys - cli_opts.keys)
-      config.requested_jobs = user[:jobs]
 
       # --rails sugar: boot config/environment. Prefer redefine only for the
       # in-process path (daemon is whole-file reload only). In-process --rails
@@ -275,12 +268,9 @@ module Mutineer
     def self.warn_rails_default_change(config)
       return unless config.rails && !config.explicit?(:daemon) && config.framework == "minitest"
       return if config.test_command || config.matrix || config.fail_fast || config.dry_run
-      # A written jobs: 1 stays serial under the 2.0 daemon too. (The resolved
-      # jobs is already 1 here, so read what the user wrote.)
-      return if config.requested_jobs == 1
 
-      warn "[mutineer] in Mutineer 2.0, --rails uses --daemon by default, so this run becomes parallel. " \
-           "Pass --no-daemon (or daemon: false) to keep it serial."
+      warn "[mutineer] in Mutineer 2.0, --rails uses --daemon by default: parallel workers (unless " \
+           "--jobs 1) and the reload strategy. Pass --no-daemon (or daemon: false) to keep this run as it is."
     end
 
     # Pick rspec when a MAJORITY of the given test files end with _spec.rb;

@@ -628,13 +628,14 @@ class ConfigTest < Minitest::Test
     refute_includes rails_notice(base.merge(matrix: true)), RAILS_2_0_NOTICE
     refute_includes rails_notice(base.merge(fail_fast: true)), RAILS_2_0_NOTICE
     refute_includes rails_notice({ tests: ["test/a_test.rb"] }), RAILS_2_0_NOTICE
-    refute_includes rails_notice(base.merge(jobs: 1)), RAILS_2_0_NOTICE
-    refute_includes rails_notice(base, { jobs: 1 }), RAILS_2_0_NOTICE
   end
 
-  # --jobs 4 is the run 2.0 changes most: it becomes four parallel workers.
-  def test_rails_2_0_notice_still_fires_for_an_explicit_jobs_above_one
-    assert_includes rails_notice({ rails: true, tests: ["test/a_test.rb"], jobs: 4 }), RAILS_2_0_NOTICE
+  # 2.0 changes these runs too: --jobs 4 becomes four workers, and --jobs 1
+  # moves to the daemon and the reload strategy.
+  def test_rails_2_0_notice_fires_whatever_jobs_the_user_wrote
+    [1, 4].each do |jobs|
+      assert_includes rails_notice({ rails: true, tests: ["test/a_test.rb"], jobs: jobs }), RAILS_2_0_NOTICE
+    end
   end
 
   def test_no_daemon_does_not_tell_the_user_to_use_the_daemon
