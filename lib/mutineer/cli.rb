@@ -219,6 +219,7 @@ module Mutineer
         exit 2
       end
       validate!(config)
+      Config.warn_rails_default_change(config)
 
       config.dry_run ? dry_run(config) : execute(config)
     rescue ArgumentError => e

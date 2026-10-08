@@ -606,7 +606,9 @@ class ConfigTest < Minitest::Test
   RAILS_2_0_NOTICE = "in Mutineer 2.0, --rails uses --daemon by default"
 
   def rails_notice(cli, file = {})
-    _, err = capture_io { Config.resolve(cli, file) }
+    config = nil
+    capture_io { config = Config.resolve(cli, file) }
+    _, err = capture_io { Config.warn_rails_default_change(config) }
     err
   end
 
