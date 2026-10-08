@@ -550,17 +550,17 @@ module Mutineer
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
                       scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches)
-      warn_empty_run(config) if aggregate.total.zero?
+      warn_empty_run(config, extras) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
-      # mutants count as survivors), and an infra failure is scored as a kill
-      # (upper bound). Daemon coverage fallback warnings are emitted from the runner
+      # mutants count as survivors), and an infra failure that still starts the
+      # suite is scored as a kill (exit 126/127 are scored error). Daemon coverage fallback warnings are emitted from the runner
       # only when the map is unavailable, not on every --daemon run.
       if config.test_command
         warn "[mutineer] --test-command score is an upper bound, not comparable to an " \
              "in-process run: no coverage narrowing (uncovered mutants count as survivors) " \
-             "and an infra failure is scored as a kill."
+             "and an infra failure is scored as a kill (except exit 126 and 127, scored error)."
       end
 
       # Nudge toward the opt-in tier-2 operators (human report only: never
@@ -576,17 +576,21 @@ module Mutineer
     end
 
     # Says why a run has no mutants, on stderr for every format. A --since run
-    # with nothing to test is a stated success: the changes held no mutable Ruby
-    # code. Any other empty run is a likely mistake (wrong path, operators that
-    # never match), which 2.0 fails unless --allow-empty says it is expected.
+    # whose sources had mutants before scoping is a stated success: the changes
+    # held no mutable Ruby code. Any other empty run is a likely mistake (wrong
+    # path, operators that never match), which 2.0 fails unless --allow-empty
+    # says it is expected.
     #
     # @param config [Mutineer::Config] run configuration.
+    # @param extras [Hash] the run extras; `:unscoped_jobs` is the job count before --since.
     # @return [void]
-    def self.warn_empty_run(config)
-      if config.since
+    def self.warn_empty_run(config, extras)
+      # Mutants existed before --since narrowed them: the changes held none.
+      if config.since && extras[:unscoped_jobs].to_i.positive?
         warn "mutineer: nothing to test in the changes since #{config.since}"
       elsif !config.allow_empty
-        warn "mutineer: no mutants were generated; the run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
+        warn "mutineer: no mutants were generated. Check that the sources contain code the " \
+             "operators mutate. The run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
              "Pass --allow-empty (or allow_empty: true) if an empty run is expected."
       end
     end

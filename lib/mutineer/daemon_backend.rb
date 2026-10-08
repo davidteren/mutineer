@@ -44,7 +44,7 @@ module Mutineer
     #   source map, and the {JobPlan.collect_jobs} extras.
     def self.execute(config, operator_classes)
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
-      jobs = JobPlan.filter_since(jobs, source_map, config) if config.since
+      jobs = JobPlan.scope_since(jobs, source_map, config, extras)
       abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
 
       # Nothing to mutate (`--since` matched no changed line, or every mutant is

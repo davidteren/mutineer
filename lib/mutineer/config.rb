@@ -257,14 +257,15 @@ module Mutineer
     # Mutineer 2.0 makes the daemon the default under --rails for Minitest, so a
     # run that would change says so now. The runs that 2.0 keeps on this path
     # stay quiet: RSpec, --test-command, --matrix and --fail-fast cannot use the
-    # daemon, and a written `daemon` value (true or false) is the user's choice.
+    # daemon, a --dry-run runs no tests, and a written `daemon` value (true or
+    # false) is the user's choice.
     #
     # @api private
     # @param config [Mutineer::Config] the resolved config.
     # @return [void]
     def self.warn_rails_default_change(config)
       return unless config.rails && !config.explicit?(:daemon) && config.framework == "minitest"
-      return if config.test_command || config.matrix || config.fail_fast
+      return if config.test_command || config.matrix || config.fail_fast || config.dry_run
 
       warn "[mutineer] in Mutineer 2.0, --rails runs in parallel by default (the --daemon backend). " \
            "Pass --no-daemon (or daemon: false) to keep this serial run."

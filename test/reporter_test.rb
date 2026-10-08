@@ -191,23 +191,30 @@ class ReporterTest < Minitest::Test
     results = [Mutineer::Result.error("boom"), Mutineer::Result.error("boom"), Mutineer::Result.killed]
     err = StringIO.new
     reporter(results).report(out: StringIO.new, err: err)
-    assert_includes err.string, "2 mutants errored; errors are not in the score. Use --threshold to fail CI on them."
+    assert_includes err.string, "2 mutants errored. Errors are not in the score, so this run passes."
+    assert_includes err.string, "With --threshold, the run fails when more than 10% of the mutants have no verdict"
+
+    err = StringIO.new
+    reporter([Mutineer::Result.error("boom"), Mutineer::Result.killed]).report(out: StringIO.new, err: err)
+    assert_includes err.string, "1 mutant errored."
 
     err = StringIO.new
     reporter(results).report(out: StringIO.new, err: err, threshold: 50.0)
-    refute_includes err.string, "Use --threshold"
+    refute_includes err.string, "Errors are not in the score"
 
     err = StringIO.new
     reporter([Mutineer::Result.killed]).report(out: StringIO.new, err: err)
     refute_includes err.string, "errored"
   end
 
-  def test_zero_mutations_message_on_stderr
+  # The CLI explains an empty run (see CLI.warn_empty_run), once, for every
+  # format; the human report adds nothing of its own.
+  def test_zero_mutations_report_is_empty
     out = StringIO.new
     err = StringIO.new
     reporter([]).report(out: out, err: err)
     assert_empty out.string
-    assert_includes err.string, "No mutations generated"
+    assert_empty err.string
   end
 
   def test_survivor_diff_and_grouping

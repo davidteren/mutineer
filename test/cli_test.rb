@@ -416,7 +416,6 @@ class CliTest < Minitest::Test
     end
   end
 
-  # `operators:` with no value still exits 2. --operators replaces that
   # --no-daemon is accepted in 1.x (it changes nothing yet) so a user can pin
   # the serial --rails path before 2.0 makes the daemon the default.
   def test_no_daemon_flag_is_accepted
@@ -434,6 +433,7 @@ class CliTest < Minitest::Test
     end
   end
 
+  # `operators:` with no value still exits 2. --operators replaces that
   # list, including one that names only an unknown operator.
   def test_operators_flag_replaces_a_blank_or_unknown_file_list
     with_project do |proj|
@@ -553,7 +553,7 @@ class CliTest < Minitest::Test
 
       _, err, status = mutineer(*args, "--allow-empty", chdir: proj)
       assert_equal 0, status.exitstatus, err
-      refute_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      assert_empty err
 
       File.write(File.join(proj, ".mutineer.yml"), "allow_empty: true\n")
       _, err, = mutineer(*args, chdir: proj)
@@ -577,6 +577,22 @@ class CliTest < Minitest::Test
       assert_includes err, "nothing to test in the changes since HEAD"
       refute_includes err, Mutineer::BECOMES_ERROR_IN_2_0
       refute_includes err, "No mutations generated"
+    end
+  end
+
+  # A --since run that had no mutants before scoping is misconfigured (the
+  # operators never match), not "nothing changed", so it gets the warning.
+  def test_since_run_with_no_candidates_before_scoping_still_warns
+    with_project do |proj|
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--operators", "regex", "--since", "HEAD", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      refute_includes err, "nothing to test in the changes"
     end
   end
 

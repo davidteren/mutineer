@@ -24,9 +24,15 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 
 - **`--test-command` exit codes 126 and 127 are scored `error`, not
-  `killed`.** A wrapper that could not start the suite ran no test.
+  `killed`.** A wrapper that could not start the suite ran no test. Under
+  `--threshold`, such a run can now score lower or fail the no-verdict limit,
+  where before it passed on false kills.
 - **A run with errored mutants and no `--threshold` says so.** Errors are not
-  in the score, so the run exits 0; the message names `--threshold`.
+  in the score, so the run passes; the message says what `--threshold` would
+  enforce.
+- **The empty-run message moved from the human report to one stderr warning
+  for every format.** "No mutations generated" is gone. An empty `--since`
+  run prints "nothing to test in the changes since REF" instead.
 
 ## [1.6.0] - 2026-10-08
 
