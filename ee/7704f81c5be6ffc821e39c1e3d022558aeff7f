@@ -1,0 +1,16 @@
+README.md
+  h_e8a5bb9272fa34 275
+lib/mutineer/config.rb
+  h_e8a5bb9272fa34 407
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ee7704f81c5be6ffc821e39c1e3d022558aeff7f",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
