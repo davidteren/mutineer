@@ -26,17 +26,19 @@ module Mutineer
   # Protocol (one JSON object per line, both directions):
   #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment","require_paths":[...],
   #               "load_paths":["test"],"framework":"minitest","rails":true,"schema":"db/schema.rb"}
-  #   ready out: {"ready":true,"ruby":"3.3.6"}   (or {"ready":false,"error":"..."} then exit)
+  #   ready out: {"ready":true,"ruby":"3.3.6","database_count":1}
+  #              (or {"ready":false,"error":"..."} then exit)
+  #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
   #               "tests":["test/models/order_test.rb"],"timeout":30}
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
   #   quit in  : {"cmd":"quit"}
   #
   # Worker isolation: when the app is Rails, each fork is routed to its own
-  # database `<db>-<worker>` via {RailsWorkerDb} BEFORE any test loads, so
-  # concurrent workers cannot clobber each other's transactional fixtures.
-  # `worker` defaults to 0 (serial). SQLite this pass; Postgres provisioning is
-  # not yet implemented.
+  # database via {RailsWorkerDb} BEFORE any test loads, so concurrent workers
+  # cannot clobber each other's transactional fixtures. `worker` defaults to 0
+  # (serial). SQLite copies a file per slot. Postgres uses `<base>-mutineer-<w>`,
+  # created once before the worker daemons start.
   #
   # Verdict mapping: child exit 0=survived (suite passed), 1=killed (suite
   # failed), 2=error (child raised AROUND the test: load, boot, or worker-DB
@@ -66,7 +68,7 @@ module Mutineer
         return if boot_line.nil? # client vanished before boot
 
         boot!(JSON.parse(boot_line.strip))
-        output.puts(JSON.generate("ready" => true, "ruby" => RUBY_VERSION))
+        output.puts(JSON.generate("ready" => true, "ruby" => RUBY_VERSION, "database_count" => database_count))
         output.flush
 
         input.each_line do |line|
@@ -83,6 +85,14 @@ module Mutineer
             next
           end
           break if req["cmd"] == "quit"
+
+          # Create worker databases before coverage forks or mutant forks.
+          # The first daemon does this. A restarted worker daemon does not.
+          if req["cmd"] == "provision"
+            output.puts(JSON.generate(provision_slots(req["slots"])))
+            output.flush
+            next
+          end
 
           # Build the coverage map app-side and ship it to the tool, which then
           # selects covering tests per mutant. One-shot control message.
@@ -149,18 +159,57 @@ module Mutineer
       # Load the per-worker DB adapter app-side (sibling gem file, by relative path
       # so it bypasses the app bundle, like this daemon itself). No-op unless the
       # app has ActiveRecord. Records the adapter + schema path so each fork can
-      # route to its own database. SQLite-only this pass; a non-SQLite config
-      # raises in the fork and reads as `error`, never a mis-routed verdict.
+      # route to its own database.
+      #
+      # `db_role` "prepare" waits for a provision command (the first daemon).
+      # "worker" only takes the shared lock (a worker daemon, including a
+      # respawn). Anything else provisions now, which is what a direct client
+      # that never sends the command needs. SQLite provisioning does nothing.
       def setup_worker_db(cfg)
         require_relative "rails_worker_db"
         @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
         schema = cfg["schema"] && File.expand_path(cfg["schema"])
         @schema_path = schema if schema && File.exist?(schema)
-        # Each worker slot is seeded once, on first use (not every mutant fork).
+        # Each SQLite slot is seeded once, on first use (not every mutant fork).
+        # Postgres slots are copied at provision time, so this flag is unused there.
         @slot_ready = {}
+        return unless @worker_db
+
+        case cfg["db_role"]
+        when "prepare"
+          nil
+        when "worker"
+          @worker_db.prepare_worker!
+        else
+          @worker_db.provision(cfg.fetch("slots", 2).to_i)
+        end
       rescue LoadError => e
         @errio.puts("[daemon] worker-DB routing unavailable: #{e.message}")
         @worker_db = nil
+      end
+
+      # Database configs in the booted test environment. 1 when the app has no
+      # worker-DB adapter. The tool uses this to force a single worker.
+      #
+      # @return [Integer]
+      def database_count
+        return 1 unless @worker_db
+
+        @worker_db.database_count
+      rescue StandardError
+        1
+      end
+
+      # Run {RailsWorkerDb.provision} and report success or the cause. A failure
+      # stays on this reply. It does not become a mutant verdict.
+      #
+      # @param slots [Integer, String]
+      # @return [Hash]
+      def provision_slots(slots)
+        @worker_db.provision(Integer(slots)) if @worker_db
+        { "ok" => true }
+      rescue Exception => e # rubocop:disable Lint/RescueException
+        { "ok" => false, "error" => "#{e.class}: #{e.message}" }
       end
 
       # Build the coverage map app-side (Coverage was started at boot) and return

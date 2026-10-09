@@ -12,6 +12,12 @@ source "https://rubygems.org"
 gem "rails", "~> 7.1"
 gem "sqlite3", "~> 1.7"
 
+# Not installed by a normal `bundle install`. The Postgres daemon job sets
+# BUNDLE_WITH=postgres. The gem itself still has no runtime dependency.
+group :postgres, optional: true do
+  gem "pg", "~> 1.5"
+end
+
 # Mutineer under test, from this checkout (../../.. is the gem root). require:
 # false mirrors the documented install; the CLI is invoked via `bundle exec`.
 gem "mutineer", path: "../../..", require: false

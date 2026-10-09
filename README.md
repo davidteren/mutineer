@@ -43,13 +43,13 @@ It runs in parallel on those systems.
 | --- | --- | --- | --- | --- |
 | 3.4 or later | SQLite file | Minitest | supported with `--daemon` | supported |
 | 3.4 or later | SQLite file | RSpec | not supported | serial only |
-| 3.4 or later | PostgreSQL | Minitest | not supported | serial only |
+| 3.4 or later | PostgreSQL | Minitest | supported with `--daemon` | supported |
 | 3.4 or later | PostgreSQL | RSpec | not supported | serial only |
 | 3.4 or later | MySQL | Minitest | not supported | serial only |
 | 3.4 or later | MySQL | RSpec | not supported | serial only |
 | 3.4 or later | SQLite in memory | Minitest | not supported | serial only |
 | 3.4 or later | SQLite in memory | RSpec | not supported | serial only |
-| 3.4 or later | more than one database | Minitest | not supported | serial only |
+| 3.4 or later | more than one database | Minitest | one worker | serial only |
 | 3.4 or later | more than one database | RSpec | not supported | serial only |
 
 This matrix is for a Rails app on Ruby 3.4 or later.
@@ -59,12 +59,17 @@ This matrix is for a Rails app on Ruby 3.4 or later.
 SQLite file means a database file, not `:memory:`.
 Minitest on that file can use `--daemon`.
 RSpec on that file is serial only.
-PostgreSQL is serial only.
+PostgreSQL with Minitest can use `--daemon`.
+PostgreSQL with RSpec is serial only.
 MySQL is serial only.
 A `:memory:` database is serial only.
-An app with more than one database is serial only.
+An app with more than one database runs one worker.
 `--daemon` isolates only the primary connection.
 `--rails` without `--daemon` is serial on every row.
+A Postgres worker database is copied once, at the start of the run.
+A test that commits rows outside a transaction leaves them in that worker database.
+The next mutant on that worker sees those rows.
+Rails parallel tests have the same ceiling.
 
 <!-- /contract:support-matrix -->
 
@@ -219,10 +224,13 @@ RAILS_ENV=test bundle exec mutineer run \
 - **One backend at a time** — `--daemon` can't be combined with `--test-command`
   (choose one), and it needs an app to boot (`--rails` or `--boot`).
 
-Status: **SQLite** only (hermetic, CI-proven). Per-worker provisioning for
-**Postgres** and other adapters is not supported: on those, `--daemon` scores
-every mutant as `error`. Use `--daemon` with a SQLite test database, or drop
-`--daemon` to run serially on other adapters.
+Status: **SQLite** and **PostgreSQL** (Minitest). Each Postgres worker uses a
+database named `<base>-mutineer-<N>` (shortened when that would pass 63 bytes).
+Mutineer copies the test database into those names before the workers start,
+and leaves them in place when the run ends. Drop one with
+`DROP DATABASE "myapp_test-mutineer-0";` (use your test database name and slot).
+MySQL is not supported on `--daemon` yet: the run stops before it scores a mutant.
+A `:memory:` database is not supported on `--daemon`.
 
 ### Apps on Ruby < 3.4
 

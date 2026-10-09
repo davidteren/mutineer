@@ -84,6 +84,45 @@ jobs:
       - name: Daemon integration tests (Phase 2a)
         run: bundle exec rake test:daemon
 
+  rails-postgres:
+    name: rails daemon postgres 16 (ruby 3.4)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_USER: postgres
+          POSTGRES_DB: mutineer_rails_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB: postgres
+      BUNDLE_WITH: postgres
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGDATABASE: mutineer_rails_test
+      RAILS_ENV: test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: test/fixtures/rails_app
+      - name: Install the fixture bundle with pg
+        working-directory: test/fixtures/rails_app
+        run: bundle install
+      - name: Install the gem bundle
+        run: bundle install
+      - name: Daemon integration tests on Postgres 16
+        run: bundle exec rake test:daemon
+
   site:
     name: website browser tests
     runs-on: ubuntu-latest

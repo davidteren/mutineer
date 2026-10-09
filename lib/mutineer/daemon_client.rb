@@ -71,6 +71,32 @@ module Mutineer
       self
     end
 
+    # How many database configs the booted test environment reported.
+    # 1 when the daemon did not send a count.
+    #
+    # @return [Integer]
+    def database_count
+      @database_count || 1
+    end
+
+    # Ask the daemon to create `slots` worker databases. Raises when the copy
+    # fails or another run holds the database, so the caller stops before any
+    # mutant is scored.
+    #
+    # @param slots [Integer] worker slots to create.
+    # @return [void]
+    # @raise [Mutineer::DaemonBootError]
+    def provision(slots)
+      raise DaemonBootError, "daemon is not running" if @stdin.nil?
+
+      send_line("cmd" => "provision", "slots" => slots)
+      reply = read_line(BOOT_TIMEOUT)
+      return if reply && reply["ok"]
+
+      detail = reply && reply["error"] ? reply["error"] : "provision failed"
+      raise DaemonBootError, detail
+    end
+
     # Run one mutant: ship the payload + covering tests, return the verdict string.
     # On a daemon crash (EOF/dead pipe) respawn (bounded) and return `"error"` for
     # this mutant. Never a wrong verdict, never a wedged run.
@@ -344,6 +370,7 @@ module Mutineer
         close_io
         raise (timed_out ? DaemonBootTimeout : DaemonBootError), "daemon failed to boot under the app bundle: #{detail}"
       end
+      @database_count = ready["database_count"] || 1
     end
 
     # Respawn after a crash, up to MAX_RESTARTS, then hard-fail loudly.

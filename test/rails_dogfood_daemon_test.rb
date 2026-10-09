@@ -40,4 +40,24 @@ class RailsDogfoodDaemonTest < Minitest::Test
     refute_match(/referential integrity/i, combined, "no referential-integrity warnings")
     refute_match(/database is locked/i, combined, "no SQLite lock contention under --jobs 2")
   end
+
+  # More than one database config is only known after boot. The run warns once
+  # and uses one worker, so only slot 0's file appears.
+  def test_several_databases_run_one_worker_and_warn_once
+    ENV["MUTINEER_SECOND_DB"] = "1"
+    slot1 = File.join(APP, "storage", "test-1.sqlite3")
+    File.delete(slot1) if File.exist?(slot1)
+    aggregate = nil
+    _out, err = capture_subprocess_io do
+      aggregate, = Mutineer::Runner.execute(config_for(4))
+    end
+
+    assert_equal 100.0, aggregate.mutation_score
+    sentence = "this app has 2 databases; Mutineer runs one worker. Parallel runs support one database."
+    assert_equal 1, err.scan(sentence).size
+    refute File.exist?(slot1), "a second worker must not start"
+    assert File.exist?(File.join(APP, "storage", "test-0.sqlite3"))
+  ensure
+    ENV.delete("MUTINEER_SECOND_DB")
+  end
 end

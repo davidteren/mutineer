@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Postgres worker databases for `--rails --daemon`.** Each worker gets
+  `<base>-mutineer-<N>`, copied from the test database before mutants run.
+  A second run cannot drop a database another live run holds. An app with
+  more than one database config runs one worker and says so once. MySQL is
+  unchanged. The worker databases stay after the run.
+
 - **A production-ready section and a stability contract.** The README opens
   with a support matrix for Ruby, database, framework, and parallelism.
   `STABILITY.md` lists what a release keeps and what 2.0 will change.
