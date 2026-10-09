@@ -16,9 +16,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Mutineer is fork-based (Linux + macOS); Prism ships with Ruby >= 3.4.
+        # Mutineer is fork-based (Linux + macOS). Prism ships with Ruby >= 3.4.
+        # 3.4 stays on Linux and macOS. 4.0 is the newest stable line, on Linux only.
         os: [ubuntu-latest, macos-latest]
         ruby: ["3.4"]
+        include:
+          - os: ubuntu-latest
+            ruby: "4.0"
     steps:
       - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1
@@ -113,3 +117,30 @@ jobs:
       - name: Check website in Chromium
         working-directory: test/browser
         run: npm test
+
+  # Scores a fixed slice of this gem. The flags stay in this job.
+  # There is no root .mutineer.yml, so a local run is unchanged.
+  # The slice skips harness files and tests that spawn bin/mutineer.
+  # Those mutants cannot reach a subprocess. The measured score was 85.5%.
+  # The threshold is that score, rounded down. Raise it here when the score rises.
+  # The unit tests are not on the lib/ mirror path, so this job passes --test.
+  self-dogfood:
+    name: self-dogfood (threshold 85)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - name: Score config, mutant ids, and the baseline
+        run: >
+          bundle exec mutineer run
+          lib/mutineer/config.rb
+          lib/mutineer/mutant_id.rb
+          lib/mutineer/baseline.rb
+          --test test/config_test.rb
+          --test test/mutant_id_test.rb
+          --test test/baseline_test.rb
+          --threshold 85

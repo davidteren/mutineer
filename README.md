@@ -1,6 +1,8 @@
 # Mutineer
 
 [![Gem Version](https://img.shields.io/gem/v/mutineer?logo=rubygems&color=e23b3b)](https://rubygems.org/gems/mutineer)
+[![CI](https://github.com/davidteren/mutineer/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/davidteren/mutineer/actions/workflows/ci.yml)
+[![mutation score at least 85%](https://img.shields.io/badge/mutation%20score-at%20least%2085%25-67286a)](https://github.com/davidteren/mutineer/actions/workflows/ci.yml)
 [![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Mutineer%20Ruby-2da44e?logo=githubactions&logoColor=white)](https://github.com/marketplace/actions/mutineer-ruby)
 [![Socket](https://img.shields.io/badge/Socket-security%20report-0a66c2?logo=socket&logoColor=white)](https://socket.dev/rubygems/package/mutineer)
 
