@@ -74,11 +74,11 @@ module Mutineer
         out.print rendered
       end
 
+      return warn_errors_without_gate(err) unless threshold&.positive?
+
       # Both ways a run can fail the gate on completeness, said here rather than in
       # the human renderer: --format json is the documented CI path, and a run that
       # exits 1 must say why on every format, not only the one a person reads.
-      return unless threshold&.positive?
-
       if @agg.mutation_score.nil? && broken_nil_score?
         err.puts "[mutineer] nothing could be scored (#{broken_counts_detail}), so the " \
                  "--threshold gate fails. See no_verdict[] in --format json for the cause of each."
@@ -89,6 +89,22 @@ module Mutineer
       end
     end
 
+    # Errors are out of the score, so a run with no --threshold passes however
+    # many mutants errored. Say so, and say what --threshold would enforce.
+    #
+    # @api private
+    # @param err [IO] error stream.
+    # @return [void]
+    def warn_errors_without_gate(err)
+      count = @agg.errored_count
+      return unless count.positive?
+
+      err.puts "[mutineer] #{count} #{count == 1 ? 'mutant' : 'mutants'} errored. Errors are not in the " \
+               "score, so they do not fail a run without a positive --threshold. With one, the run fails " \
+               "when nothing can be scored, or when more than one mutant has no verdict and they exceed " \
+               "#{(BROKEN_SHARE_LIMIT * 100).round}% of those attempted (no_verdict[] in --format json)."
+    end
+
     # Renders the human report.
     #
     # @param out [IO] output stream.
@@ -96,11 +112,8 @@ module Mutineer
     # @param threshold [Float] score threshold.
     # @return [void]
     def human_report(out, err, threshold)
-      if @agg.total.zero?
-        err.puts "No mutations generated — verify target files contain in-scope " \
-                 "operators and are reached by the suite."
-        return
-      end
+      # The CLI explains an empty run for every format (CLI.warn_empty_run).
+      return if @agg.total.zero?
 
       out.puts "Mutineer — Mutation Results"
       out.puts "========================="

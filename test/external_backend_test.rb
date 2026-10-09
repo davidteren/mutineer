@@ -48,6 +48,16 @@ class ExternalBackendTest < Minitest::Test
     assert_predicate result, :killed?
   end
 
+  # 126 (cannot execute) and 127 (command not found) come from a wrapper such
+  # as `bundle exec` that could not start the suite: no test ran, so no kill.
+  def test_cannot_run_exit_codes_are_error_not_killed
+    [126, 127].each do |code|
+      result = Backend.run("#{RUBY} -e exit(#{code}) %{files}", ["x"], timeout: 30)
+      assert_predicate result, :error?, "exit #{code}"
+      refute_predicate result, :killed?
+    end
+  end
+
   def test_signal_death_is_error_not_killed
     # Self-SIGKILL: exitstatus is nil; must not inflate kill rate.
     result = Backend.run("#{RUBY} -e 'Process.kill(:KILL, Process.pid)' %{files}", ["x"], timeout: 30)

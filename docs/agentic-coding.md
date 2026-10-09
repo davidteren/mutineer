@@ -48,6 +48,8 @@ positive threshold fails when nothing can be scored and something broke, or when
 more than one mutant has no verdict and they exceed 10% of those attempted; it
 does not require zero errors. Keep the threshold in the command equal to your target.
 
+An empty run (`summary.total` is 0) exits 0 in 1.x and prints a warning on stderr. Treat it as "no score". Pass `--allow-empty` only when an empty run is expected. A `--since` run whose changes hold no mutable code says "nothing to test in the changes since REF"; that is a valid success. Warnings that start with `mutineer:` or `[mutineer]` also go to stderr: the empty-run warning, "did you mean" hints, notes about Mutineer 2.0, and the count of errored mutants.
+
 Progress lines go to **stderr**; do not merge streams (`2>&1`) when parsing JSON from
 stdout — prefer `--output FILE` and read the file.
 

@@ -66,7 +66,9 @@ module Mutineer
                              on the mutineer command (not as KEY=val inside CMD)
         --daemon             Boot the app ONCE in a persistent daemon and fork per
                              mutant, with per-worker DB isolation so --jobs N is safe
-                             under Rails (needs --rails/--boot; not with --test-command)
+                             under Rails (needs --rails/--boot; not with --test-command).
+                             --no-daemon beats a .mutineer.yml daemon: (2.0 will default
+                             --rails to --daemon; --no-daemon keeps it serial)
         --format human|json|html  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
@@ -77,6 +79,8 @@ module Mutineer
                              killers (in-process only; not with --daemon, --test-command,
                              --fail-fast or --dry-run; --no-matrix beats a .mutineer.yml
                              matrix:)
+        --allow-empty        A run with no mutants is expected; do not warn (--no-allow-empty
+                             beats a .mutineer.yml allow_empty:)
         --verbose            Surface the real error when a fork capture fails (alias: --debug)
 
       Options:
@@ -111,6 +115,7 @@ module Mutineer
         # conflicts with another flag can be turned off for one run.
         o.on("--[no-]fail-fast") { |on| opts[:fail_fast] = on }
         o.on("--[no-]matrix") { |on| opts[:matrix] = on }
+        o.on("--[no-]allow-empty") { |on| opts[:allow_empty] = on }
         o.on("--only NAME") { |v| opts[:only] = v }
         o.on("--since REF") { |v| opts[:since] = Config.parse(:since, v) }
         # A typed "no" must beat a .mutineer.yml `since:` key: the key is present
@@ -141,7 +146,9 @@ module Mutineer
         o.on("--test-command CMD") { |v| opts[:test_command] = v }
         # Boot the app ONCE in a persistent daemon and fork per mutant, with
         # per-worker DB isolation so --jobs N is safe under Rails.
-        o.on("--daemon") { opts[:daemon] = true }
+        # A typed --no-daemon beats a .mutineer.yml `daemon: true`, and pins the
+        # serial --rails path before 2.0 makes the daemon the default.
+        o.on("--[no-]daemon") { |on| opts[:daemon] = on }
       end
 
       begin
@@ -212,6 +219,7 @@ module Mutineer
         exit 2
       end
       validate!(config)
+      Config.warn_rails_default_change(config)
 
       config.dry_run ? dry_run(config) : execute(config)
     rescue ArgumentError => e
@@ -544,16 +552,17 @@ module Mutineer
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
                       scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches)
+      warn_empty_run(config, extras) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
-      # mutants count as survivors), and an infra failure is scored as a kill
-      # (upper bound). Daemon coverage fallback warnings are emitted from the runner
+      # mutants count as survivors), and an infra failure that still starts the
+      # suite is scored as a kill (exit 126/127 are scored error). Daemon coverage fallback warnings are emitted from the runner
       # only when the map is unavailable, not on every --daemon run.
       if config.test_command
         warn "[mutineer] --test-command score is an upper bound, not comparable to an " \
              "in-process run: no coverage narrowing (uncovered mutants count as survivors) " \
-             "and an infra failure is scored as a kill."
+             "and an infra failure is scored as a kill (except exit 126 and 127, scored error)."
       end
 
       # Nudge toward the opt-in tier-2 operators (human report only: never
@@ -566,6 +575,27 @@ module Mutineer
       # `max` of two 0/1 codes is the OR; usage (2) is handled earlier and wins.
       baseline_exit = delta&.regressed ? 1 : 0
       exit [reporter.exit_code(threshold: config.threshold), baseline_exit].max
+    end
+
+    # Says why a run has no mutants, on stderr for every format. A --since run
+    # whose sources had mutants before scoping is a stated success: the changes
+    # held no mutable Ruby code. Any other empty run is a likely mistake (wrong
+    # path, operators that never match), which 2.0 fails unless --allow-empty
+    # says it is expected.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @param extras [Hash] the run extras; `:unscoped_mutants` counts the mutants (run and
+    #   suppressed) before --since.
+    # @return [void]
+    def self.warn_empty_run(config, extras)
+      # Mutants existed before --since narrowed them: the changes held none.
+      if config.since && extras[:unscoped_mutants].to_i.positive?
+        warn "mutineer: nothing to test in the changes since #{config.since}"
+      elsif !config.allow_empty
+        warn "mutineer: no mutants were generated. Check that the sources contain code the " \
+             "operators mutate. The run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
+             "Pass --allow-empty (or allow_empty: true) if an empty run is expected."
+      end
     end
 
     # The tier-2 operators not in the active set, as a one-line hint (or nil when
@@ -640,7 +670,7 @@ module Mutineer
            "it runs this mutineer version or later."
     end
 
-    # Runs dry-run mode. Reuses JobPlan.collect_jobs (+ filter_since) so the
+    # Runs dry-run mode. Reuses JobPlan.collect_jobs (+ scope_since) so the
     # candidate list cannot drift from a real run's job selection.
     #
     # @param config [Mutineer::Config] run configuration.
@@ -649,14 +679,10 @@ module Mutineer
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
-      # Narrow jobs and ignored the same way so the summary matches the printed list.
-      if config.since
-        jobs = JobPlan.filter_since(jobs, source_map, config)
-        ignored_jobs = ignored_results.map { |r| [r.subject, r.mutation, r.id] }
-        ignored = JobPlan.filter_since(ignored_jobs, source_map, config).size
-      else
-        ignored = ignored_results.size
-      end
+      # Narrow jobs and ignored the same way a real run does, so the summary
+      # matches the printed list.
+      jobs, ignored_results, = JobPlan.scope_since(jobs, ignored_results, source_map, config)
+      ignored = ignored_results.size
 
       per_operator = Hash.new(0)
       skipped = 0

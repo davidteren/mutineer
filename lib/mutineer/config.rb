@@ -1,9 +1,25 @@
 # frozen_string_literal: true
 
+require "did_you_mean"
 require "etc"
 require "yaml"
 
 module Mutineer
+  # The phrase every 1.x warning uses for behaviour that 2.0 turns into an
+  # error, so the 2.0 release can find each of those sites with one search.
+  BECOMES_ERROR_IN_2_0 = "this becomes an error in Mutineer 2.0"
+
+  # A "did you mean" hint for a misspelled name, using the stdlib spell
+  # checker that Ruby itself uses for NameError.
+  #
+  # @param word [String] the name the user wrote.
+  # @param candidates [Array<String>] the names that are valid here.
+  # @return [String] ` (did you mean "x"?)` for the closest candidate, or "" when none is close.
+  def self.did_you_mean(word, candidates)
+    match = DidYouMean::SpellChecker.new(dictionary: candidates).correct(word.to_s).first
+    match ? " (did you mean #{match.inspect}?)" : ""
+  end
+
   # Raised by the config layer instead of calling exit/abort. A data class must
   # never kill the host process. The CLI rescues this and maps it to exit 2.
   class ConfigError < StandardError; end
@@ -46,6 +62,7 @@ module Mutineer
     ConfigOption.new(field: :capture_timeout, type: :positive_int, yaml_key: "capture_timeout",
                      flag: "--capture-timeout"),
     ConfigOption.new(field: :cache_dir, type: :string, yaml_key: "cache_dir", flag: "--cache-dir"),
+    ConfigOption.new(field: :allow_empty, type: :bool, yaml_key: "allow_empty", flag: "--allow-empty"),
     ConfigOption.new(field: :format, type: :enum, flag: "--format", values: %w[human json html]),
     ConfigOption.new(field: :strategy, type: :enum, flag: "--strategy", values: %w[reload redefine],
                      aliases: STRATEGY_ALIASES),
@@ -78,7 +95,7 @@ module Mutineer
     # :daemon is user-facing (--daemon flag + KNOWN_KEYS + boolean coerce).
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
-    :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix,
+    :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix, :allow_empty,
     keyword_init: true
   ) do
     # Config file name.
@@ -113,6 +130,7 @@ module Mutineer
       self.fail_fast     = false if fail_fast.nil?
       self.daemon        = false if daemon.nil?
       self.matrix        = false if matrix.nil?
+      self.allow_empty   = false if allow_empty.nil?
     end
 
     # True when the user wrote `key`, on the command line or in the config
@@ -180,8 +198,8 @@ module Mutineer
       raw.each do |key, value|
         ks = key.to_s
         unless KNOWN_KEYS.include?(ks)
-          warn "mutineer: unknown config key #{ks.inspect} in #{name} " \
-               "(known: #{KNOWN_KEYS.join(', ')}); ignored"
+          warn "mutineer: unknown config key #{ks.inspect} in #{name}#{Mutineer.did_you_mean(ks, KNOWN_KEYS)}; " \
+               "ignored, and #{BECOMES_ERROR_IN_2_0} (known: #{KNOWN_KEYS.join(', ')})"
           next
         end
         field = field_for(ks)
@@ -220,7 +238,9 @@ module Mutineer
           config.strategy = "redefine"
         end
         unless config.daemon
-          if config.jobs.to_i > 1
+          # A typed --no-daemon already chose the serial run; only an explicit
+          # --jobs N still needs telling that --daemon is the way to get N.
+          if config.jobs.to_i > 1 && (!config.explicit?(:daemon) || config.explicit?(:jobs))
             warn "[mutineer] --rails without --daemon runs serially (shared test DB); " \
                  "forcing --jobs 1. Use --daemon for safe --jobs N."
           end
@@ -233,6 +253,24 @@ module Mutineer
       # minitest unless the test files clearly look RSpec.
       config.framework ||= detect_framework(config.tests)
       config
+    end
+
+    # Mutineer 2.0 makes the daemon the default under --rails for Minitest, so a
+    # run that would change says so now. The CLI calls this after test pairing,
+    # which can still switch the framework to rspec. The runs that 2.0 keeps on this path
+    # stay quiet: RSpec, --test-command, --matrix and --fail-fast cannot use the
+    # daemon, a --dry-run runs no tests, and a written `daemon` value (true or
+    # false) is the user's choice.
+    #
+    # @api private
+    # @param config [Mutineer::Config] the resolved config.
+    # @return [void]
+    def self.warn_rails_default_change(config)
+      return unless config.rails && !config.explicit?(:daemon) && config.framework == "minitest"
+      return if config.test_command || config.matrix || config.fail_fast || config.dry_run
+
+      warn "[mutineer] in Mutineer 2.0, --rails uses --daemon by default: parallel workers (unless " \
+           "--jobs 1) and the reload strategy. Pass --no-daemon (or daemon: false) to keep this run as it is."
     end
 
     # Pick rspec when a MAJORITY of the given test files end with _spec.rb;
@@ -363,8 +401,8 @@ module Mutineer
       names.select do |n|
         next true if known.include?(n)
 
-        warn "mutineer: unknown operator #{n.inspect} in #{file_name} " \
-             "(known: #{known.join(', ')}); ignored"
+        warn "mutineer: unknown operator #{n.inspect} in #{file_name}#{Mutineer.did_you_mean(n, known)}; " \
+             "ignored, and #{BECOMES_ERROR_IN_2_0} (known: #{known.join(', ')})"
         false
       end
     end

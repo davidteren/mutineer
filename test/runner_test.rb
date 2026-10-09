@@ -297,6 +297,27 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # scope_since narrows jobs and suppressed results in one pass and reports
+  # the count before narrowing; without --since it changes nothing.
+  def test_scope_since_narrows_jobs_and_ignored_results_together
+    config = Mutineer::Config.new(sources: [CALC], project_root: ROOT, since: "HEAD~1")
+    source_map = { CALC => File.read(CALC) }
+    jobs = build_jobs(config, source_map)
+    on_line = jobs.find { |_s, m| line_of(m, source_map[CALC]) == 5 }
+    off_line = jobs.find { |_s, m| line_of(m, source_map[CALC]) != 5 }
+    ignored = [on_line, off_line].map { |s, m| Mutineer::Result.ignored.with(subject: s, mutation: m, id: "x") }
+
+    Mutineer::ChangedLines.stub(:for, { CALC => Set[5] }) do
+      kept_jobs, kept_ignored, count = Mutineer::JobPlan.scope_since(jobs, ignored, source_map, config)
+      assert(kept_jobs.all? { |_s, m| line_of(m, source_map[CALC]) == 5 })
+      assert_equal [on_line[1]], kept_ignored.map(&:mutation)
+      assert_equal jobs.size + 2, count
+    end
+
+    config.since = nil
+    assert_equal [jobs, ignored, nil], Mutineer::JobPlan.scope_since(jobs, ignored, source_map, config)
+  end
+
   def test_filter_since_file_absent_from_diff_yields_no_jobs
     config = Mutineer::Config.new(sources: [CALC], project_root: ROOT, since: "HEAD~1")
     source_map = { CALC => File.read(CALC) }

@@ -416,6 +416,36 @@ class CliTest < Minitest::Test
     end
   end
 
+  # --no-daemon is accepted in 1.x (it changes nothing yet) so a user can pin
+  # the serial --rails path before 2.0 makes the daemon the default.
+  def test_no_daemon_flag_is_accepted
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--dry-run", "--no-daemon", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+    end
+  end
+
+  # Like --no-fail-fast, a typed --no-daemon beats the file key: without it the
+  # file's daemon: true reaches the daemon checks, which need --rails/--boot.
+  def test_no_daemon_flag_beats_a_daemon_true_file_key
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "daemon: true\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--no-daemon", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+    end
+  end
+
+  def test_misspelled_operators_flag_exits_two_with_a_hint
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "comparsion", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, 'Unknown operator: "comparsion" (did you mean "comparison"?)'
+    end
+  end
+
   # `operators:` with no value still exits 2. --operators replaces that
   # list, including one that names only an unknown operator.
   def test_operators_flag_replaces_a_blank_or_unknown_file_list
@@ -520,6 +550,96 @@ class CliTest < Minitest::Test
                               "--since", "HEAD", "--format", "json", "--output", "r.json", chdir: proj)
       assert_equal 0, status.exitstatus
       assert_equal true, JSON.parse(File.read(File.join(proj, "r.json")))["summary"]["scoped"]
+    end
+  end
+
+  # W1.2 (1.x phase): an empty full scan still exits 0, but says that 2.0
+  # fails it unless --allow-empty marks it as expected.
+  def test_empty_full_scan_warns_unless_allow_empty
+    with_project do |proj|
+      args = ["run", "calculator.rb", "--test", "calculator_strong_test.rb", "--operators", "regex"]
+      _, err, status = mutineer(*args, chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "no mutants were generated"
+      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      assert_includes err, "--allow-empty"
+
+      _, err, status = mutineer(*args, "--allow-empty", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_empty err
+
+      File.write(File.join(proj, ".mutineer.yml"), "allow_empty: true\n")
+      _, err, = mutineer(*args, chdir: proj)
+      refute_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      _, err, = mutineer(*args, "--no-allow-empty", chdir: proj)
+      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+    end
+  end
+
+  # An empty --since run is a stated success: a pull request that touched no
+  # Ruby code has nothing to test, and that is not a mistake.
+  def test_empty_since_run_says_nothing_changed_and_does_not_warn
+    with_project do |proj|
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--since", "HEAD", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "nothing to test in the changes since HEAD"
+      refute_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      refute_includes err, "No mutations generated"
+    end
+  end
+
+  # A suppressed mutant on an unchanged line is not a mutant the changes hold:
+  # the run still says the changes hold nothing to test (PR #235 review).
+  def test_empty_since_run_with_a_suppressed_mutant_still_says_nothing_changed
+    with_project do |proj|
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub("    a + b\n", "    a + b # mutineer:disable-line\n"))
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--since", "HEAD", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "nothing to test in the changes since HEAD"
+      refute_includes err, "no covered mutations", "the out-of-scope suppressed mutant must not reach the report"
+    end
+  end
+
+  # The narrowing keeps a suppressed mutant on a changed line in the report.
+  def test_since_run_keeps_a_suppressed_mutant_on_a_changed_line
+    with_project do |proj|
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub("    a + b\n", "    a + b # mutineer:disable-line\n"))
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--since", "HEAD", "--format", "json", "--output", "r.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, JSON.parse(File.read(File.join(proj, "r.json")))["summary"]["ignored"]
+    end
+  end
+
+  # A --since run that had no mutants before scoping is misconfigured (the
+  # operators never match), not "nothing changed", so it gets the warning.
+  def test_since_run_with_no_candidates_before_scoping_still_warns
+    with_project do |proj|
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--operators", "regex", "--since", "HEAD", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      refute_includes err, "nothing to test in the changes"
     end
   end
 
