@@ -43,6 +43,7 @@ gem "mutineer", group: :test
 
 ```sh
 mutineer run <source...> --test <test> [--test <test>...] [options]
+mutineer migrate <source...> [--dry-run] [--operators LIST]
 ```
 
 Mutate `lib/calculator.rb`, checking it against its test, and fail CI if the
@@ -51,6 +52,23 @@ mutation score drops below 90%:
 ```sh
 mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 ```
+
+### Migrate old ignore ids
+
+```sh
+mutineer migrate <source...> [--dry-run] [--operators LIST]
+```
+
+`migrate` rewrites old-format ids in `.mutineer.yml` `ignore:` to the current
+ids. It keeps comments and every other line. When one old id matches several
+mutants, it writes every new id. That keeps the 1.x match. An id that matches
+nothing stays, and the command exits 1. A block scalar under `ignore:`
+is not supported: the command exits 2 and does not change the file.
+`--dry-run` prints each change and writes nothing.
+
+Pass the same sources and `--operators` you use for `run`. The command runs
+no tests. It does not rewrite a baseline. Generate a new baseline with
+`--format json`.
 
 ### Options
 
@@ -302,12 +320,15 @@ working until 2.0, with a warning:
   hid mutants you did not mean to ignore. The warning says so. Keep only the ids for the mutant you meant to
   ignore, not all of them. The list covers only the sources and operators in
   that run, so run over every source with every operator set you use (for
-  example your Tier-2 `--operators`) for the full list.
+  example your Tier-2 `--operators`) for the full list. Or run
+  `mutineer migrate` on those sources. It writes every new id. Delete any id
+  you did not mean to ignore. See [Migrate old ignore ids](#migrate-old-ignore-ids).
 - **`--baseline`** An old baseline still matches: a survivor matches a stored
   one with the same old id in the same file. A stored file that is an absolute
   path outside the project root (a baseline written on another machine)
   matches on the old id alone. The run tells you to
-  regenerate it. Regenerate it with `--format json`, but only after every gate
+  generate a new baseline with `--format json`. `migrate` does not rewrite a
+  baseline. Generate the new file only after every gate
   that reads it runs 1.3 or later (the Action's `version:` pin, your CI
   `Gemfile.lock`). An older version treats every new-format survivor as new.
 

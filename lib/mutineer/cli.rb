@@ -13,6 +13,7 @@ require_relative "job_plan"
 require_relative "reporter"
 require_relative "kill_matrix"
 require_relative "baseline"
+require_relative "migrate"
 require_relative "mutator_registry"
 
 module Mutineer
@@ -21,7 +22,8 @@ module Mutineer
   #
   # Exit codes:
   #   0  success / requested output (--version, --help, score >= threshold)
-  #   1  survivors below threshold, or a runtime error
+  #   1  survivors below threshold, a runtime error, or an ignore id
+  #      `migrate` could not map
   #   2  usage / flag error (unknown subcommand, invalid flag, unknown operator,
   #      out-of-range threshold)
   class CLI
@@ -33,6 +35,9 @@ module Mutineer
         run [options] <source...> --test <test> [--test <test>...]
                                                      Mutate, run, and report
         run --dry-run [options] <source...>          Print candidate mutations only
+        migrate [options] <source...>                Rewrite old ignore ids in
+                                                     .mutineer.yml. --dry-run prints
+                                                     each change and writes nothing
 
       Run options:
         --test FILE          Test file covering the sources (one per flag; repeat it)
@@ -192,10 +197,91 @@ module Mutineer
         # project becomes its root-relative path (#104). Test inference (when --test is omitted) happens in validate!.
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
         run(config)
+      when "migrate"
+        warn_config_root_mismatch(file_path, config.project_root) if file_path
+        unless file_path
+          warn "mutineer: migrate needs a .mutineer.yml (none found from #{Dir.pwd})"
+          exit 2
+        end
+        if argv[1..].empty?
+          warn "mutineer: migrate requires at least one source file"
+          exit 2
+        end
+        config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
+        migrate(config, file_path)
       else
         warn "mutineer: unknown command '#{argv.first}'"
         exit 2
       end
+    end
+
+    # Rewrites old-format ids in the loaded `.mutineer.yml` `ignore:` list.
+    # Prints each change. With `--dry-run`, writes nothing. Exits 1 when any
+    # bare id matched no mutant in these sources and operators. That id stays
+    # in the file. Exits 0 when every bare id is current or was rewritten.
+    # An unsupported `ignore:` shape exits 2 and leaves the file unchanged.
+    #
+    # @param config [Mutineer::Config] run configuration, sources already set.
+    # @param file_path [String] the `.mutineer.yml` to edit.
+    # @return [void]
+    def self.migrate(config, file_path)
+      current, old_to_new = Migrate.id_maps(config)
+      text = File.read(file_path)
+      outcome = Migrate.rewrite(text, current, old_to_new)
+      outcome.replacements.each do |rep|
+        puts "[mutineer] #{rep.old_id} -> #{rep.new_ids.join(', ')}"
+      end
+      outcome.unmapped.each do |id|
+        warn "[mutineer] ignore entry #{id} matched no mutant in these sources and operators. " \
+             "It was left in place."
+      end
+      warn "[mutineer] dry run: .mutineer.yml was not changed" if config.dry_run
+      replace_file(file_path, outcome.text) if !config.dry_run && outcome.text != text
+      exit(outcome.unmapped.empty? ? 0 : 1)
+    rescue ArgumentError => e
+      warn "mutineer: #{e.message}"
+      exit 2
+    rescue Mutineer::ParseError => e
+      warn "mutineer: error reading: #{e.message}"
+      exit 1
+    rescue SystemCallError => e
+      warn "mutineer: #{e.message}"
+      exit 2
+    end
+
+    # Replaces `path` with `contents` without truncating the original first.
+    # The new bytes go to a temporary file in the same directory. That file
+    # is closed before it is renamed over the target, and it keeps the
+    # target's mode. A symlink is followed, so the target file changes and
+    # the link stays. If the write fails, the temporary file is removed and
+    # the original file is left as it was.
+    #
+    # @api private
+    # @param path [String] the configuration file to replace.
+    # @param contents [String] the full new text.
+    # @return [void]
+    def self.replace_file(path, contents)
+      target = File.symlink?(path) ? File.realpath(path) : path
+      directory = File.dirname(target)
+      base = File.basename(target)
+      temp = nil
+      100.times do
+        candidate = File.join(directory, ".#{base}.migrate-#{Process.pid}-#{rand(1_000_000_000)}.tmp")
+        next if File.exist?(candidate)
+
+        temp = candidate
+        break
+      end
+      raise Errno::EEXIST, target unless temp
+
+      mode = File.stat(target).mode & 0o7777
+      # `perm` is still masked by the umask, so chmod restores the exact mode.
+      File.write(temp, contents, perm: mode)
+      File.chmod(mode, temp)
+      File.rename(temp, target)
+    rescue StandardError
+      File.unlink(temp) if temp && File.exist?(temp)
+      raise
     end
 
     # Lists available operators.
@@ -654,7 +740,8 @@ module Mutineer
         warn "[mutineer] ignore entry #{old} uses the old id format, which did not include the " \
              "file path. It matched these new ids: #{listed}. This list covers only mutants in " \
              "this run's sources and operators; a run over every source gives the complete " \
-             "replacement. #{advice}"
+             "replacement. #{advice} To update the file, run `mutineer migrate`. " \
+             "#{BECOMES_ERROR_IN_2_0}."
       end
     end
 
@@ -665,9 +752,9 @@ module Mutineer
     # @return [void]
     def self.warn_legacy_baseline
       warn "[mutineer] the baseline uses the old id format, which did not include the file " \
-           "path, so survivors were matched on their old ids and files. Regenerate the baseline " \
-           "(run with --format json and save the output), but only after every gate that reads " \
-           "it runs this mutineer version or later."
+           "path, so survivors were matched on their old ids and files. Please generate a new " \
+           "baseline with `--format json`, but only after every gate that reads it runs this " \
+           "mutineer version or later. #{BECOMES_ERROR_IN_2_0}."
     end
 
     # Runs dry-run mode. Reuses JobPlan.collect_jobs (+ scope_since) so the
