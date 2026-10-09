@@ -83,6 +83,13 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_triage_without_a_reason_is_usage_not_an_unknown_command
+    _, err, status = mutineer("triage", "report.json", "--all")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--reason"
+    refute_includes err, "unknown command"
+  end
+
   def test_list_operators_shows_default_and_disabled
     out, _, status = mutineer("--list-operators")
     assert_equal 0, status.exitstatus
@@ -665,7 +672,7 @@ class CliTest < Minitest::Test
                               "--format", "json", "--output", "report.json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(File.read(File.join(proj, "report.json")))
-      assert_equal "1.7", doc["schema_version"]
+      assert_equal "1.8", doc["schema_version"]
       assert_equal 100.0, doc["summary"]["score"]
     end
   end
@@ -804,7 +811,7 @@ class CliTest < Minitest::Test
       out, _, status = mutineer("run", "lib", "--format", "json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(out)
-      assert_equal "1.7", doc["schema_version"]
+      assert_equal "1.8", doc["schema_version"]
       per = doc["per_source"].sort_by { |h| h["file"] }
       assert_equal ["lib/calc.rb", "lib/greeter.rb"], per.map { |h| h["file"] }
       assert_equal 100.0, per.find { |h| h["file"] == "lib/greeter.rb" }["score"]

@@ -14,6 +14,7 @@ require_relative "reporter"
 require_relative "kill_matrix"
 require_relative "baseline"
 require_relative "mutator_registry"
+require_relative "triage"
 
 module Mutineer
   # Command-line entry point. `start` is the single public method called by
@@ -33,6 +34,9 @@ module Mutineer
         run [options] <source...> --test <test> [--test <test>...]
                                                      Mutate, run, and report
         run --dry-run [options] <source...>          Print candidate mutations only
+        triage REPORT.json --reason TEXT
+            (--id ID ... | --all)                    Print ignore: entries for
+                                                     survivors. Does not edit files.
 
       Run options:
         --test FILE          Test file covering the sources (one per flag; repeat it)
@@ -94,6 +98,10 @@ module Mutineer
     # @param argv [Array<String>] raw command-line arguments.
     # @return [void]
     def self.start(argv)
+      if argv.first == "triage"
+        exit Triage.run(argv[1..])
+      end
+
       # The CLI layer holds only the fields the user typed, so Config.resolve
       # can tell a typed `false`/`nil` from an absent flag by whether the key exists.
       opts = {}
