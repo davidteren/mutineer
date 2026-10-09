@@ -58,7 +58,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.7", doc["schema_version"] # 1.6 added operator, token and id to no_coverage[] and uncapturable[]; 1.5 the --matrix block
+    assert_equal "1.8", doc["schema_version"] # 1.8 adds reason on ignored[]; 1.7 added unplaceable and ran_at_load
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
@@ -176,6 +176,19 @@ class JsonReporterTest < Minitest::Test
                                             mutation: mutation_at(">=", "<", :comparison))
 
     assert_equal %w[aaaaaaaaaaaa bbbbbbbbbbbb], render([later, earlier])["ignored"].map { |e| e["id"] }
+  end
+
+  # The reason is present only when the user wrote one.
+  def test_ignored_reason_is_omitted_when_absent
+    with_reason = Mutineer::Result.ignored.with(subject: subject, id: "aaaaaaaaaaaa",
+                                                reason: "only 20 is tested",
+                                                mutation: mutation_at(">=", ">", :comparison))
+    plain = Mutineer::Result.ignored.with(subject: subject, id: "bbbbbbbbbbbb",
+                                          mutation: mutation_at(">=", "<", :comparison))
+    rows = render([with_reason, plain])["ignored"]
+
+    assert_equal "only 20 is tested", rows[0]["reason"]
+    refute rows[1].key?("reason")
   end
 
   def test_no_coverage_entries_on_one_line_are_ordered_by_operator_then_id

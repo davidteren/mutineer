@@ -69,6 +69,7 @@ test('HTML pages with markdown twins advertise rel=alternate', () => {
   const twins = {
     [`${SITE}/index.html`]: `${BASE}/index.md`,
     [`${SITE}/agentic-coding.html`]: `${BASE}/agentic-coding.md`,
+    [`${SITE}/equivalent-skips.html`]: `${BASE}/equivalent-skips.md`,
     [`${SITE}/json-schema.html`]: `${BASE}/json-schema.md`
   };
   for (const [html, href] of Object.entries(twins)) {

@@ -55,6 +55,7 @@ module Mutineer
       # its ordinal instead of minting a second id for the same mutant.
       name_decls = Hash.new { |h, k| h[k] = {} }
       ignore_set = config.ignore.to_set
+      ignore_reasons = config.ignore_reasons || {}
       jobs = []
       ignored_results = []
       legacy_ignore_matches = {}
@@ -87,7 +88,8 @@ module Mutineer
             (legacy_ignore_matches[legacy] ||= []) << { id: id, file: id_path, subject: subject.qualified_name }
           end
           if ignored
-            ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id)
+            reason = suppression_reason(mutation.operator, lines[i], [id, legacy], disabled, ignore_reasons)
+            ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id, reason: reason)
           else
             jobs << [subject, mutation, id]
           end
@@ -242,13 +244,19 @@ module Mutineer
       result.with(status: :ran_at_load)
     end
 
-    # Map each line number to :all or a set of operator symbols, using
-    # inline `# mutineer:disable-line [ops]` markers (RuboCop semantics: the marker
-    # sits on the same physical line as the code it silences). A bare marker
-    # disables every operator on that line; `disable-line a, b` only the listed
-    # operators. Block-form disable/enable ranges are intentionally not supported.
-    # Only a real `#` comment counts: Prism lists the comments, so the marker
-    # text inside a string, heredoc or regex silences nothing (#158).
+    # Map each line number to `{ ops:, reason: }`, using inline
+    # `# mutineer:disable-line [ops]` markers (RuboCop semantics: the marker
+    # sits on the same physical line as the code it silences). `ops` is `:all`
+    # or a set of operator symbols. `reason` is the text after `--`, or nil.
+    # A bare marker disables every operator on that line; `disable-line a, b`
+    # only the listed operators. Block-form disable/enable ranges are
+    # intentionally not supported. Only a real `#` comment counts: Prism lists
+    # the comments, so the marker text inside a string, heredoc or regex
+    # silences nothing (#158).
+    #
+    # @param source [String] the source text.
+    # @param file [String] the file name, for warnings.
+    # @return [Hash{Integer => Hash}] line => `{ ops:, reason: }`.
     def self.suppress_map(source, file)
       map = {}
       Parser.comments(source).grep(Prism::InlineComment).each do |comment|
@@ -264,9 +272,29 @@ module Mutineer
           warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line}#{Mutineer.did_you_mean(o, MutatorRegistry::ALL.keys)} " \
                "(known: #{MutatorRegistry::ALL.keys.join(', ')}); write a reason after --"
         end
-        map[line] = ops ? ops.map(&:to_sym).to_set : :all
+        reason = comment.slice[/\s--\s*(.*)\z/, 1]&.strip
+        reason = nil if reason.nil? || reason.empty?
+        map[line] = { ops: ops ? ops.map(&:to_sym).to_set : :all, reason: reason }
       end
       map
+    end
+
+    # The operator set for one suppress-map entry. A Hash is the current shape
+    # (`ops` plus `reason`). `:all` and a Set remain valid for callers that
+    # build the map by hand.
+    #
+    # @param entry [Hash, Symbol, Set, nil] one line's suppress-map value.
+    # @return [Symbol, Set, nil] `:all`, the operator set, or nil.
+    def self.line_ops(entry)
+      entry.is_a?(Hash) ? entry[:ops] : entry
+    end
+
+    # The reason text on one suppress-map entry, when the entry stores one.
+    #
+    # @param entry [Hash, Object] one line's suppress-map value.
+    # @return [String, nil]
+    def self.line_reason(entry)
+      entry.is_a?(Hash) ? entry[:reason] : nil
     end
 
     # True when this mutant is suppressed: its line bears a disable-line marker
@@ -279,11 +307,34 @@ module Mutineer
     def self.suppressed?(operator, line, ids, disabled, ignore_set)
       return true if Array(ids).any? { |id| ignore_set.include?(id) }
 
-      case (entry = disabled[line])
+      case line_ops(disabled[line])
       when :all then true
-      when Set  then entry.include?(operator)
+      when Set  then line_ops(disabled[line]).include?(operator)
       else false
       end
+    end
+
+    # Why an ignored mutant was suppressed. An inline reason wins. Otherwise
+    # the reason is the first matching ignore id that has one. Blank text is nil.
+    #
+    # @param operator [Symbol] the mutant's operator.
+    # @param line [Integer] the mutant's line.
+    # @param ids [Array<String>] the new id and the old-format id.
+    # @param disabled [Hash] the file's suppress map.
+    # @param ignore_reasons [Hash{String => String}] id => reason.
+    # @return [String, nil]
+    def self.suppression_reason(operator, line, ids, disabled, ignore_reasons)
+      entry = disabled[line]
+      ops = line_ops(entry)
+      line_hit = ops == :all || (ops.is_a?(Set) && ops.include?(operator))
+      inline = line_hit ? line_reason(entry) : nil
+      return inline if inline.is_a?(String) && !inline.strip.empty?
+
+      Array(ids).each do |candidate|
+        text = ignore_reasons[candidate]
+        return text if text.is_a?(String) && !text.strip.empty?
+      end
+      nil
     end
 
     # Narrows the jobs and the suppressed (ignored) results to --since when it
