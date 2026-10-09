@@ -593,6 +593,23 @@ class CliTest < Minitest::Test
     end
   end
 
+  # A suppressed mutant on an unchanged line is not a mutant the changes hold:
+  # the run still says the changes hold nothing to test (PR #235 review).
+  def test_empty_since_run_with_a_suppressed_mutant_still_says_nothing_changed
+    with_project do |proj|
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub("    a + b\n", "    a + b # mutineer:disable-line\n"))
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--since", "HEAD", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "nothing to test in the changes since HEAD"
+    end
+  end
+
   # A --since run that had no mutants before scoping is misconfigured (the
   # operators never match), not "nothing changed", so it gets the warning.
   def test_since_run_with_no_candidates_before_scoping_still_warns
