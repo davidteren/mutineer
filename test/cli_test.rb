@@ -611,6 +611,22 @@ class CliTest < Minitest::Test
     end
   end
 
+  # The narrowing keeps a suppressed mutant on a changed line in the report.
+  def test_since_run_keeps_a_suppressed_mutant_on_a_changed_line
+    with_project do |proj|
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub("    a + b\n", "    a + b # mutineer:disable-line\n"))
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--since", "HEAD", "--format", "json", "--output", "r.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, JSON.parse(File.read(File.join(proj, "r.json")))["summary"]["ignored"]
+    end
+  end
+
   # A --since run that had no mutants before scoping is misconfigured (the
   # operators never match), not "nothing changed", so it gets the warning.
   def test_since_run_with_no_candidates_before_scoping_still_warns

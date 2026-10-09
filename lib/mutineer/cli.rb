@@ -584,11 +584,12 @@ module Mutineer
     # says it is expected.
     #
     # @param config [Mutineer::Config] run configuration.
-    # @param extras [Hash] the run extras; `:unscoped_jobs` is the job count before --since.
+    # @param extras [Hash] the run extras; `:unscoped_mutants` counts the mutants (run and
+    #   suppressed) before --since.
     # @return [void]
     def self.warn_empty_run(config, extras)
       # Mutants existed before --since narrowed them: the changes held none.
-      if config.since && extras[:unscoped_jobs].to_i.positive?
+      if config.since && extras[:unscoped_mutants].to_i.positive?
         warn "mutineer: nothing to test in the changes since #{config.since}"
       elsif !config.allow_empty
         warn "mutineer: no mutants were generated. Check that the sources contain code the " \
@@ -669,7 +670,7 @@ module Mutineer
            "it runs this mutineer version or later."
     end
 
-    # Runs dry-run mode. Reuses JobPlan.collect_jobs (+ filter_since) so the
+    # Runs dry-run mode. Reuses JobPlan.collect_jobs (+ scope_since) so the
     # candidate list cannot drift from a real run's job selection.
     #
     # @param config [Mutineer::Config] run configuration.
@@ -678,14 +679,10 @@ module Mutineer
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
-      # Narrow jobs and ignored the same way so the summary matches the printed list.
-      if config.since
-        jobs = JobPlan.filter_since(jobs, source_map, config)
-        ignored_jobs = ignored_results.map { |r| [r.subject, r.mutation, r.id] }
-        ignored = JobPlan.filter_since(ignored_jobs, source_map, config).size
-      else
-        ignored = ignored_results.size
-      end
+      # Narrow jobs and ignored the same way a real run does, so the summary
+      # matches the printed list.
+      jobs, ignored_results, = JobPlan.scope_since(jobs, ignored_results, source_map, config)
+      ignored = ignored_results.size
 
       per_operator = Hash.new(0)
       skipped = 0
