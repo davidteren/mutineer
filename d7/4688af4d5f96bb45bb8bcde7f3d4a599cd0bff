@@ -1,0 +1,20 @@
+docs/rails.html
+  h_e8a5bb9272fa34 82
+docs/rails.md
+  h_e8a5bb9272fa34 39-41
+lib/mutineer/init.rb
+  h_e8a5bb9272fa34 15,56-60,62-73,107-108,112,116-120
+test/init_test.rb
+  h_e8a5bb9272fa34 40,42,64,73-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d74688af4d5f96bb45bb8bcde7f3d4a599cd0bff",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
