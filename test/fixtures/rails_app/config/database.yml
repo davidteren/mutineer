@@ -1,7 +1,40 @@
-# A file-backed SQLite DB (not :memory:) so the connection survives the fork
-# Mutineer does per mutant — exactly the fork-safety path --rails reconnects.
+# Default: a file-backed SQLite DB (not :memory:) so the connection survives the
+# fork Mutineer does per mutant. DB=postgres selects Postgres. MUTINEER_SECOND_DB=1
+# adds a second config so a parallel run must fall back to one worker.
+<% if ENV["MUTINEER_SECOND_DB"] == "1" %>
+test:
+  primary:
+    adapter: sqlite3
+    database: storage/test.sqlite3
+    pool: 5
+    timeout: 5000
+  extra:
+    adapter: sqlite3
+    database: storage/extra.sqlite3
+    pool: 5
+    timeout: 5000
+<% elsif ENV["DB"] == "postgres" %>
+test:
+  adapter: postgresql
+  encoding: unicode
+  database: <%= ENV.fetch("PGDATABASE", "mutineer_rails_test") %>
+  pool: 5
+  <% if ENV["PGUSER"] && !ENV["PGUSER"].empty? %>
+  username: <%= ENV["PGUSER"] %>
+  <% end %>
+  <% if ENV["PGPASSWORD"] && !ENV["PGPASSWORD"].empty? %>
+  password: <%= ENV["PGPASSWORD"] %>
+  <% end %>
+  <% if ENV["PGHOST"] && !ENV["PGHOST"].empty? %>
+  host: <%= ENV["PGHOST"] %>
+  <% end %>
+  <% if ENV["PGPORT"] && !ENV["PGPORT"].empty? %>
+  port: <%= ENV["PGPORT"] %>
+  <% end %>
+<% else %>
 test:
   adapter: sqlite3
   database: storage/test.sqlite3
   pool: 5
   timeout: 5000
+<% end %>

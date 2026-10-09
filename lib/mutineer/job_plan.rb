@@ -11,6 +11,7 @@ require_relative "mutator_registry"
 require_relative "mutant_id"
 require_relative "project_path"
 require_relative "external_backend"
+require_relative "orphan_guard"
 
 module Mutineer
   # The job vocabulary every backend shares: which mutants run, which are
@@ -337,14 +338,18 @@ module Mutineer
     # Removes stale mutant tempfiles from the given directories. The daemon writes a
     # differently-named temp, so {DaemonBackend} passes its glob when it has to sweep
     # tool-side (nothing boots on an empty run, so the daemon's own sweep never runs).
+    # A daemon file another process still owns is left in place. In-process mutant
+    # files have no owner recorded in the name, so this still removes those orphans.
     #
     # @param dirs [Array<String>] directories to sweep.
     # @param glob [String] filename pattern to remove.
     # @return [void]
     def self.sweep_orphans(dirs, glob = "mutineer_mutant*.rb")
       dirs.each do |dir|
-        Dir.glob(File.join(dir, glob)).each do |f|
-          File.unlink(f) rescue nil # rubocop:disable Style/RescueModifier
+        Dir.glob(File.join(dir, glob)).each do |path|
+          next if OrphanGuard.mutant_file_in_use?(path)
+
+          File.unlink(path) rescue nil # rubocop:disable Style/RescueModifier
         end
       end
     end
