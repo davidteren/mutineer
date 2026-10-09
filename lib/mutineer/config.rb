@@ -139,15 +139,27 @@ module Mutineer
       @daemon_by_default == true
     end
 
+    # Save the strategy the user wrote before the daemon forces reload.
+    # {use_in_process_serial!} puts that value back.
+    #
+    # @return [void]
+    def remember_requested_strategy!
+      @requested_strategy = strategy if explicit?(:strategy)
+    end
+
     # Leave a default daemon and run one in-process worker.
-    # A strategy the user wrote stays.
+    # A strategy the user wrote is restored. A strategy nobody wrote becomes redefine.
     #
     # @return [void]
     def use_in_process_serial!
       @daemon_by_default = false
       self.daemon = false
       self.jobs = 1
-      self.strategy = "redefine" unless explicit?(:strategy)
+      if @requested_strategy
+        self.strategy = @requested_strategy
+      elsif !explicit?(:strategy)
+        self.strategy = "redefine"
+      end
     end
 
     # True when the user wrote `key`, on the command line or in the config

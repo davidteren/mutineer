@@ -584,6 +584,55 @@ class ConfigTest < Minitest::Test
     assert_equal "reload", cfg.strategy
   end
 
+  # The daemon forces reload before it boots. A later serial fallback must
+  # put back the strategy the user wrote, not keep that forced reload.
+  def test_serial_fallback_restores_a_strategy_the_user_asked_for
+    cfg = Config.resolve({
+      rails: true, strategy: "redefine", tests: ["test/order_test.rb"], jobs: 4
+    }, {})
+    assert_equal "redefine", cfg.strategy
+    assert cfg.daemon_by_default?
+
+    capture_io { Mutineer::CLI.validate_daemon!(cfg) }
+    assert_equal "reload", cfg.strategy
+
+    seen = []
+    runner = lambda do |config|
+      seen << [config.daemon, config.strategy, config.jobs]
+      if seen.size == 1
+        raise Mutineer::ParallelUnavailable,
+              'NotImplementedError: worker-DB isolation needs a file or named database (got ":memory:").'
+      end
+
+      [Mutineer::AggregateResult.new([]), {}, {}]
+    end
+
+    capture_io do
+      Mutineer::Runner.stub(:execute, runner) { Mutineer::CLI.collect_run(cfg) }
+    end
+
+    assert_equal [[true, "reload", 4], [false, "redefine", 1]], seen
+    assert_equal "redefine", cfg.strategy
+    refute cfg.daemon
+  end
+
+  def test_serial_fallback_keeps_reload_when_that_is_what_the_user_wrote
+    cfg = Config.resolve({ rails: true, strategy: "reload", tests: ["test/order_test.rb"], jobs: 3 }, {})
+    capture_io { Mutineer::CLI.validate_daemon!(cfg) }
+    cfg.use_in_process_serial!
+    assert_equal "reload", cfg.strategy
+    assert_equal 1, cfg.jobs
+    refute cfg.daemon
+  end
+
+  def test_serial_fallback_uses_redefine_when_nobody_wrote_a_strategy
+    cfg = Config.resolve({ rails: true, tests: ["test/a_test.rb"] }, {})
+    refute cfg.explicit?(:strategy)
+    assert_equal "reload", cfg.strategy
+    cfg.use_in_process_serial!
+    assert_equal "redefine", cfg.strategy
+  end
+
   def test_rails_sugar_reloads_when_nobody_wrote_a_strategy
     cfg = Config.resolve({ rails: true, tests: ["test/a_test.rb"] }, {})
     assert_equal "reload", cfg.strategy

@@ -428,8 +428,10 @@ module Mutineer
       return if config.strategy == "reload"
 
       # --rails defaults strategy to redefine; daemon always whole-file loads.
+      # Remember the request first. A serial fallback puts it back.
       warn "[mutineer] --daemon uses --strategy reload " \
            "(redefine is not supported on the daemon path); forcing reload."
+      config.remember_requested_strategy!
       config.strategy = "reload"
     end
 
