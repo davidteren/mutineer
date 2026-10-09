@@ -404,7 +404,7 @@ module Mutineer
     # @api private
     # @param value [Object] the raw YAML value.
     # @param file [String, nil] config file name.
-    # @return [Hash] `:ids` [Array<String>] and `:reasons` [Hash{String => String}].
+    # @return [Hash] `:ids` is an array of id strings. `:reasons` maps an id to its text.
     def self.parse_ignore_list(value, file)
       label = file || CONFIG_FILE
       case value

@@ -272,7 +272,7 @@ file off 100%. Suppress them so the score and `--threshold` gate stay meaningful
 
 `mutineer triage REPORT.json --reason TEXT --all` prints one mapping entry per survivor. `--id ID` prints one entry. Repeat `--id` for several. The command does not edit files. Paste the lines under `ignore:`.
 
-Built-in skips are listed in [docs/equivalent-skips.md](docs/equivalent-skips.md). There is no switch to turn them off.
+Built-in skips are listed on the [equivalent skips](https://davidteren.github.io/mutineer/equivalent-skips.html) page. There is no switch to turn them off.
 
 Suppressed mutants are excluded from the score (so 100% becomes reachable).
 
