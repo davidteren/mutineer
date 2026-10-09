@@ -1,0 +1,26 @@
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 431,434
+lib/mutineer/config.rb
+  h_e8a5bb9272fa34 142-149,151,158-162
+lib/mutineer/daemon_server.rb
+  h_e8a5bb9272fa34 167-168
+lib/mutineer/rails_worker_db.rb
+  h_e8a5bb9272fa34 131-135,139,146-149
+test/config_test.rb
+  h_e8a5bb9272fa34 587-635
+test/daemon_backend_contract_test.rb
+  h_e8a5bb9272fa34 9,361-426
+test/rails_worker_db_test.rb
+  h_e8a5bb9272fa34 82-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b845c795925cfdc31e258d4e81e61a6bbc6af23d",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
