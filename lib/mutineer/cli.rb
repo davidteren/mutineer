@@ -219,6 +219,7 @@ module Mutineer
     # Prints each change. With `--dry-run`, writes nothing. Exits 1 when any
     # bare id matched no mutant in these sources and operators. That id stays
     # in the file. Exits 0 when every bare id is current or was rewritten.
+    # An unsupported `ignore:` shape exits 2 and leaves the file unchanged.
     #
     # @param config [Mutineer::Config] run configuration, sources already set.
     # @param file_path [String] the `.mutineer.yml` to edit.
@@ -235,7 +236,7 @@ module Mutineer
              "It was left in place."
       end
       warn "[mutineer] dry run: .mutineer.yml was not changed" if config.dry_run
-      File.write(file_path, outcome.text) if !config.dry_run && outcome.text != text
+      replace_file(file_path, outcome.text) if !config.dry_run && outcome.text != text
       exit(outcome.unmapped.empty? ? 0 : 1)
     rescue ArgumentError => e
       warn "mutineer: #{e.message}"
@@ -246,6 +247,41 @@ module Mutineer
     rescue SystemCallError => e
       warn "mutineer: #{e.message}"
       exit 2
+    end
+
+    # Replaces `path` with `contents` without truncating the original first.
+    # The new bytes go to a temporary file in the same directory. That file
+    # is closed before it is renamed over the target, and it keeps the
+    # target's mode. A symlink is followed, so the target file changes and
+    # the link stays. If the write fails, the temporary file is removed and
+    # the original file is left as it was.
+    #
+    # @api private
+    # @param path [String] the configuration file to replace.
+    # @param contents [String] the full new text.
+    # @return [void]
+    def self.replace_file(path, contents)
+      target = File.symlink?(path) ? File.realpath(path) : path
+      directory = File.dirname(target)
+      base = File.basename(target)
+      temp = nil
+      100.times do
+        candidate = File.join(directory, ".#{base}.migrate-#{Process.pid}-#{rand(1_000_000_000)}.tmp")
+        next if File.exist?(candidate)
+
+        temp = candidate
+        break
+      end
+      raise Errno::EEXIST, target unless temp
+
+      mode = File.stat(target).mode & 0o7777
+      # `perm` is still masked by the umask, so chmod restores the exact mode.
+      File.write(temp, contents, perm: mode)
+      File.chmod(mode, temp)
+      File.rename(temp, target)
+    rescue StandardError
+      File.unlink(temp) if temp && File.exist?(temp)
+      raise
     end
 
     # Lists available operators.

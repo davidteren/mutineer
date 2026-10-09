@@ -13,8 +13,10 @@ module Mutineer
   # no tests.
   #
   # The file is edited as text. A YAML load and dump would drop comments and
-  # reorder keys. Only a bare id string inside `ignore:` is replaced. A
-  # `{ id:, reason: }` entry is left as written. A baseline file is never read.
+  # reorder keys. Only a bare id inside `ignore:` is replaced. A flow list may
+  # span lines. A scalar changes only when its whole value is an id. A block
+  # scalar under `ignore:` raises ArgumentError. A `{ id:, reason: }` entry is
+  # left as written. A baseline file is never read.
   module Migrate
     # One old id and the new ids that replace it, in collection order.
     Replacement = Data.define(:old_id, :new_ids)
@@ -45,10 +47,16 @@ module Mutineer
     # every new id it maps to. Any other bare id stays and is listed in
     # {Outcome#unmapped}.
     #
+    # A flow list may span lines. Only a scalar whose whole value is an id
+    # changes. A block scalar under `ignore:` raises ArgumentError, and so
+    # does a flow list this rewrite cannot read safely. The caller writes
+    # nothing in that case.
+    #
     # @param text [String] the `.mutineer.yml` contents.
     # @param current [Set<String>] new-format ids in this run.
     # @param old_to_new [Hash{String => Array<String>}] old id => new ids.
     # @return [Outcome]
+    # @raise [ArgumentError] when an `ignore:` shape cannot be rewritten safely.
     def self.rewrite(text, current, old_to_new)
       replacements = []
       unmapped = []
@@ -57,14 +65,14 @@ module Mutineer
       while (line = pending.shift)
         case line_kind(line)
         when :flow
-          lines << rewrite_flow(line, current, old_to_new, replacements, unmapped)
+          lines << rewrite_flow(collect_flow(line, pending), current, old_to_new, replacements, unmapped)
         when :scalar
           lines.concat(rewrite_scalar(line, current, old_to_new, replacements, unmapped))
+        when :block_scalar
+          reject_block_scalar
         when :block
           lines << line
-          while (next_line = pending.first) && inside_block?(next_line)
-            lines.concat(rewrite_item(pending.shift, current, old_to_new, replacements, unmapped))
-          end
+          lines.concat(rewrite_block(pending, current, old_to_new, replacements, unmapped))
         else
           lines << line
         end
@@ -75,21 +83,40 @@ module Mutineer
     class << self
       private
 
-      # A bare id token, optionally quoted, not part of a longer hex string.
-      ID_TOKEN = /(?<![0-9a-f])(['"]?)([0-9a-f]{12})\1(?![0-9a-f])/
-
       # A block-list item whose value is one bare id.
       ITEM = /\A([ \t]*-[ \t]+)(['"]?)([0-9a-f]{12})\2([ \t]*(?:\#.*)?)(\r?\n)?\z/
 
       # `ignore:` followed by one bare id on the same line.
       SCALAR = /\A(ignore:[ \t]*)(['"]?)([0-9a-f]{12})\2([ \t]*(?:\#.*)?)(\r?\n)?\z/
 
+      # `ignore: |` or `ignore: >`, including chomp and indent markers.
+      KEY_BLOCK_SCALAR = /\Aignore:[ \t]*[|>]/
+
+      # A list item whose value is a block scalar, such as `- |`.
+      ITEM_BLOCK_SCALAR = /\A[ \t]*-[ \t]+[|>]/
+
+      # An indented `|` or `>` that is the whole `ignore:` value.
+      VALUE_BLOCK_SCALAR = /\A[ \t]+[|>]/
+
+      # Told to the user when `ignore:` is a YAML block scalar. Exit 2.
+      BLOCK_SCALAR_MESSAGE = "a block scalar under ignore: is not supported. " \
+                             "Write ignore as a list of ids, one per line."
+
+      # Told to the user when a flow `ignore:` list cannot be rewritten safely.
+      FLOW_UNSUPPORTED_MESSAGE = "this ignore: flow list is not supported. " \
+                                 "Write ignore as a list of ids, one per line."
+
+      # Told to the user when `ignore: [` never finds its closing bracket.
+      UNCLOSED_FLOW_MESSAGE = "an ignore: flow list has no closing ]. " \
+                              "Write ignore as a list of ids, one per line."
+
       # Which `ignore:` shape this line opens, or nil when it is some other line.
       #
       # @param line [String] one line of the file, its terminator included.
-      # @return [Symbol, nil] `:flow`, `:block`, `:scalar`, or nil.
+      # @return [Symbol, nil] `:flow`, `:block_scalar`, `:block`, `:scalar`, or nil.
       def line_kind(line)
         return :flow if line.match?(/\Aignore:[ \t]*\[/)
+        return :block_scalar if line.match?(KEY_BLOCK_SCALAR)
         return :block if line.match?(/\Aignore:[ \t]*(?:\#.*)?\r?\n?\z/)
         return :scalar if line.match?(/\Aignore:[ \t]*\S/)
 
@@ -129,24 +156,327 @@ module Mutineer
         end
       end
 
-      # Rewrites bare ids between the brackets of a one-line flow list.
+      # Lines from `ignore: [` through the line that closes the flow list.
+      # Quotes and comments do not hide the closing bracket, and they do not
+      # supply a false one.
       #
-      # @param line [String] an `ignore: [...]` line.
+      # @param line [String] the opening line, its terminator included.
+      # @param pending [Array<String>] the lines still to read.
+      # @return [String] the whole flow value, newlines included.
+      # @raise [ArgumentError] when the closing bracket is missing.
+      def collect_flow(line, pending)
+        chunk = line.dup
+        return chunk if matching_index(chunk, chunk.index("["), "[", "]")
+
+        while (next_line = pending.shift)
+          chunk << next_line
+          return chunk if matching_index(chunk, chunk.index("["), "[", "]")
+        end
+        raise ArgumentError, UNCLOSED_FLOW_MESSAGE
+      end
+
+      # Index of the `closer` that matches the `opener` at `start`, or nil.
+      # Quoted text and comments are not structure.
+      #
+      # @param text [String]
+      # @param start [Integer] index of the opening bracket.
+      # @param opener [String] `[` or `{`.
+      # @param closer [String] `]` or `}`.
+      # @return [Integer, nil]
+      def matching_index(text, start, opener, closer)
+        index = start + 1
+        depth = 1
+        state = :plain
+        while index < text.length
+          char = text[index]
+          case state
+          when :plain
+            if char == "'"
+              state = :single
+            elsif char == '"'
+              state = :double
+            elsif comment_at?(text, index)
+              newline = text.index("\n", index)
+              return nil unless newline
+
+              index = newline + 1
+              next
+            elsif char == opener
+              depth += 1
+            elsif char == closer
+              depth -= 1
+              return index if depth.zero?
+            end
+          when :single
+            if char == "'"
+              if text[index + 1] == "'"
+                index += 1
+              else
+                state = :plain
+              end
+            end
+          when :double
+            if char == "\\"
+              return nil if index + 1 >= text.length
+
+              index += 1
+            elsif char == '"'
+              state = :plain
+            end
+          end
+          index += 1
+        end
+        nil
+      end
+
+      # Whether `index` starts a YAML comment. A `#` inside a token does not.
+      #
+      # @param text [String]
+      # @param index [Integer]
+      # @return [Boolean]
+      def comment_at?(text, index)
+        return false unless text[index] == "#"
+
+        index.zero? || text[index - 1].match?(/\s/)
+      end
+
+      # Rewrites whole id scalars between the brackets of a flow list.
+      # The list may span lines. A scalar that only contains an id is kept.
+      # A `{ ... }` entry is kept. Nested lists and other shapes raise.
+      #
+      # @param chunk [String] `ignore: [` through the closing bracket.
       # @param current [Set<String>] new-format ids in this run.
       # @param old_to_new [Hash{String => Array<String>}] old id => new ids.
       # @param replacements [Array<Replacement>] recorded changes.
       # @param unmapped [Array<String>] bare ids that matched nothing.
-      # @return [String] the line to write.
-      def rewrite_flow(line, current, old_to_new, replacements, unmapped)
-        match = line.match(/\A(ignore:[ \t]*\[)(.*?)(\].*)\z/m)
-        return line unless match
+      # @return [String] the text to write.
+      # @raise [ArgumentError] when the list is not a flat list of scalars.
+      def rewrite_flow(chunk, current, old_to_new, replacements, unmapped)
+        open = chunk.index("[")
+        close = matching_index(chunk, open, "[", "]")
+        raise ArgumentError, UNCLOSED_FLOW_MESSAGE unless close
 
-        inner = match[2].gsub(ID_TOKEN) do
-          quote = Regexp.last_match(1)
-          ids = mapped_ids(Regexp.last_match(2), current, old_to_new, replacements, unmapped)
-          ids.map { |new_id| "#{quote}#{new_id}#{quote}" }.join(", ")
+        inner = rewrite_flow_items(chunk[(open + 1)...close], current, old_to_new, replacements, unmapped)
+        "#{chunk[0..open]}#{inner}#{chunk[close..]}"
+      end
+
+      # Rewrites the text between the flow brackets.
+      #
+      # @param inner [String] text between `[` and `]`.
+      # @param current [Set<String>] new-format ids in this run.
+      # @param old_to_new [Hash{String => Array<String>}] old id => new ids.
+      # @param replacements [Array<Replacement>] recorded changes.
+      # @param unmapped [Array<String>] bare ids that matched nothing.
+      # @return [String]
+      # @raise [ArgumentError] when an entry is not a scalar or a `{ ... }` entry.
+      def rewrite_flow_items(inner, current, old_to_new, replacements, unmapped)
+        out = +""
+        index = 0
+        while index < inner.length
+          char = inner[index]
+          if char.match?(/\s/) || char == ","
+            out << char
+            index += 1
+          elsif comment_at?(inner, index)
+            newline = inner.index("\n", index) || inner.length
+            out << inner[index...newline]
+            index = newline
+          else
+            raw, next_index = read_flow_item(inner, index)
+            raise ArgumentError, FLOW_UNSUPPORTED_MESSAGE if next_index <= index
+
+            out << replace_flow_scalar(raw, current, old_to_new, replacements, unmapped)
+            index = next_index
+          end
         end
-        "#{match[1]}#{inner}#{match[3]}"
+        out
+      end
+
+      # One flow entry starting at `index`: a quoted scalar, a plain scalar,
+      # or a `{ ... }` entry copied whole.
+      #
+      # @param text [String]
+      # @param index [Integer]
+      # @return [Array(String, Integer)] the raw entry and the index after it.
+      # @raise [ArgumentError] when the entry is not one of those shapes.
+      def read_flow_item(text, index)
+        case text[index]
+        when "'" then read_single_quoted(text, index)
+        when '"' then read_double_quoted(text, index)
+        when "{" then read_wrapped(text, index, "{", "}")
+        when "[", "|", ">", "!", "&", "*", "?"
+          raise ArgumentError, FLOW_UNSUPPORTED_MESSAGE
+        else
+          read_plain(text, index)
+        end
+      end
+
+      # A single-quoted scalar, including its quotes. `''` is an escaped quote.
+      #
+      # @param text [String]
+      # @param start [Integer] index of the opening quote.
+      # @return [Array(String, Integer)]
+      # @raise [ArgumentError] when the quote does not close.
+      def read_single_quoted(text, start)
+        index = start + 1
+        while index < text.length
+          if text[index] == "'"
+            if text[index + 1] == "'"
+              index += 2
+              next
+            end
+            return [text[start..index], index + 1]
+          end
+          index += 1
+        end
+        raise ArgumentError, FLOW_UNSUPPORTED_MESSAGE
+      end
+
+      # A double-quoted scalar, including its quotes. Backslash escapes are
+      # skipped so they cannot end the scalar early.
+      #
+      # @param text [String]
+      # @param start [Integer] index of the opening quote.
+      # @return [Array(String, Integer)]
+      # @raise [ArgumentError] when the quote does not close.
+      def read_double_quoted(text, start)
+        index = start + 1
+        while index < text.length
+          char = text[index]
+          if char == "\\"
+            raise ArgumentError, FLOW_UNSUPPORTED_MESSAGE if index + 1 >= text.length
+
+            index += 2
+            next
+          end
+          return [text[start..index], index + 1] if char == '"'
+
+          index += 1
+        end
+        raise ArgumentError, FLOW_UNSUPPORTED_MESSAGE
+      end
+
+      # The `{ ... }` or other wrapped entry starting at `start`, copied whole.
+      #
+      # @param text [String]
+      # @param start [Integer] index of the opener.
+      # @param opener [String]
+      # @param closer [String]
+      # @return [Array(String, Integer)]
+      # @raise [ArgumentError] when the closer is missing.
+      def read_wrapped(text, start, opener, closer)
+        stop = matching_index(text, start, opener, closer)
+        raise ArgumentError, FLOW_UNSUPPORTED_MESSAGE unless stop
+
+        [text[start..stop], stop + 1]
+      end
+
+      # A plain flow scalar. It ends at a comma, a comment, or a line break.
+      # A colon means the entry may be a mapping, which this rewrite does not
+      # split safely.
+      #
+      # @param text [String]
+      # @param start [Integer]
+      # @return [Array(String, Integer)]
+      # @raise [ArgumentError] when the entry is not a plain scalar.
+      def read_plain(text, start)
+        index = start
+        while index < text.length
+          char = text[index]
+          break if char == "," || char == "\n" || char == "\r"
+          break if comment_at?(text, index)
+          if char == ":" || char == "[" || char == "]" || char == "{" || char == "}" ||
+             char == "'" || char == '"'
+            raise ArgumentError, FLOW_UNSUPPORTED_MESSAGE
+          end
+
+          index += 1
+        end
+        [text[start...index], index]
+      end
+
+      # The quote, the id, and the gaps around it when `raw` is exactly one id.
+      # Nil when `raw` is any other scalar.
+      #
+      # @param raw [String] one flow entry, quotes included.
+      # @return [Array(String, String, String, String), nil]
+      def flow_scalar_id(raw)
+        if (match = raw.match(/\A([0-9a-f]{12})([ \t]*)\z/))
+          return ["", match[1], "", match[2]]
+        end
+        if raw.start_with?("'") && raw.end_with?("'")
+          value = raw[1..-2].gsub("''", "'")
+          return ["'", value, "", ""] if value.match?(/\A[0-9a-f]{12}\z/)
+        end
+        if raw.start_with?('"') && raw.end_with?('"')
+          value = raw[1..-2]
+          # A backslash can hide an id. Do not guess the decoded text.
+          raise ArgumentError, FLOW_UNSUPPORTED_MESSAGE if value.include?("\\")
+
+          return ['"', value, "", ""] if value.match?(/\A[0-9a-f]{12}\z/)
+        end
+        nil
+      end
+
+      # Replaces `raw` when its whole scalar value is an id. Several new ids
+      # become several entries. Any other entry is returned unchanged.
+      #
+      # @param raw [String] one flow entry.
+      # @param current [Set<String>] new-format ids in this run.
+      # @param old_to_new [Hash{String => Array<String>}] old id => new ids.
+      # @param replacements [Array<Replacement>] recorded changes.
+      # @param unmapped [Array<String>] bare ids that matched nothing.
+      # @return [String]
+      def replace_flow_scalar(raw, current, old_to_new, replacements, unmapped)
+        parts = flow_scalar_id(raw)
+        return raw unless parts
+
+        quote, value, lead, trail = parts
+        ids = mapped_ids(value, current, old_to_new, replacements, unmapped)
+        return raw if ids == [value]
+
+        "#{lead}#{ids.map { |id| "#{quote}#{id}#{quote}" }.join(", ")}#{trail}"
+      end
+
+      # The lines of a block-style `ignore:` value. A block scalar here is
+      # rejected. A `{ id:, reason: }` entry is left to {rewrite_item}.
+      #
+      # @param pending [Array<String>] the lines still to read.
+      # @param current [Set<String>] new-format ids in this run.
+      # @param old_to_new [Hash{String => Array<String>}] old id => new ids.
+      # @param replacements [Array<Replacement>] recorded changes.
+      # @param unmapped [Array<String>] bare ids that matched nothing.
+      # @return [Array<String>]
+      # @raise [ArgumentError] when the value or a list item is a block scalar.
+      def rewrite_block(pending, current, old_to_new, replacements, unmapped)
+        written = []
+        saw_entry = false
+        while (next_line = pending.first) && inside_block?(next_line)
+          raise ArgumentError, BLOCK_SCALAR_MESSAGE if block_scalar_entry?(next_line, saw_entry)
+
+          saw_entry = true if next_line.match?(/\A[ \t]*[^ \t#\r\n]/)
+          written.concat(rewrite_item(pending.shift, current, old_to_new, replacements, unmapped))
+        end
+        written
+      end
+
+      # Rejects a block scalar `ignore:` value. The constant lives on this
+      # singleton, so {rewrite} calls this method instead of reading it.
+      #
+      # @return [void]
+      # @raise [ArgumentError] always.
+      def reject_block_scalar
+        raise ArgumentError, BLOCK_SCALAR_MESSAGE
+      end
+
+      # Whether `line` is a block scalar used as the ignore value or as one
+      # list item. A `|` under a later key, such as `reason: |`, is not.
+      #
+      # @param line [String]
+      # @param saw_entry [Boolean] true after the first real entry in the value.
+      # @return [Boolean]
+      def block_scalar_entry?(line, saw_entry)
+        line.match?(ITEM_BLOCK_SCALAR) || (!saw_entry && line.match?(VALUE_BLOCK_SCALAR))
       end
 
       # Rewrites a one-line `ignore: <id>`. Several new ids become a block list,

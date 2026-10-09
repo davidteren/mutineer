@@ -1320,6 +1320,21 @@ class CliTest < Minitest::Test
     end
   end
 
+  # A block scalar can hold an ignore id. The command must say so and must
+  # not leave the user thinking the file was migrated.
+  def test_migrate_rejects_a_block_scalar_and_keeps_the_file
+    Dir.mktmpdir("mutineer-migrate") do |proj|
+      body = "ignore: |\n  aaaaaaaaaaaa\n"
+      File.write(File.join(proj, ".mutineer.yml"), body)
+      File.write(File.join(proj, "a.rb"), "def f(a) = a + 1\n")
+      _, err, status = mutineer("migrate", "a.rb", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "block scalar"
+      refute_match(/\.rb:\d+:in /, err)
+      assert_equal body, File.read(File.join(proj, ".mutineer.yml"))
+    end
+  end
+
   def ignored_ids(proj)
     out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
                                 "--operators", "arithmetic", "--jobs", "1", "--format", "json",
