@@ -1,0 +1,66 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 24-34
+README.md
+  h_e8a5bb9272fa34 340-345
+docs/agentic-coding.html
+  h_e8a5bb9272fa34 38
+docs/equivalent-skips.html
+  h_e8a5bb9272fa34 1-102
+docs/equivalent-skips.md
+  h_e8a5bb9272fa34 1-35
+docs/index.html
+  h_e8a5bb9272fa34 38
+docs/json-schema.md
+  h_e8a5bb9272fa34 35,126
+docs/llms.txt
+  h_e8a5bb9272fa34 28,47
+docs/sample-report.html
+  h_e8a5bb9272fa34 31
+lib/mutineer.rb
+  h_e8a5bb9272fa34 45
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 18,42-44,106-109
+lib/mutineer/config.rb
+  h_e8a5bb9272fa34 55,94,129,208-212,346-347,399-474
+lib/mutineer/job_plan.rb
+  h_e8a5bb9272fa34 58,91-92,247-259,275-277,282-299,310,312,317-339
+lib/mutineer/reporter.rb
+  h_e8a5bb9272fa34 29,236,300,362-383,670-681,685-688
+lib/mutineer/result.rb
+  h_e8a5bb9272fa34 56-58,66-67
+lib/mutineer/triage.rb
+  h_e8a5bb9272fa34 1-103
+rake/docs_contract.rb
+  h_e8a5bb9272fa34 518
+rake/site_docs.rb
+  h_e8a5bb9272fa34 22-23,38-39,52
+test/baseline_test.rb
+  h_e8a5bb9272fa34 240
+test/cli_test.rb
+  h_e8a5bb9272fa34 99-105,688,827
+test/config_test.rb
+  h_e8a5bb9272fa34 291,301,371-374,380,382-417
+test/equivalent_mutant_test.rb
+  h_e8a5bb9272fa34 31-33,50-55,82,165-187,308,364,366
+test/html_reporter_test.rb
+  h_e8a5bb9272fa34 152-162
+test/json_reporter_test.rb
+  h_e8a5bb9272fa34 61,181-193
+test/site_docs_test.rb
+  h_e8a5bb9272fa34 77-85
+test/site_test.js
+  h_e8a5bb9272fa34 72
+test/triage_test.rb
+  h_e8a5bb9272fa34 1-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "af4f452d1efcf6cf258c9b40e061b3f868227d4e",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
