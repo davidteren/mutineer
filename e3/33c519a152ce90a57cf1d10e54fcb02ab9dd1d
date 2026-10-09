@@ -1,0 +1,23 @@
+lib/mutineer/rails_worker_db.rb
+  s_a2e3e24b4dc5a6::t_e41ece15acec39 18,20-25,27-28,30-37,47-49,59-93,97,99,102-103,108,112,115,118-199,204,206-209,213,218-224,309-310,316-501
+  s_a2e3e24b4dc5a6::t_4c5d7fb0c9e101 502-503
+test/daemon_postgres_test.rb
+  s_a2e3e24b4dc5a6::t_50b5c232dc2ce2 1-246
+  s_a2e3e24b4dc5a6::t_41434961dbc6ac 247-249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e333c519a152ce90a57cf1d10e54fcb02ab9dd1d",
+  "prompts": {},
+  "sessions": {
+    "s_a2e3e24b4dc5a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a11faf-3851-70d1-a437-a1e0b5e99b24",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
