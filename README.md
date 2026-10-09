@@ -30,8 +30,9 @@ for how the two tools differ.
 ## Is it production-ready?
 
 Read this section before you gate an app on Mutineer.
-Adopt a cell that says supported or serial only.
-Avoid a cell that says not supported.
+Use the Status column to decide.
+Adopt a row whose Status says supported or serial only.
+Not supported in the Parallelism column means `--daemon` cannot run that row.
 
 Mutineer itself needs Ruby 3.4 or later.
 In-process runs fork, so use Linux or macOS.
@@ -289,6 +290,7 @@ Tradeoffs — this path is correct but not free:
   The run is serial.
   A crash in the command can count as a kill.
   Uncovered mutants count as survivors.
+  Do not compare a `--test-command` score with an in-process score.
   Mutineer prints this caveat on every run and aborts up
   front (a "smoke check") if your unmutated suite isn't green.
 - **Reload strategy only** (`--strategy redefine` is rejected on this path) and
