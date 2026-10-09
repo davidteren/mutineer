@@ -70,6 +70,11 @@ module Mutineer
       end
 
       entries = chosen.uniq.map { |id| { "id" => id, "reason" => text } }
+      if entries.empty?
+        err.puts "mutineer: triage has nothing to paste under ignore:"
+        return 0
+      end
+
       body = YAML.dump(entries).sub(/\A---\n/, "")
       out.write(body.end_with?("\n") ? body : "#{body}\n")
       0
@@ -97,6 +102,9 @@ module Mutineer
       rows.filter_map { |row| row["id"] if row.is_a?(Hash) && row["id"].is_a?(String) }
     rescue JSON::ParserError => e
       err.puts "mutineer: triage report is not JSON: #{e.message}"
+      nil
+    rescue SystemCallError
+      err.puts "mutineer: triage report cannot be read: #{path}"
       nil
     end
   end

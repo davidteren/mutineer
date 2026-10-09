@@ -397,9 +397,11 @@ module Mutineer
     end
 
     # Reads an `ignore:` value into ids plus a reason for each mapping.
-    # A bare string is an id with no reason. A mapping may hold `id` and
-    # `reason` only. A mapping with no id, or with any other key, is dropped
-    # and warned: 2.0 will reject it. Callers that match ids keep the id list.
+    # A bare string or integer is an id with no reason. YAML reads an unquoted
+    # all-digit id as an integer, and the id text is those decimal digits.
+    # A mapping may hold `id` and `reason` only. A mapping with no id, or with
+    # any other key, is dropped and warned: 2.0 will reject it. Callers that
+    # match ids keep the id list.
     #
     # @api private
     # @param value [Object] the raw YAML value.
@@ -409,7 +411,7 @@ module Mutineer
       label = file || CONFIG_FILE
       case value
       when nil then return { ids: [], reasons: {} }
-      when String then return { ids: [value], reasons: {} }
+      when String, Integer then return { ids: [ignore_id_text(value)], reasons: {} }
       when Array then items = value
       when Hash then items = [value]
       else
@@ -421,21 +423,35 @@ module Mutineer
       reasons = {}
       items.each_with_index do |item, index|
         number = index + 1
-        case item
-        when String
-          ids << item unless item.empty? || ids.include?(item)
-        when Hash
-          id, reason = ignore_mapping(item, number, label)
-          next if id.nil?
+        id = ignore_id_text(item)
+        if id
+          ids << id unless id.empty? || ids.include?(id)
+        elsif item.is_a?(Hash)
+          mapped, reason = ignore_mapping(item, number, label)
+          next if mapped.nil?
 
-          ids << id unless ids.include?(id)
-          reasons[id] = reason if reason
+          ids << mapped unless ids.include?(mapped)
+          reasons[mapped] = reason if reason
         else
           warn "mutineer: ignore entry #{number} in #{label} is not an id or a mapping; " \
                "ignored, and #{BECOMES_ERROR_IN_2_0}"
         end
       end
       { ids: ids, reasons: reasons }
+    end
+
+    # Text of one ignore id. An integer is the decimal digits YAML kept.
+    # A leading zero is already gone by then, so quote an id that needs one.
+    # Any other type is not an id.
+    #
+    # @api private
+    # @param value [Object] a list item, a scalar ignore value, or a mapping id.
+    # @return [String, nil] the id text, or nil when the value cannot be an id.
+    def self.ignore_id_text(value)
+      case value
+      when String then value
+      when Integer then value.to_s
+      end
     end
 
     # One `ignore:` mapping. Returns the id and reason, or nil when the entry
@@ -455,7 +471,7 @@ module Mutineer
         return [nil, nil]
       end
 
-      id = item["id"] || item[:id]
+      id = ignore_id_text(item["id"] || item[:id])
       unless id.is_a?(String) && !id.strip.empty?
         warn "mutineer: ignore entry #{number} in #{label} has no id; ignored, and #{BECOMES_ERROR_IN_2_0}"
         return [nil, nil]

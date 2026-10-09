@@ -48,11 +48,11 @@
 <main id="main" class="wrap">
   <article class="prose">
     <h1>Equivalent skips</h1>
-    <p>Mutineer does not emit some mutants, because the change is equivalent. A normal test cannot kill it. There is no switch to turn these skips off. Each skip is a proven equivalent.</p>
+    <p>Mutineer does not emit some mutants. The change is often noise. A normal test usually cannot kill it. There is no switch to turn these skips off. A chain-link skip matches the method name only. That match does not prove the two mutants are equivalent. An endless range skip is equivalent.</p>
     <p>A team still silences an equivalent mutant that Mutineer does emit. Use <code># mutineer:disable-line</code> or an <code>ignore:</code> entry, and put a reason on it. <code>mutineer triage</code> prints those entries from a JSON report.</p>
 
     <h2 id="chain-link">Chain link</h2>
-    <p>The <code>chain_link</code> operator drops one dotted call from a chain. It never drops the names below. On a value that already has the target type, or that needs no copy, the call changes nothing. Dropping <code>new</code> sends the next call to the class. That raises, or it reaches a class method. Neither result says anything about the tests.</p>
+    <p>The <code>chain_link</code> operator drops one dotted call from a chain. It never drops the names below. The skip uses the name only. It does not check the receiver or the next call. The dropped call is often equivalent, not always. On a value that already has the target type, or that needs no copy, the call changes nothing. Dropping <code>new</code> sends the next call to the class. That raises, or it reaches a class method. Neither result says anything about the tests.</p>
     <table>
       <tr><th>Name</th><th>Why it is skipped</th></tr>
       <tr><td><code>to_s</code></td><td>Conversion. On a string, the call changes nothing.</td></tr>

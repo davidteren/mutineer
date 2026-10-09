@@ -38,6 +38,55 @@ class TriageTest < Minitest::Test
     end
   end
 
+  # An empty selection must not print "--- []". That text is not valid under ignore:.
+  def test_all_with_no_survivors_says_there_is_nothing_to_paste
+    Dir.mktmpdir("mutineer-triage") do |dir|
+      write_report(dir, [])
+      out, err, status = mutineer("triage", "report.json", "--all", "--reason", "x", chdir: dir)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "nothing to paste under ignore:"
+      assert_empty out
+      File.write(File.join(dir, ".mutineer.yml"), "ignore:\n#{out}")
+      loaded = nil
+      _stdout, warn = capture_io { loaded = Mutineer::Config.from_file(File.join(dir, ".mutineer.yml")) }
+      assert_empty warn
+      assert_equal [], loaded[:ignore]
+    end
+  end
+
+  # A report that exists but cannot be read is a usage error, not a crash.
+  def test_an_unreadable_report_exits_two
+    Dir.mktmpdir("mutineer-triage") do |dir|
+      path = File.join(dir, "report.json")
+      File.write(path, JSON.generate("survivors" => [{ "id" => "aaaaaaaaaaaa" }]))
+      denied = false
+      begin
+        File.chmod(0o000, path)
+        denied = !File.readable?(path)
+      rescue SystemCallError
+        denied = false
+      end
+
+      if denied
+        _out, err, status = mutineer("triage", "report.json", "--all", "--reason", "x", chdir: dir)
+        assert_equal 2, status.exitstatus
+        assert_includes err, "cannot be read: report.json"
+        refute_includes err, "triage.rb"
+      else
+        err = StringIO.new
+        out = StringIO.new
+        code = File.stub(:read, ->(*) { raise Errno::EACCES, path }) do
+          Mutineer::Triage.run([path, "--all", "--reason", "x"], out: out, err: err)
+        end
+        assert_equal 2, code
+        assert_includes err.string, "cannot be read: #{path}"
+        assert_empty out.string
+      end
+    ensure
+      File.chmod(0o644, path) if path && File.exist?(path)
+    end
+  end
+
   def test_one_id_prints_one_entry
     Dir.mktmpdir("mutineer-triage") do |dir|
       write_report(dir, %w[aaaaaaaaaaaa bbbbbbbbbbbb])

@@ -398,6 +398,29 @@ class ConfigTest < Minitest::Test
     end
   end
 
+  # YAML reads an unquoted all-digit id as an integer. The id must still match.
+  def test_from_file_keeps_an_unquoted_numeric_ignore_id
+    yaml = <<~YAML
+      ignore:
+        - 123456789012
+        - id: 210987654321
+          reason: same value
+    YAML
+    with_config(yaml) do |path|
+      _out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty err
+      assert_equal %w[123456789012 210987654321], @hash[:ignore]
+      assert_equal({ "210987654321" => "same value" }, @hash[:ignore_reasons])
+    end
+
+    with_config("ignore: 123456789012\n") do |path|
+      _out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty err
+      assert_equal ["123456789012"], @hash[:ignore]
+      assert_equal({}, @hash[:ignore_reasons])
+    end
+  end
+
   # A mapping with no id, and one with an unknown key, each warn and are dropped.
   def test_ignore_mapping_without_id_or_with_an_unknown_key_warns
     yaml = <<~YAML

@@ -1,12 +1,12 @@
 # Equivalent skips
 
-Mutineer does not emit some mutants, because the change is equivalent. A normal test cannot kill it. There is no switch to turn these skips off. Each skip is a proven equivalent.
+Mutineer does not emit some mutants. The change is often noise. A normal test usually cannot kill it. There is no switch to turn these skips off. A chain-link skip matches the method name only. That match does not prove the two mutants are equivalent. An endless range skip is equivalent.
 
 A team still silences an equivalent mutant that Mutineer does emit. Use `# mutineer:disable-line` or an `ignore:` entry, and put a reason on it. `mutineer triage` prints those entries from a JSON report.
 
 ## Chain link
 
-The `chain_link` operator drops one dotted call from a chain. It never drops the names below. On a value that already has the target type, or that needs no copy, the call changes nothing. Dropping `new` sends the next call to the class. That raises, or it reaches a class method. Neither result says anything about the tests.
+The `chain_link` operator drops one dotted call from a chain. It never drops the names below. The skip uses the name only. It does not check the receiver or the next call. The dropped call is often equivalent, not always. On a value that already has the target type, or that needs no copy, the call changes nothing. Dropping `new` sends the next call to the class. That raises, or it reaches a class method. Neither result says anything about the tests.
 
 | Name | Why it is skipped |
 |------|-------------------|
