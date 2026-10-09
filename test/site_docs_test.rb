@@ -3,6 +3,7 @@
 require_relative "test_helper"
 require_relative "../rake/site_docs"
 require_relative "../rake/docs_contract"
+require "yaml"
 
 # #91: sitemap.xml and llms.txt stay generated from one catalog.
 #
@@ -68,5 +69,26 @@ class SiteDocsTest < Minitest::Test
 
   def test_stale_files_is_empty_at_head
     assert_empty MutineerSiteDocs.stale_files
+  end
+
+  # The Rails guide is in the primary nav, and every YAML recipe parses.
+  def test_rails_guide_is_linked_and_its_yaml_parses
+    %w[docs/index.html docs/agentic-coding.html docs/sample-report.html docs/rails.html].each do |path|
+      assert_includes File.read(path), 'href="rails.html"', path
+    end
+    assert_includes File.read("rake/docs_contract.rb"), 'href="rails.html"'
+    page = File.read("docs/rails.md")
+    assert_includes page, "One model locally"
+    assert_includes page, "Report-only in CI"
+    assert_includes page, "--since origin/main"
+    assert_includes page, "--baseline"
+    assert_includes page, "--threshold"
+    assert_includes page, "GitLab CI"
+    blocks = page.scan(/```yaml\n(.*?)```/m).flatten
+    assert_equal 2, blocks.size
+    blocks.each do |body|
+      loaded = YAML.safe_load(body)
+      assert_kind_of Hash, loaded
+    end
   end
 end

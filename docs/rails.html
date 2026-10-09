@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rolling out Mutineer on a Rails app</title>
+<meta name="description" content="Four stages from one Rails model to a CI gate: a local report, report-only CI, a since and baseline pull request gate, and a threshold on chosen folders.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://davidteren.github.io/mutineer/rails.html">
+<link rel="alternate" type="text/markdown" href="https://davidteren.github.io/mutineer/rails.md" title="Markdown">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Mutineer">
+<meta property="og:title" content="Rolling out Mutineer on a Rails app">
+<meta property="og:description" content="Four stages from one Rails model to a CI gate: a local report, report-only CI, a since and baseline pull request gate, and a threshold on chosen folders.">
+<meta property="og:url" content="https://davidteren.github.io/mutineer/rails.html">
+<meta property="og:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Mutineer. Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Rolling out Mutineer on a Rails app">
+<meta name="twitter:description" content="Four stages from one Rails model to a CI gate: a local report, report-only CI, a since and baseline pull request gate, and a threshold on chosen folders.">
+<meta name="twitter:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
+<meta name="twitter:image:alt" content="Mutineer. Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='1' fill='%2367286a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
+<script src="assets/mutineer.js?v=e2f61c6ed52e"></script>
+<link rel="stylesheet" href="assets/mutineer.css?v=bbe02d1403bf">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="index.html"><span class="mark" aria-hidden="true">M↗</span> mutineer<span class="brand-note">/ Ruby mutation testing</span></a>
+    <nav aria-label="Primary">
+      <a href="index.html#install">Install</a>
+      <a href="agentic-coding.html">Agent &amp; CI</a>
+      <a href="rails.html" aria-current="page">Rails</a>
+      <a href="json-schema.html">JSON schema</a>
+      <a href="api/">API</a>
+      <a href="sample-report.html">Sample report</a>
+      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub ↗</a>
+      <button class="toggle" id="theme" aria-label="Switch to light mode" hidden>◐ <span>Dark</span></button>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <div class="doc-layout">
+    <aside class="doc-side">
+      <div class="toc-title">On this page</div>
+      <ul>
+        <li><a href="#one-model">One model locally</a></li>
+        <li><a href="#report-only">Report-only in CI</a></li>
+        <li><a href="#pull-request-gate">A pull request gate</a></li>
+        <li><a href="#threshold">A threshold on chosen folders</a></li>
+        <li><a href="#github-actions">GitHub Actions</a></li>
+        <li><a href="#gitlab-ci">GitLab CI</a></li>
+        <li><a href="#daemon">Daemon</a></li>
+      </ul>
+    </aside>
+
+    <article class="prose">
+      <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Guide</span>
+      <h1>Rolling out Mutineer on a Rails app</h1>
+      <p class="doc-lede">A Rails team can go from install to a first report with one command. This page is the path from that report to a CI gate. Stop at any stage. The next stage can wait.</p>
+
+      <p><code>mutineer init --rails</code> writes <code>.mutineer.yml</code> and prints the first run command. It does not replace a file you already wrote. Pass <code>--force</code> to replace one.</p>
+      <p>The full Action recipes stay in the <a href="https://github.com/davidteren/mutineer#github-action">README</a> and in the <a href="agentic-coding.html#action">agent and CI guide</a>. This page links to them. It does not copy them.</p>
+
+      <h2 id="one-model">One model locally</h2>
+      <p>Add Mutineer to the test group. Run init. Then run the printed command on one model.</p>
+      <pre><code>RAILS_ENV=test bundle exec mutineer init --rails
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/models/order_test.rb</code></pre>
+      <p>Read the report. Fix or suppress the survivors you accept. Do not turn on a failing gate yet.</p>
+
+      <h2 id="report-only">Report-only in CI</h2>
+      <p>Run Mutineer in CI and keep the report. Leave the score gate off (<code>threshold</code> stays 0). A red test suite still fails. A surviving mutant does not.</p>
+
+      <h2 id="pull-request-gate">A pull request gate</h2>
+      <p>Scope the run to the pull request and fail when it adds a survivor. Use <code>--since origin/main</code> and <code>--baseline</code>.</p>
+      <p><code>--since</code> checks the lines the pull request changed. With <code>--since</code>, <code>--baseline</code> fails the job only when a new survivor appears. That run does not check a score drop. The score drop check is for a full run. Keep a full scan on the default branch so a test-only change cannot hide a weaker suite.</p>
+
+      <h2 id="threshold">A threshold on chosen folders</h2>
+      <p>Set <code>--threshold</code> on the folders whose score you trust, such as <code>app/models</code>. Leave a new folder at report-only until its score is stable. Raise the threshold only after the report stays green.</p>
+
+      <h2 id="github-actions">GitHub Actions</h2>
+      <p>Use the Mutineer Action. The steps below are the Rails shape. The README and the agent guide hold the rest of the inputs.</p>
+      <pre><code>name: Mutation testing
+"on": pull_request
+jobs:
+  mutineer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - uses: davidteren/mutineer@v1
+        with:
+          sources: app/models
+          rails: true
+          use-bundler: true</code></pre>
+      <p>For the report-only stage, omit <code>threshold</code> and <code>baseline</code>. For the pull request gate, set <code>since: origin/main</code> and <code>baseline: .mutineer/baseline.json</code>. For the threshold stage, set <code>threshold</code> on the folders you chose.</p>
+
+      <h2 id="gitlab-ci">GitLab CI</h2>
+      <p>GitLab runs the gem directly. There is no Mutineer Action in this recipe.</p>
+      <pre><code>mutineer:
+  stage: test
+  script:
+    - bundle exec mutineer run app/models lib --since origin/main --baseline .mutineer/baseline.json --format json</code></pre>
+      <p>Drop <code>--since</code> and <code>--baseline</code> for a report-only job. Add <code>--threshold 90</code> when a folder is ready for a hard gate.</p>
+
+      <h2 id="daemon">Daemon</h2>
+      <p><code>--daemon</code> gives each worker its own test database. SQLite test databases are supported. Postgres and other adapters are not supported in this version. On those adapters, <code>--daemon</code> scores every mutant as an error. Leave <code>daemon</code> commented in <code>.mutineer.yml</code> until this matrix says it fits. Run without the daemon to stay serial on other adapters.</p>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div>
+      <strong>Mutineer</strong>, clean-room mutation testing for Ruby.
+      <div class="note">MIT licensed · Prism + stdlib only · © David Teren</div>
+    </div>
+    <nav aria-label="Footer">
+      <a href="index.html">Home</a>
+      <a href="agentic-coding.html">Agent &amp; CI</a>
+      <a href="json-schema.html">JSON schema</a>
+      <a href="api/">API</a>
+      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub</a>
+      <a href="#main">Top ↑</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

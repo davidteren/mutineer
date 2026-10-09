@@ -41,6 +41,7 @@ require_relative "mutineer/runner"
 require_relative "mutineer/kill_matrix"
 require_relative "mutineer/reporter"
 require_relative "mutineer/baseline"
+require_relative "mutineer/init"
 require_relative "mutineer/cli"
 
 # Mutineer is the top-level namespace for the mutation-testing library.

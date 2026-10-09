@@ -139,6 +139,16 @@ Add Mutineer to your Gemfile's test group:
 gem "mutineer", group: :test, require: false
 ```
 
+Start from one command. It writes `.mutineer.yml` and prints the first run.
+It does not replace a file you already wrote. Pass `--force` to replace one.
+
+```sh
+RAILS_ENV=test bundle exec mutineer init --rails
+```
+
+The path from that first report to a CI gate is the
+[Rails rollout guide](https://davidteren.github.io/mutineer/rails.html).
+
 ### Faster, parallel-safe Rails (the `--daemon` backend)
 
 `--rails` boots your app once but runs mutants **serially** — parallel `--jobs`

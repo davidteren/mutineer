@@ -1026,4 +1026,15 @@ class CliTest < Minitest::Test
       assert_equal 100.0, JSON.parse(out).dig("summary", "score")
     end
   end
+
+  # init is a command. A bad flag is a usage error, not an unknown command.
+  def test_init_flag_is_usage_not_an_unknown_command
+    Dir.mktmpdir("mutineer-init-cli") do |dir|
+      _out, err, status = mutineer("init", "--nope", chdir: dir)
+      assert_equal 2, status.exitstatus
+      refute_includes err, "unknown command"
+      assert_includes err, "invalid option"
+      refute File.exist?(File.join(dir, ".mutineer.yml"))
+    end
+  end
 end
