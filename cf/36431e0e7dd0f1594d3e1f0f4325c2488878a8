@@ -1,0 +1,18 @@
+.github/workflows/ci.yml
+  h_e8a5bb9272fa34 19-20,23-25,120-146
+README.md
+  h_e8a5bb9272fa34 4-5
+test/docs_contract_test.rb
+  h_e8a5bb9272fa34 93-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cf36431e0e7dd0f1594d3e1f0f4325c2488878a8",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
