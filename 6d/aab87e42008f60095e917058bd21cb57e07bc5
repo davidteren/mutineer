@@ -1,0 +1,25 @@
+lib/mutineer/triage.rb
+  s_bb24ba2d8ffb73::t_449b3ab097246f 1-103
+docs/equivalent-skips.html
+  s_bb24ba2d8ffb73::t_feec209cb03853 1-102
+docs/equivalent-skips.md
+  s_bb24ba2d8ffb73::t_df73f2ba59fe7b 1-35
+test/triage_test.rb
+  s_bb24ba2d8ffb73::t_b11ef21422bbdb 1-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6daab87e42008f60095e917058bd21cb57e07bc5",
+  "prompts": {},
+  "sessions": {
+    "s_bb24ba2d8ffb73": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a12038-8cac-7573-8038-d24654eb974c",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
