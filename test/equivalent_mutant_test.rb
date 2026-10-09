@@ -285,6 +285,34 @@ class EquivalentMutantTest < Minitest::Test
     end
   end
 
+  def test_an_old_mapping_id_suppresses_both_colliding_mutants
+    with_colliding_files do |root|
+      old = legacy_id(root, "a.rb")
+      _, ignored, = collect(root, %w[a.rb b.rb], ignore: [old], ignore_mapped_ids: [old],
+                                                        ignore_reasons: { old => "equivalent" })
+      assert_equal 2, ignored.size
+      assert_equal [old, old], ignored.map { |result| extras_legacy(root, result) }
+      assert_equal %w[equivalent equivalent], ignored.map(&:reason)
+    end
+  end
+
+  def test_a_mapping_id_that_is_already_current_does_not_suppress_the_other_file
+    with_colliding_files do |root|
+      new_a = new_id(root, "a.rb")
+      new_b = new_id(root, "b.rb")
+      original = Mutineer::MutantId.method(:legacy_for_subject)
+      Mutineer::MutantId.define_singleton_method(:legacy_for_subject) do |subject, source, mutations|
+        ids = original.call(subject, source, mutations)
+        subject.file.end_with?("b.rb") ? [new_a] * ids.size : ids
+      end
+      _jobs, ignored, = collect(root, %w[a.rb b.rb], ignore: [new_a], ignore_mapped_ids: [new_a])
+      assert_equal [new_a], ignored.map(&:id)
+      refute_includes ignored.map(&:id), new_b
+    ensure
+      Mutineer::MutantId.define_singleton_method(:legacy_for_subject, original) if original
+    end
+  end
+
   def test_old_id_does_not_ignore_either_colliding_declaration
     Dir.mktmpdir("mutineer-ids") do |root|
       File.write(File.join(root, "dsl.rb"), SAME_FILE_TWICE)
@@ -307,10 +335,16 @@ class EquivalentMutantTest < Minitest::Test
     end
   end
 
-  def collect(root, files, ignore: [], ignore_reasons: {})
+  def collect(root, files, ignore: [], ignore_reasons: {}, ignore_mapped_ids: [])
     config = Mutineer::Config.new(sources: files.map { |f| File.join(root, f) }, ignore: ignore,
-                                  ignore_reasons: ignore_reasons, project_root: root)
+                                  ignore_reasons: ignore_reasons, ignore_mapped_ids: ignore_mapped_ids,
+                                  project_root: root)
     Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(["arithmetic"]))
+  end
+
+  def extras_legacy(root, result)
+    _jobs, _ignored, _source_map, extras = collect(root, [File.basename(result.subject.file)])
+    extras[:id_map][result.id]
   end
 
   # The first arithmetic mutant of `file`, as [subject, mutation, source].

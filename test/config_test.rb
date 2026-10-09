@@ -294,7 +294,7 @@ class ConfigTest < Minitest::Test
 
   def test_from_file_keeps_an_empty_require_or_ignore
     with_config("require: []\nignore:\n") do |path|
-      assert_equal({ require_paths: [], ignore: [], ignore_reasons: {} }, Config.from_file(path))
+      assert_equal({ require_paths: [], ignore: [], ignore_reasons: {}, ignore_mapped_ids: [] }, Config.from_file(path))
     end
   end
 
@@ -304,7 +304,7 @@ class ConfigTest < Minitest::Test
                    parse_error(:operators, bad)
     end
     assert_equal ["arithmetic"], Config.parse(:operators, ["arithmetic"])
-    assert_equal({ ids: [], reasons: {} }, Config.parse(:ignore, nil))
+    assert_equal({ ids: [], reasons: {}, mapped_ids: [] }, Config.parse(:ignore, nil))
     assert_equal [], Config.parse(:require_paths, [])
     assert_equal ["a.rb"], Config.parse(:require_paths, "a.rb")
   end
@@ -369,18 +369,21 @@ class ConfigTest < Minitest::Test
       out, err = capture_io { @hash = Config.from_file(path) }
       assert_empty out
       assert_empty err
-      assert_equal({ ignore: %w[a1b2c3d4e5f6 0011223344ff], ignore_reasons: {} }, @hash)
+      assert_equal({ ignore: %w[a1b2c3d4e5f6 0011223344ff], ignore_reasons: {}, ignore_mapped_ids: [] }, @hash)
       cfg = Config.resolve({}, @hash)
       assert_equal %w[a1b2c3d4e5f6 0011223344ff], cfg.ignore
       assert_equal({}, cfg.ignore_reasons)
+      assert_equal [], cfg.ignore_mapped_ids
     end
   end
 
   def test_ignore_defaults_to_empty_array
     assert_equal [], Config.new.ignore
     assert_equal({}, Config.new.ignore_reasons)
+    assert_equal [], Config.new.ignore_mapped_ids
     assert_equal [], Config.resolve({}, {}).ignore
     assert_equal({}, Config.resolve({}, {}).ignore_reasons)
+    assert_equal [], Config.resolve({}, {}).ignore_mapped_ids
   end
 
   # A mapping entry keeps its reason. A bare id in the same list does not.
@@ -396,6 +399,7 @@ class ConfigTest < Minitest::Test
       assert_empty err
       assert_equal %w[a1b2c3d4e5f6 abc123def456], @hash[:ignore]
       assert_equal({ "abc123def456" => "same value" }, @hash[:ignore_reasons])
+      assert_equal ["abc123def456"], @hash[:ignore_mapped_ids]
     end
   end
 
@@ -648,9 +652,9 @@ class ConfigTest < Minitest::Test
   end
 
 
-  # --- 2.0 notice: --rails becomes parallel by default (plan 011) ---
+  # This release keeps --rails serial unless the user passes --daemon.
 
-  RAILS_2_0_NOTICE = "in Mutineer 2.0, --rails uses --daemon by default"
+  RAILS_NOTICE = "--rails runs serially on the shared test database unless you pass --daemon"
 
   def rails_notice(cli, file = {})
     config = nil
@@ -659,29 +663,31 @@ class ConfigTest < Minitest::Test
     err
   end
 
-  def test_minitest_rails_without_daemon_prints_the_2_0_notice_once
+  def test_minitest_rails_without_daemon_prints_the_serial_notice_once
     err = rails_notice({ rails: true, tests: ["test/a_test.rb"] })
-    assert_equal 1, err.scan(RAILS_2_0_NOTICE).size
-    assert_includes err, "--no-daemon"
+    assert_equal 1, err.scan(RAILS_NOTICE).size
+    assert_includes err, "--daemon uses parallel workers and the reload strategy."
+    refute_includes err, "--no-daemon"
+    refute_includes err, "by default"
   end
 
-  def test_no_rails_2_0_notice_when_the_user_chose_or_cannot_use_the_daemon
+  def test_no_rails_notice_when_the_user_chose_or_cannot_use_the_daemon
     base = { rails: true, tests: ["test/a_test.rb"] }
-    refute_includes rails_notice(base.merge(daemon: true)), RAILS_2_0_NOTICE
-    refute_includes rails_notice(base.merge(daemon: false)), RAILS_2_0_NOTICE
-    refute_includes rails_notice(base, { daemon: false }), RAILS_2_0_NOTICE
-    refute_includes rails_notice({ rails: true, tests: ["spec/a_spec.rb"] }), RAILS_2_0_NOTICE
-    refute_includes rails_notice(base.merge(test_command: "bin/rails test %{files}")), RAILS_2_0_NOTICE
-    refute_includes rails_notice(base.merge(matrix: true)), RAILS_2_0_NOTICE
-    refute_includes rails_notice(base.merge(fail_fast: true)), RAILS_2_0_NOTICE
-    refute_includes rails_notice({ tests: ["test/a_test.rb"] }), RAILS_2_0_NOTICE
+    refute_includes rails_notice(base.merge(daemon: true)), RAILS_NOTICE
+    refute_includes rails_notice(base.merge(daemon: false)), RAILS_NOTICE
+    refute_includes rails_notice(base, { daemon: false }), RAILS_NOTICE
+    refute_includes rails_notice({ rails: true, tests: ["spec/a_spec.rb"] }), RAILS_NOTICE
+    refute_includes rails_notice(base.merge(test_command: "bin/rails test %{files}")), RAILS_NOTICE
+    refute_includes rails_notice(base.merge(matrix: true)), RAILS_NOTICE
+    refute_includes rails_notice(base.merge(fail_fast: true)), RAILS_NOTICE
+    refute_includes rails_notice({ tests: ["test/a_test.rb"] }), RAILS_NOTICE
   end
 
-  # 2.0 changes these runs too: --jobs 4 becomes four workers, and --jobs 1
-  # moves to the daemon and the reload strategy.
-  def test_rails_2_0_notice_fires_whatever_jobs_the_user_wrote
+  # The notice says what this release does, for any --jobs value.
+  # --rails still runs those jobs serially unless the user passes --daemon.
+  def test_rails_notice_fires_whatever_jobs_the_user_wrote
     [1, 4].each do |jobs|
-      assert_includes rails_notice({ rails: true, tests: ["test/a_test.rb"], jobs: jobs }), RAILS_2_0_NOTICE
+      assert_includes rails_notice({ rails: true, tests: ["test/a_test.rb"], jobs: jobs }), RAILS_NOTICE
     end
   end
 

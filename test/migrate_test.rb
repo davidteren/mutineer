@@ -88,13 +88,74 @@ class MigrateTest < Minitest::Test
     assert_equal "ignore:\n- bbbbbbbbbbbb\nthreshold: 0\n", block.text
   end
 
-  # Plan 007 owns `{ id:, reason: }` entries. This rewrite leaves them.
-  def test_hash_entry_is_left_untouched
-    text = "ignore:\n  - id: aaaaaaaaaaaa\n    reason: later\n"
+  def test_a_mapping_rewrites_its_id_and_keeps_the_reason
+    text = "ignore:\n  - id: aaaaaaaaaaaa # keep\n    reason: later\n"
     outcome = Mutineer::Migrate.rewrite(text, Set.new, { "aaaaaaaaaaaa" => ["bbbbbbbbbbbb"] })
+    assert_equal "ignore:\n  - id: bbbbbbbbbbbb # keep\n    reason: later\n", outcome.text
+    assert_equal ["aaaaaaaaaaaa"], outcome.replacements.map(&:old_id)
+    assert_equal [["bbbbbbbbbbbb"]], outcome.replacements.map(&:new_ids)
+    assert_empty outcome.unmapped
+  end
+
+  def test_one_old_mapping_id_expands_to_one_mapping_per_new_id
+    text = "ignore:\n  - id: aaaaaaaaaaaa\n    reason: later\n  # kept\n"
+    outcome = Mutineer::Migrate.rewrite(text, Set.new, { "aaaaaaaaaaaa" => %w[bbbbbbbbbbbb cccccccccccc] })
+    assert_equal "ignore:\n  - id: bbbbbbbbbbbb\n    reason: later\n  - id: cccccccccccc\n    reason: later\n  # kept\n",
+                 outcome.text
+  end
+
+  def test_a_mapping_id_on_the_following_line_is_rewritten
+    text = "ignore:\n  - reason: later\n    id: aaaaaaaaaaaa\n"
+    outcome = Mutineer::Migrate.rewrite(text, Set.new, { "aaaaaaaaaaaa" => ["bbbbbbbbbbbb"] })
+    assert_equal "ignore:\n  - reason: later\n    id: bbbbbbbbbbbb\n", outcome.text
+  end
+
+  def test_a_quoted_mapping_id_keeps_its_quotes
+    text = "ignore:\n  - id: \"aaaaaaaaaaaa\"\n    reason: later\n"
+    outcome = Mutineer::Migrate.rewrite(text, Set.new, { "aaaaaaaaaaaa" => ["bbbbbbbbbbbb"] })
+    assert_equal "ignore:\n  - id: \"bbbbbbbbbbbb\"\n    reason: later\n", outcome.text
+  end
+
+  def test_a_flow_mapping_rewrites_only_its_id
+    text = "ignore: [{id: aaaaaaaaaaaa, reason: later}, cccccccccccc]\n"
+    outcome = Mutineer::Migrate.rewrite(text, Set.new, { "aaaaaaaaaaaa" => ["bbbbbbbbbbbb"] })
+    assert_equal "ignore: [{id: bbbbbbbbbbbb, reason: later}, cccccccccccc]\n", outcome.text
+    assert_equal ["cccccccccccc"], outcome.unmapped
+  end
+
+  def test_an_unmapped_mapping_id_stays_and_is_reported
+    text = "ignore:\n  - id: 0123456789ab\n    reason: gone\n"
+    outcome = Mutineer::Migrate.rewrite(text, Set.new, {})
+    assert_equal text, outcome.text
+    assert_equal ["0123456789ab"], outcome.unmapped
+    assert_empty outcome.replacements
+  end
+
+  def test_a_current_mapping_id_is_not_rewritten
+    text = "ignore:\n  - id: aaaaaaaaaaaa\n    reason: keep\n"
+    outcome = Mutineer::Migrate.rewrite(text, Set["aaaaaaaaaaaa"], { "aaaaaaaaaaaa" => ["bbbbbbbbbbbb"] })
+    assert_equal text, outcome.text
+    assert_empty outcome.replacements
+    assert_empty outcome.unmapped
+  end
+
+  def test_an_id_outside_ignore_is_not_rewritten
+    text = "ignore:\n  - id: bbbbbbbbbbbb\n    reason: stay\nnote:\n  id: aaaaaaaaaaaa\n"
+    outcome = Mutineer::Migrate.rewrite(text, Set["bbbbbbbbbbbb"], { "aaaaaaaaaaaa" => ["cccccccccccc"] })
     assert_equal text, outcome.text
     assert_empty outcome.unmapped
-    assert_empty outcome.replacements
+  end
+
+  def test_a_mapping_without_a_trailing_newline_expands_on_separate_lines
+    text = "ignore:\n  - id: aaaaaaaaaaaa\n    reason: later"
+    outcome = Mutineer::Migrate.rewrite(text, Set.new, { "aaaaaaaaaaaa" => %w[bbbbbbbbbbbb cccccccccccc] })
+    assert_equal "ignore:\n  - id: bbbbbbbbbbbb\n    reason: later\n  - id: cccccccccccc\n    reason: later", outcome.text
+  end
+
+  def test_a_one_line_mapping_stays_on_one_line
+    text = "ignore: {id: aaaaaaaaaaaa, reason: later}\n"
+    outcome = Mutineer::Migrate.rewrite(text, Set.new, { "aaaaaaaaaaaa" => ["bbbbbbbbbbbb"] })
+    assert_equal "ignore: {id: bbbbbbbbbbbb, reason: later}\n", outcome.text
   end
 
   def pair(root, file)

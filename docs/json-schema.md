@@ -199,17 +199,6 @@ The delta versus the prior `--format json` report, matched by `id`. A baseline w
 | `3` | The run could not give a trustworthy result. A red unmutated suite, a daemon boot or provisioning failure, a runtime error, an empty full scan, or more than one mutant with no verdict when they exceed 10% of those attempted. |
 <!-- /contract:exit-codes -->
 
-Under a positive `--threshold`, a run is gated on being complete as well as on its score. Mutants with no
-verdict are excluded from the score's denominator, so a broken harness inflates the score instead of
-lowering it. Past 10% of attempted mutants — and never for a single one, however small the run — the
-score is treated as covering too little of the run to gate on. The floor applies only when there *is* a
-score: a run where nothing could be scored at all fails on a single broken mutant, because there is no
-score to weigh it against. Read `no_verdict[]` to see what failed.
-A run where *nothing* was scored and something broke already exits 1.
+Under a positive `--threshold`, the run must be complete and the score must pass. Mutants with no verdict stay out of the score. When they are more than one mutant and more than 10% of the mutants that were attempted, the run exits 3. One broken mutant does not trip that floor when a score exists. A run with no score exits 3 when one mutant broke. Read `no_verdict[]` to see what failed.
 
-`--threshold` and `--baseline` are independent gates OR'd together (the worse code wins); usage errors (2)
-always win. Exit 2 still means "you invoked me wrong". Exit 1 now covers three distinct situations —
-tests too weak, the run did not complete, or a baseline regression — and they are not distinguishable
-from the exit code alone. Tell them apart from the JSON: compare `summary.score` against your threshold,
-`summary.no_verdict / summary.attempted` against 10%, and `baseline.regressed`. A run that failed only on
-completeness is the one worth retrying rather than blaming on the tests.
+`--threshold` and `--baseline` are separate gates. The higher exit code wins. Exit 2 always wins. Exit 2 means the command was wrong. Exit 1 means the tests are too weak, or a baseline regression. Exit 3 means the run is not trustworthy. That includes a run that did not complete. The exit code alone does not say which gate failed. Read the JSON. Compare `summary.score` with the threshold. Compare `summary.no_verdict` and `summary.attempted` with 10%. Read `baseline.regressed`. Retry a run that failed only because it did not complete.

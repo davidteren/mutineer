@@ -24,7 +24,8 @@ module Mutineer
   # DBs (`CREATE DATABASE <db>-<worker>`) are not implemented yet; a non-SQLite
   # config raises a clear NotImplementedError rather than silently mis-routing.
   #
-  # Routing failures surface as `error` via {verify_connection!}. Tagging an
+  # An {after_fork} failure is a provisioning failure. The daemon child exits
+  # 3 and the run stops. It is not scored as a mutant error. Tagging an
   # in-test DB failure as `error` (not `killed`) is only observable under
   # concurrent load and is not yet implemented.
   module RailsWorkerDb
@@ -98,8 +99,8 @@ module Mutineer
     end
 
     # Child-side (after fork): route this process's ActiveRecord at the worker's
-    # own database and confirm it is reachable, so a routing failure reads as
-    # `error` (via the daemon's child rescue) rather than a false verdict.
+    # own database and confirm it is reachable. A failure here is a provisioning
+    # failure. The daemon ends the run. It does not score the mutant.
     #
     # With `seed: true` (the slot's first use) the worker database first becomes
     # a copy of the base test database, schema and rows, so rows the daemon
@@ -140,7 +141,7 @@ module Mutineer
       backup = SQLite3::Backup.new(ActiveRecord::Base.connection.raw_connection, "main", source, "main")
       # Another worker's process can hold a lock on the base file for a moment;
       # BUSY/LOCKED steps are retried for up to 5 seconds, then the copy fails
-      # with a message that names the database (scored `error`).
+      # with a message that names the database. The run stops.
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
       until (status = backup.step(-1)) == codes::DONE
         retry_ok = [codes::BUSY, codes::LOCKED].include?(status) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
@@ -201,8 +202,8 @@ module Mutineer
     end
 
     # Force a round-trip to the freshly-routed connection so a broken route fails
-    # HERE (→ `error`) instead of later masquerading as a test failure
-    # (→ false `killed`).
+    # here, and the run stops, instead of later masquerading as a test failure
+    # (a false `killed`).
     #
     # @return [void]
     def self.verify_connection!

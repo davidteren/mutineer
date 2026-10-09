@@ -436,8 +436,7 @@ class CliTest < Minitest::Test
     end
   end
 
-  # --no-daemon is accepted in 1.x (it changes nothing yet) so a user can pin
-  # the serial --rails path before 2.0 makes the daemon the default.
+  # --no-daemon is accepted. It keeps the serial path and beats a file `daemon: true`.
   def test_no_daemon_flag_is_accepted
     with_project do |proj|
       _, err, status = mutineer("run", "calculator.rb", "--dry-run", "--no-daemon", chdir: proj)
@@ -1147,6 +1146,14 @@ class CliTest < Minitest::Test
     assert_includes out, "migrate [options] <source...>"
   end
 
+  def test_help_keeps_rails_serial_unless_daemon
+    out, _, status = mutineer("--help")
+    assert_equal 0, status.exitstatus
+    assert_includes out, "keeps --rails serial unless you pass --daemon"
+    refute_includes out, "will default"
+    refute_includes out, "--daemon by default"
+  end
+
   def test_unmatched_ignore_warning_names_the_id_and_migrate
     config = Mutineer::Config.new(ignore: ["aaaaaaaaaaaa"])
     _, err = capture_io { Mutineer::CLI.warn_unmatched_ignore_ids(config, ["bbbbbbbbbbbb"]) }
@@ -1159,6 +1166,22 @@ class CliTest < Minitest::Test
     config = Mutineer::Config.new(ignore: ["aaaaaaaaaaaa"], since: "HEAD")
     _, err = capture_io { Mutineer::CLI.warn_unmatched_ignore_ids(config, []) }
     assert_equal "", err
+  end
+
+  def test_unmatched_ignore_warning_skips_a_mapping_that_matches_an_old_id
+    config = Mutineer::Config.new(ignore: ["aaaaaaaaaaaa"], ignore_mapped_ids: ["aaaaaaaaaaaa"])
+    _, err = capture_io do
+      Mutineer::CLI.warn_unmatched_ignore_ids(config, ["bbbbbbbbbbbb"], legacy_ids: ["aaaaaaaaaaaa"])
+    end
+    assert_equal "", err
+  end
+
+  def test_unmatched_ignore_warning_still_names_a_bare_old_id
+    config = Mutineer::Config.new(ignore: ["aaaaaaaaaaaa"])
+    _, err = capture_io do
+      Mutineer::CLI.warn_unmatched_ignore_ids(config, ["bbbbbbbbbbbb"], legacy_ids: ["aaaaaaaaaaaa"])
+    end
+    assert_includes err, "aaaaaaaaaaaa"
   end
 
   def test_unknown_operator_in_the_config_file_exits_two
@@ -1263,6 +1286,80 @@ class CliTest < Minitest::Test
         assert_equal "", out
         assert_equal body, File.read(path)
       end
+    end
+  end
+
+  def test_fail_fast_does_not_warn_about_an_ignore_id_it_did_not_run
+    with_project do |proj|
+      pairs = arithmetic_id_pairs(proj)
+      assert_operator pairs.size, :>, 1
+      _old, later = pairs.last
+      File.write(File.join(proj, ".mutineer.yml"), "ignore:\n  - #{later}\nfail_fast: true\noperators:\n  - arithmetic\n")
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                   "--jobs", "1", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_empty unmatched_ignore_warnings(err)
+    end
+  end
+
+  def test_fail_fast_still_warns_about_a_bare_old_ignore_id
+    with_project do |proj|
+      old, = arithmetic_id_pairs(proj).first
+      File.write(File.join(proj, ".mutineer.yml"), "ignore:\n  - #{old}\nfail_fast: true\noperators:\n  - arithmetic\n")
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                   "--jobs", "1", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      warnings = unmatched_ignore_warnings(err)
+      assert_equal 1, warnings.size, err
+      assert_includes warnings.first, "ignore ID #{old} matches no mutant"
+    end
+  end
+
+  def test_an_old_ignore_mapping_suppresses_and_does_not_warn
+    with_project do |proj|
+      old, new = arithmetic_id_pairs(proj).first
+      File.write(File.join(proj, ".mutineer.yml"), <<~YAML)
+        ignore:
+          - id: #{old}
+            reason: equivalent
+        operators:
+          - arithmetic
+      YAML
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--operators", "arithmetic", "--jobs", "1", "--format", "json",
+                                  chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_empty unmatched_ignore_warnings(err)
+      row = JSON.parse(out).fetch("ignored").find { |item| item.fetch("id") == new }
+      refute_nil row, out
+      assert_equal "equivalent", row.fetch("reason")
+    end
+  end
+
+  def test_migrate_rewrites_an_ignore_mapping_and_the_run_still_ignores_it
+    with_project do |proj|
+      old, new = arithmetic_id_pairs(proj).first
+      path = File.join(proj, ".mutineer.yml")
+      File.write(path, <<~YAML)
+        ignore:
+          - id: #{old}
+            reason: equivalent
+        operators:
+          - arithmetic
+      YAML
+      _out, err, status = mutineer("migrate", "calculator.rb", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal <<~YAML, File.read(path)
+        ignore:
+          - id: #{new}
+            reason: equivalent
+        operators:
+          - arithmetic
+      YAML
+      after, err, status = ignored_ids(proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal [new], after
+      assert_empty unmatched_ignore_warnings(err)
     end
   end
 

@@ -90,8 +90,8 @@ module Mutineer
         --daemon             Boot the app ONCE in a persistent daemon and fork per
                              mutant, with per-worker DB isolation so --jobs N is safe
                              under Rails (needs --rails/--boot; not with --test-command).
-                             --no-daemon beats a .mutineer.yml daemon: (2.0 will default
-                             --rails to --daemon; --no-daemon keeps it serial)
+                             --no-daemon beats a .mutineer.yml daemon:. This release
+                             keeps --rails serial unless you pass --daemon.
         --format human|json|html  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
@@ -173,8 +173,8 @@ module Mutineer
         o.on("--test-command CMD") { |v| opts[:test_command] = v }
         # Boot the app ONCE in a persistent daemon and fork per mutant, with
         # per-worker DB isolation so --jobs N is safe under Rails.
-        # A typed --no-daemon beats a .mutineer.yml `daemon: true`, and pins the
-        # serial --rails path before 2.0 makes the daemon the default.
+        # A typed --no-daemon beats a .mutineer.yml `daemon: true`. This release
+        # keeps --rails serial unless you pass --daemon.
         o.on("--[no-]daemon") { |on| opts[:daemon] = on }
       end
 
@@ -621,7 +621,8 @@ module Mutineer
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
                       scoped: !config.since.nil?)
-      warn_unmatched_ignore_ids(config, aggregate.results.map(&:id))
+      id_map = extras[:id_map] || {}
+      warn_unmatched_ignore_ids(config, id_map.keys, legacy_ids: id_map.values)
       warn_empty_run(config, extras) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
@@ -681,18 +682,25 @@ module Mutineer
       true
     end
 
-    # Warns once per `ignore:` id that matched no mutant in this full scan.
+    # Warns once per `ignore:` id that matches no mutant in the full set.
     # A diff-scoped run skips the check: most stored ids are out of scope.
+    # An id for a mutant this run did not execute still counts as matched.
+    # A mapping whose id is an old id counts as matched when that old id is
+    # one of `legacy_ids`. A bare old id still warns.
     #
     # @param config [Mutineer::Config] run configuration.
-    # @param ids [Array<String>] mutant ids this run produced.
+    # @param ids [Array<String>] current ids of every mutant in the full set.
+    # @param legacy_ids [Array<String>, nil] old-format ids for those mutants.
     # @return [void]
-    def self.warn_unmatched_ignore_ids(config, ids)
+    def self.warn_unmatched_ignore_ids(config, ids, legacy_ids: nil)
       return if config.since
 
       seen = ids.to_set
+      legacy = Array(legacy_ids).to_set
+      mapped = Array(config.ignore_mapped_ids).to_set
       Array(config.ignore).each do |id|
         next if seen.include?(id)
+        next if mapped.include?(id) && legacy.include?(id)
 
         warn "mutineer: ignore ID #{id} matches no mutant; if it comes from 1.x, run `mutineer migrate`"
       end
@@ -738,8 +746,9 @@ module Mutineer
     # @return [void]
     def self.dry_run(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
-      jobs, ignored_results, source_map, = JobPlan.collect_jobs(config, operator_classes)
-      warn_unmatched_ignore_ids(config, jobs.map { |_subject, _mutation, id| id } + ignored_results.map(&:id))
+      jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
+      id_map = extras[:id_map]
+      warn_unmatched_ignore_ids(config, id_map.keys, legacy_ids: id_map.values)
       # Narrow jobs and ignored the same way a real run does, so the summary
       # matches the printed list.
       jobs, ignored_results, = JobPlan.scope_since(jobs, ignored_results, source_map, config)

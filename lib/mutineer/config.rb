@@ -88,6 +88,8 @@ module Mutineer
     :cache_dir, :project_root, :load_paths,
     :jobs, :format, :output, :strategy, :require_paths,
     :boot, :rails, :since, :framework, :verbose, :ignore, :ignore_reasons,
+    # Ids that came from an `ignore:` mapping. Not its own config key.
+    :ignore_mapped_ids,
     # :daemon is user-facing (--daemon flag + KNOWN_KEYS + boolean coerce).
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
@@ -123,6 +125,7 @@ module Mutineer
       self.verbose       = false if verbose.nil?
       self.ignore        ||= []
       self.ignore_reasons ||= {}
+      self.ignore_mapped_ids ||= []
       self.baseline_epsilon ||= 0.0
       self.fail_fast     = false if fail_fast.nil?
       self.daemon        = false if daemon.nil?
@@ -202,6 +205,7 @@ module Mutineer
         if field == :ignore
           out[:ignore] = parsed.fetch(:ids)
           out[:ignore_reasons] = parsed.fetch(:reasons)
+          out[:ignore_mapped_ids] = parsed.fetch(:mapped_ids)
           next
         end
         if field == :operators
@@ -255,12 +259,12 @@ module Mutineer
       config
     end
 
-    # Mutineer 2.0 makes the daemon the default under --rails for Minitest, so a
-    # run that would change says so now. The CLI calls this after test pairing,
-    # which can still switch the framework to rspec. The runs that 2.0 keeps on this path
-    # stay quiet: RSpec, --test-command, --matrix and --fail-fast cannot use the
-    # daemon, a --dry-run runs no tests, and a written `daemon` value (true or
-    # false) is the user's choice.
+    # This release keeps --rails serial on the shared test database. Say so
+    # when a Minitest Rails run did not choose the daemon. The CLI calls this
+    # after test pairing, which can still switch the framework to rspec. These
+    # runs stay quiet: RSpec, --test-command, --matrix and --fail-fast cannot
+    # use the daemon, a --dry-run runs no tests, and a written `daemon` value
+    # (true or false) is the user's choice.
     #
     # @api private
     # @param config [Mutineer::Config] the resolved config.
@@ -269,8 +273,8 @@ module Mutineer
       return unless config.rails && !config.explicit?(:daemon) && config.framework == "minitest"
       return if config.test_command || config.matrix || config.fail_fast || config.dry_run
 
-      warn "[mutineer] in Mutineer 2.0, --rails uses --daemon by default: parallel workers (unless " \
-           "--jobs 1) and the reload strategy. Pass --no-daemon (or daemon: false) to keep this run as it is."
+      warn "[mutineer] --rails runs serially on the shared test database unless you pass --daemon. " \
+           "--daemon uses parallel workers and the reload strategy."
     end
 
     # Pick rspec when a MAJORITY of the given test files end with _spec.rb;
@@ -399,11 +403,12 @@ module Mutineer
     # @param value [Object] the raw YAML value.
     # @param file [String, nil] config file name.
     # @return [Hash] `:ids` is an array of id strings. `:reasons` maps an id to its text.
+    #   `:mapped_ids` lists ids that came from a mapping, so an old id there still suppresses.
     def self.parse_ignore_list(value, file)
       label = file || CONFIG_FILE
       case value
-      when nil then return { ids: [], reasons: {} }
-      when String then return { ids: [value], reasons: {} }
+      when nil then return { ids: [], reasons: {}, mapped_ids: [] }
+      when String then return { ids: [value], reasons: {}, mapped_ids: [] }
       when Array then items = value
       when Hash then items = [value]
       else
@@ -412,6 +417,7 @@ module Mutineer
 
       ids = []
       reasons = {}
+      mapped_ids = []
       items.each_with_index do |item, index|
         number = index + 1
         case item
@@ -422,12 +428,13 @@ module Mutineer
           next if id.nil?
 
           ids << id unless ids.include?(id)
+          mapped_ids << id unless mapped_ids.include?(id)
           reasons[id] = reason if reason
         else
           raise ConfigError, "ignore entry #{number} in #{label} is not an id or a mapping"
         end
       end
-      { ids: ids, reasons: reasons }
+      { ids: ids, reasons: reasons, mapped_ids: mapped_ids }
     end
 
     # One `ignore:` mapping. Returns the id and reason.
