@@ -17,7 +17,7 @@ require "mutineer/daemon_backend"
 # contract moves.
 class DaemonBackendContractTest < Minitest::Test
   # The JobPlan methods DaemonBackend calls across the module boundary.
-  SHARED = %i[collect_jobs filter_since coverage_selection load_verdict test_load_roots source_dirs
+  SHARED = %i[collect_jobs filter_since scope_since coverage_selection load_verdict test_load_roots source_dirs
               sweep_orphans abort_if_unclean!].freeze
 
   # Cheapest possible tripwire: privatising or renaming any of them breaks the

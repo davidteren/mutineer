@@ -468,8 +468,9 @@ runs:
             | if $i > 0 or $b > 0 then
                 "::warning title=Old-format mutant ids::mutineer: mutant ids now include the file path (#126), and this run still matched ids in the old format."
                 + " Old ignore entries matched: \($i). Replace each one as the log explains: it names each new id with its file and subject, and says when an old entry over-matched several mutants."
-                + " Baseline survivors matched only by an old id: \($b). Regenerate the baseline with --format json, but only after every gate that reads it runs this mutineer version or later."
-                + " Old-format ids stop working in 2.0. See https://github.com/davidteren/mutineer#mutant-ids"
+                + " Baseline survivors matched only by an old id: \($b). Please generate a new baseline with `--format json`, but only after every gate that reads it runs this mutineer version or later."
+                + " Run `mutineer migrate` to rewrite old ignore entries."
+                + " This becomes an error in Mutineer 2.0. See https://github.com/davidteren/mutineer#mutant-ids"
               else empty end
           ' "$TMP_REPORT" \
             || echo "::warning::mutineer: could not check the report for old-format mutant ids."

@@ -13,6 +13,7 @@ require_relative "job_plan"
 require_relative "reporter"
 require_relative "kill_matrix"
 require_relative "baseline"
+require_relative "migrate"
 require_relative "mutator_registry"
 
 module Mutineer
@@ -21,7 +22,8 @@ module Mutineer
   #
   # Exit codes:
   #   0  success / requested output (--version, --help, score >= threshold)
-  #   1  survivors below threshold, or a runtime error
+  #   1  survivors below threshold, a runtime error, or an ignore id
+  #      `migrate` could not map
   #   2  usage / flag error (unknown subcommand, invalid flag, unknown operator,
   #      out-of-range threshold)
   class CLI
@@ -33,6 +35,9 @@ module Mutineer
         run [options] <source...> --test <test> [--test <test>...]
                                                      Mutate, run, and report
         run --dry-run [options] <source...>          Print candidate mutations only
+        migrate [options] <source...>                Rewrite old ignore ids in
+                                                     .mutineer.yml. --dry-run prints
+                                                     each change and writes nothing
 
       Run options:
         --test FILE          Test file covering the sources (one per flag; repeat it)
@@ -66,7 +71,9 @@ module Mutineer
                              on the mutineer command (not as KEY=val inside CMD)
         --daemon             Boot the app ONCE in a persistent daemon and fork per
                              mutant, with per-worker DB isolation so --jobs N is safe
-                             under Rails (needs --rails/--boot; not with --test-command)
+                             under Rails (needs --rails/--boot; not with --test-command).
+                             --no-daemon beats a .mutineer.yml daemon: (2.0 will default
+                             --rails to --daemon; --no-daemon keeps it serial)
         --format human|json|html  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
@@ -77,6 +84,8 @@ module Mutineer
                              killers (in-process only; not with --daemon, --test-command,
                              --fail-fast or --dry-run; --no-matrix beats a .mutineer.yml
                              matrix:)
+        --allow-empty        A run with no mutants is expected; do not warn (--no-allow-empty
+                             beats a .mutineer.yml allow_empty:)
         --verbose            Surface the real error when a fork capture fails (alias: --debug)
 
       Options:
@@ -111,6 +120,7 @@ module Mutineer
         # conflicts with another flag can be turned off for one run.
         o.on("--[no-]fail-fast") { |on| opts[:fail_fast] = on }
         o.on("--[no-]matrix") { |on| opts[:matrix] = on }
+        o.on("--[no-]allow-empty") { |on| opts[:allow_empty] = on }
         o.on("--only NAME") { |v| opts[:only] = v }
         o.on("--since REF") { |v| opts[:since] = Config.parse(:since, v) }
         # A typed "no" must beat a .mutineer.yml `since:` key: the key is present
@@ -141,7 +151,9 @@ module Mutineer
         o.on("--test-command CMD") { |v| opts[:test_command] = v }
         # Boot the app ONCE in a persistent daemon and fork per mutant, with
         # per-worker DB isolation so --jobs N is safe under Rails.
-        o.on("--daemon") { opts[:daemon] = true }
+        # A typed --no-daemon beats a .mutineer.yml `daemon: true`, and pins the
+        # serial --rails path before 2.0 makes the daemon the default.
+        o.on("--[no-]daemon") { |on| opts[:daemon] = on }
       end
 
       begin
@@ -185,10 +197,55 @@ module Mutineer
         # project becomes its root-relative path (#104). Test inference (when --test is omitted) happens in validate!.
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
         run(config)
+      when "migrate"
+        warn_config_root_mismatch(file_path, config.project_root) if file_path
+        unless file_path
+          warn "mutineer: migrate needs a .mutineer.yml (none found from #{Dir.pwd})"
+          exit 2
+        end
+        if argv[1..].empty?
+          warn "mutineer: migrate requires at least one source file"
+          exit 2
+        end
+        config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
+        migrate(config, file_path)
       else
         warn "mutineer: unknown command '#{argv.first}'"
         exit 2
       end
+    end
+
+    # Rewrites old-format ids in the loaded `.mutineer.yml` `ignore:` list.
+    # Prints each change. With `--dry-run`, writes nothing. Exits 1 when any
+    # bare id matched no mutant in these sources and operators. That id stays
+    # in the file. Exits 0 when every bare id is current or was rewritten.
+    #
+    # @param config [Mutineer::Config] run configuration, sources already set.
+    # @param file_path [String] the `.mutineer.yml` to edit.
+    # @return [void]
+    def self.migrate(config, file_path)
+      current, old_to_new = Migrate.id_maps(config)
+      text = File.read(file_path)
+      outcome = Migrate.rewrite(text, current, old_to_new)
+      outcome.replacements.each do |rep|
+        puts "[mutineer] #{rep.old_id} -> #{rep.new_ids.join(', ')}"
+      end
+      outcome.unmapped.each do |id|
+        warn "[mutineer] ignore entry #{id} matched no mutant in these sources and operators. " \
+             "It was left in place."
+      end
+      warn "[mutineer] dry run: .mutineer.yml was not changed" if config.dry_run
+      File.write(file_path, outcome.text) if !config.dry_run && outcome.text != text
+      exit(outcome.unmapped.empty? ? 0 : 1)
+    rescue ArgumentError => e
+      warn "mutineer: #{e.message}"
+      exit 2
+    rescue Mutineer::ParseError => e
+      warn "mutineer: error reading: #{e.message}"
+      exit 1
+    rescue SystemCallError => e
+      warn "mutineer: #{e.message}"
+      exit 2
     end
 
     # Lists available operators.
@@ -212,6 +269,7 @@ module Mutineer
         exit 2
       end
       validate!(config)
+      Config.warn_rails_default_change(config)
 
       config.dry_run ? dry_run(config) : execute(config)
     rescue ArgumentError => e
@@ -544,16 +602,17 @@ module Mutineer
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
                       scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches)
+      warn_empty_run(config, extras) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
-      # mutants count as survivors), and an infra failure is scored as a kill
-      # (upper bound). Daemon coverage fallback warnings are emitted from the runner
+      # mutants count as survivors), and an infra failure that still starts the
+      # suite is scored as a kill (exit 126/127 are scored error). Daemon coverage fallback warnings are emitted from the runner
       # only when the map is unavailable, not on every --daemon run.
       if config.test_command
         warn "[mutineer] --test-command score is an upper bound, not comparable to an " \
              "in-process run: no coverage narrowing (uncovered mutants count as survivors) " \
-             "and an infra failure is scored as a kill."
+             "and an infra failure is scored as a kill (except exit 126 and 127, scored error)."
       end
 
       # Nudge toward the opt-in tier-2 operators (human report only: never
@@ -566,6 +625,27 @@ module Mutineer
       # `max` of two 0/1 codes is the OR; usage (2) is handled earlier and wins.
       baseline_exit = delta&.regressed ? 1 : 0
       exit [reporter.exit_code(threshold: config.threshold), baseline_exit].max
+    end
+
+    # Says why a run has no mutants, on stderr for every format. A --since run
+    # whose sources had mutants before scoping is a stated success: the changes
+    # held no mutable Ruby code. Any other empty run is a likely mistake (wrong
+    # path, operators that never match), which 2.0 fails unless --allow-empty
+    # says it is expected.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @param extras [Hash] the run extras; `:unscoped_mutants` counts the mutants (run and
+    #   suppressed) before --since.
+    # @return [void]
+    def self.warn_empty_run(config, extras)
+      # Mutants existed before --since narrowed them: the changes held none.
+      if config.since && extras[:unscoped_mutants].to_i.positive?
+        warn "mutineer: nothing to test in the changes since #{config.since}"
+      elsif !config.allow_empty
+        warn "mutineer: no mutants were generated. Check that the sources contain code the " \
+             "operators mutate. The run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
+             "Pass --allow-empty (or allow_empty: true) if an empty run is expected."
+      end
     end
 
     # The tier-2 operators not in the active set, as a one-line hint (or nil when
@@ -624,7 +704,8 @@ module Mutineer
         warn "[mutineer] ignore entry #{old} uses the old id format, which did not include the " \
              "file path. It matched these new ids: #{listed}. This list covers only mutants in " \
              "this run's sources and operators; a run over every source gives the complete " \
-             "replacement. #{advice}"
+             "replacement. #{advice} To update the file, run `mutineer migrate`. " \
+             "#{BECOMES_ERROR_IN_2_0}."
       end
     end
 
@@ -635,12 +716,12 @@ module Mutineer
     # @return [void]
     def self.warn_legacy_baseline
       warn "[mutineer] the baseline uses the old id format, which did not include the file " \
-           "path, so survivors were matched on their old ids and files. Regenerate the baseline " \
-           "(run with --format json and save the output), but only after every gate that reads " \
-           "it runs this mutineer version or later."
+           "path, so survivors were matched on their old ids and files. Please generate a new " \
+           "baseline with `--format json`, but only after every gate that reads it runs this " \
+           "mutineer version or later. #{BECOMES_ERROR_IN_2_0}."
     end
 
-    # Runs dry-run mode. Reuses JobPlan.collect_jobs (+ filter_since) so the
+    # Runs dry-run mode. Reuses JobPlan.collect_jobs (+ scope_since) so the
     # candidate list cannot drift from a real run's job selection.
     #
     # @param config [Mutineer::Config] run configuration.
@@ -649,14 +730,10 @@ module Mutineer
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
-      # Narrow jobs and ignored the same way so the summary matches the printed list.
-      if config.since
-        jobs = JobPlan.filter_since(jobs, source_map, config)
-        ignored_jobs = ignored_results.map { |r| [r.subject, r.mutation, r.id] }
-        ignored = JobPlan.filter_since(ignored_jobs, source_map, config).size
-      else
-        ignored = ignored_results.size
-      end
+      # Narrow jobs and ignored the same way a real run does, so the summary
+      # matches the printed list.
+      jobs, ignored_results, = JobPlan.scope_since(jobs, ignored_results, source_map, config)
+      ignored = ignored_results.size
 
       per_operator = Hash.new(0)
       skipped = 0

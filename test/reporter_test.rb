@@ -185,12 +185,36 @@ class ReporterTest < Minitest::Test
 
   # --- rendering / streams ---
 
-  def test_zero_mutations_message_on_stderr
+  # Errors are out of the score, so a run without --threshold exits 0 however
+  # many mutants errored. Say so, and name the flag that fails CI on them.
+  def test_errors_without_a_threshold_point_at_the_threshold_flag
+    results = [Mutineer::Result.error("boom"), Mutineer::Result.error("boom"), Mutineer::Result.killed]
+    err = StringIO.new
+    reporter(results).report(out: StringIO.new, err: err)
+    assert_includes err.string, "2 mutants errored. Errors are not in the score, so they do not fail a run without a positive --threshold."
+    assert_includes err.string, "more than one mutant has no verdict and they exceed 10% of those attempted"
+
+    err = StringIO.new
+    reporter([Mutineer::Result.error("boom"), Mutineer::Result.killed]).report(out: StringIO.new, err: err)
+    assert_includes err.string, "1 mutant errored."
+
+    err = StringIO.new
+    reporter(results).report(out: StringIO.new, err: err, threshold: 50.0)
+    refute_includes err.string, "Errors are not in the score"
+
+    err = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: StringIO.new, err: err)
+    refute_includes err.string, "errored"
+  end
+
+  # The CLI explains an empty run (see CLI.warn_empty_run), once, for every
+  # format; the human report adds nothing of its own.
+  def test_zero_mutations_report_is_empty
     out = StringIO.new
     err = StringIO.new
     reporter([]).report(out: out, err: err)
     assert_empty out.string
-    assert_includes err.string, "No mutations generated"
+    assert_empty err.string
   end
 
   def test_survivor_diff_and_grouping
