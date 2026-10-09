@@ -33,6 +33,11 @@ class SiteDocsTest < Minitest::Test
     assert_equal MutineerSiteDocs.llms_txt(source), source
   end
 
+  def test_llms_txt_links_to_the_production_ready_section
+    text = File.read("docs/llms.txt")
+    assert_includes text, "https://github.com/davidteren/mutineer#is-it-production-ready"
+  end
+
   def test_llms_txt_lists_skill_md_under_optional
     text = File.read("docs/llms.txt")
     optional = text.split("## Optional", 2)[1]

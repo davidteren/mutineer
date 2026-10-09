@@ -47,6 +47,7 @@ module SiteBuild
       FileUtils.rm_rf(DEST)
       FileUtils.mkdir_p(DEST)
       copy_docs_tree!(DEST)
+      splice_production_ready!(DEST)
       FileUtils.cp(SKILL, File.join(DEST, "skill.md"))
       api = File.join(DEST, "api")
       YardPages.generate!(api)
@@ -76,6 +77,66 @@ module SiteBuild
       unless YardPages.published_markers?(api)
         raise "site:build: #{api} is missing the .nojekyll markers"
       end
+    end
+
+    # Put the README production-ready section into the published home page.
+    # The committed twins keep markers only, so the text is not copied by hand.
+    #
+    # @param dest [String] the published site root.
+    # @return [void]
+    def splice_production_ready!(dest)
+      markdown = production_ready_markdown
+      replace_site_marker!(File.join(dest, "index.md"), markdown)
+      replace_site_marker!(File.join(dest, "index.html"), production_ready_html(markdown))
+    end
+
+    # The README section from its heading through the line before the next heading.
+    #
+    # @return [String]
+    # @raise [RuntimeError] when the README has no such section.
+    def production_ready_markdown
+      readme = File.read(File.join(ROOT, "README.md"))
+      match = readme.match(/^## Is it production-ready\?\n.*?(?=^## )/m)
+      raise "site:build: README has no production-ready section" unless match
+
+      "#{match[0].rstrip}\n"
+    end
+
+    # Home-page HTML for the README section. The heading is a site section
+    # title. The rest uses the shared Markdown fragment renderer.
+    #
+    # @param markdown [String]
+    # @return [String]
+    def production_ready_html(markdown)
+      body = markdown.sub(/\A## .+\n+/, "")
+      <<~HTML
+        <section id="production-ready">
+          <div class="wrap">
+            <div class="sec-head">
+              <div class="kicker">Before you adopt it</div>
+              <h2 id="is-it-production-ready">Is it production-ready?</h2>
+            </div>
+            <div class="prose">
+              #{DocsContract.fragment_html(body)}
+            </div>
+          </div>
+        </section>
+      HTML
+    end
+
+    # Replace one marked region. Raises when the markers are missing.
+    #
+    # @param path [String]
+    # @param body [String]
+    # @return [void]
+    def replace_site_marker!(path, body)
+      text = File.read(path)
+      start = "<!-- site:production-ready -->"
+      stop = "<!-- /site:production-ready -->"
+      pattern = /#{Regexp.escape(start)}.*?#{Regexp.escape(stop)}/m
+      raise "site:build: #{path} is missing the production-ready markers" unless text.match?(pattern)
+
+      File.write(path, text.sub(pattern, "#{start}\n#{body.rstrip}\n#{stop}"))
     end
 
     # Copy every tracked docs/ file except the entries this task regenerates.

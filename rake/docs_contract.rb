@@ -50,6 +50,7 @@ module DocsContract
 
   MARKED = %w[
     README.md
+    STABILITY.md
     docs/json-schema.md
     docs/agentic-coding.md
     skills/mutineer/SKILL.md
@@ -132,6 +133,18 @@ module DocsContract
       md = File.read(SCHEMA_MD)
       body, toc = render_schema_article(md)
       page_wrap(body, toc, schema_version(md))
+    end
+
+    # HTML for a Markdown fragment that uses the schema page's subset.
+    #
+    # Headings, pipe tables, lists, paragraphs, and fenced code are rendered.
+    # HTML comments are skipped. An absolute link is left unchanged.
+    #
+    # @param md [String]
+    # @return [String]
+    def fragment_html(md)
+      article, = render_schema_article(md)
+      article
     end
 
     # The `schema_version` in json-schema.md's top-level shape block, so the
@@ -348,7 +361,7 @@ module DocsContract
           chunks << "<ul>#{lis}</ul>"
         else
           para = []
-          while i < lines.length && !lines[i].empty? && !lines[i].start_with?("#", "|", "- ", "```")
+          while i < lines.length && !lines[i].empty? && !lines[i].start_with?("#", "|", "- ", "```", "<!--")
             para << lines[i]
             i += 1
           end
@@ -421,6 +434,17 @@ module DocsContract
       line.split(/(?<!\\)\|/).map { |c| c.gsub('\\|', '|') }
     end
 
+    # Turn a relative Markdown link into a site path. Leave an absolute URL
+    # alone so a link to `STABILITY.md` on GitHub does not become `.html`.
+    #
+    # @param href [String]
+    # @return [String]
+    def rewrite_href(href)
+      return href if href.match?(%r{\A[a-z][a-z0-9+.-]*:}i)
+
+      href.sub(%r{\A\./}, "").sub(/\.md\z/, ".html")
+    end
+
     # Inline Markdown → HTML.
     #
     # @param text [String]
@@ -437,7 +461,7 @@ module DocsContract
       text = text.gsub(/\*\*(.+?)\*\*/, '<strong>\\1</strong>')
       text = text.gsub(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/, '<em>\\1</em>')
       links.each_with_index do |(label, href), idx|
-        href = href.sub(%r{\A\./}, "").sub(/\.md\z/, ".html")
+        href = rewrite_href(href)
         text = text.gsub("%%LINK#{idx}%%", %(<a href="#{CGI.escapeHTML(href)}">#{CGI.escapeHTML(label)}</a>))
       end
       codes.each_with_index do |code, idx|
