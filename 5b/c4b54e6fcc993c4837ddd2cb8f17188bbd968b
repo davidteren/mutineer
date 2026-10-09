@@ -1,0 +1,38 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 11-16
+README.md
+  h_e8a5bb9272fa34 73-74,199-226
+lib/mutineer/daemon_client.rb
+  h_e8a5bb9272fa34 7,180-181
+lib/mutineer/external_backend.rb
+  h_e8a5bb9272fa34 6,71-72,95
+lib/mutineer/rails_run_env.rb
+  h_e8a5bb9272fa34 1-71
+lib/mutineer/runner.rb
+  h_e8a5bb9272fa34 19,47-50,173-175
+test/daemon_client_env_test.rb
+  h_e8a5bb9272fa34 72,111-119,301
+test/external_backend_test.rb
+  h_e8a5bb9272fa34 80-91
+test/fixtures/rails_app/bin/dogfood
+  h_e8a5bb9272fa34 59-72
+test/fixtures/rails_app/test/test_helper.rb
+  h_e8a5bb9272fa34 14-17
+test/rails_dogfood_daemon_test.rb
+  h_e8a5bb9272fa34 26,43-52
+test/rails_run_env_test.rb
+  h_e8a5bb9272fa34 1-73
+test/runner_external_test.rb
+  h_e8a5bb9272fa34 18-19,125-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5bc4b54e6fcc993c4837ddd2cb8f17188bbd968b",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
