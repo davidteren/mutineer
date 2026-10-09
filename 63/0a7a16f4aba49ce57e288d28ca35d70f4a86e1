@@ -1,0 +1,38 @@
+docs/json-schema.md
+  h_e8a5bb9272fa34 202-204
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 93-94,176-177,624-625,685,687-689,692-693,695,699-700,703,749-751
+lib/mutineer/config.rb
+  h_e8a5bb9272fa34 91-92,128,208,262-267,276-277,406,410-411,420,431,437
+lib/mutineer/daemon_client.rb
+  h_e8a5bb9272fa34 10-14,85-87,106-112
+lib/mutineer/daemon_server.rb
+  h_e8a5bb9272fa34 32,42-47,51-53,157,234-248,257-258,283-284,290,301,312-324
+lib/mutineer/job_plan.rb
+  h_e8a5bb9272fa34 32-37,57-58,70-81,86-90,94,305-307
+lib/mutineer/migrate.rb
+  h_e8a5bb9272fa34 16-18,24,67,82-84,121,136-137,143,149-204,218,222-224,237-340,346
+lib/mutineer/rails_worker_db.rb
+  h_e8a5bb9272fa34 27-28,102-103,144,205-206
+test/cli_test.rb
+  h_e8a5bb9272fa34 439,1149-1156,1171-1186,1292-1365
+test/config_test.rb
+  h_e8a5bb9272fa34 297,307,372,376,383,386,402,655,657,666,668-671,674,676-688,690
+test/daemon_provision_test.rb
+  h_e8a5bb9272fa34 1-48
+test/equivalent_mutant_test.rb
+  h_e8a5bb9272fa34 288-315,338,340-341,345-349
+test/migrate_test.rb
+  h_e8a5bb9272fa34 91-92,94-96,98-137,139-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "630a7a16f4aba49ce57e288d28ca35d70f4a86e1",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
