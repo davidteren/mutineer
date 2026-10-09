@@ -345,7 +345,9 @@ class ConfigTest < Minitest::Test
       cfg = Config.resolve({}, @hash)
       assert_equal "config/environment", cfg.boot
       assert_equal true, cfg.rails
-      assert_equal "redefine", cfg.strategy # --rails sugar, no explicit --strategy
+      assert_equal true, cfg.daemon
+      assert_equal true, cfg.daemon_by_default?
+      assert_equal "reload", cfg.strategy # Minitest --rails sugar, no explicit --strategy
     end
   end
 
@@ -507,14 +509,27 @@ class ConfigTest < Minitest::Test
     assert_equal true, Config.resolve({ verbose: true }, {}).verbose
   end
 
-  # In-process --rails shares one DB; always serial. --daemon may use --jobs N.
-  def test_resolve_rails_defaults_jobs_to_one
-    assert_equal 1, Config.resolve({ rails: true }, {}).jobs
+  # Minitest --rails uses the daemon and the processor count.
+  def test_resolve_rails_defaults_to_the_daemon
+    cfg = Config.resolve({ rails: true, tests: ["test/a_test.rb"] }, {})
+    assert cfg.daemon
+    assert cfg.daemon_by_default?
+    assert_equal Etc.nprocessors, cfg.jobs
+    assert_equal "reload", cfg.strategy
+    refute cfg.explicit?(:daemon)
   end
 
-  def test_resolve_rails_forces_serial_even_when_jobs_explicit
-    cfg = Config.resolve({ rails: true, jobs: 4 }, {})
+  def test_resolve_rails_jobs_one_stays_a_serial_daemon
+    cfg = Config.resolve({ rails: true, jobs: 1, tests: ["test/a_test.rb"] }, {})
+    assert cfg.daemon_by_default?
     assert_equal 1, cfg.jobs
+    assert_equal "reload", cfg.strategy
+  end
+
+  def test_resolve_rails_keeps_an_explicit_job_count_on_the_default_daemon
+    cfg = Config.resolve({ rails: true, jobs: 4, tests: ["test/a_test.rb"] }, {})
+    assert cfg.daemon
+    assert_equal 4, cfg.jobs
   end
 
   def test_resolve_rails_daemon_keeps_explicit_jobs
@@ -569,8 +584,42 @@ class ConfigTest < Minitest::Test
     assert_equal "reload", cfg.strategy
   end
 
-  def test_rails_sugar_redefines_strategy_when_nobody_wrote_one
-    assert_equal "redefine", Config.resolve({ rails: true }, {}).strategy
+  def test_rails_sugar_reloads_when_nobody_wrote_a_strategy
+    cfg = Config.resolve({ rails: true, tests: ["test/a_test.rb"] }, {})
+    assert_equal "reload", cfg.strategy
+  end
+
+  def test_no_daemon_keeps_redefine_and_one_job
+    cfg = Config.resolve({ rails: true, daemon: false, tests: ["test/a_test.rb"] }, {})
+    refute cfg.daemon
+    refute cfg.daemon_by_default?
+    assert_equal "redefine", cfg.strategy
+    assert_equal 1, cfg.jobs
+  end
+
+  def test_rspec_rails_stays_in_process_with_no_warning
+    cfg = nil
+    _, err = capture_io { cfg = Config.resolve({ rails: true, tests: ["spec/a_spec.rb"] }, {}) }
+    assert_equal "rspec", cfg.framework
+    refute cfg.daemon
+    assert_equal 1, cfg.jobs
+    assert_equal "redefine", cfg.strategy
+    assert_empty err
+  end
+
+  def test_matrix_fail_fast_and_test_command_keep_the_daemon_off
+    base = { rails: true, tests: ["test/a_test.rb"] }
+    extras = [
+      { matrix: true },
+      { fail_fast: true },
+      { test_command: "bin/rails test %{files}" }
+    ]
+    extras.each do |extra|
+      cfg = nil
+      _, err = capture_io { cfg = Config.resolve(base.merge(extra), {}) }
+      refute cfg.daemon, extra.inspect
+      assert_empty err
+    end
   end
 
   # Every option that has a YAML key: a value typed on the command line beats
@@ -648,41 +697,11 @@ class ConfigTest < Minitest::Test
   end
 
 
-  # --- 2.0 notice: --rails becomes parallel by default (plan 011) ---
-
-  RAILS_2_0_NOTICE = "in Mutineer 2.0, --rails uses --daemon by default"
-
-  def rails_notice(cli, file = {})
-    config = nil
-    capture_io { config = Config.resolve(cli, file) }
-    _, err = capture_io { Config.warn_rails_default_change(config) }
-    err
-  end
-
-  def test_minitest_rails_without_daemon_prints_the_2_0_notice_once
-    err = rails_notice({ rails: true, tests: ["test/a_test.rb"] })
-    assert_equal 1, err.scan(RAILS_2_0_NOTICE).size
-    assert_includes err, "--no-daemon"
-  end
-
-  def test_no_rails_2_0_notice_when_the_user_chose_or_cannot_use_the_daemon
-    base = { rails: true, tests: ["test/a_test.rb"] }
-    refute_includes rails_notice(base.merge(daemon: true)), RAILS_2_0_NOTICE
-    refute_includes rails_notice(base.merge(daemon: false)), RAILS_2_0_NOTICE
-    refute_includes rails_notice(base, { daemon: false }), RAILS_2_0_NOTICE
-    refute_includes rails_notice({ rails: true, tests: ["spec/a_spec.rb"] }), RAILS_2_0_NOTICE
-    refute_includes rails_notice(base.merge(test_command: "bin/rails test %{files}")), RAILS_2_0_NOTICE
-    refute_includes rails_notice(base.merge(matrix: true)), RAILS_2_0_NOTICE
-    refute_includes rails_notice(base.merge(fail_fast: true)), RAILS_2_0_NOTICE
-    refute_includes rails_notice({ tests: ["test/a_test.rb"] }), RAILS_2_0_NOTICE
-  end
-
-  # 2.0 changes these runs too: --jobs 4 becomes four workers, and --jobs 1
-  # moves to the daemon and the reload strategy.
-  def test_rails_2_0_notice_fires_whatever_jobs_the_user_wrote
-    [1, 4].each do |jobs|
-      assert_includes rails_notice({ rails: true, tests: ["test/a_test.rb"], jobs: jobs }), RAILS_2_0_NOTICE
-    end
+  def test_daemon_from_the_file_is_not_the_default
+    cfg = Config.resolve({ rails: true, tests: ["test/a_test.rb"] }, { daemon: true })
+    assert cfg.daemon
+    refute cfg.daemon_by_default?
+    assert cfg.explicit?(:daemon)
   end
 
   def test_no_daemon_does_not_tell_the_user_to_use_the_daemon

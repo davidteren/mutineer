@@ -69,7 +69,7 @@ module Mutineer
         --no-since           Disable diff scoping (a typed no beats a .mutineer.yml since:)
         --jobs N             Parallel worker count (default: processor count);
                              --test-command, --fail-fast, or --rails
-                             without --daemon forces 1
+                             --no-daemon forces 1
         --strategy NAME      reload (whole-file) or redefine (surgical); default: reload
         --timeout SECONDS    Per-mutant time limit for in-process runs (default: 10;
                              not with --daemon or --test-command); a mutant over it
@@ -81,8 +81,9 @@ module Mutineer
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then
                              fork per mutant (Rails apps; requires --test)
-        --rails              Boot config/environment; without --daemon, defaults to
-                             redefine and serial execution
+        --rails              Boot config/environment. Minitest uses the daemon,
+                             reload, and one worker per processor. --no-daemon
+                             stays in-process, redefine, and serial
         --test-command CMD   Run the target suite in the app's own runtime as a
                              subprocess (for apps on Ruby < 3.4). CMD must contain
                              %{files}. Scrubs Mutineer Ruby PATH pins; set RAILS_ENV
@@ -90,8 +91,8 @@ module Mutineer
         --daemon             Boot the app ONCE in a persistent daemon and fork per
                              mutant, with per-worker DB isolation so --jobs N is safe
                              under Rails (needs --rails/--boot; not with --test-command).
-                             --no-daemon beats a .mutineer.yml daemon: (2.0 will default
-                             --rails to --daemon; --no-daemon keeps it serial)
+                             --no-daemon beats a .mutineer.yml daemon: and keeps
+                             --rails on the in-process serial path
         --format human|json|html  Report format (default: human)
         --output FILE        Write the report to FILE instead of stdout
         --dry-run            List mutations without executing
@@ -173,8 +174,8 @@ module Mutineer
         o.on("--test-command CMD") { |v| opts[:test_command] = v }
         # Boot the app ONCE in a persistent daemon and fork per mutant, with
         # per-worker DB isolation so --jobs N is safe under Rails.
-        # A typed --no-daemon beats a .mutineer.yml `daemon: true`, and pins the
-        # serial --rails path before 2.0 makes the daemon the default.
+        # A typed --no-daemon beats a .mutineer.yml `daemon: true` and keeps
+        # --rails on the in-process serial path.
         o.on("--[no-]daemon") { |on| opts[:daemon] = on }
       end
 
@@ -291,7 +292,6 @@ module Mutineer
         exit 2
       end
       validate!(config)
-      Config.warn_rails_default_change(config)
 
       config.dry_run ? dry_run(config) : execute(config)
     rescue ArgumentError => e
@@ -558,6 +558,7 @@ module Mutineer
       config.sources = paired.map(&:first)
       config.tests   = paired.flat_map(&:last).uniq
       config.framework = Config.detect_framework(config.tests) unless config.explicit?(:framework)
+      Config.apply_rails_defaults!(config)
 
       return unless config.sources.empty?
       return if config.boot # let the --boot/--rails-requires-test check report it
@@ -595,6 +596,22 @@ module Mutineer
       exit 2
     end
 
+    # Runs the mutants. A default daemon that cannot provision restarts once
+    # on the in-process serial path. The app boots twice in that case.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Array] aggregate, source map, and run extras.
+    # @raise [Mutineer::DaemonBootError] when an explicit daemon cannot provision.
+    def self.collect_run(config)
+      Runner.execute(config)
+    rescue ParallelUnavailable => e
+      raise unless config.daemon_by_default?
+
+      warn "mutineer: #{e.message} This run uses the in-process serial path."
+      config.use_in_process_serial!
+      Runner.execute(config)
+    end
+
     # Executes the run command.
     #
     # @param config [Mutineer::Config] run configuration.
@@ -605,7 +622,7 @@ module Mutineer
         exit 2
       end
 
-      aggregate, source_map, extras = Runner.execute(config)
+      aggregate, source_map, extras = collect_run(config)
       matrix = KillMatrix.new(aggregate.results) if config.matrix
       reporter = Reporter.new(aggregate, source_map, matrix: matrix)
 

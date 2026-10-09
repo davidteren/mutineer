@@ -105,8 +105,13 @@ All notable changes to this project are documented here. The format is based on
   `mutineer migrate` still rewrites `ignore:` entries.
 - **JSON `schema_version` is `2.0`.** `summary.legacy_id_matches` is gone.
   The Action no longer warns about old ids.
-
-Parallel `--rails` is not the default in this release.
+- **Minitest `--rails` uses the daemon.** The worker count is the processor
+  count and the strategy is `reload`. `--no-daemon` and `daemon: false`
+  stay in-process and serial. RSpec, `--matrix`, `--test-command`, and
+  `--fail-fast` keep the daemon off. When that default daemon cannot
+  provision a worker database, the run uses one in-process worker and
+  prints one warning. An explicit `--daemon` that cannot provision still
+  exits 3.
 
 ## [1.6.0] - 2026-10-08
 

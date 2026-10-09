@@ -8,6 +8,11 @@ require_relative "progress"
 require_relative "job_plan"
 
 module Mutineer
+  # The booted app cannot give each worker its own database.
+  # The CLI uses the in-process serial path when the daemon was only the default.
+  # An explicit `--daemon` does not rescue this error.
+  class ParallelUnavailable < StandardError; end
+
   # Daemon execution backend. Boots the app ONCE in a persistent subprocess under
   # the app's own bundle and forks per mutant, so a Rails run pays the boot cost
   # once instead of per mutant. Tool-side this only discovers jobs and builds the
@@ -137,13 +142,23 @@ module Mutineer
 
       begin
         count = client.database_count.to_i
+        if count > 1 && config.daemon_by_default?
+          raise ParallelUnavailable,
+                "this app has #{count} databases. Parallel runs support one database."
+        end
         if count > 1 && worker_count > 1
           warn "[mutineer] this app has #{count} databases; Mutineer runs one worker. " \
                "Parallel runs support one database."
           worker_count = 1
         end
         # Raises DaemonBootError. Callers must not score mutants after this.
-        client.provision(worker_count)
+        begin
+          client.provision(worker_count)
+        rescue DaemonBootError => e
+          raise e unless config.daemon_by_default? && parallel_refused?(e.message)
+
+          raise ParallelUnavailable, e.message
+        end
         [coverage_map_from_client(client, config), worker_count]
       ensure
         client.quit
@@ -190,6 +205,22 @@ module Mutineer
       warn_coverage_fallback("#{e.class}: #{e.message}")
       nil
     end
+
+    # True when a provision failure means parallel workers are not available.
+    # A lock held by another Mutineer run stays a hard stop.
+    #
+    # @param message [String] the daemon provision error.
+    # @return [Boolean]
+    def self.parallel_refused?(message)
+      text = message.to_s
+      return false if text.include?("another Mutineer run")
+
+      text.include?("NotImplementedError") ||
+        text.include?("does not support adapter") ||
+        text.match?(/permission denied/i) ||
+        text.include?("could not provision")
+    end
+    private_class_method :parallel_refused?
 
     # Stderr note when daemon coverage is unavailable (full --test set per mutant).
     #

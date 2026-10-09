@@ -3,12 +3,13 @@
 require_relative "test_helper"
 require "mutineer/config"
 require "mutineer/runner"
+require "mutineer/cli"
 
 # #26/U9 — end-to-end dogfood of the daemon backend on the bundled Rails fixture app
 # (SQLite). The holistic proof that ties the phase together: a parallel run's verdicts
 # equal a serial run's AND the run emits ZERO database-contention warnings — the exact
 # corruption signal (#12/#26: PG deadlocks / "could not disable referential integrity")
-# that made --jobs unsafe under Rails before per-worker DB isolation. Postgres is U10;
+# that made parallel --jobs clobber one shared test database. Postgres is U10;
 # error/killed/timeout distinctness is covered by the daemon core tests.
 class RailsDogfoodDaemonTest < Minitest::Test
   APP = File.expand_path("fixtures/rails_app", __dir__)
@@ -68,6 +69,37 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_equal 1, err.scan(sentence).size
     refute File.exist?(slot1), "a second worker must not start"
     assert File.exist?(File.join(APP, "storage", "test-0.sqlite3"))
+  ensure
+    ENV.delete("MUTINEER_SECOND_DB")
+  end
+
+  # The daemon is on only because --rails defaulted it. Several databases
+  # cannot run in parallel, so the CLI runs one in-process worker.
+  def test_default_daemon_with_several_databases_uses_one_in_process_worker
+    ENV["MUTINEER_SECOND_DB"] = "1"
+    slot1 = File.join(APP, "storage", "test-1.sqlite3")
+    slot0 = File.join(APP, "storage", "test-0.sqlite3")
+    File.delete(slot1) if File.exist?(slot1)
+    File.delete(slot0) if File.exist?(slot0)
+    config = Mutineer::Config.resolve({
+      sources: [File.join(APP, "app/models/order.rb")],
+      tests: [File.join(APP, "test/models/order_test.rb")],
+      project_root: APP, rails: true, jobs: 4
+    }, {})
+    assert config.daemon_by_default?
+
+    aggregate = nil
+    _out, err = capture_subprocess_io do
+      aggregate, = Mutineer::CLI.collect_run(config)
+    end
+
+    assert_equal 100.0, aggregate.mutation_score
+    assert_includes err, "this app has 2 databases"
+    assert_equal 1, err.scan("This run uses the in-process serial path.").size
+    refute config.daemon
+    assert_equal 1, config.jobs
+    refute File.exist?(slot1), "a second worker must not start"
+    refute File.exist?(slot0), "the default daemon must not keep a worker database"
   ensure
     ENV.delete("MUTINEER_SECOND_DB")
   end

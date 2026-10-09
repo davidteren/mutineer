@@ -61,14 +61,15 @@ inputs:
     required: false
     default: ""
   jobs:
-    description: "Parallel worker count (default: processor count); forced to 1 by a test-command, fail-fast, or Rails without a daemon."
+    description: "Parallel worker count (default: processor count). A test-command, fail-fast, or Rails --no-daemon forces 1."
     required: false
     default: ""
   rails:
     description: >-
-      Set to 'true' to boot config/environment once (Rails apps). Without a
-      daemon, the strategy defaults to redefine and the worker count is forced to 1.
-      Enable a daemon with extra-args: '--daemon' or daemon: true in .mutineer.yml.
+      Set to 'true' to boot config/environment once (Rails apps). Minitest
+      uses the daemon, the reload strategy, and one worker per processor.
+      Pass extra-args: '--no-daemon' or set daemon: false to stay in-process
+      and serial. RSpec stays serial.
     required: false
     default: "false"
   format:

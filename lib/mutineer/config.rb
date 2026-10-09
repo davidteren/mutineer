@@ -128,6 +128,26 @@ module Mutineer
       self.daemon        = false if daemon.nil?
       self.matrix        = false if matrix.nil?
       self.allow_empty   = false if allow_empty.nil?
+      @daemon_by_default = false
+    end
+
+    # True when {apply_rails_defaults!} turned the daemon on.
+    # An explicit `--daemon`, `--no-daemon`, or `daemon:` value stays false.
+    #
+    # @return [Boolean]
+    def daemon_by_default?
+      @daemon_by_default == true
+    end
+
+    # Leave a default daemon and run one in-process worker.
+    # A strategy the user wrote stays.
+    #
+    # @return [void]
+    def use_in_process_serial!
+      @daemon_by_default = false
+      self.daemon = false
+      self.jobs = 1
+      self.strategy = "redefine" unless explicit?(:strategy)
     end
 
     # True when the user wrote `key`, on the command line or in the config
@@ -229,49 +249,60 @@ module Mutineer
       user = file_hash.merge(cli_opts)
       config = new(**user, explicit: user.keys, from_file: file_hash.keys - cli_opts.keys)
 
-      # --rails sugar: boot config/environment. Prefer redefine only for the
-      # in-process path (daemon is whole-file reload only). In-process --rails
-      # shares one test database, so force serial unless --daemon.
-      if config.rails
-        config.boot ||= "config/environment"
-        unless config.daemon || config.explicit?(:strategy)
-          config.strategy = "redefine"
-        end
-        unless config.daemon
-          # A typed --no-daemon already chose the serial run; only an explicit
-          # --jobs N still needs telling that --daemon is the way to get N.
-          if config.jobs.to_i > 1 && (!config.explicit?(:daemon) || config.explicit?(:jobs))
-            warn "[mutineer] --rails without --daemon runs serially (shared test DB); " \
-                 "forcing --jobs 1. Use --daemon for safe --jobs N."
-          end
-          config.jobs = 1
-        end
-      end
-
       # Auto-detect the framework only when the user wrote none: a value from
       # either layer is already on config.framework and always wins. Default
       # minitest unless the test files clearly look RSpec.
       config.framework ||= detect_framework(config.tests)
+      apply_rails_defaults!(config)
       config
     end
 
-    # Mutineer 2.0 makes the daemon the default under --rails for Minitest, so a
-    # run that would change says so now. The CLI calls this after test pairing,
-    # which can still switch the framework to rspec. The runs that 2.0 keeps on this path
-    # stay quiet: RSpec, --test-command, --matrix and --fail-fast cannot use the
-    # daemon, a --dry-run runs no tests, and a written `daemon` value (true or
-    # false) is the user's choice.
+    # Minitest `--rails` uses the daemon unless the user wrote `daemon`, or the
+    # run cannot use it. The in-process path stays serial and uses `redefine`.
+    # Call this again after test pairing: inferred specs can still switch the
+    # framework.
     #
-    # @api private
     # @param config [Mutineer::Config] the resolved config.
     # @return [void]
-    def self.warn_rails_default_change(config)
-      return unless config.rails && !config.explicit?(:daemon) && config.framework == "minitest"
-      return if config.test_command || config.matrix || config.fail_fast || config.dry_run
+    def self.apply_rails_defaults!(config)
+      return unless config.rails
 
-      warn "[mutineer] in Mutineer 2.0, --rails uses --daemon by default: parallel workers (unless " \
-           "--jobs 1) and the reload strategy. Pass --no-daemon (or daemon: false) to keep this run as it is."
+      config.boot ||= "config/environment"
+      if default_rails_daemon?(config)
+        config.daemon = true
+        config.instance_variable_set(:@daemon_by_default, true)
+        config.strategy = "reload" unless config.explicit?(:strategy)
+        return
+      end
+
+      config.instance_variable_set(:@daemon_by_default, false)
+      config.daemon = false unless config.explicit?(:daemon)
+      config.strategy = "redefine" unless config.daemon || config.explicit?(:strategy)
+      return if config.daemon
+
+      # A typed --no-daemon already chose the serial run. Only an explicit
+      # --jobs N still needs telling that --daemon is the way to get N.
+      if config.jobs.to_i > 1 && config.explicit?(:daemon) && config.explicit?(:jobs)
+        warn "[mutineer] --rails without --daemon runs serially (shared test DB); " \
+             "forcing --jobs 1. Use --daemon for safe --jobs N."
+      end
+      config.jobs = 1
     end
+
+    # True when `--rails` should turn the daemon on by itself.
+    # RSpec, `--matrix`, `--test-command`, and `--fail-fast` stay off it.
+    # A written daemon value is the user's choice.
+    #
+    # @param config [Mutineer::Config]
+    # @return [Boolean]
+    def self.default_rails_daemon?(config)
+      return false if config.explicit?(:daemon)
+      return false unless config.framework == "minitest"
+      return false if config.test_command || config.matrix || config.fail_fast
+
+      true
+    end
+    private_class_method :default_rails_daemon?
 
     # Pick rspec when a MAJORITY of the given test files end with _spec.rb;
     # otherwise minitest. Empty/ambiguous -> minitest (the safe default).

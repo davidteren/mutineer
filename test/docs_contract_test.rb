@@ -123,6 +123,13 @@ class DocsContractTest < Minitest::Test
       "several databases must say not supported"
   end
 
+  def test_readme_rails_section_does_not_say_unsafe
+    readme = File.read("README.md")
+    section = readme[/### Faster, parallel-safe Rails.*?(?=\n### |\n## )/m]
+    refute_nil section, "README is missing the Rails daemon section"
+    refute_includes section, "unsafe"
+  end
+
   def test_run_errors_exit_three
     assert_equal [3], Mutineer::CLI::RUN_EXIT.values.uniq
   end
