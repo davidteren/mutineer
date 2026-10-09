@@ -1,0 +1,38 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 108-114
+README.md
+  h_e8a5bb9272fa34 46,48,68,70-72,117-118,175,177,184,225-234,284-291,296,320-322,324,624,636
+STABILITY.md
+  h_e8a5bb9272fa34 59,80-88
+action.yml
+  h_e8a5bb9272fa34 64,69-72
+docs/index.md
+  h_e8a5bb9272fa34 63-65
+docs/llms.txt
+  h_e8a5bb9272fa34 19
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 72,84-86,94-95,177-178,561,599-614,625
+lib/mutineer/config.rb
+  h_e8a5bb9272fa34 131-150,256,260-263,267-301,303,305
+lib/mutineer/daemon_backend.rb
+  h_e8a5bb9272fa34 11-15,145-148,155-161,209-224
+test/config_test.rb
+  h_e8a5bb9272fa34 348-350,512-519,522-524,526-532,587-622,700-704
+test/daemon_postgres_test.rb
+  h_e8a5bb9272fa34 126,158,172-207,218,279-296
+test/docs_contract_test.rb
+  h_e8a5bb9272fa34 126-132
+test/rails_dogfood_daemon_test.rb
+  h_e8a5bb9272fa34 6,12,75-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "16867d5a273c963a120478502575cb18c46cce72",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
