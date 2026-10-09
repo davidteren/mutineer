@@ -12,7 +12,7 @@ module Mutineer
     USAGE = "Usage: mutineer init [--rails] [--force]"
 
     # Writes the config and prints the first command.
-    # 0 is success. 2 is a usage error or a refused overwrite.
+    # 0 is success. 2 is a usage error, a refused overwrite, or a missing directory.
     #
     # @param argv [Array<String>] arguments after `init`.
     # @param out [IO] where the command goes.
@@ -53,9 +53,24 @@ module Mutineer
         err.puts "mutineer: #{CONFIG_FILE} already exists. Pass --force to replace it."
         return 2
       end
+      # The command writes one file. It does not create the project directory.
+      unless File.directory?(dir)
+        err.puts "mutineer: cannot write #{CONFIG_FILE}: no such directory"
+        return 2
+      end
 
-      File.write(path, template(rails: rails))
-      out.puts command_for(dir, rails: rails)
+      begin
+        File.write(path, template(rails: rails))
+      rescue SystemCallError => e
+        err.puts "mutineer: cannot write #{CONFIG_FILE}: #{e.message}"
+        return 2
+      end
+      command = command_for(dir, rails: rails)
+      if command
+        out.puts command
+      else
+        err.puts "mutineer: no source folder found. Create app/models or lib, then run mutineer on that folder."
+      end
       0
     end
 
@@ -89,17 +104,20 @@ module Mutineer
     end
 
     # The first run command. Plain init names `lib`.
-    # `--rails` names `app/models` and `lib`, plus `app/services` when that folder exists.
+    # `--rails` names each existing folder among `app/models`, `app/services`, and `lib`.
+    # A missing folder is left out: `mutineer run` rejects a path that is not there.
     #
     # @param dir [String] project directory.
     # @param rails [Boolean] when true, print the Rails source folders.
-    # @return [String]
+    # @return [String, nil] the command, or nil when no Rails source folder exists.
     def self.command_for(dir, rails:)
       return "mutineer run lib" unless rails
 
-      folders = ["app/models"]
-      folders << "app/services" if File.directory?(File.join(dir, "app", "services"))
-      folders << "lib"
+      folders = ["app/models", "app/services", "lib"].select do |folder|
+        File.directory?(File.join(dir, folder))
+      end
+      return if folders.empty?
+
       "mutineer run #{folders.join(" ")}"
     end
   end

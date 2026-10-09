@@ -79,7 +79,7 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/models/o
 
       <h2 id="pull-request-gate">A pull request gate</h2>
       <p>Scope the run to the pull request and fail when it adds a survivor. Use <code>--since origin/main</code> and <code>--baseline</code>.</p>
-      <p><code>--since</code> checks the lines the pull request changed. <code>--baseline</code> fails the job when a new survivor appears, or when the score drops. Keep a full scan on the default branch so a test-only change cannot hide a weaker suite.</p>
+      <p><code>--since</code> checks the lines the pull request changed. With <code>--since</code>, <code>--baseline</code> fails the job only when a new survivor appears. That run does not check a score drop. The score drop check is for a full run. Keep a full scan on the default branch so a test-only change cannot hide a weaker suite.</p>
 
       <h2 id="threshold">A threshold on chosen folders</h2>
       <p>Set <code>--threshold</code> on the folders whose score you trust, such as <code>app/models</code>. Leave a new folder at report-only until its score is stable. Raise the threshold only after the report stays green.</p>

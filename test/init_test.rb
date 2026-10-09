@@ -37,7 +37,9 @@ class InitTest < Minitest::Test
 
   def test_rails_with_services_sets_rails_and_prints_those_folders
     Dir.mktmpdir("mutineer-init-rails") do |dir|
+      FileUtils.mkdir_p(File.join(dir, "app", "models"))
       FileUtils.mkdir_p(File.join(dir, "app", "services"))
+      FileUtils.mkdir_p(File.join(dir, "lib"))
       out, err, status = mutineer("init", "--rails", chdir: dir)
       assert_equal 0, status.exitstatus, err
       assert_empty err
@@ -59,11 +61,49 @@ class InitTest < Minitest::Test
   def test_rails_without_services_omits_that_folder
     Dir.mktmpdir("mutineer-init-rails") do |dir|
       FileUtils.mkdir_p(File.join(dir, "app", "models"))
+      FileUtils.mkdir_p(File.join(dir, "lib"))
       out, err, status = mutineer("init", "--rails", chdir: dir)
       assert_equal 0, status.exitstatus, err
       assert_empty err
       assert_equal "mutineer run app/models lib\n", out
       refute_includes out, "app/services"
+    end
+  end
+
+  # A Rails app often has no lib folder. The printed command must name only
+  # folders that exist, or the first run exits before any mutant runs.
+  def test_rails_without_lib_omits_that_folder
+    Dir.mktmpdir("mutineer-init-rails") do |dir|
+      FileUtils.mkdir_p(File.join(dir, "app", "models"))
+      out, err, status = mutineer("init", "--rails", chdir: dir)
+      assert_equal 0, status.exitstatus, err
+      assert_empty err
+      assert_equal "mutineer run app/models\n", out
+      refute_includes out, "lib"
+    end
+  end
+
+  def test_rails_with_no_source_folder_writes_config_and_prints_no_run
+    Dir.mktmpdir("mutineer-init-rails") do |dir|
+      out, err, status = mutineer("init", "--rails", chdir: dir)
+      assert_equal 0, status.exitstatus
+      refute_includes out, "mutineer run"
+      assert_includes err, "no source folder found"
+      assert File.file?(File.join(dir, ".mutineer.yml"))
+    end
+  end
+
+  # The project directory is not created. A missing parent is a usage error.
+  def test_missing_directory_exits_with_a_message
+    Dir.mktmpdir("mutineer-init-missing") do |root|
+      missing = File.join(root, "gone")
+      out, err = capture_io do
+        @status = Mutineer::Init.run([], dir: missing)
+      end
+      assert_equal 2, @status
+      assert_includes err, "no such directory"
+      assert_empty out
+      refute File.exist?(File.join(missing, ".mutineer.yml"))
     end
   end
 
