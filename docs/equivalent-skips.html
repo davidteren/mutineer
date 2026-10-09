@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mutineer equivalent skips</title>
+<meta name="description" content="Built-in chain-link names and endless ranges Mutineer does not mutate, and why each is equivalent.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://davidteren.github.io/mutineer/equivalent-skips.html">
+<link rel="alternate" type="text/markdown" href="https://davidteren.github.io/mutineer/equivalent-skips.md" title="Markdown">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Mutineer">
+<meta property="og:title" content="Mutineer equivalent skips">
+<meta property="og:description" content="Built-in chain-link names and endless ranges Mutineer does not mutate, and why each is equivalent.">
+<meta property="og:url" content="https://davidteren.github.io/mutineer/equivalent-skips.html">
+<meta property="og:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Mutineer. Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Mutineer equivalent skips">
+<meta name="twitter:description" content="Built-in chain-link names and endless ranges Mutineer does not mutate, and why each is equivalent.">
+<meta name="twitter:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
+<meta name="twitter:image:alt" content="Mutineer. Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='1' fill='%2367286a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
+<script src="assets/mutineer.js?v=e2f61c6ed52e"></script>
+<link rel="stylesheet" href="assets/mutineer.css?v=bbe02d1403bf">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="index.html"><span class="mark" aria-hidden="true">M↗</span> mutineer<span class="brand-note">/ Ruby mutation testing</span></a>
+    <nav aria-label="Primary">
+      <a href="index.html#install">Install</a>
+      <a href="agentic-coding.html">Agent &amp; CI</a>
+      <a href="equivalent-skips.html" aria-current="page">Skips</a>
+      <a href="json-schema.html">JSON schema</a>
+      <a href="api/">API</a>
+      <a href="sample-report.html">Sample report</a>
+      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub ↗</a>
+      <button class="toggle" id="theme" aria-label="Switch to light mode" hidden>◐ <span>Dark</span></button>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <article class="prose">
+    <h1>Equivalent skips</h1>
+    <p>Mutineer does not emit some mutants. The change is often noise. A normal test usually cannot kill it. There is no switch to turn these skips off. A chain-link skip matches the method name only. That match does not prove the two mutants are equivalent. An endless range skip is equivalent.</p>
+    <p>A team still silences an equivalent mutant that Mutineer does emit. Use <code># mutineer:disable-line</code> or an <code>ignore:</code> entry, and put a reason on it. <code>mutineer triage</code> prints those entries from a JSON report.</p>
+
+    <h2 id="chain-link">Chain link</h2>
+    <p>The <code>chain_link</code> operator drops one dotted call from a chain. It never drops the names below. The skip uses the name only. It does not check the receiver or the next call. The dropped call is often equivalent, not always. On a value that already has the target type, or that needs no copy, the call changes nothing. Dropping <code>new</code> sends the next call to the class. That raises, or it reaches a class method. Neither result says anything about the tests.</p>
+    <table>
+      <tr><th>Name</th><th>Why it is skipped</th></tr>
+      <tr><td><code>to_s</code></td><td>Conversion. On a string, the call changes nothing.</td></tr>
+      <tr><td><code>to_str</code></td><td>Conversion. On a string, the call changes nothing.</td></tr>
+      <tr><td><code>to_sym</code></td><td>Conversion. On a symbol, the call changes nothing.</td></tr>
+      <tr><td><code>to_i</code></td><td>Conversion. On an integer, the call changes nothing.</td></tr>
+      <tr><td><code>to_int</code></td><td>Conversion. On an integer, the call changes nothing.</td></tr>
+      <tr><td><code>to_f</code></td><td>Conversion. On a float, the call changes nothing.</td></tr>
+      <tr><td><code>to_r</code></td><td>Conversion. On a rational, the call changes nothing.</td></tr>
+      <tr><td><code>to_c</code></td><td>Conversion. On a complex number, the call changes nothing.</td></tr>
+      <tr><td><code>to_a</code></td><td>Conversion. On an array, the call changes nothing.</td></tr>
+      <tr><td><code>to_ary</code></td><td>Conversion. On an array, the call changes nothing.</td></tr>
+      <tr><td><code>to_h</code></td><td>Conversion. On a hash, the call changes nothing.</td></tr>
+      <tr><td><code>to_hash</code></td><td>Conversion. On a hash, the call changes nothing.</td></tr>
+      <tr><td><code>to_proc</code></td><td>Conversion. On a proc, the call changes nothing.</td></tr>
+      <tr><td><code>to_set</code></td><td>Conversion. On a set, the call changes nothing.</td></tr>
+      <tr><td><code>dup</code></td><td>Copy. Dropping it is a no-op when the next call does not mutate the receiver.</td></tr>
+      <tr><td><code>clone</code></td><td>Copy. Dropping it is a no-op when the next call does not mutate the receiver.</td></tr>
+      <tr><td><code>freeze</code></td><td>A freeze that nothing later mutates changes nothing a test can see.</td></tr>
+      <tr><td><code>itself</code></td><td>Returns the receiver. Dropping it changes nothing.</td></tr>
+      <tr><td><code>new</code></td><td>The next call goes to the class. That raises, or it is a class method.</td></tr>
+    </table>
+
+    <h2 id="endless-range">Endless range</h2>
+    <p>The <code>range</code> operator swaps <code>..</code> and <code>...</code>. An endless range (<code>1..</code> or <code>1..nil</code>) is skipped. <code>(1..)</code> and <code>(1...)</code> give the same result for slicing, <code>include?</code>, <code>===</code>, <code>size</code>, and patterns, so the mutant is equivalent.</p>
+  </article>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div>
+      <strong>Mutineer</strong>, clean-room mutation testing for Ruby.
+      <div class="note">MIT licensed · Prism + stdlib only · © David Teren</div>
+    </div>
+    <nav aria-label="Footer">
+      <a href="index.html">Home</a>
+      <a href="agentic-coding.html">Agent &amp; CI</a>
+      <a href="json-schema.html">JSON schema</a>
+      <a href="api/">API</a>
+      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub</a>
+      <a href="#main">Top ↑</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

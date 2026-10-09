@@ -19,6 +19,8 @@ module MutineerSiteDocs
       "what Mutineer is, the mutation operators, install, and CLI flags.", "1.0", true),
     Entry.new("/agentic-coding.html", :docs, "For AI agents & CI",
       "the agent inner loop, CI regression gating, the GitHub Action, and equivalent-mutant suppression.", "0.8", true),
+    Entry.new("/equivalent-skips.html", :docs, "Equivalent skips",
+      "built-in chain-link names and endless ranges Mutineer does not mutate, and why each is equivalent.", "0.6", true),
     Entry.new("/json-schema.html", :docs, "JSON report schema",
       "the versioned JSON contract — `summary`, `survivors[]`, `no_coverage[]`, `uncapturable[]`, `unplaceable[]`, `ran_at_load[]`, `no_verdict[]`, `ignored[]`, `per_source[]`, and the `baseline` and `matrix` blocks.", "0.8", true),
     Entry.new("/api/", :docs, "Ruby API (YARD)",
@@ -33,6 +35,8 @@ module MutineerSiteDocs
       "homepage / CLI essentials twin of the HTML landing page.", "0.6", true),
     Entry.new("/agentic-coding.md", :optional, "Agent & CI guide (Markdown)",
       "Markdown twin of the agent inner-loop and CI recipes.", "0.5", true),
+    Entry.new("/equivalent-skips.md", :optional, "Equivalent skips (Markdown)",
+      "Markdown twin of the built-in equivalent-skip list.", "0.4", true),
     Entry.new("/json-schema.md", :optional, "JSON schema (Markdown)",
       "Markdown twin of the JSON report schema reference.", "0.5", true),
     Entry.new("/agents.txt", :optional, "Agent access policy",
@@ -45,6 +49,7 @@ module MutineerSiteDocs
   HTML_MARKDOWN_TWINS = {
     "docs/index.html" => "index.md",
     "docs/agentic-coding.html" => "agentic-coding.md",
+    "docs/equivalent-skips.html" => "equivalent-skips.md",
     "docs/json-schema.html" => "json-schema.md"
   }.freeze
 

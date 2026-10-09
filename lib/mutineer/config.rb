@@ -52,7 +52,7 @@ module Mutineer
     ConfigOption.new(field: :framework, type: :enum, yaml_key: "framework", flag: "--framework",
                      values: %w[minitest rspec]),
     ConfigOption.new(field: :verbose, type: :bool, yaml_key: "verbose", flag: "--verbose"),
-    ConfigOption.new(field: :ignore, type: :string_list, yaml_key: "ignore"),
+    ConfigOption.new(field: :ignore, type: :ignore_list, yaml_key: "ignore"),
     ConfigOption.new(field: :baseline, type: :string, yaml_key: "baseline", flag: "--baseline"),
     ConfigOption.new(field: :fail_fast, type: :bool, yaml_key: "fail_fast", flag: "--fail-fast"),
     ConfigOption.new(field: :matrix, type: :bool, yaml_key: "matrix", flag: "--matrix"),
@@ -91,7 +91,7 @@ module Mutineer
     :sources, :tests, :operators, :threshold, :only, :dry_run,
     :cache_dir, :project_root, :load_paths,
     :jobs, :format, :output, :strategy, :require_paths,
-    :boot, :rails, :since, :framework, :verbose, :ignore,
+    :boot, :rails, :since, :framework, :verbose, :ignore, :ignore_reasons,
     # :daemon is user-facing (--daemon flag + KNOWN_KEYS + boolean coerce).
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
@@ -126,6 +126,7 @@ module Mutineer
       self.rails         = false if rails.nil?
       self.verbose       = false if verbose.nil?
       self.ignore        ||= []
+      self.ignore_reasons ||= {}
       self.baseline_epsilon ||= 0.0
       self.fail_fast     = false if fail_fast.nil?
       self.daemon        = false if daemon.nil?
@@ -204,6 +205,11 @@ module Mutineer
         end
         field = field_for(ks)
         parsed = parse(field, value, file: name, defer_operators: defer_operators)
+        if field == :ignore
+          out[:ignore] = parsed.fetch(:ids)
+          out[:ignore_reasons] = parsed.fetch(:reasons)
+          next
+        end
         if field == :operators
           parsed = filter_operators(parsed, name)
           if parsed.empty? && !defer_operators
@@ -337,6 +343,8 @@ module Mutineer
 
         prefix = file ? "#{file}: " : ""
         raise ConfigError, "#{prefix}unknown #{field} #{value.to_s.inspect}. Expected: #{opt.values.join(', ')}"
+      when :ignore_list
+        parse_ignore_list(value, file)
       when :string_list
         items = Array(value).map(&:to_s)
         # Only `operators` treats [] as "run these" rather than "use the
@@ -386,6 +394,98 @@ module Mutineer
           when String then Float(value) if value.match?(/\A\d+(\.\d+)?\z/)
           end
       f if f&.finite?
+    end
+
+    # Reads an `ignore:` value into ids plus a reason for each mapping.
+    # A bare string or integer is an id with no reason. YAML reads an unquoted
+    # all-digit id as an integer, and the id text is those decimal digits.
+    # A mapping may hold `id` and `reason` only. A mapping with no id, or with
+    # any other key, is dropped and warned: 2.0 will reject it. Callers that
+    # match ids keep the id list.
+    #
+    # @api private
+    # @param value [Object] the raw YAML value.
+    # @param file [String, nil] config file name.
+    # @return [Hash] `:ids` is an array of id strings. `:reasons` maps an id to its text.
+    def self.parse_ignore_list(value, file)
+      label = file || CONFIG_FILE
+      case value
+      when nil then return { ids: [], reasons: {} }
+      when String, Integer then return { ids: [ignore_id_text(value)], reasons: {} }
+      when Array then items = value
+      when Hash then items = [value]
+      else
+        warn "mutineer: ignore in #{label} must be a list; ignored, and #{BECOMES_ERROR_IN_2_0}"
+        return { ids: [], reasons: {} }
+      end
+
+      ids = []
+      reasons = {}
+      items.each_with_index do |item, index|
+        number = index + 1
+        id = ignore_id_text(item)
+        if id
+          ids << id unless id.empty? || ids.include?(id)
+        elsif item.is_a?(Hash)
+          mapped, reason = ignore_mapping(item, number, label)
+          next if mapped.nil?
+
+          ids << mapped unless ids.include?(mapped)
+          reasons[mapped] = reason if reason
+        else
+          warn "mutineer: ignore entry #{number} in #{label} is not an id or a mapping; " \
+               "ignored, and #{BECOMES_ERROR_IN_2_0}"
+        end
+      end
+      { ids: ids, reasons: reasons }
+    end
+
+    # Text of one ignore id. An integer is the decimal digits YAML kept.
+    # A leading zero is already gone by then, so quote an id that needs one.
+    # Any other type is not an id.
+    #
+    # @api private
+    # @param value [Object] a list item, a scalar ignore value, or a mapping id.
+    # @return [String, nil] the id text, or nil when the value cannot be an id.
+    def self.ignore_id_text(value)
+      case value
+      when String then value
+      when Integer then value.to_s
+      end
+    end
+
+    # One `ignore:` mapping. Returns the id and reason, or nil when the entry
+    # is not usable.
+    #
+    # @api private
+    # @param item [Hash] the mapping.
+    # @param number [Integer] 1-based index in the list.
+    # @param label [String] config file name.
+    # @return [Array(String, String), Array(nil, nil)]
+    def self.ignore_mapping(item, number, label)
+      unknown = item.keys.map(&:to_s) - %w[id reason]
+      unless unknown.empty?
+        names = unknown.map(&:inspect).join(", ")
+        warn "mutineer: ignore entry #{number} in #{label} has unknown key #{names}; " \
+             "ignored, and #{BECOMES_ERROR_IN_2_0}"
+        return [nil, nil]
+      end
+
+      id = ignore_id_text(item["id"] || item[:id])
+      unless id.is_a?(String) && !id.strip.empty?
+        warn "mutineer: ignore entry #{number} in #{label} has no id; ignored, and #{BECOMES_ERROR_IN_2_0}"
+        return [nil, nil]
+      end
+
+      reason = item.key?("reason") ? item["reason"] : item[:reason]
+      if !reason.nil? && !reason.is_a?(String)
+        warn "mutineer: ignore entry #{number} in #{label} reason must be text; " \
+             "ignored, and #{BECOMES_ERROR_IN_2_0}"
+        return [nil, nil]
+      end
+
+      text = reason.to_s.strip
+      [id, text.empty? ? nil : text]
     end
 
     # Drop (with a warning) operator names the registry does not know.

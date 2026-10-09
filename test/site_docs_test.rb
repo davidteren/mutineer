@@ -69,4 +69,13 @@ class SiteDocsTest < Minitest::Test
   def test_stale_files_is_empty_at_head
     assert_empty MutineerSiteDocs.stale_files
   end
+
+  # Every built-in chain-link skip is named on the published page.
+  def test_equivalent_skips_page_names_every_chain_link_skip
+    page = File.read("docs/equivalent-skips.html")
+    Mutineer::Mutators::ChainLink::SKIPPED.each do |name|
+      assert_includes page, ">#{name}<", "equivalent-skips.html is missing #{name}"
+    end
+    assert_includes page, "endless"
+  end
 end

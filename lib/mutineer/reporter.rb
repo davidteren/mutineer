@@ -26,7 +26,7 @@ module Mutineer
     BROKEN_FLOOR = 1
 
     # The JSON report's `schema_version` (see docs/json-schema.md).
-    SCHEMA_VERSION = "1.7"
+    SCHEMA_VERSION = "1.8"
 
     # The warning both matrix renderers give under the redundant tests.
     MATRIX_REDUNDANT_NOTE = "Delete redundant tests one at a time: two of them can be the only killers of one mutant."
@@ -233,7 +233,7 @@ module Mutineer
         # Equivalent mutants the user suppressed: emitted with their stable id so
         # the user can audit what is silenced (and copy ids for survivors they
         # want to add). Excluded from the score; never in `survivors`.
-        ignored: @agg.results.select(&:ignored?).map { |r| mutant_json(r) }
+        ignored: @agg.results.select(&:ignored?).map { |r| ignored_json(r) }
                      .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Per-source breakdown (additive; baseline consumes it). Sorted by file so
         # output is byte-stable. Reuses AggregateResult via by_source.
@@ -297,6 +297,7 @@ module Mutineer
         #{summary_html}
         #{per_source_html(per_source)}
         #{survivors_html(survivors)}
+        #{ignored_html}
         #{matrix_html}
         </body>
         </html>
@@ -356,6 +357,28 @@ module Mutineer
         CARD
       end.join("\n")
       "<h2>Surviving Mutants</h2>\n#{cards}"
+    end
+
+    # Ignored mutants, each with its id and its reason when the user gave one.
+    #
+    # @api private
+    # @return [String] HTML, or "" when none were ignored.
+    def ignored_html
+      rows = @agg.results.select(&:ignored?).map { |r| ignored_json(r) }
+                 .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] }
+      return "" if rows.empty?
+
+      cards = rows.map do |row|
+        reason = row[:reason] ? "<div class=\"meta\">#{esc(row[:reason])}</div>" : ""
+        <<~CARD.chomp
+          <div class="survivor">
+          <h3>#{esc(row[:subject])}</h3>
+          <div class="meta">#{esc(row[:file])}:#{row[:line]} &middot; #{esc(row[:operator])} &middot; <span class="id">#{esc(row[:id])}</span></div>
+          #{reason}
+          </div>
+        CARD
+      end.join("\n")
+      "<h2>Ignored mutants</h2>\n#{cards}"
     end
 
     # The kill-matrix section of the HTML report: the counts, then the blind and
@@ -644,9 +667,25 @@ module Mutineer
       lines.size == 1 ? start_line.to_s : "#{start_line},#{lines.size}"
     end
 
+    # One ignored mutant. `reason` is present only when the user wrote one.
+    #
+    # @api private
+    # @param result [Mutineer::Result] an ignored result.
+    # @return [Hash]
+    def ignored_json(result)
+      row = mutant_json(result)
+      text = result.reason
+      row[:reason] = text if text.is_a?(String) && !text.strip.empty?
+      row
+    end
+
     # The fields that name one mutant, for the lists that point at mutants:
     # `no_coverage`, `uncapturable`, `unplaceable`, `ran_at_load`, `ignored` and
     # `baseline.new_survivors`.
+    #
+    # @api private
+    # @param result [Mutineer::Result] the mutant result.
+    # @return [Hash] subject, file, line, operator, token, and id.
     def mutant_json(result)
       m = result.mutation
       file = result.subject.file

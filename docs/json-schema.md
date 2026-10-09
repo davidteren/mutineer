@@ -28,7 +28,7 @@ between reports with the same `id_format` (a missing key is the old format).
 
 ```jsonc
 {
-  "schema_version": "1.7",
+  "schema_version": "1.8",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
@@ -119,7 +119,7 @@ gates on completeness as well (see Exit codes).
 
 ### `ignored[]` (array of object)
 
-Suppressed (equivalent) mutants, so you can audit what's silenced: `{ subject, file, line, operator, token, id }`. Under `--since`, only those on changed lines.
+Suppressed (equivalent) mutants, so you can audit what's silenced: `{ subject, file, line, operator, token, id }`. `reason` (string) is present only when the user wrote one, on an inline `# mutineer:disable-line ... -- reason` marker or on an `ignore:` mapping. Added in schema `1.8`. Under `--since`, only those on changed lines.
 
 ### `per_source[]` (array of object)
 

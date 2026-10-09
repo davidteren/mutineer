@@ -288,7 +288,7 @@ class ConfigTest < Minitest::Test
 
   def test_from_file_keeps_an_empty_require_or_ignore
     with_config("require: []\nignore:\n") do |path|
-      assert_equal({ require_paths: [], ignore: [] }, Config.from_file(path))
+      assert_equal({ require_paths: [], ignore: [], ignore_reasons: {} }, Config.from_file(path))
     end
   end
 
@@ -298,7 +298,7 @@ class ConfigTest < Minitest::Test
                    parse_error(:operators, bad)
     end
     assert_equal ["arithmetic"], Config.parse(:operators, ["arithmetic"])
-    assert_equal [], Config.parse(:ignore, nil)
+    assert_equal({ ids: [], reasons: {} }, Config.parse(:ignore, nil))
     assert_equal [], Config.parse(:require_paths, [])
     assert_equal ["a.rb"], Config.parse(:require_paths, "a.rb")
   end
@@ -368,14 +368,76 @@ class ConfigTest < Minitest::Test
       out, err = capture_io { @hash = Config.from_file(path) }
       assert_empty out
       assert_empty err
-      assert_equal({ ignore: %w[a1b2c3d4e5f6 0011223344ff] }, @hash)
-      assert_equal %w[a1b2c3d4e5f6 0011223344ff], Config.resolve({}, @hash).ignore
+      assert_equal({ ignore: %w[a1b2c3d4e5f6 0011223344ff], ignore_reasons: {} }, @hash)
+      cfg = Config.resolve({}, @hash)
+      assert_equal %w[a1b2c3d4e5f6 0011223344ff], cfg.ignore
+      assert_equal({}, cfg.ignore_reasons)
     end
   end
 
   def test_ignore_defaults_to_empty_array
     assert_equal [], Config.new.ignore
+    assert_equal({}, Config.new.ignore_reasons)
     assert_equal [], Config.resolve({}, {}).ignore
+    assert_equal({}, Config.resolve({}, {}).ignore_reasons)
+  end
+
+  # A mapping entry keeps its reason. A bare id in the same list does not.
+  def test_ignore_mapping_keeps_the_reason_and_a_bare_id
+    yaml = <<~YAML
+      ignore:
+        - a1b2c3d4e5f6
+        - id: abc123def456
+          reason: same value
+    YAML
+    with_config(yaml) do |path|
+      _out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty err
+      assert_equal %w[a1b2c3d4e5f6 abc123def456], @hash[:ignore]
+      assert_equal({ "abc123def456" => "same value" }, @hash[:ignore_reasons])
+    end
+  end
+
+  # YAML reads an unquoted all-digit id as an integer. The id must still match.
+  def test_from_file_keeps_an_unquoted_numeric_ignore_id
+    yaml = <<~YAML
+      ignore:
+        - 123456789012
+        - id: 210987654321
+          reason: same value
+    YAML
+    with_config(yaml) do |path|
+      _out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty err
+      assert_equal %w[123456789012 210987654321], @hash[:ignore]
+      assert_equal({ "210987654321" => "same value" }, @hash[:ignore_reasons])
+    end
+
+    with_config("ignore: 123456789012\n") do |path|
+      _out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty err
+      assert_equal ["123456789012"], @hash[:ignore]
+      assert_equal({}, @hash[:ignore_reasons])
+    end
+  end
+
+  # A mapping with no id, and one with an unknown key, each warn and are dropped.
+  def test_ignore_mapping_without_id_or_with_an_unknown_key_warns
+    yaml = <<~YAML
+      ignore:
+        - reason: missing
+        - id: abc123def456
+          reasn: typo
+    YAML
+    with_config(yaml) do |path|
+      _out, err = capture_io { @hash = Config.from_file(path) }
+      assert_includes err, "ignore entry 1"
+      assert_includes err, "ignore entry 2"
+      assert_includes err, "unknown key \"reasn\""
+      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      assert_equal [], @hash[:ignore]
+      assert_equal({}, @hash[:ignore_reasons])
+    end
   end
 
   # #27: test_command is accepted from the config file (snake_case key) and

@@ -28,8 +28,9 @@ class EquivalentMutantTest < Minitest::Test
           "c - d # mutineer:disable-line arithmetic, comparison\n" \
           "e * f\n"
     map = Mutineer::JobPlan.suppress_map(src, "x.rb")
-    assert_equal :all, map[1]
-    assert_equal Set[:arithmetic, :comparison], map[2]
+    assert_equal :all, map[1][:ops]
+    assert_nil map[1][:reason]
+    assert_equal Set[:arithmetic, :comparison], map[2][:ops]
     assert_nil map[3]
   end
 
@@ -46,7 +47,12 @@ class EquivalentMutantTest < Minitest::Test
   def test_suppress_map_treats_an_empty_operator_list_as_bare
     src = "a # mutineer:disable-line \nb # mutineer:disable-line  -- why\nc # mutineer:disable-line , \n"
     map = Mutineer::JobPlan.suppress_map(src, "x.rb")
-    assert_equal({ 1 => :all, 2 => :all, 3 => :all }, map)
+    assert_equal :all, map[1][:ops]
+    assert_nil map[1][:reason]
+    assert_equal :all, map[2][:ops]
+    assert_equal "why", map[2][:reason]
+    assert_equal :all, map[3][:ops]
+    assert_nil map[3][:reason]
   end
 
   # #158: the marker text inside a string, heredoc or regex is not a comment.
@@ -73,7 +79,7 @@ class EquivalentMutantTest < Minitest::Test
       end
     RUBY
     map = Mutineer::JobPlan.suppress_map(src, "x.rb")
-    assert_equal({ 13 => Set[:comparison] }, map)
+    assert_equal({ 13 => { ops: Set[:comparison], reason: nil } }, map)
   end
 
   # PR #197 review: an =begin/=end block and the data after __END__ are not
@@ -154,6 +160,29 @@ class EquivalentMutantTest < Minitest::Test
 
   def test_suppressed_accepts_a_single_id
     assert Mutineer::JobPlan.suppressed?(:arithmetic, 1, "abc123", {}, Set["abc123"])
+  end
+
+  # An inline reason is stored on the ignored result. A marker with no reason
+  # stores none.
+  def test_inline_reason_is_stored_on_the_ignored_result
+    src = "class T\n  def f(a)\n    a + 1 # mutineer:disable-line arithmetic -- only 20 is tested\n  end\nend\n"
+    bare = "class T\n  def f(a)\n    a + 1 # mutineer:disable-line arithmetic\n  end\nend\n"
+    Dir.mktmpdir("mutineer-reason") do |root|
+      File.write(File.join(root, "with.rb"), src)
+      File.write(File.join(root, "bare.rb"), bare)
+      _, with_ignored, = collect(root, %w[with.rb])
+      _, bare_ignored, = collect(root, %w[bare.rb])
+      assert_equal "only 20 is tested", with_ignored.first.reason
+      assert_nil bare_ignored.first.reason
+    end
+  end
+
+  def test_ignore_mapping_reason_is_stored_on_the_ignored_result
+    with_colliding_files do |root|
+      id = new_id(root, "a.rb")
+      _, ignored, = collect(root, %w[a.rb], ignore: [id], ignore_reasons: { id => "same value" })
+      assert_equal "same value", ignored.first.reason
+    end
   end
 
   def test_entry_matching_nothing_is_not_a_legacy_match
@@ -276,7 +305,7 @@ class EquivalentMutantTest < Minitest::Test
                                    tests: ["test/fixtures/calculator_weak_test.rb"])
     doc = render_json(agg, source_map)
 
-    assert_equal "1.7", doc["schema_version"]
+    assert_equal "1.8", doc["schema_version"]
     assert_equal 2, doc["summary"]["survived"]
     assert_equal 0, doc["summary"]["ignored"]
     ids = doc["survivors"].map { |s| s["id"] }
@@ -332,9 +361,9 @@ class EquivalentMutantTest < Minitest::Test
     end
   end
 
-  def collect(root, files, ignore: [])
+  def collect(root, files, ignore: [], ignore_reasons: {})
     config = Mutineer::Config.new(sources: files.map { |f| File.join(root, f) }, ignore: ignore,
-                                  project_root: root)
+                                  ignore_reasons: ignore_reasons, project_root: root)
     Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(["arithmetic"]))
   end
 
