@@ -23,11 +23,24 @@ module Mutineer
   #
   # Exit codes:
   #   0  success / requested output (--version, --help, score >= threshold)
-  #   1  survivors below threshold, a runtime error, or an ignore id
-  #      `migrate` could not map
-  #   2  usage / flag error (unknown subcommand, invalid flag, unknown operator,
-  #      out-of-range threshold)
+  #   1  the tests are too weak (score below threshold, or a baseline
+  #      regression), or an ignore id `migrate` could not map
+  #   2  usage error (unknown subcommand, invalid flag, unknown config key,
+  #      bad path, baseline with no id_format)
+  #   3  the run is not trustworthy (red unmutated suite, daemon boot or
+  #      provisioning failure, runtime error, empty full scan, or too many
+  #      mutants with no verdict)
   class CLI
+    # Run errors that exit 3. Exit 1 stays in {Reporter#exit_code} and the
+    # baseline regression check. {DaemonBootError} is also how a worker-database
+    # provisioning failure stops the run.
+    RUN_EXIT = {
+      SmokeCheckError => 3,
+      DaemonBootError => 3,
+      ParseError => 3,
+      SyntaxError => 3,
+      ConcurrentRunError => 3
+    }.freeze
     # Command-line usage banner.
     BANNER = <<~USAGE
       Usage: mutineer [options] <command> [args]
@@ -46,7 +59,8 @@ module Mutineer
       Run options:
         --test FILE          Test file covering the sources (one per flag; repeat it)
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
-        --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
+        --threshold FLOAT    Fail (exit 1) when score < FLOAT. An untrustworthy
+                             run exits 3 (default: 0 = off)
         --baseline FILE      Fail (exit 1) on NEW survivors / score drop vs a prior
                              --format json run (CI delta gate)
         --baseline-epsilon FLOAT  Score-drop tolerance for --baseline (default: 0)
@@ -289,29 +303,34 @@ module Mutineer
       # message and usage exit, never a raw backtrace.
       warn "mutineer: #{e.message}"
       exit 2
-    rescue SyntaxError => e
-      # A syntactically invalid source file surfaces when `require`d; report it
-      # cleanly rather than dumping a backtrace.
-      warn "mutineer: cannot load source: #{e.message}"
-      exit 1
-    rescue Mutineer::ParseError => e
-      warn "mutineer: error reading: #{e.message}"
-      exit 1
-    rescue Mutineer::SmokeCheckError => e
-      # The unmutated suite is not green under --test-command: a broken
-      # environment, not weak tests. Runtime error (exit 1), not usage (exit 2).
-      warn "mutineer: #{e.message}"
-      exit 1
-    rescue Mutineer::ConcurrentRunError => e
-      # Another process owns a source file. Runtime error (exit 1), not a
-      # backtrace: the working tree is still the other run's responsibility.
-      warn "mutineer: #{e.message}"
-      exit 1
-    rescue Mutineer::DaemonBootError => e
-      # The daemon is gone for good, so the run ended rather than scoring the rest
-      # against it. A deliberate stop deserves a message, not a raw backtrace.
-      warn "mutineer: #{e.message}"
-      exit 1
+    rescue *RUN_EXIT.keys => e
+      fail_run(e)
+    end
+
+    # Exit status for an untrustworthy run error.
+    #
+    # @param error [Exception] a run failure.
+    # @return [Integer, nil] 3 when `error` is in {RUN_EXIT}, otherwise nil.
+    def self.exit_for(error)
+      RUN_EXIT.each do |klass, code|
+        return code if error.is_a?(klass)
+      end
+      nil
+    end
+
+    # Prints a run failure and exits 3. The message keeps the prefix each
+    # error class used before exit 3 existed.
+    #
+    # @param error [Exception] a {RUN_EXIT} error.
+    # @return [void]
+    def self.fail_run(error)
+      detail = case error
+               when SyntaxError then "cannot load source: #{error.message}"
+               when ParseError then "error reading: #{error.message}"
+               else error.message
+               end
+      warn "mutineer: #{detail}"
+      exit exit_for(error)
     end
 
     # Flag validation: every flag/usage failure exits 2, consistent with the
@@ -587,7 +606,6 @@ module Mutineer
       end
 
       aggregate, source_map, extras = Runner.execute(config)
-      warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
       matrix = KillMatrix.new(aggregate.results) if config.matrix
       reporter = Reporter.new(aggregate, source_map, matrix: matrix)
 
@@ -598,18 +616,12 @@ module Mutineer
       # so only the new-survivor half of the gate applies (see Baseline#diff).
       delta = if config.baseline
                 Baseline.load(config.baseline).diff(aggregate, epsilon: config.baseline_epsilon,
-                                                               scoped: !config.since.nil?,
-                                                               id_map: extras[:id_map],
-                                                               project_root: config.project_root)
+                                                               scoped: !config.since.nil?)
               end
-      warn_legacy_baseline if delta&.legacy_matches&.positive?
-
-      # ignore counts old-format entries (one warning each), not the ids they matched.
-      legacy_id_matches = { ignore: extras[:legacy_ignore_matches].size,
-                            baseline: delta ? delta.legacy_matches : 0 }
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
-                      scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches)
+                      scoped: !config.since.nil?)
+      warn_unmatched_ignore_ids(config, aggregate.results.map(&:id))
       warn_empty_run(config, extras) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
@@ -629,30 +641,60 @@ module Mutineer
         puts hint
       end
 
-      # --baseline and --threshold are independent gates OR'd together.
-      # `max` of two 0/1 codes is the OR; usage (2) is handled earlier and wins.
+      # --baseline and --threshold are independent gates. The higher code wins.
+      # Exit 3 (an untrustworthy run) beats exit 1 (tests too weak). Usage (2)
+      # is handled earlier and wins.
       baseline_exit = delta&.regressed ? 1 : 0
-      exit [reporter.exit_code(threshold: config.threshold), baseline_exit].max
+      code = [reporter.exit_code(threshold: config.threshold), baseline_exit].max
+      code = 3 if empty_run_untrustworthy?(config, aggregate, extras)
+      exit code
     end
 
-    # Says why a run has no mutants, on stderr for every format. A --since run
-    # whose sources had mutants before scoping is a stated success: the changes
-    # held no mutable Ruby code. Any other empty run is a likely mistake (wrong
-    # path, operators that never match), which 2.0 fails unless --allow-empty
-    # says it is expected.
+    # Says why a run has no mutants, on stderr for every format. An empty
+    # --since run is a stated success: the changes held no mutable Ruby code.
+    # Any other empty run exits 3 unless --allow-empty says it is expected.
     #
     # @param config [Mutineer::Config] run configuration.
-    # @param extras [Hash] the run extras; `:unscoped_mutants` counts the mutants (run and
-    #   suppressed) before --since.
+    # @param _extras [Hash] unused. Kept so the call site stays stable.
     # @return [void]
-    def self.warn_empty_run(config, extras)
-      # Mutants existed before --since narrowed them: the changes held none.
-      if config.since && extras[:unscoped_mutants].to_i.positive?
+    def self.warn_empty_run(config, _extras)
+      if config.since
         warn "mutineer: nothing to test in the changes since #{config.since}"
       elsif !config.allow_empty
         warn "mutineer: no mutants were generated. Check that the sources contain code the " \
-             "operators mutate. The run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
-             "Pass --allow-empty (or allow_empty: true) if an empty run is expected."
+             "operators mutate. Pass --allow-empty (or allow_empty: true) if an empty run is expected."
+      end
+    end
+
+    # True when a run with zero mutants must exit 3. Every empty `--since` run
+    # stays a success. `--allow-empty` opts out of the full-scan failure.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @param aggregate [Mutineer::AggregateResult] the run's results.
+    # @param _extras [Hash] unused. Kept so the call site stays stable.
+    # @return [Boolean]
+    def self.empty_run_untrustworthy?(config, aggregate, _extras)
+      return false unless aggregate.total.zero?
+      return false if config.allow_empty
+      return false if config.since
+
+      true
+    end
+
+    # Warns once per `ignore:` id that matched no mutant in this full scan.
+    # A diff-scoped run skips the check: most stored ids are out of scope.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @param ids [Array<String>] mutant ids this run produced.
+    # @return [void]
+    def self.warn_unmatched_ignore_ids(config, ids)
+      return if config.since
+
+      seen = ids.to_set
+      Array(config.ignore).each do |id|
+        next if seen.include?(id)
+
+        warn "mutineer: ignore ID #{id} matches no mutant; if it comes from 1.x, run `mutineer migrate`"
       end
     end
 
@@ -689,46 +731,6 @@ module Mutineer
            "#{config_dir} will not match this run. Run mutineer from #{config_dir}."
     end
 
-    # Warns once per old-format `ignore:` entry (#126), naming each new id it
-    # matched with that mutant's file and subject. mutineer cannot tell a full
-    # run from a narrowed one, so the text always says the list covers only this
-    # run's mutants. An entry that matched more than one distinct mutant (in
-    # other files, or same-named methods in one file) over-matched: the old id
-    # could not tell them apart, so replacing it with every new id would keep
-    # suppressing the mutants it hid by accident.
-    #
-    # @param matches [Hash{String => Array<Hash{Symbol => String}>}] old-format
-    #   entry => one `{id:, file:, subject:}` hash per matched mutant.
-    # @return [void]
-    def self.warn_legacy_ignore_matches(matches)
-      matches.each do |old, hits|
-        listed = hits.map { |h| "#{h[:id]} (#{h[:file]}, #{h[:subject]})" }.join(", ")
-        advice = if hits.map { |h| h[:id] }.uniq.size > 1
-                   "#{old} over-matched: the old format could not tell these mutants apart. " \
-                     "Replace #{old} and keep only the ids for the mutant you meant to ignore, not all of them."
-                 else
-                   "Replace #{old} with the new ids in your ignore list."
-                 end
-        warn "[mutineer] ignore entry #{old} uses the old id format, which did not include the " \
-             "file path. It matched these new ids: #{listed}. This list covers only mutants in " \
-             "this run's sources and operators; a run over every source gives the complete " \
-             "replacement. #{advice} To update the file, run `mutineer migrate`. " \
-             "#{BECOMES_ERROR_IN_2_0}."
-      end
-    end
-
-    # Warns once that the --baseline file stores old-format ids (#126), so the
-    # diff fell back to matching on them. Called only when a survivor matched
-    # through an old id alone.
-    #
-    # @return [void]
-    def self.warn_legacy_baseline
-      warn "[mutineer] the baseline uses the old id format, which did not include the file " \
-           "path, so survivors were matched on their old ids and files. Please generate a new " \
-           "baseline with `--format json`, but only after every gate that reads it runs this " \
-           "mutineer version or later. #{BECOMES_ERROR_IN_2_0}."
-    end
-
     # Runs dry-run mode. Reuses JobPlan.collect_jobs (+ scope_since) so the
     # candidate list cannot drift from a real run's job selection.
     #
@@ -736,8 +738,8 @@ module Mutineer
     # @return [void]
     def self.dry_run(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
-      jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
-      warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
+      jobs, ignored_results, source_map, = JobPlan.collect_jobs(config, operator_classes)
+      warn_unmatched_ignore_ids(config, jobs.map { |_subject, _mutation, id| id } + ignored_results.map(&:id))
       # Narrow jobs and ignored the same way a real run does, so the summary
       # matches the printed list.
       jobs, ignored_results, = JobPlan.scope_since(jobs, ignored_results, source_map, config)

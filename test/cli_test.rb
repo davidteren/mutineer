@@ -19,9 +19,9 @@ class CliTest < Minitest::Test
 
   # An isolated project dir with the calculator fixtures copied in, so the run is
   # real but the .mutineer cache lands in the temp dir, never the repo.
-  # The [mutineer] old-format ignore warnings in a stderr capture.
-  def legacy_warnings(err)
-    err.lines.grep(/\A\[mutineer\] ignore entry/)
+  # Full-scan warnings for an ignore id that matched no mutant.
+  def unmatched_ignore_warnings(err)
+    err.lines.grep(/matches no mutant/)
   end
 
   # The [mutineer] run-root mismatch warning in a stderr capture.
@@ -482,7 +482,7 @@ class CliTest < Minitest::Test
       File.write(File.join(proj, ".mutineer.yml"), "operators: [bogus]\n")
       out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
       assert_equal 0, status.exitstatus, err
-      assert_includes err, "unknown operator"
+      refute_includes err, "unknown operator"
       assert_match(/arithmetic: [1-9]/, out)
     end
   end
@@ -517,7 +517,7 @@ class CliTest < Minitest::Test
         "--operators", "arithmetic", "--jobs", "1", "--format", "json",
         "--threshold", "100", chdir: proj
       )
-      assert_equal 1, status.exitstatus
+      assert_equal 3, status.exitstatus
       assert_match(/unmutated suite is not green/, err)
       assert_match(/CalculatorStrongTest#test_unrelated/, err)
       refute_match(/"score": 100\.0/, out)
@@ -573,15 +573,13 @@ class CliTest < Minitest::Test
     end
   end
 
-  # W1.2 (1.x phase): an empty full scan still exits 0, but says that 2.0
-  # fails it unless --allow-empty marks it as expected.
-  def test_empty_full_scan_warns_unless_allow_empty
+  # An empty full scan exits 3 unless --allow-empty marks it as expected.
+  def test_empty_full_scan_exits_three_unless_allow_empty
     with_project do |proj|
       args = ["run", "calculator.rb", "--test", "calculator_strong_test.rb", "--operators", "regex"]
       _, err, status = mutineer(*args, chdir: proj)
-      assert_equal 0, status.exitstatus, err
+      assert_equal 3, status.exitstatus, err
       assert_includes err, "no mutants were generated"
-      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
       assert_includes err, "--allow-empty"
 
       _, err, status = mutineer(*args, "--allow-empty", chdir: proj)
@@ -589,10 +587,12 @@ class CliTest < Minitest::Test
       assert_empty err
 
       File.write(File.join(proj, ".mutineer.yml"), "allow_empty: true\n")
-      _, err, = mutineer(*args, chdir: proj)
-      refute_includes err, Mutineer::BECOMES_ERROR_IN_2_0
-      _, err, = mutineer(*args, "--no-allow-empty", chdir: proj)
-      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      _, err, status = mutineer(*args, chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "no mutants were generated"
+      _, err, status = mutineer(*args, "--no-allow-empty", chdir: proj)
+      assert_equal 3, status.exitstatus, err
+      assert_includes err, "no mutants were generated"
     end
   end
 
@@ -608,7 +608,7 @@ class CliTest < Minitest::Test
                                 "--since", "HEAD", chdir: proj)
       assert_equal 0, status.exitstatus, err
       assert_includes err, "nothing to test in the changes since HEAD"
-      refute_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      refute_includes err, "no mutants were generated"
       refute_includes err, "No mutations generated"
     end
   end
@@ -647,9 +647,9 @@ class CliTest < Minitest::Test
     end
   end
 
-  # A --since run that had no mutants before scoping is misconfigured (the
-  # operators never match), not "nothing changed", so it gets the warning.
-  def test_since_run_with_no_candidates_before_scoping_still_warns
+  # Every empty --since run is a stated success, including one whose
+  # operators matched nothing before scoping.
+  def test_since_run_with_no_candidates_before_scoping_stays_a_success
     with_project do |proj|
       [%w[init -q], %w[config user.email t@t], %w[config user.name t],
        %w[add .], %w[commit -qm base]].each do |args|
@@ -658,8 +658,8 @@ class CliTest < Minitest::Test
       _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
                                 "--operators", "regex", "--since", "HEAD", chdir: proj)
       assert_equal 0, status.exitstatus, err
-      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
-      refute_includes err, "nothing to test in the changes"
+      assert_includes err, "nothing to test in the changes since HEAD"
+      refute_includes err, "no mutants were generated"
     end
   end
 
@@ -685,7 +685,7 @@ class CliTest < Minitest::Test
                               "--format", "json", "--output", "report.json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(File.read(File.join(proj, "report.json")))
-      assert_equal "1.8", doc["schema_version"]
+      assert_equal "2.0", doc["schema_version"]
       assert_equal 100.0, doc["summary"]["score"]
     end
   end
@@ -737,29 +737,22 @@ class CliTest < Minitest::Test
     assert_match(/Equivalent#double/, out, "the non-suppressed mutation is still listed")
   end
 
-  # #126: an old-format ignore entry still suppresses its mutant, and the run
-  # warns once, naming the new id and scoping the list to this run.
-  def test_old_format_ignore_entry_warns_with_the_new_id
+  # An old-format ignore id does not suppress its mutant. A full scan warns.
+  def test_old_format_ignore_entry_does_not_suppress_and_warns
     with_project do |proj|
       old, new = calculator_ids(proj)
       File.write(File.join(proj, ".mutineer.yml"), "ignore:\n  - #{old}\n")
-      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
-                                "--operators", "arithmetic", "--jobs", "1", chdir: proj)
-      assert_equal 0, status.exitstatus, err
-      warnings = legacy_warnings(err)
-      assert_equal 1, warnings.size, err
-      assert_includes warnings.first, old
-      assert_includes warnings.first, new
-      assert_match(/only mutants in this run's sources and operators/, warnings.first)
-      assert_match(/every source/, warnings.first)
-      assert_match(/[Rr]eplace/, warnings.first)
-
-      # The JSON report counts the entry, so the Action can annotate it.
       out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
                                   "--operators", "arithmetic", "--jobs", "1", "--format", "json",
                                   chdir: proj)
       assert_equal 0, status.exitstatus, err
-      assert_equal({ "ignore" => 1, "baseline" => 0 }, JSON.parse(out)["summary"]["legacy_id_matches"])
+      warnings = unmatched_ignore_warnings(err)
+      assert_equal 1, warnings.size, err
+      assert_includes warnings.first, "ignore ID #{old} matches no mutant"
+      assert_includes warnings.first, "mutineer migrate"
+      doc = JSON.parse(out)
+      refute doc["summary"].key?("legacy_id_matches")
+      refute_includes doc.fetch("ignored").map { |row| row.fetch("id") }, new
     end
   end
 
@@ -770,13 +763,12 @@ class CliTest < Minitest::Test
       out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--operators", "arithmetic", chdir: proj)
       assert_equal 0, status.exitstatus, err
       assert_match(/1 ignored/, out)
-      assert_empty legacy_warnings(err)
+      assert_empty unmatched_ignore_warnings(err)
     end
   end
 
-  # --dry-run --since prints the same old-format warnings as a real run. No
-  # ignored count is compared: a real run does not narrow ignored results.
-  def test_dry_run_with_since_prints_the_same_legacy_warnings
+  # A diff-scoped run skips the unmatched-id check on both dry-run and a real run.
+  def test_since_run_does_not_warn_about_an_unmatched_ignore_id
     with_project do |proj|
       [%w[init -q], %w[config user.email t@t], %w[config user.name t],
        %w[add .], %w[commit -qm base]].each do |args|
@@ -790,8 +782,8 @@ class CliTest < Minitest::Test
                                  "--since", "HEAD", "--operators", "arithmetic", "--jobs", "1", chdir: proj)
       assert_equal 0, dry.exitstatus, dry_err
       assert_equal 0, run.exitstatus, run_err
-      refute_empty legacy_warnings(dry_err)
-      assert_equal legacy_warnings(run_err), legacy_warnings(dry_err)
+      assert_empty unmatched_ignore_warnings(dry_err)
+      assert_empty unmatched_ignore_warnings(run_err)
     end
   end
 
@@ -824,7 +816,7 @@ class CliTest < Minitest::Test
       out, _, status = mutineer("run", "lib", "--format", "json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(out)
-      assert_equal "1.8", doc["schema_version"]
+      assert_equal "2.0", doc["schema_version"]
       per = doc["per_source"].sort_by { |h| h["file"] }
       assert_equal ["lib/calc.rb", "lib/greeter.rb"], per.map { |h| h["file"] }
       assert_equal 100.0, per.find { |h| h["file"] == "lib/greeter.rb" }["score"]
@@ -1062,11 +1054,6 @@ class CliTest < Minitest::Test
     end
   end
 
-  # The [mutineer] regenerate-baseline warnings in a stderr capture.
-  def baseline_warnings(err)
-    err.lines.grep(/\A\[mutineer\] the baseline/)
-  end
-
   # Rewrites a --format json report as 1.2.0 wrote it: no summary.id_format, and
   # each survivor stored under its old-format id (no file path in the hash).
   def downgrade_baseline(proj, path)
@@ -1078,11 +1065,8 @@ class CliTest < Minitest::Test
     File.write(path, JSON.generate(doc))
   end
 
-  # #126 AE3 end to end, on the in-process and the external (--test-command)
-  # backend: a baseline in the old id format gives zero new and zero fixed
-  # survivors, one warning, and legacy_id_matches.baseline in the report. The
-  # same baseline in the new format gives no warning.
-  def test_old_format_baseline_matches_on_every_backend
+  # A baseline with no id_format exits 2. The same file with id_format still gates.
+  def test_baseline_without_id_format_exits_two
     [[], ["--test-command", "true %{files}"]].each do |backend|
       with_project do |proj|
         run = ->(*extra) do
@@ -1091,27 +1075,17 @@ class CliTest < Minitest::Test
         end
         _, err, first = run.("--output", "base.json")
         assert_equal 0, first.exitstatus, err
-        survived = JSON.parse(File.read(File.join(proj, "base.json")))["survivors"].size
-        refute_equal 0, survived
+        refute_equal 0, JSON.parse(File.read(File.join(proj, "base.json")))["survivors"].size
 
         out, err, status = run.("--baseline", "base.json")
         assert_equal 0, status.exitstatus, err
-        assert_empty baseline_warnings(err)
-        assert_equal({ "ignore" => 0, "baseline" => 0 }, JSON.parse(out)["summary"]["legacy_id_matches"])
+        refute_includes err, "generate a new baseline"
+        refute JSON.parse(out)["summary"].key?("legacy_id_matches")
 
         downgrade_baseline(proj, File.join(proj, "base.json"))
-        out, err, status = run.("--baseline", "base.json")
-        assert_equal 0, status.exitstatus, err
-        doc = JSON.parse(out)
-        assert_empty doc["baseline"]["new_survivors"], "backend #{backend.inspect}"
-        assert_empty doc["baseline"]["fixed_survivors"], "backend #{backend.inspect}"
-        assert_equal({ "ignore" => 0, "baseline" => survived }, doc["summary"]["legacy_id_matches"])
-        warnings = baseline_warnings(err)
-        assert_equal 1, warnings.size, err
-        assert_match(/old id format/, warnings.first)
-        assert_match(/old ids and files/, warnings.first)
-        assert_match(/--format json/, warnings.first)
-        assert_match(/every gate/, warnings.first)
+        _out, err, status = run.("--baseline", "base.json")
+        assert_equal 2, status.exitstatus, err
+        assert_includes err, "generate a new baseline with --format json"
       end
     end
   end
@@ -1141,7 +1115,7 @@ class CliTest < Minitest::Test
 
       write.("test/calc_test.rb", "require 'missing_helper'\n")
       _out, err, status = run.call
-      assert_equal 1, status.exitstatus
+      assert_equal 3, status.exitstatus
       assert_match(/no test recorded coverage/, err)
       assert_match(/missing_helper/, err)
     end
@@ -1173,42 +1147,46 @@ class CliTest < Minitest::Test
     assert_includes out, "migrate [options] <source...>"
   end
 
-  def test_old_ignore_warning_has_the_full_text
-    matches = { "aaaaaaaaaaaa" => [{ id: "bbbbbbbbbbbb", file: "a.rb", subject: "A#m" }] }
-    _, err = capture_io { Mutineer::CLI.warn_legacy_ignore_matches(matches) }
-    assert_equal "[mutineer] ignore entry aaaaaaaaaaaa uses the old id format, which did not include the " \
-                 "file path. It matched these new ids: bbbbbbbbbbbb (a.rb, A#m). This list covers only mutants in " \
-                 "this run's sources and operators; a run over every source gives the complete " \
-                 "replacement. Replace aaaaaaaaaaaa with the new ids in your ignore list. To update the file, " \
-                 "run `mutineer migrate`. #{Mutineer::BECOMES_ERROR_IN_2_0}.\n",
+  def test_unmatched_ignore_warning_names_the_id_and_migrate
+    config = Mutineer::Config.new(ignore: ["aaaaaaaaaaaa"])
+    _, err = capture_io { Mutineer::CLI.warn_unmatched_ignore_ids(config, ["bbbbbbbbbbbb"]) }
+    assert_equal "mutineer: ignore ID aaaaaaaaaaaa matches no mutant; if it comes from 1.x, " \
+                 "run `mutineer migrate`\n",
                  err
   end
 
-  def test_over_match_ignore_warning_has_the_full_text
-    matches = {
-      "aaaaaaaaaaaa" => [
-        { id: "bbbbbbbbbbbb", file: "a.rb", subject: "A#m" },
-        { id: "cccccccccccc", file: "b.rb", subject: "A#m" }
-      ]
-    }
-    _, err = capture_io { Mutineer::CLI.warn_legacy_ignore_matches(matches) }
-    assert_equal "[mutineer] ignore entry aaaaaaaaaaaa uses the old id format, which did not include the " \
-                 "file path. It matched these new ids: bbbbbbbbbbbb (a.rb, A#m), cccccccccccc (b.rb, A#m). " \
-                 "This list covers only mutants in this run's sources and operators; a run over every source " \
-                 "gives the complete replacement. aaaaaaaaaaaa over-matched: the old format could not tell these " \
-                 "mutants apart. Replace aaaaaaaaaaaa and keep only the ids for the mutant you meant to ignore, " \
-                 "not all of them. To update the file, run `mutineer migrate`. #{Mutineer::BECOMES_ERROR_IN_2_0}.\n",
-                 err
+  def test_unmatched_ignore_warning_skips_a_since_run
+    config = Mutineer::Config.new(ignore: ["aaaaaaaaaaaa"], since: "HEAD")
+    _, err = capture_io { Mutineer::CLI.warn_unmatched_ignore_ids(config, []) }
+    assert_equal "", err
   end
 
-  def test_old_baseline_warning_has_the_full_text
-    _, err = capture_io { Mutineer::CLI.warn_legacy_baseline }
-    assert_equal "[mutineer] the baseline uses the old id format, which did not include the file " \
-                 "path, so survivors were matched on their old ids and files. Please generate a new " \
-                 "baseline with `--format json`, but only after every gate that reads it runs this " \
-                 "mutineer version or later. #{Mutineer::BECOMES_ERROR_IN_2_0}.\n",
-                 err
-    assert_includes err, "generate a new baseline with `--format json`"
+  def test_unknown_operator_in_the_config_file_exits_two
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "operators: [comparsion]\n")
+      _, err, status = mutineer("run", "calculator.rb", "--dry-run", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, 'did you mean "comparison"?'
+    end
+  end
+
+  def test_unknown_config_key_exits_two
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "threshhold: 80\n")
+      _, err, status = mutineer("run", "calculator.rb", "--dry-run", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "unknown config key \"threshhold\""
+      assert_includes err, 'did you mean "threshold"?'
+    end
+  end
+
+  def test_unknown_ignore_mapping_key_exits_two
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "ignore:\n  - id: abc123def456\n    reasn: typo\n")
+      _, err, status = mutineer("run", "calculator.rb", "--dry-run", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "unknown key \"reasn\""
+    end
   end
 
   def test_migrate_rewrites_old_ids_and_keeps_comments_and_key_order
@@ -1288,24 +1266,23 @@ class CliTest < Minitest::Test
     end
   end
 
-  def test_migrate_then_run_ignores_the_same_mutants_without_a_legacy_warning
+  def test_migrate_then_run_ignores_the_mutant_the_old_id_did_not
     with_project do |proj|
       old1, new1 = arithmetic_id_pairs(proj).first
       File.write(File.join(proj, ".mutineer.yml"), "ignore:\n  - #{old1}\noperators:\n  - arithmetic\n")
       before, err, status = ignored_ids(proj)
       assert_equal 0, status.exitstatus, err
-      assert_equal [new1], before
-      refute_empty legacy_warnings(err)
+      assert_empty before
+      assert_includes err, "ignore ID #{old1} matches no mutant"
       assert_includes err, "mutineer migrate"
-      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
 
       _out, err, status = mutineer("migrate", "calculator.rb", chdir: proj)
       assert_equal 0, status.exitstatus, err
 
       after, err, status = ignored_ids(proj)
       assert_equal 0, status.exitstatus, err
-      assert_equal before, after
-      assert_empty legacy_warnings(err)
+      assert_equal [new1], after
+      assert_empty unmatched_ignore_warnings(err)
     end
   end
 

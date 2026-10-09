@@ -64,8 +64,8 @@ module Mutineer
     end
 
     # The pre-1.3 id: the {.for} formula without the path, so it collides across
-    # files. Kept only to match ignore entries and baselines stored in the old
-    # format; removed in 2.0.
+    # files. `mutineer migrate` uses it to rewrite old ignore entries. A run
+    # does not match `ignore:` or a baseline on this id.
     #
     # @param subject [Mutineer::Subject] the subject (method) the mutant lives in.
     # @param mutation [Mutineer::Mutation] the atomic edit whose operator is hashed.

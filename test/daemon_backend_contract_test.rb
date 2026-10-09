@@ -324,10 +324,10 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
-  # #126: every backend suppresses by the ids collect_jobs computes and hands the
-  # old-format ignore matches and the new-to-old id map back unchanged. All mutants are ignored, so neither
+  # Every backend suppresses by the current ids collect_jobs computes and hands
+  # the new-to-old id map back unchanged. All mutants are ignored, so neither
   # backend boots or runs anything.
-  def test_backends_carry_the_collect_jobs_ids_and_legacy_matches
+  def test_backends_carry_the_collect_jobs_ids_and_id_map
     Dir.mktmpdir("mutineer-ids") do |root|
       source = File.join(root, "order.rb")
       File.binwrite(source, SOURCE)
@@ -335,14 +335,13 @@ class DaemonBackendContractTest < Minitest::Test
       probe = Mutineer::Config.new(sources: [source], project_root: root)
       jobs, = Mutineer::JobPlan.collect_jobs(probe, ops)
       refute_empty jobs
-      subject = jobs.first[0]
-      legacy = Mutineer::MutantId.legacy_for_subject(subject, SOURCE, jobs.select { |j| j[0] == subject }.map { |j| j[1] })
-      ignore = legacy + jobs.reject { |j| j[0] == subject }.map { |j| j[2] }
+      ignore = jobs.map { |j| j[2] }
 
       config = ->(**kw) { Mutineer::Config.new(sources: [source], project_root: root, framework: "minitest",
                                                 operators: %w[arithmetic], ignore: ignore, **kw) }
       _, expected_ignored, _, extras = Mutineer::JobPlan.collect_jobs(config.(), ops)
-      refute_empty extras[:legacy_ignore_matches]
+      refute extras.key?(:legacy_ignore_matches)
+      refute_empty extras[:id_map]
 
       daemon = Mutineer::DaemonClient.stub(:new, ->(**) { flunk "booted a daemon" }) do
         Mutineer::DaemonBackend.execute(config.(daemon: true), ops)
@@ -351,10 +350,8 @@ class DaemonBackendContractTest < Minitest::Test
         Mutineer::Runner.execute(config.(test_command: "false %{files}"))
       end
       [daemon, external].each do |aggregate, _, run_extras|
-        assert_equal expected_ignored.map(&:id), aggregate.results.map(&:id)
-        assert_equal extras[:legacy_ignore_matches], run_extras[:legacy_ignore_matches]
-        # The --baseline diff needs every new id's old id to read an old-format baseline.
-        refute_empty extras[:id_map]
+        assert_equal expected_ignored.map(&:id).sort, aggregate.results.map(&:id).sort
+        refute run_extras.key?(:legacy_ignore_matches)
         assert_equal extras[:id_map], run_extras[:id_map]
       end
     end

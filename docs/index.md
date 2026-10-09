@@ -75,8 +75,9 @@ Typed flags override `.mutineer.yml`. Full flag list: `mutineer --help` or the [
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
-| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+| `1` | The tests are too weak. The score is below `--threshold`, or a `--baseline` regression. |
+| `2` | Usage error (mistyped flag, unknown config key, bad path, unreadable baseline, or a baseline with no id_format). |
+| `3` | The run could not give a trustworthy result. A red unmutated suite, a daemon boot or provisioning failure, a runtime error, an empty full scan, or more than one mutant with no verdict when they exceed 10% of those attempted. |
 <!-- /contract:exit-codes -->
 
 ## Operators

@@ -10,7 +10,7 @@ module Mutineer
   # app error, a failed handshake, a spawn the OS refused, or MAX_RESTARTS crashes.
   # It means "stop the run" — a backend that scored the remaining mutants against a
   # dead daemon would report a score covering a fraction of the work. The CLI maps it
-  # to a runtime error (exit 1).
+  # to a runtime error (exit 3).
   class DaemonBootError < StandardError; end
 
   # A boot that has not answered the handshake within DaemonClient::BOOT_TIMEOUT

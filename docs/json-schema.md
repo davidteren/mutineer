@@ -32,7 +32,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 
 ```jsonc
 {
-  "schema_version": "1.8",
+  "schema_version": "2.0",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
@@ -66,8 +66,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `no_verdict` | int | Attempted mutants that produced no verdict: `errored + timeout + uncapturable`. The completeness gate is `no_verdict / attempted`. |
 | `score` | float \| null | `killed / (killed + survived) * 100`, rounded. **`null`** when the denominator is empty (no covered mutants) — never `0.0`. |
 | `scoped` | bool | `true` when the run was diff-scoped (`--since`): the score covers only the changed-line mutants, so it is not comparable to a full-run score. A scoped CURRENT run skips `--baseline`'s score-drop check (new-survivor detection still applies); a scoped report is REFUSED as a baseline (exit 2) because survivors outside its diff would read as new regressions. Additive key (absent in reports from older versions; treat absent as `false`). |
-| `id_format` | int | The mutant id format. `2` means ids include the project-relative file path (1.3 and later). **Read this key, not `schema_version`, to learn the id format.** Absent in older reports: treat absent as the old format, whose ids did not include the path and can collide across files. Additive key (schema `1.4`). |
-| `legacy_id_matches` | object | `{ ignore, baseline }`, two ints. `ignore` counts `.mutineer.yml` `ignore:` entries in the old id format that matched this run (replace them with the new ids the run prints). `baseline` counts survivors that matched an old-format `--baseline` only through their old id (regenerate the baseline). Both are `0` when nothing old matched. Old-format matching is removed in 2.0. Additive key (schema `1.4`). |
+| `id_format` | int | The mutant id format. `2` means ids include the project-relative file path (1.3 and later). **Read this key, not `schema_version`, to learn the id format.** A baseline with no `id_format` is refused: the CLI exits 2 and tells you to generate a new baseline with `--format json`. |
 
 ### `survivors[]` (array of object)
 
@@ -177,7 +176,7 @@ delete them one at a time and re-run after each. Every answer covers this run's 
 
 ### `baseline` (object, only with `--baseline`)
 
-The delta versus the prior `--format json` report, matched by `id`. A baseline without `summary.id_format` also matches on old-format ids (counted in `summary.legacy_id_matches.baseline`):
+The delta versus the prior `--format json` report, matched by `id`. A baseline with no `summary.id_format` is refused: the CLI exits 2 and tells you to generate a new baseline with `--format json`.
 
 | Key | Type | Meaning |
 |-----|------|---------|
@@ -195,8 +194,9 @@ The delta versus the prior `--format json` report, matched by `id`. A baseline w
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
-| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+| `1` | The tests are too weak. The score is below `--threshold`, or a `--baseline` regression. |
+| `2` | Usage error (mistyped flag, unknown config key, bad path, unreadable baseline, or a baseline with no id_format). |
+| `3` | The run could not give a trustworthy result. A red unmutated suite, a daemon boot or provisioning failure, a runtime error, an empty full scan, or more than one mutant with no verdict when they exceed 10% of those attempted. |
 <!-- /contract:exit-codes -->
 
 Under a positive `--threshold`, a run is gated on being complete as well as on its score. Mutants with no

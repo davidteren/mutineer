@@ -50,11 +50,11 @@ and its score and exit code do not cover the full scope.
 Zero survivors alone is not success: an empty or fully suppressed scope, or a run
 with no usable verdicts, also has zero survivors. If the score is null, stop and
 report “no score”. Check `no_coverage[]` for test gaps and `no_verdict[]` for
-harness failures, and fix them before starting a new run. A positive threshold fails when nothing can be scored and something
+harness failures, and fix them before starting a new run. A positive threshold exits 3 when nothing can be scored and something
 broke, or when more than one mutant has no verdict and they exceed 10% of those
 attempted; it does not require zero errors. Set the threshold to your target.
 
-An empty run (`summary.total` is 0) exits 0 in 1.x and prints a warning on stderr. Treat it as "no score". Pass `--allow-empty` only when an empty run is expected. A `--since` run whose changes hold no mutable code says "nothing to test in the changes since REF"; that is a valid success. Warnings that start with `mutineer:` or `[mutineer]` also go to stderr: the empty-run warning, "did you mean" hints, notes about Mutineer 2.0, and the count of errored mutants.
+An empty full scan (`summary.total` is 0) exits 3 unless you pass `--allow-empty`. A `--since` run whose changes hold no mutable code says "nothing to test in the changes since REF" and exits 0. Warnings that start with `mutineer:` or `[mutineer]` also go to stderr: the empty-run note, an ignore id that matches nothing, and the count of errored mutants.
 
 ## Exit codes
 
@@ -62,8 +62,9 @@ An empty run (`summary.total` is 0) exits 0 in 1.x and prints a warning on stder
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
-| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+| `1` | The tests are too weak. The score is below `--threshold`, or a `--baseline` regression. |
+| `2` | Usage error (mistyped flag, unknown config key, bad path, unreadable baseline, or a baseline with no id_format). |
+| `3` | The run could not give a trustworthy result. A red unmutated suite, a daemon boot or provisioning failure, a runtime error, an empty full scan, or more than one mutant with no verdict when they exceed 10% of those attempted. |
 <!-- /contract:exit-codes -->
 
 ## References

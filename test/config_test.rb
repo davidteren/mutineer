@@ -46,36 +46,42 @@ class ConfigTest < Minitest::Test
     end
   end
 
-  def test_from_file_warns_on_unknown_key_and_drops_it
+  def test_from_file_rejects_an_unknown_key
     with_config("operatros: [arithmetic]\n") do |path| # typo
-      _, err = capture_io { @hash = Config.from_file(path) }
-      assert_includes err, "unknown config key"
-      assert_empty @hash
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, "unknown config key"
+      assert_includes err.message, "operatros"
     end
   end
 
-  def test_unknown_key_warning_suggests_a_close_key_and_names_2_0
+  def test_unknown_key_error_suggests_a_close_key
     with_config("threshhold: 80\n") do |path|
-      _, err = capture_io { Config.from_file(path) }
-      assert_includes err, 'did you mean "threshold"?'
-      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, 'did you mean "threshold"?'
+      assert_includes err.message, "unknown config key \"threshhold\""
     end
   end
 
-  def test_unknown_operator_warning_suggests_a_close_name_and_names_2_0
+  def test_unknown_operator_error_suggests_a_close_name
     with_config("operators: [comparsion, arithmetic]\n") do |path|
-      _, err = capture_io { @hash = Config.from_file(path) }
-      assert_includes err, 'did you mean "comparison"?'
-      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
-      assert_equal ["arithmetic"], @hash[:operators]
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, 'did you mean "comparison"?'
+      assert_includes err.message, "unknown operator"
     end
   end
 
   def test_unknown_operator_with_no_close_name_gets_no_hint
     with_config("operators: [zzzzzz, arithmetic]\n") do |path|
-      _, err = capture_io { Config.from_file(path) }
-      assert_includes err, "unknown operator"
-      refute_includes err, "did you mean"
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, "unknown operator"
+      refute_includes err.message, "did you mean"
+    end
+  end
+
+  def test_deferred_operators_drop_unknown_names
+    with_config("operators: [comparsion, arithmetic]\n") do |path|
+      hash = Config.from_file(path, defer_operators: true)
+      assert_equal ["arithmetic"], hash[:operators]
     end
   end
 
@@ -266,11 +272,11 @@ class ConfigTest < Minitest::Test
     assert_equal Mutineer::CONFIG_OPTIONS.filter_map(&:yaml_key), Mutineer::KNOWN_KEYS
   end
 
-  def test_from_file_warns_on_unknown_operator_and_drops_it
+  def test_from_file_rejects_an_unknown_operator_among_known_ones
     with_config("operators: [arithmetic, bogus]\n") do |path|
-      _, err = capture_io { @hash = Config.from_file(path) }
-      assert_includes err, "unknown operator"
-      assert_equal ["arithmetic"], @hash[:operators]
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, "unknown operator"
+      assert_includes err.message, "bogus"
     end
   end
 
@@ -303,16 +309,12 @@ class ConfigTest < Minitest::Test
     assert_equal ["a.rb"], Config.parse(:require_paths, "a.rb")
   end
 
-  # Every name unknown: the warning still names the typo, then the file is
-  # an error so the empty list cannot exit 0.
+  # Every name unknown is the same error: the first unknown name exits 2.
   def test_from_file_rejects_operators_that_are_all_unknown
     with_config("operators: [bogus]\n") do |path|
-      err = nil
-      _, stderr = capture_io do
-        err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
-      end
-      assert_includes stderr, "unknown operator"
-      assert_equal ".mutineer.yml: operators must name at least one known operator", err.message
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, "unknown operator"
+      assert_includes err.message, "bogus"
     end
   end
 
@@ -325,9 +327,8 @@ class ConfigTest < Minitest::Test
       assert_equal ["arithmetic"], cfg.operators
     end
     with_config("operators: [bogus]\n") do |path|
-      hash = nil
-      _, stderr = capture_io { hash = Config.from_file(path, defer_operators: true) }
-      assert_includes stderr, "unknown operator"
+      hash = Config.from_file(path, defer_operators: true)
+      assert_equal [], hash[:operators]
       cfg = Config.resolve({ operators: ["arithmetic"] }, hash)
       assert_equal ["arithmetic"], cfg.operators
     end
@@ -398,22 +399,29 @@ class ConfigTest < Minitest::Test
     end
   end
 
-  # A mapping with no id, and one with an unknown key, each warn and are dropped.
-  def test_ignore_mapping_without_id_or_with_an_unknown_key_warns
+  def test_ignore_mapping_without_an_id_is_an_error
     yaml = <<~YAML
       ignore:
         - reason: missing
+    YAML
+    with_config(yaml) do |path|
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, "ignore entry 1"
+      assert_includes err.message, "has no id"
+    end
+  end
+
+  def test_ignore_mapping_unknown_key_is_an_error
+    yaml = <<~YAML
+      ignore:
         - id: abc123def456
           reasn: typo
     YAML
     with_config(yaml) do |path|
-      _out, err = capture_io { @hash = Config.from_file(path) }
-      assert_includes err, "ignore entry 1"
-      assert_includes err, "ignore entry 2"
-      assert_includes err, "unknown key \"reasn\""
-      assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
-      assert_equal [], @hash[:ignore]
-      assert_equal({}, @hash[:ignore_reasons])
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, "ignore entry 1"
+      assert_includes err.message, "unknown key \"reasn\""
+      assert_includes err.message, "did you mean"
     end
   end
 
