@@ -45,8 +45,9 @@ It runs in parallel on those systems.
 | 3.4 or later | SQLite file | RSpec | not supported | serial only |
 | 3.4 or later | PostgreSQL | Minitest | supported with `--daemon` | supported |
 | 3.4 or later | PostgreSQL | RSpec | not supported | serial only |
-| 3.4 or later | MySQL | Minitest | not supported | serial only |
-| 3.4 or later | MySQL | RSpec | not supported | serial only |
+| 3.4 or later | MySQL 8 | Minitest | supported with `--daemon` | supported |
+| 3.4 or later | MySQL 8 | RSpec | not supported | serial only |
+| 3.4 or later | MariaDB | Minitest | not tested | not tested |
 | 3.4 or later | SQLite in memory | Minitest | not supported | serial only |
 | 3.4 or later | SQLite in memory | RSpec | not supported | serial only |
 | 3.4 or later | more than one database | Minitest | one worker | serial only |
@@ -61,12 +62,15 @@ Minitest on that file can use `--daemon`.
 RSpec on that file is serial only.
 PostgreSQL with Minitest can use `--daemon`.
 PostgreSQL with RSpec is serial only.
-MySQL is serial only.
+MySQL 8 with Minitest can use `--daemon`.
+MariaDB is not tested.
+MySQL 5.7 is not supported.
 A `:memory:` database is serial only.
 An app with more than one database runs one worker.
 `--daemon` isolates only the primary connection.
 `--rails` without `--daemon` is serial on every row.
 A Postgres worker database is copied once, at the start of the run.
+A MySQL 8 worker database is created once, at the start of the run, and the rows are copied then.
 A test that commits rows outside a transaction leaves them in that worker database.
 The next mutant on that worker sees those rows.
 Rails parallel tests have the same ceiling.
@@ -224,12 +228,18 @@ RAILS_ENV=test bundle exec mutineer run \
 - **One backend at a time** — `--daemon` can't be combined with `--test-command`
   (choose one), and it needs an app to boot (`--rails` or `--boot`).
 
-Status: **SQLite** and **PostgreSQL** (Minitest). Each Postgres worker uses a
+Status: **SQLite**, **PostgreSQL**, and **MySQL 8** (Minitest). Each Postgres worker uses a
 database named `<base>-mutineer-<N>` (shortened when that would pass 63 bytes).
 Mutineer copies the test database into those names before the workers start,
 and leaves them in place when the run ends. Drop one with
 `DROP DATABASE "myapp_test-mutineer-0";` (use your test database name and slot).
-MySQL is not supported on `--daemon` yet: the run stops before it scores a mutant.
+Each MySQL 8 worker uses a database named `<base>-mutineer-<N>` (shortened when that would pass 64 bytes).
+Mutineer creates that database, loads `schema.rb` or `structure.sql`, and copies rows before the workers start.
+It does not copy the database again after an error or a timeout.
+The worker databases stay in place when the run ends.
+`mysql2` and `trilogy` are supported.
+MariaDB is not tested.
+MySQL 5.7 is not supported.
 A `:memory:` database is not supported on `--daemon`.
 
 ### Apps on Ruby < 3.4

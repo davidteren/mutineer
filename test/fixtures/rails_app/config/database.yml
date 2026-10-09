@@ -1,6 +1,7 @@
 # Default: a file-backed SQLite DB (not :memory:) so the connection survives the
-# fork Mutineer does per mutant. DB=postgres selects Postgres. MUTINEER_SECOND_DB=1
-# adds a second config so a parallel run must fall back to one worker.
+# fork Mutineer does per mutant. DB=postgres selects Postgres. DB=mysql selects
+# MySQL. MUTINEER_SECOND_DB=1 adds a second config so a parallel run must fall
+# back to one worker.
 <% if ENV["MUTINEER_SECOND_DB"] == "1" %>
 test:
   primary:
@@ -30,6 +31,24 @@ test:
   <% end %>
   <% if ENV["PGPORT"] && !ENV["PGPORT"].empty? %>
   port: <%= ENV["PGPORT"] %>
+  <% end %>
+<% elsif ENV["DB"] == "mysql" %>
+test:
+  adapter: <%= ENV.fetch("MYSQL_ADAPTER", "mysql2") %>
+  encoding: utf8mb4
+  database: <%= ENV.fetch("MYSQL_DATABASE", "mutineer_rails_test") %>
+  pool: 5
+  <% if ENV["MYSQL_USER"] && !ENV["MYSQL_USER"].empty? %>
+  username: <%= ENV["MYSQL_USER"] %>
+  <% end %>
+  <% if ENV["MYSQL_PASSWORD"] && !ENV["MYSQL_PASSWORD"].empty? %>
+  password: <%= ENV["MYSQL_PASSWORD"] %>
+  <% end %>
+  <% if ENV["MYSQL_HOST"] && !ENV["MYSQL_HOST"].empty? %>
+  host: <%= ENV["MYSQL_HOST"] %>
+  <% end %>
+  <% if ENV["MYSQL_PORT"] && !ENV["MYSQL_PORT"].empty? %>
+  port: <%= ENV["MYSQL_PORT"] %>
   <% end %>
 <% else %>
 test:

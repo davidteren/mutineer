@@ -66,9 +66,41 @@ class RailsWorkerDbTest < Minitest::Test
     refute Mutineer::RailsWorkerDb.owned_database?("myXappXtest", "my_app_test-mutineer-1", slots: 4)
   end
 
-  def test_mysql_adapter_is_not_provisioned_here
+  def test_mysql2_and_trilogy_use_mysql_worker_names
+    %w[mysql2 trilogy].each do |adapter|
+      cfg = Mutineer::RailsWorkerDb.per_worker_config({ adapter: adapter, database: "app_test" }, 4)
+      assert_equal "app_test-mutineer-4", cfg[:database]
+      assert_equal adapter, cfg[:adapter]
+      assert_equal "app_test-mutineer-4", Mutineer::RailsWorkerDb.mysql_worker_database("app_test", 4)
+    end
+  end
+
+  def test_long_mysql_names_stay_within_64_bytes_and_differ_by_slot
+    base = "a" * 70
+    one = Mutineer::RailsWorkerDb.mysql_worker_database(base, 1)
+    two = Mutineer::RailsWorkerDb.mysql_worker_database(base, 2)
+    assert_operator one.bytesize, :<=, 64
+    assert_operator two.bytesize, :<=, 64
+    refute_equal one, two
+
+    shared = "b" * 60
+    left = Mutineer::RailsWorkerDb.mysql_worker_database("#{shared}#{'c' * 20}", 1)
+    right = Mutineer::RailsWorkerDb.mysql_worker_database("#{shared}#{'d' * 20}", 1)
+    refute_equal left, right
+    assert Mutineer::RailsWorkerDb.owned_database?(base, one, slots: 2, limit: Mutineer::RailsWorkerDb::MYSQL_NAME_LIMIT)
+    refute Mutineer::RailsWorkerDb.owned_database?(base, one, slots: 2)
+  end
+
+  def test_mysql_lock_names_stay_within_64_characters
+    names = Mutineer::RailsWorkerDb.mysql_lock_names("x" * 200)
+    assert_equal Mutineer::RailsWorkerDb::MYSQL_LOCK_SLOTS, names.size
+    names.each { |name| assert_operator name.length, :<=, 64 }
+    refute_equal names.first, names.last
+  end
+
+  def test_old_mysql_adapter_is_not_provisioned_here
     error = assert_raises(NotImplementedError) do
-      Mutineer::RailsWorkerDb.per_worker_config({ adapter: "mysql2", database: "app_test" }, 0)
+      Mutineer::RailsWorkerDb.per_worker_config({ adapter: "mysql", database: "app_test" }, 0)
     end
     refute_includes error.message, "Postgres per-worker provisioning is not yet supported"
   end
