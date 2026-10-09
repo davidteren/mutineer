@@ -29,7 +29,7 @@ module Mutineer
   #   ready out: {"ready":true,"ruby":"3.3.6"}   (or {"ready":false,"error":"..."} then exit)
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
   #               "tests":["test/models/order_test.rb"],"timeout":30}
-  #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
+  #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"|"provision_failed"}
   #   quit in  : {"cmd":"quit"}
   #
   # Worker isolation: when the app is Rails, each fork is routed to its own
@@ -39,14 +39,18 @@ module Mutineer
   # not yet implemented.
   #
   # Verdict mapping: child exit 0=survived (suite passed), 1=killed (suite
-  # failed), 2=error (child raised AROUND the test: load, boot, or worker-DB
-  # routing failure); parent-detected timeout. Tagging an in-test DB error (one
-  # fired inside a test body, vs at routing time) as `error` rather than
-  # `killed` is only observable under the concurrent gate and is not yet
-  # implemented.
+  # failed), 3=provision_failed (the worker database could not be set up; the
+  # client ends the run), 2=error (the child raised around the test: load or
+  # boot). A signalled child is error. The parent maps a missed deadline to
+  # timeout. Tagging an in-test DB error (one fired inside a test body) as
+  # `error` rather than `killed` is only observable under the concurrent gate
+  # and is not yet implemented.
   module DaemonServer
     # Poll interval (seconds) for the per-fork deadline wait loop.
     POLL = 0.02
+    # Child exit status when the worker database could not be provisioned.
+    # The parent reports `provision_failed`. The client then ends the run.
+    PROVISION_STATUS = 3
 
     class << self
       # Serve the protocol on the given IO pair (defaults to stdio). Returns on quit.
@@ -150,7 +154,7 @@ module Mutineer
       # so it bypasses the app bundle, like this daemon itself). No-op unless the
       # app has ActiveRecord. Records the adapter + schema path so each fork can
       # route to its own database. SQLite-only this pass; a non-SQLite config
-      # raises in the fork and reads as `error`, never a mis-routed verdict.
+      # raises in the fork and ends the run, never a mis-routed verdict.
       def setup_worker_db(cfg)
         require_relative "rails_worker_db"
         @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
@@ -227,10 +231,21 @@ module Mutineer
               ChildStdout.silence
               close_protocol
               # Route THIS fork at its own worker database before any test loads.
-              # A routing failure raises here and is scored `error`, never a false verdict.
-              @worker_db&.after_fork(worker, first_use ? @schema_path : nil, seed: first_use)
-              apply_payload(req["payload"])
-              run_tests(Array(req["tests"]))
+              # A provisioning failure ends the run. It is not a mutant error.
+              provisioned =
+                begin
+                  @worker_db&.after_fork(worker, first_use ? @schema_path : nil, seed: first_use)
+                  true
+                rescue Exception => e # rubocop:disable Lint/RescueException
+                  @errio.puts("[daemon-child] #{e.class}: #{e.message}")
+                  false
+                end
+              if provisioned
+                apply_payload(req["payload"])
+                run_tests(Array(req["tests"]))
+              else
+                PROVISION_STATUS
+              end
             rescue Exception => e # rubocop:disable Lint/RescueException
               @errio.puts("[daemon-child] #{e.class}: #{e.message}")
               2
@@ -239,8 +254,8 @@ module Mutineer
         end
         verdict = wait_verdict(pid, timeout)
         # Mark ready only when the child finished cleanly after seeding
-        # (killed/survived). Timeout can interrupt mid-copy; error is a routing
-        # failure. Both leave the slot unready so the next fork seeds again.
+        # (killed/survived). Timeout, a mutant error, or a provisioning
+        # failure leaves the slot unready so the next fork seeds again.
         @slot_ready[worker] = true if first_use && %w[killed survived].include?(verdict)
         # A SIGKILLed timeout child skipped its Tempfile unlink. Sweep the orphan
         # so it cannot outlive the run or trip Zeitwerk on a later fork.
@@ -265,14 +280,14 @@ module Mutineer
       # the kill/reap/decode logic must be applied to all three in lockstep.
       # CoverageMap#await_child applies the same deadline and group kill to
       # coverage capture.
-      # SIGKILL the child's process group past the deadline; a signalled child
-      # (nil exitstatus) is `error`.
+      # SIGKILL the child's process group past the deadline. A signalled child
+      # (nil exitstatus) is `error`. Exit {PROVISION_STATUS} is `provision_failed`.
       def wait_verdict(pid, timeout)
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
         loop do
           reaped, status = Process.waitpid2(pid, Process::WNOHANG)
           if reaped
-            return { 0 => "survived", 1 => "killed" }.fetch(status.exitstatus, "error")
+            return verdict_word(status)
           end
           if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
             begin
@@ -283,7 +298,7 @@ module Mutineer
             begin
               _reaped, status = Process.waitpid2(pid)
               if status && status.exited? && !status.signaled?
-                return { 0 => "survived", 1 => "killed" }.fetch(status.exitstatus, "error")
+                return verdict_word(status)
               end
             rescue Errno::ECHILD
               # already reaped
@@ -292,6 +307,19 @@ module Mutineer
           end
           sleep POLL
         end
+      end
+
+      # Maps a reaped child status to a verdict word.
+      # Exit 0 is survived. Exit 1 is killed. Exit {PROVISION_STATUS} means the
+      # worker database could not be provisioned. A signal, or any other
+      # status, is error.
+      #
+      # @param status [Process::Status, nil] the reaped child status.
+      # @return [String] survived, killed, provision_failed, or error.
+      def verdict_word(status)
+        return "error" unless status&.exited?
+
+        { 0 => "survived", 1 => "killed", PROVISION_STATUS => "provision_failed" }.fetch(status.exitstatus, "error")
       end
 
       # Write the tool-built mutated text beside the real source and `load` it,

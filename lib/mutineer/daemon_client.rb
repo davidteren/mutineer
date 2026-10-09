@@ -7,10 +7,11 @@ require_relative "external_backend"
 
 module Mutineer
   # Raised when the daemon cannot be booted or is gone for good: a bad boot path, an
-  # app error, a failed handshake, a spawn the OS refused, or MAX_RESTARTS crashes.
-  # It means "stop the run" — a backend that scored the remaining mutants against a
-  # dead daemon would report a score covering a fraction of the work. The CLI maps it
-  # to a runtime error (exit 1).
+  # app error, a failed handshake, a spawn the OS refused, MAX_RESTARTS crashes, or a
+  # worker database that could not be provisioned. The daemon reports that last case
+  # as verdict +provision_failed+. It means "stop the run": a backend that scored the
+  # remaining mutants against a dead daemon would report a score covering a fraction
+  # of the work. The CLI maps it to a runtime error (exit 3).
   class DaemonBootError < StandardError; end
 
   # A boot that has not answered the handshake within DaemonClient::BOOT_TIMEOUT
@@ -81,7 +82,9 @@ module Mutineer
     # @param timeout [Numeric] per-mutant wall-clock timeout (seconds).
     # @param worker [Integer] worker slot; the daemon routes the fork to
     #   `<db>-<worker>` for isolation. Defaults to 0 (serial).
-    # @return [String] one of survived/killed/error/timeout.
+    # @raise [Mutineer::DaemonBootError] when the worker database could not be
+    #   provisioned, or the daemon is not running.
+    # @return [String] one of survived, killed, error, timeout.
     def request(id:, payload:, tests:, timeout:, worker: 0)
       # close_io nils the pipes, so a client whose respawn never completed would
       # otherwise fail per-mutant forever (NoMethodError on nil) and let the backend
@@ -100,7 +103,13 @@ module Mutineer
         rescue Errno::EPIPE, IOError
           nil
         end
-      return reply["verdict"] if reply && reply["id"] == id
+      if reply && reply["id"] == id
+        if reply["verdict"] == "provision_failed"
+          raise DaemonBootError, "worker database provisioning failed"
+        end
+
+        return reply["verdict"]
+      end
 
       restart!
       "error"

@@ -26,7 +26,8 @@ module Mutineer
     BROKEN_FLOOR = 1
 
     # The JSON report's `schema_version` (see docs/json-schema.md).
-    SCHEMA_VERSION = "1.8"
+    # 2.0 removes `summary.legacy_id_matches`.
+    SCHEMA_VERSION = "2.0"
 
     # The warning both matrix renderers give under the redundant tests.
     MATRIX_REDUNDANT_NOTE = "Delete redundant tests one at a time: two of them can be the only killers of one mutant."
@@ -50,13 +51,11 @@ module Mutineer
     # or to `out`. Diagnostics always go to `err`. `scoped` marks a diff-scoped
     # (`--since`) run; the JSON report records it so a consumer (or a later
     # `--baseline` load) knows the score covers only the changed-line mutants.
-    # `legacy_id_matches` (`{ignore:, baseline:}`) counts stored ids still in the
-    # old format (#126); only the JSON report records it (`summary.legacy_id_matches`).
     def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil,
-               baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 })
+               baseline: nil, scoped: false)
       rendered =
         if format == "json"
-          json_report(baseline, scoped: scoped, legacy_id_matches: legacy_id_matches)
+          json_report(baseline, scoped: scoped)
         elsif format == "html"
           html_report
         else
@@ -128,18 +127,21 @@ module Mutineer
       verdict(out, threshold) if threshold && threshold.positive?
     end
 
-    # 0 pass / 1 below threshold or untestable-with-errors. Usage errors (exit 2)
-    # are the CLI's job. When the score is nil (nothing killed or survived), pure
-    # no_coverage / all-ignored / empty still skip the gate; if any mutant was
-    # errored, timed out, or uncapturable, fail the gate so a broken harness
-    # cannot green CI under --threshold.
+    # 0 pass. 1 means the tests are too weak (score below the threshold).
+    # 3 means the run is not trustworthy: nothing could be scored and something
+    # broke, or more than one mutant produced no verdict and they exceed
+    # {BROKEN_SHARE_LIMIT} of those attempted. Usage errors (exit 2) and the
+    # other exit 3 cases are the CLI's job. When the score is nil (nothing
+    # killed or survived), pure no_coverage / all-ignored / empty still skip
+    # the gate; if any mutant was errored, timed out, or uncapturable, fail
+    # the gate so a broken harness cannot green CI under --threshold.
     def exit_code(threshold:)
       return 0 if threshold.nil? || threshold <= 0
 
       score = @agg.mutation_score
       if score.nil?
         broken = @agg.errored_count + @agg.timeout_count + @agg.uncapturable_count
-        return 1 if @agg.total.positive? && broken.positive?
+        return 3 if @agg.total.positive? && broken.positive?
 
         return 0 # pure no_coverage / ignored / empty — gate skipped
       end
@@ -147,7 +149,7 @@ module Mutineer
       # A score computed over a small slice of what was attempted is not this
       # suite's score. Without this, 90 errored mutants and 10 that ran (9 killed)
       # reports 90% and exits 0, so CI cannot tell a complete run from a broken one.
-      return 1 if broken_share_exceeded?
+      return 3 if broken_share_exceeded?
 
       score >= threshold ? 0 : 1
     end
@@ -162,11 +164,8 @@ module Mutineer
     # @param baseline [Mutineer::Baseline::Delta, nil] baseline delta.
     # @param scoped [Boolean] the run was diff-scoped (`--since`), so its score
     #   covers only the changed-line mutants (additive `summary.scoped` key).
-    # @param legacy_id_matches [Hash{Symbol => Integer}] `{ignore:, baseline:}`:
-    #   old-format ignore entries that matched, and survivors matched in an
-    #   old-format baseline only through their old id (#126).
     # @return [String] JSON text.
-    def json_report(baseline = nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 })
+    def json_report(baseline = nil, scoped: false)
       killed = @agg.killed_count
       survived = @agg.survived_count
       # null (not 0.0) on an empty denominator, matching the nil-vs-0.0
@@ -192,14 +191,9 @@ module Mutineer
           # covers only the changed-line mutants, so it is not comparable to a
           # full-run score; Baseline#diff reads this to skip the score-drop gate.
           scoped: scoped,
-          # Additive (1.4, #126): ids hash the project-relative file path. A
-          # baseline without this key stores old-format ids; Baseline#diff then
-          # also matches on old ids.
-          id_format: 2,
-          # Additive (1.4, #126): stored ids still in the old format. `ignore` is
-          # the number of old-format ignore entries that matched; `baseline` the
-          # survivors matched in the baseline only through their old id.
-          legacy_id_matches: legacy_id_matches
+          # Ids hash the project-relative file path. A baseline without this key
+          # is refused (exit 2): old-format ids do not match.
+          id_format: 2
         },
         survivors: @agg.surviving_mutants.map { |r| survivor_json(r) }
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },
@@ -964,8 +958,8 @@ module Mutineer
         return
       end
 
-      # Same rule as exit_code, or the report says PASSED on a run that exits 1 —
-      # and with --output that wrong verdict is what gets archived.
+      # Same rule as exit_code, or the report says PASSED on a run that exits 3.
+      # With --output that wrong verdict is what gets archived.
       if broken_share_exceeded?
         out.puts "FAILED: #{no_verdict_ratio}; #{score}% covers only part of the run"
       elsif score >= threshold

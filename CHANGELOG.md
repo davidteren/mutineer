@@ -62,6 +62,40 @@ All notable changes to this project are documented here. The format is based on
   for every format.** "No mutations generated" is gone. An empty `--since`
   run prints "nothing to test in the changes since REF" instead.
 
+## [2.0.0] - 2026-10-09
+
+### Changed
+
+- **Exit codes.** Exit 1 means the tests are too weak. The score is below
+  `--threshold`, or a `--baseline` regression. Exit 3 means the run is not
+  trustworthy. That is a red unmutated suite, a daemon boot or provisioning
+  failure, a runtime error, an empty full scan, or more than one mutant
+  with no verdict when they exceed 10% of those attempted. Fail CI when
+  the exit code is not 0:
+
+  ```yaml
+  - uses: davidteren/mutineer@v2
+    id: mutineer
+  - name: Fail unless the run passed
+    if: steps.mutineer.outputs.exit-code != '0'
+    run: exit 1
+  ```
+
+- **Unknown config keys and operator names exit 2.** The message names the
+  key or operator and the closest valid name. This includes an unknown key
+  inside an `ignore:` mapping. `--operators` still replaces the file list.
+- **An empty full scan exits 3** unless `--allow-empty` is set. An empty
+  `--since` run still exits 0. It says the changes hold nothing to test.
+- **Old ids do not match.** An old `ignore:` id does not suppress its
+  mutant. A full scan warns once per unmatched id and names
+  `mutineer migrate`. A `--since` run does not warn. A baseline with no
+  `id_format` exits 2. Generate a new baseline with `--format json`.
+  `mutineer migrate` still rewrites `ignore:` entries.
+- **JSON `schema_version` is `2.0`.** `summary.legacy_id_matches` is gone.
+  The Action no longer warns about old ids.
+
+Parallel `--rails` is not the default in this release.
+
 ## [1.6.0] - 2026-10-08
 
 ### Added
@@ -1206,6 +1240,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[2.0.0]: https://github.com/davidteren/mutineer/releases/tag/v2.0.0
 [1.6.0]: https://github.com/davidteren/mutineer/releases/tag/v1.6.0
 [1.5.0]: https://github.com/davidteren/mutineer/releases/tag/v1.5.0
 [1.4.0]: https://github.com/davidteren/mutineer/releases/tag/v1.4.0

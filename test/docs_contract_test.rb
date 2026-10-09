@@ -29,7 +29,7 @@ class DocsContractTest < Minitest::Test
     surfaces = DISK_SURFACES.to_h { |path| [path, -> { File.read(path) }] }.merge(RENDERED_SURFACES)
     surfaces.each do |path, render|
       text = render.call
-      %w[0 1 2].each do |code|
+      %w[0 1 2 3].each do |code|
         assert_includes text, code
         assert_includes plain(text), plain(DocsContract.meaning_plain(code)),
           "#{path} is missing exit-code #{code} meaning"
@@ -109,6 +109,10 @@ class DocsContractTest < Minitest::Test
     end
     assert_operator block.scan("not supported").length, :>=, 2,
       "several databases must say not supported"
+  end
+
+  def test_run_errors_exit_three
+    assert_equal [3], Mutineer::CLI::RUN_EXIT.values.uniq
   end
 
   def test_stability_lists_every_readme_exit_code

@@ -7,7 +7,7 @@ require_relative "result"
 module Mutineer
   # Raised when the smoke check (the unmutated suite) is not green, so the run
   # aborts before scoring — a broken environment must never be reported as strong
-  # tests. The CLI maps this to a runtime error (exit 1), not a usage error.
+  # tests. The CLI maps this to a runtime error (exit 3), not a usage error.
   class SmokeCheckError < StandardError; end
 
   # External execution backend. Runs the user's `--test-command` as a subprocess

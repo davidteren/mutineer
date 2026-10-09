@@ -2,23 +2,31 @@
 # Edit this file, then run `rake docs:generate`.
 ---
 threshold_readme: >-
-  Exit 1 when the score is below FLOAT, or when nothing could be scored and
-  something broke, or more than one mutant produced no verdict and they exceed
-  10% of those attempted (default: 0 = off)
+  Exit 1 when the score is below FLOAT (default: 0 = off). An untrustworthy
+  run exits 3 instead: nothing could be scored and something broke, or more
+  than one mutant produced no verdict and they exceed 10% of those attempted.
 threshold_action: >-
-  Fail (exit 1) when the mutation score is below this value, or when nothing
-  could be scored and something broke, or more than one mutant produced no
-  verdict and they exceed 10% of those attempted (0 = off).
+  Fail (exit 1) when the mutation score is below this value (0 = off). An
+  untrustworthy run exits 3: nothing could be scored and something broke, or
+  more than one mutant produced no verdict and they exceed 10% of those
+  attempted.
 exit_code_action: >-
-  The exit code returned by mutineer (0 pass, 1
-  below-threshold/incomplete-run/regressed, 2 usage).
+  The exit code returned by mutineer (0 pass, 1 tests too weak, 2 usage,
+  3 untrustworthy run).
 exit_codes:
   - code: "0"
     meaning: Score ≥ threshold (or no gate) **and** no baseline regression.
   - code: "1"
     meaning: >-
-      Score below `--threshold`, OR nothing could be scored and something
-      broke, or more than one mutant produced no verdict and they exceed 10%
-      of those attempted, OR a `--baseline` regression, OR a runtime error.
+      The tests are too weak. The score is below `--threshold`, or a
+      `--baseline` regression.
   - code: "2"
-    meaning: Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline).
+    meaning: >-
+      Usage error (mistyped flag, unknown config key, bad path, unreadable
+      baseline, or a baseline with no id_format).
+  - code: "3"
+    meaning: >-
+      The run could not give a trustworthy result. A red unmutated suite, a
+      daemon boot or provisioning failure, a runtime error, an empty full
+      scan, or more than one mutant with no verdict when they exceed 10% of
+      those attempted.

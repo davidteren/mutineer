@@ -29,14 +29,12 @@ module Mutineer
     # the parent can reattach it after the run. Shared by the in-process,
     # external, and daemon backends so job selection can never drift.
     #
-    # Each mutant also gets its old-format id ({MutantId.legacy_for}), so an ignore
-    # entry stored before ids carried the path still suppresses it. Prints nothing:
-    # the extras hash returns, as data, `legacy_ignore_matches` (each old-format
-    # ignore entry that matched a mutant through its old-format id => one
-    # `{id:, file:, subject:}` hash per matched mutant, in collection order: its
-    # new id, its project-relative file and its subject's qualified name;
-    # recorded even when a new id is also listed, since the old entry still
-    # over-matches other files) and `id_map` (every new id => its old-format id).
+    # Each mutant also gets its old-format id ({MutantId.legacy_for}). A bare
+    # old id does not match `ignore:` or a baseline. A mapping's id still
+    # matches, including an old id, unless that string is already a current id
+    # in this run. The extras hash returns `id_map` (every new id => its
+    # old-format id) so `mutineer migrate` can rewrite old ignore entries.
+    # Prints nothing.
     #
     # Subjects sharing a qualified name in one file (two owner-less `def index`
     # in two DSL blocks) get a per-file ordinal in discovery order, so their ids
@@ -45,7 +43,7 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @param operator_classes [Array<Class>] resolved operators.
     # @return [Array(Array, Array<Result>, Hash<String,String>, Hash{Symbol => Hash})]
-    #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`, `:id_map`).
+    #   jobs, ignored, source_map, and extras (`:id_map`).
     def self.collect_jobs(config, operator_classes)
       source_map = {}
       disabled_map = {}
@@ -56,10 +54,8 @@ module Mutineer
       name_decls = Hash.new { |h, k| h[k] = {} }
       ignore_set = config.ignore.to_set
       ignore_reasons = config.ignore_reasons || {}
-      jobs = []
-      ignored_results = []
-      legacy_ignore_matches = {}
-      id_map = {}
+      mapped_ids = Array(config.ignore_mapped_ids).to_set
+      records = []
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
@@ -71,31 +67,38 @@ module Mutineer
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
         lines = mutations.map { |m| source.byteslice(0, m.start_offset).count("\n") + 1 }
         keys = result_keys(mutations, source, lines)
+        mutations.each_with_index do |mutation, i|
+          records << [subject, mutation, ids[i], legacy_ids[i], lines[i], keys[i], disabled]
+        end
+      end
+
+      # A mapping id that is already some mutant's current id must not also
+      # suppress another mutant that still hashes to that string as its old id.
+      current_ids = records.map { |row| row[2] }.to_set
+      jobs = []
+      ignored_results = []
+      id_map = {}
+      records.group_by(&:first).each_value do |group|
         # A repeat of an earlier edit on the same line is dropped (#159),
         # separately among the run and the ignored mutants, so an ignored copy
         # never hides a copy that should run. A dropped copy records nothing.
         seen = { run: Set.new, ignored: Set.new }
-        mutations.each_with_index do |mutation, i|
-          id = ids[i]
-          legacy = legacy_ids[i]
-          ignored = suppressed?(mutation.operator, lines[i], [id, legacy], disabled, ignore_set)
-          next unless seen[ignored ? :ignored : :run].add?(keys[i])
+        group.each do |subject, mutation, id, legacy, line, key, disabled|
+          legacy_hit = mapped_ids.include?(legacy) && !current_ids.include?(legacy) && ignore_set.include?(legacy)
+          match_ids = legacy_hit ? [id, legacy] : id
+          ignored = suppressed?(mutation.operator, line, match_ids, disabled, ignore_set)
+          next unless seen[ignored ? :ignored : :run].add?(key)
 
           id_map[id] = legacy
-          # An old entry still over-matches other files even when the new id is
-          # listed too, so every old-entry match is reported for migration.
-          if ignore_set.include?(legacy)
-            (legacy_ignore_matches[legacy] ||= []) << { id: id, file: id_path, subject: subject.qualified_name }
-          end
           if ignored
-            reason = suppression_reason(mutation.operator, lines[i], [id, legacy], disabled, ignore_reasons)
+            reason = suppression_reason(mutation.operator, line, match_ids, disabled, ignore_reasons)
             ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id, reason: reason)
           else
             jobs << [subject, mutation, id]
           end
         end
       end
-      [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map }]
+      [jobs, ignored_results, source_map, { id_map: id_map }]
     end
 
     # One key per mutation; two mutations share a key exactly when they are
@@ -298,12 +301,12 @@ module Mutineer
     end
 
     # True when this mutant is suppressed: its line bears a disable-line marker
-    # (bare, or scoped to its operator), OR its new or old-format id is in the
-    # config ignore list. Checked at job-build time so a suppressed mutant is
-    # never forked.
+    # (bare, or scoped to its operator), OR one of `ids` is in the config ignore
+    # list. The caller passes the current id. It also passes a mapping's old id
+    # when that mapping still applies. A bare old id is not passed, so it does
+    # not match. Checked at job-build time so a suppressed mutant is never forked.
     #
-    # @param ids [Array<String>, String] the mutant's new id and its old-format
-    #   id, or a single id (the pre-#126 call shape).
+    # @param ids [Array<String>, String] the mutant's current id, or several ids.
     def self.suppressed?(operator, line, ids, disabled, ignore_set)
       return true if Array(ids).any? { |id| ignore_set.include?(id) }
 
@@ -319,7 +322,7 @@ module Mutineer
     #
     # @param operator [Symbol] the mutant's operator.
     # @param line [Integer] the mutant's line.
-    # @param ids [Array<String>] the new id and the old-format id.
+    # @param ids [Array<String>, String] the current id, or several ids.
     # @param disabled [Hash] the file's suppress map.
     # @param ignore_reasons [Hash{String => String}] id => reason.
     # @return [String, nil]

@@ -83,7 +83,9 @@ jobs:
       # line, so `uses: davidteren/mutineer@v1` tracks the latest v1.x.y.
       - name: Move floating major tag
         run: |
+          # MUTINEER_MAJOR_TAG_START
           set -euo pipefail
           major="${GITHUB_REF_NAME%%.*}"
           git tag -f "$major" "$GITHUB_REF_NAME"
           git push -f origin "$major"
+          # MUTINEER_MAJOR_TAG_END
