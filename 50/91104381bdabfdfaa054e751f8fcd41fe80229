@@ -1,0 +1,48 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 9-18
+README.md
+  h_e8a5bb9272fa34 142-151
+docs/agentic-coding.html
+  h_e8a5bb9272fa34 38
+docs/index.html
+  h_e8a5bb9272fa34 38
+docs/llms.txt
+  h_e8a5bb9272fa34 27,46
+docs/rails.html
+  h_e8a5bb9272fa34 1-139
+docs/rails.md
+  h_e8a5bb9272fa34 1-97
+docs/sample-report.html
+  h_e8a5bb9272fa34 31
+lib/mutineer.rb
+  h_e8a5bb9272fa34 44
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 17,37-39,97-100
+lib/mutineer/init.rb
+  h_e8a5bb9272fa34 1-106
+rake/docs_contract.rb
+  h_e8a5bb9272fa34 494
+rake/site_docs.rb
+  h_e8a5bb9272fa34 22-23,38-39,52
+test/browser/site.spec.js
+  h_e8a5bb9272fa34 25,41
+test/cli_test.rb
+  h_e8a5bb9272fa34 1029-1039
+test/init_test.rb
+  h_e8a5bb9272fa34 1-99
+test/site_docs_test.rb
+  h_e8a5bb9272fa34 6,73-93
+test/site_test.js
+  h_e8a5bb9272fa34 72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5091104381bdabfdfaa054e751f8fcd41fe80229",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
