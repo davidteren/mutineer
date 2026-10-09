@@ -61,7 +61,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
 | `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
 | `--framework NAME` | `minitest` (default) or `rspec`; auto-detected as rspec when most `--test` files end in `_spec.rb` |
-| `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`). Untracked files are scored in full unless Git ignores them. |
+| `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`). Untracked files are scored in full unless Git ignores them. The report lists only suppressed mutants on changed lines, too. |
 | `--no-since` | Disable diff scoping; a typed no beats a `.mutineer.yml` `since:` key |
 | `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (score drop is skipped under `--since`, whose score covers a different denominator; see [CI](https://github.com/davidteren/mutineer#ci-gating)) |
 | `--baseline-epsilon FLOAT` | Score-drop tolerance for `--baseline` (default: 0) |
