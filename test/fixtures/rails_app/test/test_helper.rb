@@ -11,6 +11,10 @@ load File.expand_path("../db/schema.rb", __dir__)
 
 module ActiveSupport
   class TestCase
+    # The app asks Rails to parallelize. Mutineer sets PARALLEL_WORKERS to 1
+    # so this stays one process and does not create Rails worker databases.
+    parallelize(workers: 4, threshold: 1)
+
     # Real transactional fixtures (the default): each test runs inside a
     # transaction that is rolled back. This is precisely the path Mutineer's
     # per-fork `reconnect_active_record` must not clobber (#8).

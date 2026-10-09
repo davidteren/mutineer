@@ -59,11 +59,6 @@ module Mutineer
         return [AggregateResult.new(ignored_results), source_map, extras]
       end
 
-      # Build the coverage map once (app-side). nil when the build fails: runners
-      # fall back to the full --test set (and emit a stderr warning) rather than
-      # mis-scoring everything as no_coverage.
-      coverage_map = build_coverage_map(config, abs_tests)
-
       # Worker count = resolved --jobs, capped at the job count (no idle daemons).
       # >1 → N concurrent daemon handles, each on its OWN worker DB (N-handles, the
       # spike-proven shape). 1 → the serial single-daemon path. --fail-fast forces
@@ -71,9 +66,16 @@ module Mutineer
       # input index, so the verdict set would diverge from serial (a different,
       # non-deterministic survivor set/score). The "identical to --jobs 1" guarantee
       # below only holds when fail-fast cannot race.
+      # A second database config is only known after the app boots, so the first
+      # daemon can still lower this count before any worker starts.
       worker_count = [config.jobs || 1, 1].max
       worker_count = 1 if config.fail_fast
       worker_count = [worker_count, jobs.size].min
+
+      # One booted process copies Postgres worker databases, then builds the
+      # coverage map. A cached map still provisions: the copy has to happen
+      # while no worker is connected to the template database.
+      coverage_map, worker_count = prepare_run(config, abs_tests, worker_count)
 
       results =
         if worker_count > 1
@@ -101,11 +103,60 @@ module Mutineer
     def self.build_coverage_map(config, abs_tests)
       client = DaemonClient.new(boot: boot_config(config, abs_tests, coverage: true),
                                 app_root: config.project_root).start
-      data = begin
-        client.coverage
+      begin
+        coverage_map_from_client(client, config)
       ensure
         client.quit
       end
+    rescue DaemonBootTimeout
+      raise
+    rescue DaemonBootError => e
+      warn_coverage_fallback("#{e.class}: #{e.message}")
+      nil
+    end
+
+    # Boot the first daemon, copy worker databases, then read the coverage map
+    # from that same process. A boot failure still falls back to the full test
+    # set. A provisioning failure does not: it stops the run.
+    #
+    # @param config [Mutineer::Config]
+    # @param abs_tests [Array<String>]
+    # @param worker_count [Integer] slots requested before the database count is known.
+    # @return [Array] the coverage map (or nil) and the worker count to start.
+    def self.prepare_run(config, abs_tests, worker_count)
+      client = nil
+      begin
+        client = DaemonClient.new(boot: boot_config(config, abs_tests, coverage: true),
+                                  app_root: config.project_root).start
+      rescue DaemonBootTimeout
+        raise
+      rescue DaemonBootError => e
+        warn_coverage_fallback("#{e.class}: #{e.message}")
+        return [nil, worker_count]
+      end
+
+      begin
+        count = client.database_count.to_i
+        if count > 1 && worker_count > 1
+          warn "[mutineer] this app has #{count} databases; Mutineer runs one worker. " \
+               "Parallel runs support one database."
+          worker_count = 1
+        end
+        # Raises DaemonBootError. Callers must not score mutants after this.
+        client.provision(worker_count)
+        [coverage_map_from_client(client, config), worker_count]
+      ensure
+        client.quit
+      end
+    end
+
+    # Turn one daemon's coverage reply into a map. Does not start or stop the daemon.
+    #
+    # @param client [Mutineer::DaemonClient]
+    # @param config [Mutineer::Config]
+    # @return [Mutineer::CoverageMap, nil]
+    def self.coverage_map_from_client(client, config)
+      data = client.coverage
       # A red unmutated suite must abort, even when the shipped map is empty.
       # Falling back to the full --test set would treat those failures as kills.
       if data.is_a?(Hash) && Array(data["failed_clean_tests"]).any?
@@ -285,8 +336,10 @@ module Mutineer
     # @param config [Mutineer::Config] the run config.
     # @param abs_tests [Array<String>] absolute --test paths.
     # @param coverage [Boolean] whether this daemon builds the coverage map.
+    # @param db_role [String, nil] "prepare" (copy databases on command),
+    #   "worker" (lock only), or nil to pick from `coverage`.
     # @return [Hash] the boot config shipped to the daemon.
-    def self.boot_config(config, abs_tests, coverage: false)
+    def self.boot_config(config, abs_tests, coverage: false, db_role: nil)
       {
         project_root: config.project_root,
         boot: File.expand_path(config.boot || "config/environment", config.project_root),
@@ -306,6 +359,9 @@ module Mutineer
         # instrumentation/memory across every mutant fork). `sources`/`tests` are the
         # map-build inputs.
         coverage: coverage,
+        # "prepare" copies worker databases when asked. "worker" only locks.
+        # A direct client that omits this provisions at boot instead.
+        db_role: db_role || (coverage ? "prepare" : "worker"),
         # The map-building daemon's capture limit (--capture-timeout); nil = default.
         capture_timeout: config.capture_timeout,
         sources: config.sources.map { |s| File.expand_path(s, config.project_root) },
@@ -346,6 +402,7 @@ module Mutineer
     # tests drive directly: {boot_config} from the zero-dep suite and
     # {build_coverage_map} from the daemon suite. Everything else is daemon-pipeline
     # internals with no caller outside this file.
-    private_class_method :run_serial, :run_parallel, :job_result, :schema_path, :result_for
+    private_class_method :run_serial, :run_parallel, :job_result, :schema_path, :result_for,
+                         :prepare_run, :coverage_map_from_client
   end
 end

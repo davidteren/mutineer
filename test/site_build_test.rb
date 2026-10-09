@@ -48,6 +48,21 @@ class SiteBuildTest < Minitest::Test
     refute File.exist?(File.join(ROOT, "docs/skill.md")), "one copy only: the build writes _site/skill.md"
   end
 
+  def test_production_ready_section_is_spliced_into_the_home_page
+    Dir.mktmpdir do |dest|
+      File.write(File.join(dest, "index.md"), File.read(File.join(ROOT, "docs/index.md")))
+      File.write(File.join(dest, "index.html"), File.read(File.join(ROOT, "docs/index.html")))
+      SiteBuild.send(:splice_production_ready!, dest)
+      md = File.read(File.join(dest, "index.md"))
+      html = File.read(File.join(dest, "index.html"))
+      assert_includes md, "## Is it production-ready?"
+      assert_includes html, "Is it production-ready?"
+      assert_includes html, 'id="production-ready"'
+      assert_includes html, "PostgreSQL"
+      refute_includes html, "contract:support-matrix"
+    end
+  end
+
   def test_tracked_docs_paths_raises_outside_a_checkout
     Dir.mktmpdir do |dir|
       # Stop git at `dir`, even when the temp directory sits inside a checkout.

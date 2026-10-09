@@ -38,8 +38,39 @@ class RailsWorkerDbTest < Minitest::Test
 
   def test_per_worker_config_derives_postgres_worker_database
     cfg = Mutineer::RailsWorkerDb.per_worker_config({ "adapter" => "postgresql", "database" => "myapp_test" }, 2)
-    assert_equal "myapp_test-2", cfg[:database], "Rails parallelize naming, PG-ready for U10"
+    assert_equal "myapp_test-mutineer-2", cfg[:database]
     assert_equal "postgresql", cfg[:adapter]
+    assert_equal "myapp_test-mutineer-3",
+                 Mutineer::RailsWorkerDb.postgres_worker_database("myapp_test", 3)
+  end
+
+  def test_long_postgres_names_stay_within_63_bytes_and_differ_by_slot
+    base = "a" * 60
+    one = Mutineer::RailsWorkerDb.postgres_worker_database(base, 1)
+    two = Mutineer::RailsWorkerDb.postgres_worker_database(base, 2)
+    assert_operator one.bytesize, :<=, 63
+    assert_operator two.bytesize, :<=, 63
+    refute_equal one, two
+
+    shared = "b" * 50
+    left = Mutineer::RailsWorkerDb.postgres_worker_database("#{shared}#{'c' * 10}", 1)
+    right = Mutineer::RailsWorkerDb.postgres_worker_database("#{shared}#{'d' * 10}", 1)
+    refute_equal left, right
+    assert_operator left.bytesize, :<=, 63
+    assert_operator right.bytesize, :<=, 63
+  end
+
+  def test_owned_database_matches_the_exact_worker_name_only
+    assert Mutineer::RailsWorkerDb.owned_database?("myapp_test", "myapp_test-mutineer-1", slots: 4)
+    # "_" is not a wildcard here. A SQL LIKE against myXappXtest would lie.
+    refute Mutineer::RailsWorkerDb.owned_database?("myXappXtest", "my_app_test-mutineer-1", slots: 4)
+  end
+
+  def test_mysql_adapter_is_not_provisioned_here
+    error = assert_raises(NotImplementedError) do
+      Mutineer::RailsWorkerDb.per_worker_config({ adapter: "mysql2", database: "app_test" }, 0)
+    end
+    refute_includes error.message, "Postgres per-worker provisioning is not yet supported"
   end
 
   def test_per_worker_config_rejects_memory_database

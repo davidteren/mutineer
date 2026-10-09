@@ -14,6 +14,7 @@ class DocsContractTest < Minitest::Test
   # Committed Markdown/README surfaces, read straight from disk.
   DISK_SURFACES = %w[
     README.md
+    STABILITY.md
     docs/json-schema.md
     docs/agentic-coding.md
   ].freeze
@@ -106,6 +107,34 @@ class DocsContractTest < Minitest::Test
     version = Mutineer::Reporter::SCHEMA_VERSION
     assert_equal version, DocsContract.schema_version(File.read("docs/json-schema.md"))
     assert_includes DocsContract.json_schema_html, "schema_version #{version}</span>"
+  end
+
+  # The support matrix is one marked block. A missing block or a missing
+  # database row fails this test.
+  def test_readme_support_matrix_names_each_database
+    readme = File.read("README.md")
+    assert_equal "## Is it production-ready?", readme[/^## .+$/]
+    block = readme[/<!-- contract:support-matrix -->\n(.*?)<!-- \/contract:support-matrix -->/m]
+    flunk("README is missing the support-matrix contract block") unless block
+    ["SQLite file", "PostgreSQL", "MySQL", "SQLite in memory", "more than one database"].each do |name|
+      assert_includes block, name, "support matrix is missing #{name}"
+    end
+    assert_operator block.scan("not supported").length, :>=, 2,
+      "several databases must say not supported"
+  end
+
+  def test_stability_lists_every_readme_exit_code
+    block = File.read("README.md")[/<!-- contract:exit-codes -->.*?<!-- \/contract:exit-codes -->/m]
+    codes = block.scan(/^\| `(\d+)` /).flatten
+    refute_empty codes
+    stability = File.read("STABILITY.md")
+    codes.each { |code| assert_includes stability, "`#{code}`", "STABILITY.md is missing exit code #{code}" }
+  end
+
+  def test_json_schema_links_to_the_stability_contract
+    html = DocsContract.json_schema_html
+    assert_includes html, "https://github.com/davidteren/mutineer/blob/main/STABILITY.md"
+    refute_includes html, "STABILITY.html"
   end
 
   def test_json_schema_html_carries_markdown_source_content

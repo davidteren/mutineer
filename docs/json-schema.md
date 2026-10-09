@@ -24,6 +24,10 @@ Mutant `id` values are opaque identifiers. How an id is derived is versioned by
 value can change while the key keeps its type and meaning. Compare ids only
 between reports with the same `id_format` (a missing key is the old format).
 
+The stability contract lists every versioned surface.
+This schema is one of them.
+See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md).
+
 ## Top-level shape
 
 ```jsonc

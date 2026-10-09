@@ -15,8 +15,8 @@ class RunnerExternalTest < Minitest::Test
   FIXTURES = File.expand_path("fixtures", __dir__)
   RUBY     = RbConfig.ruby
 
-  def mutineer(*args, chdir:)
-    Open3.capture3(RUBY, "-I#{File.join(ROOT, 'lib')}", BIN, *args, chdir: chdir)
+  def mutineer(*args, chdir:, env: {})
+    Open3.capture3(env, RUBY, "-I#{File.join(ROOT, 'lib')}", BIN, *args, chdir: chdir)
   end
 
   def with_project(test_file)
@@ -119,6 +119,28 @@ class RunnerExternalTest < Minitest::Test
                                    "--cache-dir", "tmp/c", "--test-command", "#{RUBY} %{files}", chdir: proj)
       assert_equal 0, status.exitstatus
       assert_includes err, "--cache-dir has no effect with --test-command"
+    end
+  end
+
+  # The child sees PARALLEL_WORKERS=1 and DISABLE_SPRING=1 on every spawn.
+  # A user value is replaced once, not once per mutant.
+  def test_test_command_replaces_parallel_workers_and_disables_spring
+    with_project("calculator_strong_test.rb") do |proj|
+      log = File.join(proj, "child-env.log")
+      probe = File.join(proj, "probe.rb")
+      File.write(probe, <<~RUBY)
+        File.open(#{log.dump}, "a") do |file|
+          file.puts([ENV["PARALLEL_WORKERS"], ENV["DISABLE_SPRING"]].inspect)
+        end
+      RUBY
+      _out, err, status = mutineer(
+        "run", "calculator.rb", "--test", "calculator_strong_test.rb",
+        "--test-command", "#{RUBY} #{probe} %{files}",
+        chdir: proj, env: { "PARALLEL_WORKERS" => "8" }
+      )
+      assert_equal 0, status.exitstatus, "stdout:#{_out}\nstderr:#{err}"
+      assert_equal ['["1", "1"]'], File.readlines(log).map(&:strip).uniq
+      assert_equal 1, err.scan('PARALLEL_WORKERS was "8"').size
     end
   end
 

@@ -29,6 +29,63 @@ for how the two tools differ.
 
 📖 **[mutineer.github.io →](https://davidteren.github.io/mutineer/)** — overview, operators, and usage.
 
+## Is it production-ready?
+
+Read this section before you gate an app on Mutineer.
+Adopt a cell that says supported or serial only.
+Avoid a cell that says not supported.
+
+Mutineer itself needs Ruby 3.4 or later.
+In-process runs fork, so use Linux or macOS.
+A plain Ruby project with no database is supported.
+It runs in parallel on those systems.
+
+<!-- contract:support-matrix -->
+| Ruby | Database | Framework | Parallelism | Status |
+| --- | --- | --- | --- | --- |
+| 3.4 or later | SQLite file | Minitest | supported with `--daemon` | supported |
+| 3.4 or later | SQLite file | RSpec | not supported | serial only |
+| 3.4 or later | PostgreSQL | Minitest | supported with `--daemon` | supported |
+| 3.4 or later | PostgreSQL | RSpec | not supported | serial only |
+| 3.4 or later | MySQL | Minitest | not supported | serial only |
+| 3.4 or later | MySQL | RSpec | not supported | serial only |
+| 3.4 or later | SQLite in memory | Minitest | not supported | serial only |
+| 3.4 or later | SQLite in memory | RSpec | not supported | serial only |
+| 3.4 or later | more than one database | Minitest | one worker | serial only |
+| 3.4 or later | more than one database | RSpec | not supported | serial only |
+
+This matrix is for a Rails app on Ruby 3.4 or later.
+`supported` means you can run that cell in parallel.
+`serial only` means the safe run uses one worker.
+`not supported` means `--daemon` cannot run that cell.
+SQLite file means a database file, not `:memory:`.
+Minitest on that file can use `--daemon`.
+RSpec on that file is serial only.
+PostgreSQL with Minitest can use `--daemon`.
+PostgreSQL with RSpec is serial only.
+MySQL is serial only.
+A `:memory:` database is serial only.
+An app with more than one database runs one worker.
+`--daemon` isolates only the primary connection.
+`--rails` without `--daemon` is serial on every row.
+A Postgres worker database is copied once, at the start of the run.
+A test that commits rows outside a transaction leaves them in that worker database.
+The next mutant on that worker sees those rows.
+Rails parallel tests have the same ceiling.
+Rails `parallelize` is off in a mutant run.
+See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis).
+
+<!-- /contract:support-matrix -->
+
+An app on an older Ruby uses `--test-command`.
+Mutineer still runs on Ruby 3.4 or later.
+That path is serial.
+It does not narrow tests by coverage.
+A crash in the command can count as a kill.
+
+What a release will not break is in
+[STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md).
+
 ## Install
 
 ```sh
@@ -141,6 +198,34 @@ Add Mutineer to your Gemfile's test group:
 gem "mutineer", group: :test, require: false
 ```
 
+### Rails parallel tests, Spring, Bootsnap, and Redis
+
+Mutineer sets `PARALLEL_WORKERS` to `1` for every run.
+Rails then runs each mutant's tests in one process.
+Your `parallelize(workers:)` call stays in `test_helper.rb`.
+It does not start Rails workers during a mutant run.
+If you already set `PARALLEL_WORKERS` to another value, Mutineer replaces it and prints one line.
+A wrapper script that sets `PARALLEL_WORKERS` again wins over Mutineer.
+That wrapper runs inside `--test-command`.
+
+Mutineer does not run your `parallelize_setup` hooks.
+Rails registers its own database hook in that same list.
+Running the list would point the tests at `<base>-<n>` instead of Mutineer's database.
+
+`--test-command` also sets `DISABLE_SPRING=1`.
+Spring does not start for that command.
+The `--daemon` path loads `config/environment` itself, so Spring does not start there either.
+A wrapper that sets `DISABLE_SPRING` again wins, same as `PARALLEL_WORKERS`.
+
+Bootsnap's cache is safe to share across these processes.
+The cache key is the file content, not the process.
+Clear a stale cache by deleting `tmp/cache/bootsnap` (the path your `config/boot.rb` sets).
+
+Redis clients reconnect after a fork.
+Rails registers that reconnect with `ActiveSupport::ForkTracker`.
+`redis-client` does the same.
+You do not set anything in Mutineer for this.
+
 ### Faster, parallel-safe Rails (the `--daemon` backend)
 
 `--rails` boots your app once but runs mutants **serially** — parallel `--jobs`
@@ -171,10 +256,13 @@ RAILS_ENV=test bundle exec mutineer run \
 - **One backend at a time** — `--daemon` can't be combined with `--test-command`
   (choose one), and it needs an app to boot (`--rails` or `--boot`).
 
-Status: **SQLite** only (hermetic, CI-proven). Per-worker provisioning for
-**Postgres** and other adapters is not supported: on those, `--daemon` scores
-every mutant as `error`. Use `--daemon` with a SQLite test database, or drop
-`--daemon` to run serially on other adapters.
+Status: **SQLite** and **PostgreSQL** (Minitest). Each Postgres worker uses a
+database named `<base>-mutineer-<N>` (shortened when that would pass 63 bytes).
+Mutineer copies the test database into those names before the workers start,
+and leaves them in place when the run ends. Drop one with
+`DROP DATABASE "myapp_test-mutineer-0";` (use your test database name and slot).
+MySQL is not supported on `--daemon` yet: the run stops before it scores a mutant.
+A `:memory:` database is not supported on `--daemon`.
 
 ### Apps on Ruby < 3.4
 
@@ -237,10 +325,11 @@ Mutineer also surfaces a targeted smoke-check message when Bundler prints
 Tradeoffs — this path is correct but not free:
 
 - **Slower:** your app re-boots for every mutant (no shared boot yet).
-- **No coverage narrowing:** every mutant runs the *full* `--test` set, so the
-  score is an **upper bound and not comparable to an in-process (`--rails`)
-  score** — uncovered mutants count as survivors, and an infrastructure failure
-  is scored as a kill. Mutineer prints this caveat on every run and aborts up
+- **No coverage narrowing:** every mutant runs the full `--test` set.
+  The run is serial.
+  A crash in the command can count as a kill.
+  Uncovered mutants count as survivors.
+  Mutineer prints this caveat on every run and aborts up
   front (a "smoke check") if your unmutated suite isn't green.
 - **Reload strategy only** (`--strategy redefine` is rejected on this path) and
   **serial** (`--jobs` is forced to 1). For apps on Ruby ≥ 3.4, `--daemon` gives
