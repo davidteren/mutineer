@@ -11,8 +11,15 @@ All notable changes to this project are documented here. The format is based on
 - **Postgres worker databases for `--rails --daemon`.** Each worker gets
   `<base>-mutineer-<N>`, copied from the test database before mutants run.
   A second run cannot drop a database another live run holds. An app with
-  more than one database config runs one worker and says so once. MySQL is
-  unchanged. The worker databases stay after the run.
+  more than one database config runs one worker and says so once.
+  The worker databases stay after the run.
+
+- **MySQL 8 worker databases for `--rails --daemon`.** Each worker gets
+  `<base>-mutineer-<N>` on `mysql2` or `trilogy`. Mutineer creates the
+  database, loads `schema.rb` or `structure.sql`, and copies rows once at
+  the start. A second run cannot drop a database another live run holds.
+  MariaDB is not tested. MySQL 5.7 is not supported. The worker databases
+  stay after the run.
 
 - **A production-ready section and a stability contract.** The README opens
   with a support matrix for Ruby, database, framework, and parallelism.

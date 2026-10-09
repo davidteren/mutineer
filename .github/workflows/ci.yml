@@ -123,6 +123,49 @@ jobs:
       - name: Daemon integration tests on Postgres 16
         run: bundle exec rake test:daemon
 
+  rails-mysql:
+    name: rails daemon mysql 8 (ruby 3.4)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: mutineer
+          MYSQL_ROOT_HOST: "%"
+          MYSQL_DATABASE: mutineer_rails_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pmutineer"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB: mysql
+      BUNDLE_WITH: mysql
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: mutineer
+      MYSQL_DATABASE: mutineer_rails_test
+      RAILS_ENV: test
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the MySQL client
+        run: sudo apt-get update && sudo apt-get install -y default-mysql-client default-libmysqlclient-dev pkg-config
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: test/fixtures/rails_app
+      - name: Install the fixture bundle with mysql2 and trilogy
+        working-directory: test/fixtures/rails_app
+        run: bundle install
+      - name: Install the gem bundle
+        run: bundle install
+      - name: Daemon integration tests on MySQL 8
+        run: bundle exec rake test:daemon
+
   site:
     name: website browser tests
     runs-on: ubuntu-latest

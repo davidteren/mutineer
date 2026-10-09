@@ -171,7 +171,7 @@ module Mutineer
         schema = cfg["schema"] && File.expand_path(cfg["schema"])
         @schema_path = schema if schema && File.exist?(schema)
         # Each SQLite slot is seeded once, on first use (not every mutant fork).
-        # Postgres slots are copied at provision time, so this flag is unused there.
+        # Postgres and MySQL slots are copied at provision time, so this flag is unused there.
         @slot_ready = {}
         return unless @worker_db
 
