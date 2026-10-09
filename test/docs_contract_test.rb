@@ -90,6 +90,18 @@ class DocsContractTest < Minitest::Test
     assert_match(/target missing/, error.message)
   end
 
+  # The README score badge uses the same number as the self-dogfood job.
+  def test_readme_badges_match_the_self_dogfood_threshold
+    readme = File.read("README.md")
+    workflow = File.read(".github/workflows/ci.yml")
+    assert_includes readme,
+      "https://github.com/davidteren/mutineer/actions/workflows/ci.yml/badge.svg?branch=main"
+    threshold = workflow[/self-dogfood:.*?--threshold (\d+(?:\.\d+)?)/m, 1]
+    refute_nil threshold, "the self-dogfood job needs a --threshold"
+    assert_includes readme, "mutation%20score-at%20least%20#{threshold}%25"
+    assert_includes readme, "mutation score at least #{threshold}%"
+  end
+
   def test_json_schema_page_and_source_name_the_reporter_schema_version
     version = Mutineer::Reporter::SCHEMA_VERSION
     assert_equal version, DocsContract.schema_version(File.read("docs/json-schema.md"))
