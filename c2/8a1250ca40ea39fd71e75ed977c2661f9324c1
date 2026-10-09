@@ -1,0 +1,25 @@
+lib/mutineer/daemon_backend.rb
+  s_139c48e2134bb7::t_a9a91f66a51ce8 75-81,83-93,133-135,145,157-158,160,220-221,223-224,226-231,238,240-241,253-254,256,264-265,275-276
+lib/mutineer/rails_worker_db.rb
+  s_139c48e2134bb7::t_3ba9e25a62cdca 36-42,130-155,548-549,553,586-589,593,595-600,624,678-680,686-694,704-705,712-727,741-773,784-785,790,794-811,849-871,873,912-914,928-929,934-935,945-946,956-957,963,972,975-1125
+test/daemon_backend_contract_test.rb
+  s_139c48e2134bb7::t_f0eab452f65d49 426-504
+test/rails_worker_db_test.rb
+  s_139c48e2134bb7::t_c5f5e66a023ef0 4,122-452
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c28a1250ca40ea39fd71e75ed977c2661f9324c1",
+  "prompts": {},
+  "sessions": {
+    "s_139c48e2134bb7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089293b8-bf7f-4fca-9b58-2370b9ff2a96",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
