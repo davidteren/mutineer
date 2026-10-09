@@ -139,9 +139,11 @@ module Mutineer
           require "coverage"
           Coverage.start(lines: true, methods: true)
         end
-        # Clear any mutant tempfile a prior SIGKILLed timeout child orphaned in a
-        # source dir BEFORE the app boots. Zeitwerk would otherwise choke on the
-        # tempfile's non-constant name during autoload setup.
+        # Clear a mutant tempfile a prior SIGKILLed child orphaned in a source
+        # dir BEFORE the app boots. Zeitwerk would otherwise choke on the
+        # tempfile's non-constant name during autoload setup. A file another
+        # live process still owns stays: this runs before the database lock,
+        # so a refused boot must not delete that run's mutant.
         sweep_temps
         require File.expand_path(cfg["boot"]) if cfg["boot"]
         # The --require files, after the boot as in-process (Runner.execute), so
@@ -299,10 +301,13 @@ module Mutineer
 
       # Remove orphaned mutant tempfiles from the source dirs (parent-side; the
       # SIGKILL path cannot run the child's ensure). Mirrors JobPlan.sweep_orphans.
+      # Skips a file another process still owns ({OrphanGuard.mutant_file_in_use?}).
       def sweep_temps
         @source_dirs.to_a.each do |dir|
-          Dir.glob(File.join(dir, "mutineer_daemon*.rb")).each do |f|
-            File.unlink(f) rescue nil # rubocop:disable Style/RescueModifier
+          Dir.glob(File.join(dir, "mutineer_daemon*.rb")).each do |path|
+            next if OrphanGuard.mutant_file_in_use?(path)
+
+            File.unlink(path) rescue nil # rubocop:disable Style/RescueModifier
           end
         end
       end
@@ -355,6 +360,9 @@ module Mutineer
       def apply_payload(payload)
         dir = File.dirname(File.expand_path(payload.fetch("source_file")))
         Tempfile.create(["mutineer_daemon", ".rb"], dir) do |f|
+          # Held until this block ends, including SIGKILL (the kernel drops it).
+          # Another run's sweep sees the lock and does not delete the file.
+          f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
           f.write(payload.fetch("code"))
           f.flush
           load f.path

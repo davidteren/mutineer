@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "digest"
+require "uri"
 
 module Mutineer
   # Per-worker database isolation for the daemon path.
@@ -34,6 +35,46 @@ module Mutineer
     # Database we connect to while the test database is a template. Advisory
     # locks are per database, so every run must take them here, not on a slot.
     MAINTENANCE_DATABASE = "postgres"
+    # Server catalogs a worker copy must never drop, even if a name bug
+    # produced one of them.
+    RESERVED_DATABASES = %w[postgres template0 template1].freeze
+    # Rails keys copied onto the maintenance `PG::Connection`. `database` is
+    # not here: that session always uses {MAINTENANCE_DATABASE}. `username` is
+    # Rails' spelling of libpq `user`. Anything else (adapter, variables,
+    # schema_search_path) is a Rails setting and would make libpq reject the
+    # connection.
+    LIBPQ_CONNECTION_KEYS = {
+      host: :host,
+      hostaddr: :hostaddr,
+      port: :port,
+      user: :user,
+      username: :user,
+      password: :password,
+      service: :service,
+      sslmode: :sslmode,
+      sslcert: :sslcert,
+      sslkey: :sslkey,
+      sslrootcert: :sslrootcert,
+      sslcrl: :sslcrl,
+      sslcompression: :sslcompression,
+      ssl_min_protocol_version: :ssl_min_protocol_version,
+      ssl_max_protocol_version: :ssl_max_protocol_version,
+      connect_timeout: :connect_timeout,
+      client_encoding: :client_encoding,
+      options: :options,
+      application_name: :application_name,
+      fallback_application_name: :fallback_application_name,
+      keepalives: :keepalives,
+      keepalives_idle: :keepalives_idle,
+      keepalives_interval: :keepalives_interval,
+      keepalives_count: :keepalives_count,
+      channel_binding: :channel_binding,
+      gssencmode: :gssencmode,
+      krbsrvname: :krbsrvname,
+      gsslib: :gsslib,
+      requiressl: :requiressl,
+      target_session_attrs: :target_session_attrs
+    }.freeze
 
     # True when the app has ActiveRecord loaded. The only condition under which
     # any other method here may touch AR. Never triggers an autoload/require of
@@ -58,12 +99,13 @@ module Mutineer
 
     # Postgres (and later MySQL) worker database name: `<base>-mutineer-<slot>`.
     # When that is longer than {POSTGRES_NAME_LIMIT} bytes, the base is shortened
-    # and a hash of the full base is added so two slots, and two long bases that
-    # share a prefix, stay distinct.
+    # on a character boundary and a hash of the full base is added so two slots,
+    # and two long bases that share a prefix, stay distinct.
     #
     # @param base [String] the test database name.
     # @param slot [Integer] the worker slot index.
-    # @return [String] a name of at most {POSTGRES_NAME_LIMIT} bytes.
+    # @return [String] a name of at most {POSTGRES_NAME_LIMIT} bytes, or the
+    #   hash suffix alone when that suffix itself exceeds the limit.
     def self.postgres_worker_database(base, slot)
       suffix = "#{WORKER_NAME_MARK}#{slot}"
       full = "#{base}#{suffix}"
@@ -72,8 +114,29 @@ module Mutineer
       hash = Digest::SHA256.hexdigest(base)[0, 8]
       tail = "-#{hash}#{suffix}"
       room = POSTGRES_NAME_LIMIT - tail.bytesize
-      room = 0 if room.negative?
-      "#{base.b[0, room]}#{tail}"
+      "#{utf8_prefix(base, room)}#{tail}"
+    end
+
+    # Leading characters of `text` that fit in `max_bytes`. Stops before a
+    # character that would cross the limit, so a multibyte name stays valid
+    # text. PostgreSQL counts identifier length in bytes.
+    #
+    # @param text [String]
+    # @param max_bytes [Integer]
+    # @return [String]
+    def self.utf8_prefix(text, max_bytes)
+      return "" if max_bytes <= 0
+
+      source = text.to_s
+      return source if source.bytesize <= max_bytes
+
+      kept = +""
+      source.each_char do |char|
+        break if kept.bytesize + char.bytesize > max_bytes
+
+        kept << char
+      end
+      kept
     end
 
     # True when `name` is one of this run's exact worker database names.
@@ -86,6 +149,28 @@ module Mutineer
     # @return [Boolean]
     def self.owned_database?(base, name, slots:)
       (0...slots).any? { |slot| postgres_worker_database(base, slot) == name }
+    end
+
+    # True when `name` is a database this tool may drop. It must be the exact
+    # name {postgres_worker_database} would build for `base` and the slot
+    # written at the end of `name`. The source database, a server catalog, and
+    # any other name are refused.
+    #
+    # @param base [String] the test database name.
+    # @param name [String] a database name we might drop.
+    # @return [Boolean]
+    def self.worker_database_name?(base, name)
+      return false if base.nil? || name.nil?
+
+      text = name.to_s
+      source = base.to_s
+      return false if text.empty? || text == source
+      return false if RESERVED_DATABASES.include?(text)
+
+      slot = text[/#{Regexp.escape(WORKER_NAME_MARK)}(\d+)\z/, 1]
+      return false unless slot
+
+      postgres_worker_database(source, Integer(slot, 10)) == text
     end
 
     # Build the AR connection config for one worker from the app's current
@@ -108,8 +193,11 @@ module Mutineer
     # @raise [NotImplementedError] for an in-memory database, an empty name, or an adapter other than SQLite or Postgres.
     def self.per_worker_config(config_hash, worker)
       hash     = config_hash.transform_keys(&:to_sym)
-      database = hash[:database].to_s
       adapter  = hash[:adapter].to_s
+      database = hash[:database].to_s
+      if database.empty? && postgres_adapter?(adapter)
+        database = database_name_from_url(hash[:url])
+      end
       if database.empty? || database == ":memory:"
         raise NotImplementedError,
               "worker-DB isolation needs a file or named database (got #{database.inspect})."
@@ -163,7 +251,7 @@ module Mutineer
       return unless postgres_adapter?(current_adapter)
 
       hash = current_config_hash
-      base = hash[:database].to_s
+      base = source_database_name!(hash)
       conn = open_maintenance_connection(hash, base)
       unless try_lock(conn, base, shared: true)
         conn.close
@@ -349,7 +437,7 @@ module Mutineer
     # @return [void]
     def self.provision_postgres(count)
       hash = current_config_hash
-      base = hash[:database].to_s
+      base = source_database_name!(hash)
       conn = open_maintenance_connection(hash, base)
       unless try_lock(conn, base, shared: false)
         conn.close
@@ -360,10 +448,6 @@ module Mutineer
         disconnect_app!
         count.times do |slot|
           name = postgres_worker_database(base, slot)
-          unless owned_database?(base, name, slots: count)
-            raise "refusing to drop #{name}"
-          end
-
           recreate_from_template(conn, name, base)
         end
       rescue StandardError => e
@@ -383,6 +467,8 @@ module Mutineer
 
     # Open a session on {MAINTENANCE_DATABASE} with the app's Postgres credentials.
     # Uses the `pg` client the app already loaded. The gem does not depend on it.
+    # Endpoint options from the Rails config, including `service` and `url`, are
+    # kept. Only the database name changes, to {MAINTENANCE_DATABASE}.
     #
     # @param config_hash [Hash]
     # @param base [String] test database name, named in the error if this fails.
@@ -392,20 +478,120 @@ module Mutineer
         raise "could not provision #{base}: the app's pg client is not loaded"
       end
 
-      opts = { dbname: MAINTENANCE_DATABASE }
-      host = config_hash[:host].to_s
-      opts[:host] = host unless host.empty?
-      port = config_hash[:port]
-      opts[:port] = port if port && !port.to_s.empty?
-      user = config_hash[:username] || config_hash[:user]
-      opts[:user] = user if user && !user.to_s.empty?
-      password = config_hash[:password]
-      opts[:password] = password if password && !password.to_s.empty?
-      PG::Connection.open(opts)
+      PG::Connection.open(maintenance_connection_options(config_hash))
     rescue StandardError => e
-      raise e if e.message.start_with?("could not provision ")
+      raise e if e.message.start_with?("could not provision")
 
       raise "could not provision #{base}: #{e.message}"
+    end
+
+    # libpq options for the maintenance session. A Rails `url:` fills anything
+    # the hash does not set itself. Explicit keys win. `dbname` is always
+    # {MAINTENANCE_DATABASE}, never the test database and never a name taken
+    # from the URL path.
+    #
+    # @param config_hash [Hash] symbol or string keys, as Rails stores them.
+    # @return [Hash] symbol keys for `PG::Connection.open`.
+    # @raise [RuntimeError] when `url:` is present and is not a Postgres URL.
+    def self.maintenance_connection_options(config_hash)
+      hash = config_hash.transform_keys(&:to_sym)
+      opts = options_from_database_url(hash[:url])
+      opts.delete(:database)
+      LIBPQ_CONNECTION_KEYS.each do |config_key, pg_key|
+        next unless hash.key?(config_key)
+
+        value = hash[config_key]
+        next if blank_option?(value)
+
+        opts[pg_key] = value
+      end
+      opts[:dbname] = MAINTENANCE_DATABASE
+      opts
+    end
+
+    # The test database this run copies from. `database:` wins. A Postgres URL
+    # supplies the name when the hash has none. A `service:` entry does not
+    # carry the name, so that shape fails here instead of guessing.
+    #
+    # @param config_hash [Hash]
+    # @return [String]
+    # @raise [RuntimeError] when no database name is available.
+    def self.source_database_name!(config_hash)
+      hash = config_hash.transform_keys(&:to_sym)
+      name = hash[:database].to_s
+      name = database_name_from_url(hash[:url]) if name.empty?
+      return name unless name.empty?
+
+      raise "could not provision: the test database name is missing. " \
+            "Set database: or use a URL that includes the database name."
+    end
+
+    # Database name from a postgres URL path, or "" when `url` is blank.
+    #
+    # @param url [String, nil]
+    # @return [String]
+    # @raise [RuntimeError] when `url` is present and is not a Postgres URL.
+    def self.database_name_from_url(url)
+      options_from_database_url(url)[:database].to_s
+    end
+
+    # Host, credentials, database name, and query options from a Rails `url:`.
+    # Blank when `url` is blank. The database is returned under `:database`
+    # so callers can separate it from the maintenance `dbname`.
+    #
+    # @param url [String, nil]
+    # @return [Hash]
+    # @raise [RuntimeError] when `url` is present and is not a Postgres URL.
+    def self.options_from_database_url(url)
+      return {} if blank_option?(url)
+
+      uri = URI.parse(url.to_s)
+      scheme = uri.scheme.to_s.downcase
+      unless scheme == "postgres" || scheme == "postgresql"
+        raise "could not provision: the database URL must start with postgres:// or postgresql://"
+      end
+
+      opts = {}
+      host = uri.host
+      opts[:host] = host if host && !host.empty?
+      opts[:port] = uri.port if uri.port
+      user = decode_uri_component(uri.user)
+      opts[:user] = user if user && !user.empty?
+      password = decode_uri_component(uri.password)
+      opts[:password] = password if password && !password.empty?
+      database = uri.path.to_s.sub(%r{\A/}, "")
+      database = decode_uri_component(database) unless database.empty?
+      opts[:database] = database if database && !database.empty?
+      URI.decode_www_form(uri.query.to_s).each do |key, value|
+        pg_key = LIBPQ_CONNECTION_KEYS[key.to_sym]
+        next unless pg_key
+        next if blank_option?(value)
+
+        opts[pg_key] = value
+      end
+      opts
+    rescue URI::InvalidURIError, URI::InvalidComponentError, ArgumentError => e
+      raise "could not provision: the database URL is not valid (#{e.message})"
+    end
+
+    # Percent-decode one URL component. Nil when `text` is blank.
+    #
+    # @param text [String, nil]
+    # @return [String, nil]
+    def self.decode_uri_component(text)
+      return if blank_option?(text)
+
+      # `unescape` keeps a literal `+`. The form decoder would turn it into a space.
+      # The daemon runs on the app's Ruby, which may be older than 3.4.
+      URI::DEFAULT_PARSER.unescape(text.to_s)
+    end
+
+    # True for nil and empty strings. Numbers and false are present values.
+    #
+    # @param value [Object]
+    # @return [Boolean]
+    def self.blank_option?(value)
+      value.nil? || (value.respond_to?(:empty?) && value.empty?)
     end
 
     # @param conn [PG::Connection]
@@ -444,10 +630,16 @@ module Mutineer
     # @param base [String] test database used as the template.
     # @return [void]
     def self.recreate_from_template(conn, name, base)
+      unless worker_database_name?(base, name)
+        raise "refusing to drop #{name}"
+      end
+
       conn.exec("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = #{conn.escape_literal(name)} AND pid <> pg_backend_pid()")
       conn.exec("DROP DATABASE IF EXISTS #{quote_ident(name)}")
       conn.exec("CREATE DATABASE #{quote_ident(name)} TEMPLATE #{quote_ident(base)}")
     rescue StandardError => e
+      raise e if e.message.start_with?("refusing to drop")
+
       raise provision_failure(base, name, e.message)
     end
 
