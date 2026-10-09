@@ -624,6 +624,35 @@ class CoverageMapTest < Minitest::Test
     refute build_catalog(dir).phase_a_ran, "the rebuilt cache is a hit"
   end
 
+  # Rails reads PARALLEL_WORKERS inside parallelize. A map saved before that
+  # value was recorded, or saved for another value, must not select tests.
+  def test_old_parallel_worker_cache_is_rebuilt
+    dir = Dir.mktmpdir("mutineer-cache")
+    path = File.join(dir, "coverage.json")
+    prior = ENV.fetch("PARALLEL_WORKERS", nil)
+    ENV["PARALLEL_WORKERS"] = "1"
+    begin
+      build_catalog(dir)
+      payload = JSON.parse(File.read(path))
+      assert_equal "1", payload["parallel_workers"]
+
+      File.write(path, JSON.generate(payload.except("parallel_workers")))
+      rebuilt = build_catalog(dir)
+      assert rebuilt.phase_a_ran, "a cache from before parallel workers were recorded must rebuild"
+
+      saved = JSON.parse(File.read(path))
+      assert_equal "1", saved["parallel_workers"]
+      saved["parallel_workers"] = "4"
+      File.write(path, JSON.generate(saved))
+      again = build_catalog(dir)
+      assert again.phase_a_ran, "a map captured with other Rails workers must rebuild"
+
+      refute build_catalog(dir).phase_a_ran, "the same worker value is a cache hit"
+    ensure
+      prior.nil? ? ENV.delete("PARALLEL_WORKERS") : ENV["PARALLEL_WORKERS"] = prior
+    end
+  end
+
   def test_corrupt_cache_is_rebuilt
     dir = Dir.mktmpdir("mutineer-cache")
     File.write(File.join(dir, "coverage.json"), "{not valid json")

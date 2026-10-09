@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Rails test workers stay off during a mutant run.** Mutineer sets
+  `PARALLEL_WORKERS` to `1` for in-process, `--daemon`, and `--test-command`
+  runs. A value you already set is replaced, and Mutineer prints one line.
+  `--test-command` also sets `DISABLE_SPRING=1`. The README explains
+  `parallelize`, Bootsnap, and Redis after a fork.
+
 - **Postgres worker databases for `--rails --daemon`.** Each worker gets
   `<base>-mutineer-<N>`, copied from the test database before mutants run.
   A second run cannot drop a database another live run holds. An app with
