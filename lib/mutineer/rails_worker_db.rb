@@ -33,9 +33,13 @@ module Mutineer
     # MySQL cuts a database name at this many bytes. The shortening rule matches
     # Postgres. A byte limit stays inside the 64-character limit for this name.
     MYSQL_NAME_LIMIT = 64
-    # How many named GET_LOCK slots stand in for one shared lock. MySQL's
-    # GET_LOCK is exclusive, so each holder takes one free name.
-    MYSQL_LOCK_SLOTS = 64
+    # How many worker daemons can hold a lock at once. MySQL GET_LOCK is
+    # exclusive, so each daemon takes one name from this pool. A separate guard
+    # name covers the handoff and is not one of these slots.
+    MYSQL_LOCK_SLOTS = 256
+    # Actions information_schema may report for a foreign key. Anything else is
+    # rejected so a bad row cannot change the ALTER TABLE statement.
+    MYSQL_REFERENTIAL_ACTIONS = ["CASCADE", "SET NULL", "SET DEFAULT", "RESTRICT", "NO ACTION"].freeze
     # Infix that keeps a worker database off Rails' own `<base>-<n>` names.
     WORKER_NAME_MARK = "-mutineer-"
     # Database we connect to while the test database is a template. Advisory
@@ -123,7 +127,32 @@ module Mutineer
     # @return [Hash] a symbol-keyed AR configuration hash for the worker database.
     # @raise [NotImplementedError] when the adapter has no worker database yet, or the database is in-memory.
     def self.worker_db_config(worker)
-      per_worker_config(current_config_hash, worker)
+      per_worker_config(routing_config_hash, worker)
+    end
+
+    # Config used to name a worker database. MySQL schema load points
+    # ActiveRecord at the last slot. Coverage forks must keep the original test
+    # database, or the next name is nested and was never created.
+    #
+    # @return [Hash]
+    def self.routing_config_hash
+      @mysql_base_config || current_config_hash
+    end
+
+    # Remember the test database config before schema load switches the connection.
+    #
+    # @param config_hash [Hash]
+    # @return [void]
+    def self.remember_mysql_base_config(config_hash)
+      @mysql_base_config = config_hash.transform_keys(&:to_sym)
+      nil
+    end
+
+    # Drop the remembered MySQL test config. The next route reads ActiveRecord again.
+    #
+    # @return [void]
+    def self.forget_mysql_base_config
+      @mysql_base_config = nil
     end
 
     # Pure config shaping (no AR): swap in the worker database name.
@@ -516,10 +545,12 @@ module Mutineer
     # The child inherited the parent's lock session. Drop the Ruby wrapper
     # without sending a disconnect, so the parent's advisory lock stays held.
     # The child's file descriptor closes when the child exits. That does not
-    # close the parent's copy of the same socket.
+    # close the parent's copy of the same socket. Clearing the held-name list
+    # stops the child from sending RELEASE_LOCK on that shared session.
     #
     # @return [void]
     def self.forget_lock_connection_after_fork!
+      @mysql_held_locks = []
       conn = @lock_connection
       @lock_connection = nil
       return unless conn
@@ -552,13 +583,21 @@ module Mutineer
     end
 
     # Create MySQL slots `0...count`, load the app schema into each, and copy
-    # rows from the test database. Holds every GET_LOCK name only while copying,
-    # then one shared name for the rest of this process.
+    # rows from the test database. Holds the guard lock and every pool name
+    # while copying, then keeps the guard lock. Pool names are released without
+    # a gap so another run cannot drop the new databases. Worker daemons then
+    # take one pool name each.
     #
     # @param count [Integer]
     # @return [void]
+    # @raise [RuntimeError] when `count` exceeds {MYSQL_LOCK_SLOTS}, or another run holds the lock.
     def self.provision_mysql(count)
-      hash = current_config_hash
+      if count > MYSQL_LOCK_SLOTS
+        raise "MySQL worker databases support at most #{MYSQL_LOCK_SLOTS} workers"
+      end
+
+      hash = routing_config_hash
+      remember_mysql_base_config(hash)
       base = hash[:database].to_s
       conn = open_mysql_connection(hash, base)
       unless try_mysql_lock(conn, base, shared: false)
@@ -582,6 +621,7 @@ module Mutineer
             raise provision_failure(base, name, e.message)
           end
         end
+        raise "another Mutineer run is using #{base}" unless downgrade_mysql_lock_to_shared(conn, base)
       rescue StandardError => e
         release_mysql_lock(conn)
         conn.close
@@ -590,11 +630,6 @@ module Mutineer
         raise provision_failure(base, base, e.message)
       end
 
-      release_mysql_lock(conn)
-      unless try_mysql_lock(conn, base, shared: true)
-        conn.close
-        raise "another Mutineer run is using #{base}"
-      end
       @lock_connection = conn
       warn "[mutineer] provisioned #{count} mysql worker database(s) from #{base}"
     end
@@ -640,16 +675,23 @@ module Mutineer
     end
 
     # Connection options shared by mysql2 and trilogy. The database key is left
-    # out so the session is not tied to the test database.
+    # out so the session is not tied to the test database. A socket wins over
+    # host: trilogy ignores `socket` when `host` is set, and would then use its
+    # compiled-in default instead of the app's socket.
     #
     # @param config_hash [Hash]
     # @return [Hash]
     def self.mysql_client_options(config_hash)
       opts = {}
-      host = config_hash[:host].to_s
-      opts[:host] = host unless host.empty?
-      port = config_hash[:port]
-      opts[:port] = Integer(port) if port && !port.to_s.empty?
+      socket = config_hash[:socket].to_s
+      if socket.empty?
+        host = config_hash[:host].to_s
+        opts[:host] = host unless host.empty?
+        port = config_hash[:port]
+        opts[:port] = Integer(port) if port && !port.to_s.empty?
+      else
+        opts[:socket] = socket
+      end
       user = config_hash[:username] || config_hash[:user]
       opts[:username] = user.to_s if user && !user.to_s.empty?
       password = config_hash[:password]
@@ -659,33 +701,73 @@ module Mutineer
       opts
     end
 
-    # Take a shared name, or every name when `shared` is false. A miss releases
-    # any names this call already took.
+    # Take one pool name, or the guard plus every pool name when `shared` is
+    # false. A miss releases any names this call already took.
     #
     # @param conn [Mysql2::Client, Trilogy]
     # @param base [String]
     # @param shared [Boolean]
     # @return [Boolean]
     def self.try_mysql_lock(conn, base, shared:)
-      held = []
+      return try_mysql_shared_lock(conn, base) if shared
+
+      try_mysql_exclusive_lock(conn, base)
+    end
+
+    # Take the guard, then every pool name. The guard stays held across the
+    # later downgrade so another run cannot start a copy in that gap.
+    #
+    # @param conn [Mysql2::Client, Trilogy]
+    # @param base [String]
+    # @return [Boolean]
+    def self.try_mysql_exclusive_lock(conn, base)
+      guard = mysql_guard_lock_name(base)
+      return false unless mysql_get_lock(conn, guard)
+
+      held = [guard]
       mysql_lock_names(base).each do |name|
         if mysql_get_lock(conn, name)
           held << name
-          if shared
-            @mysql_held_locks = held
-            return true
-          end
-        elsif shared
-          next
         else
           held.each { |got| mysql_release_lock(conn, got) }
           @mysql_held_locks = []
           return false
         end
       end
-      return false if shared
-
       @mysql_held_locks = held
+      true
+    end
+
+    # Take the first free pool name. Does not take the guard, so worker daemons
+    # can connect while the provisioning process still holds that guard.
+    #
+    # @param conn [Mysql2::Client, Trilogy]
+    # @param base [String]
+    # @return [Boolean]
+    def self.try_mysql_shared_lock(conn, base)
+      mysql_lock_names(base).each do |name|
+        next unless mysql_get_lock(conn, name)
+
+        @mysql_held_locks = [name]
+        return true
+      end
+      @mysql_held_locks = []
+      false
+    end
+
+    # Release every pool name and keep the guard. The guard is never released
+    # first, so this process always holds a lock the next copy needs.
+    #
+    # @param conn [Mysql2::Client, Trilogy]
+    # @param base [String]
+    # @return [Boolean] false when this session does not hold the guard.
+    def self.downgrade_mysql_lock_to_shared(conn, base)
+      guard = mysql_guard_lock_name(base)
+      held = Array(@mysql_held_locks)
+      return false unless held.include?(guard)
+
+      (held - [guard]).each { |name| mysql_release_lock(conn, name) }
+      @mysql_held_locks = [guard]
       true
     end
 
@@ -699,14 +781,32 @@ module Mutineer
       nil
     end
 
-    # One GET_LOCK name per holder. The digest keeps the name inside 64 characters
-    # for any base database name. Slot 63 is the last name.
+    # One GET_LOCK name per worker daemon. The digest keeps each name inside 64
+    # characters for any base database name.
     #
     # @param base [String]
     # @return [Array<String>]
     def self.mysql_lock_names(base)
-      digest = Digest::SHA256.hexdigest("mutineer-run:#{base}")[0, 16]
+      digest = mysql_lock_digest(base)
       (0...MYSQL_LOCK_SLOTS).map { |slot| "m:#{digest}:#{slot}" }
+    end
+
+    # Lock held for the whole copy and until worker daemons hold pool names.
+    # Not part of {mysql_lock_names}, so it does not reduce the worker count.
+    #
+    # @param base [String]
+    # @return [String]
+    def self.mysql_guard_lock_name(base)
+      "m:#{mysql_lock_digest(base)}:g"
+    end
+
+    # Shared prefix for the guard and the pool. 16 hex characters keep the full
+    # lock name inside MySQL's 64-character limit.
+    #
+    # @param base [String]
+    # @return [String]
+    def self.mysql_lock_digest(base)
+      Digest::SHA256.hexdigest("mutineer-run:#{base}")[0, 16]
     end
 
     # @param conn [Mysql2::Client, Trilogy]
@@ -746,18 +846,31 @@ module Mutineer
     def self.load_mysql_schema(base_hash, name, base)
       return unless defined?(ActiveRecord::Tasks::DatabaseTasks)
 
-      slot_hash = base_hash.merge(database: name)
-      ActiveRecord::Base.establish_connection(slot_hash)
-      db_config = mysql_db_config(slot_hash)
-      format = current_schema_format
-      file = mysql_schema_file(db_config, format)
-      return if file.nil?
+      switched = false
+      failure = nil
+      begin
+        slot_hash = base_hash.merge(database: name)
+        ActiveRecord::Base.establish_connection(slot_hash)
+        switched = true
+        db_config = mysql_db_config(slot_hash)
+        format = current_schema_format
+        file = mysql_schema_file(db_config, format)
+        ActiveRecord::Tasks::DatabaseTasks.load_schema(db_config, format, file) if file
+      rescue StandardError => e
+        failure = e
+      ensure
+        if switched
+          begin
+            ActiveRecord::Base.establish_connection(base_hash)
+          rescue StandardError => e
+            failure ||= e
+          end
+        end
+      end
+      return unless failure
+      raise failure if provision_wrapped?(failure)
 
-      ActiveRecord::Tasks::DatabaseTasks.load_schema(db_config, format, file)
-    rescue StandardError => e
-      raise e if provision_wrapped?(e)
-
-      raise provision_failure(base, name, e.message)
+      raise provision_failure(base, name, failure.message)
     end
 
     # A database config whose name is the slot, so DatabaseTasks loads into that
@@ -796,7 +909,9 @@ module Mutineer
 
     # Copy every base table from `base` into `dest`. Foreign key checks are off.
     # Generated columns are left out of the INSERT list. A table the schema load
-    # did not create is cloned with CREATE TABLE ... LIKE first.
+    # did not create is cloned with CREATE TABLE ... LIKE, then its foreign keys
+    # are added. LIKE does not copy them. Each table's AUTO_INCREMENT is set
+    # from the base after the rows, so a deleted high id is not reused.
     #
     # @param conn [Mysql2::Client, Trilogy]
     # @param base [String]
@@ -810,11 +925,14 @@ module Mutineer
         WHERE TABLE_SCHEMA = #{mysql_quote_string(conn, base)}
           AND TABLE_TYPE = 'BASE TABLE'
       SQL
+      names = []
+      cloned = []
       tables.each do |row|
         table = row["table_name"].to_s
         next if table.empty?
 
-        ensure_mysql_table(conn, base, dest, table)
+        names << table
+        cloned << table if ensure_mysql_table(conn, base, dest, table)
         columns = copyable_mysql_columns(conn, base, table)
         next if columns.empty?
 
@@ -824,6 +942,8 @@ module Mutineer
         mysql_exec(conn, "DELETE FROM #{dest_table}")
         mysql_exec(conn, "INSERT INTO #{dest_table} (#{listed}) SELECT #{listed} FROM #{base_table}")
       end
+      cloned.each { |table| copy_mysql_foreign_keys(conn, base, dest, table) }
+      names.each { |table| copy_mysql_auto_increment(conn, base, dest, table) }
     ensure
       begin
         mysql_exec(conn, "SET FOREIGN_KEY_CHECKS = 1")
@@ -833,13 +953,14 @@ module Mutineer
     end
 
     # Create `table` on `dest` when the schema load did not. LIKE copies columns,
-    # including generated columns, and does not copy foreign keys.
+    # including generated columns, and does not copy foreign keys. The caller
+    # adds those keys after every missing table exists.
     #
     # @param conn [Mysql2::Client, Trilogy]
     # @param base [String]
     # @param dest [String]
     # @param table [String]
-    # @return [void]
+    # @return [Boolean] true when this call created the table.
     def self.ensure_mysql_table(conn, base, dest, table)
       rows = mysql_rows(conn, <<~SQL)
         SELECT TABLE_NAME AS table_name
@@ -848,9 +969,160 @@ module Mutineer
           AND TABLE_NAME = #{mysql_quote_string(conn, table)}
           AND TABLE_TYPE = 'BASE TABLE'
       SQL
-      return unless rows.empty?
+      return false unless rows.empty?
 
       mysql_exec(conn, "CREATE TABLE #{quote_mysql_ident(dest)}.#{quote_mysql_ident(table)} LIKE #{quote_mysql_ident(base)}.#{quote_mysql_ident(table)}")
+      true
+    end
+
+    # Add foreign keys from `base.table` onto `dest.table`. Keys that already
+    # exist on `dest` are left alone. A referenced table in `base` is retargeted
+    # at `dest` so the worker does not point back at the test database.
+    #
+    # @param conn [Mysql2::Client, Trilogy]
+    # @param base [String]
+    # @param dest [String]
+    # @param table [String]
+    # @return [void]
+    def self.copy_mysql_foreign_keys(conn, base, dest, table)
+      existing = mysql_rows(conn, <<~SQL)
+        SELECT CONSTRAINT_NAME AS constraint_name
+        FROM information_schema.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = #{mysql_quote_string(conn, dest)}
+          AND TABLE_NAME = #{mysql_quote_string(conn, table)}
+          AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+      SQL
+      have = existing.map { |row| row["constraint_name"].to_s }
+      rows = mysql_rows(conn, <<~SQL)
+        SELECT k.CONSTRAINT_NAME AS constraint_name,
+               k.COLUMN_NAME AS column_name,
+               k.ORDINAL_POSITION AS ordinal_position,
+               k.REFERENCED_TABLE_SCHEMA AS referenced_table_schema,
+               k.REFERENCED_TABLE_NAME AS referenced_table_name,
+               k.REFERENCED_COLUMN_NAME AS referenced_column_name,
+               r.UPDATE_RULE AS update_rule,
+               r.DELETE_RULE AS delete_rule,
+               r.MATCH_OPTION AS match_option
+        FROM information_schema.KEY_COLUMN_USAGE k
+        INNER JOIN information_schema.REFERENTIAL_CONSTRAINTS r
+          ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA
+         AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+         AND r.TABLE_NAME = k.TABLE_NAME
+        WHERE k.TABLE_SCHEMA = #{mysql_quote_string(conn, base)}
+          AND k.TABLE_NAME = #{mysql_quote_string(conn, table)}
+          AND k.REFERENCED_TABLE_NAME IS NOT NULL
+        ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION
+      SQL
+      rows = rows.reject { |row| have.include?(row["constraint_name"].to_s) }
+      sql = mysql_add_foreign_key_sql(dest, table, rows, base: base)
+      mysql_exec(conn, sql) if sql
+    end
+
+    # One ALTER TABLE that adds every foreign key in `rows`.
+    #
+    # @param dest [String]
+    # @param table [String]
+    # @param rows [Array<Hash>]
+    # @param base [String] test database name. References to it are rewritten to `dest`.
+    # @return [String, nil]
+    def self.mysql_add_foreign_key_sql(dest, table, rows, base:)
+      clauses = mysql_foreign_key_clauses(rows, base: base, dest: dest)
+      return nil if clauses.empty?
+
+      "ALTER TABLE #{quote_mysql_ident(dest)}.#{quote_mysql_ident(table)} #{clauses.join(', ')}"
+    end
+
+    # ADD CONSTRAINT fragments for `rows`, grouped by constraint name.
+    #
+    # @param rows [Array<Hash>]
+    # @param base [String]
+    # @param dest [String]
+    # @return [Array<String>]
+    def self.mysql_foreign_key_clauses(rows, base:, dest:)
+      grouped = {}
+      Array(rows).each do |row|
+        name = row["constraint_name"].to_s
+        next if name.empty?
+
+        (grouped[name] ||= []) << row
+      end
+      grouped.filter_map do |name, cols|
+        ordered = cols.sort_by { |row| row["ordinal_position"].to_i }
+        local_cols = ordered.map { |row| row["column_name"].to_s }
+        ref_cols = ordered.map { |row| row["referenced_column_name"].to_s }
+        ref_table = ordered.first["referenced_table_name"].to_s
+        next if ref_table.empty? || local_cols.any?(&:empty?) || ref_cols.any?(&:empty?)
+
+        ref_schema = ordered.first["referenced_table_schema"].to_s
+        ref_schema = dest if ref_schema.empty? || ref_schema == base
+        delete_rule = mysql_referential_action(ordered.first["delete_rule"])
+        update_rule = mysql_referential_action(ordered.first["update_rule"])
+        match = mysql_match_clause(ordered.first["match_option"])
+        local_sql = local_cols.map { |column| quote_mysql_ident(column) }.join(", ")
+        ref_sql = ref_cols.map { |column| quote_mysql_ident(column) }.join(", ")
+        target = "#{quote_mysql_ident(ref_schema)}.#{quote_mysql_ident(ref_table)}"
+        "ADD CONSTRAINT #{quote_mysql_ident(name)} FOREIGN KEY (#{local_sql}) REFERENCES #{target} (#{ref_sql})#{match} ON DELETE #{delete_rule} ON UPDATE #{update_rule}"
+      end
+    end
+
+    # A foreign-key action safe to interpolate. Unknown text raises.
+    #
+    # @param value [String, nil]
+    # @return [String]
+    # @raise [ArgumentError] when `value` is not one of {MYSQL_REFERENTIAL_ACTIONS}.
+    def self.mysql_referential_action(value)
+      action = value.to_s.strip.upcase.tr("_", " ")
+      return action if MYSQL_REFERENTIAL_ACTIONS.include?(action)
+
+      raise ArgumentError, "unsupported foreign key action #{value.inspect}"
+    end
+
+    # MATCH fragment, or an empty string for the default NONE.
+    #
+    # @param value [String, nil]
+    # @return [String]
+    # @raise [ArgumentError] when `value` is not NONE, FULL, or PARTIAL.
+    def self.mysql_match_clause(value)
+      match = value.to_s.strip.upcase
+      return "" if match.empty? || match == "NONE"
+      return " MATCH #{match}" if %w[FULL PARTIAL].include?(match)
+
+      raise ArgumentError, "unsupported foreign key match #{value.inspect}"
+    end
+
+    # Set `dest.table`'s AUTO_INCREMENT from the base table when the base has one.
+    #
+    # @param conn [Mysql2::Client, Trilogy]
+    # @param base [String]
+    # @param dest [String]
+    # @param table [String]
+    # @return [void]
+    def self.copy_mysql_auto_increment(conn, base, dest, table)
+      rows = mysql_rows(conn, <<~SQL)
+        SELECT AUTO_INCREMENT AS auto_increment
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = #{mysql_quote_string(conn, base)}
+          AND TABLE_NAME = #{mysql_quote_string(conn, table)}
+      SQL
+      sql = mysql_auto_increment_sql(dest, table, rows.dig(0, "auto_increment"))
+      mysql_exec(conn, sql) if sql
+    end
+
+    # ALTER TABLE statement that sets AUTO_INCREMENT, or nil when `value` is blank.
+    #
+    # @param dest [String]
+    # @param table [String]
+    # @param value [Object]
+    # @return [String, nil]
+    def self.mysql_auto_increment_sql(dest, table, value)
+      return nil if value.nil? || value.to_s.empty?
+
+      number = Integer(value)
+      return nil if number < 1
+
+      "ALTER TABLE #{quote_mysql_ident(dest)}.#{quote_mysql_ident(table)} AUTO_INCREMENT = #{number}"
+    rescue ArgumentError, TypeError
+      nil
     end
 
     # Column names that an INSERT may set. Stored and virtual generated columns

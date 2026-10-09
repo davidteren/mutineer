@@ -423,4 +423,83 @@ class DaemonBackendContractTest < Minitest::Test
                       "(#{healthy.seen.size} of #{many.size} jobs)"
     end
   end
+
+  # The prepare daemon holds the database lock. It must stay up until each
+  # worker daemon has booted, then quit. Quitting first lets another run drop
+  # the worker databases.
+  def test_the_prepare_daemon_stays_up_until_workers_boot
+    with_jobs do |jobs, config, source_map|
+      order = []
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { order << :prepare_quit }
+      worker = Object.new
+      worker.define_singleton_method(:start) { order << :worker_start; self }
+      worker.define_singleton_method(:quit) { order << :worker_quit }
+      worker.define_singleton_method(:request) { |**| "killed" }
+
+      Mutineer::DaemonClient.stub(:new, ->(**) { worker }) do
+        Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare)
+      end
+      assert_equal :worker_start, order.first
+      assert order.index(:worker_start) < order.index(:prepare_quit)
+      assert order.index(:prepare_quit) < order.index(:worker_quit)
+
+      order.clear
+      workers = Array.new(2) do
+        client = Object.new
+        client.define_singleton_method(:start) { order << :worker_start; self }
+        client.define_singleton_method(:quit) { order << :worker_quit }
+        client.define_singleton_method(:request) { |**| "killed" }
+        client
+      end
+      queue = workers.dup
+      Mutineer::DaemonClient.stub(:new, ->(**) { queue.shift }) do
+        Mutineer::DaemonBackend.send(:run_parallel, jobs, 2, config, [], nil, source_map, prepare)
+      end
+      assert_equal %i[worker_start worker_start], order[0, 2]
+      assert order.index(:prepare_quit) > order.rindex(:worker_start)
+      assert order.index(:prepare_quit) < order.index(:worker_quit)
+    end
+  end
+
+  def test_prepare_run_keeps_the_client_until_the_caller_quits_it
+    Dir.mktmpdir("mutineer-prepare") do |root|
+      config = Mutineer::Config.new(sources: [], tests: [], project_root: root, framework: "minitest")
+      quits = 0
+      client = Object.new
+      client.define_singleton_method(:start) { self }
+      client.define_singleton_method(:database_count) { 1 }
+      client.define_singleton_method(:provision) { |_count| nil }
+      client.define_singleton_method(:coverage) do
+        { "map" => { "app/order.rb:1" => ["test/order_test.rb"] }, "failed_test_files" => [] }
+      end
+      client.define_singleton_method(:quit) { quits += 1 }
+
+      returned = nil
+      Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+        _map, count, returned = Mutineer::DaemonBackend.send(:prepare_run, config, [], 2)
+        assert_equal 2, count
+        assert_equal 0, quits
+        assert_same client, returned
+      end
+      returned.quit
+      assert_equal 1, quits
+    end
+  end
+
+  def test_a_failed_worker_boot_still_quits_the_prepare_daemon
+    order = []
+    prepare = Object.new
+    prepare.define_singleton_method(:quit) { order << :prepare_quit }
+    worker = Object.new
+    worker.define_singleton_method(:start) { order << :worker_start; raise "boot failed" }
+
+    config = Mutineer::Config.new(sources: [], tests: [], project_root: Dir.pwd, framework: "minitest")
+    assert_raises(RuntimeError) do
+      Mutineer::DaemonClient.stub(:new, ->(**) { worker }) do
+        Mutineer::DaemonBackend.send(:run_serial, [], config, [], nil, {}, prepare)
+      end
+    end
+    assert_equal %i[worker_start prepare_quit], order
+  end
 end

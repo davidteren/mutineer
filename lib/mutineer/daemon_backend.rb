@@ -72,17 +72,25 @@ module Mutineer
       worker_count = 1 if config.fail_fast
       worker_count = [worker_count, jobs.size].min
 
-      # One booted process copies Postgres worker databases, then builds the
-      # coverage map. A cached map still provisions: the copy has to happen
-      # while no worker is connected to the template database.
-      coverage_map, worker_count = prepare_run(config, abs_tests, worker_count)
+      # One booted process copies worker databases, then builds the coverage map.
+      # A cached map still provisions: the copy has to happen while no worker is
+      # connected to the template database. That process keeps its database lock
+      # until the worker daemons have taken theirs.
+      prepare_client = nil
+      begin
+        coverage_map, worker_count, prepare_client = prepare_run(config, abs_tests, worker_count)
 
-      results =
-        if worker_count > 1
-          run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map)
-        else
-          run_serial(jobs, config, abs_tests, coverage_map, source_map)
-        end
+        results =
+          if worker_count > 1
+            run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map, prepare_client)
+          else
+            run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client)
+          end
+      ensure
+        # run_serial and run_parallel quit this client once workers hold locks.
+        # Quit again here when they never reached that point. A second quit is a no-op.
+        prepare_client&.quit
+      end
 
       [AggregateResult.new(results + ignored_results), source_map, extras]
     end
@@ -122,7 +130,9 @@ module Mutineer
     # @param config [Mutineer::Config]
     # @param abs_tests [Array<String>]
     # @param worker_count [Integer] slots requested before the database count is known.
-    # @return [Array] the coverage map (or nil) and the worker count to start.
+    # @return [Array] the coverage map (or nil), the worker count to start, and
+    #   the prepare daemon. The caller quits that daemon after worker daemons
+    #   hold their locks. It is nil when this process could not boot one.
     def self.prepare_run(config, abs_tests, worker_count)
       client = nil
       begin
@@ -132,7 +142,7 @@ module Mutineer
         raise
       rescue DaemonBootError => e
         warn_coverage_fallback("#{e.class}: #{e.message}")
-        return [nil, worker_count]
+        return [nil, worker_count, nil]
       end
 
       begin
@@ -144,9 +154,10 @@ module Mutineer
         end
         # Raises DaemonBootError. Callers must not score mutants after this.
         client.provision(worker_count)
-        [coverage_map_from_client(client, config), worker_count]
-      ensure
+        [coverage_map_from_client(client, config), worker_count, client]
+      rescue StandardError
         client.quit
+        raise
       end
     end
 
@@ -206,23 +217,29 @@ module Mutineer
     # (stop at the first survivor).
     #
     # @api private
+    # @param prepare_client [Mutineer::DaemonClient, nil] the daemon that copied
+    #   the databases. Quit once this worker has booted and taken its lock.
     # @return [Array<Mutineer::Result>] results in input order.
-    def self.run_serial(jobs, config, abs_tests, coverage_map, source_map)
-      client = DaemonClient.new(boot: boot_config(config, abs_tests),
-                                app_root: config.project_root).start
-      results = []
-      progress = Progress.new(jobs.size)
+    def self.run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client = nil)
+      client = nil
       begin
+        client = DaemonClient.new(boot: boot_config(config, abs_tests),
+                                  app_root: config.project_root).start
+        prepare_client&.quit
+        prepare_client = nil
+        results = []
+        progress = Progress.new(jobs.size)
         jobs.each_with_index do |job, i|
           r = job_result(job, i, client, 0, config, coverage_map, abs_tests, source_map)
           results << r
           progress.tick
           break if config.fail_fast && r.survived?
         end
+        results
       ensure
-        client.quit
+        prepare_client&.quit
+        client&.quit
       end
-      results
     end
 
     # Parallel path: N daemon handles, each pinned to its own worker slot (own DB).
@@ -233,8 +250,10 @@ module Mutineer
     # here rather than scoring the remainder against a daemon that has given up.
     #
     # @api private
+    # @param prepare_client [Mutineer::DaemonClient, nil] the daemon that copied
+    #   the databases. Quit once every worker has booted and taken its lock.
     # @return [Array<Mutineer::Result>] one result per input job, in input order.
-    def self.run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map)
+    def self.run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map, prepare_client = nil)
       results  = Array.new(jobs.size)
       progress = Progress.new(jobs.size)
       queue    = Queue.new
@@ -242,6 +261,8 @@ module Mutineer
 
       # Built one at a time so a refused spawn part-way (EMFILE under a high --jobs)
       # can still quit the daemons already up. Array.new would lose every reference.
+      # The prepare daemon stays up through this loop so its lock still covers the
+      # databases until each worker holds one.
       clients = []
       begin
         worker_count.times do
@@ -251,6 +272,8 @@ module Mutineer
       rescue StandardError
         clients.each(&:quit)
         raise
+      ensure
+        prepare_client&.quit
       end
 
       clients.each_with_index.map do |client, worker|
