@@ -3,6 +3,7 @@
 require "shellwords"
 require "tempfile"
 require_relative "result"
+require_relative "rails_run_env"
 
 module Mutineer
   # Raised when the smoke check (the unmutated suite) is not green, so the run
@@ -67,7 +68,8 @@ module Mutineer
     # onto the parent env: set a key to +nil+ to unset it. Scrubs Mutineer/bundler
     # injection and version-manager PATH pins so shims / `.ruby-version` can win.
     # Keeps other vars (e.g. `RAILS_ENV`) so setting them on the Mutineer command
-    # still reaches the suite.
+    # still reaches the suite. Also sets +PARALLEL_WORKERS+ to 1 and
+    # +DISABLE_SPRING+ to 1. A wrapper that sets either variable again wins.
     #
     # @api private
     # @return [Hash{String => String, nil}] env for Process.spawn.
@@ -90,6 +92,7 @@ module Mutineer
                kept
              end
       env["PATH"] = path.join(File::PATH_SEPARATOR)
+      RailsRunEnv.pin_child!(env, spring: true)
       env
     end
 

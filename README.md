@@ -70,6 +70,8 @@ A Postgres worker database is copied once, at the start of the run.
 A test that commits rows outside a transaction leaves them in that worker database.
 The next mutant on that worker sees those rows.
 Rails parallel tests have the same ceiling.
+Rails `parallelize` is off in a mutant run.
+See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis).
 
 <!-- /contract:support-matrix -->
 
@@ -193,6 +195,34 @@ Add Mutineer to your Gemfile's test group:
 ```ruby
 gem "mutineer", group: :test, require: false
 ```
+
+### Rails parallel tests, Spring, Bootsnap, and Redis
+
+Mutineer sets `PARALLEL_WORKERS` to `1` for every run.
+Rails then runs each mutant's tests in one process.
+Your `parallelize(workers:)` call stays in `test_helper.rb`.
+It does not start Rails workers during a mutant run.
+If you already set `PARALLEL_WORKERS` to another value, Mutineer replaces it and prints one line.
+A wrapper script that sets `PARALLEL_WORKERS` again wins over Mutineer.
+That wrapper runs inside `--test-command`.
+
+Mutineer does not run your `parallelize_setup` hooks.
+Rails registers its own database hook in that same list.
+Running the list would point the tests at `<base>-<n>` instead of Mutineer's database.
+
+`--test-command` also sets `DISABLE_SPRING=1`.
+Spring does not start for that command.
+The `--daemon` path loads `config/environment` itself, so Spring does not start there either.
+A wrapper that sets `DISABLE_SPRING` again wins, same as `PARALLEL_WORKERS`.
+
+Bootsnap's cache is safe to share across these processes.
+The cache key is the file content, not the process.
+Clear a stale cache by deleting `tmp/cache/bootsnap` (the path your `config/boot.rb` sets).
+
+Redis clients reconnect after a fork.
+Rails registers that reconnect with `ActiveSupport::ForkTracker`.
+`redis-client` does the same.
+You do not set anything in Mutineer for this.
 
 ### Faster, parallel-safe Rails (the `--daemon` backend)
 

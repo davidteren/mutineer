@@ -16,6 +16,7 @@ require_relative "file_swap"
 require_relative "external_backend"
 require_relative "daemon_backend"
 require_relative "job_plan"
+require_relative "rails_run_env"
 
 module Mutineer
   # Orchestrates one mutation end-to-end: apply it textually, validate the
@@ -43,6 +44,10 @@ module Mutineer
     # @return [Array(Mutineer::AggregateResult, Hash<String, String>, Hash)] aggregate,
     #   source map, and run extras.
     def self.execute(config)
+      # Rails reads PARALLEL_WORKERS when a test helper calls parallelize.
+      # Set it before any boot or child spawn, then put the caller's value back.
+      previous_parallel_workers = ENV["PARALLEL_WORKERS"]
+      RailsRunEnv.pin_process!
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
 
       # External backend: run the suite as a subprocess in the app's own runtime.
@@ -165,6 +170,9 @@ module Mutineer
         end
 
       [AggregateResult.new(results + ignored_results), source_map, extras]
+    ensure
+      # A caller that set PARALLEL_WORKERS keeps that value after the run.
+      RailsRunEnv.restore_process!(previous_parallel_workers)
     end
 
     # A `--matrix` error that carries no {Kills} row (the worker crashed, or its
