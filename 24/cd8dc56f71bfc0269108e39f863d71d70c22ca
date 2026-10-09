@@ -1,0 +1,32 @@
+.github/workflows/ci.yml
+  h_e8a5bb9272fa34 125-167
+CHANGELOG.md
+  h_e8a5bb9272fa34 14-22
+README.md
+  h_e8a5bb9272fa34 48-50,65-67,73,231,236-242
+Rakefile
+  h_e8a5bb9272fa34 15
+lib/mutineer/daemon_server.rb
+  h_e8a5bb9272fa34 174
+lib/mutineer/rails_worker_db.rb
+  h_e8a5bb9272fa34 21-24,26-29,33-38,66-68,72-74,77,81,86-103,107,112,114-115,131,136,151-152,162-164,168,181-184,198-203,218,248-250,260,385-392,553-942
+test/daemon_mysql_test.rb
+  h_e8a5bb9272fa34 1-282
+test/fixtures/rails_app/Gemfile
+  h_e8a5bb9272fa34 21-27
+test/fixtures/rails_app/config/database.yml
+  h_e8a5bb9272fa34 2-4,35-52
+test/rails_worker_db_test.rb
+  h_e8a5bb9272fa34 69-101,103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "24cd8dc56f71bfc0269108e39f863d71d70c22ca",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
