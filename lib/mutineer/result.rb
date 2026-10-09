@@ -53,8 +53,9 @@ module Mutineer
   # from a fork back to the process that forked it, so both ends always run the
   # same code. Nothing persists a marshaled Result (reports, baselines and the
   # coverage cache are JSON), so a new field needs no Marshal compatibility.
-  Result = Data.define(:status, :details, :subject, :mutation, :id, :kills) do
-    # Every field but `status` defaults to nil.
+  Result = Data.define(:status, :details, :subject, :mutation, :id, :kills, :reason) do
+    # Every field but `status` defaults to nil. `reason` is the text a user
+    # gave for an ignored mutant, from an inline marker or an `ignore:` mapping.
     #
     # @param status [Symbol] the outcome.
     # @param details [String, nil] error or skip details.
@@ -62,7 +63,8 @@ module Mutineer
     # @param mutation [Mutineer::Mutation, nil] the mutation.
     # @param id [String, nil] the stable mutant id.
     # @param kills [Mutineer::Kills, nil] the matrix row of a `--matrix` run.
-    def initialize(status:, details: nil, subject: nil, mutation: nil, id: nil, kills: nil)
+    # @param reason [String, nil] why an ignored mutant was suppressed.
+    def initialize(status:, details: nil, subject: nil, mutation: nil, id: nil, kills: nil, reason: nil)
       super
     end
 

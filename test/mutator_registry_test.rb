@@ -83,4 +83,14 @@ class MutatorRegistryTest < Minitest::Test
       assert Mutineer::MutatorRegistry::DESCRIPTIONS.key?(name), "#{name} needs a description"
     end
   end
+
+  def test_unknown_operator_error_suggests_a_close_name
+    err = assert_raises(ArgumentError) { Mutineer::MutatorRegistry.resolve(["comparsion"]) }
+    assert_equal 'Unknown operator: "comparsion" (did you mean "comparison"?)', err.message
+  end
+
+  def test_unknown_operator_error_without_a_close_name
+    err = assert_raises(ArgumentError) { Mutineer::MutatorRegistry.resolve(["zzzzzz"]) }
+    assert_equal 'Unknown operator: "zzzzzz"', err.message
+  end
 end

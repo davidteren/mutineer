@@ -86,6 +86,34 @@ A crash in the command can count as a kill.
 What a release will not break is in
 [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md).
 
+## Upgrading to 2.0
+
+Exit codes changed.
+Exit 1 means the tests are too weak.
+Exit 3 means the run is not trustworthy.
+Fail CI when the exit code is not 0:
+
+```yaml
+- uses: davidteren/mutineer@v2
+  id: mutineer
+  with:
+    sources: app/
+    threshold: "90"
+- name: Fail unless the run passed
+  if: steps.mutineer.outputs.exit-code != '0'
+  run: exit 1
+```
+
+An unknown config key exits 2.
+An unknown operator name exits 2.
+An empty full scan exits 3 unless you pass `--allow-empty`.
+An empty `--since` run still exits 0.
+An old ignore id does not match.
+Run `mutineer migrate`.
+A baseline with no `id_format` exits 2.
+Generate a new baseline with `--format json`.
+Parallel `--rails` is not the default in this release.
+
 ## Install
 
 ```sh
@@ -102,6 +130,7 @@ gem "mutineer", group: :test
 
 ```sh
 mutineer run <source...> --test <test> [--test <test>...] [options]
+mutineer migrate <source...> [--dry-run] [--operators LIST]
 ```
 
 Mutate `lib/calculator.rb`, checking it against its test, and fail CI if the
@@ -111,16 +140,32 @@ mutation score drops below 90%:
 mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 ```
 
+### Migrate old ignore ids
+
+```sh
+mutineer migrate <source...> [--dry-run] [--operators LIST]
+```
+
+`migrate` rewrites old-format ids in `.mutineer.yml` `ignore:` to the current
+ids. It keeps comments and every other line. When one old id matches several
+mutants, it writes every new id. That keeps the 1.x match. An id that matches
+nothing stays, and the command exits 1. `--dry-run` prints each change and
+writes nothing.
+
+Pass the same sources and `--operators` you use for `run`. The command runs
+no tests. It does not rewrite a baseline. Generate a new baseline with
+`--format json`.
+
 ### Options
 
 | Flag | Meaning |
 |------|---------|
 | `--test FILE` | Test file covering the sources; one file per flag, so repeat it for each (`--test a_test.rb --test b_test.rb`) |
 | `--operators LIST` | Comma-separated operator names (default: the Tier-1 set) |
-| `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
+| `--threshold FLOAT` | Exit 1 when the score is below FLOAT (default: 0 = off). An untrustworthy run exits 3 instead: nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted. |
 | `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
 | `--framework NAME` | `minitest` (default) or `rspec`; auto-detected as rspec when most `--test` files end in `_spec.rb` |
-| `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`). Untracked files are scored in full unless Git ignores them. |
+| `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`). Untracked files are scored in full unless Git ignores them. The report lists only suppressed mutants on changed lines, too. |
 | `--no-since` | Disable diff scoping; a typed no beats a `.mutineer.yml` `since:` key |
 | `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (score drop is skipped under `--since`, whose score covers a different denominator; see [CI](https://github.com/davidteren/mutineer#ci-gating)) |
 | `--baseline-epsilon FLOAT` | Score-drop tolerance for `--baseline` (default: 0) |
@@ -133,11 +178,12 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | `--capture-timeout SECONDS` | Time limit for each in-process coverage-capture subprocess and for the clean run of the unmutated tests, in whole seconds (default: 120). A suite slower than this stops the run as not green. `--daemon` uses it for its coverage capture; `--test-command` ignores it and says so |
 | `--cache-dir DIR` | Directory for the coverage cache (default: `.mutineer`). Give two runs from the same project root different directories so they do not share `coverage.json`. `--test-command` builds no cache, so it ignores it and says so |
 | `--test-command CMD` | Run the suite as a subprocess in the app's own runtime (for apps on Ruby < 3.4); `CMD` must contain `%{files}`. See [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34) |
-| `--daemon` | Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so `--jobs N` is safe under Rails (needs `--rails`/`--boot`; not with `--test-command`). See [the daemon backend](https://github.com/davidteren/mutineer#faster-parallel-safe-rails-the---daemon-backend) |
+| `--daemon` | Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so `--jobs N` is safe under Rails (needs `--rails`/`--boot`; not with `--test-command`). See [the daemon backend](https://github.com/davidteren/mutineer#faster-parallel-safe-rails-the---daemon-backend). `--no-daemon` beats a `.mutineer.yml` `daemon:` key. It keeps `--rails` serial. Parallel `--rails` is not the default in this release |
 | `--format human\|json\|html` | Report format (default: human; `html` is a self-contained file) |
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--dry-run` | List candidate mutations without executing (honors suppression) |
 | `--fail-fast` | Stop at the first surviving mutant (`--no-fail-fast` beats a `.mutineer.yml` `fail_fast:` key) |
+| `--allow-empty` | A run with no mutants is expected. Without it, an empty full scan exits 3. A `--since` run whose changes hold no mutants exits 0 and says the changes hold nothing to test. `--no-allow-empty` beats a `.mutineer.yml` `allow_empty:` key |
 | `--matrix` | Run every covering test for each mutant and report the blind and redundant tests; the JSON report also lists each mutant's killers. In-process only; exits 2 with `--daemon`, `--test-command`, `--fail-fast` or `--dry-run`. RSpec needs 3.3 or later. `--no-matrix` beats a `.mutineer.yml` `matrix:` key. See [Kill matrix](https://github.com/davidteren/mutineer#kill-matrix) |
 | `--list-operators` | List available operators (default vs optional) and exit |
 | `--version`, `--help` | Print version / usage and exit |
@@ -148,8 +194,9 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
-| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+| `1` | The tests are too weak. The score is below `--threshold`, or a `--baseline` regression. |
+| `2` | Usage error (mistyped flag, unknown config key, bad path, unreadable baseline, or a baseline with no id_format). |
+| `3` | The run could not give a trustworthy result. A red unmutated suite, a daemon boot or provisioning failure, a runtime error, an empty full scan, or more than one mutant with no verdict when they exceed 10% of those attempted. |
 <!-- /contract:exit-codes -->
 
 ### Operators
@@ -326,9 +373,12 @@ Tradeoffs — this path is correct but not free:
 
 - **Slower:** your app re-boots for every mutant (no shared boot yet).
 - **No coverage narrowing:** every mutant runs the full `--test` set.
-  The run is serial.
-  A crash in the command can count as a kill.
+  The score is an upper bound.
+  It is not comparable to an in-process `--rails` score.
   Uncovered mutants count as survivors.
+  A crash in the command can count as a kill.
+  Exit codes 126 and 127 mean the command did not start.
+  Those are scored `error`, not `killed`.
   Mutineer prints this caveat on every run and aborts up
   front (a "smoke check") if your unmutated suite isn't green.
 - **Reload strategy only** (`--strategy redefine` is rejected on this path) and
@@ -344,7 +394,7 @@ and ignored mutants. A timeout is not counted as a kill, because a hang the
 mutant caused and a suite that is just slow look the same. The human report
 shows the count in its `Timeout:` row, and the JSON report in `summary.timeout`.
 
-Under `--threshold`, a timeout is a mutant with no verdict. The run exits 1 when
+Under `--threshold`, a timeout is a mutant with no verdict. The run exits 3 when
 more than one mutant produced no verdict and they exceed 10% of those attempted,
 or when nothing could be scored and something broke. If a slow suite times out
 mutants that its tests would catch, raise `--timeout`. A limit set below what
@@ -356,9 +406,12 @@ and once they pass 10% of the attempted mutants the run fails.
 Some mutants are equivalent (behaviour-identical) and survive forever — keeping a
 file off 100%. Suppress them so the score and `--threshold` gate stay meaningful:
 
-- **Inline:** `some_line # mutineer:disable-line` (or scope it: `# mutineer:disable-line comparison`). Put a reason after `--`: `# mutineer:disable-line comparison -- the test checks only 20`.
-- **Config:** a `.mutineer.yml` `ignore:` list of mutant ids. Each survivor's
-  `id` is printed in the JSON report, so copy it straight into `ignore:`.
+- **Inline:** `some_line # mutineer:disable-line` (or scope it: `# mutineer:disable-line comparison`). Put a reason after `--`: `# mutineer:disable-line comparison -- the test checks only 20`. The reason is stored on the ignored mutant and shown in the JSON report and the HTML report. A marker with no reason stores none.
+- **Config:** a `.mutineer.yml` `ignore:` list. A bare mutant id still works. A mapping is `id` plus an optional `reason`. Mutineer 1.9 is the first version that reads a mapping. Older versions do not understand one. The reason shows in the same reports as an inline reason. Each survivor's `id` is printed in the JSON report.
+
+`mutineer triage REPORT.json --reason TEXT --all` prints one mapping entry per survivor. `--id ID` prints one entry. Repeat `--id` for several. The command does not edit files. Paste the lines under `ignore:`.
+
+Built-in skips are listed on the [equivalent skips](https://davidteren.github.io/mutineer/equivalent-skips.html) page. There is no switch to turn them off.
 
 Suppressed mutants are excluded from the score (so 100% becomes reachable).
 
@@ -381,29 +434,21 @@ does.
   between machines.
 
 **Migrating from ids without the file path.** Before 1.3, ids did not include
-the file path, so two files could share an id (#126). Old-format ids keep
-working until 2.0, with a warning:
+the file path, so two files could share an id (#126). Those old ids no longer
+match.
 
-- **`ignore:`** An old entry still suppresses its mutants. The run prints the
-  new ids for each old entry, each with its file and method. When it names one
-  mutant, replace the entry with that id. When it names several (in different
-  files, or same-named methods in one file), the old entry over-matched: it also
-  hid mutants you did not mean to ignore. The warning says so. Keep only the ids for the mutant you meant to
-  ignore, not all of them. The list covers only the sources and operators in
-  that run, so run over every source with every operator set you use (for
-  example your Tier-2 `--operators`) for the full list.
-- **`--baseline`** An old baseline still matches: a survivor matches a stored
-  one with the same old id in the same file. A stored file that is an absolute
-  path outside the project root (a baseline written on another machine)
-  matches on the old id alone. The run tells you to
-  regenerate it. Regenerate it with `--format json`, but only after every gate
-  that reads it runs 1.3 or later (the Action's `version:` pin, your CI
-  `Gemfile.lock`). An older version treats every new-format survivor as new.
+- **`ignore:`** An old entry does not suppress its mutant. A full scan warns
+  once for each id that matches nothing: `ignore ID <id> matches no mutant;
+  if it comes from 1.x, run mutineer migrate`. A `--since` run skips that
+  check. Run `mutineer migrate` on the same sources and operators you use
+  for `run`. It writes every new id. When one old id matches several
+  mutants, delete any new id you did not mean to ignore. See
+  [Migrate old ignore ids](#migrate-old-ignore-ids).
+- **`--baseline`** A baseline with no `summary.id_format` exits 2. The
+  message tells you to generate a new baseline with `--format json`.
+  `migrate` does not rewrite a baseline.
 
-The JSON report's `summary.id_format` is `2` for the new format.
-`summary.legacy_id_matches.ignore` counts the old-format ignore entries a run
-matched, and `summary.legacy_id_matches.baseline` counts the survivors matched
-only through an old baseline id.
+The JSON report's `summary.id_format` is `2`.
 
 Ids are relative to the directory you run mutineer from. mutineer finds
 `.mutineer.yml` by walking up. When the file it loads is in a parent directory
@@ -508,7 +553,7 @@ This repo ships a composite action (`action.yml`) that wraps the CLI for CI:
 - uses: actions/checkout@v4
 - uses: ruby/setup-ruby@v1
   with: { ruby-version: "3.4", bundler-cache: true }
-- uses: davidteren/mutineer@v1
+- uses: davidteren/mutineer@v2
   with:
     sources: app/
     baseline: .mutineer/baseline.json
@@ -581,16 +626,17 @@ config file accepts these keys:
 | `capture_timeout` | A positive integer; the coverage-capture time limit in seconds (default 120) |
 | `cache_dir` | The coverage cache directory (default `.mutineer`) |
 | `matrix` | `true` or `false`; runs every covering test for each mutant and adds the kill matrix to the report |
+| `allow_empty` | `true` or `false`; an empty full scan is expected, so it exits 0 |
 
 Invalid values for known scalar keys, and a blank `operators` list, exit 2
-with a message naming the file and key. An unknown operator name warns and
-is skipped. If none of the names are known, the run exits 2. An empty
+with a message naming the file and key. An unknown operator name exits 2
+and names the closest valid name. An empty
 `require` or `ignore` list is valid. Boolean keys take `true` or `false` (quoted forms also work), not `"yes"`.
 `jobs` must be positive; a string value contains digits only. String values for
 `threshold` and the CLI-only `--baseline-epsilon` use plain decimals such as `90`
 or `0.5`, not `+2`, `1e2`, or `1_0`. String options such as `only` and `baseline`
 cannot be null or boolean. A blank `since` is invalid; use `since: false` to turn
-scoping off. Unknown keys warn and are ignored. Unknown operator names warn and are skipped, and the run exits 2 when none remain. `--operators` replaces a blank or unknown file list.
+scoping off. An unknown key exits 2 and names the closest valid name. `--operators` replaces a blank or unknown file list.
 
 `format`, `strategy`, `output`, `baseline_epsilon`, and `dry_run` are CLI-only.
 For JSON output, use `--format json`, not a `format:` config key. To select RSpec

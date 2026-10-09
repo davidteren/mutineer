@@ -46,11 +46,42 @@ class ConfigTest < Minitest::Test
     end
   end
 
-  def test_from_file_warns_on_unknown_key_and_drops_it
+  def test_from_file_rejects_an_unknown_key
     with_config("operatros: [arithmetic]\n") do |path| # typo
-      _, err = capture_io { @hash = Config.from_file(path) }
-      assert_includes err, "unknown config key"
-      assert_empty @hash
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, "unknown config key"
+      assert_includes err.message, "operatros"
+    end
+  end
+
+  def test_unknown_key_error_suggests_a_close_key
+    with_config("threshhold: 80\n") do |path|
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, 'did you mean "threshold"?'
+      assert_includes err.message, "unknown config key \"threshhold\""
+    end
+  end
+
+  def test_unknown_operator_error_suggests_a_close_name
+    with_config("operators: [comparsion, arithmetic]\n") do |path|
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, 'did you mean "comparison"?'
+      assert_includes err.message, "unknown operator"
+    end
+  end
+
+  def test_unknown_operator_with_no_close_name_gets_no_hint
+    with_config("operators: [zzzzzz, arithmetic]\n") do |path|
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, "unknown operator"
+      refute_includes err.message, "did you mean"
+    end
+  end
+
+  def test_deferred_operators_drop_unknown_names
+    with_config("operators: [comparsion, arithmetic]\n") do |path|
+      hash = Config.from_file(path, defer_operators: true)
+      assert_equal ["arithmetic"], hash[:operators]
     end
   end
 
@@ -241,11 +272,11 @@ class ConfigTest < Minitest::Test
     assert_equal Mutineer::CONFIG_OPTIONS.filter_map(&:yaml_key), Mutineer::KNOWN_KEYS
   end
 
-  def test_from_file_warns_on_unknown_operator_and_drops_it
+  def test_from_file_rejects_an_unknown_operator_among_known_ones
     with_config("operators: [arithmetic, bogus]\n") do |path|
-      _, err = capture_io { @hash = Config.from_file(path) }
-      assert_includes err, "unknown operator"
-      assert_equal ["arithmetic"], @hash[:operators]
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, "unknown operator"
+      assert_includes err.message, "bogus"
     end
   end
 
@@ -263,7 +294,7 @@ class ConfigTest < Minitest::Test
 
   def test_from_file_keeps_an_empty_require_or_ignore
     with_config("require: []\nignore:\n") do |path|
-      assert_equal({ require_paths: [], ignore: [] }, Config.from_file(path))
+      assert_equal({ require_paths: [], ignore: [], ignore_reasons: {} }, Config.from_file(path))
     end
   end
 
@@ -273,21 +304,17 @@ class ConfigTest < Minitest::Test
                    parse_error(:operators, bad)
     end
     assert_equal ["arithmetic"], Config.parse(:operators, ["arithmetic"])
-    assert_equal [], Config.parse(:ignore, nil)
+    assert_equal({ ids: [], reasons: {} }, Config.parse(:ignore, nil))
     assert_equal [], Config.parse(:require_paths, [])
     assert_equal ["a.rb"], Config.parse(:require_paths, "a.rb")
   end
 
-  # Every name unknown: the warning still names the typo, then the file is
-  # an error so the empty list cannot exit 0.
+  # Every name unknown is the same error: the first unknown name exits 2.
   def test_from_file_rejects_operators_that_are_all_unknown
     with_config("operators: [bogus]\n") do |path|
-      err = nil
-      _, stderr = capture_io do
-        err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
-      end
-      assert_includes stderr, "unknown operator"
-      assert_equal ".mutineer.yml: operators must name at least one known operator", err.message
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, "unknown operator"
+      assert_includes err.message, "bogus"
     end
   end
 
@@ -300,9 +327,8 @@ class ConfigTest < Minitest::Test
       assert_equal ["arithmetic"], cfg.operators
     end
     with_config("operators: [bogus]\n") do |path|
-      hash = nil
-      _, stderr = capture_io { hash = Config.from_file(path, defer_operators: true) }
-      assert_includes stderr, "unknown operator"
+      hash = Config.from_file(path, defer_operators: true)
+      assert_equal [], hash[:operators]
       cfg = Config.resolve({ operators: ["arithmetic"] }, hash)
       assert_equal ["arithmetic"], cfg.operators
     end
@@ -343,14 +369,60 @@ class ConfigTest < Minitest::Test
       out, err = capture_io { @hash = Config.from_file(path) }
       assert_empty out
       assert_empty err
-      assert_equal({ ignore: %w[a1b2c3d4e5f6 0011223344ff] }, @hash)
-      assert_equal %w[a1b2c3d4e5f6 0011223344ff], Config.resolve({}, @hash).ignore
+      assert_equal({ ignore: %w[a1b2c3d4e5f6 0011223344ff], ignore_reasons: {} }, @hash)
+      cfg = Config.resolve({}, @hash)
+      assert_equal %w[a1b2c3d4e5f6 0011223344ff], cfg.ignore
+      assert_equal({}, cfg.ignore_reasons)
     end
   end
 
   def test_ignore_defaults_to_empty_array
     assert_equal [], Config.new.ignore
+    assert_equal({}, Config.new.ignore_reasons)
     assert_equal [], Config.resolve({}, {}).ignore
+    assert_equal({}, Config.resolve({}, {}).ignore_reasons)
+  end
+
+  # A mapping entry keeps its reason. A bare id in the same list does not.
+  def test_ignore_mapping_keeps_the_reason_and_a_bare_id
+    yaml = <<~YAML
+      ignore:
+        - a1b2c3d4e5f6
+        - id: abc123def456
+          reason: same value
+    YAML
+    with_config(yaml) do |path|
+      _out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty err
+      assert_equal %w[a1b2c3d4e5f6 abc123def456], @hash[:ignore]
+      assert_equal({ "abc123def456" => "same value" }, @hash[:ignore_reasons])
+    end
+  end
+
+  def test_ignore_mapping_without_an_id_is_an_error
+    yaml = <<~YAML
+      ignore:
+        - reason: missing
+    YAML
+    with_config(yaml) do |path|
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, "ignore entry 1"
+      assert_includes err.message, "has no id"
+    end
+  end
+
+  def test_ignore_mapping_unknown_key_is_an_error
+    yaml = <<~YAML
+      ignore:
+        - id: abc123def456
+          reasn: typo
+    YAML
+    with_config(yaml) do |path|
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_includes err.message, "ignore entry 1"
+      assert_includes err.message, "unknown key \"reasn\""
+      assert_includes err.message, "did you mean"
+    end
   end
 
   # #27: test_command is accepted from the config file (snake_case key) and
@@ -519,6 +591,7 @@ class ConfigTest < Minitest::Test
     baseline: ["a.json", "b.json"],
     fail_fast: [false, true],
     matrix: [false, true],
+    allow_empty: [false, true],
     test_command: ["a %{files}", "b %{files}"],
     daemon: [false, true],
     timeout: [30, 60],
@@ -572,6 +645,51 @@ class ConfigTest < Minitest::Test
     assert_equal "reload", cfg.strategy
     assert_equal "human", cfg.format
     assert_operator cfg.jobs, :>=, 1    # Etc.nprocessors
+  end
+
+
+  # --- 2.0 notice: --rails becomes parallel by default (plan 011) ---
+
+  RAILS_2_0_NOTICE = "in Mutineer 2.0, --rails uses --daemon by default"
+
+  def rails_notice(cli, file = {})
+    config = nil
+    capture_io { config = Config.resolve(cli, file) }
+    _, err = capture_io { Config.warn_rails_default_change(config) }
+    err
+  end
+
+  def test_minitest_rails_without_daemon_prints_the_2_0_notice_once
+    err = rails_notice({ rails: true, tests: ["test/a_test.rb"] })
+    assert_equal 1, err.scan(RAILS_2_0_NOTICE).size
+    assert_includes err, "--no-daemon"
+  end
+
+  def test_no_rails_2_0_notice_when_the_user_chose_or_cannot_use_the_daemon
+    base = { rails: true, tests: ["test/a_test.rb"] }
+    refute_includes rails_notice(base.merge(daemon: true)), RAILS_2_0_NOTICE
+    refute_includes rails_notice(base.merge(daemon: false)), RAILS_2_0_NOTICE
+    refute_includes rails_notice(base, { daemon: false }), RAILS_2_0_NOTICE
+    refute_includes rails_notice({ rails: true, tests: ["spec/a_spec.rb"] }), RAILS_2_0_NOTICE
+    refute_includes rails_notice(base.merge(test_command: "bin/rails test %{files}")), RAILS_2_0_NOTICE
+    refute_includes rails_notice(base.merge(matrix: true)), RAILS_2_0_NOTICE
+    refute_includes rails_notice(base.merge(fail_fast: true)), RAILS_2_0_NOTICE
+    refute_includes rails_notice({ tests: ["test/a_test.rb"] }), RAILS_2_0_NOTICE
+  end
+
+  # 2.0 changes these runs too: --jobs 4 becomes four workers, and --jobs 1
+  # moves to the daemon and the reload strategy.
+  def test_rails_2_0_notice_fires_whatever_jobs_the_user_wrote
+    [1, 4].each do |jobs|
+      assert_includes rails_notice({ rails: true, tests: ["test/a_test.rb"], jobs: jobs }), RAILS_2_0_NOTICE
+    end
+  end
+
+  def test_no_daemon_does_not_tell_the_user_to_use_the_daemon
+    _, err = capture_io { Config.resolve({ rails: true, daemon: false }, {}) }
+    refute_includes err, "Use --daemon"
+    _, err = capture_io { Config.resolve({ rails: true, daemon: false, jobs: 4 }, {}) }
+    assert_includes err, "Use --daemon"
   end
 
   private

@@ -88,19 +88,19 @@ class RunnerExternalTest < Minitest::Test
       wr_resume.write("1")
       wr_resume.close
       wait_child(pid)
-      assert_equal 1, status.exitstatus, err
+      assert_equal 3, status.exitstatus, err
       assert_match(/another mutineer run owns/, err)
       assert_equal original, File.binread(path)
     end
   end
 
   # A command that fails on the UNMUTATED tree is a broken environment: abort
-  # before scoring (exit 1), name the diagnosis, run zero mutants.
+  # before scoring (exit 3), name the diagnosis, run zero mutants.
   def test_smoke_failure_aborts
     with_project("calculator_strong_test.rb") do |proj|
       out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
                                   "--test-command", "#{RUBY} -e exit(1) %{files}", chdir: proj)
-      assert_equal 1, status.exitstatus
+      assert_equal 3, status.exitstatus
       assert_match(/unmutated suite is not green/, err)
       refute_match(/mutation score/i, out)
     end

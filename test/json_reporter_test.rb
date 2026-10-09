@@ -58,7 +58,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.7", doc["schema_version"] # 1.6 added operator, token and id to no_coverage[] and uncapturable[]; 1.5 the --matrix block
+    assert_equal "2.0", doc["schema_version"] # 2.0 drops legacy_id_matches; 1.8 added reason on ignored[]
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
@@ -66,23 +66,11 @@ class JsonReporterTest < Minitest::Test
     assert_equal false, doc["summary"]["scoped"], "unscoped run records scoped: false"
   end
 
-  # #126: the report names its id format, so a later --baseline load knows its
-  # ids include the file path. With no legacy data the two counts are zero.
-  def test_summary_records_the_id_format_and_zero_legacy_matches
+  # The report names its id format. Old-format match counts are gone.
+  def test_summary_records_the_id_format_and_omits_legacy_matches
     doc = render([Mutineer::Result.killed, survivor])
     assert_equal 2, doc["summary"]["id_format"]
-    assert_equal({ "ignore" => 0, "baseline" => 0 }, doc["summary"]["legacy_id_matches"])
-  end
-
-  # Each count needs a different fix (edit the ignore list vs regenerate the
-  # baseline), so the report keeps them apart.
-  def test_summary_carries_separate_legacy_id_match_counts
-    out = StringIO.new
-    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
-                      .report(out: out, err: StringIO.new, format: "json",
-                              legacy_id_matches: { ignore: 2, baseline: 1 })
-    doc = JSON.parse(out.string)
-    assert_equal({ "ignore" => 2, "baseline" => 1 }, doc["summary"]["legacy_id_matches"])
+    refute doc["summary"].key?("legacy_id_matches")
   end
 
   # A --since run's report must say so, so a consumer (or a later --baseline
@@ -176,6 +164,19 @@ class JsonReporterTest < Minitest::Test
                                             mutation: mutation_at(">=", "<", :comparison))
 
     assert_equal %w[aaaaaaaaaaaa bbbbbbbbbbbb], render([later, earlier])["ignored"].map { |e| e["id"] }
+  end
+
+  # The reason is present only when the user wrote one.
+  def test_ignored_reason_is_omitted_when_absent
+    with_reason = Mutineer::Result.ignored.with(subject: subject, id: "aaaaaaaaaaaa",
+                                                reason: "only 20 is tested",
+                                                mutation: mutation_at(">=", ">", :comparison))
+    plain = Mutineer::Result.ignored.with(subject: subject, id: "bbbbbbbbbbbb",
+                                          mutation: mutation_at(">=", "<", :comparison))
+    rows = render([with_reason, plain])["ignored"]
+
+    assert_equal "only 20 is tested", rows[0]["reason"]
+    refute rows[1].key?("reason")
   end
 
   def test_no_coverage_entries_on_one_line_are_ordered_by_operator_then_id

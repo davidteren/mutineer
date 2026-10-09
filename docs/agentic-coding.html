@@ -35,6 +35,7 @@
     <nav aria-label="Primary">
       <a href="index.html#install">Install</a>
       <a href="agentic-coding.html" aria-current="page">Agent &amp; CI</a>
+      <a href="equivalent-skips.html">Skips</a>
       <a href="json-schema.html">JSON schema</a>
       <a href="api/">API</a>
       <a href="sample-report.html">Sample report</a>
@@ -85,7 +86,8 @@
         <li>Re-run. Accept the result only when this run exits <code>0</code>, <code>summary.score</code> is not <code>null</code>, and <code>summary.score &gt;= 90</code>. If every scored mutant must be killed, also require <code>summary.survived == 0</code>; the score is rounded, so <code>--threshold 100</code> alone can still pass with a survivor.</li>
       </ol>
       <p>Keep <code>fail_fast</code> disabled (the default). If the active <code>.mutineer.yml</code> sets it to <code>true</code>, temporarily change that value to <code>false</code> for the loop. Restore the original value when the loop ends, before committing. A fail-fast run is partial, and its score and exit code do not cover the full scope.</p>
-      <p>Zero survivors alone is not success: an empty or fully suppressed scope, or a run with no usable verdicts, also has zero survivors. If the score is null, stop and report “no score”. Check <code>no_coverage[]</code> for test gaps and <code>no_verdict[]</code> for harness failures, and fix them before starting a new run. A positive threshold fails when nothing can be scored and something broke, or when more than one mutant has no verdict and they exceed 10% of those attempted; it does not require zero errors. Keep the threshold in the command equal to your target.</p>
+      <p>Zero survivors alone is not success: an empty or fully suppressed scope, or a run with no usable verdicts, also has zero survivors. If the score is null, stop and report “no score”. Check <code>no_coverage[]</code> for test gaps and <code>no_verdict[]</code> for harness failures, and fix them before starting a new run. A positive threshold exits 3 when nothing can be scored and something broke, or when more than one mutant has no verdict and they exceed 10% of those attempted; it does not require zero errors. Keep the threshold in the command equal to your target.</p>
+      <p>An empty full scan (<code>summary.total</code> is 0) exits 3 unless you pass <code>--allow-empty</code>. A <code>--since</code> run whose changes hold no mutable code says “nothing to test in the changes since REF” and exits 0. Warnings that start with <code>mutineer:</code> or <code>[mutineer]</code> also go to stderr: the empty-run note, an ignore id that matches nothing, and the count of errored mutants.</p>
       <p>Progress lines go to <strong>stderr</strong>; do not merge streams (<code>2&gt;&amp;1</code>) when parsing JSON from stdout. Prefer <code>--output FILE</code> and read the file.</p>
       <p><code>--since</code> keeps each iteration fast by mutating only the lines the agent just touched. Genuinely equivalent mutants (which can never be killed) should be suppressed so the loop terminates — see <a href="#equivalent">Avoiding infinite loops</a> below.</p>
 
@@ -113,7 +115,7 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
-      - uses: davidteren/mutineer@v1
+      - uses: davidteren/mutineer@v2
         with:
           sources: app/
           <span class="c"># since: defaults to the PR's base commit SHA (falls back to fetching the base tip); `none` = full scan</span>
@@ -126,7 +128,7 @@ jobs:
           name: mutineer-report
           path: .mutineer/pr.json</code></pre>
       <p>For a Rails app, add <code>rails: true</code> and <code>use-bundler: true</code> (boot mode needs the app's own bundle):</p>
-      <pre><code>      - uses: davidteren/mutineer@v1
+      <pre><code>      - uses: davidteren/mutineer@v2
         with:
           sources: app/models/order.rb
           rails: true
@@ -152,8 +154,9 @@ jobs:
     <thead><tr><th scope="col">Code</th><th scope="col">Meaning</th></tr></thead>
     <tbody>
       <tr><td class="op">0</td><td>Score ≥ threshold (or no gate) <strong>and</strong> no baseline regression.</td></tr>
-              <tr><td class="op">1</td><td>Score below <code>--threshold</code>, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a <code>--baseline</code> regression, OR a runtime error.</td></tr>
-              <tr><td class="op">2</td><td>Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline).</td></tr>
+              <tr><td class="op">1</td><td>The tests are too weak. The score is below <code>--threshold</code>, or a <code>--baseline</code> regression.</td></tr>
+              <tr><td class="op">2</td><td>Usage error (mistyped flag, unknown config key, bad path, unreadable baseline, or a baseline with no id_format).</td></tr>
+              <tr><td class="op">3</td><td>The run could not give a trustworthy result. A red unmutated suite, a daemon boot or provisioning failure, a runtime error, an empty full scan, or more than one mutant with no verdict when they exceed 10% of those attempted.</td></tr>
     </tbody>
   </table>
 </div>

@@ -44,9 +44,11 @@ Zero survivors alone is not success: an empty or fully suppressed scope, or a ru
 with no usable verdicts, also has zero survivors. If the score is null, stop and
 report “no score”. Check `no_coverage[]` for test gaps and `no_verdict[]` for
 harness failures, and fix them before starting a new run. A
-positive threshold fails when nothing can be scored and something broke, or when
+positive threshold exits 3 when nothing can be scored and something broke, or when
 more than one mutant has no verdict and they exceed 10% of those attempted; it
 does not require zero errors. Keep the threshold in the command equal to your target.
+
+An empty full scan (`summary.total` is 0) exits 3 unless you pass `--allow-empty`. A `--since` run whose changes hold no mutable code says "nothing to test in the changes since REF" and exits 0. Warnings that start with `mutineer:` or `[mutineer]` also go to stderr: the empty-run note, an ignore id that matches nothing, and the count of errored mutants.
 
 Progress lines go to **stderr**; do not merge streams (`2>&1`) when parsing JSON from
 stdout — prefer `--output FILE` and read the file.
@@ -95,7 +97,7 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
-      - uses: davidteren/mutineer@v1
+      - uses: davidteren/mutineer@v2
         with:
           sources: app/
           # since: defaults to the PR's base commit SHA from the event
@@ -113,7 +115,7 @@ jobs:
 For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the app's own bundle):
 
 ```yaml
-      - uses: davidteren/mutineer@v1
+      - uses: davidteren/mutineer@v2
         with:
           sources: app/models/order.rb
           rails: true
@@ -148,8 +150,9 @@ human review / suppression rather than looping forever.
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
-| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+| `1` | The tests are too weak. The score is below `--threshold`, or a `--baseline` regression. |
+| `2` | Usage error (mistyped flag, unknown config key, bad path, unreadable baseline, or a baseline with no id_format). |
+| `3` | The run could not give a trustworthy result. A red unmutated suite, a daemon boot or provisioning failure, a runtime error, an empty full scan, or more than one mutant with no verdict when they exceed 10% of those attempted. |
 <!-- /contract:exit-codes -->
 
 Branch on these directly; never scrape the human report. The JSON `summary` and `baseline` blocks carry

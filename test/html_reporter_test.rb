@@ -149,4 +149,15 @@ class HtmlReporterTest < Minitest::Test
     refute_includes render([survivor]), "Kill matrix"
   end
 
+  def test_ignored_section_shows_the_reason
+    ignored = Mutineer::Result.ignored.with(subject: subject, id: "abc123def456",
+                                            reason: "same value <raw>",
+                                            mutation: mutation_at(">=", ">", :comparison))
+    html = render([ignored])
+    assert_includes html, "Ignored mutants"
+    assert_includes html, "abc123def456"
+    assert_includes html, "same value &lt;raw&gt;"
+    refute_includes html, "same value <raw>"
+  end
+
 end

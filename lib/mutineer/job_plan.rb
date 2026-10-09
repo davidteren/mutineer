@@ -29,14 +29,10 @@ module Mutineer
     # the parent can reattach it after the run. Shared by the in-process,
     # external, and daemon backends so job selection can never drift.
     #
-    # Each mutant also gets its old-format id ({MutantId.legacy_for}), so an ignore
-    # entry stored before ids carried the path still suppresses it. Prints nothing:
-    # the extras hash returns, as data, `legacy_ignore_matches` (each old-format
-    # ignore entry that matched a mutant through its old-format id => one
-    # `{id:, file:, subject:}` hash per matched mutant, in collection order: its
-    # new id, its project-relative file and its subject's qualified name;
-    # recorded even when a new id is also listed, since the old entry still
-    # over-matches other files) and `id_map` (every new id => its old-format id).
+    # Each mutant also gets its old-format id ({MutantId.legacy_for}). A run does
+    # not match `ignore:` or a baseline on that id. The extras hash returns
+    # `id_map` (every new id => its old-format id) so `mutineer migrate` can
+    # rewrite old ignore entries. Prints nothing.
     #
     # Subjects sharing a qualified name in one file (two owner-less `def index`
     # in two DSL blocks) get a per-file ordinal in discovery order, so their ids
@@ -45,7 +41,7 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @param operator_classes [Array<Class>] resolved operators.
     # @return [Array(Array, Array<Result>, Hash<String,String>, Hash{Symbol => Hash})]
-    #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`, `:id_map`).
+    #   jobs, ignored, source_map, and extras (`:id_map`).
     def self.collect_jobs(config, operator_classes)
       source_map = {}
       disabled_map = {}
@@ -55,9 +51,9 @@ module Mutineer
       # its ordinal instead of minting a second id for the same mutant.
       name_decls = Hash.new { |h, k| h[k] = {} }
       ignore_set = config.ignore.to_set
+      ignore_reasons = config.ignore_reasons || {}
       jobs = []
       ignored_results = []
-      legacy_ignore_matches = {}
       id_map = {}
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file))
@@ -77,23 +73,19 @@ module Mutineer
         mutations.each_with_index do |mutation, i|
           id = ids[i]
           legacy = legacy_ids[i]
-          ignored = suppressed?(mutation.operator, lines[i], [id, legacy], disabled, ignore_set)
+          ignored = suppressed?(mutation.operator, lines[i], id, disabled, ignore_set)
           next unless seen[ignored ? :ignored : :run].add?(keys[i])
 
           id_map[id] = legacy
-          # An old entry still over-matches other files even when the new id is
-          # listed too, so every old-entry match is reported for migration.
-          if ignore_set.include?(legacy)
-            (legacy_ignore_matches[legacy] ||= []) << { id: id, file: id_path, subject: subject.qualified_name }
-          end
           if ignored
-            ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id)
+            reason = suppression_reason(mutation.operator, lines[i], id, disabled, ignore_reasons)
+            ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id, reason: reason)
           else
             jobs << [subject, mutation, id]
           end
         end
       end
-      [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map }]
+      [jobs, ignored_results, source_map, { id_map: id_map }]
     end
 
     # One key per mutation; two mutations share a key exactly when they are
@@ -242,13 +234,19 @@ module Mutineer
       result.with(status: :ran_at_load)
     end
 
-    # Map each line number to :all or a set of operator symbols, using
-    # inline `# mutineer:disable-line [ops]` markers (RuboCop semantics: the marker
-    # sits on the same physical line as the code it silences). A bare marker
-    # disables every operator on that line; `disable-line a, b` only the listed
-    # operators. Block-form disable/enable ranges are intentionally not supported.
-    # Only a real `#` comment counts: Prism lists the comments, so the marker
-    # text inside a string, heredoc or regex silences nothing (#158).
+    # Map each line number to `{ ops:, reason: }`, using inline
+    # `# mutineer:disable-line [ops]` markers (RuboCop semantics: the marker
+    # sits on the same physical line as the code it silences). `ops` is `:all`
+    # or a set of operator symbols. `reason` is the text after `--`, or nil.
+    # A bare marker disables every operator on that line; `disable-line a, b`
+    # only the listed operators. Block-form disable/enable ranges are
+    # intentionally not supported. Only a real `#` comment counts: Prism lists
+    # the comments, so the marker text inside a string, heredoc or regex
+    # silences nothing (#158).
+    #
+    # @param source [String] the source text.
+    # @param file [String] the file name, for warnings.
+    # @return [Hash{Integer => Hash}] line => `{ ops:, reason: }`.
     def self.suppress_map(source, file)
       map = {}
       Parser.comments(source).grep(Prism::InlineComment).each do |comment|
@@ -261,29 +259,93 @@ module Mutineer
         ops = nil if ops&.empty?
         unknown = ops.to_a.reject { |o| MutatorRegistry::ALL.key?(o) }
         unknown.each do |o|
-          warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line} " \
+          warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line}#{Mutineer.did_you_mean(o, MutatorRegistry::ALL.keys)} " \
                "(known: #{MutatorRegistry::ALL.keys.join(', ')}); write a reason after --"
         end
-        map[line] = ops ? ops.map(&:to_sym).to_set : :all
+        reason = comment.slice[/\s--\s*(.*)\z/, 1]&.strip
+        reason = nil if reason.nil? || reason.empty?
+        map[line] = { ops: ops ? ops.map(&:to_sym).to_set : :all, reason: reason }
       end
       map
     end
 
-    # True when this mutant is suppressed: its line bears a disable-line marker
-    # (bare, or scoped to its operator), OR its new or old-format id is in the
-    # config ignore list. Checked at job-build time so a suppressed mutant is
-    # never forked.
+    # The operator set for one suppress-map entry. A Hash is the current shape
+    # (`ops` plus `reason`). `:all` and a Set remain valid for callers that
+    # build the map by hand.
     #
-    # @param ids [Array<String>, String] the mutant's new id and its old-format
-    #   id, or a single id (the pre-#126 call shape).
+    # @param entry [Hash, Symbol, Set, nil] one line's suppress-map value.
+    # @return [Symbol, Set, nil] `:all`, the operator set, or nil.
+    def self.line_ops(entry)
+      entry.is_a?(Hash) ? entry[:ops] : entry
+    end
+
+    # The reason text on one suppress-map entry, when the entry stores one.
+    #
+    # @param entry [Hash, Object] one line's suppress-map value.
+    # @return [String, nil]
+    def self.line_reason(entry)
+      entry.is_a?(Hash) ? entry[:reason] : nil
+    end
+
+    # True when this mutant is suppressed: its line bears a disable-line marker
+    # (bare, or scoped to its operator), OR one of `ids` is in the config ignore
+    # list. Callers pass the current id only. An old-format id does not match.
+    # Checked at job-build time so a suppressed mutant is never forked.
+    #
+    # @param ids [Array<String>, String] the mutant's current id, or several ids.
     def self.suppressed?(operator, line, ids, disabled, ignore_set)
       return true if Array(ids).any? { |id| ignore_set.include?(id) }
 
-      case (entry = disabled[line])
+      case line_ops(disabled[line])
       when :all then true
-      when Set  then entry.include?(operator)
+      when Set  then line_ops(disabled[line]).include?(operator)
       else false
       end
+    end
+
+    # Why an ignored mutant was suppressed. An inline reason wins. Otherwise
+    # the reason is the first matching ignore id that has one. Blank text is nil.
+    #
+    # @param operator [Symbol] the mutant's operator.
+    # @param line [Integer] the mutant's line.
+    # @param ids [Array<String>, String] the current id, or several ids.
+    # @param disabled [Hash] the file's suppress map.
+    # @param ignore_reasons [Hash{String => String}] id => reason.
+    # @return [String, nil]
+    def self.suppression_reason(operator, line, ids, disabled, ignore_reasons)
+      entry = disabled[line]
+      ops = line_ops(entry)
+      line_hit = ops == :all || (ops.is_a?(Set) && ops.include?(operator))
+      inline = line_hit ? line_reason(entry) : nil
+      return inline if inline.is_a?(String) && !inline.strip.empty?
+
+      Array(ids).each do |candidate|
+        text = ignore_reasons[candidate]
+        return text if text.is_a?(String) && !text.strip.empty?
+      end
+      nil
+    end
+
+    # Narrows the jobs and the suppressed (ignored) results to --since when it
+    # is set, as the dry run does, so a scoped report lists only mutants on
+    # changed lines. Also returns how many mutants there were before narrowing
+    # (nil without --since), so the CLI can tell "the changes held nothing to
+    # test" from "nothing was mutable at all".
+    #
+    # @param jobs [Array] (subject, mutation, id) entries to run.
+    # @param ignored_results [Array<Mutineer::Result>] suppressed mutants.
+    # @param source_map [Hash{String => String}] source text by file.
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Array(Array, Array<Mutineer::Result>, Integer), Array(Array, Array<Mutineer::Result>, nil)]
+    #   the jobs to run, the ignored results to report, and the count before --since.
+    def self.scope_since(jobs, ignored_results, source_map, config)
+      return [jobs, ignored_results, nil] unless config.since
+
+      # One pass, so git computes the changed lines once.
+      ignored_entries = ignored_results.map { |r| [r.subject, r.mutation, r] }
+      kept = filter_since(jobs + ignored_entries, source_map, config)
+      kept_ignored, kept_jobs = kept.partition { |entry| entry.last.is_a?(Result) }
+      [kept_jobs, kept_ignored.map(&:last), jobs.size + ignored_results.size]
     end
 
     # --since: keep only jobs whose mutation lands on a line changed since the git

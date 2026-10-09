@@ -1,9 +1,21 @@
 # frozen_string_literal: true
 
+require "did_you_mean"
 require "etc"
 require "yaml"
 
 module Mutineer
+  # A "did you mean" hint for a misspelled name, using the stdlib spell
+  # checker that Ruby itself uses for NameError.
+  #
+  # @param word [String] the name the user wrote.
+  # @param candidates [Array<String>] the names that are valid here.
+  # @return [String] ` (did you mean "x"?)` for the closest candidate, or "" when none is close.
+  def self.did_you_mean(word, candidates)
+    match = DidYouMean::SpellChecker.new(dictionary: candidates).correct(word.to_s).first
+    match ? " (did you mean #{match.inspect}?)" : ""
+  end
+
   # Raised by the config layer instead of calling exit/abort. A data class must
   # never kill the host process. The CLI rescues this and maps it to exit 2.
   class ConfigError < StandardError; end
@@ -36,7 +48,7 @@ module Mutineer
     ConfigOption.new(field: :framework, type: :enum, yaml_key: "framework", flag: "--framework",
                      values: %w[minitest rspec]),
     ConfigOption.new(field: :verbose, type: :bool, yaml_key: "verbose", flag: "--verbose"),
-    ConfigOption.new(field: :ignore, type: :string_list, yaml_key: "ignore"),
+    ConfigOption.new(field: :ignore, type: :ignore_list, yaml_key: "ignore"),
     ConfigOption.new(field: :baseline, type: :string, yaml_key: "baseline", flag: "--baseline"),
     ConfigOption.new(field: :fail_fast, type: :bool, yaml_key: "fail_fast", flag: "--fail-fast"),
     ConfigOption.new(field: :matrix, type: :bool, yaml_key: "matrix", flag: "--matrix"),
@@ -46,6 +58,7 @@ module Mutineer
     ConfigOption.new(field: :capture_timeout, type: :positive_int, yaml_key: "capture_timeout",
                      flag: "--capture-timeout"),
     ConfigOption.new(field: :cache_dir, type: :string, yaml_key: "cache_dir", flag: "--cache-dir"),
+    ConfigOption.new(field: :allow_empty, type: :bool, yaml_key: "allow_empty", flag: "--allow-empty"),
     ConfigOption.new(field: :format, type: :enum, flag: "--format", values: %w[human json html]),
     ConfigOption.new(field: :strategy, type: :enum, flag: "--strategy", values: %w[reload redefine],
                      aliases: STRATEGY_ALIASES),
@@ -74,11 +87,11 @@ module Mutineer
     :sources, :tests, :operators, :threshold, :only, :dry_run,
     :cache_dir, :project_root, :load_paths,
     :jobs, :format, :output, :strategy, :require_paths,
-    :boot, :rails, :since, :framework, :verbose, :ignore,
+    :boot, :rails, :since, :framework, :verbose, :ignore, :ignore_reasons,
     # :daemon is user-facing (--daemon flag + KNOWN_KEYS + boolean coerce).
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
-    :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix,
+    :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix, :allow_empty,
     keyword_init: true
   ) do
     # Config file name.
@@ -109,10 +122,12 @@ module Mutineer
       self.rails         = false if rails.nil?
       self.verbose       = false if verbose.nil?
       self.ignore        ||= []
+      self.ignore_reasons ||= {}
       self.baseline_epsilon ||= 0.0
       self.fail_fast     = false if fail_fast.nil?
       self.daemon        = false if daemon.nil?
       self.matrix        = false if matrix.nil?
+      self.allow_empty   = false if allow_empty.nil?
     end
 
     # True when the user wrote `key`, on the command line or in the config
@@ -156,14 +171,13 @@ module Mutineer
       nil
     end
 
-    # Parse a .mutineer.yml into a symbol-keyed hash of recognized keys. Unknown
-    # keys emit a one-line stderr warning and are ignored. Unknown operator names
-    # warn and are dropped. If that leaves no names, the file is an error: an
-    # empty operator list would run nothing and exit 0. Pass
-    # +defer_operators: true+ only when the command line replaces that list, so
-    # a blank or all-unknown file list does not block +--operators+. A YAML
-    # syntax error raises ConfigError: never a silent fallback to defaults, and
-    # never an exit from the lib layer.
+    # Parse a .mutineer.yml into a symbol-keyed hash of recognized keys. An
+    # unknown key raises {ConfigError}. An unknown operator name raises
+    # {ConfigError} unless +defer_operators+ is set, in which case unknown names
+    # are dropped because the command line replaces the list. A blank operator
+    # list is an error unless +defer_operators+ is set: an empty list would run
+    # nothing. A YAML syntax error raises ConfigError: never a silent fallback
+    # to defaults, and never an exit from the lib layer.
     #
     # @param path [String] config file path.
     # @param defer_operators [Boolean] keep an empty operator list for a CLI override.
@@ -180,14 +194,18 @@ module Mutineer
       raw.each do |key, value|
         ks = key.to_s
         unless KNOWN_KEYS.include?(ks)
-          warn "mutineer: unknown config key #{ks.inspect} in #{name} " \
-               "(known: #{KNOWN_KEYS.join(', ')}); ignored"
-          next
+          raise ConfigError, "#{name}: unknown config key #{ks.inspect}" \
+                             "#{Mutineer.did_you_mean(ks, KNOWN_KEYS)} (known: #{KNOWN_KEYS.join(', ')})"
         end
         field = field_for(ks)
         parsed = parse(field, value, file: name, defer_operators: defer_operators)
+        if field == :ignore
+          out[:ignore] = parsed.fetch(:ids)
+          out[:ignore_reasons] = parsed.fetch(:reasons)
+          next
+        end
         if field == :operators
-          parsed = filter_operators(parsed, name)
+          parsed = filter_operators(parsed, name, strict: !defer_operators)
           if parsed.empty? && !defer_operators
             raise ConfigError, "#{name}: operators must name at least one known operator"
           end
@@ -220,7 +238,9 @@ module Mutineer
           config.strategy = "redefine"
         end
         unless config.daemon
-          if config.jobs.to_i > 1
+          # A typed --no-daemon already chose the serial run; only an explicit
+          # --jobs N still needs telling that --daemon is the way to get N.
+          if config.jobs.to_i > 1 && (!config.explicit?(:daemon) || config.explicit?(:jobs))
             warn "[mutineer] --rails without --daemon runs serially (shared test DB); " \
                  "forcing --jobs 1. Use --daemon for safe --jobs N."
           end
@@ -233,6 +253,24 @@ module Mutineer
       # minitest unless the test files clearly look RSpec.
       config.framework ||= detect_framework(config.tests)
       config
+    end
+
+    # Mutineer 2.0 makes the daemon the default under --rails for Minitest, so a
+    # run that would change says so now. The CLI calls this after test pairing,
+    # which can still switch the framework to rspec. The runs that 2.0 keeps on this path
+    # stay quiet: RSpec, --test-command, --matrix and --fail-fast cannot use the
+    # daemon, a --dry-run runs no tests, and a written `daemon` value (true or
+    # false) is the user's choice.
+    #
+    # @api private
+    # @param config [Mutineer::Config] the resolved config.
+    # @return [void]
+    def self.warn_rails_default_change(config)
+      return unless config.rails && !config.explicit?(:daemon) && config.framework == "minitest"
+      return if config.test_command || config.matrix || config.fail_fast || config.dry_run
+
+      warn "[mutineer] in Mutineer 2.0, --rails uses --daemon by default: parallel workers (unless " \
+           "--jobs 1) and the reload strategy. Pass --no-daemon (or daemon: false) to keep this run as it is."
     end
 
     # Pick rspec when a MAJORITY of the given test files end with _spec.rb;
@@ -299,6 +337,8 @@ module Mutineer
 
         prefix = file ? "#{file}: " : ""
         raise ConfigError, "#{prefix}unknown #{field} #{value.to_s.inspect}. Expected: #{opt.values.join(', ')}"
+      when :ignore_list
+        parse_ignore_list(value, file)
       when :string_list
         items = Array(value).map(&:to_s)
         # Only `operators` treats [] as "run these" rather than "use the
@@ -350,23 +390,101 @@ module Mutineer
       f if f&.finite?
     end
 
-    # Drop (with a warning) operator names the registry does not know.
+    # Reads an `ignore:` value into ids plus a reason for each mapping.
+    # A bare string is an id with no reason. A mapping may hold `id` and
+    # `reason` only. A value that is not a list, or a mapping with no id or
+    # with any other key, raises {ConfigError}. The CLI maps that to exit 2.
+    #
+    # @api private
+    # @param value [Object] the raw YAML value.
+    # @param file [String, nil] config file name.
+    # @return [Hash] `:ids` is an array of id strings. `:reasons` maps an id to its text.
+    def self.parse_ignore_list(value, file)
+      label = file || CONFIG_FILE
+      case value
+      when nil then return { ids: [], reasons: {} }
+      when String then return { ids: [value], reasons: {} }
+      when Array then items = value
+      when Hash then items = [value]
+      else
+        raise ConfigError, "ignore in #{label} must be a list"
+      end
+
+      ids = []
+      reasons = {}
+      items.each_with_index do |item, index|
+        number = index + 1
+        case item
+        when String
+          ids << item unless item.empty? || ids.include?(item)
+        when Hash
+          id, reason = ignore_mapping(item, number, label)
+          next if id.nil?
+
+          ids << id unless ids.include?(id)
+          reasons[id] = reason if reason
+        else
+          raise ConfigError, "ignore entry #{number} in #{label} is not an id or a mapping"
+        end
+      end
+      { ids: ids, reasons: reasons }
+    end
+
+    # One `ignore:` mapping. Returns the id and reason.
+    # Raises {ConfigError} when the entry is not usable.
+    #
+    # @api private
+    # @param item [Hash] the mapping.
+    # @param number [Integer] 1-based index in the list.
+    # @param label [String] config file name.
+    # @return [Array(String, String), Array(String, nil)] the id, and the reason when one was written.
+    # @raise [Mutineer::ConfigError] when the mapping has no id, a non-text reason, or an unknown key.
+    def self.ignore_mapping(item, number, label)
+      known = %w[id reason]
+      unknown = item.keys.map(&:to_s) - known
+      unless unknown.empty?
+        names = unknown.map(&:inspect).join(", ")
+        hint = unknown.map { |key| Mutineer.did_you_mean(key, known) }.find { |text| !text.empty? }.to_s
+        raise ConfigError, "ignore entry #{number} in #{label} has unknown key #{names}#{hint}"
+      end
+
+      id = item["id"] || item[:id]
+      unless id.is_a?(String) && !id.strip.empty?
+        raise ConfigError, "ignore entry #{number} in #{label} has no id"
+      end
+
+      reason = item.key?("reason") ? item["reason"] : item[:reason]
+      if !reason.nil? && !reason.is_a?(String)
+        raise ConfigError, "ignore entry #{number} in #{label} reason must be text"
+      end
+
+      text = reason.to_s.strip
+      [id, text.empty? ? nil : text]
+    end
+
+    # Keep operator names the registry knows. When +strict+ is set, an unknown
+    # name raises {ConfigError} (exit 2) and names the closest valid name.
+    # A command-line `--operators` list replaces the file, so that call passes
+    # +strict: false+ and drops unknown file names without an error.
     # Referenced lazily so config.rb carries no load-order dependency on the
     # registry; by the time a config is parsed at runtime, it is loaded.
     #
     # @api private
     # @param names [Array<String>] operator names.
-    # @param file_name [String] config file name for warnings.
+    # @param file_name [String] config file name for the error.
+    # @param strict [Boolean] raise on an unknown name.
     # @return [Array<String>] known operator names.
-    def self.filter_operators(names, file_name)
+    # @raise [Mutineer::ConfigError] when +strict+ and a name is unknown.
+    def self.filter_operators(names, file_name, strict:)
       known = MutatorRegistry::ALL.keys
-      names.select do |n|
-        next true if known.include?(n)
+      names.each do |n|
+        next if known.include?(n)
+        next unless strict
 
-        warn "mutineer: unknown operator #{n.inspect} in #{file_name} " \
-             "(known: #{known.join(', ')}); ignored"
-        false
+        raise ConfigError, "#{file_name}: unknown operator #{n.inspect}" \
+                           "#{Mutineer.did_you_mean(n, known)} (known: #{known.join(', ')})"
       end
+      names.select { |n| known.include?(n) }
     end
   end
 end

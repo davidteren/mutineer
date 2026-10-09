@@ -25,6 +25,88 @@ All notable changes to this project are documented here. The format is based on
   `STABILITY.md` lists what a release keeps and what 2.0 will change.
   `SECURITY.md`, `CONTRIBUTING.md`, and GitHub issue forms are new.
   The docs home page takes the same section from the README at site build.
+- **`mutineer migrate`.** It rewrites old-format ids in `.mutineer.yml`
+  `ignore:` to the current ids. It keeps comments and every other line.
+  One old id that matches several mutants becomes every new id. An id that
+  matches nothing stays, and the command exits 1. `--dry-run` prints each
+  change and writes nothing. It does not rewrite a baseline. Generate a new
+  baseline with `--format json`. An old-id warning names `mutineer migrate`
+  and says that this becomes an error in Mutineer 2.0. The baseline warning
+  says to generate a new baseline with `--format json`.
+- **Reasons on ignored mutants.** Text after `--` on
+  `# mutineer:disable-line`, and a `.mutineer.yml` `ignore:` mapping
+  (`id` plus `reason`), is stored on the ignored mutant. The JSON report
+  (`schema_version` 1.8) and the HTML report show it. A mapping with no
+  `id`, or with an unknown key, warns. Mutineer 1.9 is the first version
+  that reads a mapping. Older versions do not understand one.
+- **`mutineer triage`.** It prints `ignore:` mapping entries for survivors
+  in a JSON report. `--reason` is required. Pass `--all` or `--id`. It
+  does not edit files.
+- **Equivalent-skip page.** The docs list every built-in chain-link skip
+  and the endless-range skip, and why each one is equivalent.
+- **`--allow-empty` and `allow_empty:`.** A run with no mutants now warns
+  that Mutineer 2.0 will fail it, unless `--allow-empty` marks it as expected.
+  A `--since` run whose changes hold no mutants does not warn: it says the
+  changes hold nothing to test. A `--since` run with no mutants even before
+  scoping still warns. The exit code does not change in 1.x.
+- **`--no-daemon`.** It beats a `.mutineer.yml` `daemon: true` for one run,
+  like `--no-fail-fast`. A Minitest `--rails` run without a `daemon` value now
+  prints a notice that 2.0 uses `--daemon` by default for `--rails`;
+  `--no-daemon` (or `daemon: false`) keeps the run serial and stops the
+  notice.
+- **"Did you mean" hints.** Unknown names in `--operators`, in
+  `.mutineer.yml` `operators:` and keys, and in `# mutineer:disable-line`
+  markers get the closest valid name. The `.mutineer.yml` warnings also say
+  that 2.0 makes them errors.
+
+### Changed
+
+- **`--test-command` exit codes 126 and 127 are scored `error`, not
+  `killed`.** A wrapper that could not start the suite ran no test. Under
+  `--threshold`, such a run can now score lower or fail the no-verdict limit,
+  where before it passed on false kills.
+- **A run with errored mutants and no `--threshold` says so.** Errors are not
+  in the score, so they do not fail the run; the message says what
+  `--threshold` would enforce.
+- **`--since` also narrows suppressed mutants.** A scoped report lists only
+  `ignored` mutants on changed lines, as `--dry-run --since` already did.
+- **The empty-run message moved from the human report to one stderr warning
+  for every format.** "No mutations generated" is gone. An empty `--since`
+  run prints "nothing to test in the changes since REF" instead.
+
+## [2.0.0] - 2026-10-09
+
+### Changed
+
+- **Exit codes.** Exit 1 means the tests are too weak. The score is below
+  `--threshold`, or a `--baseline` regression. Exit 3 means the run is not
+  trustworthy. That is a red unmutated suite, a daemon boot or provisioning
+  failure, a runtime error, an empty full scan, or more than one mutant
+  with no verdict when they exceed 10% of those attempted. Fail CI when
+  the exit code is not 0:
+
+  ```yaml
+  - uses: davidteren/mutineer@v2
+    id: mutineer
+  - name: Fail unless the run passed
+    if: steps.mutineer.outputs.exit-code != '0'
+    run: exit 1
+  ```
+
+- **Unknown config keys and operator names exit 2.** The message names the
+  key or operator and the closest valid name. This includes an unknown key
+  inside an `ignore:` mapping. `--operators` still replaces the file list.
+- **An empty full scan exits 3** unless `--allow-empty` is set. An empty
+  `--since` run still exits 0. It says the changes hold nothing to test.
+- **Old ids do not match.** An old `ignore:` id does not suppress its
+  mutant. A full scan warns once per unmatched id and names
+  `mutineer migrate`. A `--since` run does not warn. A baseline with no
+  `id_format` exits 2. Generate a new baseline with `--format json`.
+  `mutineer migrate` still rewrites `ignore:` entries.
+- **JSON `schema_version` is `2.0`.** `summary.legacy_id_matches` is gone.
+  The Action no longer warns about old ids.
+
+Parallel `--rails` is not the default in this release.
 
 ## [1.6.0] - 2026-10-08
 
@@ -1170,6 +1252,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[2.0.0]: https://github.com/davidteren/mutineer/releases/tag/v2.0.0
 [1.6.0]: https://github.com/davidteren/mutineer/releases/tag/v1.6.0
 [1.5.0]: https://github.com/davidteren/mutineer/releases/tag/v1.5.0
 [1.4.0]: https://github.com/davidteren/mutineer/releases/tag/v1.4.0

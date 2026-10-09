@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "config"
 require_relative "mutators/arithmetic"
 require_relative "mutators/comparison"
 require_relative "mutators/boolean_connector"
@@ -91,7 +92,7 @@ module Mutineer
     # @return [Array<Class>] mutator classes in the requested order.
     # @raise [ArgumentError] when a name is unknown.
     def self.resolve(names = DEFAULT_NAMES)
-      names.map { |n| ALL.fetch(n) { raise ArgumentError, "Unknown operator: #{n.inspect}" } }
+      names.map { |n| ALL.fetch(n) { raise ArgumentError, "Unknown operator: #{n.inspect}#{Mutineer.did_you_mean(n, ALL.keys)}" } }
     end
 
     # Returns whether the operator is part of the default Tier-1 set.

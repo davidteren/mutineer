@@ -32,7 +32,7 @@ module Mutineer
     # Full orchestration: resolve operators, discover subjects, build the
     # coverage map, run every mutation, and aggregate. Returns
     # [AggregateResult, source_map, extras], where extras is the hash
-    # {JobPlan.collect_jobs} returns (`:legacy_ignore_matches`, `:id_map`), unchanged.
+    # {JobPlan.collect_jobs} returns (`:id_map`), unchanged.
     # The CLI then reports + applies the exit code; the integration test asserts
     # directly on the AggregateResult.
     #
@@ -132,7 +132,7 @@ module Mutineer
       # Collect every (subject, mutation) up front so the pool can fan them out.
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
 
-      jobs = JobPlan.filter_since(jobs, source_map, config) if config.since
+      jobs, ignored_results, extras[:unscoped_mutants] = JobPlan.scope_since(jobs, ignored_results, source_map, config)
 
       # Whole-file reload writes mutineer_mutant*.rb into each source dir (so
       # require_relative resolves). A SIGKILL'd child skips the tempfile's
@@ -214,7 +214,7 @@ module Mutineer
         FileSwap.restore_orphans(dirs)
 
         jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
-        jobs = JobPlan.filter_since(jobs, source_map, config) if config.since
+        jobs, ignored_results, extras[:unscoped_mutants] = JobPlan.scope_since(jobs, ignored_results, source_map, config)
 
         # Nothing to mutate: return before the smoke check, which runs the whole
         # --test set to calibrate a timeout no mutant would use (#76).

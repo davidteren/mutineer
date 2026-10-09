@@ -18,6 +18,8 @@ class ReleaseWorkflowTest < Minitest::Test
   RELEASE_WORKFLOW = File.expand_path("../.github/workflows/release.yml", __dir__)
   STABLE_TAG_START = "# MUTINEER_STABLE_TAG_START"
   STABLE_TAG_END = "# MUTINEER_STABLE_TAG_END"
+  MAJOR_TAG_START = "# MUTINEER_MAJOR_TAG_START"
+  MAJOR_TAG_END = "# MUTINEER_MAJOR_TAG_END"
   BOT = "41898282+github-actions[bot]@users.noreply.github.com"
   BOT_ENV = {
     "GIT_AUTHOR_NAME" => "github-actions[bot]", "GIT_AUTHOR_EMAIL" => BOT,
@@ -77,6 +79,46 @@ class ReleaseWorkflowTest < Minitest::Test
       assert_equal 0, status.exitstatus, "stderr:#{err}\nstdout:#{out}"
       assert_match(/nothing to release/, out)
     end
+  end
+
+  # Tag v2.0.0 moves the floating v2 tag and leaves v1 on the previous release.
+  def test_v2_tag_moves_v2_and_leaves_v1
+    root = Dir.mktmpdir("mutineer-major-tag")
+    origin = File.join(root, "origin.git")
+    dir = File.join(root, "work")
+    system("git", "init", "-q", "--bare", origin, exception: true)
+    system("git", "-C", origin, "config", "maintenance.auto", "false", exception: true)
+    system("git", "clone", "-q", origin, dir, exception: true, err: File::NULL)
+    git = lambda do |*args|
+      system("git", "-c", "core.hooksPath=/dev/null", *args, chdir: dir, exception: true)
+    end
+    git.call("config", "user.email", "release-test@example.com")
+    git.call("config", "user.name", "Release Test")
+    git.call("switch", "-q", "-c", "main")
+    File.write(File.join(dir, "README"), "old\n")
+    git.call("add", "README")
+    git.call("commit", "-qm", "chore: old")
+    git.call("tag", "v1.6.0")
+    git.call("tag", "v1")
+    File.write(File.join(dir, "README"), "new\n")
+    git.call("add", "README")
+    git.call("commit", "-qm", "chore: two")
+    git.call("tag", "v2.0.0")
+    git.call("push", "-q", "origin", "main")
+    git.call("push", "-q", "origin", "v1.6.0")
+    git.call("push", "-q", "origin", "v1")
+    git.call("push", "-q", "origin", "v2.0.0")
+    v1_before, = Open3.capture2("git", "-C", dir, "rev-parse", "v1")
+    script = marked_block(MAJOR_TAG_START, MAJOR_TAG_END, workflow: RELEASE_WORKFLOW)
+    _out, err, status = Open3.capture3({ "GITHUB_REF_NAME" => "v2.0.0" }, "bash", "-euo", "pipefail", "-c", script, chdir: dir)
+    assert_equal 0, status.exitstatus, err
+    v2, = Open3.capture2("git", "-C", origin, "rev-parse", "v2")
+    v200, = Open3.capture2("git", "-C", dir, "rev-parse", "v2.0.0")
+    v1_after, = Open3.capture2("git", "-C", origin, "rev-parse", "v1")
+    assert_equal v200.strip, v2.strip
+    assert_equal v1_before.strip, v1_after.strip
+  ensure
+    FileUtils.rm_rf(root) if root
   end
 
   # Releases are batched (weekly + on demand): a merge to main must not open a
