@@ -1,0 +1,21 @@
+lib/mutineer/baseline.rb
+  s_139c48e2134bb7::t_7fdfbe311e44e2 31,55-58,94-95,101,104,111,126
+lib/mutineer/job_plan.rb
+  s_139c48e2134bb7::t_1db66fb531c8a3 32-35,44,76,81,88,291-293,295,311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9a2ad130e9cdcbcd0fa2f55d4174eaeaeccc08b5",
+  "prompts": {},
+  "sessions": {
+    "s_139c48e2134bb7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089293b8-bf7f-4fca-9b58-2370b9ff2a96",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
