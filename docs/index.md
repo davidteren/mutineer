@@ -11,6 +11,9 @@ This file is the Markdown twin of the [HTML landing page](https://davidteren.git
 
 [Watch the one-minute explainer](https://davidteren.github.io/mutineer/assets/mutineer-explainer.mp4) (MP4).
 
+<!-- site:production-ready -->
+<!-- /site:production-ready -->
+
 ## Install
 
 ```sh

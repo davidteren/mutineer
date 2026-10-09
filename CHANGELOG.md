@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **A production-ready section and a stability contract.** The README opens
+  with a support matrix for Ruby, database, framework, and parallelism.
+  `STABILITY.md` lists what a release keeps and what 2.0 will change.
+  `SECURITY.md`, `CONTRIBUTING.md`, and GitHub issue forms are new.
+  The docs home page takes the same section from the README at site build.
+
 ## [1.6.0] - 2026-10-08
 
 ### Added

@@ -17,6 +17,7 @@ Key facts:
 - **Fork-isolated, parallel** execution (Linux + macOS); coverage-guided per-line test selection.
 - **Programmatic**: versioned JSON contract, structured exit codes (0 pass / 1 below threshold, incomplete run, baseline regression or runtime error / 2 misinvocation), `--since` diff-scoped runs, `--threshold` hard gate, `--baseline` delta gating.
 - **Rails**: `--daemon` boots the app once and forks per mutant with per-worker DB isolation (SQLite test databases) so `--jobs N` is parallel-safe.
+- **Production readiness**: [Is it production-ready?](https://github.com/davidteren/mutineer#is-it-production-ready) has the support matrix. The docs home page shows the same section.
 - Distributed as a RubyGem and a GitHub Action (composite `action.yml`).
 
 ## Docs
