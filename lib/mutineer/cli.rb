@@ -552,9 +552,7 @@ module Mutineer
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
                       scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches)
-      # Suppressed mutants count in the total but were never run, so a run
-      # with only those is empty too.
-      warn_empty_run(config, extras, aggregate) if aggregate.total == aggregate.ignored_count
+      warn_empty_run(config, extras) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
@@ -587,14 +585,12 @@ module Mutineer
     #
     # @param config [Mutineer::Config] run configuration.
     # @param extras [Hash] the run extras; `:unscoped_jobs` is the job count before --since.
-    # @param aggregate [Mutineer::AggregateResult] the run's results; a full scan
-    #   where every mutant was suppressed is the user's choice, not an empty run.
     # @return [void]
-    def self.warn_empty_run(config, extras, aggregate)
+    def self.warn_empty_run(config, extras)
       # Mutants existed before --since narrowed them: the changes held none.
       if config.since && extras[:unscoped_jobs].to_i.positive?
         warn "mutineer: nothing to test in the changes since #{config.since}"
-      elsif aggregate.total.zero? && !config.allow_empty
+      elsif !config.allow_empty
         warn "mutineer: no mutants were generated. Check that the sources contain code the " \
              "operators mutate. The run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
              "Pass --allow-empty (or allow_empty: true) if an empty run is expected."

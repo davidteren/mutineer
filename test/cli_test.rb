@@ -607,6 +607,7 @@ class CliTest < Minitest::Test
                                 "--since", "HEAD", chdir: proj)
       assert_equal 0, status.exitstatus, err
       assert_includes err, "nothing to test in the changes since HEAD"
+      refute_includes err, "no covered mutations", "the out-of-scope suppressed mutant must not reach the report"
     end
   end
 

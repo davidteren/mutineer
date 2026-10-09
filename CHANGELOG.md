@@ -32,6 +32,8 @@ All notable changes to this project are documented here. The format is based on
 - **A run with errored mutants and no `--threshold` says so.** Errors are not
   in the score, so they do not fail the run; the message says what
   `--threshold` would enforce.
+- **`--since` also narrows suppressed mutants.** A scoped report lists only
+  `ignored` mutants on changed lines, as `--dry-run --since` already did.
 - **The empty-run message moved from the human report to one stderr warning
   for every format.** "No mutations generated" is gone. An empty `--since`
   run prints "nothing to test in the changes since REF" instead.

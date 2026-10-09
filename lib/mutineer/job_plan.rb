@@ -286,18 +286,26 @@ module Mutineer
       end
     end
 
-    # Narrows jobs to --since when it is set. Also returns how many jobs there
-    # were before narrowing (nil without --since), so the CLI can tell "the
-    # changes held nothing to test" from "nothing was mutable at all".
+    # Narrows the jobs and the suppressed (ignored) results to --since when it
+    # is set, as the dry run does, so a scoped report lists only mutants on
+    # changed lines. Also returns how many mutants there were before narrowing
+    # (nil without --since), so the CLI can tell "the changes held nothing to
+    # test" from "nothing was mutable at all".
     #
-    # @param jobs [Array] (subject, mutation) pairs.
+    # @param jobs [Array] (subject, mutation, id) entries to run.
+    # @param ignored_results [Array<Mutineer::Result>] suppressed mutants.
     # @param source_map [Hash{String => String}] source text by file.
     # @param config [Mutineer::Config] run configuration.
-    # @return [Array(Array, Integer), Array(Array, nil)] the jobs to run, and the count before --since.
-    def self.scope_since(jobs, source_map, config)
-      return [jobs, nil] unless config.since
+    # @return [Array(Array, Array<Mutineer::Result>, Integer), Array(Array, Array<Mutineer::Result>, nil)]
+    #   the jobs to run, the ignored results to report, and the count before --since.
+    def self.scope_since(jobs, ignored_results, source_map, config)
+      return [jobs, ignored_results, nil] unless config.since
 
-      [filter_since(jobs, source_map, config), jobs.size]
+      # One pass, so git computes the changed lines once.
+      ignored_entries = ignored_results.map { |r| [r.subject, r.mutation, r] }
+      kept = filter_since(jobs + ignored_entries, source_map, config)
+      kept_ignored, kept_jobs = kept.partition { |entry| entry.last.is_a?(Result) }
+      [kept_jobs, kept_ignored.map(&:last), jobs.size + ignored_results.size]
     end
 
     # --since: keep only jobs whose mutation lands on a line changed since the git
