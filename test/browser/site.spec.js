@@ -22,7 +22,7 @@ test('theme, keyboard disclosure, copy and mobile navigation work together', asy
   await expect(page.locator('.copy').first()).toHaveText('Copied ✓');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('gem install mutineer');
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ['/', '/agentic-coding.html', '/json-schema.html', '/sample-report.html']) {
+  for (const path of ['/', '/agentic-coding.html', '/rails.html', '/json-schema.html', '/sample-report.html']) {
     await page.goto(path);
     await expect(root).toHaveAttribute('data-theme', 'light');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -38,7 +38,7 @@ test('theme, keyboard disclosure, copy and mobile navigation work together', asy
 });
 
 test('markdown twins and agent entrypoints are served', async ({ request }) => {
-  for (const path of ['/index.md', '/agentic-coding.md', '/json-schema.md', '/llms.txt', '/llms-full.txt', '/skill.md', '/agents.txt', '/sitemap.xml', '/api/']) {
+  for (const path of ['/index.md', '/agentic-coding.md', '/rails.md', '/json-schema.md', '/llms.txt', '/llms-full.txt', '/skill.md', '/agents.txt', '/sitemap.xml', '/api/']) {
     const res = await request.get(path);
     expect(res.ok(), `${path} should be 200`).toBeTruthy();
   }

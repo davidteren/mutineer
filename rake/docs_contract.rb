@@ -491,6 +491,7 @@ module DocsContract
             <nav aria-label="Primary">
               <a href="index.html#install">Install</a>
               <a href="agentic-coding.html">Agent &amp; CI</a>
+              <a href="rails.html">Rails</a>
               <a href="json-schema.html" aria-current="page">JSON schema</a>
               <a href="api/">API</a>
               <a href="sample-report.html">Sample report</a>
