@@ -1,0 +1,44 @@
+.github/ISSUE_TEMPLATE/bug_report.yml
+  h_e8a5bb9272fa34 1-70
+.github/ISSUE_TEMPLATE/feature_request.yml
+  h_e8a5bb9272fa34 1-19
+CHANGELOG.md
+  h_e8a5bb9272fa34 9-16
+CONTRIBUTING.md
+  h_e8a5bb9272fa34 1-13
+README.md
+  h_e8a5bb9272fa34 30-79,288-292
+SECURITY.md
+  h_e8a5bb9272fa34 1-26
+STABILITY.md
+  h_e8a5bb9272fa34 1-106
+docs/index.html
+  h_e8a5bb9272fa34 91-93
+docs/index.md
+  h_e8a5bb9272fa34 14-16
+docs/json-schema.md
+  h_e8a5bb9272fa34 27-30
+docs/llms.txt
+  h_e8a5bb9272fa34 20
+rake/docs_contract.rb
+  h_e8a5bb9272fa34 53,138-149,364,437-447,464
+rake/site_build.rb
+  h_e8a5bb9272fa34 50,82-141
+test/docs_contract_test.rb
+  h_e8a5bb9272fa34 17,100-127
+test/site_build_test.rb
+  h_e8a5bb9272fa34 51-65
+test/site_docs_test.rb
+  h_e8a5bb9272fa34 36-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "172bffcf6b74d16d7e72e408157c677c85caa4c5",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
