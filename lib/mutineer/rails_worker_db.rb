@@ -128,20 +128,25 @@ module Mutineer
     end
 
     # Create each worker database before any worker daemon starts.
-    # SQLite is a no-op: the file is copied on first use. Postgres drops and
-    # recreates each exact slot name from the test database. The caller must
-    # be the only daemon connected to that test database.
+    # A SQLite file is copied on first use, so this only checks that name.
+    # `:memory:` has no file. Failing here lets a default daemon fall back
+    # to serial instead of scoring every mutant as an error.
+    # Postgres drops and recreates each exact slot name from the test database.
+    # The caller must be the only daemon connected to that test database.
     #
     # @param slots [Integer] how many worker slots to create (0..slots-1).
     # @return [void]
-    # @raise [NotImplementedError] for an adapter other than SQLite or Postgres.
+    # @raise [NotImplementedError] for an in-memory or unnamed SQLite database, or an adapter other than SQLite or Postgres.
     # @raise [RuntimeError] when the copy cannot be made, or another run holds the lock.
     def self.provision(slots)
       return unless available?
 
       count = Integer(slots)
       return if count < 1
-      return if sqlite_adapter?(current_adapter)
+      if sqlite_adapter?(current_adapter)
+        per_worker_config(current_config_hash, 0)
+        return
+      end
 
       if postgres_adapter?(current_adapter)
         provision_postgres(count)

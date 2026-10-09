@@ -164,7 +164,8 @@ module Mutineer
       # `db_role` "prepare" waits for a provision command (the first daemon).
       # "worker" only takes the shared lock (a worker daemon, including a
       # respawn). Anything else provisions now, which is what a direct client
-      # that never sends the command needs. SQLite provisioning does nothing.
+      # that never sends the command needs. A SQLite file is copied later.
+      # `:memory:` fails in {RailsWorkerDb.provision}.
       def setup_worker_db(cfg)
         require_relative "rails_worker_db"
         @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil

@@ -60,9 +60,9 @@ mutineer run --dry-run lib/foo.rb
 | `--baseline FILE` | Exit 1 on new survivors / score drop versus a prior JSON run |
 | `--format human\|json\|html` | Report format (default: human) |
 | `--output FILE` | Write the report to FILE instead of stdout |
-| `--jobs N` | Parallel worker count; forced to 1 by `--test-command`, `--fail-fast`, or `--rails` without `--daemon` |
-| `--rails` | Boot `config/environment` once; without `--daemon`, defaults to `redefine` and runs serially |
-| `--daemon` | Persistent daemon + per-worker DB isolation (needs `--rails` / `--boot`) |
+| `--jobs N` | Parallel worker count (default: processor count). `--test-command`, `--fail-fast`, and `--rails --no-daemon` force 1 |
+| `--rails` | Boot `config/environment`. Minitest uses the daemon, `reload`, and one worker per processor. `--no-daemon` stays serial |
+| `--daemon` | Persistent daemon + per-worker DB isolation. Minitest `--rails` turns this on |
 | `--timeout SECONDS` | Per-mutant time limit for in-process runs (default: 10); raise it for a slow suite |
 | `--dry-run` | List candidate mutations without executing |
 | `--matrix` | Run every covering test for each mutant and name the blind and redundant tests; the JSON report also lists each mutant's killers (in-process only; RSpec 3.3+) |

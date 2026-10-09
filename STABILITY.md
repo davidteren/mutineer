@@ -56,8 +56,7 @@ These inputs exist on the GitHub Action in 2.0.0:
 
 ## 2.0 changes
 
-Each item below is the behaviour of 2.0.0, except the last one.
-That last item is not in this release.
+Each item below is the behaviour of 2.0.0.
 
 - **Strict operator names and config keys.** An unknown operator name exits 2.
   An unknown config key exits 2.
@@ -78,10 +77,15 @@ That last item is not in this release.
   `summary.legacy_id_matches` is gone.
 - **Provisioning failure exits 3.** A daemon that fails to boot exits 3.
   A worker database that cannot be provisioned is the same boot failure.
-- **Parallel `--rails` by default, with the `reload` strategy.** Not in this release.
-  `--rails` without `--daemon` stays serial and uses `redefine`.
-  RSpec stays serial.
-  This change waits for a later release.
+- **Parallel `--rails` by default, with the `reload` strategy.**
+  Minitest `--rails` uses the daemon.
+  The worker count is the processor count.
+  The strategy is `reload`.
+  `--no-daemon` and `daemon: false` stay on the in-process serial path and use `redefine`.
+  `--jobs 1` stays a serial daemon run.
+  RSpec, `--matrix`, `--test-command`, and `--fail-fast` keep the daemon off.
+  When the daemon is only the default and the database cannot run in parallel, the run uses one in-process worker and prints one warning.
+  An explicit `--daemon` that cannot provision still exits 3.
 
 ## Release rhythm after 2.0
 

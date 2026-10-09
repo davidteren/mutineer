@@ -43,9 +43,9 @@ It runs in parallel on those systems.
 <!-- contract:support-matrix -->
 | Ruby | Database | Framework | Parallelism | Status |
 | --- | --- | --- | --- | --- |
-| 3.4 or later | SQLite file | Minitest | supported with `--daemon` | supported |
+| 3.4 or later | SQLite file | Minitest | default under `--rails` | supported |
 | 3.4 or later | SQLite file | RSpec | not supported | serial only |
-| 3.4 or later | PostgreSQL | Minitest | supported with `--daemon` | supported |
+| 3.4 or later | PostgreSQL | Minitest | default under `--rails` | supported |
 | 3.4 or later | PostgreSQL | RSpec | not supported | serial only |
 | 3.4 or later | MySQL | Minitest | not supported | serial only |
 | 3.4 or later | MySQL | RSpec | not supported | serial only |
@@ -65,9 +65,11 @@ PostgreSQL with Minitest can use `--daemon`.
 PostgreSQL with RSpec is serial only.
 MySQL is serial only.
 A `:memory:` database is serial only.
-An app with more than one database runs one worker.
+An app with more than one database runs one in-process worker.
 `--daemon` isolates only the primary connection.
-`--rails` without `--daemon` is serial on every row.
+Minitest `--rails` uses the daemon on SQLite file and PostgreSQL.
+`--no-daemon` stays serial.
+RSpec stays serial.
 A Postgres worker database is copied once, at the start of the run.
 A test that commits rows outside a transaction leaves them in that worker database.
 The next mutant on that worker sees those rows.
@@ -112,7 +114,8 @@ An old ignore id does not match.
 Run `mutineer migrate`.
 A baseline with no `id_format` exits 2.
 Generate a new baseline with `--format json`.
-Parallel `--rails` is not the default in this release.
+Minitest `--rails` uses the daemon, the `reload` strategy, and one worker per processor.
+Pass `--no-daemon` to keep the in-process serial path.
 
 ## Install
 
@@ -169,16 +172,16 @@ no tests. It does not rewrite a baseline. Generate a new baseline with
 | `--no-since` | Disable diff scoping; a typed no beats a `.mutineer.yml` `since:` key |
 | `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (score drop is skipped under `--since`, whose score covers a different denominator; see [CI](https://github.com/davidteren/mutineer#ci-gating)) |
 | `--baseline-epsilon FLOAT` | Score-drop tolerance for `--baseline` (default: 0) |
-| `--jobs N` | Parallel worker count (default: processor count); forced to `1` by `--test-command`, `--fail-fast`, or `--rails` without `--daemon` |
+| `--jobs N` | Parallel worker count (default: processor count). `--test-command`, `--fail-fast`, and `--rails --no-daemon` force `1` |
 | `--boot FILE` | Require an app entry point once before forking; select at least one test file |
-| `--rails` | Boot `config/environment` and reconnect ActiveRecord per fork; without `--daemon`, defaults to `redefine` and runs serially |
+| `--rails` | Boot `config/environment`. Minitest uses the daemon, `reload`, and one worker per processor. `--no-daemon` stays in-process, uses `redefine`, and runs serially |
 | `--verbose` | Surface the real error when a fork capture fails (alias `--debug`) |
 | `--strategy NAME` | Mutation application: `reload` whole-file (default) or `redefine` surgical (`7a`/`7b` accepted as deprecated aliases) |
 | `--timeout SECONDS` | Per-mutant time limit for in-process runs, in whole seconds (default: 10). A mutant whose tests run longer is a `timeout`; see [Timeouts and the score](https://github.com/davidteren/mutineer#timeouts-and-the-score). `--daemon` and `--test-command` keep their own limits |
 | `--capture-timeout SECONDS` | Time limit for each in-process coverage-capture subprocess and for the clean run of the unmutated tests, in whole seconds (default: 120). A suite slower than this stops the run as not green. `--daemon` uses it for its coverage capture; `--test-command` ignores it and says so |
 | `--cache-dir DIR` | Directory for the coverage cache (default: `.mutineer`). Give two runs from the same project root different directories so they do not share `coverage.json`. `--test-command` builds no cache, so it ignores it and says so |
 | `--test-command CMD` | Run the suite as a subprocess in the app's own runtime (for apps on Ruby < 3.4); `CMD` must contain `%{files}`. See [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34) |
-| `--daemon` | Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so `--jobs N` is safe under Rails (needs `--rails`/`--boot`; not with `--test-command`). See [the daemon backend](https://github.com/davidteren/mutineer#faster-parallel-safe-rails-the---daemon-backend). `--no-daemon` beats a `.mutineer.yml` `daemon:` key. It keeps `--rails` serial. Parallel `--rails` is not the default in this release |
+| `--daemon` | Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so `--jobs N` is safe under Rails (needs `--rails`/`--boot`; not with `--test-command`). See [the daemon backend](https://github.com/davidteren/mutineer#faster-parallel-safe-rails-the---daemon-backend). Minitest `--rails` turns this on. `--no-daemon` beats a `.mutineer.yml` `daemon:` key and keeps the in-process serial path |
 | `--format human\|json\|html` | Report format (default: human; `html` is a self-contained file) |
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--dry-run` | List candidate mutations without executing (honors suppression) |
@@ -219,13 +222,16 @@ RAILS_ENV=test bundle exec mutineer run \
   app/models/order.rb --test test/models/order_test.rb --rails
 ```
 
-`--rails` boots `config/environment` once in the parent process (every mutant
-then forks and inherits it), defaults `--strategy` to `redefine` without `--daemon`
-(surgical — it avoids reloading files into the app tree; `--daemon` keeps `reload`), and reconnects ActiveRecord in each
-fork so the database connection is fork-safe. Use `--boot FILE` to boot a
-different entry point. Boot mode requires at least one `--test` file and is
-coverage-guided — each mutant runs only the test files that exercise its line
-(coverage is captured by forking the booted app, then cached).
+`--rails` boots `config/environment`.
+Minitest uses the daemon, forks per mutant, and uses `reload`.
+The worker count is the processor count.
+`--no-daemon` boots in the parent, uses `redefine`, and runs one worker.
+Each fork reconnects ActiveRecord so the database connection is fork-safe.
+Use `--boot FILE` to boot a different entry point.
+Boot mode requires at least one `--test` file.
+It is coverage-guided.
+Each mutant runs only the test files that exercise its line.
+Coverage is captured by forking the booted app, then cached.
 
 Some code runs while the app boots or a class loads, for example a class body
 that calls a method to build a constant, a `to_prepare` initializer, or a
@@ -275,16 +281,19 @@ You do not set anything in Mutineer for this.
 
 ### Faster, parallel-safe Rails (the `--daemon` backend)
 
-`--rails` boots your app once but runs mutants **serially** — parallel `--jobs`
-under Rails is unsafe, because every worker shares one test database and clobbers
-the others' fixtures. `--daemon` fixes both: it boots the app once in a persistent
-helper and forks per mutant, and gives **each parallel worker its own database**,
-so `--jobs N` is safe and its verdicts are proven identical to a serial run.
+Minitest `--rails` boots the app once, forks per mutant, and gives each worker its own database.
+The worker count is the processor count.
+The strategy is `reload`.
+`--no-daemon` keeps one in-process worker and the `redefine` strategy.
+RSpec stays on that in-process path.
+`--matrix`, `--test-command`, and `--fail-fast` stay off the daemon.
+An app that cannot give each worker a database prints one warning and uses one in-process worker.
+Pass `--daemon` when that case should stop the run instead.
 
 ```sh
 RAILS_ENV=test bundle exec mutineer run \
   app/models/order.rb --test test/models/order_test.rb \
-  --rails --daemon --jobs 4
+  --rails --jobs 4
 ```
 
 - **One boot, forked per mutant** — restores the shared-boot speed.
@@ -308,8 +317,11 @@ database named `<base>-mutineer-<N>` (shortened when that would pass 63 bytes).
 Mutineer copies the test database into those names before the workers start,
 and leaves them in place when the run ends. Drop one with
 `DROP DATABASE "myapp_test-mutineer-0";` (use your test database name and slot).
-MySQL is not supported on `--daemon` yet: the run stops before it scores a mutant.
+MySQL is not supported on `--daemon` yet.
+A default `--rails` run then uses one in-process worker.
+An explicit `--daemon` stops before it scores a mutant.
 A `:memory:` database is not supported on `--daemon`.
+The same fallback applies.
 
 ### Apps on Ruby < 3.4
 
@@ -609,7 +621,7 @@ config file accepts these keys:
 |-----|-------------------|
 | `operators` | An operator name or list of names; defaults to the Tier-1 set |
 | `threshold` | A number from 0 to 100; 0 turns the score gate off |
-| `jobs` | A positive integer; the default is the processor count. `test_command`, `fail_fast`, or `--rails` without `--daemon` forces 1. |
+| `jobs` | A positive integer; the default is the processor count. `test_command`, `fail_fast`, or Minitest `--rails` with `--no-daemon` forces 1. |
 | `only` | A fully-qualified subject name, such as `Calculator#add` |
 | `require` | A path or list of extra files to load before mutating |
 | `boot` | The app entry point to require once before forking |
@@ -621,7 +633,7 @@ config file accepts these keys:
 | `baseline` | The path to a prior JSON report |
 | `fail_fast` | `true` or `false`; stops scheduling after the first survivor |
 | `test_command` | The external-runtime suite command, including `%{files}`; see [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34) |
-| `daemon` | `true` or `false`; uses the persistent app daemon with worker DB isolation |
+| `daemon` | `true` or `false`. Minitest `--rails` turns this on. `false` keeps the in-process serial path |
 | `timeout` | A positive integer; the per-mutant time limit in seconds (default 10) |
 | `capture_timeout` | A positive integer; the coverage-capture time limit in seconds (default 120) |
 | `cache_dir` | The coverage cache directory (default `.mutineer`) |

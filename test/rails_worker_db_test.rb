@@ -79,6 +79,26 @@ class RailsWorkerDbTest < Minitest::Test
     end
   end
 
+  # Provision must refuse :memory: itself. A later fork check is too late:
+  # the daemon already reported success, so the serial fallback never runs.
+  def test_provision_refuses_an_in_memory_sqlite_database
+    error = nil
+    Mutineer::RailsWorkerDb.stub(:available?, true) do
+      Mutineer::RailsWorkerDb.stub(:current_config_hash, { adapter: "sqlite3", database: ":memory:" }) do
+        error = assert_raises(NotImplementedError) { Mutineer::RailsWorkerDb.provision(2) }
+      end
+    end
+    assert_includes error.message, ":memory:"
+  end
+
+  def test_provision_accepts_a_sqlite_file_database
+    Mutineer::RailsWorkerDb.stub(:available?, true) do
+      Mutineer::RailsWorkerDb.stub(:current_config_hash, { adapter: "sqlite3", database: "storage/test.sqlite3" }) do
+        assert_nil Mutineer::RailsWorkerDb.provision(2)
+      end
+    end
+  end
+
   # #222: a seeded worker reloads schema.rb only when its version differs.
   def test_schema_file_version_reads_the_declared_version
     assert_equal 20_240_102_030_405,

@@ -6,6 +6,7 @@ require "minitest/mock"
 require "tmpdir"
 require "mutineer/config"
 require "mutineer/daemon_backend"
+require "mutineer/rails_worker_db"
 
 # #58: DaemonBackend calls JobPlan (#75) for the invariants both backends must
 # share (job collection, --since, coverage selection, path helpers). The split turned
@@ -355,6 +356,72 @@ class DaemonBackendContractTest < Minitest::Test
         assert_equal extras[:id_map], run_extras[:id_map]
       end
     end
+  end
+
+  # SQLite :memory: cannot be copied. Provision must fail before coverage
+  # and before any worker starts, so a default daemon can run in-process.
+  def test_an_in_memory_database_stops_the_default_daemon_before_coverage
+    detail = memory_provision_detail
+    client = memory_refusal_client(detail)
+    config = Mutineer::Config.resolve({ rails: true, tests: ["test/order_test.rb"], jobs: 2 }, {})
+    assert config.daemon_by_default?
+
+    error = assert_raises(Mutineer::ParallelUnavailable) do
+      Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+        Mutineer::DaemonBackend.send(:prepare_run, config, [], 2)
+      end
+    end
+
+    assert_equal detail, error.message
+    refute client.covered, "coverage must not run after :memory: is refused"
+  end
+
+  def test_an_in_memory_database_stays_a_hard_failure_for_an_explicit_daemon
+    detail = memory_provision_detail
+    client = memory_refusal_client(detail)
+    config = Mutineer::Config.resolve({
+      rails: true, daemon: true, tests: ["test/order_test.rb"], jobs: 2
+    }, {})
+    refute config.daemon_by_default?
+
+    error = assert_raises(Mutineer::DaemonBootError) do
+      Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+        Mutineer::DaemonBackend.send(:prepare_run, config, [], 2)
+      end
+    end
+
+    assert_equal detail, error.message
+    refute client.covered, "coverage must not run after :memory: is refused"
+  end
+
+  # The daemon reports provision failures as "Class: message".
+  def memory_provision_detail
+    detail = nil
+    Mutineer::RailsWorkerDb.stub(:available?, true) do
+      Mutineer::RailsWorkerDb.stub(:current_config_hash, { adapter: "sqlite3", database: ":memory:" }) do
+        error = assert_raises(NotImplementedError) { Mutineer::RailsWorkerDb.provision(1) }
+        detail = "#{error.class}: #{error.message}"
+      end
+    end
+    detail
+  end
+
+  def memory_refusal_client(detail)
+    client = Object.new
+    client.instance_variable_set(:@detail, detail)
+    client.instance_variable_set(:@covered, false)
+    def client.start = self
+    def client.quit = nil
+    def client.database_count = 1
+    def client.covered = @covered
+    def client.provision(*)
+      raise Mutineer::DaemonBootError, @detail
+    end
+    def client.coverage
+      @covered = true
+      { "map" => {}, "failed_test_files" => [] }
+    end
+    client
   end
 
   # A daemon that dies before accepting the boot payload makes the write raise

@@ -123,7 +123,7 @@ class DaemonPostgresTest < Minitest::Test
       sleep 180
     RUBY
     out, status = run_cli(1)
-    assert_equal 1, status.exitstatus, out
+    assert_equal 3, status.exitstatus, out
     assert_includes out, BASE
     assert_match(/being accessed|other users|could not provision/i, out)
     refute_match(/mutation score/i, out)
@@ -155,9 +155,45 @@ class DaemonPostgresTest < Minitest::Test
     assert status.success?, out
 
     out, status = run_cli(1, "PGUSER" => "mutineer_no_createdb", "PGPASSWORD" => "mutineer_no_createdb")
-    assert_equal 1, status.exitstatus, out
+    assert_equal 3, status.exitstatus, out
     assert_match(/permission denied/i, out)
     assert_includes out, BASE
+  ensure
+    fixture_ruby(<<~RUBY)
+      require "pg"
+      conn = PG.connect(#{pg_connect_literal("dbname: #{BASE.inspect}")})
+      if conn.exec("SELECT 1 FROM pg_roles WHERE rolname = 'mutineer_no_createdb'").ntuples.positive?
+        conn.exec("DROP OWNED BY mutineer_no_createdb CASCADE")
+        conn.exec("DROP ROLE mutineer_no_createdb")
+      end
+    RUBY
+  end
+
+  def test_a_role_without_createdb_falls_back_when_the_daemon_is_the_default
+    out, status = fixture_ruby(<<~RUBY)
+      require "pg"
+      conn = PG.connect(#{pg_connect_literal("dbname: #{BASE.inspect}")})
+      if conn.exec("SELECT 1 FROM pg_roles WHERE rolname = 'mutineer_no_createdb'").ntuples.positive?
+        conn.exec("DROP OWNED BY mutineer_no_createdb CASCADE")
+        conn.exec("DROP ROLE mutineer_no_createdb")
+      end
+      conn.exec("CREATE ROLE mutineer_no_createdb LOGIN NOSUPERUSER NOCREATEDB PASSWORD 'mutineer_no_createdb'")
+      conn.exec("GRANT CONNECT ON DATABASE postgres TO mutineer_no_createdb")
+      conn.exec("GRANT CONNECT ON DATABASE #{BASE} TO mutineer_no_createdb")
+      conn.exec("GRANT USAGE, CREATE ON SCHEMA public TO mutineer_no_createdb")
+      conn.exec("DROP TABLE IF EXISTS seeded_rows")
+      #{(0..7).map { |slot| Mutineer::RailsWorkerDb.postgres_worker_database(BASE, slot) }.inspect}.each do |name|
+        quoted = '"' + name.gsub('"', '""') + '"'
+        conn.exec("DROP DATABASE IF EXISTS " + quoted)
+      end
+      conn.exec("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO mutineer_no_createdb")
+    RUBY
+    assert status.success?, out
+
+    out, status = run_resolved_cli(4, "PGUSER" => "mutineer_no_createdb", "PGPASSWORD" => "mutineer_no_createdb")
+    assert_equal 0, status.exitstatus, out
+    assert_equal 1, out.scan("This run uses the in-process serial path.").size
+    assert_match(/permission denied/i, out)
   ensure
     fixture_ruby(<<~RUBY)
       require "pg"
@@ -179,7 +215,7 @@ class DaemonPostgresTest < Minitest::Test
       sleep 180
     RUBY
     out, status = run_cli(1)
-    assert_equal 1, status.exitstatus, out
+    assert_equal 3, status.exitstatus, out
     assert_includes out, "another Mutineer run is using #{BASE}"
   ensure
     stop_holder(holder)
@@ -238,6 +274,24 @@ class DaemonPostgresTest < Minitest::Test
     Process.wait(pid)
   rescue Errno::ESRCH, Errno::EPERM, Errno::ECHILD
     nil
+  end
+
+  def run_resolved_cli(jobs, extra_env = {})
+    script = <<~RUBY
+      require "mutineer"
+      config = Mutineer::Config.resolve({
+        sources: [#{ORDER.inspect}],
+        tests: [#{TEST_FILE.inspect}],
+        project_root: #{APP.inspect},
+        rails: true,
+        framework: "minitest",
+        jobs: #{jobs}
+      }, {})
+      abort "daemon was not the default" unless config.daemon_by_default?
+      Mutineer::CLI.run(config)
+    RUBY
+    Open3.capture2e(ENV.to_h.merge(extra_env), "bundle", "exec", "ruby", "-Ilib", "-e", script,
+                    chdir: ROOT)
   end
 
   def run_cli(jobs, extra_env = {})

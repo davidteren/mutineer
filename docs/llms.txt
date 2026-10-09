@@ -16,7 +16,7 @@ Key facts:
 - **One mutation per mutant**, validity-checked by re-parsing; 20 mutation operators.
 - **Fork-isolated, parallel** execution (Linux + macOS); coverage-guided per-line test selection.
 - **Programmatic**: versioned JSON contract, structured exit codes (0 pass / 1 tests too weak / 2 usage / 3 untrustworthy run), `--since` diff-scoped runs, `--threshold` hard gate, `--baseline` delta gating.
-- **Rails**: `--daemon` boots the app once and forks per mutant with per-worker DB isolation (SQLite test databases) so `--jobs N` is parallel-safe.
+- **Rails**: Minitest `--rails` uses the daemon. It boots the app once and forks per mutant with per-worker DB isolation (SQLite and PostgreSQL) so `--jobs N` is parallel. `--no-daemon` stays serial. RSpec stays serial.
 - **Production readiness**: [Is it production-ready?](https://github.com/davidteren/mutineer#is-it-production-ready) has the support matrix. The docs home page shows the same section.
 - Distributed as a RubyGem and a GitHub Action (composite `action.yml`).
 
