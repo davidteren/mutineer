@@ -1,0 +1,28 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 11-18
+README.md
+  h_e8a5bb9272fa34 46,56-71,322-324,329-330
+action.yml
+  h_e8a5bb9272fa34 471-473
+lib/mutineer.rb
+  h_e8a5bb9272fa34 44
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 16,25-26,38-40,200-211,218-250,707-708,719-721
+lib/mutineer/migrate.rb
+  h_e8a5bb9272fa34 1-217
+test/cli_test.rb
+  h_e8a5bb9272fa34 77-89,1162-1328
+test/migrate_test.rb
+  h_e8a5bb9272fa34 1-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8ee531350f282cdc3b5c6075e83ad3bf74ef6415",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
