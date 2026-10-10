@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **An RSpec run that fails only on an error outside examples scores the
+  mutant `errored`, not `killed`.** A spec file that raised while loading, or
+  a failing `before(:suite)` hook, made RSpec exit 1, and every mutant was
+  scored `killed`. On a Rails app, `rails_helper` called `SimpleCov.start`
+  after `--rails` had suspended Coverage (#228), so each spec file raised as
+  it loaded, and 18 of 18 mutants were scored `killed`; 3 of them survive.
+  Now the runner returns 2 when RSpec recorded an error outside examples and
+  no example failed, so the mutant is `errored`: out of the score and in
+  `no_verdict`, so that run now fails `--threshold` instead of passing at
+  100%. A failed example still kills.
+  Minitest and `--daemon` already score a test file that raises at load as
+  `errored`. `--test-command` sees only the exit status and still scores it
+  `killed`.
+
 ## [1.6.0] - 2026-10-08
 
 ### Added

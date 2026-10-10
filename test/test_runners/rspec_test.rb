@@ -89,6 +89,37 @@ class TestRunnersRSpecTest < Minitest::Test
     assert_equal 1, code
   end
 
+  def run_mutant_on(spec, fail_example: false)
+    capture_subprocess_io do
+      @verdict = Mutineer::Isolation.run(timeout: 10) do
+        ENV["MUTINEER_FIXTURE_FAIL"] = "1" if fail_example
+        Mutineer::TestRunners::RSpec.run([spec], stop_at_first_failure: true)
+      end
+    end
+    @verdict
+  end
+
+  def test_spec_file_that_raises_while_loading_scores_error_not_killed
+    assert_predicate run_mutant_on(File.join(FIX, "load_error_spec.rb")), :error?
+  end
+
+  def test_failing_before_suite_hook_scores_error_not_killed
+    assert_predicate run_mutant_on(File.join(FIX, "before_suite_error_spec.rb")), :error?
+  end
+
+  def test_error_outside_examples_with_no_failed_example_scores_error
+    assert_predicate run_mutant_on(File.join(FIX, "after_all_error_spec.rb")), :error?
+  end
+
+  def test_failed_example_still_kills_when_an_error_outside_examples_follows
+    assert_predicate run_mutant_on(File.join(FIX, "after_all_error_spec.rb"), fail_example: true), :killed?
+  end
+
+  def test_failing_and_passing_specs_still_score_killed_and_survived
+    assert_predicate run_mutant_on(FAIL), :killed?
+    assert_predicate run_mutant_on(PASS), :survived?
+  end
+
   # Runs the stop fixture in a fork. Returns [exit status, marker written?].
   def run_stop_fixture(first, **kwargs)
     Dir.mktmpdir("mutineer-stop") do |dir|
