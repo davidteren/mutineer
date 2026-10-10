@@ -415,6 +415,108 @@ class CoverageMapTest < Minitest::Test
     assert mk.call.phase_a_ran, "test file changed: cache must rebuild"
   end
 
+  SHARED = File.realpath(File.expand_path("fixtures/shared_capture", __dir__))
+  SHARED_TESTS = %w[alpha_test.rb beta_test.rb].freeze
+
+  def shared_map(sources, cache_dir, root: SHARED, **options)
+    Mutineer::CoverageMap.new(source_paths: sources, test_paths: SHARED_TESTS, cache_dir: cache_dir,
+                              project_root: root, boot_path: File.join(root, "boot.rb"), **options).build_via_fork
+  end
+
+  def sentinel_runs(path)
+    File.readlines(path, chomp: true).map(&:split).tap { File.write(path, "") }
+  end
+
+  def test_coverage_from_runs_only_the_combined_clean_check_and_keeps_the_subset_map
+    ensure_coverage_running
+    require File.join(SHARED, "boot")
+    Dir.mktmpdir do |dir|
+      sentinel = File.join(dir, "sentinel")
+      File.write(sentinel, "")
+      ENV["MUTINEER_SENTINEL"] = sentinel
+      capture, shard, fresh = %w[capture shard fresh].map { |name| File.join(dir, name) }
+
+      shared_map(%w[alpha.rb beta.rb], capture)
+      assert_operator sentinel_runs(sentinel).map(&:first).uniq.size, :>=, 3, "each capture fork and the combined run"
+
+      reused = shared_map(%w[alpha.rb], shard, coverage_from: File.join(capture, "coverage.json"))
+      runs = sentinel_runs(sentinel)
+      assert_equal SHARED_TESTS, runs.map(&:last).sort
+      assert_equal 1, runs.map(&:first).uniq.size, "only the combined clean run loads the tests"
+      refute reused.phase_a_ran
+      assert_path_exists File.join(shard, "coverage.json")
+
+      expected = shared_map(%w[alpha.rb], fresh)
+      refute_empty expected.map
+      assert_equal expected.map, reused.map
+    ensure
+      ENV.delete("MUTINEER_SENTINEL")
+    end
+  end
+
+  def test_coverage_from_rejects_a_capture_that_does_not_fit_the_run
+    ensure_coverage_running
+    edit_cache = ->(file, &change) { File.write(file, JSON.generate(JSON.parse(File.read(file)).tap(&change))) }
+    cases = {
+      "an unchanged project" => [->(_root, _cache) {}, nil],
+      "a changed test" => [->(root, _cache) { File.write(File.join(root, "beta_test.rb"), "\n", mode: "a") },
+                           /tests, --require files, boot file, load paths or framework differ/],
+      "a changed source" => [->(root, _cache) { File.write(File.join(root, "alpha.rb"), "\n", mode: "a") },
+                             /alpha\.rb changed since the capture/],
+      "a source outside the capture" => [->(_root, _cache) {}, /not captured over beta\.rb/, %w[alpha.rb]],
+      "a new owner" => [->(root, _cache) { File.write(File.join(root, "alpha_extra.rb"), "") },
+                        /alpha_extra\.rb appeared since the capture/],
+      "a changed file the tests load" => [->(root, _cache) { File.write(File.join(root, "beta.rb"), "\n", mode: "a") },
+                                          /a file its tests loaded changed/],
+      "a failed capture" => [->(_root, cache) { edit_cache.(cache) { |c| c["failed_test_files"] = ["beta_test.rb"] } },
+                             /capture failed for beta_test\.rb/],
+      "a cache without fingerprints" => [->(_root, cache) { edit_cache.(cache) { |c| c.delete("sources") } },
+                                         /no source fingerprints/],
+      "a missing file" => [->(_root, cache) { File.delete(cache) }, /cannot be read/]
+    }
+    cases.each do |name, (change, error, captured)|
+      Dir.mktmpdir do |root|
+        FileUtils.cp(Dir[File.join(SHARED, "*.rb")], root)
+        cache = File.join(root, "capture", "coverage.json")
+        shared_map(captured || %w[alpha.rb beta.rb], File.dirname(cache), root: root)
+        change.(root, cache)
+        shard = -> { shared_map(captured ? %w[alpha.rb beta.rb] : %w[alpha.rb], File.join(root, "shard"), root: root, coverage_from: cache) }
+        if error
+          err = assert_raises(Mutineer::CoverageFromError, name) { shard.call }
+          assert_match error, err.message, name
+        else
+          refute shard.call.phase_a_ran, name
+        end
+      end
+    end
+  end
+
+  def test_coverage_from_with_one_test_still_runs_it_clean
+    ensure_coverage_running
+    Dir.mktmpdir do |dir|
+      single = ->(cache, **options) do
+        Mutineer::CoverageMap.new(source_paths: %w[alpha.rb], test_paths: %w[alpha_test.rb], project_root: SHARED,
+                                  cache_dir: File.join(dir, cache), boot_path: File.join(SHARED, "boot.rb"),
+                                  **options).build_via_fork
+      end
+      single.("capture")
+      ENV["MUTINEER_FLUNK"] = "1"
+      reused = single.("shard", coverage_from: File.join(dir, "capture", "coverage.json"))
+      assert_equal %w[alpha_test.rb], reused.failed_clean_tests
+    ensure
+      ENV.delete("MUTINEER_FLUNK")
+    end
+  end
+
+  def test_coverage_from_refuses_to_overwrite_the_capture_it_reads
+    Dir.mktmpdir do |dir|
+      err = assert_raises(Mutineer::CoverageFromError) do
+        shared_map(%w[alpha.rb], dir, coverage_from: File.join(dir, "coverage.json"))
+      end
+      assert_match(/this run's own cache/, err.message)
+    end
+  end
+
   # --- #187: lines that ran at load ---------------------------------------
 
   LOAD_ROOT = File.expand_path("fixtures/load_time", __dir__)
