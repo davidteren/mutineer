@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`--coverage-from FILE` lets parallel shards share one coverage capture.**
+  A `--rails`/`--boot` run reads the `coverage.json` of an earlier run with
+  the same tests over these sources or more. It skips the capture and the
+  per-file clean runs, still runs the unmutated tests once, together, and
+  saves its own cache.
+  Boot-mode caches now also record each source's fingerprint, the ownership
+  list and a digest of the other inputs. A capture that does not fit is an
+  error (exit 2), never a silent recapture. So is one where loading its other
+  sources ran these sources' code, which happens under lazy loading with
+  `--strategy redefine`. Without boot mode, and with `--daemon`,
+  `--test-command` or `--dry-run`, the flag warns that it has no effect.
+
 ## [1.6.0] - 2026-10-08
 
 ### Added

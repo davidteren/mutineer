@@ -130,6 +130,50 @@ class CliTest < Minitest::Test
     end
   end
 
+  def shared_capture_run(proj, *args)
+    mutineer("run", *args, "--test", "alpha_test.rb", "--test", "beta_test.rb", "--strategy", "redefine",
+             "--jobs", "1", "--format", "json", chdir: proj)
+  end
+
+  def with_shared_capture_project
+    Dir.mktmpdir("mutineer-proj") do |proj|
+      FileUtils.cp(Dir[File.join(FIXTURES, "shared_capture", "*.rb")], proj)
+      yield proj
+    end
+  end
+
+  def test_coverage_from_gives_the_verdicts_of_a_fresh_run
+    with_shared_capture_project do |proj|
+      _, err, status = shared_capture_run(proj, "alpha.rb", "beta.rb", "--boot", "boot.rb", "--cache-dir", "capture")
+      assert_equal 0, status.exitstatus, err
+      reused, err, status = shared_capture_run(proj, "alpha.rb", "--boot", "boot.rb", "--cache-dir", "shard",
+                                               "--coverage-from", "capture/coverage.json")
+      assert_equal 0, status.exitstatus, err
+      fresh, = shared_capture_run(proj, "alpha.rb", "--boot", "boot.rb", "--cache-dir", "fresh")
+      assert_equal JSON.parse(fresh), JSON.parse(reused)
+    end
+  end
+
+  def test_coverage_from_rejects_a_lazy_capture_whose_other_sources_ran_these_at_load
+    with_shared_capture_project do |proj|
+      shared_capture_run(proj, "alpha.rb", "beta.rb", "--boot", "lazy_boot.rb", "--cache-dir", "capture")
+      _, err, status = shared_capture_run(proj, "alpha.rb", "--boot", "lazy_boot.rb", "--cache-dir", "shard",
+                                          "--coverage-from", "capture/coverage.json")
+      assert_equal 2, status.exitstatus, err
+      assert_match(/lines of alpha\.rb ran at load in only one of the capture and this run.*eager-load/, err)
+      refute_match(/\.rb:\d+:in /, err)
+    end
+  end
+
+  def test_coverage_from_warns_that_it_has_no_effect_without_boot
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--coverage-from", "elsewhere/coverage.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] --coverage-from has no effect with a run without --rails/--boot"
+    end
+  end
+
   def test_a_test_file_given_as_a_source_after_test_exits_two
     with_project do |proj|
       FileUtils.mkdir_p(File.join(proj, "test"))

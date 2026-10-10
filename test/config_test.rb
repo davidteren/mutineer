@@ -84,6 +84,12 @@ class ConfigTest < Minitest::Test
     assert_includes err.message, ".mutineer.yml: cache_dir must be a directory, not blank"
   end
 
+  def test_parse_rejects_a_blank_coverage_from
+    assert_equal "capture/coverage.json", Config.parse(:coverage_from, "capture/coverage.json")
+    err = assert_raises(Mutineer::ConfigError) { Config.parse(:coverage_from, " ") }
+    assert_includes err.message, "--coverage-from must be a file, not blank"
+  end
+
   def test_parse_timeouts_take_whole_seconds
     assert_equal 300, Config.parse(:timeout, "300")
     assert_equal 600, Config.parse(:capture_timeout, 600, file: ".mutineer.yml")
