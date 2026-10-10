@@ -67,6 +67,17 @@ class RSpecIntegrationTest < Minitest::Test
     assert_equal "add", result.surviving_mutants.first.subject.name.to_s
   end
 
+  def test_spec_that_fails_to_load_in_every_mutant_scores_errored_not_killed
+    require "coverage"
+    host_coverage = Coverage.running?
+    Coverage.suspend if host_coverage
+    result = run_mutineer(tests: ["test/fixtures/rspec/calculator_coverage_helper_spec.rb"])
+    assert_equal [2, 0], [result.errored_count, result.killed_count]
+    assert_nil result.mutation_score
+  ensure
+    Coverage.resume if host_coverage
+  end
+
   # #96: RSpec assertion failures on the unmutated suite abort before scoring.
   def test_failing_spec_aborts_before_scoring
     Dir.mktmpdir("mutineer-rspec-clean") do |dir|
