@@ -102,6 +102,7 @@ module Mutineer
           boot_path: File.expand_path(config.boot, config.project_root),
           require_paths: config.require_paths, # loaded above; here only for the cache digest
           verbose: config.verbose,
+          coverage_from: config.coverage_from && File.expand_path(config.coverage_from, config.project_root),
           capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_via_fork(after_fork: (config.rails ? -> { reconnect_active_record } : nil))
         # Nothing reads Coverage once the map is built (cache hit or not), so

@@ -55,6 +55,8 @@ module Mutineer
                              and the clean check (default: 120; not with --test-command)
         --cache-dir DIR      Directory for the coverage cache (default: .mutineer;
                              not with --test-command)
+        --coverage-from FILE Reuse the coverage.json of a --rails/--boot capture over
+                             these sources or more; skips the per-file clean runs
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then
                              fork per mutant (Rails apps; requires --test)
@@ -125,6 +127,7 @@ module Mutineer
         o.on("--timeout SECONDS") { |v| opts[:timeout] = Config.parse(:timeout, v) }
         o.on("--capture-timeout SECONDS") { |v| opts[:capture_timeout] = Config.parse(:capture_timeout, v) }
         o.on("--cache-dir DIR") { |v| opts[:cache_dir] = Config.parse(:cache_dir, v) }
+        o.on("--coverage-from FILE") { |v| opts[:coverage_from] = Config.parse(:coverage_from, v) }
         o.on("--strategy STRAT") { |v| opts[:strategy] = Config.parse(:strategy, v) }
         o.on("--framework NAME") { |v| opts[:framework] = Config.parse(:framework, v) }
         o.on("--boot FILE") { |v| opts[:boot] = v }
@@ -241,6 +244,9 @@ module Mutineer
       # backtrace: the working tree is still the other run's responsibility.
       warn "mutineer: #{e.message}"
       exit 1
+    rescue Mutineer::CoverageFromError => e
+      warn "mutineer: #{e.message}"
+      exit 2
     rescue Mutineer::DaemonBootError => e
       # The daemon is gone for good, so the run ended rather than scoring the rest
       # against it. A deliberate stop deserves a message, not a raw backtrace.
@@ -271,6 +277,7 @@ module Mutineer
       # cannot bypass the RSpec rejection (framework would still be minitest if we
       # validated before discovery).
       validate_daemon!(config) if config.daemon
+      warn_unused_coverage_from(config)
 
       # Boot mode needs at least one --test file (nothing to select from otherwise).
       if config.boot && config.tests.empty?
@@ -352,8 +359,23 @@ module Mutineer
     UNUSED_SETTING_SCOPE = {
       timeout: "in-process runs only",
       capture_timeout: "in-process and --daemon coverage capture",
-      cache_dir: "the in-process and --daemon coverage cache"
+      cache_dir: "the in-process and --daemon coverage cache",
+      coverage_from: "in-process --rails/--boot runs"
     }.freeze
+
+    # Warns when `--coverage-from` is set on a run that captures no coverage.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.warn_unused_coverage_from(config)
+      mode = if config.test_command then "--test-command"
+             elsif config.daemon then "--daemon"
+             elsif config.dry_run then "--dry-run"
+             elsif !config.boot then "a run without --rails/--boot"
+             end
+      warn_unused_settings(config, mode, %i[coverage_from]) if mode
+    end
 
     # A backend that never reads a setting the user set would silently do
     # nothing with it, so say so. `--test-command` builds no coverage map and
