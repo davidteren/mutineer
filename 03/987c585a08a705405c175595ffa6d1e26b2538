@@ -1,0 +1,82 @@
+.github/ISSUE_TEMPLATE/bug_report.yml
+  h_e8a5bb9272fa34 1-70
+.github/ISSUE_TEMPLATE/feature_request.yml
+  h_e8a5bb9272fa34 1-19
+CHANGELOG.md
+  h_e8a5bb9272fa34 18-51
+CONTRIBUTING.md
+  h_e8a5bb9272fa34 1-13
+README.md
+  h_e8a5bb9272fa34 30-80,115,128,133,300-306,558,568
+SECURITY.md
+  h_e8a5bb9272fa34 1-26
+STABILITY.md
+  h_e8a5bb9272fa34 1-106
+docs/agentic-coding.html
+  h_e8a5bb9272fa34 90
+docs/agentic-coding.md
+  h_e8a5bb9272fa34 51-52
+docs/index.html
+  h_e8a5bb9272fa34 92-94
+docs/index.md
+  h_e8a5bb9272fa34 14-16
+docs/json-schema.md
+  h_e8a5bb9272fa34 27-30,64,126
+docs/llms.txt
+  h_e8a5bb9272fa34 20
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 73-75,86-87,126,157-159,230,563,567-568,573,588-608,681,690-693
+lib/mutineer/config.rb
+  h_e8a5bb9272fa34 3,8-22,65,98,133,201-202,241-243,258-275,404-405
+lib/mutineer/daemon_backend.rb
+  h_e8a5bb9272fa34 47
+lib/mutineer/external_backend.rb
+  h_e8a5bb9272fa34 35-37,151-154
+lib/mutineer/job_plan.rb
+  h_e8a5bb9272fa34 264,289-310
+lib/mutineer/mutator_registry.rb
+  h_e8a5bb9272fa34 3,95
+lib/mutineer/reporter.rb
+  h_e8a5bb9272fa34 77-78,92-107,115-116
+lib/mutineer/runner.rb
+  h_e8a5bb9272fa34 130,209
+rake/docs_contract.rb
+  h_e8a5bb9272fa34 53,138-149,364,437-447,464
+rake/site_build.rb
+  h_e8a5bb9272fa34 50,82-141
+skills/mutineer/SKILL.md
+  h_e8a5bb9272fa34 57-58
+test/cli_test.rb
+  h_e8a5bb9272fa34 419-448,556-645
+test/config_test.rb
+  h_e8a5bb9272fa34 57-81,547,603-647
+test/daemon_backend_contract_test.rb
+  h_e8a5bb9272fa34 20
+test/docs_contract_test.rb
+  h_e8a5bb9272fa34 17,100-127
+test/equivalent_mutant_test.rb
+  h_e8a5bb9272fa34 38-43
+test/external_backend_test.rb
+  h_e8a5bb9272fa34 51-60
+test/mutator_registry_test.rb
+  h_e8a5bb9272fa34 86-95
+test/reporter_test.rb
+  h_e8a5bb9272fa34 188-212,217
+test/runner_test.rb
+  h_e8a5bb9272fa34 300-320
+test/site_build_test.rb
+  h_e8a5bb9272fa34 51-65
+test/site_docs_test.rb
+  h_e8a5bb9272fa34 37-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "03987c585a08a705405c175595ffa6d1e26b2538",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
