@@ -1,0 +1,100 @@
+.github/ISSUE_TEMPLATE/bug_report.yml
+  h_e8a5bb9272fa34 1-70
+.github/ISSUE_TEMPLATE/feature_request.yml
+  h_e8a5bb9272fa34 1-19
+CHANGELOG.md
+  h_e8a5bb9272fa34 9-52
+CONTRIBUTING.md
+  h_e8a5bb9272fa34 1-13
+README.md
+  h_e8a5bb9272fa34 32-82,117,130,135,196-205,302-308,560,570
+SECURITY.md
+  h_e8a5bb9272fa34 1-26
+STABILITY.md
+  h_e8a5bb9272fa34 1-106
+docs/agentic-coding.html
+  h_e8a5bb9272fa34 38,90
+docs/agentic-coding.md
+  h_e8a5bb9272fa34 51-52
+docs/index.html
+  h_e8a5bb9272fa34 38,92-94
+docs/index.md
+  h_e8a5bb9272fa34 14-16
+docs/json-schema.md
+  h_e8a5bb9272fa34 27-30,64,126
+docs/llms.txt
+  h_e8a5bb9272fa34 20,28,47
+docs/rails.html
+  h_e8a5bb9272fa34 1-139
+docs/rails.md
+  h_e8a5bb9272fa34 1-99
+docs/sample-report.html
+  h_e8a5bb9272fa34 31
+lib/mutineer.rb
+  h_e8a5bb9272fa34 44
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 17,37-39,73-75,86-87,101-104,126,157-159,230,563,567-568,573,588-608,681,690-693
+lib/mutineer/config.rb
+  h_e8a5bb9272fa34 3,8-22,65,98,133,201-202,241-243,258-275,404-405
+lib/mutineer/daemon_backend.rb
+  h_e8a5bb9272fa34 47
+lib/mutineer/external_backend.rb
+  h_e8a5bb9272fa34 35-37,151-154
+lib/mutineer/init.rb
+  h_e8a5bb9272fa34 1-124
+lib/mutineer/job_plan.rb
+  h_e8a5bb9272fa34 264,289-310
+lib/mutineer/mutator_registry.rb
+  h_e8a5bb9272fa34 3,95
+lib/mutineer/reporter.rb
+  h_e8a5bb9272fa34 77-78,92-107,115-116
+lib/mutineer/runner.rb
+  h_e8a5bb9272fa34 130,209
+rake/docs_contract.rb
+  h_e8a5bb9272fa34 53,138-149,364,437-447,464,518
+rake/site_build.rb
+  h_e8a5bb9272fa34 50,82-141
+rake/site_docs.rb
+  h_e8a5bb9272fa34 22-23,38-39,52
+skills/mutineer/SKILL.md
+  h_e8a5bb9272fa34 57-58
+test/browser/site.spec.js
+  h_e8a5bb9272fa34 25,41
+test/cli_test.rb
+  h_e8a5bb9272fa34 419-448,556-645,1149-1159
+test/config_test.rb
+  h_e8a5bb9272fa34 57-81,547,603-647
+test/daemon_backend_contract_test.rb
+  h_e8a5bb9272fa34 20
+test/docs_contract_test.rb
+  h_e8a5bb9272fa34 17,112-139
+test/equivalent_mutant_test.rb
+  h_e8a5bb9272fa34 38-43
+test/external_backend_test.rb
+  h_e8a5bb9272fa34 51-60
+test/init_test.rb
+  h_e8a5bb9272fa34 1-139
+test/mutator_registry_test.rb
+  h_e8a5bb9272fa34 86-95
+test/reporter_test.rb
+  h_e8a5bb9272fa34 188-212,217
+test/runner_test.rb
+  h_e8a5bb9272fa34 300-320
+test/site_build_test.rb
+  h_e8a5bb9272fa34 51-65
+test/site_docs_test.rb
+  h_e8a5bb9272fa34 6,37-41,78-98
+test/site_test.js
+  h_e8a5bb9272fa34 72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "05184158c30ea45890827ef389f83495457bb9a5",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
