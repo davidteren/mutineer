@@ -1,0 +1,28 @@
+lib/mutineer/daemon_backend.rb
+  h_e8a5bb9272fa34 57-58
+lib/mutineer/daemon_server.rb
+  h_e8a5bb9272fa34 142-146,304,307-310,363-365
+lib/mutineer/job_plan.rb
+  h_e8a5bb9272fa34 14,341-342,349-352
+lib/mutineer/orphan_guard.rb
+  h_e8a5bb9272fa34 13-16,31-81
+lib/mutineer/rails_worker_db.rb
+  h_e8a5bb9272fa34 4,49-88,112-114,119-120,129,150-171,186-207,255-258,325,519,549-550,560,562,567-675,712-715,720-721
+test/daemon_backend_contract_test.rb
+  h_e8a5bb9272fa34 298-309
+test/daemon_temp_sweep_test.rb
+  h_e8a5bb9272fa34 1-146
+test/rails_worker_db_test.rb
+  h_e8a5bb9272fa34 48-63,118-249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "303a34ed74452d532618e3dcf0d2134502ff7a95",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
