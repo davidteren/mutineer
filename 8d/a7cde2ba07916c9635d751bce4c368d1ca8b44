@@ -1,0 +1,57 @@
+docs/agentic-coding.html
+  s_139c48e2134bb7::t_2635bc71baa389 89
+docs/agentic-coding.md
+  s_139c48e2134bb7::t_a031898879feb0 51-52
+docs/json-schema.md
+  s_139c48e2134bb7::t_a976d1201cdbe8 64,126
+lib/mutineer/cli.rb
+  s_139c48e2134bb7::t_cd1df9970cc580 69-71,82-83,118,149-151,222,555,559-560,565,580-600,673,682-685
+lib/mutineer/config.rb
+  s_139c48e2134bb7::t_de024e355f7ee6 3,8-22,65,98,133,201-202,241-243,258-275,404-405
+lib/mutineer/daemon_backend.rb
+  s_139c48e2134bb7::t_ac65af6d05f53b 47
+lib/mutineer/external_backend.rb
+  s_139c48e2134bb7::t_573f5de79bdbbb 35-37,151-154
+lib/mutineer/job_plan.rb
+  s_139c48e2134bb7::t_ad1e6fc51f6ec8 264,289-310
+lib/mutineer/mutator_registry.rb
+  s_139c48e2134bb7::t_7b85297e66c56b 3,95
+lib/mutineer/reporter.rb
+  s_139c48e2134bb7::t_04231553a526d7 77-78,92-107,115-116
+lib/mutineer/runner.rb
+  s_139c48e2134bb7::t_de22469e5fa7df 130,209
+skills/mutineer/SKILL.md
+  s_139c48e2134bb7::t_ef54e13b038aa5 57-58
+test/cli_test.rb
+  s_139c48e2134bb7::t_d2e181e3f63501 419-448,556-645
+test/config_test.rb
+  s_139c48e2134bb7::t_c671071dcd9f6b 57-81,547,603-647
+test/daemon_backend_contract_test.rb
+  s_139c48e2134bb7::t_f0b4986ea1c834 20
+test/equivalent_mutant_test.rb
+  s_139c48e2134bb7::t_970b9cd75dd77c 38-43
+test/external_backend_test.rb
+  s_139c48e2134bb7::t_5cf8cb28e1791a 51-60
+test/mutator_registry_test.rb
+  s_139c48e2134bb7::t_72de9ed862d9cf 86-95
+test/reporter_test.rb
+  s_139c48e2134bb7::t_0dbd3a587c3efd 188-212,217
+test/runner_test.rb
+  s_139c48e2134bb7::t_47dc73ee15b50b 300-320
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8da7cde2ba07916c9635d751bce4c368d1ca8b44",
+  "prompts": {},
+  "sessions": {
+    "s_139c48e2134bb7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089293b8-bf7f-4fca-9b58-2370b9ff2a96",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
