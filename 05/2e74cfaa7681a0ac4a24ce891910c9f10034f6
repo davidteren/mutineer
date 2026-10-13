@@ -1,0 +1,77 @@
+.github/ISSUE_TEMPLATE/bug_report.yml
+  s_29b80a7747d480::t_017d3bf933d605 1-70
+.github/ISSUE_TEMPLATE/feature_request.yml
+  s_29b80a7747d480::t_9cedb32e2727c7 1-19
+.github/workflows/ci.yml
+  s_29b80a7747d480::t_51c01a12ae7a81 19-20,23-25,120-146
+CHANGELOG.md
+  s_29b80a7747d480::t_a79a155a447d0d 22-33
+CONTRIBUTING.md
+  s_29b80a7747d480::t_f346b2ae44a3f6 1-13
+README.md
+  s_29b80a7747d480::t_52cbf018c929f2 4-5,32-82,196-205,302-308
+SECURITY.md
+  s_29b80a7747d480::t_f762837f8931f0 1-26
+STABILITY.md
+  s_29b80a7747d480::t_d8aa9a958b3a98 1-106
+docs/agentic-coding.html
+  s_29b80a7747d480::t_59a3428da7f763 39
+docs/equivalent-skips.html
+  s_29b80a7747d480::t_5c95c2cee53dc9 39
+docs/index.html
+  s_29b80a7747d480::t_ddcba225376573 39,93-95
+docs/index.md
+  s_29b80a7747d480::t_e4093403aaed05 14-16
+docs/json-schema.md
+  s_29b80a7747d480::t_a275f75593a307 27-30
+docs/llms.txt
+  s_29b80a7747d480::t_d10465bcabaabd 20,29,49
+docs/rails.html
+  s_29b80a7747d480::t_4ce87effe111f9 1-140
+docs/rails.md
+  s_29b80a7747d480::t_9fd8b8ee701cab 1-99
+docs/sample-report.html
+  s_29b80a7747d480::t_0cc86ddbcdf7b2 32
+lib/mutineer.rb
+  s_29b80a7747d480::t_b5e18c69e197f8 45
+lib/mutineer/cli.rb
+  s_29b80a7747d480::t_75ea939e8b65b3 18,41-43,109-112
+lib/mutineer/init.rb
+  s_29b80a7747d480::t_d83ddb040719e8 1-124
+rake/docs_contract.rb
+  s_29b80a7747d480::t_f3794c4d9a6a9d 53,138-149,364,437-447,464,519
+rake/site_build.rb
+  s_29b80a7747d480::t_42cd59e62c2632 50,82-141
+rake/site_docs.rb
+  s_29b80a7747d480::t_f39aa8665a3196 24-25,42-43,57
+test/browser/site.spec.js
+  s_29b80a7747d480::t_c6d544db89e238 25,41
+test/cli_test.rb
+  s_29b80a7747d480::t_73478aac7eacd8 1156-1166
+test/docs_contract_test.rb
+  s_29b80a7747d480::t_34456ffe8ee574 17,94-105,112-139
+test/init_test.rb
+  s_29b80a7747d480::t_df2e18980dedd9 1-139
+test/site_build_test.rb
+  s_29b80a7747d480::t_c2c51d03d52380 51-65
+test/site_docs_test.rb
+  s_29b80a7747d480::t_1d0539f626b51f 6,37-41,87-107
+test/site_test.js
+  s_29b80a7747d480::t_4d7825a5d9fece 73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "052e74cfaa7681a0ac4a24ce891910c9f10034f6",
+  "prompts": {},
+  "sessions": {
+    "s_29b80a7747d480": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b3cb9f2-9db4-4948-bfdb-ac4050d557d6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
