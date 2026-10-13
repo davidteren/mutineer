@@ -1,0 +1,75 @@
+.github/ISSUE_TEMPLATE/bug_report.yml
+  s_29b80a7747d480::t_408be99500b25a 1-70
+.github/ISSUE_TEMPLATE/feature_request.yml
+  s_29b80a7747d480::t_5c8d2ed0272086 1-19
+.github/workflows/ci.yml
+  s_29b80a7747d480::t_841d1ab7258382 19-20,23-25,120-146
+CHANGELOG.md
+  s_29b80a7747d480::t_3a8365508bcae4 21-32
+CONTRIBUTING.md
+  s_29b80a7747d480::t_557b2183cd5915 1-13
+README.md
+  s_29b80a7747d480::t_a6db945fab077b 4-5,32-82,214-223,320-326
+SECURITY.md
+  s_29b80a7747d480::t_4a0329f17e76cb 1-26
+STABILITY.md
+  s_29b80a7747d480::t_d32d4a72d62c7f 1-106
+docs/agentic-coding.html
+  s_29b80a7747d480::t_1b0ce085392f1c 38
+docs/index.html
+  s_29b80a7747d480::t_6cd22b45f052d0 38,92-94
+docs/index.md
+  s_29b80a7747d480::t_ba8f6ea6562052 14-16
+docs/json-schema.md
+  s_29b80a7747d480::t_4ab6a046cb17ed 27-30
+docs/llms.txt
+  s_29b80a7747d480::t_dec935f35d94a6 20,28,47
+docs/rails.html
+  s_29b80a7747d480::t_c7047f7bce8a76 1-139
+docs/rails.md
+  s_29b80a7747d480::t_02914d6ba9eb0e 1-99
+docs/sample-report.html
+  s_29b80a7747d480::t_32e12dd5a7cda4 31
+lib/mutineer.rb
+  s_29b80a7747d480::t_9bb4cb40b92843 45
+lib/mutineer/cli.rb
+  s_29b80a7747d480::t_ab05cd90715186 18,42-44,106-109
+lib/mutineer/init.rb
+  s_29b80a7747d480::t_c6cf8686ef7e99 1-124
+rake/docs_contract.rb
+  s_29b80a7747d480::t_dcc0f224a5a012 53,138-149,364,437-447,464,518
+rake/site_build.rb
+  s_29b80a7747d480::t_19fd18617e906f 50,82-141
+rake/site_docs.rb
+  s_29b80a7747d480::t_50e178bbc02467 22-23,38-39,52
+test/browser/site.spec.js
+  s_29b80a7747d480::t_a0f0103e7938da 25,41
+test/cli_test.rb
+  s_29b80a7747d480::t_9844484cafb38c 1344-1353
+test/docs_contract_test.rb
+  s_29b80a7747d480::t_9c0049b88ca063 17,94-105,112-139
+test/init_test.rb
+  s_29b80a7747d480::t_8fe7fae1321f9a 1-139
+test/site_build_test.rb
+  s_29b80a7747d480::t_a5d8d771fd14d4 51-65
+test/site_docs_test.rb
+  s_29b80a7747d480::t_c9b813e915048e 6,37-41,78-98
+test/site_test.js
+  s_29b80a7747d480::t_80df280ff8f57c 72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "13a5eaec46cea0acd4c5df3c1188c2ab30feddf8",
+  "prompts": {},
+  "sessions": {
+    "s_29b80a7747d480": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b3cb9f2-9db4-4948-bfdb-ac4050d557d6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
