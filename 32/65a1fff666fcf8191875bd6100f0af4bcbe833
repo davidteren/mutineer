@@ -1,0 +1,65 @@
+.github/workflows/ci.yml
+  s_29b80a7747d480::t_ce0a16897296b2 91-129
+CHANGELOG.md
+  s_29b80a7747d480::t_36b829d9748c0e 17-18,24-38,81-86
+README.md
+  s_29b80a7747d480::t_e5312eb6fef234 49,55,65-66,69,72-75,104,114-133,262-268,402-404,409-410
+Rakefile
+  s_29b80a7747d480::t_8efc429f3a06dd 14
+action.yml
+  s_29b80a7747d480::t_2ddbebd652e9ed 471-473
+lib/mutineer.rb
+  s_29b80a7747d480::t_ca907a42a78f22 45
+lib/mutineer/cli.rb
+  s_29b80a7747d480::t_863492a5d39e71 16,27-28,43-45,216-227,234-306,763-764,775-777
+lib/mutineer/daemon_backend.rb
+  s_29b80a7747d480::t_bd848d0f7ce90d 57-58,70-71,76-80,107-108,112-160,340-341,343,363-365,406-407
+lib/mutineer/daemon_client.rb
+  s_29b80a7747d480::t_dd170bfaf0bbcf 74-99,373
+lib/mutineer/daemon_server.rb
+  s_29b80a7747d480::t_b5e3d02f7affb3 29-31,38-41,52-68,88,106-113,159-164,166,168,184-189,195-196,198-207,213-236,322-347,350,353-356,409-411
+lib/mutineer/job_plan.rb
+  s_29b80a7747d480::t_3be087f9546a1f 14,414-415,422-425
+lib/mutineer/migrate.rb
+  s_29b80a7747d480::t_52254382e999e5 1-585
+lib/mutineer/orphan_guard.rb
+  s_29b80a7747d480::t_0d95d1d9d45bb0 13-16,31-81
+lib/mutineer/rails_worker_db.rb
+  s_29b80a7747d480::t_586dd147e2789a 4,19,21-26,28-29,31-78,88-90,100-178,182,184,187-188,193,196,198-200,203-236,239-287,292,294-297,301,306-312,397-398,404-695
+test/cli_test.rb
+  s_29b80a7747d480::t_a053d9cef9d63c 77-89,1170-1377
+test/daemon_backend_contract_test.rb
+  s_29b80a7747d480::t_ee75bf0dda1b69 298-309
+test/daemon_client_test.rb
+  s_29b80a7747d480::t_e1d80488a21c23 104-136
+test/daemon_postgres_test.rb
+  s_29b80a7747d480::t_2e9d1181d004f5 1-258
+test/daemon_temp_sweep_test.rb
+  s_29b80a7747d480::t_4a1ddacf680606 1-146
+test/fixtures/rails_app/Gemfile
+  s_29b80a7747d480::t_996cdf48a67183 15-20
+test/fixtures/rails_app/config/database.yml
+  s_29b80a7747d480::t_49bacc4a7d999b 1-34,40
+test/migrate_test.rb
+  s_29b80a7747d480::t_1779017ab762f3 1-281
+test/rails_dogfood_daemon_test.rb
+  s_29b80a7747d480::t_29c843cac54755 43-62
+test/rails_worker_db_test.rb
+  s_29b80a7747d480::t_fcf3d9b0bb02c5 41,43-221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3265a1fff666fcf8191875bd6100f0af4bcbe833",
+  "prompts": {},
+  "sessions": {
+    "s_29b80a7747d480": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b3cb9f2-9db4-4948-bfdb-ac4050d557d6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
