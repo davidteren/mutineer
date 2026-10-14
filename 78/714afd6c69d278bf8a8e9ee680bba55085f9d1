@@ -1,0 +1,19 @@
+lib/mutineer/daemon_backend.rb
+  s_031e1f6f523883::t_60b1aab366206b 330-333
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "78714afd6c69d278bf8a8e9ee680bba55085f9d1",
+  "prompts": {},
+  "sessions": {
+    "s_031e1f6f523883": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e631d897-2e97-4a3f-893c-2be8b444a455",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
