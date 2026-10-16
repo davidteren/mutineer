@@ -270,28 +270,29 @@ class ProjectTest < Minitest::Test
             def round(x) = x
           end
         end
+        helper = Module.new do
+          class_methods do
+            def anon; end
+          end
+        end
       end
       Tagged = Module.new do
         class_methods do
           def tag; end
         end
       end
-      helper = Module.new do
-        class_methods do
-          def anon; end
-        end
-      end
     RUBY
     with_source(src) do |path|
       subjects = Mutineer::Project.discover([path])
       assert_equal %w[Billing::ClassMethods#rate Billing#total Order::ReleasePolicy::ClassMethods#due?
-                      Shop::Pricing::ClassMethods#round Tagged::ClassMethods#tag ClassMethods#anon],
+                      Shop::Pricing::ClassMethods#round Shop#anon Tagged::ClassMethods#tag],
                    subjects.map(&:qualified_name)
       assert_equal ["::Billing::ClassMethods", nil, "::Order::ReleasePolicy::ClassMethods",
-                    "::Shop::Pricing::ClassMethods", "::Tagged::ClassMethods", nil], subjects.map(&:block_owner)
-      assert_equal [["Billing"], ["Billing"], ["Order::ReleasePolicy"], %w[Shop Pricing], [], []],
+                    "::Shop::Pricing::ClassMethods", nil, "::Tagged::ClassMethods"], subjects.map(&:block_owner)
+      assert_equal [["Billing"], ["Billing"], ["Order::ReleasePolicy"], %w[Shop Pricing], ["Shop"], []],
                    subjects.map(&:lexical)
-      assert_equal %w[ClassMethods#anon], subjects.select(&:owner_unknown).map(&:qualified_name)
+      # An unassigned Module.new has no name, so its ClassMethods has none either.
+      assert_equal %w[Shop#anon], subjects.select(&:owner_unknown).map(&:qualified_name)
     end
   end
 

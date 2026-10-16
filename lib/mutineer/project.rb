@@ -150,9 +150,8 @@ module Mutineer
             super
           end
         when :class_methods
-          namespace = (@block_namespace || @namespace_stack) + ["ClassMethods"]
-          owner = @owner_unknown ? [nil, namespace, true] : named_owner(namespace)
-          anonymous = @anonymous_block
+          owner = named_owner((@block_namespace || @namespace_stack) + ["ClassMethods"])
+          anonymous = false
         else
           return super unless builds_class?(node)
 
@@ -472,14 +471,14 @@ module Mutineer
       # ActiveSupport evaluates a `class_methods` block in the module's `ClassMethods`,
       # which it extends onto every includer, so the test calls `Includer.name` on
       # that module's method, not on the concern (#252). In a class or module body,
-      # or a builder block, that module is `<namespace>::ClassMethods`. The block
-      # keeps the lexical scope, so redefine reopens the concern's chain and loads
-      # the mutant with `::Concern::ClassMethods.class_eval`. In a def, a block that
-      # does not build a class (Rails' `concerning :Name do`), or `class << self`,
-      # `self` is not the module the body names, so no constant here names that
-      # `ClassMethods`. ActiveSupport evaluates an `included` or `prepended` block in
-      # each includer, which no constant names either. The call has no receiver or
-      # `self`, no arguments, and a block.
+      # or a builder block, with a known owner, that module is `<namespace>::ClassMethods`.
+      # The block keeps the lexical scope, so redefine reopens the concern's chain and
+      # loads the mutant with `::Concern::ClassMethods.class_eval`. In a def, a block
+      # that does not build a class (Rails' `concerning :Name do`), `class << self`, or
+      # under an owner no constant names (an unassigned `Module.new`), no constant here
+      # names that `ClassMethods`. ActiveSupport evaluates an `included` or `prepended`
+      # block in each includer, which no constant names either. The call has no
+      # receiver or `self`, no arguments, and a block.
       #
       # @param node [Prism::CallNode] call node.
       # @return [Symbol, nil] `:class_methods` when redefine can name the module,
@@ -488,7 +487,8 @@ module Mutineer
         return unless CONCERN_BLOCKS.include?(node.name) && node.arguments.nil? && node.block.is_a?(Prism::BlockNode)
         return unless node.receiver.nil? || node.receiver.is_a?(Prism::SelfNode)
 
-        node.name == :class_methods && !@self_unknown && @singleton_depth.zero? ? :class_methods : :owner_unknown
+        placeable = node.name == :class_methods && !@self_unknown && !@owner_unknown && @singleton_depth.zero?
+        placeable ? :class_methods : :owner_unknown
       end
 
       # Runs the block with the defs it visits owned by the class a builder block builds.

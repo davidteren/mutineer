@@ -75,7 +75,7 @@ Each surviving mutant — the records an agent or reviewer acts on:
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| `subject` | string | Fully-qualified subject, e.g. `Calculator#add`. A method in an ActiveSupport::Concern `class_methods` block in a class or module body, or in a `Module.new` block assigned to a constant, is named on the module the includer extends, e.g. `Billing::ClassMethods#rate`. One in a def or in another block such as Rails' `concerning` keeps its enclosing name, e.g. `Billing#rate` (`Billing.rate` in `class << self`), and is `unplaceable` under redefine. |
+| `subject` | string | Fully-qualified subject, e.g. `Calculator#add`. A method in an ActiveSupport::Concern `class_methods` block in a class or module body, or in a `Module.new` block assigned to a constant, is named on the module the includer extends, e.g. `Billing::ClassMethods#rate`. One in a def, in an unassigned `Module.new` block, or in another block such as Rails' `concerning` keeps its enclosing name, e.g. `Billing#rate` (`Billing.rate` in `class << self`), and is `unplaceable` under redefine. |
 | `file` | string | Source file path, relative to the project root for a file inside the project (`./lib/x.rb` and an absolute path both report `lib/x.rb`); a file outside the project keeps the path as passed. |
 | `line` | int | 1-based line of the mutation. |
 | `operator` | string | Operator name, e.g. `arithmetic`, `comparison`. |
@@ -93,7 +93,7 @@ named statically (an anonymous `Class.new`, a relative path such as `User::Permi
 a class or module opened or assigned in `class << self`, a `self::X` opened in a block or assigned in one
 that does not build a class, a method in an ActiveSupport::Concern `included` or `prepended` block, which runs
 in each includer, or a method in a `class_methods` block outside a class or module body, such as one inside
-Rails' `concerning`); `--strategy reload` runs these. Under ActiveSupport, reload cannot yet run a concern
+Rails' `concerning` or an unassigned `Module.new`); `--strategy reload` runs these. Under ActiveSupport, reload cannot yet run a concern
 file that has an `included` or `prepended` block: loading the file a second time raises
 `MultipleIncludedBlocks`, so its mutants are `errored`. `ran_at_load` (schema `1.7`) means the mutant's
 line ran while the app booted or its class loaded (for example a class body that calls the method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran

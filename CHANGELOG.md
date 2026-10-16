@@ -106,7 +106,8 @@ All notable changes to this project are documented here. The format is based on
   `--strategy redefine` (#252).** ActiveSupport runs an `included` or `prepended`
   block in each includer, so no constant names the class that owns its
   methods. A `class_methods` block outside a class or module body, such as
-  one inside Rails' `concerning`, has the same problem. Redefine loaded each
+  one inside Rails' `concerning` or an unassigned `Module.new`, has the
+  same problem. Redefine loaded each
   mutant onto the enclosing module, and every mutant falsely survived. Now
   redefine reports them as `unplaceable` and does not run them. Their names
   and mutant ids do not change.
