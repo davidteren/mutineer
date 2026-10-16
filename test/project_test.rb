@@ -248,6 +248,107 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #252: ActiveSupport::Concern evaluates a `class_methods` block in the
+  # concern's ClassMethods, so its defs belong there. In a def, a non-builder
+  # block or `class << self`, `self` is not the concern, so nothing changes.
+  def test_discover_names_class_methods_block_defs_on_the_concern_class_methods
+    src = <<~RUBY
+      module Billing
+        extend ActiveSupport::Concern
+        class_methods do
+          def rate(x) = x * 2
+        end
+        def total; end
+      end
+      module Order::ReleasePolicy
+        class_methods do
+          def due?(d) = d > 1
+        end
+      end
+      module Shop
+        module Pricing
+          class_methods do
+            def round(x) = x
+          end
+        end
+      end
+      Tagged = Module.new do
+        class_methods do
+          def tag; end
+        end
+      end
+      helper = Module.new do
+        class_methods do
+          def anon; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Billing::ClassMethods#rate Billing#total Order::ReleasePolicy::ClassMethods#due?
+                      Shop::Pricing::ClassMethods#round Tagged::ClassMethods#tag ClassMethods#anon],
+                   subjects.map(&:qualified_name)
+      assert_equal ["::Billing::ClassMethods", nil, "::Order::ReleasePolicy::ClassMethods",
+                    "::Shop::Pricing::ClassMethods", "::Tagged::ClassMethods", nil], subjects.map(&:block_owner)
+      assert_equal [["Billing"], ["Billing"], ["Order::ReleasePolicy"], %w[Shop Pricing], [], []],
+                   subjects.map(&:lexical)
+      assert_equal %w[ClassMethods#anon], subjects.select(&:owner_unknown).map(&:qualified_name)
+    end
+  end
+
+  # ActiveSupport runs an `included` or `prepended` block in each includer, so
+  # its defs keep their names but have their owner unknown.
+  def test_discover_marks_included_and_prepended_block_defs_owner_unknown
+    src = <<~RUBY
+      module Billing
+        included do
+          def tag; end
+          Kind = Struct.new(:a) do
+            def b; end
+          end
+        end
+        prepended do
+          def wrap; end
+        end
+        included(Object)
+        def total; end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Billing#tag Billing::Kind#b Billing#wrap Billing#total], subjects.map(&:qualified_name)
+      assert_equal [true, false, true, false], subjects.map(&:owner_unknown)
+    end
+  end
+
+  def test_discover_leaves_class_methods_in_a_def_block_or_class_self_on_the_module
+    src = <<~RUBY
+      module Billing
+        def setup
+          class_methods do
+            def in_def; end
+          end
+        end
+        configure do
+          class_methods do
+            def in_block; end
+          end
+        end
+        class << self
+          class_methods do
+            def in_singleton; end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Billing#setup Billing#in_def Billing#in_block Billing.in_singleton],
+                   subjects.map(&:qualified_name)
+      assert(subjects.none?(&:block_owner))
+    end
+  end
+
   def test_discover_unwraps_parentheses_and_begin_and_names_or_and_and_writes
     src = <<~RUBY
       Point = (Data.define(:x) do

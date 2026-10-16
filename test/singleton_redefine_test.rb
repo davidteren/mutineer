@@ -157,6 +157,29 @@ class SingletonRedefineTest < Minitest::Test
     end
   end
 
+  # #252: a def in an ActiveSupport::Concern `class_methods` block belongs to the
+  # concern's ClassMethods. Before the fix, redefine loaded the mutant onto the
+  # concern itself, the test called the includer's class method, and every
+  # mutant falsely survived.
+  def test_class_methods_block_methods_are_mutated
+    files = %w[concern_class_methods.rb concern_class_methods_test.rb]
+    %w[redefine reload].each do |strategy|
+      assert_killed(run_redefine(*files, strategy: strategy, only: "ConcernPricing::ClassMethods#scaled"),
+                    "class_methods block (#{strategy})")
+    end
+  end
+
+  # An `included` block runs in each includer, so no constant names the owner of
+  # its defs. Before, redefine loaded the mutant onto the concern and it falsely survived.
+  def test_included_block_methods_are_unplaceable_under_redefine_and_killed_under_reload
+    files = %w[concern_class_methods.rb concern_class_methods_test.rb]
+    only = "ConcernPricing#doubled"
+    redefine = run_redefine(*files, only: only)
+    assert_operator redefine.unplaceable_count, :>, 0
+    assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count + redefine.uncapturable_count
+    assert_killed(run_redefine(*files, strategy: "reload", only: only), "included block (reload)")
+  end
+
   # Parity control — this form already worked; it must keep working.
   def test_def_self_methods_are_mutated
     assert_killed(run_redefine("def_self.rb", "def_self_test.rb"), "def self.")

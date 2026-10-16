@@ -31,6 +31,9 @@ module Mutineer
       # Calls whose block is the body of the class they build: receiver name => method.
       CLASS_BUILDERS = { "Data" => :define, "Struct" => :new, "Class" => :new, "Module" => :new }.freeze
 
+      # ActiveSupport::Concern calls whose block another module runs (see {#concern_block}).
+      CONCERN_BLOCKS = %i[class_methods included prepended].freeze
+
       # A constant name, or a path of them; Ruby allows Unicode in both.
       CONSTANT_PATH = /\A[[:upper:]][[:word:]]*(?:::[[:upper:]][[:word:]]*)*\z/
 
@@ -117,7 +120,10 @@ module Mutineer
       # block's defs belong to the class it builds; one not assigned to a
       # constant has no name, so its subjects are marked `owner_unknown`, and a
       # `module_function :name` in it promotes nothing. Elsewhere it promotes the
-      # methods of the same module, matched by {#module_key}.
+      # methods of the same module, matched by {#module_key}. A `class_methods`
+      # block (see {#concern_block}) is visited like a builder block that builds
+      # the module's `ClassMethods`, so its defs belong to that module (#252). The
+      # defs in an `included` or `prepended` block have their owner unknown.
       #
       # @param node [Prism::CallNode] call node.
       # @return [void]
@@ -136,10 +142,24 @@ module Mutineer
             end
           end
         end
-        return super unless builds_class?(node)
+        case concern_block(node)
+        when :included, :prepended
+          owner_unknown = @owner_unknown
+          @owner_unknown = true # ActiveSupport class_evals the block onto each includer
+          super
+          @owner_unknown = owner_unknown
+          return
+        when :class_methods
+          namespace = (@block_namespace || @namespace_stack) + ["ClassMethods"]
+          owner = @owner_unknown || @namespace_unknown ? [nil, namespace, true] : named_owner(namespace)
+          anonymous = @anonymous_block
+        else
+          return super unless builds_class?(node)
 
-        anonymous = !@assigned&.first.equal?(node)
-        with_block_owner(anonymous ? [nil, @namespace_stack, true] : @assigned.last, anonymous) do
+          anonymous = !@assigned&.first.equal?(node)
+          owner = anonymous ? [nil, @namespace_stack, true] : @assigned.last
+        end
+        with_block_owner(owner, anonymous) do
           @self_scope = node.block
           super
         end
@@ -446,6 +466,26 @@ module Mutineer
       def builds_class?(node)
         node.is_a?(Prism::CallNode) && node.block.is_a?(Prism::BlockNode) &&
           CLASS_BUILDERS[node.receiver&.slice&.delete_prefix("::")] == node.name
+      end
+
+      # Names the ActiveSupport::Concern block a call opens in a class or module body,
+      # or a builder block. ActiveSupport evaluates a `class_methods` block in the
+      # module's `ClassMethods`, which it extends onto every includer, so the test
+      # calls `Includer.name` on that module's method, not on the concern (#252). The
+      # block keeps the lexical scope, so redefine reopens the concern's chain and
+      # loads the mutant with `::Concern::ClassMethods.class_eval`. It evaluates an
+      # `included` or `prepended` block in each includer, which no constant names, so
+      # redefine cannot load a mutant there. In a def, a block that does not build a
+      # class, or `class << self`, `self` is not the module the body names, so the
+      # call is left as a plain block.
+      #
+      # @param node [Prism::CallNode] call node.
+      # @return [Symbol, nil] `:class_methods`, `:included` or `:prepended`, or nil.
+      def concern_block(node)
+        return unless CONCERN_BLOCKS.include?(node.name) && node.receiver.nil? && node.arguments.nil?
+        return unless node.block.is_a?(Prism::BlockNode) && !@self_unknown && @singleton_depth.zero?
+
+        node.name
       end
 
       # Runs the block with the defs it visits owned by the class a builder block builds.

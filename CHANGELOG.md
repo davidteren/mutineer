@@ -90,6 +90,23 @@ All notable changes to this project are documented here. The format is based on
   helper raised in every mutant. Now a start in a mutant first stops the
   paused coverage. A mutant whose tests start nothing keeps it paused and pays
   nothing. This applies to `--daemon` too.
+- **Methods in an ActiveSupport::Concern `class_methods` block are mutated
+  under `--strategy redefine` (#252).** ActiveSupport puts these methods in
+  the concern's `ClassMethods` module, and each includer gets them as class
+  methods. Mutineer named them as instance methods of the concern itself.
+  Redefine (the `--rails` default) then loaded each mutant onto the concern,
+  the tests called the includer's method, and every mutant falsely survived.
+  These methods are now named `Concern::ClassMethods#name`, and redefine
+  loads the mutant onto that module. Their mutant ids change, because an id
+  contains the method name. An `ignore:` entry or a `--baseline` survivor
+  for one of these methods no longer matches. Replace it with the new id
+  from a new run.
+- **Methods in a concern's `included` or `prepended` block are
+  `unplaceable` under `--strategy redefine`.** ActiveSupport runs these
+  blocks in each includer, so no constant names the class that owns the
+  methods. Redefine loaded each mutant onto the concern, and every mutant
+  falsely survived. Now redefine reports them as `unplaceable` and does not
+  run them. Their names and mutant ids do not change.
 
 ## [1.6.0] - 2026-10-08
 
