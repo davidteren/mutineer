@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_7ec4ec1f61dfd3::t_a68ebf6877987a 17
+README.md
+  s_7ec4ec1f61dfd3::t_a68ebf6877987a 365
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "641db5c33ec2eb165c042a8c8b7575c95cf26678",
+  "prompts": {},
+  "sessions": {
+    "s_7ec4ec1f61dfd3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2c8fb156-14e0-4027-aa16-85ed13a8a303",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
