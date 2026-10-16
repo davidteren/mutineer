@@ -1,0 +1,48 @@
+test/fixtures/singleton/concern_stub.rb
+  s_6eaee9e12285a5::t_224ef11b87fd83 1-2,6-11,15-16,18-19
+  s_6eaee9e12285a5::t_64f7815a7c3da4 3-5,12-14,17
+lib/mutineer/project.rb
+  s_6eaee9e12285a5::t_8a25058717238b 124-126
+  s_6eaee9e12285a5::t_f38407f431f8b7 474-475,481-482,489-490
+  s_6eaee9e12285a5::t_6c73c40874eb0c 123
+  s_6eaee9e12285a5::t_2d8ecc8e7cb8be 156-158
+  s_6eaee9e12285a5::t_11e5d0be8565af 471-473,476-480,483-488
+  s_6eaee9e12285a5::t_13c1ddd7840009 145-152
+  s_6eaee9e12285a5::t_e0f0309a07c904 34-36
+  s_6eaee9e12285a5::t_e88687e65fe22f 153-155,159-162
+test/fixtures/singleton/concern_class_methods.rb
+  s_6eaee9e12285a5::t_224ef11b87fd83 3
+  s_6eaee9e12285a5::t_64f7815a7c3da4 14-19
+  s_6eaee9e12285a5::t_9cefd6b97f3c2e 1-2,4-13,20-24
+test/fixtures/singleton/concern_class_methods_test.rb
+  s_6eaee9e12285a5::t_9cefd6b97f3c2e 1-10,16
+  s_6eaee9e12285a5::t_64f7815a7c3da4 11-15
+docs/json-schema.md
+  s_6eaee9e12285a5::t_b57ffb4d9e98f8 59
+CHANGELOG.md
+  s_6eaee9e12285a5::t_064912a30d28a2 93-109
+test/singleton_redefine_test.rb
+  s_6eaee9e12285a5::t_2d04822fec9b60 170-180
+  s_6eaee9e12285a5::t_5d9a5c1f62873e 160-164,166,168-169,181-182
+  s_6eaee9e12285a5::t_493a1f74f9b500 165,167
+test/project_test.rb
+  s_6eaee9e12285a5::t_2da7f73f060482 299-323
+  s_6eaee9e12285a5::t_f8393cca22a1a3 251-279,285-288,291,294,296-298,324-351
+  s_6eaee9e12285a5::t_2186f57c2ec38d 280-284,289-290,292-293,295
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "53cb6d68d425a7cd53fa2bf078aabb59f134d5b9",
+  "prompts": {},
+  "sessions": {
+    "s_6eaee9e12285a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2fc99c-203e-427a-9527-6b05c7bfa953",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
