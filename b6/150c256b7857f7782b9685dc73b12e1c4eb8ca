@@ -1,0 +1,45 @@
+lib/mutineer/rails_worker_db.rb
+  s_b9019550ff6064::t_06f9d63cd5e908 1152-1158
+  s_b9019550ff6064::t_3c0c8d48f1a33a 219-220
+  s_b9019550ff6064::t_fd615fa8dc6f09 749-751,760,764-779
+  s_b9019550ff6064::t_3fdbd4405d84d9 904-905
+  s_b9019550ff6064::t_601222f114cac5 44-53,545,780-781,834,884-889,924,1053-1054,1058,1060-1062
+test/rails_worker_db_test.rb
+  s_b9019550ff6064::t_ec56542696f042 444-461
+  s_b9019550ff6064::t_45ee17a35a2c89 130-140
+  s_b9019550ff6064::t_2c08671e30c6a9 289-305
+.github/workflows/ci.yml
+  s_b9019550ff6064::t_aa546cd720c1c1 131,133-137,154
+CHANGELOG.md
+  s_b9019550ff6064::t_4900b052898b9d 33
+README.md
+  s_b9019550ff6064::t_082598ecd02119 275-277
+docs/llms.txt
+  s_b9019550ff6064::t_c4e447d7c1d102 19
+docs/rails.html
+  s_b9019550ff6064::t_582979db1028ab 117
+docs/rails.md
+  s_b9019550ff6064::t_5f784d591fc417 95-100
+lib/mutineer/daemon_server.rb
+  s_b9019550ff6064::t_d5fda92e4c5447 41-42
+test/daemon_mysql_test.rb
+  s_b9019550ff6064::t_fd908fce467750 136-159
+test/daemon_postgres_test.rb
+  s_b9019550ff6064::t_620807f8968777 188-211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b6150c256b7857f7782b9685dc73b12e1c4eb8ca",
+  "prompts": {},
+  "sessions": {
+    "s_b9019550ff6064": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b04ed4bc-cbdb-479b-9735-3ae8721f5db7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
