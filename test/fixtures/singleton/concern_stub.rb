@@ -3,6 +3,9 @@
 # A stand-in for ActiveSupport::Concern (#252), which keeps the suite Rails-free:
 # `class_methods` evaluates its block in the module's ClassMethods, and an
 # `included` block runs in each includer, which also extends ClassMethods.
+# It models what `--strategy redefine` needs only. ActiveSupport also rejects a
+# second `included` block from another file, so reloading a concern from a temp
+# file raises MultipleIncludedBlocks there; this stub does not.
 module ConcernStub
   def class_methods(&)
     mod = const_defined?(:ClassMethods, false) ? const_get(:ClassMethods) : const_set(:ClassMethods, Module.new)

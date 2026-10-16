@@ -321,7 +321,11 @@ class ProjectTest < Minitest::Test
     end
   end
 
-  def test_discover_leaves_class_methods_in_a_def_block_or_class_self_on_the_module
+  # In a def, a non-builder block (Rails' `concerning`) or `class << self`, no
+  # constant names the ClassMethods the block runs in, so its defs keep their
+  # names with their owner unknown. A call with a receiver or arguments is not
+  # the Concern DSL, so its block is a plain block.
+  def test_discover_marks_class_methods_outside_a_module_body_owner_unknown
     src = <<~RUBY
       module Billing
         def setup
@@ -329,7 +333,7 @@ class ProjectTest < Minitest::Test
             def in_def; end
           end
         end
-        configure do
+        concerning :Rates do
           class_methods do
             def in_block; end
           end
@@ -339,13 +343,21 @@ class ProjectTest < Minitest::Test
             def in_singleton; end
           end
         end
+        Order.class_methods do
+          def with_receiver; end
+        end
+        class_methods(:x) do
+          def with_args; end
+        end
       end
     RUBY
     with_source(src) do |path|
       subjects = Mutineer::Project.discover([path])
-      assert_equal %w[Billing#setup Billing#in_def Billing#in_block Billing.in_singleton],
-                   subjects.map(&:qualified_name)
+      assert_equal %w[Billing#setup Billing#in_def Billing#in_block Billing.in_singleton Billing#with_receiver
+                      Billing#with_args], subjects.map(&:qualified_name)
       assert(subjects.none?(&:block_owner))
+      assert_equal %w[Billing#in_def Billing#in_block Billing.in_singleton],
+                   subjects.select(&:owner_unknown).map(&:qualified_name)
     end
   end
 

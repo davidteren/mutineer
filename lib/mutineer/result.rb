@@ -14,7 +14,8 @@ module Mutineer
   #                  broken harness (a test that failed to run), not a genuine
   #                  coverage gap.
   #   unplaceable  - under `--strategy redefine`, the method belongs to a class
-  #                  or module that cannot be named statically, so it has no
+  #                  or module that cannot be named statically (for example
+  #                  each class that includes a concern), so it has no
   #                  owner to be loaded onto and is not run. Excluded from the
   #                  denominator and, unlike uncapturable, from the
   #                  no-verdict gate: nothing is broken. `--strategy reload`

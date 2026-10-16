@@ -161,23 +161,19 @@ class SingletonRedefineTest < Minitest::Test
   # concern's ClassMethods. Before the fix, redefine loaded the mutant onto the
   # concern itself, the test called the includer's class method, and every
   # mutant falsely survived.
+  # Redefine only: the stub does not copy ActiveSupport's reload behaviour (see concern_stub.rb).
   def test_class_methods_block_methods_are_mutated
-    files = %w[concern_class_methods.rb concern_class_methods_test.rb]
-    %w[redefine reload].each do |strategy|
-      assert_killed(run_redefine(*files, strategy: strategy, only: "ConcernPricing::ClassMethods#scaled"),
-                    "class_methods block (#{strategy})")
-    end
+    agg = run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
+                       only: "ConcernPricing::ClassMethods#scaled")
+    assert_killed(agg, "class_methods block")
   end
 
   # An `included` block runs in each includer, so no constant names the owner of
   # its defs. Before, redefine loaded the mutant onto the concern and it falsely survived.
-  def test_included_block_methods_are_unplaceable_under_redefine_and_killed_under_reload
-    files = %w[concern_class_methods.rb concern_class_methods_test.rb]
-    only = "ConcernPricing#doubled"
-    redefine = run_redefine(*files, only: only)
+  def test_included_block_methods_are_unplaceable_under_redefine
+    redefine = run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb", only: "ConcernPricing#doubled")
     assert_operator redefine.unplaceable_count, :>, 0
     assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count + redefine.uncapturable_count
-    assert_killed(run_redefine(*files, strategy: "reload", only: only), "included block (reload)")
   end
 
   # Parity control — this form already worked; it must keep working.

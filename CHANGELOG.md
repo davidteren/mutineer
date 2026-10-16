@@ -94,19 +94,22 @@ All notable changes to this project are documented here. The format is based on
   under `--strategy redefine` (#252).** ActiveSupport puts these methods in
   the concern's `ClassMethods` module, and each includer gets them as class
   methods. Mutineer named them as instance methods of the concern itself.
-  Redefine (the `--rails` default) then loaded each mutant onto the concern,
-  the tests called the includer's method, and every mutant falsely survived.
+  Redefine (the `--rails` default) then loaded each mutant onto the concern.
+  The tests called the includer's method, so every mutant falsely survived.
   These methods are now named `Concern::ClassMethods#name`, and redefine
   loads the mutant onto that module. Their mutant ids change, because an id
-  contains the method name. An `ignore:` entry or a `--baseline` survivor
-  for one of these methods no longer matches. Replace it with the new id
-  from a new run.
-- **Methods in a concern's `included` or `prepended` block are
-  `unplaceable` under `--strategy redefine`.** ActiveSupport runs these
-  blocks in each includer, so no constant names the class that owns the
-  methods. Redefine loaded each mutant onto the concern, and every mutant
-  falsely survived. Now redefine reports them as `unplaceable` and does not
-  run them. Their names and mutant ids do not change.
+  contains the method name. An instance method with the same name, later in
+  the same file, can get a new id too. An `ignore:` entry or a `--baseline`
+  survivor for one of these methods no longer matches. Replace it with the
+  new id from a new run.
+- **Methods in other concern blocks are `unplaceable` under
+  `--strategy redefine`.** ActiveSupport runs an `included` or `prepended`
+  block in each includer, so no constant names the class that owns its
+  methods. A `class_methods` block outside a class or module body, such as
+  one inside Rails' `concerning`, has the same problem. Redefine loaded each
+  mutant onto the enclosing module, and every mutant falsely survived. Now
+  redefine reports them as `unplaceable` and does not run them. Their names
+  and mutant ids do not change.
 
 ## [1.6.0] - 2026-10-08
 

@@ -56,7 +56,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `survived` | int | Mutants no test caught. **These are the actionable test gaps.** |
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
-| `unplaceable` | int | Under `--strategy redefine`, mutants whose method belongs to a class or module that cannot be named statically (no constant, a relative path inside a namespace, a class or module opened or assigned in `class << self`, a `self::X` opened in a block or assigned in one that does not build a class, or a method in an ActiveSupport::Concern `included` or `prepended` block), so they were not run (excluded). Not part of `no_verdict`, so they do not fail `--threshold`. `--strategy reload` runs them. Additive key (schema `1.7`). |
+| `unplaceable` | int | Under `--strategy redefine`, mutants whose method belongs to a class or module that cannot be named statically, so they were not run (excluded). The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. `--strategy reload` runs them. Additive key (schema `1.7`). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). |
 | `errored` | int | Mutants whose run raised (excluded). |
@@ -75,7 +75,7 @@ Each surviving mutant — the records an agent or reviewer acts on:
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| `subject` | string | Fully-qualified subject, e.g. `Calculator#add`. |
+| `subject` | string | Fully-qualified subject, e.g. `Calculator#add`. A method in an ActiveSupport::Concern `class_methods` block is named on the module the includer extends, e.g. `Billing::ClassMethods#rate`. |
 | `file` | string | Source file path, relative to the project root for a file inside the project (`./lib/x.rb` and an absolute path both report `lib/x.rb`); a file outside the project keeps the path as passed. |
 | `line` | int | 1-based line of the mutation. |
 | `operator` | string | Operator name, e.g. `arithmetic`, `comparison`. |
@@ -90,8 +90,10 @@ Each entry is `{ subject, file, line, operator, token, id }`, sorted by
 should cover the line errored while capturing coverage (fix the harness, not the test). `unplaceable` (schema
 `1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module cannot be
 named statically (an anonymous `Class.new`, a relative path such as `User::Permission` inside a namespace,
-a class or module opened or assigned in `class << self`, or a `self::X` opened in a block or assigned in one
-that does not build a class); `--strategy reload` runs these. `ran_at_load` (schema `1.7`) means the mutant's
+a class or module opened or assigned in `class << self`, a `self::X` opened in a block or assigned in one
+that does not build a class, a method in an ActiveSupport::Concern `included` or `prepended` block, which runs
+in each includer, or a method in a `class_methods` block outside a class or module body, such as one inside
+Rails' `concerning`); `--strategy reload` runs these. `ran_at_load` (schema `1.7`) means the mutant's
 line ran while the app booted or its class loaded (for example a class body that calls the method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.
