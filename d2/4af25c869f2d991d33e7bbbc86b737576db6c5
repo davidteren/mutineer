@@ -1,0 +1,28 @@
+docs/rails.md
+  s_b9019550ff6064::t_68e1432b8eb6a5 92-96
+docs/rails.html
+  s_b9019550ff6064::t_68e1432b8eb6a5 60,117-118
+  s_b9019550ff6064::t_14f385de090323 119
+test/fixtures/rails_app/bin/dogfood
+  s_b9019550ff6064::t_43ec95afb92ca2 20,22,67
+lib/mutineer/rails_run_env.rb
+  s_b9019550ff6064::t_43ec95afb92ca2 68-69,71
+README.md
+  s_b9019550ff6064::t_43ec95afb92ca2 76-77,242-244,261-262
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d24af25c869f2d991d33e7bbbc86b737576db6c5",
+  "prompts": {},
+  "sessions": {
+    "s_b9019550ff6064": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b04ed4bc-cbdb-479b-9735-3ae8721f5db7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
