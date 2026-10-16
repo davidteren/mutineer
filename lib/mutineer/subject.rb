@@ -11,7 +11,8 @@ module Mutineer
   # is the constant a `Data.define`-style block is assigned to, as written, or
   # the `ClassMethods` of a concern's `class_methods` block (#252);
   # `owner_unknown` is true when the class that owns the method cannot be named
-  # (an unassigned builder block, or a concern block that runs in each includer),
+  # (an unassigned builder block, or a concern block whose class or module no
+  # constant names, such as an `included` block that runs in each includer),
   # so the redefine strategy cannot load a mutant onto it.
   Subject = Struct.new(:file, :namespace, :name, :singleton, :def_node, :lexical, :block_owner, :owner_unknown,
                        keyword_init: true) do

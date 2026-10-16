@@ -103,7 +103,7 @@ All notable changes to this project are documented here. The format is based on
   survivor for one of these methods no longer matches. Replace it with the
   new id from a new run.
 - **Methods in other concern blocks are `unplaceable` under
-  `--strategy redefine`.** ActiveSupport runs an `included` or `prepended`
+  `--strategy redefine` (#252).** ActiveSupport runs an `included` or `prepended`
   block in each includer, so no constant names the class that owns its
   methods. A `class_methods` block outside a class or module body, such as
   one inside Rails' `concerning`, has the same problem. Redefine loaded each

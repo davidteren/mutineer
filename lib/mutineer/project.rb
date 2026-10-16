@@ -144,7 +144,7 @@ module Mutineer
           end
         end
         case concern_block(node)
-        when :unplaceable
+        when :owner_unknown
           return preserving_scope do
             @owner_unknown = true
             super
@@ -478,16 +478,17 @@ module Mutineer
       # does not build a class (Rails' `concerning :Name do`), or `class << self`,
       # `self` is not the module the body names, so no constant here names that
       # `ClassMethods`. ActiveSupport evaluates an `included` or `prepended` block in
-      # each includer, which no constant names either.
+      # each includer, which no constant names either. The call has no receiver or
+      # `self`, no arguments, and a block.
       #
       # @param node [Prism::CallNode] call node.
       # @return [Symbol, nil] `:class_methods` when redefine can name the module,
-      #   `:unplaceable` for any other Concern block, or nil for any other call.
+      #   `:owner_unknown` for any other Concern block, or nil for any other call.
       def concern_block(node)
-        return unless CONCERN_BLOCKS.include?(node.name) && node.receiver.nil? && node.arguments.nil?
-        return unless node.block.is_a?(Prism::BlockNode)
+        return unless CONCERN_BLOCKS.include?(node.name) && node.arguments.nil? && node.block.is_a?(Prism::BlockNode)
+        return unless node.receiver.nil? || node.receiver.is_a?(Prism::SelfNode)
 
-        node.name == :class_methods && !@self_unknown && @singleton_depth.zero? ? :class_methods : :unplaceable
+        node.name == :class_methods && !@self_unknown && @singleton_depth.zero? ? :class_methods : :owner_unknown
       end
 
       # Runs the block with the defs it visits owned by the class a builder block builds.

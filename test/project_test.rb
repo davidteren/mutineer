@@ -249,8 +249,7 @@ class ProjectTest < Minitest::Test
   end
 
   # #252: ActiveSupport::Concern evaluates a `class_methods` block in the
-  # concern's ClassMethods, so its defs belong there. In a def, a non-builder
-  # block or `class << self`, `self` is not the concern, so nothing changes.
+  # concern's ClassMethods, so its defs belong there. `self.class_methods` is the same call.
   def test_discover_names_class_methods_block_defs_on_the_concern_class_methods
     src = <<~RUBY
       module Billing
@@ -267,7 +266,7 @@ class ProjectTest < Minitest::Test
       end
       module Shop
         module Pricing
-          class_methods do
+          self.class_methods do
             def round(x) = x
           end
         end
@@ -307,7 +306,7 @@ class ProjectTest < Minitest::Test
             def b; end
           end
         end
-        prepended do
+        self.prepended do
           def wrap; end
         end
         included(Object)
