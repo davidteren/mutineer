@@ -149,7 +149,8 @@ class RailsWorkerDbTest < Minitest::Test
     error = assert_raises(RuntimeError) do
       Mutineer::RailsWorkerDb.options_from_database_url("postgres://u:s3cret@ho st/db")
     end
-    assert_match(/database URL is not valid/, error.message)
+    # Callers re-raise a "could not provision" error unchanged, so the prefix stays.
+    assert_match(/\Acould not provision: the database URL is not valid/, error.message)
     # full_message also prints the cause chain, where the parser's error repeats the URL.
     refute_includes error.full_message, "s3cret"
   end
