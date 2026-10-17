@@ -1,0 +1,53 @@
+CHANGELOG.md
+  s_6eaee9e12285a5::t_6e94591339c1c6 15-18,35-37,122-153
+README.md
+  s_6eaee9e12285a5::t_0ca75ce7d519a1 313-315,422,424,468-470
+STABILITY.md
+  s_6eaee9e12285a5::t_21d20046c0bbe2 21-23
+docs/equivalent-skips.html
+  s_6eaee9e12285a5::t_878c913ebf263a 53
+docs/equivalent-skips.md
+  s_6eaee9e12285a5::t_9b6e4f79bd3c51 5
+docs/json-schema.md
+  s_6eaee9e12285a5::t_fca1a3751126c7 59,78,93-99
+lib/mutineer/project.rb
+  s_6eaee9e12285a5::t_f0840c8a67b539 34-36,84,124-128,147-168,477-506
+lib/mutineer/rails_worker_db.rb
+  s_6eaee9e12285a5::t_e991ef88e9b264 873-876,1166-1167,1182,1208,1217-1298
+lib/mutineer/result.rb
+  s_6eaee9e12285a5::t_09eda449fdd857 17-18
+lib/mutineer/subject.rb
+  s_6eaee9e12285a5::t_303f2fb7054ed1 11-15
+test/coverage_map_test.rb
+  s_6eaee9e12285a5::t_31e5b592cfdc84 733-735,740,742-743,746-747
+test/daemon_mysql_test.rb
+  s_6eaee9e12285a5::t_babea09950b5b4 228-306
+test/fixtures/singleton/concern_class_methods.rb
+  s_6eaee9e12285a5::t_abf5cbd107f61a 1-24
+test/fixtures/singleton/concern_class_methods_test.rb
+  s_6eaee9e12285a5::t_0a4c58e225ee75 1-16
+test/fixtures/singleton/concern_stub.rb
+  s_6eaee9e12285a5::t_a8ef1267acfcc3 1-28
+test/project_test.rb
+  s_6eaee9e12285a5::t_ac8812b1b6ba75 251-463
+test/rails_worker_db_test.rb
+  s_6eaee9e12285a5::t_a351ff49f1bea0 544-545,558-620,653,661,674-681
+test/singleton_redefine_test.rb
+  s_6eaee9e12285a5::t_9b8a81b829ee1e 160-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b1422267d4272873027fbe89abd0b68cca45d993",
+  "prompts": {},
+  "sessions": {
+    "s_6eaee9e12285a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2fc99c-203e-427a-9527-6b05c7bfa953",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
