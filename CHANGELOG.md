@@ -109,11 +109,16 @@ All notable changes to this project are documented here. The format is based on
   class that owns its methods. A `class_methods` block that Mutineer cannot
   tie to a concern has the same problem: one in a def, in Rails'
   `concerning`, in an unassigned `Module.new`, or in a module that does not
-  run `extend ActiveSupport::Concern` earlier in the file. Another library's
-  method with one of these names counts too. Redefine loaded each mutant onto
-  the enclosing module, and the mutant could falsely survive. Now redefine
-  reports these mutants as `unplaceable` and does not run them, and
-  `--strategy reload` runs them. Their names and mutant ids do not change.
+  run `extend ActiveSupport::Concern` earlier in the file. Redefine loaded each
+  mutant onto the enclosing module, and the mutant could falsely survive. Now
+  redefine reports these mutants as `unplaceable` and does not run them. Their
+  names and mutant ids do not change. `--strategy reload` runs them, but under
+  ActiveSupport it cannot yet run a concern file that has an `included` or
+  `prepended` block: those mutants are `errored` (#257). Another library's
+  method with one of these names is `unplaceable` under redefine too, even
+  when that library runs the block in the module itself and redefine used to
+  run it correctly. Mutineer cannot tell that library from ActiveSupport, so it
+  does not guess. Use `--strategy reload` for those mutants.
 
 ## [1.6.0] - 2026-10-08
 

@@ -351,8 +351,8 @@ class ProjectTest < Minitest::Test
   end
 
   # The extend may be `self.extend`, parenthesized or one of several modules. A
-  # later body that reopens the concern in the same file is still the concern;
-  # a module nested in it is not one.
+  # later body that reopens the concern in the same file, also in compact form,
+  # is still the concern; a module nested in it is not one.
   def test_discover_remembers_a_concern_across_bodies_and_extend_forms
     src = <<~RUBY
       module Billing
@@ -374,12 +374,49 @@ class ProjectTest < Minitest::Test
           def post; end
         end
       end
+      module Shop
+        module Cart
+          extend ActiveSupport::Concern
+        end
+      end
+      module Shop::Cart
+        class_methods do
+          def total; end
+        end
+      end
     RUBY
     with_source(src) do |path|
       subjects = Mutineer::Project.discover([path])
-      assert_equal %w[Billing::Inner#inner Billing::ClassMethods#rate Ledger::ClassMethods#post],
-                   subjects.map(&:qualified_name)
-      assert_equal [true, false, false], subjects.map(&:owner_unknown)
+      assert_equal %w[Billing::Inner#inner Billing::ClassMethods#rate Ledger::ClassMethods#post
+                      Shop::Cart::ClassMethods#total], subjects.map(&:qualified_name)
+      assert_equal [true, false, false, false], subjects.map(&:owner_unknown)
+    end
+  end
+
+  # Only an extend that the module body runs itself counts: one in a def, in
+  # `class << self`, in another block or on another receiver does not.
+  def test_discover_ignores_a_concern_extend_the_module_body_does_not_run
+    src = <<~RUBY
+      module Audit
+        def setup
+          extend ActiveSupport::Concern
+        end
+        class << self
+          extend ActiveSupport::Concern
+        end
+        Other.class_eval do
+          extend ActiveSupport::Concern
+        end
+        Other.extend ActiveSupport::Concern
+        class_methods do
+          def rate(x) = x
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Audit#setup Audit#rate], subjects.map(&:qualified_name)
+      assert_equal [false, true], subjects.map(&:owner_unknown)
     end
   end
 
@@ -390,6 +427,7 @@ class ProjectTest < Minitest::Test
   def test_discover_marks_class_methods_outside_a_module_body_owner_unknown
     src = <<~RUBY
       module Billing
+        extend ActiveSupport::Concern
         def setup
           class_methods do
             def in_def; end

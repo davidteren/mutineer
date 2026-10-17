@@ -92,8 +92,9 @@ should cover the line errored while capturing coverage (fix the harness, not the
 named statically (an anonymous `Class.new`, a relative path such as `User::Permission` inside a namespace,
 a class or module opened or assigned in `class << self`, a `self::X` opened in a block or assigned in one
 that does not build a class, a method in an `included` or `prepended` block, which ActiveSupport runs in each
-includer, or a method in a `class_methods` block that is not in the body of a module known as a concern, such
-as one inside Rails' `concerning` or an unassigned `Module.new`); `--strategy reload` runs these. Under ActiveSupport, reload cannot yet run a concern
+includer, or a method in a `class_methods` block that is not in the body of a module known as a concern (see
+`subject` above), such as one inside Rails' `concerning` or an unassigned `Module.new`); `--strategy reload`
+runs these. Under ActiveSupport, reload cannot yet run a concern
 file that has an `included` or `prepended` block: loading the file a second time raises
 `MultipleIncludedBlocks`, so its mutants are `errored`. `ran_at_load` (schema `1.7`) means the mutant's
 line ran while the app booted or its class loaded (for example a class body that calls the method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
