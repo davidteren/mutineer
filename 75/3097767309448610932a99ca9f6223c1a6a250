@@ -1,0 +1,59 @@
+CHANGELOG.md
+  s_6eaee9e12285a5::t_90600924bb8577 68-73
+README.md
+  s_6eaee9e12285a5::t_8ab910b5097e87 77-79,235-268,334-336
+docs/agentic-coding.html
+  s_6eaee9e12285a5::t_9becb9daabe29b 91
+docs/agentic-coding.md
+  s_6eaee9e12285a5::t_10973943576951 51
+docs/rails.html
+  s_6eaee9e12285a5::t_d1c179f7221f7c 60,117-119
+docs/rails.md
+  s_6eaee9e12285a5::t_71f6e1f50ad021 92-97
+lib/mutineer/coverage_map.rb
+  s_6eaee9e12285a5::t_ca2d5ef65d3101 372-378,380-381,1186-1197,1325
+lib/mutineer/daemon_client.rb
+  s_6eaee9e12285a5::t_566524df9f7437 7,180-181
+lib/mutineer/external_backend.rb
+  s_6eaee9e12285a5::t_0a229d1c800a7f 6,29,75-76,99
+lib/mutineer/rails_run_env.rb
+  s_6eaee9e12285a5::t_3b9b2b897cafff 1-73
+lib/mutineer/runner.rb
+  s_6eaee9e12285a5::t_ad60741ebf6f72 19,47-50,173-175
+skills/mutineer/SKILL.md
+  s_6eaee9e12285a5::t_fb19ceb03f0ab0 57
+test/coverage_map_test.rb
+  s_6eaee9e12285a5::t_7170e9dae30a2f 626-654
+test/daemon_client_env_test.rb
+  s_6eaee9e12285a5::t_3091fabb6a7734 72,111-119,301
+test/external_backend_test.rb
+  s_6eaee9e12285a5::t_ea6c9ed9f38dc3 90-101
+test/fixtures/rails_app/.gitignore
+  s_6eaee9e12285a5::t_802053023a964e 4-5
+test/fixtures/rails_app/bin/dogfood
+  s_6eaee9e12285a5::t_d933f1d0728560 19-26,67-74
+test/fixtures/rails_app/test/test_helper.rb
+  s_6eaee9e12285a5::t_94def68bec58d0 14-17
+test/rails_dogfood_daemon_test.rb
+  s_6eaee9e12285a5::t_8e00cda632974c 26,43-52
+test/rails_run_env_test.rb
+  s_6eaee9e12285a5::t_6ba4fd6c5e9e70 1-102
+test/runner_external_test.rb
+  s_6eaee9e12285a5::t_19b68047dbab46 18-19,125-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "753097767309448610932a99ca9f6223c1a6a250",
+  "prompts": {},
+  "sessions": {
+    "s_6eaee9e12285a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2fc99c-203e-427a-9527-6b05c7bfa953",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
