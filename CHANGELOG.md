@@ -86,11 +86,14 @@ All notable changes to this project are documented here. The format is based on
   the concern itself. Nothing called it there, so every mutant falsely
   survived. Now the mutant goes into the concern's `ClassMethods` module,
   and the subject is named `Concern::ClassMethods#name`, as for a
-  `module ClassMethods` body. This changes the ids of those mutants, so
-  update any `ignore:` entry or baseline that names one. A method in an
+  `module ClassMethods` body. The new name applies under every strategy, so
+  these mutants get new ids. Update any `ignore:` entry and any `--only` or
+  `only:` value that names `Concern#name`. A stale `ignore:` entry prints no
+  warning. Generate a new baseline with `--format json`. A method in an
   `included do` or `prepended do` block runs in the including class, which
   redefine cannot reach. It is now `unplaceable` under redefine instead of a
-  false survivor.
+  false survivor. `--strategy reload` gives it no verdict either: it errors
+  on a concern with such a block (#256).
 - **A Rails daemon boots again while a mutant file is still open.**
   The file stays when another process holds it. The next boot skips
   that file name instead of stopping.
