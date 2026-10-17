@@ -327,9 +327,10 @@ class ProjectTest < Minitest::Test
   end
 
   # Another library can define `class_methods` or `included` and run the block
-  # in the module itself. Only a body that extends ActiveSupport::Concern before
-  # the call is a concern, so these defs keep the module as their owner.
-  def test_discover_leaves_blocks_of_another_dsl_on_the_module
+  # in the module itself. Only a module that extended ActiveSupport::Concern
+  # earlier in the file gets ClassMethods names; any other such block keeps its
+  # names and is unplaceable, so redefine never loads a mutant onto a guess.
+  def test_discover_marks_blocks_of_a_module_not_known_as_a_concern_owner_unknown
     src = <<~RUBY
       module Prices
         extend PriceDSL
@@ -345,7 +346,40 @@ class ProjectTest < Minitest::Test
     with_source(src) do |path|
       subjects = Mutineer::Project.discover([path])
       assert_equal %w[Prices#total Prices#tag], subjects.map(&:qualified_name)
-      assert(subjects.none? { |s| s.block_owner || s.owner_unknown })
+      assert(subjects.all? { |s| s.block_owner.nil? && s.owner_unknown })
+    end
+  end
+
+  # The extend may be `self.extend`, parenthesized or one of several modules. A
+  # later body that reopens the concern in the same file is still the concern;
+  # a module nested in it is not one.
+  def test_discover_remembers_a_concern_across_bodies_and_extend_forms
+    src = <<~RUBY
+      module Billing
+        self.extend Comparable, ::ActiveSupport::Concern
+        module Inner
+          class_methods do
+            def inner; end
+          end
+        end
+      end
+      module Billing
+        class_methods do
+          def rate; end
+        end
+      end
+      module Ledger
+        extend(ActiveSupport::Concern)
+        class_methods do
+          def post; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Billing::Inner#inner Billing::ClassMethods#rate Ledger::ClassMethods#post],
+                   subjects.map(&:qualified_name)
+      assert_equal [true, false, false], subjects.map(&:owner_unknown)
     end
   end
 

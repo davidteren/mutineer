@@ -81,7 +81,7 @@ module Mutineer
         @self_unknown = false      # inside a def or a block that is not a builder, so `self` is not the namespace
         @self_scope = nil          # the def or block whose `self` the code runs with
         @singleton_uncertain = false # the open `class << self` was inside a def or a non-builder block
-        @concern = false             # this body ran `extend ActiveSupport::Concern`
+        @concern_modules = Set.new   # the {#module_key} of each module that ran `extend ActiveSupport::Concern`
         super()
       end
 
@@ -121,11 +121,11 @@ module Mutineer
       # block's defs belong to the class it builds; one not assigned to a
       # constant has no name, so its subjects are marked `owner_unknown`, and a
       # `module_function :name` in it promotes nothing. Elsewhere it promotes the
-      # methods of the same module, matched by {#module_key}. A body that runs
-      # `extend ActiveSupport::Concern` is a concern. A `class_methods` block in
-      # its body (see {#concern_block}) is visited like a builder block that builds
-      # the module's `ClassMethods`, so its defs belong to that module (#252). The
-      # defs in any other ActiveSupport::Concern block have their owner unknown.
+      # methods of the same module, matched by {#module_key}. A module that runs
+      # `extend ActiveSupport::Concern` is a concern from then on in this file. A
+      # `class_methods` block in its body (see {#concern_block}) is visited like a
+      # builder block that builds the module's `ClassMethods`, so its defs belong to
+      # that module (#252). The defs in any other such block have their owner unknown.
       #
       # @param node [Prism::CallNode] call node.
       # @return [void]
@@ -144,9 +144,11 @@ module Mutineer
             end
           end
         end
-        if node.name == :extend && node.receiver.nil? && !@self_unknown && @singleton_depth.zero?
+        if node.name == :extend && (node.receiver.nil? || node.receiver.is_a?(Prism::SelfNode)) &&
+           !@self_unknown && @singleton_depth.zero?
           args = node.arguments&.arguments || []
-          @concern ||= args.any? { |arg| arg.slice.delete_prefix("::") == "ActiveSupport::Concern" }
+          concern = args.any? { |arg| arg.slice.delete_prefix("::") == "ActiveSupport::Concern" }
+          @concern_modules << module_key if concern
         end
         case concern_block(node)
         when :owner_unknown
@@ -346,7 +348,7 @@ module Mutineer
           @namespace_unknown = @owner_unknown = in_singleton || self_in_block || @namespace_unknown
           @singleton_depth = 0
           @singleton_cref = nil
-          @anonymous_block = @self_unknown = @singleton_uncertain = @concern = false
+          @anonymous_block = @self_unknown = @singleton_uncertain = false
           @body = Object.new
           yield
         end
@@ -355,7 +357,7 @@ module Mutineer
       # Visitor state a class/module body or builder block sets for what it contains.
       SCOPE_STATE = %i[@namespace_stack @lexical_stack @module_function_active @block_owner @block_namespace
                        @owner_unknown @singleton_depth @singleton_cref @namespace_unknown @anonymous_block @body
-                       @self_unknown @self_scope @singleton_uncertain @concern].freeze
+                       @self_unknown @self_scope @singleton_uncertain].freeze
 
       # Runs the block and then restores every {SCOPE_STATE} variable, so a
       # nested body's state never leaks out of it.
@@ -486,9 +488,10 @@ module Mutineer
       # receiver or `self`, no arguments, and a block.
       #
       # Another library can define methods with these names and run the block in
-      # the module itself, so a body counts as a concern only when it runs
-      # `extend ActiveSupport::Concern` before the call. In a def, a non-builder
-      # block or `class << self` that cannot be seen, so the block is unplaceable.
+      # the module itself. So a `class_methods` block counts only in a module that ran
+      # `extend ActiveSupport::Concern` earlier in this file, in this body or an earlier
+      # one ({#module_key}). Any other block with these names is unplaceable: guessing
+      # its owner would load a mutant where the tests never call it.
       #
       # @param node [Prism::CallNode] call node.
       # @return [Symbol, nil] `:class_methods` when redefine can name the module,
@@ -496,10 +499,9 @@ module Mutineer
       def concern_block(node)
         return unless CONCERN_BLOCKS.include?(node.name) && node.arguments.nil? && node.block.is_a?(Prism::BlockNode)
         return unless node.receiver.nil? || node.receiver.is_a?(Prism::SelfNode)
-        return :owner_unknown if @self_unknown || @singleton_depth.positive?
-        return unless @concern
-
-        node.name == :class_methods && !@owner_unknown ? :class_methods : :owner_unknown
+        placeable = node.name == :class_methods && !@self_unknown && @singleton_depth.zero? && !@owner_unknown &&
+                    @concern_modules.include?(module_key)
+        placeable ? :class_methods : :owner_unknown
       end
 
       # Runs the block with the defs it visits owned by the class a builder block builds.
@@ -516,7 +518,7 @@ module Mutineer
           @singleton_cref = singleton_name if @singleton_depth.positive?
           @block_owner, @block_namespace, @owner_unknown = owner
           @anonymous_block = anonymous
-          @self_unknown = @singleton_uncertain = @concern = false
+          @self_unknown = @singleton_uncertain = false
           @module_function_active = false
           @singleton_depth = 0
           @body = Object.new

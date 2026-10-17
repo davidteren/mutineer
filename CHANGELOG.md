@@ -97,21 +97,23 @@ All notable changes to this project are documented here. The format is based on
   Redefine (the `--rails` default) then loaded each mutant onto the concern.
   The tests called the includer's method, so every mutant falsely survived.
   These methods are now named `Concern::ClassMethods#name`, and redefine
-  loads the mutant onto that module. A module counts as a concern when its
-  body runs `extend ActiveSupport::Concern`. Another library's
-  `class_methods` keeps its old name. Their mutant ids change, because an id
-  contains the method name. An instance method with the same name, later in
-  the same file, can get a new id too. An `ignore:` entry or a `--baseline`
-  survivor for one of these methods no longer matches. Replace it with the
-  new id from a new run.
-- **Methods in other concern blocks are `unplaceable` under
-  `--strategy redefine` (#252).** ActiveSupport runs an `included` or `prepended`
-  block in each includer, so no constant names the class that owns its
-  methods. A `class_methods` block outside a class or module body, such as
-  one inside Rails' `concerning` or an unassigned `Module.new`, has the
-  same problem. Redefine loaded each mutant onto the enclosing module, and
-  every mutant falsely survived. Now redefine reports them as `unplaceable`
-  and does not run them. Their names and mutant ids do not change.
+  loads the mutant onto that module. This applies to a module that ran
+  `extend ActiveSupport::Concern` earlier in the same file. The mutant ids of
+  these methods change, because an id contains the method name. An instance
+  method with the same name, later in the same file, can get a new id too.
+  An `ignore:` entry or a `--baseline` survivor for one of these methods no
+  longer matches. Replace it with the new id from a new run.
+- **Methods in other `class_methods`, `included` and `prepended` blocks are
+  `unplaceable` under `--strategy redefine` (#252).** ActiveSupport runs an
+  `included` or `prepended` block in each includer, so no constant names the
+  class that owns its methods. A `class_methods` block that Mutineer cannot
+  tie to a concern has the same problem: one in a def, in Rails'
+  `concerning`, in an unassigned `Module.new`, or in a module that does not
+  run `extend ActiveSupport::Concern` earlier in the file. Another library's
+  method with one of these names counts too. Redefine loaded each mutant onto
+  the enclosing module, and the mutant could falsely survive. Now redefine
+  reports these mutants as `unplaceable` and does not run them, and
+  `--strategy reload` runs them. Their names and mutant ids do not change.
 
 ## [1.6.0] - 2026-10-08
 
