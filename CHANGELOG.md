@@ -86,7 +86,9 @@ All notable changes to this project are documented here. The format is based on
   the concern itself. Nothing called it there, so every mutant falsely
   survived. Now the mutant goes into the concern's `ClassMethods` module,
   and the subject is named `Concern::ClassMethods#name`, as for a
-  `module ClassMethods` body. The new name applies under every strategy, so
+  `module ClassMethods` body. This applies only in a module that runs
+  `extend ActiveSupport::Concern`; the same names in another DSL keep their
+  old handling. The new name applies under every strategy, so
   these mutants get new ids. Update any `ignore:` entry and any `--only` or
   `only:` value that names `Concern#name`. A stale `ignore:` entry prints no
   warning. Generate a new baseline with `--format json`. A method in an

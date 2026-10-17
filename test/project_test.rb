@@ -229,9 +229,11 @@ class ProjectTest < Minitest::Test
 
   # #252: `class_methods do` runs its body in the concern's ClassMethods module;
   # `included do` and `prepended do` run theirs in classes the file need not name.
+  # Without `extend ActiveSupport::Concern` the same names are another DSL's.
   def test_discover_owns_concern_hook_blocks
     src = <<~RUBY
       module Greeting
+        extend ActiveSupport::Concern
         class_methods do
           def greet = 1
           def self.helper = 2
@@ -255,12 +257,15 @@ class ProjectTest < Minitest::Test
         end
       end
       Mixin = Module.new do
+        extend ::ActiveSupport::Concern
         class_methods do
           def mixed = 7
         end
       end
       module Outer
+        extend ActiveSupport::Concern
         Module.new do
+          extend ActiveSupport::Concern
           class_methods do
             def anon = 8
           end
@@ -271,15 +276,25 @@ class ProjectTest < Minitest::Test
           end
         end
       end
+      class Report
+        class_methods do
+          def active? = 10
+        end
+        included do
+          def other = 11
+        end
+      end
     RUBY
     with_source(src) do |path|
       subjects = Mutineer::Project.discover([path])
       assert_equal %w[Greeting::ClassMethods#greet Greeting::ClassMethods.helper Greeting::Inner#m Greeting#tag
                       Greeting#wrap Greeting#far Greeting#build Greeting::ClassMethods#late Mixin::ClassMethods#mixed
-                      Outer::ClassMethods#anon Outer::ClassMethods#single],
+                      Outer::ClassMethods#anon Outer::ClassMethods#single Report#active? Report#other],
                    subjects.map(&:qualified_name)
-      assert_equal [false, false, false, true, true, false, false, true, false, true, true], subjects.map(&:owner_unknown)
-      assert_equal ["::Greeting::ClassMethods", "::Mixin::ClassMethods"], subjects.values_at(0, 8).map(&:block_owner)
+      assert_equal [false, false, false, true, true, false, false, true, false, true, true, false, false],
+                   subjects.map(&:owner_unknown)
+      assert_equal ["::Greeting::ClassMethods", "::Mixin::ClassMethods", nil, nil],
+                   subjects.values_at(0, 8, 11, 12).map(&:block_owner)
       assert_equal %w[Greeting], subjects[0].lexical
     end
   end

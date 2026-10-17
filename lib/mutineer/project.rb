@@ -33,6 +33,8 @@ module Mutineer
 
       # ActiveSupport::Concern hooks whose block runs in each class that includes
       # the concern, not in the concern itself (#252). The file need not name them.
+      # Like `class_methods`, they count only in a body that extends the concern
+      # module ({#concern_hook?}); elsewhere they may be any other DSL.
       INCLUDE_HOOKS = %i[included prepended].freeze
 
       # A constant name, or a path of them; Ruby allows Unicode in both.
@@ -82,6 +84,7 @@ module Mutineer
         @self_unknown = false      # inside a def or a block that is not a builder, so `self` is not the namespace
         @self_scope = nil          # the def or block whose `self` the code runs with
         @singleton_uncertain = false # the open `class << self` was inside a def or a non-builder block
+        @concern = false # this body ran `extend ActiveSupport::Concern` (#252)
         super()
       end
 
@@ -123,7 +126,8 @@ module Mutineer
       # `module_function :name` in it promotes nothing. Elsewhere it promotes the
       # methods of the same module, matched by {#module_key}.
       #
-      # An ActiveSupport::Concern hook block is no class body either (#252).
+      # An ActiveSupport::Concern hook block is no class body either (#252), in a
+      # body that ran `extend ActiveSupport::Concern` ({#concern_hook?}).
       # `class_methods do` runs in the concern's `ClassMethods` module, so its
       # defs are owned there, as in a builder block ({#class_methods_owner}).
       # `included do` and `prepended do` run in each including class, so their
@@ -146,6 +150,7 @@ module Mutineer
             end
           end
         end
+        @concern = true if extends_concern?(node)
         if concern_hook?(node, :class_methods)
           return with_block_owner(class_methods_owner, @anonymous_block) do
             @self_scope = node.block
@@ -344,7 +349,7 @@ module Mutineer
           @namespace_unknown = @owner_unknown = in_singleton || self_in_block || @namespace_unknown
           @singleton_depth = 0
           @singleton_cref = nil
-          @anonymous_block = @self_unknown = @singleton_uncertain = false
+          @anonymous_block = @self_unknown = @singleton_uncertain = @concern = false
           @body = Object.new
           yield
         end
@@ -353,7 +358,7 @@ module Mutineer
       # Visitor state a class/module body or builder block sets for what it contains.
       SCOPE_STATE = %i[@namespace_stack @lexical_stack @module_function_active @block_owner @block_namespace
                        @owner_unknown @singleton_depth @singleton_cref @namespace_unknown @anonymous_block @body
-                       @self_unknown @self_scope @singleton_uncertain].freeze
+                       @self_unknown @self_scope @singleton_uncertain @concern].freeze
 
       # Runs the block and then restores every {SCOPE_STATE} variable, so a
       # nested body's state never leaks out of it.
@@ -470,14 +475,26 @@ module Mutineer
           CLASS_BUILDERS[node.receiver&.slice&.delete_prefix("::")] == node.name
       end
 
-      # True when the node is a receiverless `name do ... end` with no arguments,
-      # the form of an ActiveSupport::Concern hook.
+      # True when the node is a receiverless `name do ... end` with no arguments
+      # in a body that extends ActiveSupport::Concern. Another DSL may use the
+      # same names, so without the `extend` the block is an ordinary one.
       #
       # @param node [Prism::CallNode] call node.
       # @param name [Symbol] hook name.
       # @return [Boolean]
       def concern_hook?(node, name)
-        node.name == name && node.receiver.nil? && node.arguments.nil? && node.block.is_a?(Prism::BlockNode)
+        @concern && node.name == name && node.receiver.nil? && node.arguments.nil? &&
+          node.block.is_a?(Prism::BlockNode)
+      end
+
+      # True when the node is `extend ActiveSupport::Concern` run by the class or
+      # module body itself, not by a method or a block with another `self`.
+      #
+      # @param node [Prism::CallNode] call node.
+      # @return [Boolean]
+      def extends_concern?(node)
+        node.name == :extend && node.receiver.nil? && !@self_unknown &&
+          (node.arguments&.arguments || []).any? { |arg| arg.slice.delete_prefix("::") == "ActiveSupport::Concern" }
       end
 
       # The concern's `ClassMethods` module, the owner of a `class_methods` block:
@@ -509,7 +526,7 @@ module Mutineer
           @singleton_cref = singleton_name if @singleton_depth.positive?
           @block_owner, @block_namespace, @owner_unknown = owner
           @anonymous_block = anonymous
-          @self_unknown = @singleton_uncertain = false
+          @self_unknown = @singleton_uncertain = @concern = false
           @module_function_active = false
           @singleton_depth = 0
           @body = Object.new

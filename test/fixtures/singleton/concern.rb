@@ -4,7 +4,7 @@ require_relative "mini_concern"
 
 # A `class_methods do` block runs in the concern's ClassMethods module (#252).
 module ConcernGreeting
-  extend MiniConcern
+  extend ActiveSupport::Concern
 
   class_methods do
     def greet(name)

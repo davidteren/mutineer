@@ -4,7 +4,7 @@ require_relative "mini_concern"
 
 # An `included do` block runs in each class that includes the concern (#252).
 module ConcernTagged
-  extend MiniConcern
+  extend ActiveSupport::Concern
 
   included do
     def tag(name)
