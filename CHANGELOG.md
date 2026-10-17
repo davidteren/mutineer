@@ -99,7 +99,8 @@ All notable changes to this project are documented here. The format is based on
   These methods are now named `Concern::ClassMethods#name`, and redefine
   loads the mutant onto that module. This applies to a module that ran
   `extend ActiveSupport::Concern` earlier in the same file. The mutant ids of
-  these methods change, because an id contains the method name. An instance
+  these methods change, because an id contains the qualified name (owner and
+  method). An instance
   method with the same name, later in the same file, can get a new id too.
   An `ignore:` entry or a `--baseline` survivor for one of these methods no
   longer matches. Replace it with the new id from a new run.
@@ -111,8 +112,10 @@ All notable changes to this project are documented here. The format is based on
   `concerning`, in an unassigned `Module.new`, or in a module that does not
   run `extend ActiveSupport::Concern` earlier in the file. Redefine loaded each
   mutant onto the enclosing module, and the mutant could falsely survive. Now
-  redefine reports these mutants as `unplaceable` and does not run them. Their
-  names and mutant ids do not change. `--strategy reload` runs them, but under
+  redefine reports these mutants as `unplaceable` and does not run them. Like
+  every `unplaceable` mutant, they leave the score and do not count toward
+  `--threshold`, so a gate that failed on these false survivors can now pass.
+  Their names and mutant ids do not change. `--strategy reload` runs them, but under
   ActiveSupport it cannot yet run a concern file that has an `included` or
   `prepended` block: those mutants are `errored` (#257). Another library's
   method with one of these names is `unplaceable` under redefine too, even

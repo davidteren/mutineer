@@ -94,8 +94,8 @@ a class or module opened or assigned in `class << self`, a `self::X` opened in a
 that does not build a class, a method in an `included` or `prepended` block, which ActiveSupport runs in each
 includer, or a method in a `class_methods` block that is not in the body of a module known as a concern (see
 `subject` above), such as one inside Rails' `concerning` or an unassigned `Module.new`); `--strategy reload`
-runs these. Under ActiveSupport, reload cannot yet run a concern
-file that has an `included` or `prepended` block: loading the file a second time raises
+runs these, with one exception: under ActiveSupport, reload cannot yet run a concern file that has an
+`included` or `prepended` block (#257), because loading the file a second time raises
 `MultipleIncludedBlocks`, so its mutants are `errored`. `ran_at_load` (schema `1.7`) means the mutant's
 line ran while the app booted or its class loaded (for example a class body that calls the method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
