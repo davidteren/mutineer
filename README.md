@@ -74,6 +74,9 @@ A test that commits rows outside a transaction leaves them in that worker databa
 The next mutant on that worker sees those rows.
 Rails parallel tests have the same ceiling.
 
+Mutineer sets `PARALLEL_WORKERS=1`, so a `parallelize` call in `test_helper.rb` starts no Rails workers during a mutant run.
+See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis).
+
 <!-- /contract:support-matrix -->
 
 An app on an older Ruby uses `--test-command`.
@@ -229,6 +232,40 @@ RAILS_ENV=test bundle exec mutineer init --rails
 The path from that first report to a CI gate is the
 [Rails rollout guide](https://davidteren.github.io/mutineer/rails.html).
 
+### Rails parallel tests, Spring, Bootsnap, and Redis
+
+Mutineer sets `PARALLEL_WORKERS` to `1` for every run.
+Rails then runs each mutant's tests in one process.
+Your `parallelize(workers:)` call stays in `test_helper.rb`.
+It does not start Rails workers during a mutant run.
+If you already set `PARALLEL_WORKERS` to another value, Mutineer replaces it and prints one line.
+With `--test-command`, a script your command runs can set `PARALLEL_WORKERS` again.
+Its value wins, and the Rails workers start again.
+Remove that line from the script, or write `PARALLEL_WORKERS=${PARALLEL_WORKERS:-4}` so it keeps the 1 Mutineer passes.
+
+Mutineer does not run your `parallelize_setup` hooks.
+Rails registers its own database hook in that same list.
+Running the list would point the tests at `<base>-<n>` instead of Mutineer's database.
+
+`--test-command` also sets `DISABLE_SPRING=1`.
+Spring does not start for that command.
+The `--daemon` path loads `config/environment` itself, so Spring does not start there either.
+A wrapper that sets `DISABLE_SPRING` again wins, same as `PARALLEL_WORKERS`.
+
+Bootsnap checks its compile cache by file path, size, and modification time in whole seconds.
+When the size and the time match, it uses the cached code without reading the file content.
+The in-process and `--daemon` paths load each mutant from a new file, so the cache cannot mix them up.
+`--test-command` rewrites the source file in place.
+Two mutants of the same size, written in the same second, can then load the first one's cached code.
+To rule that out, set `DISABLE_BOOTSNAP_COMPILE_CACHE=1` on the Mutineer command.
+Bootsnap keeps its cache in `tmp/cache/bootsnap`, or under `$BOOTSNAP_CACHE_DIR` when that is set.
+If a run uses code that no longer matches your files, delete that folder and run again.
+
+`redis-client` (which `redis` 5 uses) opens a new connection after a fork on its own.
+You do not set anything in Mutineer for this.
+`redis` 4.x raises `Redis::InheritedError` instead.
+Open that connection after boot, or reconnect it in an after-fork hook.
+
 ### Faster, parallel-safe Rails (the `--daemon` backend)
 
 `--rails` boots your app once but runs mutants **serially** — parallel `--jobs`
@@ -294,7 +331,9 @@ RAILS_ENV=test mutineer run app/models/order.rb \
   prepends rbenv/asdf shims when a pin was scrubbed. Do not rely on
   `RBENV_VERSION=…` on the Mutineer command for the suite; use `.ruby-version`
   or a wrapper. Don't put `KEY=val` prefixes *inside* `--test-command` (no shell;
-  that would be treated as the program name).
+  that would be treated as the program name). Mutineer also sets
+  `PARALLEL_WORKERS=1` and `DISABLE_SPRING=1` in the child and replaces a value
+  you set (see [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis)).
 
 #### Under a version manager (rbenv / asdf / chruby)
 

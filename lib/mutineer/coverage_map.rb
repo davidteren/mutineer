@@ -369,11 +369,16 @@ module Mutineer
       @digest = compute_digest
       cached = read_cache
       # A cache from before load methods (#209) or test timings (#203) were
-      # saved rebuilds once. Boot mode reads its load lines and methods from
-      # the live boot instead (#build_via_fork), but its map from before #209
-      # lacks the `def` lines of the methods each test called.
+      # saved rebuilds once. A cache that does not record this process's
+      # PARALLEL_WORKERS value rebuilds too. Rails reads that value inside
+      # parallelize, so a map from another worker count selects the wrong
+      # tests. The daemon writes this same file. Boot mode reads its load
+      # lines and methods from the live boot instead (#build_via_fork), but
+      # its map from before #209 lacks the `def` lines of the methods each
+      # test called.
       if cached && cached["digest"] == @digest && dependencies_match?(cached) &&
-         cached.key?("load_methods") && cached.key?("timings")
+         cached.key?("load_methods") && cached.key?("timings") &&
+         parallel_workers_match?(cached)
         @map = cached["map"] || {}
         @timings = cached["timings"] || {}
         unless @boot_path
@@ -1178,6 +1183,18 @@ module Mutineer
       end
     end
 
+    # True when `cached` records the same +PARALLEL_WORKERS+ value this process
+    # has now. Rails reads that variable inside +parallelize+ and can run one
+    # test file in several workers. A missing key is a map saved before this
+    # value was stored. In-process runs and the daemon write this same file.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @return [Boolean]
+    def parallel_workers_match?(cached)
+      cached.key?("parallel_workers") && cached["parallel_workers"] == ENV.fetch("PARALLEL_WORKERS", nil)
+    end
+
     # Digest each file's ROLE + relative path + content length + content, plus
     # the load_paths. Without role/path/length delimiters the digest collides
     # (("ab","c") == ("a","bc")) and is blind to source/test role swaps, silently
@@ -1305,7 +1322,7 @@ module Mutineer
       data = { "digest" => @digest, "failed_test_files" => @failed_test_files,
                "dependencies" => @loaded_dependencies, "map" => @map,
                "load_lines" => @load_lines.to_a.sort, "load_methods" => @load_methods.to_a.sort,
-               "timings" => @timings }
+               "timings" => @timings, "parallel_workers" => ENV.fetch("PARALLEL_WORKERS", nil) }
       tmp = "#{cache_path}.tmp"
       File.write(tmp, JSON.generate(data))
       File.rename(tmp, cache_path) # atomic swap

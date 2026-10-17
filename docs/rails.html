@@ -57,6 +57,7 @@
         <li><a href="#threshold">A threshold on chosen folders</a></li>
         <li><a href="#github-actions">GitHub Actions</a></li>
         <li><a href="#gitlab-ci">GitLab CI</a></li>
+        <li><a href="#parallel-tests">Parallel tests</a></li>
         <li><a href="#daemon">Daemon</a></li>
       </ul>
     </aside>
@@ -112,6 +113,9 @@ jobs:
   script:
     - bundle exec mutineer run app/models lib --since origin/main --baseline .mutineer/baseline.json --format json</code></pre>
       <p>Drop <code>--since</code> and <code>--baseline</code> for a report-only job. Add <code>--threshold 90</code> when a folder is ready for a hard gate.</p>
+
+      <h2 id="parallel-tests">Parallel tests</h2>
+      <p>Mutineer sets <code>PARALLEL_WORKERS=1</code>, so <code>parallelize</code> in <code>test_helper.rb</code> starts no Rails workers during a mutant run. A <code>--test-command</code> script that sets <code>PARALLEL_WORKERS</code> again turns the workers back on. Details: <a href="https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis">Rails parallel tests, Spring, Bootsnap, and Redis</a>.</p>
 
       <h2 id="daemon">Daemon</h2>
       <p><code>--daemon</code> gives each worker its own test database. SQLite test databases are supported. Postgres and other adapters are not supported in this version. On those adapters, <code>--daemon</code> scores every mutant as an error. Leave <code>daemon</code> commented in <code>.mutineer.yml</code> until this matrix says it fits. Run without the daemon to stay serial on other adapters.</p>

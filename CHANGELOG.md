@@ -65,6 +65,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Rails test workers stay off during a mutant run.** Mutineer sets
+  `PARALLEL_WORKERS` to `1` for in-process, `--daemon`, and `--test-command`
+  runs. A value you already set is replaced, and Mutineer prints one line.
+  The coverage cache stores the `PARALLEL_WORKERS` value, so a cache from an
+  older version rebuilds once. `--test-command` also sets `DISABLE_SPRING=1`.
+  The README explains `parallelize`, Bootsnap, and Redis after a fork.
 - **`--test-command` exit codes 126 and 127 are scored `error`, not
   `killed`.** A wrapper that could not start the suite ran no test. Under
   `--threshold`, such a run can now score lower or fail the no-verdict limit,

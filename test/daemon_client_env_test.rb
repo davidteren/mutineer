@@ -69,6 +69,7 @@ class DaemonClientEnvTest < Minitest::Test
         assert_equal "3.3.6", observed["RBENV_VERSION"]
         assert_equal gemfile, observed["BUNDLE_GEMFILE"]
         assert_equal "test", observed["RAILS_ENV"]
+        assert_equal "1", observed["PARALLEL_WORKERS"]
         assert_nil observed["RUBYOPT"]
       end
     end
@@ -103,6 +104,15 @@ class DaemonClientEnvTest < Minitest::Test
       with_env("HOME" => root, "RBENV_ROOT" => nil, "PATH" => path, "BUNDLER_ORIG_PATH" => path) do
         observed = observe(client_for(root), root)
         assert_includes observed["PATH"].split(File::PATH_SEPARATOR), version_bin
+      end
+    end
+  end
+
+  def test_spawn_replaces_parallel_workers
+    Dir.mktmpdir("daemon-env") do |root|
+      with_env("PARALLEL_WORKERS" => "8") do
+        observed = observe(client_for(root), root)
+        assert_equal "1", observed["PARALLEL_WORKERS"]
       end
     end
   end
@@ -288,7 +298,7 @@ class DaemonClientEnvTest < Minitest::Test
       keys = %w[
         RUBYOPT RUBYLIB GEM_HOME GEM_PATH BUNDLE_PATH BUNDLE_WITHOUT BUNDLE_APP_CONFIG
         BUNDLE_GEMFILE BUNDLER_SETUP BUNDLER_VERSION RBENV_VERSION ASDF_RUBY_VERSION RAILS_ENV
-        MUTINEER_PARENT_CODE_LOADED MUTINEER_APP_PROBE
+        PARALLEL_WORKERS MUTINEER_PARENT_CODE_LOADED MUTINEER_APP_PROBE
       ]
       data = keys.to_h { |key| [key, ENV[key]] }
       data["PATH"] = ENV["PATH"]
