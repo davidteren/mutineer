@@ -1,0 +1,21 @@
+test/runner_test.rb
+  s_6eaee9e12285a5::t_64adbbf55303d2 283-302
+lib/mutineer/runner.rb
+  s_6eaee9e12285a5::t_d7c5a3e3c5a11c 327-330
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cb217a6309b38b1c5284780deca054b26952f6b5",
+  "prompts": {},
+  "sessions": {
+    "s_6eaee9e12285a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2fc99c-203e-427a-9527-6b05c7bfa953",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
