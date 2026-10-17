@@ -1,0 +1,55 @@
+lib/mutineer/job_plan.rb
+  s_6eaee9e12285a5::t_78ebde30e23f5b 184-187,189,207-211,213-214,218
+CHANGELOG.md
+  s_6eaee9e12285a5::t_437228df6ebed4 112-119
+test/runner_test.rb
+  s_6eaee9e12285a5::t_47551d1c7e7a7e 283-294
+  s_6eaee9e12285a5::t_5e16646973ec13 278-280
+  s_bff7fac5386312::t_ed41ffa8e769a4 281-282
+lib/mutineer/result.rb
+  s_6eaee9e12285a5::t_67f31c4343d091 11-13,40-43
+lib/mutineer/reporter.rb
+  s_6eaee9e12285a5::t_67f31c4343d091 820-821
+docs/json-schema.md
+  s_6eaee9e12285a5::t_67f31c4343d091 38,65,89
+test/statement_lines_test.rb
+  s_6eaee9e12285a5::t_e84d277e7af050 23
+  s_6eaee9e12285a5::t_8a383e0f3fda06 26-37
+  s_64a067ea5aaa0b::t_00aabd780c485b 24-25
+test/daemon_backend_contract_test.rb
+  s_6eaee9e12285a5::t_0cb6ea5ffae2bb 201-205,213
+lib/mutineer/statement_lines.rb
+  s_6eaee9e12285a5::t_78ebde30e23f5b 15,25,33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7dbf8027bb09f412b05314bfdb52059a27c53b9b",
+  "prompts": {},
+  "sessions": {
+    "s_64a067ea5aaa0b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff247953-b391-4f87-9bb2-fdfcd2c926f0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_6eaee9e12285a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2fc99c-203e-427a-9527-6b05c7bfa953",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_bff7fac5386312": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b91cc7e9-68cc-423c-849f-00dbb3fbec13",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
