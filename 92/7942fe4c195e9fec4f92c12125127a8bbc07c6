@@ -1,0 +1,19 @@
+test/coverage_map_test.rb
+  s_c7cdcd7841044c::t_e9e70b3dc7ec6a 733-734,742
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "927942fe4c195e9fec4f92c12125127a8bbc07c6",
+  "prompts": {},
+  "sessions": {
+    "s_c7cdcd7841044c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e888582c-9e8a-4865-9182-b5f2bc647aa9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
