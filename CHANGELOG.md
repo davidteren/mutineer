@@ -97,7 +97,9 @@ All notable changes to this project are documented here. The format is based on
   Redefine (the `--rails` default) then loaded each mutant onto the concern.
   The tests called the includer's method, so every mutant falsely survived.
   These methods are now named `Concern::ClassMethods#name`, and redefine
-  loads the mutant onto that module. Their mutant ids change, because an id
+  loads the mutant onto that module. A module counts as a concern when its
+  body runs `extend ActiveSupport::Concern`. Another library's
+  `class_methods` keeps its old name. Their mutant ids change, because an id
   contains the method name. An instance method with the same name, later in
   the same file, can get a new id too. An `ignore:` entry or a `--baseline`
   survivor for one of these methods no longer matches. Replace it with the
@@ -107,10 +109,9 @@ All notable changes to this project are documented here. The format is based on
   block in each includer, so no constant names the class that owns its
   methods. A `class_methods` block outside a class or module body, such as
   one inside Rails' `concerning` or an unassigned `Module.new`, has the
-  same problem. Redefine loaded each
-  mutant onto the enclosing module, and every mutant falsely survived. Now
-  redefine reports them as `unplaceable` and does not run them. Their names
-  and mutant ids do not change.
+  same problem. Redefine loaded each mutant onto the enclosing module, and
+  every mutant falsely survived. Now redefine reports them as `unplaceable`
+  and does not run them. Their names and mutant ids do not change.
 
 ## [1.6.0] - 2026-10-08
 

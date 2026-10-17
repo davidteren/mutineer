@@ -260,23 +260,27 @@ class ProjectTest < Minitest::Test
         def total; end
       end
       module Order::ReleasePolicy
+        extend ::ActiveSupport::Concern
         class_methods do
           def due?(d) = d > 1
         end
       end
       module Shop
         module Pricing
+          extend ActiveSupport::Concern
           self.class_methods do
             def round(x) = x
           end
         end
         helper = Module.new do
+          extend ActiveSupport::Concern
           class_methods do
             def anon; end
           end
         end
       end
       Tagged = Module.new do
+        extend ActiveSupport::Concern
         class_methods do
           def tag; end
         end
@@ -301,6 +305,7 @@ class ProjectTest < Minitest::Test
   def test_discover_marks_included_and_prepended_block_defs_owner_unknown
     src = <<~RUBY
       module Billing
+        extend ActiveSupport::Concern
         included do
           def tag; end
           Kind = Struct.new(:a) do
@@ -318,6 +323,29 @@ class ProjectTest < Minitest::Test
       subjects = Mutineer::Project.discover([path])
       assert_equal %w[Billing#tag Billing::Kind#b Billing#wrap Billing#total], subjects.map(&:qualified_name)
       assert_equal [true, false, true, false], subjects.map(&:owner_unknown)
+    end
+  end
+
+  # Another library can define `class_methods` or `included` and run the block
+  # in the module itself. Only a body that extends ActiveSupport::Concern before
+  # the call is a concern, so these defs keep the module as their owner.
+  def test_discover_leaves_blocks_of_another_dsl_on_the_module
+    src = <<~RUBY
+      module Prices
+        extend PriceDSL
+        class_methods do
+          def total(x) = x * 2
+        end
+        included do
+          def tag; end
+        end
+        extend ActiveSupport::Concern
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Prices#total Prices#tag], subjects.map(&:qualified_name)
+      assert(subjects.none? { |s| s.block_owner || s.owner_unknown })
     end
   end
 

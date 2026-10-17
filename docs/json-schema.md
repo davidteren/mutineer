@@ -75,7 +75,7 @@ Each surviving mutant — the records an agent or reviewer acts on:
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| `subject` | string | Fully-qualified subject, e.g. `Calculator#add`. A method in an ActiveSupport::Concern `class_methods` block in a class or module body, or in a `Module.new` block assigned to a constant, is named on the module the includer extends, e.g. `Billing::ClassMethods#rate`. One in a def, in an unassigned `Module.new` block, or in another block such as Rails' `concerning` keeps its enclosing name, e.g. `Billing#rate` (`Billing.rate` in `class << self`), and is `unplaceable` under redefine. |
+| `subject` | string | Fully-qualified subject, e.g. `Calculator#add`. A method in a `class_methods` block in the body of a module that runs `extend ActiveSupport::Concern` (or of a `Module.new` block assigned to a constant that does) is named on the module the includer extends, e.g. `Billing::ClassMethods#rate`. One in a def, in an unassigned `Module.new` block, or in another block such as Rails' `concerning` keeps its enclosing name, e.g. `Billing#rate` (`Billing.rate` in `class << self`), and is `unplaceable` under redefine. |
 | `file` | string | Source file path, relative to the project root for a file inside the project (`./lib/x.rb` and an absolute path both report `lib/x.rb`); a file outside the project keeps the path as passed. |
 | `line` | int | 1-based line of the mutation. |
 | `operator` | string | Operator name, e.g. `arithmetic`, `comparison`. |

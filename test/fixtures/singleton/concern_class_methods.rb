@@ -3,7 +3,7 @@
 require_relative "concern_stub"
 
 module ConcernPricing
-  extend ConcernStub
+  extend ActiveSupport::Concern
   FACTOR = 3
 
   class_methods do
