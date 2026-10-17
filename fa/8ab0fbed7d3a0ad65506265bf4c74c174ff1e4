@@ -1,0 +1,51 @@
+.github/workflows/ci.yml
+  s_bfc50c63712e11::t_4779e2ef26386f 130-178
+CHANGELOG.md
+  s_bfc50c63712e11::t_9c8f7dc5ce5604 27-36
+README.md
+  s_bfc50c63712e11::t_25539d3968ac4b 51-53,63,69-71,77,304,309-320
+Rakefile
+  s_bfc50c63712e11::t_381c79af13f284 15
+docs/llms.txt
+  s_bfc50c63712e11::t_53b2baa006cffb 19
+docs/rails.html
+  s_bfc50c63712e11::t_fef7ee9b2675b4 121
+docs/rails.md
+  s_bfc50c63712e11::t_3cc5350b0d33c3 101-106
+lib/mutineer/cli.rb
+  s_bfc50c63712e11::t_908a2f9467c16e 437-440
+lib/mutineer/daemon_backend.rb
+  s_bfc50c63712e11::t_d56b34b1117420 76-82,84-94,134-136,146,158-160,162,222-223,225-226,228-233,240,242-243,255-256,258,266-267,277-278
+lib/mutineer/daemon_server.rb
+  s_bfc50c63712e11::t_48468906ee9d4f 41-42,197
+lib/mutineer/rails_worker_db.rb
+  s_bfc50c63712e11::t_81db2c13cab443 22-25,27-30,34-53,121-124,128-131,134,138,142-159,162,185,190,192-193,219-220,226-251,256,261,279-280,290-292,296,309-312,326-331,346,376-378,388,513-520,545,743-744,757-759,763,768,772-789,813-1477
+test/daemon_backend_contract_test.rb
+  s_bfc50c63712e11::t_310637b9eff3f2 437-533
+test/daemon_mysql_test.rb
+  s_bfc50c63712e11::t_e5ee6279e6f9f2 1-311
+test/daemon_postgres_test.rb
+  s_bfc50c63712e11::t_2d74a2826ab914 188-211
+test/fixtures/rails_app/Gemfile
+  s_bfc50c63712e11::t_4ec1caf4ba9f99 21-27
+test/fixtures/rails_app/config/database.yml
+  s_bfc50c63712e11::t_493c94f133ba3b 2-4,35-52
+test/rails_worker_db_test.rb
+  s_bfc50c63712e11::t_fc63ccbd20d98f 4,86-117,130-140,271,273,291-688
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fa8ab0fbed7d3a0ad65506265bf4c74c174ff1e4",
+  "prompts": {},
+  "sessions": {
+    "s_bfc50c63712e11": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a7bbbc5d-9cd0-467f-95d4-4aa8fc323ce3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
