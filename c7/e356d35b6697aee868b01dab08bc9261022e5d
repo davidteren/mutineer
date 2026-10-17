@@ -1,0 +1,23 @@
+lib/mutineer/reporter.rb
+  s_dff3fd68576b5f::t_17150dc3268437 755-758
+CHANGELOG.md
+  s_dff3fd68576b5f::t_17150dc3268437 89-92,95-96
+docs/json-schema.md
+  s_dff3fd68576b5f::t_17150dc3268437 40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c7e356d35b6697aee868b01dab08bc9261022e5d",
+  "prompts": {},
+  "sessions": {
+    "s_dff3fd68576b5f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fb4cb4bf-abdd-4a9c-94ec-5f658e6b6660",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
