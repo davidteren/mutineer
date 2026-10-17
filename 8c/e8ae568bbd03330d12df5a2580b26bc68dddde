@@ -1,0 +1,42 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 15-18,35-37,104-114
+README.md
+  h_e8a5bb9272fa34 313-315,422,424,468-470
+docs/equivalent-skips.html
+  h_e8a5bb9272fa34 53
+docs/equivalent-skips.md
+  h_e8a5bb9272fa34 5
+lib/mutineer/daemon_backend.rb
+  h_e8a5bb9272fa34 9,38-41,59,95-121,276-278,288,291-296,298,301-302,308-309,319-322,324,328-332,335,337-347,468
+lib/mutineer/job_plan.rb
+  h_e8a5bb9272fa34 412-413,419,421-423,426
+lib/mutineer/orphan_guard.rb
+  h_e8a5bb9272fa34 59,66-82,98
+lib/mutineer/rails_worker_db.rb
+  h_e8a5bb9272fa34 873-876,1166-1167,1182,1208,1217-1298
+test/coverage_map_test.rb
+  h_e8a5bb9272fa34 733-735,740,742-743,746-747
+test/daemon_backend_contract_test.rb
+  h_e8a5bb9272fa34 6,299,313-339,455-657,754-786
+test/daemon_client_test.rb
+  h_e8a5bb9272fa34 62-63,68-70,163-169
+test/daemon_mysql_test.rb
+  h_e8a5bb9272fa34 228-306
+test/daemon_temp_sweep_test.rb
+  h_e8a5bb9272fa34 3,128-154
+test/rails_worker_db_test.rb
+  h_e8a5bb9272fa34 544-545,558-620,653,661,674-681
+test/test_helper.rb
+  h_e8a5bb9272fa34 47-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8ce8ae568bbd03330d12df5a2580b26bc68dddde",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
