@@ -1,0 +1,22 @@
+lib/mutineer/runner.rb
+  s_6eaee9e12285a5::t_d7c5a3e3c5a11c 327-330
+test/runner_test.rb
+  s_6eaee9e12285a5::t_64adbbf55303d2 283-288,290,292,295-304
+  s_6eaee9e12285a5::t_a7044a960f71e7 289,291,293-294
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4137b9625c76d2c6aaefb941a2e62e9b52fc7a1b",
+  "prompts": {},
+  "sessions": {
+    "s_6eaee9e12285a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2fc99c-203e-427a-9527-6b05c7bfa953",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
