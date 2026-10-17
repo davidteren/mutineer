@@ -289,8 +289,8 @@ class DaemonBackendContractTest < Minitest::Test
   end
 
   # The daemon sweeps its orphaned temps at boot. Nothing boots on an empty run, so
-  # a file left by a hard-killed run would survive — and one sitting in app/models
-  # breaks the app's own Zeitwerk boot, not just the next Mutineer run.
+  # a file left by a hard-killed run would survive. One an older version left in
+  # app/models without the dot breaks the app's own Zeitwerk boot (#253).
   def test_an_empty_job_list_still_sweeps_orphaned_daemon_temps
     Dir.mktmpdir("mutineer-sweep") do |root|
       FileUtils.mkdir_p(File.join(root, "app"))

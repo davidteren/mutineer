@@ -165,6 +165,8 @@ class IsolationTest < Minitest::Test
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) { Dir.mkdir("lib"); Mutineer::Isolation.apply_whole_file("$loaded_from = __FILE__\n", "lib/x.rb") }
       assert_equal File.join(File.realpath(dir), "lib"), File.dirname($loaded_from)
+      # Hidden, so Zeitwerk never lists it as a constant file (#253).
+      assert_match(/\A\.mutineer_mutant/, File.basename($loaded_from))
     end
   end
 

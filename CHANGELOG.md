@@ -151,6 +151,20 @@ All notable changes to this project are documented here. The format is based on
   when that library runs the block in the module itself and redefine used to
   run it correctly. Mutineer cannot tell that library from ActiveSupport, so it
   does not guess. Use `--strategy reload` for those mutants.
+- **A file in a namespace directory scores under `--rails --strategy reload`
+  and `--rails --daemon` (#253).** Mutineer writes each mutant to a temp file
+  next to the source and loads it. With lazy loading, loading it can be the
+  first time Zeitwerk scans that directory, such as `app/models/billing/`.
+  Zeitwerk then raised `Zeitwerk::NameError` on the temp file's name, and the
+  mutants of the file errored. Parallel daemon workers hit the same error on
+  each other's files. Now the temp files are hidden: `.mutineer_mutant*.rb`
+  and `.mutineer_daemon*.rb`. Zeitwerk skips hidden files, in every loader.
+  The cleanup sweeps still remove a file an older version left without the
+  dot. Each mode sweeps its own files before the app boots: an in-process run
+  now removes an old `mutineer_mutant*.rb` first, and the daemon removes an
+  old `mutineer_daemon*.rb`. An old file of the other mode still stops the
+  boot, so delete it by hand. Eager loading, the default on CI, scans every
+  directory at boot, so it never hit the error.
 
 ## [1.6.0] - 2026-10-08
 
