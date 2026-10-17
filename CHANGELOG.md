@@ -24,8 +24,16 @@ All notable changes to this project are documented here. The format is based on
 - **Postgres worker databases for `--rails --daemon`.** Each worker gets
   `<base>-mutineer-<N>`, copied from the test database before mutants run.
   A second run cannot drop a database another live run holds. An app with
-  more than one database config runs one worker and says so once. MySQL is
-  unchanged. The worker databases stay after the run.
+  more than one database config runs one worker and says so once.
+  The worker databases stay after the run.
+- **MySQL 8 worker databases for Minitest on `--rails --daemon`.** Each worker gets
+  `<base>-mutineer-<N>` on `mysql2` or `trilogy`, with the base shortened to fit
+  MySQL's 64-byte name limit. Mutineer creates the
+  database, loads `schema.rb` or `structure.sql`, and copies rows once at
+  the start. A second run cannot drop a database another live run holds.
+  That work uses the TLS and timeout settings from the database config.
+  MariaDB is not tested. MySQL 5.7 is not supported. The worker databases
+  stay after the run.
 - **`mutineer migrate`.** It rewrites old-format ids in `.mutineer.yml`
   `ignore:` to the current ids. It keeps comments and every other line.
   One old id that matches several mutants becomes every new id. An id that
@@ -65,6 +73,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Rails test workers stay off during a mutant run.** Mutineer sets
+  `PARALLEL_WORKERS` to `1` for in-process, `--daemon`, and `--test-command`
+  runs. A value you already set is replaced, and Mutineer prints one line.
+  The coverage cache stores the `PARALLEL_WORKERS` value, so a cache from an
+  older version rebuilds once. `--test-command` also sets `DISABLE_SPRING=1`.
+  The README explains `parallelize`, Bootsnap, and Redis after a fork.
 - **`--test-command` exit codes 126 and 127 are scored `error`, not
   `killed`.** A wrapper that could not start the suite ran no test. Under
   `--threshold`, such a run can now score lower or fail the no-verdict limit,

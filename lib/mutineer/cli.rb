@@ -434,9 +434,10 @@ module Mutineer
     end
 
     # --daemon selects the persistent-daemon backend (boot once, fork per mutant,
-    # per-worker DB isolation on SQLite). Usage errors exit 2: cannot combine with
-    # --test-command; requires --rails or --boot; minitest only; reload strategy only
-    # (redefine needs a shared VM surgical path the daemon does not ship).
+    # per-worker DB isolation on SQLite, Postgres, and MySQL). Usage errors exit 2:
+    # cannot combine with --test-command; requires --rails or --boot; minitest only;
+    # reload strategy only (redefine needs a shared VM surgical path the daemon
+    # does not ship).
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.

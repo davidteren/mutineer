@@ -48,8 +48,9 @@ It runs in parallel on those systems.
 | 3.4 or later | SQLite file | RSpec | not supported | serial only |
 | 3.4 or later | PostgreSQL | Minitest | supported with `--daemon` | supported |
 | 3.4 or later | PostgreSQL | RSpec | not supported | serial only |
-| 3.4 or later | MySQL | Minitest | not supported | serial only |
-| 3.4 or later | MySQL | RSpec | not supported | serial only |
+| 3.4 or later | MySQL 8 | Minitest | supported with `--daemon` | supported |
+| 3.4 or later | MySQL 8 | RSpec | not supported | serial only |
+| 3.4 or later | MariaDB | Minitest | not tested | not tested |
 | 3.4 or later | SQLite in memory | Minitest | not supported | serial only |
 | 3.4 or later | SQLite in memory | RSpec | not supported | serial only |
 | 3.4 or later | more than one database | Minitest | one worker | serial only |
@@ -59,20 +60,27 @@ This matrix is for a Rails app on Ruby 3.4 or later.
 `supported` means you can run that cell in parallel.
 `serial only` means the safe run uses one worker.
 `not supported` means `--daemon` cannot run that cell.
+`not tested` means no CI job runs that cell.
 SQLite file means a database file, not `:memory:`.
 Minitest on that file can use `--daemon`.
 RSpec on that file is serial only.
 PostgreSQL with Minitest can use `--daemon`.
 PostgreSQL with RSpec is serial only.
-MySQL is serial only.
+MySQL 8 with Minitest can use `--daemon`.
+MariaDB is not tested.
+MySQL 5.7 is not supported.
 A `:memory:` database is serial only.
 An app with more than one database runs one worker.
 `--daemon` isolates only the primary connection.
 `--rails` without `--daemon` is serial on every row.
 A Postgres worker database is copied once, at the start of the run.
+A MySQL 8 worker database is created once, at the start of the run, and the rows are copied then.
 A test that commits rows outside a transaction leaves them in that worker database.
 The next mutant on that worker sees those rows.
 Rails parallel tests have the same ceiling.
+
+Mutineer sets `PARALLEL_WORKERS=1`, so a `parallelize` call in `test_helper.rb` starts no Rails workers during a mutant run.
+See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis).
 
 <!-- /contract:support-matrix -->
 
@@ -229,6 +237,40 @@ RAILS_ENV=test bundle exec mutineer init --rails
 The path from that first report to a CI gate is the
 [Rails rollout guide](https://davidteren.github.io/mutineer/rails.html).
 
+### Rails parallel tests, Spring, Bootsnap, and Redis
+
+Mutineer sets `PARALLEL_WORKERS` to `1` for every run.
+Rails then runs each mutant's tests in one process.
+Your `parallelize(workers:)` call stays in `test_helper.rb`.
+It does not start Rails workers during a mutant run.
+If you already set `PARALLEL_WORKERS` to another value, Mutineer replaces it and prints one line.
+With `--test-command`, a script your command runs can set `PARALLEL_WORKERS` again.
+Its value wins, and the Rails workers start again.
+Remove that line from the script, or write `PARALLEL_WORKERS=${PARALLEL_WORKERS:-4}` so it keeps the 1 Mutineer passes.
+
+Mutineer does not run your `parallelize_setup` hooks.
+Rails registers its own database hook in that same list.
+Running the list would point the tests at `<base>-<n>` instead of Mutineer's database.
+
+`--test-command` also sets `DISABLE_SPRING=1`.
+Spring does not start for that command.
+The `--daemon` path loads `config/environment` itself, so Spring does not start there either.
+A wrapper that sets `DISABLE_SPRING` again wins, same as `PARALLEL_WORKERS`.
+
+Bootsnap checks its compile cache by file path, size, and modification time in whole seconds.
+When the size and the time match, it uses the cached code without reading the file content.
+The in-process and `--daemon` paths load each mutant from a new file, so the cache cannot mix them up.
+`--test-command` rewrites the source file in place.
+Two mutants of the same size, written in the same second, can then load the first one's cached code.
+To rule that out, set `DISABLE_BOOTSNAP_COMPILE_CACHE=1` on the Mutineer command.
+Bootsnap keeps its cache in `tmp/cache/bootsnap`, or under `$BOOTSNAP_CACHE_DIR` when that is set.
+If a run uses code that no longer matches your files, delete that folder and run again.
+
+`redis-client` (which `redis` 5 uses) opens a new connection after a fork on its own.
+You do not set anything in Mutineer for this.
+`redis` 4.x raises `Redis::InheritedError` instead.
+Open that connection after boot, or reconnect it in an after-fork hook.
+
 ### Faster, parallel-safe Rails (the `--daemon` backend)
 
 `--rails` boots your app once but runs mutants **serially** — parallel `--jobs`
@@ -259,12 +301,23 @@ RAILS_ENV=test bundle exec mutineer run \
 - **One backend at a time** — `--daemon` can't be combined with `--test-command`
   (choose one), and it needs an app to boot (`--rails` or `--boot`).
 
-Status: **SQLite** and **PostgreSQL** (Minitest). Each Postgres worker uses a
+Status: **SQLite**, **PostgreSQL**, and **MySQL 8** (Minitest). Each Postgres worker uses a
 database named `<base>-mutineer-<N>` (shortened when that would pass 63 bytes).
 Mutineer copies the test database into those names before the workers start,
 and leaves them in place when the run ends. Drop one with
 `DROP DATABASE "myapp_test-mutineer-0";` (use your test database name and slot).
-MySQL is not supported on `--daemon` yet: the run stops before it scores a mutant.
+Each MySQL 8 worker uses a database named `<base>-mutineer-<N>` (shortened when that would pass 64 bytes).
+Mutineer creates that database, loads `schema.rb` or `structure.sql`, and copies rows before the workers start.
+It does not copy the database again after an error or a timeout.
+The worker databases stay in place when the run ends. The next run drops and rebuilds them.
+The database user needs CREATE, DROP, and the table and row privileges a schema load and a row copy use (such as ALTER, INDEX, REFERENCES, and INSERT) on those names, plus SELECT on the test database.
+An app on `structure.sql` also needs the `mysql` client on `PATH`.
+Drop one with ``DROP DATABASE `myapp_test-mutineer-0`;`` (MySQL quotes the name with backticks).
+A second run on the same test database stops with `another Mutineer run is using <base>` until the first run ends.
+MySQL runs at most 256 workers.
+`mysql2` and `trilogy` are supported.
+MariaDB is not tested.
+MySQL 5.7 is not supported.
 A `:memory:` database is not supported on `--daemon`.
 
 ### Apps on Ruby < 3.4
@@ -294,7 +347,9 @@ RAILS_ENV=test mutineer run app/models/order.rb \
   prepends rbenv/asdf shims when a pin was scrubbed. Do not rely on
   `RBENV_VERSION=…` on the Mutineer command for the suite; use `.ruby-version`
   or a wrapper. Don't put `KEY=val` prefixes *inside* `--test-command` (no shell;
-  that would be treated as the program name).
+  that would be treated as the program name). Mutineer also sets
+  `PARALLEL_WORKERS=1` and `DISABLE_SPRING=1` in the child and replaces a value
+  you set (see [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis)).
 
 #### Under a version manager (rbenv / asdf / chruby)
 

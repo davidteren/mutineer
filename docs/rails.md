@@ -89,11 +89,19 @@ mutineer:
 Drop `--since` and `--baseline` for a report-only job.
 Add `--threshold 90` when a folder is ready for a hard gate.
 
+## Parallel tests
+
+Mutineer sets `PARALLEL_WORKERS=1`, so `parallelize` in `test_helper.rb` starts no Rails workers during a mutant run.
+A `--test-command` script that sets `PARALLEL_WORKERS` again turns the workers back on.
+Details: [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis).
+
 ## Daemon
 
 `--daemon` gives each worker its own test database.
-SQLite test databases are supported.
-Postgres and other adapters are not supported in this version.
-On those adapters, `--daemon` scores every mutant as an error.
-Leave `daemon` commented in `.mutineer.yml` until this matrix says it fits.
+It works with Minitest on a SQLite file, PostgreSQL, or MySQL 8 (`mysql2` or `trilogy`).
+MariaDB is not tested. MySQL 5.7 is not supported.
+An app with more than one database runs one worker.
+On another adapter, `--daemon` stops the run with an error before it scores any mutant.
+The [support matrix](https://github.com/davidteren/mutineer#is-it-production-ready) lists each case.
+Leave `daemon` commented in `.mutineer.yml` until that matrix says your app fits.
 Run without the daemon to stay serial on other adapters.

@@ -4,6 +4,7 @@ require "json"
 require "io/wait"
 require "open3"
 require_relative "external_backend"
+require_relative "rails_run_env"
 
 module Mutineer
   # Raised when the daemon cannot be booted or is gone for good: a bad boot path, an
@@ -176,6 +177,8 @@ module Mutineer
       env["BUNDLE_GEMFILE"] = @gemfile
       env["RBENV_VERSION"] = @ruby_version if @ruby_version
       env["RAILS_ENV"] = "test" if rails_boot? && !env.key?("RAILS_ENV")
+      # The daemon loads tests after boot. Rails reads this when parallelize runs.
+      RailsRunEnv.pin_child!(env)
       env
     end
 

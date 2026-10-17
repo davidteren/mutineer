@@ -54,7 +54,7 @@ harness failures, and fix them before starting a new run. A positive threshold f
 broke, or when more than one mutant has no verdict and they exceed 10% of those
 attempted; it does not require zero errors. Set the threshold to your target.
 
-An empty run (`summary.total` is 0) exits 0 in 1.x and prints a warning on stderr. Treat it as "no score". Pass `--allow-empty` only when an empty run is expected. A `--since` run whose changes hold no mutable code says "nothing to test in the changes since REF"; that is a valid success. Warnings that start with `mutineer:` or `[mutineer]` also go to stderr: the empty-run warning, "did you mean" hints, notes about Mutineer 2.0, and the count of errored mutants.
+An empty run (`summary.total` is 0) exits 0 in 1.x and prints a warning on stderr. Treat it as "no score". Pass `--allow-empty` only when an empty run is expected. A `--since` run whose changes hold no mutable code says "nothing to test in the changes since REF"; that is a valid success. Warnings that start with `mutineer:` or `[mutineer]` also go to stderr: the empty-run warning, "did you mean" hints, notes about Mutineer 2.0, the count of errored mutants, and a notice that a `PARALLEL_WORKERS` value you set was replaced with 1.
 
 ## Exit codes
 
