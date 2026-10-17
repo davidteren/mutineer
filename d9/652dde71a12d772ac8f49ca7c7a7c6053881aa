@@ -1,0 +1,88 @@
+docs/rails.html
+  s_6eaee9e12285a5::t_7887750bf5e332 60,117-119,121
+docs/agentic-coding.md
+  s_6eaee9e12285a5::t_7887750bf5e332 51
+docs/rails.md
+  s_6eaee9e12285a5::t_7887750bf5e332 92-97,101-106
+Rakefile
+  s_6eaee9e12285a5::t_7887750bf5e332 15
+test/external_backend_test.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 90-101
+docs/agentic-coding.html
+  s_6eaee9e12285a5::t_7887750bf5e332 91
+test/rails_run_env_test.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 1-102
+test/rails_worker_db_test.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 4,86-117,130-140,261,263,281-678
+lib/mutineer/daemon_server.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 41-42,201
+lib/mutineer/daemon_backend.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 75-81,83-93,160-162,172,184-186,188,248-249,251-252,254-259,266,268-269,282-283,285,295-297,300-306
+test/runner_external_test.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 18-19,125-143
+  s_6eaee9e12285a5::t_cba37248f18d4a 144-146
+lib/mutineer/cli.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 437-440
+test/rails_dogfood_daemon_test.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 26,43-52
+lib/mutineer/runner.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 19,47-50,174-176
+test/fixtures/rails_app/test/test_helper.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 14-17
+test/daemon_postgres_test.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 188-211
+lib/mutineer/daemon_client.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 7,180-181
+lib/mutineer/coverage_map.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 372-378,380-381,1186-1197,1325
+CHANGELOG.md
+  s_6eaee9e12285a5::t_7887750bf5e332 27-36,76-81,106-110
+lib/mutineer/external_backend.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 6,29,75-76,99
+test/daemon_client_env_test.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 72,111-119,301
+docs/llms.txt
+  s_6eaee9e12285a5::t_7887750bf5e332 19
+lib/mutineer/rails_worker_db.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 22-25,27-30,34-53,121-124,128-131,134,138,142-159,162,185,190,192-193,219-220,226-251,256,261,279-280,290-292,296,309-312,326-331,346,376-378,388,513-520,545,736-737,750-752,756,761,765-782,806-1470
+skills/mutineer/SKILL.md
+  s_6eaee9e12285a5::t_7887750bf5e332 57
+test/daemon_backend_contract_test.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 658-754
+.github/workflows/ci.yml
+  s_6eaee9e12285a5::t_7887750bf5e332 130-178
+test/coverage_map_test.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 627-654
+  s_6eaee9e12285a5::t_654a42a5ffe387 626
+test/fixtures/rails_app/bin/dogfood
+  s_6eaee9e12285a5::t_7887750bf5e332 19-26,76-82
+  s_6eaee9e12285a5::t_1ae60623918006 83
+README.md
+  s_6eaee9e12285a5::t_7887750bf5e332 51-53,63,69-71,77,82-84,240-273,304,309-320,350-352
+test/fixtures/rails_app/.gitignore
+  s_6eaee9e12285a5::t_7887750bf5e332 4-5
+lib/mutineer/rails_run_env.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 1-73
+test/daemon_mysql_test.rb
+  s_6eaee9e12285a5::t_7887750bf5e332 1-311
+test/fixtures/rails_app/config/database.yml
+  s_6eaee9e12285a5::t_7887750bf5e332 2-4,35-52
+test/fixtures/rails_app/Gemfile
+  s_6eaee9e12285a5::t_7887750bf5e332 21-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d9652dde71a12d772ac8f49ca7c7a7c6053881aa",
+  "prompts": {},
+  "sessions": {
+    "s_6eaee9e12285a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2fc99c-203e-427a-9527-6b05c7bfa953",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
