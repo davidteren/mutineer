@@ -12,6 +12,7 @@ DAEMON_TESTS = %w[
   test/daemon_coverage_test.rb
   test/rails_dogfood_daemon_test.rb
   test/daemon_postgres_test.rb
+  test/daemon_mysql_test.rb
 ].freeze
 
 Rake::TestTask.new(:test) do |t|

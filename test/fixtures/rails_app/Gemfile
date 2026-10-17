@@ -18,6 +18,13 @@ group :postgres, optional: true do
   gem "pg", "~> 1.5"
 end
 
+# Not installed by a normal `bundle install`. The MySQL daemon job sets
+# BUNDLE_WITH=mysql. The gem itself still has no runtime dependency.
+group :mysql, optional: true do
+  gem "mysql2", "~> 0.5"
+  gem "trilogy", "~> 2.7"
+end
+
 # Mutineer under test, from this checkout (../../.. is the gem root). require:
 # false mirrors the documented install; the CLI is invoked via `bundle exec`.
 gem "mutineer", path: "../../..", require: false

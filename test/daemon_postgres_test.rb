@@ -185,6 +185,30 @@ class DaemonPostgresTest < Minitest::Test
     stop_holder(holder)
   end
 
+  # A mutant fork frees its copy of the lock client at its next GC. That must
+  # not end the parent's session, or a second run could drop live databases.
+  def test_the_lock_survives_a_fork_child_that_frees_its_copy
+    holder = spawn_holder(<<~RUBY)
+      require "./config/environment"
+      require #{WORKER_DB.inspect}
+      Mutineer::RailsWorkerDb.prepare_worker!
+      child = fork do
+        Mutineer::RailsWorkerDb.forget_lock_connection_after_fork!
+        3.times { Array.new(100_000) { "x" * 10 } && GC.start(full_mark: true, immediate_sweep: true) }
+        exit!(0)
+      end
+      Process.wait(child)
+      $stdout.puts "READY"
+      $stdout.flush
+      sleep 180
+    RUBY
+    out, status = run_cli(1)
+    assert_equal 1, status.exitstatus, out
+    assert_includes out, "another Mutineer run is using #{BASE}"
+  ensure
+    stop_holder(holder)
+  end
+
   def test_a_killed_run_does_not_block_the_next_run
     holder = spawn_holder(<<~RUBY)
       require "./config/environment"
