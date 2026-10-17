@@ -1,0 +1,42 @@
+test/fixtures/singleton/concern_included_test.rb
+  s_dff3fd68576b5f::t_30f0723630244b 1-11
+lib/mutineer/result.rb
+  s_dff3fd68576b5f::t_3bc062b36553ea 21
+  s_dff3fd68576b5f::t_0427571b323f5d 22-23
+test/fixtures/singleton/concern_included.rb
+  s_dff3fd68576b5f::t_0318a8a791fb35 3
+  s_dff3fd68576b5f::t_7d828f8b005693 1-2,4-18
+lib/mutineer/reporter.rb
+  s_dff3fd68576b5f::t_3bc062b36553ea 755-756
+lib/mutineer/subject.rb
+  s_dff3fd68576b5f::t_3bc062b36553ea 11-12,14-15
+test/fixtures/singleton/concern.rb
+  s_dff3fd68576b5f::t_0318a8a791fb35 3,5
+test/project_test.rb
+  s_dff3fd68576b5f::t_acff1fac307379 262-273,278,281
+  s_dff3fd68576b5f::t_712c8709562db5 279
+docs/json-schema.md
+  s_dff3fd68576b5f::t_3bc062b36553ea 59,94-96
+test/fixtures/singleton/mini_concern.rb
+  s_dff3fd68576b5f::t_0318a8a791fb35 1-28
+test/singleton_redefine_test.rb
+  s_dff3fd68576b5f::t_e7e763d92deb2c 97,102-103,105
+lib/mutineer/project.rb
+  s_dff3fd68576b5f::t_3bc062b36553ea 150,177,486-487,497-498
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "14dfc44a2f63ede45add5c1c36b65d4e4484a7bb",
+  "prompts": {},
+  "sessions": {
+    "s_dff3fd68576b5f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fb4cb4bf-abdd-4a9c-94ec-5f658e6b6660",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
