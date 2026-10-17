@@ -1,0 +1,75 @@
+CHANGELOG.md
+  s_6eaee9e12285a5::t_168c3c0eb4d954 15-18,35-37,104-114,122-153
+README.md
+  s_64a067ea5aaa0b::t_7bea38c4a81381 313-315,422,424,468-470
+STABILITY.md
+  s_64a067ea5aaa0b::t_016f72f8085d03 21-23
+docs/equivalent-skips.html
+  s_64a067ea5aaa0b::t_f961f35567b528 53
+docs/equivalent-skips.md
+  s_64a067ea5aaa0b::t_c2c0a608905d76 5
+docs/json-schema.md
+  s_64a067ea5aaa0b::t_9d4e55a3f4531b 59,78,93-99
+lib/mutineer/daemon_backend.rb
+  s_64a067ea5aaa0b::t_b5fe81a2cc04b9 9,38-41,59,95-121,276-278,288,291-296,298,301-302,308-309,319-322,324,328-332,335,337-347,470
+lib/mutineer/job_plan.rb
+  s_64a067ea5aaa0b::t_aa0b35d6769984 439-440,446,448-450,453
+lib/mutineer/orphan_guard.rb
+  s_64a067ea5aaa0b::t_c0850aae3162ef 59,66-82,98
+lib/mutineer/project.rb
+  s_64a067ea5aaa0b::t_bddb5a3e7d7abb 34-36,84,124-128,147-168,477-506
+lib/mutineer/rails_worker_db.rb
+  s_64a067ea5aaa0b::t_99a6f9258032b5 873-876,1166-1167,1182,1208,1217-1298
+lib/mutineer/result.rb
+  s_64a067ea5aaa0b::t_a5bc3c99b1525c 20-21
+lib/mutineer/subject.rb
+  s_64a067ea5aaa0b::t_ea55d7a81f62c0 11-15
+test/coverage_map_test.rb
+  s_64a067ea5aaa0b::t_fa4d791b9f327d 733-735,740,742-743,746-747
+test/daemon_backend_contract_test.rb
+  s_64a067ea5aaa0b::t_dcc0fd6bd651fe 6,330,344-370,486-688,785-817
+test/daemon_client_test.rb
+  s_64a067ea5aaa0b::t_8c4db2d495321b 62-63,68-70,163-169
+test/daemon_mysql_test.rb
+  s_64a067ea5aaa0b::t_1497d9b27a0daa 228-306
+test/daemon_temp_sweep_test.rb
+  s_64a067ea5aaa0b::t_4c7b1d14da1d61 3,128-154
+test/fixtures/singleton/concern_class_methods.rb
+  s_64a067ea5aaa0b::t_b7e0ac52ca7b00 1-24
+test/fixtures/singleton/concern_class_methods_test.rb
+  s_64a067ea5aaa0b::t_f018647fa1406a 1-16
+test/fixtures/singleton/concern_stub.rb
+  s_64a067ea5aaa0b::t_299b897c4f5256 1-28
+test/project_test.rb
+  s_64a067ea5aaa0b::t_064c5769d58a93 251-463
+test/rails_worker_db_test.rb
+  s_64a067ea5aaa0b::t_b2b2bb5edd61a5 544-545,558-620,653,661,674-681
+test/singleton_redefine_test.rb
+  s_64a067ea5aaa0b::t_33481870141eba 160-178
+test/test_helper.rb
+  s_64a067ea5aaa0b::t_cd0bb6cc84b670 47-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "00db79356627d51885c6672d31a3a44725029c03",
+  "prompts": {},
+  "sessions": {
+    "s_64a067ea5aaa0b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff247953-b391-4f87-9bb2-fdfcd2c926f0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_6eaee9e12285a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2fc99c-203e-427a-9527-6b05c7bfa953",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
