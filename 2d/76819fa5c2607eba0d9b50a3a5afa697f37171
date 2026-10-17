@@ -1,0 +1,80 @@
+.github/workflows/ci.yml
+  h_e8a5bb9272fa34 130-178
+CHANGELOG.md
+  h_e8a5bb9272fa34 27-36,76-81
+README.md
+  h_e8a5bb9272fa34 51-53,63,69-71,77,82-84,240-273,304,309-320,350-352
+Rakefile
+  h_e8a5bb9272fa34 15
+docs/agentic-coding.html
+  h_e8a5bb9272fa34 91
+docs/agentic-coding.md
+  h_e8a5bb9272fa34 51
+docs/llms.txt
+  h_e8a5bb9272fa34 19
+docs/rails.html
+  h_e8a5bb9272fa34 60,117-119,121
+docs/rails.md
+  h_e8a5bb9272fa34 92-97,101-106
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 437-440
+lib/mutineer/coverage_map.rb
+  h_e8a5bb9272fa34 372-378,380-381,1186-1197,1325
+lib/mutineer/daemon_backend.rb
+  h_e8a5bb9272fa34 76-82,84-94,134-136,146,158-160,162,222-223,225-226,228-233,240,242-243,255-256,258,266-267,277-278
+lib/mutineer/daemon_client.rb
+  h_e8a5bb9272fa34 7,180-181
+lib/mutineer/daemon_server.rb
+  h_e8a5bb9272fa34 41-42,197
+lib/mutineer/external_backend.rb
+  h_e8a5bb9272fa34 6,29,75-76,99
+lib/mutineer/rails_run_env.rb
+  h_e8a5bb9272fa34 1-73
+lib/mutineer/rails_worker_db.rb
+  h_e8a5bb9272fa34 22-25,27-30,34-53,121-124,128-131,134,138,142-159,162,185,190,192-193,219-220,226-251,256,261,279-280,290-292,296,309-312,326-331,346,376-378,388,513-520,545,736-737,750-752,756,761,765-782,806-1470
+lib/mutineer/runner.rb
+  h_e8a5bb9272fa34 19,47-50,173-175
+skills/mutineer/SKILL.md
+  h_e8a5bb9272fa34 57
+test/coverage_map_test.rb
+  h_e8a5bb9272fa34 626-654
+test/daemon_backend_contract_test.rb
+  h_e8a5bb9272fa34 437-533
+test/daemon_client_env_test.rb
+  h_e8a5bb9272fa34 72,111-119,301
+test/daemon_mysql_test.rb
+  h_e8a5bb9272fa34 1-311
+test/daemon_postgres_test.rb
+  h_e8a5bb9272fa34 188-211
+test/external_backend_test.rb
+  h_e8a5bb9272fa34 90-101
+test/fixtures/rails_app/.gitignore
+  h_e8a5bb9272fa34 4-5
+test/fixtures/rails_app/Gemfile
+  h_e8a5bb9272fa34 21-27
+test/fixtures/rails_app/bin/dogfood
+  h_e8a5bb9272fa34 19-26,67-74
+test/fixtures/rails_app/config/database.yml
+  h_e8a5bb9272fa34 2-4,35-52
+test/fixtures/rails_app/test/test_helper.rb
+  h_e8a5bb9272fa34 14-17
+test/rails_dogfood_daemon_test.rb
+  h_e8a5bb9272fa34 26,43-52
+test/rails_run_env_test.rb
+  h_e8a5bb9272fa34 1-102
+test/rails_worker_db_test.rb
+  h_e8a5bb9272fa34 4,86-117,130-140,261,263,281-678
+test/runner_external_test.rb
+  h_e8a5bb9272fa34 18-19,125-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2d76819fa5c2607eba0d9b50a3a5afa697f37171",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
