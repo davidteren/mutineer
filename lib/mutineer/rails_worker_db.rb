@@ -570,8 +570,11 @@ module Mutineer
         opts[pg_key] = value
       end
       opts
-    rescue URI::InvalidURIError, URI::InvalidComponentError, ArgumentError => e
-      raise "could not provision: the database URL is not valid (#{e.message})"
+    rescue URI::InvalidURIError, URI::InvalidComponentError, ArgumentError
+      # The parser's message repeats the URL, password included. `cause: nil`
+      # keeps Ruby from printing that original error under this one.
+      raise "could not provision: the database URL is not valid. " \
+            "The URL is not shown because it can contain a password.", cause: nil
     end
 
     # Percent-decode one URL component. Nil when `text` is blank.

@@ -145,6 +145,15 @@ class RailsWorkerDbTest < Minitest::Test
     refute_includes opts.values, "myapp_test"
   end
 
+  def test_a_malformed_database_url_does_not_print_its_password
+    error = assert_raises(RuntimeError) do
+      Mutineer::RailsWorkerDb.options_from_database_url("postgres://u:s3cret@ho st/db")
+    end
+    assert_match(/database URL is not valid/, error.message)
+    # full_message also prints the cause chain, where the parser's error repeats the URL.
+    refute_includes error.full_message, "s3cret"
+  end
+
   def test_per_worker_config_reads_the_database_from_a_url
     cfg = Mutineer::RailsWorkerDb.per_worker_config(
       { adapter: "postgresql", url: "postgres://db.internal/myapp_test" }, 1
