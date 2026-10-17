@@ -89,6 +89,24 @@ class SingletonRedefineTest < Minitest::Test
                   "anonymous Class.new (reload)")
   end
 
+  # #252: a def in ActiveSupport's `class_methods do` lands in the concern's
+  # ClassMethods module, which each including class extends. Redefine loaded it
+  # onto the concern itself, where nothing calls it, so it falsely survived.
+  def test_class_methods_block_methods_are_mutated_on_class_methods
+    %w[redefine reload].each do |strategy|
+      agg = run_redefine("concern.rb", "concern_test.rb", strategy: strategy, only: "ConcernGreeting::ClassMethods#greet")
+      assert_killed(agg, "class_methods block (#{strategy})")
+    end
+  end
+
+  # #252: `included do` runs in each class that includes the concern, which the
+  # file need not name, so redefine cannot place its defs.
+  def test_included_block_methods_are_unplaceable_under_redefine
+    redefine = run_redefine("concern.rb", "concern_test.rb", only: "ConcernGreeting#tag")
+    assert_operator redefine.unplaceable_count, :>, 0
+    assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count + redefine.uncapturable_count
+  end
+
   def test_owner_unknown_mutants_over_a_tenth_of_the_run_do_not_fail_the_threshold
     agg = run_redefine("nested_builder.rb", "nested_builder_test.rb")
     unscored = agg.total - agg.killed_count

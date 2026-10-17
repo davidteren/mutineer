@@ -31,6 +31,10 @@ module Mutineer
       # Calls whose block is the body of the class they build: receiver name => method.
       CLASS_BUILDERS = { "Data" => :define, "Struct" => :new, "Class" => :new, "Module" => :new }.freeze
 
+      # ActiveSupport::Concern hooks whose block runs in each class that includes
+      # the concern, not in the concern itself (#252). The file need not name them.
+      INCLUDE_HOOKS = %i[included prepended].freeze
+
       # A constant name, or a path of them; Ruby allows Unicode in both.
       CONSTANT_PATH = /\A[[:upper:]][[:word:]]*(?:::[[:upper:]][[:word:]]*)*\z/
 
@@ -119,6 +123,12 @@ module Mutineer
       # `module_function :name` in it promotes nothing. Elsewhere it promotes the
       # methods of the same module, matched by {#module_key}.
       #
+      # An ActiveSupport::Concern hook block is no class body either (#252).
+      # `class_methods do` runs in the concern's `ClassMethods` module, so its
+      # defs are owned there, as in a builder block ({#class_methods_owner}).
+      # `included do` and `prepended do` run in each including class, so their
+      # defs have no owner the redefine strategy can load a mutant onto.
+      #
       # @param node [Prism::CallNode] call node.
       # @return [void]
       def visit_call_node(node)
@@ -134,6 +144,18 @@ module Mutineer
               @module_function_names << [module_key, arg.value.to_sym] if arg.is_a?(Prism::SymbolNode)
               @module_function_names << [module_key, arg.name] if arg.is_a?(Prism::DefNode)
             end
+          end
+        end
+        if concern_hook?(node, :class_methods)
+          return with_block_owner(class_methods_owner, false) do
+            @self_scope = node.block
+            super
+          end
+        end
+        if INCLUDE_HOOKS.any? { |name| concern_hook?(node, name) }
+          return preserving_scope do
+            @owner_unknown = true
+            super
           end
         end
         return super unless builds_class?(node)
@@ -446,6 +468,29 @@ module Mutineer
       def builds_class?(node)
         node.is_a?(Prism::CallNode) && node.block.is_a?(Prism::BlockNode) &&
           CLASS_BUILDERS[node.receiver&.slice&.delete_prefix("::")] == node.name
+      end
+
+      # True when the node is a receiverless `name do ... end` with no arguments,
+      # the form of an ActiveSupport::Concern hook.
+      #
+      # @param node [Prism::CallNode] call node.
+      # @param name [Symbol] hook name.
+      # @return [Boolean]
+      def concern_hook?(node, name)
+        node.name == name && node.receiver.nil? && node.arguments.nil? && node.block.is_a?(Prism::BlockNode)
+      end
+
+      # The concern's `ClassMethods` module, the owner of a `class_methods` block:
+      # the constant `class_methods` creates or reopens under the concern. In a
+      # def, a non-builder block or `class << self` the call runs on some other
+      # object, so the owner is unknown, as it is when the concern's own is.
+      #
+      # @return [Array(String, Array<String>, Boolean)] owner, namespace, unknown.
+      def class_methods_owner
+        namespace = (@block_namespace || @namespace_stack) + ["ClassMethods"]
+        return [nil, namespace, true] if @owner_unknown || @self_unknown || @singleton_depth.positive?
+
+        named_owner(namespace)
       end
 
       # Runs the block with the defs it visits owned by the class a builder block builds.

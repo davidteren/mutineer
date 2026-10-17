@@ -80,6 +80,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Methods in an ActiveSupport::Concern `class_methods do` block are
+  mutated where the tests call them (#252).** Under `--strategy redefine`,
+  the default for `--rails` without `--daemon`, mutineer put the mutant on
+  the concern itself. Nothing called it there, so every mutant falsely
+  survived. Now the mutant goes into the concern's `ClassMethods` module,
+  and the subject is named `Concern::ClassMethods#name`, as for a
+  `module ClassMethods` body. This changes the ids of those mutants, so
+  update any `ignore:` entry or baseline that names one. A method in an
+  `included do` or `prepended do` block runs in the including class, which
+  redefine cannot reach. It is now `unplaceable` under redefine instead of a
+  false survivor.
 - **A Rails daemon boots again while a mutant file is still open.**
   The file stays when another process holds it. The next boot skips
   that file name instead of stopping.
