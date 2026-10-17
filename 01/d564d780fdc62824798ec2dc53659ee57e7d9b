@@ -1,0 +1,19 @@
+lib/mutineer/rails_worker_db.rb
+  s_8f44cf5cef11dd::t_d907f1d127cc6d 578-580
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "01d564d780fdc62824798ec2dc53659ee57e7d9b",
+  "prompts": {},
+  "sessions": {
+    "s_8f44cf5cef11dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4e7c7af7-ef4a-4d68-a628-9499f537739d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
