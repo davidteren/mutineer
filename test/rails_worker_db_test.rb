@@ -541,6 +541,8 @@ class RailsWorkerDbTest < Minitest::Test
     Mutineer::RailsWorkerDb.copy_mysql_rows(conn, "app_test", "app_test-mutineer-0")
     sql = conn.queries.join("\n")
     refute_match(/DROP DATABASE/i, sql)
+    # No triggers: no session changes and no trigger statements.
+    refute_match(/SET NAMES|SHOW CREATE TRIGGER|^USE /, sql)
     assert_includes sql, "CREATE TABLE `app_test-mutineer-0`.`children` LIKE `app_test`.`children`"
     assert_includes sql, "INSERT INTO `app_test-mutineer-0`.`children` (`id`, `parent_id`, `other_id`)"
     refute_includes sql, "`total`"
@@ -551,6 +553,69 @@ class RailsWorkerDbTest < Minitest::Test
     refute_includes sql, "fk_children_external"
     assert_includes sql, "ALTER TABLE `app_test-mutineer-0`.`children` AUTO_INCREMENT = 40"
     assert_nil Mutineer::RailsWorkerDb.mysql_auto_increment_sql("app_test-mutineer-0", "children", nil)
+  end
+
+  def test_row_copy_drops_triggers_first_and_creates_them_again_last
+    conn = trigger_conn
+    Mutineer::RailsWorkerDb.copy_mysql_rows(conn, "app_test", "app_test-mutineer-0")
+    sql = conn.queries
+    at = ->(text) { sql.index { |query| query.start_with?(text) } || flunk("no #{text} in #{sql.inspect}") }
+    listing = sql.find { |query| query.include?("information_schema.TRIGGERS") }
+    assert_includes listing, "TRIGGER_SCHEMA = 'app_test-mutineer-0'"
+    assert_includes listing, "ORDER BY EVENT_OBJECT_TABLE, ACTION_TIMING, EVENT_MANIPULATION, ACTION_ORDER"
+    assert_operator at.("SET NAMES utf8mb4"), :<, at.("SHOW CREATE TRIGGER")
+    assert_operator at.("SET SESSION sql_mode = ''"), :<, at.("SHOW CREATE TRIGGER")
+    assert_equal ["DROP TRIGGER `app_test-mutineer-0`.`items_audit`", "DROP TRIGGER `app_test-mutineer-0`.`items_label`"],
+                 sql.grep(/\ADROP TRIGGER/)
+    assert_operator sql.rindex { |query| query.start_with?("SHOW CREATE TRIGGER") }, :<, at.("DROP TRIGGER")
+    assert_operator sql.rindex { |query| query.start_with?("DROP TRIGGER") }, :<, at.("SET SESSION sql_mode = 'STRICT")
+    assert_operator at.("SET SESSION sql_mode = 'STRICT"), :<, at.("INSERT INTO")
+    assert_operator at.("ALTER TABLE"), :<, at.("USE `app_test-mutineer-0`")
+    replay = sql.drop(at.("USE `app_test-mutineer-0`") + 1).first(5)
+    assert_equal [
+      "SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION', collation_connection = 'utf8mb4_unicode_ci'",
+      "CREATE TRIGGER `items_audit`",
+      "SET SESSION sql_mode = 'ANSI_QUOTES', collation_connection = 'utf8mb4_unicode_ci'",
+      "CREATE TRIGGER `items_label`",
+      "SET SESSION sql_mode = 'STRICT_TRANS_TABLES', collation_connection = 'utf8mb4_0900_ai_ci'"
+    ], replay
+  end
+
+  def test_a_refused_trigger_create_names_the_trigger
+    conn = trigger_conn
+    def conn.query(sql)
+      raise "Access denied; you need the SET_USER_ID privilege" if sql.start_with?("CREATE TRIGGER")
+
+      super
+    end
+    error = assert_raises(RuntimeError) do
+      Mutineer::RailsWorkerDb.copy_mysql_rows(conn, "app_test", "app_test-mutineer-0")
+    end
+    assert_equal "cannot recreate trigger items_audit on app_test-mutineer-0: " \
+                 "Access denied; you need the SET_USER_ID privilege", error.message
+  end
+
+  def test_an_unreadable_trigger_stops_the_copy_before_any_drop
+    conn = trigger_conn
+    def conn.rows_for(sql)
+      return [] if sql.start_with?("SHOW CREATE TRIGGER") && sql.include?("`items_label`")
+
+      super
+    end
+    error = assert_raises(RuntimeError) do
+      Mutineer::RailsWorkerDb.copy_mysql_rows(conn, "app_test", "app_test-mutineer-0")
+    end
+    assert_equal "cannot read trigger items_label on app_test-mutineer-0", error.message
+    assert_empty conn.queries.grep(/\ADROP TRIGGER|\AINSERT INTO/)
+  end
+
+  # One copied table with two schema triggers, each saved in its own sql_mode.
+  def trigger_conn
+    ScriptedMysql.new(
+      tables: [{ "table_name" => "items" }], columns: [{ "column_name" => "id", "extra" => "" }],
+      foreign_keys: [], auto_increment: "3", existing_tables: [{ "table_name" => "items" }],
+      triggers: { "items_audit" => "NO_ENGINE_SUBSTITUTION", "items_label" => "ANSI_QUOTES" }
+    )
   end
 
   def test_an_unknown_foreign_key_action_is_rejected
@@ -585,7 +650,7 @@ class RailsWorkerDbTest < Minitest::Test
   class ScriptedMysql
     attr_reader :queries
 
-    def initialize(tables:, columns:, foreign_keys:, auto_increment:, existing_tables: [], existing_keys: [])
+    def initialize(tables:, columns:, foreign_keys:, auto_increment:, existing_tables: [], existing_keys: [], triggers: {})
       @queries = []
       @tables = tables
       @columns = columns
@@ -593,6 +658,7 @@ class RailsWorkerDbTest < Minitest::Test
       @auto_increment = auto_increment
       @existing_tables = existing_tables
       @existing_keys = existing_keys
+      @triggers = triggers
     end
 
     def query(sql)
@@ -605,7 +671,14 @@ class RailsWorkerDbTest < Minitest::Test
     end
 
     def rows_for(sql)
-      if sql.include?("REFERENCED_TABLE_NAME")
+      if sql.include?("information_schema.TRIGGERS")
+        @triggers.keys.map { |name| { "trigger_name" => name } }
+      elsif (name = sql[/\ASHOW CREATE TRIGGER `[^`]+`\.`([^`]+)`/, 1])
+        [{ "sql original statement" => "CREATE TRIGGER `#{name}`", "sql_mode" => @triggers[name],
+           "collation_connection" => "utf8mb4_unicode_ci" }]
+      elsif sql.include?("@@SESSION")
+        [{ "sql_mode" => "STRICT_TRANS_TABLES", "collation" => "utf8mb4_0900_ai_ci" }]
+      elsif sql.include?("REFERENCED_TABLE_NAME")
         @foreign_keys
       elsif sql.include?("CONSTRAINT_TYPE")
         @existing_keys

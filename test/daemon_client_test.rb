@@ -59,10 +59,15 @@ class DaemonClientTest < Minitest::Test
   # A payload that hangs on load is SIGKILLed at the deadline → timeout (fast).
   def test_hung_payload_times_out_and_daemon_recovers
     with_client do |client|
+      temps = -> { Dir.glob(File.join(APP, "app/models", "mutineer_daemon*.rb")) }
+      before = temps.call
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       assert_equal "timeout", run_payload(client, 1, "sleep 999", timeout: 1)
       elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
       assert_operator elapsed, :<, 10, "should kill near the 1s deadline"
+      # #250: the SIGKILLed child skipped its own unlink; a file left in
+      # app/models breaks the app's next Zeitwerk boot.
+      assert_empty temps.call - before, "a timed-out mutant must not leave its file"
 
       # Daemon serves the next request normally — the loop was not wedged.
       assert_equal "survived", run_payload(client, 2, ORIGINAL)
@@ -155,7 +160,13 @@ class DaemonClientTest < Minitest::Test
         # Includes the respawn's Rails boot; without the fix this is ~60s.
         assert_operator elapsed, :<, 30, "the orphaned child must not hold the protocol pipe"
       ensure
-        Process.kill(:KILL, File.read(marker).to_i) rescue nil # rubocop:disable Style/RescueModifier
+        child = File.read(marker).to_i if File.size?(marker)
+        if child
+          Process.kill(:KILL, child) rescue nil # rubocop:disable Style/RescueModifier
+          # Killed inside `load`, the child leaves its mutant file in app/models,
+          # and a later Rails boot fails on the name (#250).
+          Dir.glob(File.join(APP, "app/models", "mutineer_daemon*-#{child}-*.rb")).each { |f| File.unlink(f) }
+        end
       end
     end
   end

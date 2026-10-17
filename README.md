@@ -310,7 +310,9 @@ Each MySQL 8 worker uses a database named `<base>-mutineer-<N>` (shortened when 
 Mutineer creates that database, loads `schema.rb` or `structure.sql`, and copies rows before the workers start.
 It does not copy the database again after an error or a timeout.
 The worker databases stay in place when the run ends. The next run drops and rebuilds them.
-The database user needs CREATE, DROP, and the table and row privileges a schema load and a row copy use (such as ALTER, INDEX, REFERENCES, and INSERT) on those names, plus SELECT on the test database.
+Triggers in the schema do not fire on the copied rows: in each worker database, Mutineer drops them for the copy and creates them again.
+The database user needs CREATE, DROP, TRIGGER, and the table and row privileges a schema load and a row copy use (such as ALTER, INDEX, REFERENCES, and INSERT) on the worker databases, plus SELECT on the test database.
+A trigger whose DEFINER is another account also needs SET_USER_ID.
 An app on `structure.sql` also needs the `mysql` client on `PATH`.
 Drop one with ``DROP DATABASE `myapp_test-mutineer-0`;`` (MySQL quotes the name with backticks).
 A second run on the same test database stops with `another Mutineer run is using <base>` until the first run ends.
@@ -417,9 +419,9 @@ Some mutants are equivalent (behaviour-identical) and survive forever — keepin
 file off 100%. Suppress them so the score and `--threshold` gate stay meaningful:
 
 - **Inline:** `some_line # mutineer:disable-line` (or scope it: `# mutineer:disable-line comparison`). Put a reason after `--`: `# mutineer:disable-line comparison -- the test checks only 20`. The reason is stored on the ignored mutant and shown in the JSON report and the HTML report. A marker with no reason stores none.
-- **Config:** a `.mutineer.yml` `ignore:` list. A bare mutant id still works. A mapping is `id` plus an optional `reason`. Mutineer 1.9 is the first version that reads a mapping. Older versions do not understand one. The reason shows in the same reports as an inline reason. Each survivor's `id` is printed in the JSON report.
+- **Config:** a `.mutineer.yml` `ignore:` list. A bare mutant id still works. A mapping is `id` plus an optional `reason`. Mutineer 1.7 is the first version that reads a mapping. An older version matches no mutant to a mapping and does not warn, so the mutant it names is not ignored. Add a mapping only after every gate that reads the file runs 1.7 or later. In the Action, the `version:` input sets the version, or your `Gemfile.lock` does when you set `use-bundler: true`. In your own CI job, your `Gemfile.lock` sets it. The reason shows in the same reports as an inline reason. Each survivor's `id` is printed in the JSON report.
 
-`mutineer triage REPORT.json --reason TEXT --all` prints one mapping entry per survivor. `--id ID` prints one entry. Repeat `--id` for several. The command does not edit files. Paste the lines under `ignore:`.
+`mutineer triage REPORT.json --reason TEXT --all` prints one mapping entry per survivor. `--id ID` prints one entry. Repeat `--id` for several. The command does not edit files. Paste the lines under `ignore:`. They are mappings, so every gate that reads the file must run 1.7 or later (see **Config** above).
 
 Built-in skips are listed on the [equivalent skips](https://davidteren.github.io/mutineer/equivalent-skips.html) page. There is no switch to turn them off.
 
@@ -463,8 +465,9 @@ working until 2.0, with a warning:
   matches on the old id alone. The run tells you to
   generate a new baseline with `--format json`. `migrate` does not rewrite a
   baseline. Generate the new file only after every gate
-  that reads it runs 1.3 or later (the Action's `version:` pin, your CI
-  `Gemfile.lock`). An older version treats every new-format survivor as new.
+  that reads it runs 1.3 or later. In the Action, the `version:` input sets
+  the version, or your `Gemfile.lock` does when you set `use-bundler: true`.
+  In your own CI job, your `Gemfile.lock` sets it. An older version treats every new-format survivor as new.
 
 The JSON report's `summary.id_format` is `2` for the new format.
 `summary.legacy_id_matches.ignore` counts the old-format ignore entries a run

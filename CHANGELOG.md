@@ -12,8 +12,10 @@ All notable changes to this project are documented here. The format is based on
   `# mutineer:disable-line`, and a `.mutineer.yml` `ignore:` mapping
   (`id` plus `reason`), is stored on the ignored mutant. The JSON report
   (`schema_version` 1.8) and the HTML report show it. A mapping with no
-  `id`, or with an unknown key, warns. Mutineer 1.9 is the first version
-  that reads a mapping. Older versions do not understand one.
+  `id`, or with an unknown key, warns. Mutineer 1.7 is the first version
+  that reads a mapping. An older version matches no mutant to a mapping
+  and does not warn, so the mutant it names is not ignored. Upgrade
+  every gate that reads the file before you add a mapping.
   `mutineer migrate` rewrites the old id inside a mapping and keeps its
   reason.
 - **`mutineer triage`.** It prints `ignore:` mapping entries for survivors
@@ -30,7 +32,9 @@ All notable changes to this project are documented here. The format is based on
   `<base>-mutineer-<N>` on `mysql2` or `trilogy`, with the base shortened to fit
   MySQL's 64-byte name limit. Mutineer creates the
   database, loads `schema.rb` or `structure.sql`, and copies rows once at
-  the start. A second run cannot drop a database another live run holds.
+  the start. Triggers from the schema do not fire on the copied rows.
+  Mutineer creates them again after the copy.
+  A second run cannot drop a database another live run holds.
   That work uses the TLS and timeout settings from the database config.
   MariaDB is not tested. MySQL 5.7 is not supported. The worker databases
   stay after the run.
@@ -97,6 +101,17 @@ All notable changes to this project are documented here. The format is based on
 - **A Rails daemon boots again while a mutant file is still open.**
   The file stays when another process holds it. The next boot skips
   that file name instead of stopping.
+- **A daemon crash no longer leaves a mutant file in your source folder
+  (#250).** When a daemon dies during a mutant, its child dies a moment
+  later. The new daemon cleaned up before that, so the child's file stayed.
+  The next Rails boot then failed on the file name. Each daemon run now
+  cleans up again when it ends or stops early. It waits up to 1.5 seconds
+  for the child to go. A file whose owner still runs after that stays
+  until the next daemon run removes it. On Linux, a file whose owner is a
+  zombie (in a container whose pid 1 does not reap it) is now removed.
+  With `--jobs N`, an error in one worker stops the others after their
+  current mutant, and a Ctrl-C quits every worker daemon before the run
+  ends.
 - **SimpleCov in a test helper no longer breaks every mutant under
   `--rails` or `--boot` (#248).** After the coverage map is built, mutineer
   pauses Ruby's coverage (#228). SimpleCov saw the paused coverage as off and

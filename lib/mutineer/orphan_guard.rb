@@ -56,11 +56,28 @@ module Mutineer
       return false if pid <= 0
 
       Process.kill(0, pid)
-      true
+      !zombie?(pid)
     rescue Errno::ESRCH, Errno::EINVAL, RangeError
       false
     rescue SystemCallError
       true
+    end
+
+    # True when `pid` has exited but nobody reaped it. A container whose pid 1
+    # does not reap orphans keeps a dead mutant child as a zombie for good, and
+    # `Process.kill(0)` still finds it (#250). Linux only: elsewhere there is no
+    # `/proc`, so a zombie still counts as running.
+    #
+    # @param pid [Integer]
+    # @return [Boolean]
+    def self.zombie?(pid)
+      stat = File.read("/proc/#{pid}/stat")
+      # The name before the state is in parentheses and may hold ") " itself.
+      # An empty read (the process exited mid-read) has no ")": not a zombie.
+      close = stat.rindex(")")
+      !close.nil? && stat[close + 2] == "Z"
+    rescue SystemCallError
+      false
     end
 
     # True when another process holds an exclusive lock on `path`. A lock the
@@ -78,6 +95,6 @@ module Mutineer
     rescue SystemCallError
       true
     end
-    private_class_method :creator_alive?, :locked_by_another?
+    private_class_method :creator_alive?, :zombie?, :locked_by_another?
   end
 end

@@ -730,17 +730,21 @@ class CoverageMapTest < Minitest::Test
     assert_empty out
   end
 
+  # The timeout bounds the good capture too: a fresh Ruby that loads Bundler and
+  # Minitest. That takes about 0.2s, but up to 2.5s on a very busy machine, so 5s.
+  # The hang file runs first, so the good capture shows the build goes on after it.
   def test_hanging_test_file_times_out_and_is_skipped
     hang = File.join(Dir.mktmpdir, "hang_test.rb")
     File.write(hang, "sleep 30\n")
     map = nil
-    capture_subprocess_io do
+    _, err = capture_subprocess_io do
       map = Mutineer::CoverageMap.new(
-        source_paths: [CALC], test_paths: [STRONG_TEST, hang],
-        cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, capture_timeout: 0.5
+        source_paths: [CALC], test_paths: [hang, STRONG_TEST],
+        cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, capture_timeout: 5
       ).build_or_load
     end
-    assert_includes map.failed_test_files.map { |f| File.basename(f) }, "hang_test.rb"
+    assert_equal ["hang_test.rb"], map.failed_test_files.map { |f| File.basename(f) }
+    assert_includes err, "timed out after 5s"
     refute_empty map.tests_for(CALC, line_of("a + b")), "good test still recorded"
   end
 
