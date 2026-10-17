@@ -37,7 +37,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
-  "unplaceable":  [ /* redefine mutants whose class cannot be named statically; not run */ ],
+  "unplaceable":  [ /* redefine mutants with no named class to load onto; not run */ ],
   "ran_at_load":  [ /* mutants on a line that ran while the app or class loaded; no verdict */ ],
   "no_verdict":   [ /* mutants that were attempted and produced no verdict */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
@@ -56,7 +56,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `survived` | int | Mutants no test caught. **These are the actionable test gaps.** |
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
-| `unplaceable` | int | Under `--strategy redefine`, mutants whose method belongs to a class or module that cannot be named statically (no constant, a relative path inside a namespace, a class or module opened or assigned in `class << self`, or a `self::X` opened in a block or assigned in one that does not build a class), so they were not run (excluded). Not part of `no_verdict`, so they do not fail `--threshold`. `--strategy reload` runs them. Additive key (schema `1.7`). |
+| `unplaceable` | int | Under `--strategy redefine`, mutants whose method belongs to a class or module that cannot be named statically (no constant, a relative path inside a namespace, a class or module opened or assigned in `class << self`, or a `self::X` opened in a block or assigned in one that does not build a class), or whose method is in an ActiveSupport::Concern `included do` or `prepended do` block, which runs in each class that includes the concern, so they were not run (excluded). Not part of `no_verdict`, so they do not fail `--threshold`. `--strategy reload` runs them, except a method in an `included do` or `prepended do` block: reload errors on such a concern today (#256). Additive key (schema `1.7`). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). |
 | `errored` | int | Mutants whose run raised (excluded). |
@@ -91,7 +91,9 @@ should cover the line errored while capturing coverage (fix the harness, not the
 `1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module cannot be
 named statically (an anonymous `Class.new`, a relative path such as `User::Permission` inside a namespace,
 a class or module opened or assigned in `class << self`, or a `self::X` opened in a block or assigned in one
-that does not build a class); `--strategy reload` runs these. `ran_at_load` (schema `1.7`) means the mutant's
+that does not build a class), or because the method is in an ActiveSupport::Concern `included do` or `prepended do`
+block, which runs in each class that includes the concern; `--strategy reload` runs these, except the concern
+case, which errors under reload today (#256). `ran_at_load` (schema `1.7`) means the mutant's
 line ran while the app booted or its class loaded (for example a class body that calls the method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.

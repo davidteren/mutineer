@@ -18,7 +18,9 @@ module Mutineer
   #                  owner to be loaded onto and is not run. Excluded from the
   #                  denominator and, unlike uncapturable, from the
   #                  no-verdict gate: nothing is broken. `--strategy reload`
-  #                  runs these mutants.
+  #                  runs these mutants, except a method in a concern's
+  #                  `included do` or `prepended do` block, which errors
+  #                  there (#256).
   #   ran_at_load  - the mutated line ran while the app booted or its class
   #                  loaded. That run happened before the mutant was applied,
   #                  so a test can check a value the original code computed.
