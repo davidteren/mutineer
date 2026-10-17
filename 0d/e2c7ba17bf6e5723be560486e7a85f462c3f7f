@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_83a7b6d5420a74::t_7b86c890486c9e 68-73
+README.md
+  s_83a7b6d5420a74::t_4eb8e7f250df0e 256
+docs/rails.html
+  s_83a7b6d5420a74::t_6c193666b6cef0 118
+docs/rails.md
+  s_83a7b6d5420a74::t_8340a867b8c828 95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0de2c7ba17bf6e5723be560486e7a85f462c3f7f",
+  "prompts": {},
+  "sessions": {
+    "s_83a7b6d5420a74": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c39388e2-1ac3-4c7d-a9b8-cc528fe95dd9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
