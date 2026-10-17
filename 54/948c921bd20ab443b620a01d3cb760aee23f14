@@ -1,0 +1,37 @@
+test/fixtures/singleton/concern_class_methods.rb
+  s_6eaee9e12285a5::t_13a231e88bdaaf 6
+test/fixtures/singleton/concern_stub.rb
+  s_6eaee9e12285a5::t_13a231e88bdaaf 3-5,10-17,19-20,22-26
+CHANGELOG.md
+  s_6eaee9e12285a5::t_7367b1612306e9 100-102
+  s_6eaee9e12285a5::t_affb8b973a606c 113-114
+  s_6eaee9e12285a5::t_cdc064f787c61e 112
+docs/json-schema.md
+  s_6eaee9e12285a5::t_0532bd00f5c4af 78
+test/project_test.rb
+  s_6eaee9e12285a5::t_cc5cfabe13a74c 329-351
+  s_6eaee9e12285a5::t_3c00f2a9f6c9e7 263,270,276,283,308
+lib/mutineer/project.rb
+  s_6eaee9e12285a5::t_e39df91e6ab92d 84
+  s_6eaee9e12285a5::t_ece0e5835aa4a0 124-128
+  s_6eaee9e12285a5::t_84b42f10dae584 147,150
+  s_6eaee9e12285a5::t_92394a95098247 349,358,519
+  s_6eaee9e12285a5::t_37d7194149f5c2 148-149
+  s_6eaee9e12285a5::t_ae6e1105542b19 488-492,499-500,502
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "54948c921bd20ab443b620a01d3cb760aee23f14",
+  "prompts": {},
+  "sessions": {
+    "s_6eaee9e12285a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2fc99c-203e-427a-9527-6b05c7bfa953",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
