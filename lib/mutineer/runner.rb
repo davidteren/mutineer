@@ -324,7 +324,10 @@ module Mutineer
       # narrow identically (score parity).
       kind, payload = JobPlan.coverage_selection(source_file, mutation, subject, source, coverage_map)
       return payload if kind == :verdict
-      return Result.unplaceable if strategy == "redefine" && subject&.owner_unknown
+      # A :maybe mutant that cannot be placed stays no_coverage, as before #254.
+      if strategy == "redefine" && subject&.owner_unknown
+        return kind == :maybe ? Result.no_coverage : Result.unplaceable
+      end
 
       abs_tests = payload
 
@@ -346,7 +349,8 @@ module Mutineer
         end
       end
       result = relative_kills(result, coverage_map.project_root)
-      JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
+      result = JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
+      JobPlan.selection_verdict(kind, result)
     end
 
     # Rewrites the test files of a result's {Kills} row relative to the project

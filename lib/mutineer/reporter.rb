@@ -817,7 +817,8 @@ module Mutineer
     end
 
     # Mutants that were actually run. Deliberately not `total`: no_coverage,
-    # skipped-invalid and ignored mutants were never attempted, so counting them
+    # skipped-invalid and ignored mutants are not counted (a #254 no_coverage
+    # mutant ran its statement's tests but is not a verdict), so counting them
     # would dilute the share and let a broken run slip under the limit.
     #
     # skipped-invalid is excluded from both sides: it means a mutant did not

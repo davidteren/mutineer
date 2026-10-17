@@ -386,7 +386,9 @@ module Mutineer
             tests: sel ? sel[1] : abs_tests
           )
           # A survivor whose line ran at load, as in-process (Runner.run).
-          JobPlan.load_verdict(result_for(verdict), subject.file, mutation, subject, source, coverage_map)
+          loaded = JobPlan.load_verdict(result_for(verdict), subject.file, mutation, subject, source, coverage_map)
+          # Tests that may not have run the mutant, as in-process (#254).
+          JobPlan.selection_verdict(sel && sel[0], loaded)
         end
       r.with(subject: subject, mutation: mutation, id: id)
     end
