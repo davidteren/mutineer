@@ -1,0 +1,32 @@
+test/daemon_temp_sweep_test.rb
+  s_7ec4ec1f61dfd3::t_02e2da770726cd 3
+  s_7ec4ec1f61dfd3::t_ba337e2724b01f 148-156
+test/daemon_client_test.rb
+  s_7ec4ec1f61dfd3::t_a9f8638091f871 62-63,68-70
+lib/mutineer/daemon_backend.rb
+  s_7ec4ec1f61dfd3::t_c9d655def2362d 268-271,273-276,279-280
+  s_7ec4ec1f61dfd3::t_49118090aca4ea 294-298
+  s_7ec4ec1f61dfd3::t_d54c306d3dbe62 333-336
+test/daemon_backend_contract_test.rb
+  s_7ec4ec1f61dfd3::t_71d72b67583a7a 453-491,495-619
+  s_7ec4ec1f61dfd3::t_e673805a265746 492-494
+  s_7ec4ec1f61dfd3::t_77e5986c2c11f5 620-652
+lib/mutineer/orphan_guard.rb
+  s_7ec4ec1f61dfd3::t_d3b80247006785 76-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3bf2f65295d0f71387f188f00e5dc2988c022c35",
+  "prompts": {},
+  "sessions": {
+    "s_7ec4ec1f61dfd3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2c8fb156-14e0-4027-aa16-85ed13a8a303",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
