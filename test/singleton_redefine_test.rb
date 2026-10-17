@@ -94,15 +94,15 @@ class SingletonRedefineTest < Minitest::Test
   # onto the concern itself, where nothing calls it, so it falsely survived.
   def test_class_methods_block_methods_are_mutated_on_class_methods
     %w[redefine reload].each do |strategy|
-      agg = run_redefine("concern.rb", "concern_test.rb", strategy: strategy, only: "ConcernGreeting::ClassMethods#greet")
-      assert_killed(agg, "class_methods block (#{strategy})")
+      assert_killed(run_redefine("concern.rb", "concern_test.rb", strategy: strategy), "class_methods block (#{strategy})")
     end
   end
 
   # #252: `included do` runs in each class that includes the concern, which the
-  # file need not name, so redefine cannot place its defs.
+  # file need not name, so redefine cannot place its defs. Reload gets no verdict
+  # either: the second `included` block comes from the mutant's file (#256).
   def test_included_block_methods_are_unplaceable_under_redefine
-    redefine = run_redefine("concern.rb", "concern_test.rb", only: "ConcernGreeting#tag")
+    redefine = run_redefine("concern_included.rb", "concern_included_test.rb")
     assert_operator redefine.unplaceable_count, :>, 0
     assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count + redefine.uncapturable_count
   end

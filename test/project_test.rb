@@ -259,13 +259,26 @@ class ProjectTest < Minitest::Test
           def mixed = 7
         end
       end
+      module Outer
+        Module.new do
+          class_methods do
+            def anon = 8
+          end
+        end
+        class << self
+          class_methods do
+            def single = 9
+          end
+        end
+      end
     RUBY
     with_source(src) do |path|
       subjects = Mutineer::Project.discover([path])
       assert_equal %w[Greeting::ClassMethods#greet Greeting::ClassMethods.helper Greeting::Inner#m Greeting#tag
-                      Greeting#wrap Greeting#far Greeting#build Greeting::ClassMethods#late Mixin::ClassMethods#mixed],
+                      Greeting#wrap Greeting#far Greeting#build Greeting::ClassMethods#late Mixin::ClassMethods#mixed
+                      Outer::ClassMethods#anon Outer::ClassMethods#single],
                    subjects.map(&:qualified_name)
-      assert_equal [false, false, false, true, true, false, false, true, false], subjects.map(&:owner_unknown)
+      assert_equal [false, false, false, true, true, false, false, true, false, true, true], subjects.map(&:owner_unknown)
       assert_equal ["::Greeting::ClassMethods", "::Mixin::ClassMethods"], subjects.values_at(0, 8).map(&:block_owner)
       assert_equal %w[Greeting], subjects[0].lexical
     end

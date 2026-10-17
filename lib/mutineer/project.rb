@@ -147,7 +147,7 @@ module Mutineer
           end
         end
         if concern_hook?(node, :class_methods)
-          return with_block_owner(class_methods_owner, false) do
+          return with_block_owner(class_methods_owner, @anonymous_block) do
             @self_scope = node.block
             super
           end
@@ -174,7 +174,7 @@ module Mutineer
       # @param node [Prism::BlockNode, Prism::LambdaNode] block or lambda node.
       # @return [void]
       def visit_block_node(node)
-        return super if node.equal?(@self_scope) # a builder block
+        return super if node.equal?(@self_scope) # a builder or `class_methods` block
 
         saved_self = [@self_unknown, @self_scope]
         @self_unknown = true
@@ -483,7 +483,8 @@ module Mutineer
       # The concern's `ClassMethods` module, the owner of a `class_methods` block:
       # the constant `class_methods` creates or reopens under the concern. In a
       # def, a non-builder block or `class << self` the call runs on some other
-      # object, so the owner is unknown, as it is when the concern's own is.
+      # object, so the owner is unknown, as it is when the concern's own is. In
+      # an anonymous builder block the module stays anonymous ({#module_key}).
       #
       # @return [Array(String, Array<String>, Boolean)] owner, namespace, unknown.
       def class_methods_owner
@@ -493,7 +494,8 @@ module Mutineer
         named_owner(namespace)
       end
 
-      # Runs the block with the defs it visits owned by the class a builder block builds.
+      # Runs the block with the defs it visits owned by the class a builder block builds
+      # (or, for `class_methods do`, the concern's `ClassMethods` module).
       # The block body defines instance methods of that class, even inside `class << self`,
       # but its constants still land where the enclosing `class << self` puts them.
       #

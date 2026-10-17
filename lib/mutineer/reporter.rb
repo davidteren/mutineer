@@ -752,8 +752,8 @@ module Mutineer
       out.puts format("Timeout:      %-6d  (over the per-mutant time limit)", @agg.timeout_count)
       # A broken harness, not a coverage gap: report it distinctly from No coverage.
       out.puts format("Uncapturable: %-6d  (tests failed to run)", @agg.uncapturable_count)
-      # Not broken: redefine has no named class to load these onto; reload runs them.
-      out.puts format("Unplaceable:  %-6d  (class cannot be named statically; --strategy reload runs these)",
+      # Not broken: redefine has no named class to load these onto; reload runs most of them (#256).
+      out.puts format("Unplaceable:  %-6d  (class cannot be named statically; --strategy reload runs most)",
                       @agg.unplaceable_count)
       # Not a verdict: the line ran before the mutant was applied (#187).
       out.puts format("Ran at load:  %-6d  (ran while the app or class loaded; mutineer cannot re-run that; " \
