@@ -1,0 +1,28 @@
+test/daemon_mysql_test.rb
+  s_da64ab67a2926d::t_f0b2757d44dddd 250-254
+  s_da64ab67a2926d::t_feb3d9eec2488c 288
+  s_da64ab67a2926d::t_13bfedeebba1ea 233
+  s_da64ab67a2926d::t_6f61c471a47c18 293
+  s_da64ab67a2926d::t_d72028d56c1258 301
+test/rails_worker_db_test.rb
+  s_da64ab67a2926d::t_94dda20abc5837 544-545,563-566,568-569,598-609
+  s_da64ab67a2926d::t_1871a8129177b8 610-611
+README.md
+  s_da64ab67a2926d::t_c6df9d89df54ca 274-276
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "916c9810d7d909b98d36333dedc7ae195ed3d24f",
+  "prompts": {},
+  "sessions": {
+    "s_da64ab67a2926d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "944f9de7-a8b4-4136-bc44-dc3ab306b176",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
