@@ -1,0 +1,26 @@
+lib/mutineer/rails_worker_db.rb
+  s_da64ab67a2926d::t_550ac4aa4fd8c8 873-876
+  s_da64ab67a2926d::t_e9f985ad70954b 1222-1226,1237-1246,1256-1257
+test/rails_worker_db_test.rb
+  s_da64ab67a2926d::t_8686149f31c80c 556-578
+  s_da64ab67a2926d::t_b0cd756f70ac14 632-639
+  s_da64ab67a2926d::t_af87600d722d65 611,619
+test/daemon_mysql_test.rb
+  s_da64ab67a2926d::t_ed88a40bf7bb60 229-232,247-248,256,258-259,264,270-271,274-284,286,293-297
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ee78ae47cf6be2ce3b3e00a5ab24655453b03a36",
+  "prompts": {},
+  "sessions": {
+    "s_da64ab67a2926d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "944f9de7-a8b4-4136-bc44-dc3ab306b176",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
