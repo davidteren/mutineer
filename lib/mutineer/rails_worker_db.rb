@@ -575,9 +575,10 @@ module Mutineer
       # keeps Ruby from printing that original error under this one.
       raise "could not provision: the database URL is not valid. " \
             "The URL is not shown because it can contain a password. " \
-            "Check each part of DATABASE_URL or url: in config/database.yml. In the user " \
-            "name, password and database name, percent-encode @ as %40, / as %2F, " \
-            "? as %3F, # as %23, % as %25 and a space as %20.", cause: nil
+            "Check each part of DATABASE_URL or url: in config/database.yml. " \
+            "Percent-encode the user name, password and database name. Encode each " \
+            "character that is not a letter, a digit, -, ., _ or ~. " \
+            "For example, write % as %25, @ as %40 and a space as %20.", cause: nil
     end
 
     # Percent-decode one URL component. Nil when `text` is blank.
