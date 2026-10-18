@@ -146,7 +146,7 @@ All notable changes to this project are documented here. The format is based on
   `--threshold`, so a gate that failed on these false survivors can now pass.
   Their names and mutant ids do not change. `--strategy reload` runs them, but under
   ActiveSupport it cannot yet run a concern file that has an `included` or
-  `prepended` block: those mutants are `errored` (#257). Another library's
+  `prepended` block: those mutants are `errored` (#256). Another library's
   method with one of these names is `unplaceable` under redefine too, even
   when that library runs the block in the module itself and redefine used to
   run it correctly. Mutineer cannot tell that library from ActiveSupport, so it
