@@ -126,11 +126,12 @@ All notable changes to this project are documented here. The format is based on
   Redefine (the `--rails` default) then loaded each mutant onto the concern.
   The tests called the includer's method, so every mutant falsely survived.
   A concern with an instance method of the same name failed the other way:
-  the mutant replaced that instance method, tests calling it raised an
-  ArgumentError on the changed arity, and the mutant counted as killed
-  whatever it changed. Both false survivors and false kills are gone.
-  Scores from earlier redefine runs on such a concern can be wrong in both
-  directions, so re-run those files.
+  the mutant replaced that instance method, so tests calling it ran the
+  wrong method and failed (an ArgumentError, when the arities differ), and
+  the mutant counted as killed whatever it changed. Both false survivors
+  and false kills are gone. An earlier redefine score is unreliable for
+  any file with a `class_methods` block: too low from false survivors, or
+  too high from false kills. Re-run those files.
   These methods are now named `Concern::ClassMethods#name`, and redefine
   loads the mutant onto that module. This applies to a module that ran
   `extend ActiveSupport::Concern` earlier in the same file. The mutant ids of
