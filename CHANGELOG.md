@@ -129,6 +129,8 @@ All notable changes to this project are documented here. The format is based on
   the mutant replaced that instance method, tests calling it raised an
   ArgumentError on the changed arity, and the mutant counted as killed
   whatever it changed. Both false survivors and false kills are gone.
+  Scores from earlier redefine runs on such a concern can be wrong in both
+  directions, so re-run those files.
   These methods are now named `Concern::ClassMethods#name`, and redefine
   loads the mutant onto that module. This applies to a module that ran
   `extend ActiveSupport::Concern` earlier in the same file. The mutant ids of
@@ -154,7 +156,7 @@ All notable changes to this project are documented here. The format is based on
   method with one of these names is `unplaceable` under redefine too, even
   when that library runs the block in the module itself and redefine used to
   run it correctly. Mutineer cannot tell that library from ActiveSupport, so it
-  does not guess. Use `--strategy reload` for those mutants.
+  does not guess. For that other library's mutants, use `--strategy reload`.
 
 ## [1.6.0] - 2026-10-08
 
