@@ -10,10 +10,10 @@ module Mutineer
   module OrphanGuard
     # Seconds between checks. A forked child gets no signal on parent death.
     POLL = 0.5
-    # `Tempfile.create(["mutineer_daemon", ".rb"])` names the file
-    # `mutineer_daemon<YYYYMMDD>-<pid>-<rand>.rb`. The pid is the child that
-    # is loading the mutant.
-    DAEMON_TEMP_PID = /\Amutineer_daemon\d{8}-(\d+)-/
+    # `Tempfile.create([".mutineer_daemon", ".rb"])` names the file
+    # `.mutineer_daemon<YYYYMMDD>-<pid>-<rand>.rb` (without the dot before #253).
+    # The pid is the child that is loading the mutant.
+    DAEMON_TEMP_PID = /\A\.?mutineer_daemon\d{8}-(\d+)-/
 
     # Starts the watchdog in the current (child) process.
     #
@@ -37,7 +37,7 @@ module Mutineer
     # file lock counts too, even when that pid is already gone. A dead pid
     # and a free lock is an orphan a killed child left behind.
     #
-    # @param path [String] absolute path of a `mutineer_daemon*.rb` file.
+    # @param path [String] absolute path of a `.mutineer_daemon*.rb` file.
     # @return [Boolean]
     def self.mutant_file_in_use?(path)
       creator_alive?(path) || locked_by_another?(path)
