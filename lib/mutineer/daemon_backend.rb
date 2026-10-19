@@ -32,8 +32,9 @@ module Mutineer
     DEFAULT_TIMEOUT = 60
 
     # The daemon's per-mutant tempfile, written into the source dir so
-    # require_relative resolves. Kept in step with DaemonServer#sweep_temps.
-    DAEMON_TEMP_GLOB = "mutineer_daemon*.rb"
+    # require_relative resolves. The leading dot hides it from Zeitwerk (#253);
+    # older versions wrote it without one. Kept in step with DaemonServer#sweep_temps.
+    DAEMON_TEMP_GLOB = "{.,}mutineer_daemon*.rb"
 
     # Seconds the end-of-run sweep waits for an orphaned child to die. Its
     # watchdog notices a dead daemon within {OrphanGuard::POLL}.
@@ -380,7 +381,8 @@ module Mutineer
         elsif sel && sel[0] == :verdict
           sel[1]
         elsif subject.unplaceable?("reload") # the daemon always reloads the whole file
-          Result.unplaceable
+          # A :maybe mutant that cannot be placed stays no_coverage, as in-process.
+          sel && sel[0] == :maybe ? Result.no_coverage : Result.unplaceable
         else
           verdict = client.request(
             id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,
@@ -388,7 +390,9 @@ module Mutineer
             tests: sel ? sel[1] : abs_tests
           )
           # A survivor whose line ran at load, as in-process (Runner.run).
-          JobPlan.load_verdict(result_for(verdict), subject.file, mutation, subject, source, coverage_map)
+          loaded = JobPlan.load_verdict(result_for(verdict), subject.file, mutation, subject, source, coverage_map)
+          # Tests that may not have run the mutant, as in-process (#254).
+          JobPlan.selection_verdict(sel && sel[0], loaded)
         end
       r.with(subject: subject, mutation: mutation, id: id)
     end

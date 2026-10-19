@@ -24,6 +24,12 @@ class ContinuationTest < Minitest::Test
     assert_equal :never_counted, Continuation.empty
   end
 
+  def test_adult
+    assert Continuation.adult?(18, true)
+    refute Continuation.adult?(17, true)
+    refute Continuation.adult?(18, false)
+  end
+
   def test_kind
     assert_equal :number, Continuation.kind(1)
   end

@@ -205,6 +205,37 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # #254: tests that may not have run the mutant (a `:maybe` selection) count a
+  # kill, and a survivor is no_coverage, as in-process.
+  def test_a_maybe_selection_turns_a_survivor_into_no_coverage
+    with_jobs do |jobs, config, source_map|
+      cov = Object.new
+      def cov.start = self
+      def cov.quit = nil
+      def cov.coverage = { "map" => { "app/order.rb:3" => ["test/order_test.rb"] }, "failed_test_files" => [],
+                           "failed_clean_tests" => [], "load_lines" => [] }
+      coverage_map = Mutineer::DaemonClient.stub(:new, ->(**) { cov }) do
+        Mutineer::DaemonBackend.build_coverage_map(config, [])
+      end
+      client = Object.new
+      def client.start = self
+      def client.quit = nil
+      def client.sent = (@sent ||= [])
+      def client.request(id:, tests:, **)
+        sent << tests
+        id.zero? ? "survived" : "killed"
+      end
+      results = Mutineer::JobPlan.stub(:coverage_selection, [:maybe, ["/p/test/order_test.rb"]]) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+          Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], coverage_map, source_map)
+        end
+      end
+
+      assert_equal %i[no_coverage killed], results.map(&:status)
+      assert_equal [["/p/test/order_test.rb"]] * 2, client.sent, "the daemon runs only the :maybe tests"
+    end
+  end
+
   # An empty test map still falls back to the full --test set, but the boot
   # lines it came with must still classify a survivor on one of them.
   def test_an_empty_map_runs_every_test_and_keeps_the_boot_lines
@@ -310,8 +341,8 @@ class DaemonBackendContractTest < Minitest::Test
   end
 
   # The daemon sweeps its orphaned temps at boot. Nothing boots on an empty run, so
-  # a file left by a hard-killed run would survive — and one sitting in app/models
-  # breaks the app's own Zeitwerk boot, not just the next Mutineer run.
+  # a file left by a hard-killed run would survive. One an older version left in
+  # app/models without the dot breaks the app's own Zeitwerk boot (#253).
   def test_an_empty_job_list_still_sweeps_orphaned_daemon_temps
     Dir.mktmpdir("mutineer-sweep") do |root|
       FileUtils.mkdir_p(File.join(root, "app"))

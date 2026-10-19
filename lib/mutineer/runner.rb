@@ -60,6 +60,15 @@ module Mutineer
       # payloads (Prism), so branch before any in-process boot.
       return DaemonBackend.execute(config, operator_classes) if config.daemon
 
+      # Whole-file reload writes .mutineer_mutant*.rb into each source dir (so
+      # require_relative resolves). A SIGKILL'd child skips the tempfile's
+      # ensure-unlink, orphaning it. `ensure` is unreliable vs SIGKILL, so the
+      # PARENT sweeps each source dir before and after the run. Orphans are
+      # impossible after a normal run. The first sweep runs before the boot: a
+      # file an older version left without the dot would stop Zeitwerk (#253).
+      dirs = JobPlan.source_dirs(config)
+      JobPlan.sweep_orphans(dirs)
+
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
       # sources. Under Zeitwerk a manual require of an autoloadable file raises;
@@ -133,14 +142,6 @@ module Mutineer
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
 
       jobs, ignored_results, extras[:unscoped_mutants] = JobPlan.scope_since(jobs, ignored_results, source_map, config)
-
-      # Whole-file reload writes mutineer_mutant*.rb into each source dir (so
-      # require_relative resolves). A SIGKILL'd child skips the tempfile's
-      # ensure-unlink, orphaning it. `ensure` is unreliable vs SIGKILL, so the
-      # PARENT sweeps each source dir before and after the run. Orphans are
-      # impossible after a normal run.
-      dirs = JobPlan.source_dirs(config)
-      JobPlan.sweep_orphans(dirs)
 
       strategy = config.strategy
       # Fail-fast must be serial: a parallel stop_when fires on the first survivor
@@ -324,7 +325,8 @@ module Mutineer
       # narrow identically (score parity).
       kind, payload = JobPlan.coverage_selection(source_file, mutation, subject, source, coverage_map)
       return payload if kind == :verdict
-      return Result.unplaceable if subject&.unplaceable?(strategy)
+      # A :maybe mutant that cannot be placed stays no_coverage, as before #254.
+      return kind == :maybe ? Result.no_coverage : Result.unplaceable if subject&.unplaceable?(strategy)
 
       abs_tests = payload
 
@@ -346,7 +348,8 @@ module Mutineer
         end
       end
       result = relative_kills(result, coverage_map.project_root)
-      JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
+      result = JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
+      JobPlan.selection_verdict(kind, result)
     end
 
     # Rewrites the test files of a result's {Kills} row relative to the project
