@@ -1,0 +1,20 @@
+CHANGELOG.md
+  s_3b2276c6160cf1::t_302648abff09a0 132-133
+  s_3b2276c6160cf1::t_28d44349bd93cf 159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "587fa13325e5945596172a159a4750b47e19fc52",
+  "prompts": {},
+  "sessions": {
+    "s_3b2276c6160cf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "864b44a2-f9e5-4433-8347-cd7184cf50e0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
