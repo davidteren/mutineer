@@ -125,6 +125,10 @@ All notable changes to this project are documented here. The format is based on
   methods. Mutineer named them as instance methods of the concern itself.
   Redefine (the `--rails` default) then loaded each mutant onto the concern.
   The tests called the includer's method, so every mutant falsely survived.
+  A concern with an instance method of the same name failed the other way:
+  the mutant replaced that instance method, tests calling it raised an
+  ArgumentError on the changed arity, and the mutant counted as killed
+  whatever it changed. Both false survivors and false kills are gone.
   These methods are now named `Concern::ClassMethods#name`, and redefine
   loads the mutant onto that module. This applies to a module that ran
   `extend ActiveSupport::Concern` earlier in the same file. The mutant ids of
