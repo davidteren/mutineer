@@ -98,6 +98,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Daemon errors no longer show the database password.** Rails parses
+  `DATABASE_URL` itself, and a malformed URL makes it raise an error that
+  quotes the whole URL. The daemon sent that error to the terminal when
+  the app failed to boot, and the same could happen when it set up worker
+  databases or the coverage map. The daemon now replaces the password in
+  any URL, and the `DATABASE_URL` password anywhere else, with
+  `[REDACTED]` before it reports an error.
 - **A Rails daemon boots again while a mutant file is still open.**
   The file stays when another process holds it. The next boot skips
   that file name instead of stopping.

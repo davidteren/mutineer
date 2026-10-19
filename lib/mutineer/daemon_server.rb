@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "uri"
 require "tempfile"
 require_relative "child_stdout"
 require_relative "child_coverage"
@@ -53,6 +54,11 @@ module Mutineer
     # Basename glob for a mutant file written beside a source file.
     # Tempfile puts hyphens in the name, so it is not a constant name.
     DAEMON_TEMP_BASENAME = "mutineer_daemon*.rb"
+    # The password in a `scheme://user:password@host` URL. Greedy up to the last
+    # `@` in the token, so an unescaped `@` in the password is hidden too.
+    URL_PASSWORD = %r{([a-z][a-z0-9+.\-]*://[^\s:/@"']*):[^\s"']*@}i
+    # What replaces a hidden password.
+    REDACTED = "[REDACTED]"
 
     # Skips daemon mutant files when Zeitwerk scans an autoload directory.
     # The boot sweep keeps a file another process still holds. That file would
@@ -174,7 +180,7 @@ module Mutineer
       rescue Exception => e # rubocop:disable Lint/RescueException
         # Boot failed (bad boot path, app error). Tell the client and exit so it
         # can surface a clean error rather than hang on the handshake.
-        @output.puts(JSON.generate("ready" => false, "error" => "#{e.class}: #{e.message}"))
+        @output.puts(JSON.generate("ready" => false, "error" => describe_error(e)))
         @output.flush
         exit!(1)
       end
@@ -207,7 +213,7 @@ module Mutineer
           @worker_db.provision(cfg.fetch("slots", 2).to_i)
         end
       rescue LoadError => e
-        @errio.puts("[daemon] worker-DB routing unavailable: #{e.message}")
+        @errio.puts("[daemon] worker-DB routing unavailable: #{redact(e.message)}")
         @worker_db = nil
       end
 
@@ -232,7 +238,7 @@ module Mutineer
         @worker_db.provision(Integer(slots)) if @worker_db
         { "ok" => true }
       rescue Exception => e # rubocop:disable Lint/RescueException
-        { "ok" => false, "error" => "#{e.class}: #{e.message}" }
+        { "ok" => false, "error" => describe_error(e) }
       end
 
       # Build the coverage map app-side (Coverage was started at boot) and return
@@ -257,8 +263,42 @@ module Mutineer
           "failed_clean_tests" => cmap.failed_clean_tests, "load_lines" => cmap.load_lines.to_a,
           "load_methods" => cmap.load_methods.to_a }
       rescue Exception => e # rubocop:disable Lint/RescueException
-        @errio.puts("[daemon] coverage build failed: #{e.class}: #{e.message}")
-        { "map" => {}, "failed_test_files" => [], "error" => "#{e.class}: #{e.message}" }
+        error = describe_error(e)
+        @errio.puts("[daemon] coverage build failed: #{error}")
+        { "map" => {}, "failed_test_files" => [], "error" => error }
+      end
+
+      # `Class: message` for an error the daemon reports, with credentials hidden.
+      # Rails parses DATABASE_URL itself, so its URI error can carry the password.
+      #
+      # @param error [Exception]
+      # @return [String]
+      def describe_error(error)
+        redact("#{error.class}: #{error.message}")
+      end
+
+      # Hide database credentials in text bound for the client or stderr: the
+      # password in any URL, and the DATABASE_URL password wherever it appears.
+      #
+      # @param text [String]
+      # @return [String]
+      def redact(text)
+        text = text.to_s.gsub(URL_PASSWORD) { "#{Regexp.last_match(1)}:#{REDACTED}@" }
+        database_url_passwords.reduce(text) { |out, secret| out.gsub(secret, REDACTED) }
+      end
+
+      # The DATABASE_URL password, raw and percent-decoded. Read by pattern, not
+      # URI, because the URL may be the malformed one that failed to parse.
+      #
+      # @return [Array<String>]
+      def database_url_passwords
+        match = ENV.fetch("DATABASE_URL", "").match(URL_PASSWORD)
+        return [] unless match
+
+        raw = match[0][(match[1].length + 1)...-1]
+        [raw, URI.decode_www_form_component(raw.gsub("+", "%2B"))].uniq.reject(&:empty?)
+      rescue ArgumentError
+        [raw].compact.reject(&:empty?)
       end
 
       # Fork-safety hook for coverage capture. Each capture fork drops its copy
@@ -305,7 +345,7 @@ module Mutineer
               apply_payload(req["payload"])
               run_tests(Array(req["tests"]))
             rescue Exception => e # rubocop:disable Lint/RescueException
-              @errio.puts("[daemon-child] #{e.class}: #{e.message}")
+              @errio.puts("[daemon-child] #{describe_error(e)}")
               2
             end
           exit!(code)
