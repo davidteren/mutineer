@@ -17,7 +17,7 @@ class DaemonTempSweepTest < Minitest::Test
         File.write(stale, "class Order; end\n")
         pid = fork do
           reader.close
-          Tempfile.create(["mutineer_daemon", ".rb"], dir) do |file|
+          Tempfile.create([".mutineer_daemon", ".rb"], dir) do |file|
             file.flock(File::LOCK_EX)
             file.write("class Order; end\n")
             file.flush
@@ -99,7 +99,7 @@ class DaemonTempSweepTest < Minitest::Test
         File.write(stale, "class Order; end\n")
         pid = fork do
           reader.close
-          Tempfile.create(["mutineer_daemon", ".rb"], dir) do |file|
+          Tempfile.create([".mutineer_daemon", ".rb"], dir) do |file|
             file.write("class Order; end\n")
             file.flush
             writer.puts file.path
@@ -110,7 +110,7 @@ class DaemonTempSweepTest < Minitest::Test
         writer.close
         path = read_child_path(reader)
 
-        Mutineer::JobPlan.sweep_orphans([dir], "mutineer_daemon*.rb")
+        Mutineer::JobPlan.sweep_orphans([dir], Mutineer::DaemonBackend::DAEMON_TEMP_GLOB)
 
         assert File.exist?(path)
         refute File.exist?(stale)
@@ -138,7 +138,7 @@ class DaemonTempSweepTest < Minitest::Test
       path = File.join(dir, "mutineer_daemon20200101-#{zombie}-zombie.rb")
       File.write(path, "module ZombieOwned; end\n")
 
-      assert_empty Mutineer::JobPlan.sweep_orphans([dir], "mutineer_daemon*.rb")
+      assert_empty Mutineer::JobPlan.sweep_orphans([dir], Mutineer::DaemonBackend::DAEMON_TEMP_GLOB)
       refute_path_exists path, "a zombie owner must not keep its file"
     end
   ensure
@@ -152,6 +152,21 @@ class DaemonTempSweepTest < Minitest::Test
     File.stub(:read, "4242 (a) Z b) S 1 1\n") { refute Mutineer::OrphanGuard.send(:zombie?, 4242) }
     File.stub(:read, "4242 (a) S b) Z 1 1\n") { assert Mutineer::OrphanGuard.send(:zombie?, 4242) }
     File.stub(:read, "") { refute Mutineer::OrphanGuard.send(:zombie?, 4242) }
+  end
+
+  # #253: the daemon writes its mutant file hidden, so Zeitwerk never lists it,
+  # and both cleanup globs still match it.
+  def test_the_daemon_writes_a_hidden_mutant_file_the_globs_match
+    Dir.mktmpdir do |dir|
+      code = "$mutant_file = __FILE__\n"
+      Mutineer::DaemonServer.send(:apply_payload, "source_file" => File.join(dir, "x.rb"), "code" => code)
+      name = File.basename($mutant_file)
+
+      assert_match(/\A\.mutineer_daemon\d{8}-#{Process.pid}-/, name)
+      [Mutineer::DaemonServer::DAEMON_TEMP_BASENAME, Mutineer::DaemonBackend::DAEMON_TEMP_GLOB].each do |glob|
+        assert File.fnmatch?(glob, name, File::FNM_EXTGLOB), glob
+      end
+    end
   end
 
   def read_child_path(reader)
