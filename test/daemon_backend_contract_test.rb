@@ -153,6 +153,27 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # #256: the daemon always reloads the whole file, and a concern's `included`
+  # block does not run again in a class that already includes it. So a def in
+  # that block is unplaceable and never sent to the daemon.
+  def test_an_included_block_def_is_unplaceable_without_a_request
+    with_jobs do |jobs, config, source_map|
+      subject, mutation, id = jobs.first
+      hook = subject.dup
+      hook.hook_block = true
+      client = Object.new
+      def client.start = self
+      def client.quit = nil
+      def client.request(**) = raise("an unplaceable mutant must not reach the daemon")
+      results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+        Mutineer::DaemonBackend.send(:run_serial, [[hook, mutation, id]], config, [], nil, source_map)
+      end
+
+      assert_equal %i[unplaceable], results.map(&:status)
+      assert_equal hook, results.first.subject
+    end
+  end
+
   # #187: the daemon's map ships the lines that ran at boot, and a survivor on
   # one of them is ran_at_load, as in-process. --fail-fast stops on a survivor
   # only, so it runs on past these.

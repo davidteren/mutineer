@@ -12,6 +12,10 @@ module ConcernPricing
     end
   end
 
+  def halved(x)
+    x / 2
+  end
+
   included do
     def doubled(x)
       x * 2

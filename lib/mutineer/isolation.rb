@@ -6,6 +6,7 @@ require_relative "parser"
 require_relative "child_stdout"
 require_relative "child_coverage"
 require_relative "kill_channel"
+require_relative "concern_blocks"
 
 module Mutineer
   # Fork-based isolation for running one mutant. The block runs in a child
@@ -181,11 +182,16 @@ module Mutineer
     # "base"`). Writing it elsewhere makes those requires resolve to the temp
     # dir and raise LoadError.
     #
+    # A concern's stored `included` and `prepended` blocks from the source file
+    # are forgotten first, so ActiveSupport accepts the blocks the temp file
+    # stores (#256).
+    #
     # @api private
     # @param mutated [String] mutated source text.
     # @param source_file [String] original source file path.
     # @return [Object] whatever `load` returns.
     def self.apply_whole_file(mutated, source_file)
+      ConcernBlocks.forget(source_file)
       Tempfile.create(["mutineer_mutant", ".rb"], File.dirname(File.expand_path(source_file))) do |f|
         f.write(mutated)
         f.flush

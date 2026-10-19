@@ -13,13 +13,16 @@ module Mutineer
   #                  like no_coverage, but reported separately: it signals a
   #                  broken harness (a test that failed to run), not a genuine
   #                  coverage gap.
-  #   unplaceable  - under `--strategy redefine`, the method belongs to a class
-  #                  or module that cannot be named statically (for example
-  #                  each class that includes a concern), so it has no
-  #                  owner to be loaded onto and is not run. Excluded from the
-  #                  denominator and, unlike uncapturable, from the
-  #                  no-verdict gate: nothing is broken. `--strategy reload`
-  #                  runs these mutants.
+  #   unplaceable  - the strategy cannot load the mutant where the tests call
+  #                  it, so it is not run. Under `--strategy redefine` the
+  #                  method belongs to a class or module that cannot be named
+  #                  statically (for example each class that includes a
+  #                  concern). Under either strategy the method is in a
+  #                  concern's `included` or `prepended` block, which does not
+  #                  run again in a class that already includes it (#256).
+  #                  Excluded from the denominator and, unlike uncapturable,
+  #                  from the no-verdict gate: nothing is broken.
+  #                  `--test-command` runs these mutants.
   #   ran_at_load  - the mutated line ran while the app booted or its class
   #                  loaded. That run happened before the mutant was applied,
   #                  so a test can check a value the original code computed.

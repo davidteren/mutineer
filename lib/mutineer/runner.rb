@@ -324,7 +324,7 @@ module Mutineer
       # narrow identically (score parity).
       kind, payload = JobPlan.coverage_selection(source_file, mutation, subject, source, coverage_map)
       return payload if kind == :verdict
-      return Result.unplaceable if strategy == "redefine" && subject&.owner_unknown
+      return Result.unplaceable if subject&.unplaceable?(strategy)
 
       abs_tests = payload
 

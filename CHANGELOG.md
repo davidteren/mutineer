@@ -98,6 +98,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`--strategy reload` runs concern files with an `included` or `prepended`
+  block (#256).** Every mutant in such a file was `errored`: ActiveSupport
+  raised `MultipleIncludedBlocks` because the mutant loads from a temp file
+  with another path. Before each reload mutant loads, in-process and on the
+  daemon, the forked child now forgets the blocks that the source file stored,
+  so methods in the concern body and in `class_methods` are killed or survive
+  as usual. A method inside an `included` or `prepended` block is
+  `unplaceable` under reload too: the block does not run again in a class that
+  already includes the concern, so the mutant would falsely survive. That
+  includes a method of a class defined inside the block. Use `--test-command`
+  to run those mutants.
 - **A Rails daemon boots again while a mutant file is still open.**
   The file stays when another process holds it. The next boot skips
   that file name instead of stopping.
@@ -144,9 +155,8 @@ All notable changes to this project are documented here. The format is based on
   redefine reports these mutants as `unplaceable` and does not run them. Like
   every `unplaceable` mutant, they leave the score and do not count toward
   `--threshold`, so a gate that failed on these false survivors can now pass.
-  Their names and mutant ids do not change. `--strategy reload` runs them, but under
-  ActiveSupport it cannot yet run a concern file that has an `included` or
-  `prepended` block: those mutants are `errored` (#257). Another library's
+  Their names and mutant ids do not change. `--strategy reload` runs them, except a
+  method in an `included` or `prepended` block (see #256 above). Another library's
   method with one of these names is `unplaceable` under redefine too, even
   when that library runs the block in the module itself and redefine used to
   run it correctly. Mutineer cannot tell that library from ActiveSupport, so it

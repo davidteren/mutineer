@@ -82,6 +82,7 @@ module Mutineer
         @self_scope = nil          # the def or block whose `self` the code runs with
         @singleton_uncertain = false # the open `class << self` was inside a def or a non-builder block
         @concern_modules = Set.new   # the {#module_key} of each module that ran `extend ActiveSupport::Concern`
+        @hook_block = false          # inside a concern's `included` or `prepended` block (see {#hook_block?})
         super()
       end
 
@@ -152,7 +153,9 @@ module Mutineer
         end
         case concern_block(node)
         when :owner_unknown
+          hook = hook_block?(node)
           return preserving_scope do
+            @hook_block ||= hook
             @owner_unknown = true
             super
           end
@@ -247,6 +250,7 @@ module Mutineer
           lexical: @lexical_stack.dup,
           block_owner: @block_owner,
           owner_unknown: @owner_unknown,
+          hook_block: @hook_block,
           name: node.name,
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node
@@ -357,7 +361,7 @@ module Mutineer
       # Visitor state a class/module body or builder block sets for what it contains.
       SCOPE_STATE = %i[@namespace_stack @lexical_stack @module_function_active @block_owner @block_namespace
                        @owner_unknown @singleton_depth @singleton_cref @namespace_unknown @anonymous_block @body
-                       @self_unknown @self_scope @singleton_uncertain].freeze
+                       @self_unknown @self_scope @singleton_uncertain @hook_block].freeze
 
       # Runs the block and then restores every {SCOPE_STATE} variable, so a
       # nested body's state never leaks out of it.
@@ -502,6 +506,20 @@ module Mutineer
         placeable = node.name == :class_methods && !@self_unknown && @singleton_depth.zero? && !@owner_unknown &&
                     @concern_modules.include?(module_key)
         placeable ? :class_methods : :owner_unknown
+      end
+
+      # True for an `included` or `prepended` block of a module that ran `extend
+      # ActiveSupport::Concern` earlier in this file (see {#concern_block}).
+      # ActiveSupport runs the block only when a class first includes or prepends
+      # the concern, so loading the file again stores the new block but never
+      # runs it in a class that already has the concern (#256). Everything the
+      # block defines, a nested class or a builder block included, stays as the
+      # original wrote it under `--strategy reload`.
+      #
+      # @param node [Prism::CallNode] a call {#concern_block} sorted as a concern block.
+      # @return [Boolean]
+      def hook_block?(node)
+        %i[included prepended].include?(node.name) && @concern_modules.include?(module_key)
       end
 
       # Runs the block with the defs it visits owned by the class a builder block builds.

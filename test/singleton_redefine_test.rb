@@ -161,7 +161,6 @@ class SingletonRedefineTest < Minitest::Test
   # concern's ClassMethods. Before the fix, redefine loaded the mutant onto the
   # concern itself, the test called the includer's class method, and every
   # mutant falsely survived.
-  # Redefine only: the stub does not copy ActiveSupport's reload behaviour (see concern_stub.rb).
   def test_class_methods_block_methods_are_mutated
     agg = run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
                        only: "ConcernPricing::ClassMethods#scaled")
@@ -174,6 +173,27 @@ class SingletonRedefineTest < Minitest::Test
     redefine = run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb", only: "ConcernPricing#doubled")
     assert_operator redefine.unplaceable_count, :>, 0
     assert_equal 0, redefine.survived_count + redefine.errored_count + redefine.killed_count + redefine.uncapturable_count
+  end
+
+  # #256: like ActiveSupport, the stub rejects a second `included` block from
+  # another file, and reload loads each mutant from a temp file. Before the
+  # fix every mutant in the concern file errored with MultipleIncludedBlocks.
+  def test_concern_body_and_class_methods_are_mutated_under_reload
+    assert_killed(run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
+                               strategy: "reload", only: "ConcernPricing#halved"), "concern body under reload")
+    assert_killed(run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
+                               strategy: "reload", only: "ConcernPricing::ClassMethods#scaled"),
+                  "class_methods block under reload")
+  end
+
+  # #256: the `included` block does not run again in a class that already
+  # includes the concern, so a reloaded mutant never reaches the includer and
+  # would falsely survive. Reload reports it unplaceable and does not run it.
+  def test_included_block_methods_are_unplaceable_under_reload
+    reload = run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
+                          strategy: "reload", only: "ConcernPricing#doubled")
+    assert_operator reload.unplaceable_count, :>, 0
+    assert_equal 0, reload.survived_count + reload.errored_count + reload.killed_count + reload.uncapturable_count
   end
 
   # Parity control — this form already worked; it must keep working.

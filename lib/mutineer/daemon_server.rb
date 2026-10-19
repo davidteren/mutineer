@@ -5,6 +5,7 @@ require "tempfile"
 require_relative "child_stdout"
 require_relative "child_coverage"
 require_relative "orphan_guard"
+require_relative "concern_blocks"
 
 module Mutineer
   # App-side daemon (persistent worker).
@@ -404,8 +405,10 @@ module Mutineer
       # score a spurious `error` that diverges from the in-process path. The
       # Zeitwerk hazard (a stray `.rb` in an autoload dir) is handled by the
       # boot/timeout `sweep_temps`, not by relocating the file. Same path for
-      # reload (whole file) and redefine (wrapped snippet).
+      # reload (whole file) and redefine (wrapped snippet). The backend sends the
+      # whole file, so the concern blocks it stores replace the forgotten ones (#256).
       def apply_payload(payload)
+        ConcernBlocks.forget(payload.fetch("source_file"))
         dir = File.dirname(File.expand_path(payload.fetch("source_file")))
         Tempfile.create(["mutineer_daemon", ".rb"], dir) do |f|
           # Held until this block ends, including SIGKILL (the kernel drops it).
