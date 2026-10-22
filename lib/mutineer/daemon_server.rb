@@ -57,8 +57,9 @@ module Mutineer
     # version left behind has none, so the glob matches both.
     DAEMON_TEMP_BASENAME = "{.,}mutineer_daemon*.rb"
     # The password in a `scheme://user:password@host` URL. Greedy up to the last
-    # `@` in the token, so an unescaped `@` in the password is hidden too.
-    URL_PASSWORD = %r{([a-z][a-z0-9+.\-]*://[^\s:/@"']*):[^\s"']*@}i
+    # `@` before a quote or line end, so a malformed password with a space or an
+    # unescaped `@` is hidden too.
+    URL_PASSWORD = %r{([a-z][a-z0-9+.\-]*://[^\s:/@"']*):[^"'\r\n]*@}i
     # What replaces a hidden password.
     REDACTED = "[REDACTED]"
 
@@ -291,18 +292,28 @@ module Mutineer
         database_url_passwords.reduce(text) { |out, secret| out.gsub(secret, REDACTED) }
       end
 
-      # The DATABASE_URL password, raw and percent-decoded. Read by pattern, not
-      # URI, because the URL may be the malformed one that failed to parse.
+      # The DATABASE_URL password, raw and percent-decoded, longest first. Read
+      # by position, not URI or a pattern, because the URL may be the malformed
+      # one that failed to parse and its password may hold any character: it
+      # runs from the first `:` after `scheme://` to the last `@`.
       #
       # @return [Array<String>]
       def database_url_passwords
-        match = ENV.fetch("DATABASE_URL", "").match(URL_PASSWORD)
-        return [] unless match
+        url = ENV.fetch("DATABASE_URL", "")
+        start = url.index("://")
+        at = url.rindex("@")
+        return [] unless start && at
 
-        raw = match[0][(match[1].length + 1)...-1]
-        [raw, URI.decode_www_form_component(raw.gsub("+", "%2B"))].uniq.reject(&:empty?)
-      rescue ArgumentError
-        [raw].compact.reject(&:empty?)
+        colon = url.index(":", start + 3)
+        return [] unless colon && colon < at
+
+        raw = url[(colon + 1)...at]
+        decoded = begin
+          URI.decode_www_form_component(raw.gsub("+", "%2B"))
+        rescue ArgumentError
+          raw
+        end
+        [raw, decoded].uniq.reject(&:empty?).sort_by { |secret| -secret.length }
       end
 
       # Fork-safety hook for coverage capture. Each capture fork drops its copy

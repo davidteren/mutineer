@@ -94,6 +94,30 @@ class DaemonRedactionTest < Minitest::Test
     end
   end
 
+  def test_worker_db_load_error_log_hides_the_password
+    errio = StringIO.new
+    Mutineer::DaemonServer.instance_variable_set(:@errio, errio)
+    require "mutineer/rails_worker_db"
+
+    Mutineer::RailsWorkerDb.stub(:available?, -> { raise LoadError, "cannot load adapter for #{BAD_URL}" }) do
+      Mutineer::DaemonServer.send(:setup_worker_db, {})
+    end
+
+    assert_includes errio.string, "worker-DB routing unavailable"
+    assert_includes errio.string, "[REDACTED]"
+    refute_includes errio.string, "s3cret"
+  end
+
+  def test_redact_hides_a_malformed_password_with_a_space_or_a_quote
+    ENV["DATABASE_URL"] = %(postgres://u:sec ret"x@host/db)
+
+    quoted = Mutineer::DaemonServer.send(:redact, %(bad URI: "postgres://u:sec ret@ho st/db"))
+    raw = Mutineer::DaemonServer.send(:redact, %(bad URI: "postgres://u:sec ret"x@host/db"))
+
+    assert_equal %(bad URI: "postgres://u:[REDACTED]@ho st/db"), quoted
+    refute_includes raw, "sec ret"
+  end
+
   def test_redact_hides_the_database_url_password_outside_a_url
     ENV["DATABASE_URL"] = "postgres://u:p%40ss+w@host/db"
 
