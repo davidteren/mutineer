@@ -12,7 +12,8 @@ module Mutineer
     # Child-process-only RSpec runner.
     #
     # Mirrors MinitestIntegration's contract: run the given spec files and
-    # return 0 (all passed) or 1 (any failure).
+    # return 0 (all passed), 1 (an example failed) or 2 (only an error
+    # outside examples, such as a spec file that raised while loading).
     module RSpec
       # Runs the given RSpec files.
       #
@@ -21,7 +22,7 @@ module Mutineer
       #   first failing example (RSpec `--fail-fast`).
       # @param record_to [IO, nil] a `--matrix` run: send each example's outcome
       #   to this channel (see {KillFormatter}) and run every example.
-      # @return [Integer] 0 on success, 1 on failure.
+      # @return [Integer] 0 on success, else {.failure_code}.
       # @raise [ArgumentError] when both options are given: a matrix run never stops.
       def self.run(spec_files, stop_at_first_failure: false, record_to: nil)
         if stop_at_first_failure && record_to
@@ -56,9 +57,20 @@ module Mutineer
         # early, so `end` needs a reported outcome for every planned example.
         KillChannel.write_end(record_to) if record_to && KillFormatter.last&.saw_every_example?
 
-        status.zero? ? 0 : 1
+        status.zero? ? 0 : failure_code
       ensure
         FileOrder.rank = nil
+      end
+
+      # The exit status of a failed run: 2 when no example failed and RSpec
+      # recorded an error outside examples, else 1.
+      #
+      # @api private
+      # @return [Integer] 1 or 2.
+      def self.failure_code
+        world = ::RSpec.world
+        outside_examples = world.respond_to?(:non_example_failure) && world.non_example_failure
+        outside_examples && ::RSpec.configuration.reporter.failed_examples.empty? ? 2 : 1
       end
 
       # Runs the top-level example groups in the order of `spec_files` (#203),
