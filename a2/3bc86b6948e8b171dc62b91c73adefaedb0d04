@@ -1,0 +1,119 @@
+CHANGELOG.md
+  s_64a067ea5aaa0b::t_3b281cad6daa3f 15-18,35-37,101-114,118-128,136-195
+README.md
+  s_64a067ea5aaa0b::t_4d64f1d19ee9af 313-315,422,424,468-470
+STABILITY.md
+  s_64a067ea5aaa0b::t_6eb714950815ae 21-23
+docs/equivalent-skips.html
+  s_64a067ea5aaa0b::t_67f91cc067d5cc 53
+docs/equivalent-skips.md
+  s_64a067ea5aaa0b::t_ffba1a6b0ee143 5
+docs/json-schema.md
+  s_64a067ea5aaa0b::t_73e64a4e48c6bb 38,57,59,65,78,89,93-99
+lib/mutineer/daemon_backend.rb
+  s_64a067ea5aaa0b::t_c1c3e5e916d9c2 9,35-41,60,96-122,277-279,289,292-297,299,302-303,309-310,320-323,325,329-333,336,338-348,390-392,471
+lib/mutineer/daemon_server.rb
+  s_64a067ea5aaa0b::t_0babb8ff7b57c3 54-57,60-61,164-166,323,409-413,416
+lib/mutineer/isolation.rb
+  s_64a067ea5aaa0b::t_bde46d2464b350 184-188,194
+lib/mutineer/job_plan.rb
+  s_64a067ea5aaa0b::t_71d7f385b070ac 155-159,176-177,181,185-188,202-220,439-440,446-450,453
+lib/mutineer/orphan_guard.rb
+  s_64a067ea5aaa0b::t_e0c68b2d75ed8c 13-16,40,59,66-82,98
+lib/mutineer/project.rb
+  s_64a067ea5aaa0b::t_4f2c7595f78527 34-36,84,124-128,147-168,477-506
+lib/mutineer/rails_worker_db.rb
+  s_64a067ea5aaa0b::t_5ff799a729e4a6 880-883,1173-1174,1189,1215,1224-1305
+lib/mutineer/reporter.rb
+  s_64a067ea5aaa0b::t_3bab9a7e7f69ae 820-821
+lib/mutineer/result.rb
+  s_64a067ea5aaa0b::t_ccd7ab7df24101 11-13,20-21,41-44
+lib/mutineer/runner.rb
+  s_64a067ea5aaa0b::t_5fbcd5487825c2 63-71,328-331,353-354
+lib/mutineer/statement_lines.rb
+  s_64a067ea5aaa0b::t_bf707474d057a7 15-19,25,33-36,38-41
+lib/mutineer/subject.rb
+  s_64a067ea5aaa0b::t_1fb9bf9473d50c 11-15
+lib/mutineer/test_runners.rb
+  s_64a067ea5aaa0b::t_be36296272aaef 10-12
+lib/mutineer/test_runners/rspec.rb
+  s_64a067ea5aaa0b::t_3cad19c7e946a7 15-16,25,60,65-75
+test/boot_mode_test.rb
+  s_64a067ea5aaa0b::t_24b5aa1d9e7e41 112-129
+test/coverage_map_test.rb
+  s_64a067ea5aaa0b::t_63d68b617234ef 733-735,740,742-743,746-747
+test/daemon_backend_contract_test.rb
+  s_64a067ea5aaa0b::t_cd43c8ca1cc8d3 6,187-217,323-324,330,344-370,486-688,785-817
+test/daemon_client_test.rb
+  s_64a067ea5aaa0b::t_df7caf443f73db 62-63,68-70,163-169
+test/daemon_mysql_test.rb
+  s_64a067ea5aaa0b::t_07de25633fa093 228-306
+test/daemon_temp_sweep_test.rb
+  s_64a067ea5aaa0b::t_73e1e3cbd5d11b 3,20,102,113,128-169
+test/fixtures/continuation.rb
+  s_64a067ea5aaa0b::t_8bfb1592352351 39-43
+test/fixtures/continuation_test.rb
+  s_64a067ea5aaa0b::t_a21f88e65f7f92 27-32
+test/fixtures/continuation_weak_test.rb
+  s_64a067ea5aaa0b::t_a559f168a43429 1-11
+test/fixtures/rails_app/app/models/billing/fee.rb
+  s_64a067ea5aaa0b::t_5c3d9887af0642 1-20
+test/fixtures/rails_app/bin/dogfood
+  s_64a067ea5aaa0b::t_04fea071c80527 67-75
+test/fixtures/rails_app/test/models/billing/fee_test.rb
+  s_64a067ea5aaa0b::t_4adf5ac6e3eb5f 1-20
+test/fixtures/rspec/after_all_error_spec.rb
+  s_64a067ea5aaa0b::t_a77e71f8f84286 1-8
+test/fixtures/rspec/before_suite_error_spec.rb
+  s_64a067ea5aaa0b::t_35d85fa76c3bbe 1-9
+test/fixtures/rspec/calculator_coverage_helper_spec.rb
+  s_64a067ea5aaa0b::t_cee59b6eb443c5 1-6
+test/fixtures/rspec/load_error_spec.rb
+  s_64a067ea5aaa0b::t_99cb5c0c9bb354 1-3
+test/fixtures/singleton/concern_class_methods.rb
+  s_64a067ea5aaa0b::t_d2117362465bfe 1-24
+test/fixtures/singleton/concern_class_methods_test.rb
+  s_64a067ea5aaa0b::t_f90f3f7fcb6ec9 1-16
+test/fixtures/singleton/concern_stub.rb
+  s_64a067ea5aaa0b::t_e217ea37be8ae3 1-28
+test/isolation_test.rb
+  s_64a067ea5aaa0b::t_ad87adea34e987 168-169
+test/project_test.rb
+  s_64a067ea5aaa0b::t_41849eff2b7e96 251-463
+test/rails_dogfood_daemon_test.rb
+  s_64a067ea5aaa0b::t_f65ef589da7684 16,18-19,74-86
+test/rails_worker_db_test.rb
+  s_64a067ea5aaa0b::t_bd600e05e2cd7e 554-555,568-630,663,671,684-691
+test/rspec_integration_test.rb
+  s_64a067ea5aaa0b::t_41ec6f0de7cb3e 70-80
+test/runner_test.rb
+  s_64a067ea5aaa0b::t_4af659019fa5b3 278-318
+test/singleton_redefine_test.rb
+  s_64a067ea5aaa0b::t_59b07a180b42b0 160-178
+test/statement_coverage_test.rb
+  s_64a067ea5aaa0b::t_f734313b30f50f 52-56,62-81
+test/statement_lines_test.rb
+  s_64a067ea5aaa0b::t_e2049c4d0c3181 11-39
+test/tempfile_leak_test.rb
+  s_64a067ea5aaa0b::t_3be2a2cd94a777 8,12-13,23,27,29,33-43,52
+test/test_helper.rb
+  s_64a067ea5aaa0b::t_86fffccf2aad9b 47-59
+test/test_runners/rspec_test.rb
+  s_64a067ea5aaa0b::t_c745b8c68e6c7f 92-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a23bc86b6948e8b171dc62b91c73adefaedb0d04",
+  "prompts": {},
+  "sessions": {
+    "s_64a067ea5aaa0b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff247953-b391-4f87-9bb2-fdfcd2c926f0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
