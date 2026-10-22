@@ -196,6 +196,17 @@ class SingletonRedefineTest < Minitest::Test
     assert_equal 0, reload.survived_count + reload.errored_count + reload.killed_count + reload.uncapturable_count
   end
 
+  # #256: the same for a `prepended` block. The concern body still loads and is
+  # killed; the block's def is unplaceable.
+  def test_prepended_block_methods_are_unplaceable_under_reload
+    assert_killed(run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
+                               strategy: "reload", only: "ConcernWrapping#tripled"), "prepended concern body")
+    reload = run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
+                          strategy: "reload", only: "ConcernWrapping#decremented")
+    assert_operator reload.unplaceable_count, :>, 0
+    assert_equal 0, reload.survived_count + reload.errored_count + reload.killed_count + reload.uncapturable_count
+  end
+
   # Parity control — this form already worked; it must keep working.
   def test_def_self_methods_are_mutated
     assert_killed(run_redefine("def_self.rb", "def_self_test.rb"), "def self.")

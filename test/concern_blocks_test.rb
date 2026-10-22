@@ -45,14 +45,19 @@ class ConcernBlocksTest < Minitest::Test
   end
 
   # A prepended block is stored the same way and is forgotten too.
-  def test_a_prepended_block_is_forgotten
+  def test_a_second_prepended_block_loads_after_forget
     Dir.mktmpdir("mutineer-concern") do |dir|
-      source = File.join(dir, "wrapped.rb")
-      File.write(source, "module WrappedForget\n  extend ActiveSupport::Concern\nend\n")
+      source = File.join(dir, "wrapped_forget.rb")
+      copy = File.join(dir, "mutant.rb")
+      code = "module WrappedForget\n  extend ActiveSupport::Concern\n  prepended do\n    def wrap = :original\n  end\nend\n"
+      File.write(source, code)
+      File.write(copy, code)
       load source
-      WrappedForget.instance_variable_set(:@_prepended_block, proc {}) # source_location is this test file
-      Mutineer::ConcernBlocks.forget(__FILE__)
-      refute WrappedForget.instance_variable_defined?(:@_prepended_block)
+      assert_raises(ActiveSupport::Concern::MultiplePrependBlocks) { load copy }
+
+      Mutineer::ConcernBlocks.forget(source)
+      load copy
+      assert_equal copy, WrappedForget.instance_variable_get(:@_prepended_block).source_location.first
     end
   end
 end

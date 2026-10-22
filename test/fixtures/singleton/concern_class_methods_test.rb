@@ -14,6 +14,16 @@ class ConcernClassMethodsTest < Minitest::Test
     assert_equal 3, ConcernProduct.new.halved(6)
   end
 
+  def test_tripled
+    assert_equal 6, ConcernProduct.new.tripled(2)
+    assert_equal 9, ConcernProduct.new.tripled(3)
+  end
+
+  def test_decremented
+    assert_equal 1, ConcernProduct.new.decremented(2)
+    assert_equal 4, ConcernProduct.new.decremented(5)
+  end
+
   def test_doubled
     assert_equal 4, ConcernProduct.new.doubled(2)
     assert_equal 6, ConcernProduct.new.doubled(3)

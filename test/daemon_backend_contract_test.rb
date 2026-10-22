@@ -171,6 +171,18 @@ class DaemonBackendContractTest < Minitest::Test
 
       assert_equal %i[unplaceable], results.map(&:status)
       assert_equal hook, results.first.subject
+
+      # A :maybe selection stays no_coverage, as in-process (Runner.run).
+      coverage_map = Object.new
+      def coverage_map.map = { "app/order.rb:3" => ["test/order_test.rb"] }
+      statuses = %i[maybe run].map do |kind|
+        Mutineer::JobPlan.stub(:coverage_selection, [kind, ["test/order_test.rb"]]) do
+          Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+            Mutineer::DaemonBackend.send(:run_serial, [[hook, mutation, id]], config, [], coverage_map, source_map)
+          end
+        end.first.status
+      end
+      assert_equal %i[no_coverage unplaceable], statuses
     end
   end
 

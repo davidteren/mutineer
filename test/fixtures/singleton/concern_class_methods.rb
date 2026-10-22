@@ -23,6 +23,21 @@ module ConcernPricing
   end
 end
 
+module ConcernWrapping
+  extend ActiveSupport::Concern
+
+  def tripled(x)
+    x * 3
+  end
+
+  prepended do
+    def decremented(x)
+      x - 1
+    end
+  end
+end
+
 class ConcernProduct
   include ConcernPricing
+  prepend ConcernWrapping
 end

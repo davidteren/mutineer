@@ -96,8 +96,8 @@ includer, or a method in a `class_methods` block that is not in the body of a mo
 `subject` above), such as one inside Rails' `concerning` or an unassigned `Module.new`); `--strategy reload`
 runs these, except a method in an `included` or `prepended` block. Under `--strategy reload`, `unplaceable`
 means the mutant's method is anywhere inside a concern's `included` or `prepended` block (#256): ActiveSupport
-runs that block only when a class first includes the concern, so loading the file again never reaches a class
-that already includes it, and the mutant would falsely survive. `--test-command` runs both kinds. `ran_at_load` (schema `1.7`) means the mutant's
+runs that block only when a class first includes or prepends the concern, so loading the file again never reaches
+a class that already has it, and the mutant would falsely survive. `--test-command` runs both kinds. `ran_at_load` (schema `1.7`) means the mutant's
 line ran while the app booted or its class loaded (for example a class body that calls the method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.

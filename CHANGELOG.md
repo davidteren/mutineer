@@ -100,13 +100,13 @@ All notable changes to this project are documented here. The format is based on
 
 - **`--strategy reload` runs concern files with an `included` or `prepended`
   block (#256).** Every mutant in such a file was `errored`: ActiveSupport
-  raised `MultipleIncludedBlocks` because the mutant loads from a temp file
-  with another path. Before each reload mutant loads, in-process and on the
+  raised `MultipleIncludedBlocks` (or `MultiplePrependBlocks`) because the
+  mutant loads from a temp file with another path. Before each reload mutant loads, in-process and on the
   daemon, the forked child now forgets the blocks that the source file stored,
   so methods in the concern body and in `class_methods` are killed or survive
   as usual. A method inside an `included` or `prepended` block is
   `unplaceable` under reload too: the block does not run again in a class that
-  already includes the concern, so the mutant would falsely survive. That
+  already includes or prepends the concern, so the mutant would falsely survive. That
   includes a method of a class defined inside the block. Use `--test-command`
   to run those mutants.
 - **A Rails daemon boots again while a mutant file is still open.**
