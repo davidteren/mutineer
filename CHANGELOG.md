@@ -98,6 +98,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **An RSpec run that fails only on an error outside examples scores the
+  mutant `errored`, not `killed`.** A spec file that raised while loading, or
+  a failing `before(:suite)` hook, made RSpec exit 1, and every mutant was
+  scored `killed`. On a Rails app, `rails_helper` called `SimpleCov.start`
+  after `--rails` had suspended Coverage (#228), so each spec file raised as
+  it loaded, and 18 of 18 mutants were scored `killed`; 3 of them survive.
+  Now the runner returns 2 when RSpec recorded an error outside examples and
+  no example failed, so the mutant is `errored`: out of the score and in
+  `no_verdict`, so that run now fails `--threshold` instead of passing at
+  100%. A failed example still kills.
+  Minitest and `--daemon` already score a test file that raises at load as
+  `errored`. `--test-command` sees only the exit status and still scores it
+  `killed`.
+
 - **A Rails daemon boots again while a mutant file is still open.**
   The file stays when another process holds it. The next boot skips
   that file name instead of stopping.
@@ -172,6 +186,20 @@ All notable changes to this project are documented here. The format is based on
   old `mutineer_daemon*.rb`. An old file of the other mode still stops the
   boot, so delete it by hand. Eager loading, the default on CI, scans every
   directory at boot, so it never hit the error.
+- **A mutant on a later line of a multi-line `&&` or `||` can be killed
+  (#254).** Ruby counts only the first line of a statement. For code that runs
+  only sometimes on a later line, such as the right side of `verified &&` on
+  its own line, Mutineer picked no tests, so the mutant was always
+  `no_coverage`, however good the tests were. Now it runs the tests that ran
+  the statement. A kill counts. A survivor stays `no_coverage`, because the
+  run cannot tell whether those tests reached it, so no survivor is added and
+  a score can rise with no test change. Such a mutant can now also end as
+  `errored` or `timeout`; like any mutant with no verdict, that counts toward
+  the `--threshold` completeness check, so a failure is reported, not hidden.
+  This also applies to a later `when` condition, the value of `x rescue y`,
+  `&.` arguments and an `||=` value on a later line, and to `--daemon`. A
+  branch of a ternary or `if`, and the body of `x if c`, keep the verdict they
+  had before.
 
 ## [1.6.0] - 2026-10-08
 

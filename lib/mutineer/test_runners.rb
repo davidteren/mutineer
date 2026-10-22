@@ -7,8 +7,9 @@ module Mutineer
   # Picks the test-framework runner.
   #
   # Each runner responds to
-  # `.run(files, stop_at_first_failure: false, record_to: nil) -> 0/1`
-  # (0 = all passed, 1 = any failure) and is called only inside a forked child.
+  # `.run(files, stop_at_first_failure: false, record_to: nil) -> 0/1/2`
+  # (0 = all passed, 1 = any failure, 2 = only an error outside tests, which
+  # the RSpec runner reports) and is called only inside a forked child.
   # Only the mutant path passes `stop_at_first_failure: true`; a `--matrix`
   # mutant run passes `record_to:` instead (a {KillChannel} pipe) and runs every
   # test. The fork boundary silences stdout (see ChildStdout); the runners do not.

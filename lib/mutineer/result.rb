@@ -8,6 +8,9 @@ module Mutineer
   #   timeout      - the parent SIGKILLed a child that overran its wall clock.
   #   skipped      - the mutated source failed to re-parse (invalid); no fork.
   #   no_coverage  - no test exercises the mutated line; not run, not scored.
+  #                  Also a mutant on a later line of a multi-line statement,
+  #                  in code that runs only sometimes, that the statement's
+  #                  tests ran but did not kill (#254): they may not reach it.
   #   uncapturable - the line's would-be covering test errored during capture,
   #                  so coverage was lost. Excluded from the denominator exactly
   #                  like no_coverage, but reported separately: it signals a
@@ -35,10 +38,10 @@ module Mutineer
   #
   # `error` and `skipped` are deliberately distinct: skipped is a pre-fork
   # validity failure (counted separately by the reporter), error is a runtime
-  # crash. Never conflate them via `details` string parsing. `no_coverage`,
-  # `uncapturable` and `unplaceable` are pre-fork results, and `ran_at_load` is
-  # pre-fork or a reclassified survivor: all excluded from the score
-  # denominator.
+  # crash. Never conflate them via `details` string parsing. `uncapturable` and
+  # `unplaceable` are pre-fork results, and `no_coverage` and `ran_at_load` are
+  # pre-fork or a reclassified result (JobPlan.selection_verdict,
+  # JobPlan.load_verdict): all excluded from the score denominator.
   #
   # `subject`, `mutation`, and `id` are nil when the Result is built by
   # Isolation/Runner (which only know the outcome); the orchestrator attaches

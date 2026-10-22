@@ -275,6 +275,47 @@ class RunnerTest < Minitest::Test
     kind, = selection(source, "false", {})
 
     assert_equal :verdict, kind
+    # #254: code that runs only sometimes is not ran_at_load, even when its
+    # statement's first line ran at load: only the strict lines count there.
+    assert_equal :no_coverage, selection(source, "false", {}, load_lines: [2])[1].status
+  end
+
+  # #254: under redefine, a mutant whose owner cannot be named is unplaceable; a
+  # :maybe one stays no_coverage, as it was before #254.
+  def test_an_unplaceable_maybe_mutant_stays_no_coverage
+    Dir.mktmpdir do |dir|
+      src = File.join(dir, "x.rb")
+      File.write(src, "def f(a, b)\n  a + b\nend\n")
+      def_node = Mutineer::Parser.parse_string(File.read(src)).value.statements.body.first
+      subject = Mutineer::Subject.new(file: src, namespace: [], name: :f, singleton: false, owner_unknown: true,
+                                      def_node: def_node)
+      plus = File.read(src).index("a + b") + 2
+      mutation = Mutineer::Mutation.new(start_offset: plus, end_offset: plus + 1, replacement: "-",
+                                        operator: :arithmetic)
+      statuses = %i[maybe run].map do |kind|
+        Mutineer::JobPlan.stub(:coverage_selection, [kind, [File.join(dir, "x_test.rb")]]) do
+          Mutineer::Runner.run(mutation, source_file: src, subject: subject, strategy: "redefine").status
+        end
+      end
+
+      assert_equal %i[no_coverage unplaceable], statuses
+    end
+  end
+
+  # #254: for a `:maybe` selection a survivor is no_coverage with no --matrix
+  # row. A kill keeps its whole row, and an error or a timeout stays visible.
+  # Any other selection is untouched.
+  def test_selection_verdict_turns_only_a_maybe_survivor_into_no_coverage
+    row = Mutineer::Kills.new(killed_by: [], ran: ["t_test.rb"], complete: true)
+    killer = Mutineer::Kills.new(killed_by: ["k_test.rb"], ran: ["k_test.rb", "t_test.rb"], complete: true)
+    survivor = Mutineer::JobPlan.selection_verdict(:maybe, Mutineer::Result.new(status: :survived, kills: row))
+    assert_equal [:no_coverage, nil], [survivor.status, survivor.kills]
+    [Mutineer::Result.new(status: :killed, kills: killer), Mutineer::Result.new(status: :error, kills: row),
+     Mutineer::Result.new(status: :timeout, kills: row)].each do |result|
+      assert_same result, Mutineer::JobPlan.selection_verdict(:maybe, result), result.status
+    end
+    survived = Mutineer::Result.new(status: :survived, kills: row)
+    [:run, nil, false].each { |kind| assert_same survived, Mutineer::JobPlan.selection_verdict(kind, survived) }
   end
 
   # --since restricts the job list to mutations on changed lines. Deterministic:
