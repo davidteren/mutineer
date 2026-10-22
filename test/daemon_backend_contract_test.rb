@@ -3,6 +3,7 @@
 require_relative "test_helper"
 require "English"
 require "minitest/mock"
+require "timeout"
 require "tmpdir"
 require "mutineer/config"
 require "mutineer/daemon_backend"
@@ -183,6 +184,37 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # #254: tests that may not have run the mutant (a `:maybe` selection) count a
+  # kill, and a survivor is no_coverage, as in-process.
+  def test_a_maybe_selection_turns_a_survivor_into_no_coverage
+    with_jobs do |jobs, config, source_map|
+      cov = Object.new
+      def cov.start = self
+      def cov.quit = nil
+      def cov.coverage = { "map" => { "app/order.rb:3" => ["test/order_test.rb"] }, "failed_test_files" => [],
+                           "failed_clean_tests" => [], "load_lines" => [] }
+      coverage_map = Mutineer::DaemonClient.stub(:new, ->(**) { cov }) do
+        Mutineer::DaemonBackend.build_coverage_map(config, [])
+      end
+      client = Object.new
+      def client.start = self
+      def client.quit = nil
+      def client.sent = (@sent ||= [])
+      def client.request(id:, tests:, **)
+        sent << tests
+        id.zero? ? "survived" : "killed"
+      end
+      results = Mutineer::JobPlan.stub(:coverage_selection, [:maybe, ["/p/test/order_test.rb"]]) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+          Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], coverage_map, source_map)
+        end
+      end
+
+      assert_equal %i[no_coverage killed], results.map(&:status)
+      assert_equal [["/p/test/order_test.rb"]] * 2, client.sent, "the daemon runs only the :maybe tests"
+    end
+  end
+
   # An empty test map still falls back to the full --test set, but the boot
   # lines it came with must still classify a survivor on one of them.
   def test_an_empty_map_runs_every_test_and_keeps_the_boot_lines
@@ -288,25 +320,14 @@ class DaemonBackendContractTest < Minitest::Test
   end
 
   # The daemon sweeps its orphaned temps at boot. Nothing boots on an empty run, so
-  # a file left by a hard-killed run would survive — and one sitting in app/models
-  # breaks the app's own Zeitwerk boot, not just the next Mutineer run.
+  # a file left by a hard-killed run would survive. One an older version left in
+  # app/models without the dot breaks the app's own Zeitwerk boot (#253).
   def test_an_empty_job_list_still_sweeps_orphaned_daemon_temps
     Dir.mktmpdir("mutineer-sweep") do |root|
       FileUtils.mkdir_p(File.join(root, "app"))
       source = File.join(root, "app/order.rb")
       File.binwrite(source, SOURCE)
-      # Pid 1 is alive (launchd or init). A live pid is left in place, so the
-      # orphan uses a pid no process owns.
-      dead_pid = (100_000..100_500).find do |candidate|
-        Process.kill(0, candidate)
-        false
-      rescue Errno::ESRCH
-        true
-      rescue Errno::EPERM
-        false
-      end
-      flunk "no unused pid" unless dead_pid
-      orphan = File.join(root, "app/mutineer_daemon20260101-#{dead_pid}-abcdef.rb")
+      orphan = File.join(root, "app/mutineer_daemon20260101-#{unused_pid}-abcdef.rb")
       File.binwrite(orphan, "class Order; end\n")
 
       config = Mutineer::Config.new(sources: [source], tests: [], project_root: root,
@@ -317,6 +338,33 @@ class DaemonBackendContractTest < Minitest::Test
       end
 
       refute_path_exists orphan, "a zero-job run must still clear orphaned daemon temps"
+    end
+  end
+
+  # #250: a daemon that crashes mid-mutant orphans its child, which lives on
+  # until its watchdog fires. The run can end, or abort, first. The sweep
+  # waits that moment out, so the file cannot break the app's next boot.
+  def test_a_run_sweeps_a_daemon_temp_whose_child_dies_just_after_the_run
+    with_jobs do |jobs, config, source_map|
+      child = fork do
+        sleep 0.3
+        exit!(0)
+      end
+      Process.detach(child)
+      orphan = File.join(config.project_root, "app/mutineer_daemon20260101-#{child}-abcdef.rb")
+      aborting_run = lambda do |*|
+        File.binwrite(orphan, "class Order; end\n")
+        raise Mutineer::DaemonBootError, "daemon gave up"
+      end
+      Mutineer::JobPlan.stub(:collect_jobs, [jobs, [], source_map, {}]) do
+        Mutineer::DaemonBackend.stub(:prepare_run, [nil, 1]) do
+          Mutineer::DaemonBackend.stub(:run_serial, aborting_run) do
+            assert_raises(Mutineer::DaemonBootError) { Mutineer::DaemonBackend.execute(config, []) }
+          end
+        end
+      end
+
+      refute_path_exists orphan, "the run must clear the file once its child is gone"
     end
   end
 
@@ -435,6 +483,209 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # Not only a dead daemon: any error that escapes a worker, a plain defect or
+  # one outside StandardError, stops the other workers. Every daemon has quit
+  # before the error leaves, so the end-of-run sweep sees each child gone.
+  def test_any_worker_error_stops_the_other_workers_and_quits_every_daemon
+    with_jobs do |jobs, config, source_map| # rubocop:disable Lint/UnusedBlockArgument
+      subject, mutation, = jobs.first
+      many = Array.new(12) { |i| [subject, mutation, "id-#{i}"] }
+      map = { subject.file => SOURCE }
+
+      [RuntimeError, SystemStackError].each do |error|
+        gate = Queue.new
+        quits = Queue.new
+
+        dying = Object.new
+        dying.instance_variable_set(:@gate, gate)
+        dying.instance_variable_set(:@error, error)
+        dying.instance_variable_set(:@quits, quits)
+        def dying.start = self
+        def dying.quit = @quits << :dying
+        def dying.request(**)
+          @gate << :aborted
+          raise @error, "a defect"
+        end
+
+        healthy = Object.new
+        healthy.instance_variable_set(:@seen, [])
+        healthy.instance_variable_set(:@gate, gate)
+        healthy.instance_variable_set(:@quits, quits)
+        def healthy.start = self
+        def healthy.quit = @quits << :healthy
+        def healthy.seen = @seen
+        def healthy.request(id:, **)
+          @seen << id
+          @gate.pop
+          @gate << :done
+          "killed"
+        end
+
+        # The dying worker comes second, so the main thread joins the healthy one
+        # first. Only the dying worker's own queue.clear can stop it there.
+        queue = [healthy, dying]
+        assert_raises(error) do
+          Mutineer::DaemonClient.stub(:new, ->(**) { queue.shift }) do
+            Mutineer::DaemonBackend.send(:run_parallel, many, 2, config, [], nil, map)
+          end
+        end
+
+        assert_operator healthy.seen.size, :<=, 2, "#{error}: the healthy worker kept draining the queue"
+        assert_equal %i[dying healthy], Array.new(quits.size) { quits.pop }.uniq.sort,
+                     "#{error}: every daemon must quit before the error leaves run_parallel"
+      end
+    end
+  end
+
+  # A Ctrl-C while the second daemon boots must still quit the first one.
+  def test_an_interrupt_during_parallel_startup_quits_every_started_daemon
+    with_jobs do |jobs, config, source_map|
+      quits = []
+      first = Object.new
+      first.instance_variable_set(:@quits, quits)
+      def first.start = self
+      def first.quit = @quits << :first
+      second = Object.new
+      second.instance_variable_set(:@quits, quits)
+      def second.start = raise(Interrupt)
+      def second.quit = @quits << :second
+
+      queue = [first, second]
+      assert_raises(Interrupt) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { queue.shift }) do
+          Mutineer::DaemonBackend.send(:run_parallel, jobs, 2, config, [], nil, source_map)
+        end
+      end
+
+      assert_equal %i[first second], quits.uniq.sort, "each daemon that began to boot must quit"
+    end
+  end
+
+  # Ctrl-C lands in the main thread while every worker waits on its daemon.
+  # Each worker still quits its daemon before the Interrupt leaves.
+  def test_a_ctrl_c_while_workers_run_quits_every_daemon
+    with_jobs do |jobs, config, source_map|
+      quits = Queue.new
+      clients = Array.new(2) { |n| waiting_client(n, quits) }
+
+      interrupt_main_after([0.2]) do
+        assert_raises(Interrupt) do
+          Mutineer::DaemonClient.stub(:new, ->(**) { clients.shift }) do
+            Mutineer::DaemonBackend.send(:run_parallel, jobs, 2, config, [], nil, source_map)
+          end
+        end
+      end
+
+      assert_equal [0, 1], Array.new(quits.size) { quits.pop }.uniq.sort
+    end
+  end
+
+  # An exception raised into the main thread from outside (a caller's
+  # Timeout) ends the run at once. It is not mistaken for a worker's error,
+  # which would let the workers score every remaining mutant first.
+  def test_a_callers_timeout_ends_a_parallel_run_at_once
+    with_jobs do |jobs, config, source_map|
+      subject, mutation, = jobs.first
+      many = Array.new(40) { |i| [subject, mutation, "id-#{i}"] }
+      scored = Queue.new
+      clients = Array.new(2) do
+        client = Object.new
+        client.define_singleton_method(:start) { self }
+        client.define_singleton_method(:quit) { nil }
+        client.define_singleton_method(:request) do |**|
+          scored << 1
+          sleep 0.1
+          "killed"
+        end
+        client
+      end
+
+      assert_raises(Timeout::Error) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { clients.shift }) do
+          Timeout.timeout(0.3) { Mutineer::DaemonBackend.send(:run_parallel, many, 2, config, [], nil, source_map) }
+        end
+      end
+      assert_operator scored.size, :<, 20, "the run kept scoring after the caller's timeout"
+    end
+  end
+
+  # A refused thread (EAGAIN under a high --jobs) can leave a started worker
+  # killed before its block ran, so its own ensure never quits its daemon.
+  # Every daemon must still quit.
+  def test_a_refused_worker_thread_still_quits_every_daemon
+    Dir.mktmpdir("mutineer-threads") do |root|
+      config = Mutineer::Config.new(sources: [], tests: [], project_root: root, framework: "minitest")
+      quits = []
+      pending = Array.new(3) do |n|
+        client = Object.new
+        client.define_singleton_method(:start) { self }
+        client.define_singleton_method(:quit) { quits << n }
+        client
+      end
+      real_new = Thread.method(:new)
+      calls = 0
+      refuse_second = lambda do |*args, &block|
+        calls += 1
+        raise ThreadError, "can't create Thread: Resource temporarily unavailable" if calls == 2
+
+        real_new.call(*args, &block)
+      end
+
+      assert_raises(ThreadError) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { pending.shift }) do
+          Thread.stub(:new, refuse_second) do
+            Mutineer::DaemonBackend.send(:run_parallel, [], 3, config, [], nil, {})
+          end
+        end
+      end
+      assert_equal [0, 1, 2], quits.uniq.sort
+    end
+  end
+
+  # A second Ctrl-C during that cleanup exits at once. It does not wait for a
+  # daemon that is slow to quit.
+  def test_a_second_ctrl_c_does_not_wait_for_slow_daemon_quits
+    with_jobs do |jobs, config, source_map|
+      clients = Array.new(2) { |n| waiting_client(n, Queue.new, quit_delay: 3) }
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      interrupt_main_after([0.2, 0.3]) do
+        assert_raises(Interrupt) do
+          Mutineer::DaemonClient.stub(:new, ->(**) { clients.shift }) do
+            Mutineer::DaemonBackend.send(:run_parallel, jobs, 2, config, [], nil, source_map)
+          end
+        end
+      end
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+      assert_operator elapsed, :<, 2, "a second Ctrl-C must exit without waiting for each quit"
+    end
+  end
+
+  # A daemon file whose owner stays alive (here: this test process, as for a
+  # concurrent run) stays in place. The sweep waits SWEEP_GRACE, then gives up.
+  def test_the_end_of_run_sweep_gives_up_on_a_live_owner_after_its_grace
+    Dir.mktmpdir("mutineer-sweep") do |root|
+      FileUtils.mkdir_p(File.join(root, "app"))
+      source = File.join(root, "app/order.rb")
+      File.binwrite(source, SOURCE)
+      live = File.join(root, "app/mutineer_daemon20260101-#{Process.pid}-abcdef.rb")
+      File.binwrite(live, "class Order; end\n")
+      config = Mutineer::Config.new(sources: [source], tests: [], project_root: root,
+                                    framework: "minitest", only: ["NoSuchMethod"])
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      Mutineer::DaemonClient.stub(:new, ->(**) { flunk "booted a daemon for zero jobs" }) do
+        Mutineer::DaemonBackend.execute(config, [])
+      end
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+      assert_path_exists live, "a file a live process owns must stay"
+      assert_operator elapsed, :>=, Mutineer::DaemonBackend::SWEEP_GRACE
+      assert_operator elapsed, :<, Mutineer::DaemonBackend::SWEEP_GRACE + 2, "the sweep must give up"
+    end
+  end
+
   # The prepare daemon holds the database lock. It must stay up until each
   # worker daemon has booted, then quit. Quitting first lets another run drop
   # the worker databases.
@@ -530,5 +781,38 @@ class DaemonBackendContractTest < Minitest::Test
       end
     end
     assert_equal %i[worker_start prepare_quit], order
+  end
+
+  private
+
+  # A stub daemon client whose request blocks until its worker thread is killed.
+  def waiting_client(name, quits, quit_delay: 0)
+    client = Object.new
+    client.instance_variable_set(:@name, name)
+    client.instance_variable_set(:@quits, quits)
+    client.instance_variable_set(:@quit_delay, quit_delay)
+    def client.start = self
+    def client.request(**) = sleep
+    def client.quit
+      sleep @quit_delay
+      @quits << @name
+    end
+    client
+  end
+
+  # Raises Interrupt in the calling thread after each delay, like Ctrl-C, while
+  # the block runs. The interrupter stops when the block ends, so a stray
+  # Interrupt cannot reach the test runner.
+  def interrupt_main_after(delays)
+    main = Thread.current
+    interrupter = Thread.new do # rubocop:disable ThreadSafety/NewThread
+      delays.each do |delay|
+        sleep delay
+        main.raise(Interrupt)
+      end
+    end
+    yield
+  ensure
+    interrupter&.kill
   end
 end

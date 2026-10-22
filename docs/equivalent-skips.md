@@ -2,7 +2,7 @@
 
 Mutineer does not emit some mutants. The change is often noise. A normal test usually cannot kill it. There is no switch to turn these skips off. A chain-link skip matches the method name only. That match does not prove the two mutants are equivalent. An endless range skip is equivalent.
 
-A team still silences an equivalent mutant that Mutineer does emit. Use `# mutineer:disable-line` or an `ignore:` entry, and put a reason on it. `mutineer triage` prints those entries from a JSON report.
+A team still silences an equivalent mutant that Mutineer does emit. Use `# mutineer:disable-line` or an `ignore:` entry, and put a reason on it. To put a reason on an `ignore:` entry, write the entry as a mapping: an `id` plus an optional `reason`. Any mapping needs Mutineer 1.7 or later in every gate that reads the file. An older version does not ignore that mutant, and it does not warn. See [Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants). `mutineer triage` prints those entries from a JSON report.
 
 ## Chain link
 

@@ -44,6 +44,19 @@ module ChildWait
     flunk "child process #{pid} did not exit within #{timeout}s, so it was killed"
   end
 
+  # A pid no process owns. Pid 1 is alive (launchd or init), and a sweep
+  # leaves a live pid's mutant file in place.
+  def unused_pid
+    (100_000..100_500).find do |candidate|
+      Process.kill(0, candidate)
+      false
+    rescue Errno::ESRCH
+      true
+    rescue Errno::EPERM
+      false
+    end || flunk("no unused pid")
+  end
+
   # @return [Boolean] whether `pid` still runs. A zombie waiting for init to
   # reap it counts as gone.
   def process_alive?(pid)

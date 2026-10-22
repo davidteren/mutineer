@@ -10,10 +10,10 @@ module Mutineer
   module OrphanGuard
     # Seconds between checks. A forked child gets no signal on parent death.
     POLL = 0.5
-    # `Tempfile.create(["mutineer_daemon", ".rb"])` names the file
-    # `mutineer_daemon<YYYYMMDD>-<pid>-<rand>.rb`. The pid is the child that
-    # is loading the mutant.
-    DAEMON_TEMP_PID = /\Amutineer_daemon\d{8}-(\d+)-/
+    # `Tempfile.create([".mutineer_daemon", ".rb"])` names the file
+    # `.mutineer_daemon<YYYYMMDD>-<pid>-<rand>.rb` (without the dot before #253).
+    # The pid is the child that is loading the mutant.
+    DAEMON_TEMP_PID = /\A\.?mutineer_daemon\d{8}-(\d+)-/
 
     # Starts the watchdog in the current (child) process.
     #
@@ -37,7 +37,7 @@ module Mutineer
     # file lock counts too, even when that pid is already gone. A dead pid
     # and a free lock is an orphan a killed child left behind.
     #
-    # @param path [String] absolute path of a `mutineer_daemon*.rb` file.
+    # @param path [String] absolute path of a `.mutineer_daemon*.rb` file.
     # @return [Boolean]
     def self.mutant_file_in_use?(path)
       creator_alive?(path) || locked_by_another?(path)
@@ -56,11 +56,28 @@ module Mutineer
       return false if pid <= 0
 
       Process.kill(0, pid)
-      true
+      !zombie?(pid)
     rescue Errno::ESRCH, Errno::EINVAL, RangeError
       false
     rescue SystemCallError
       true
+    end
+
+    # True when `pid` has exited but nobody reaped it. A container whose pid 1
+    # does not reap orphans keeps a dead mutant child as a zombie for good, and
+    # `Process.kill(0)` still finds it (#250). Linux only: elsewhere there is no
+    # `/proc`, so a zombie still counts as running.
+    #
+    # @param pid [Integer]
+    # @return [Boolean]
+    def self.zombie?(pid)
+      stat = File.read("/proc/#{pid}/stat")
+      # The name before the state is in parentheses and may hold ") " itself.
+      # An empty read (the process exited mid-read) has no ")": not a zombie.
+      close = stat.rindex(")")
+      !close.nil? && stat[close + 2] == "Z"
+    rescue SystemCallError
+      false
     end
 
     # True when another process holds an exclusive lock on `path`. A lock the
@@ -78,6 +95,6 @@ module Mutineer
     rescue SystemCallError
       true
     end
-    private_class_method :creator_alive?, :locked_by_another?
+    private_class_method :creator_alive?, :zombie?, :locked_by_another?
   end
 end

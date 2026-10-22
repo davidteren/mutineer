@@ -18,6 +18,9 @@ The current release is 1.6.0.
 
 A minor release may add a flag, a key, an input, or a JSON key.
 It does not remove one or change what an existing one means.
+A fix to how Mutineer names a method can change the ids of mutants in that
+method, and of a method with the same name in the same file.
+The CHANGELOG names each such fix.
 The JSON rules are in [docs/json-schema.md](docs/json-schema.md).
 
 ### Exit codes

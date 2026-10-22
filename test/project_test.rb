@@ -248,6 +248,219 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #252: ActiveSupport::Concern evaluates a `class_methods` block in the
+  # concern's ClassMethods, so its defs belong there. `self.class_methods` is the same call.
+  def test_discover_names_class_methods_block_defs_on_the_concern_class_methods
+    src = <<~RUBY
+      module Billing
+        extend ActiveSupport::Concern
+        class_methods do
+          def rate(x) = x * 2
+        end
+        def total; end
+      end
+      module Order::ReleasePolicy
+        extend ::ActiveSupport::Concern
+        class_methods do
+          def due?(d) = d > 1
+        end
+      end
+      module Shop
+        module Pricing
+          extend ActiveSupport::Concern
+          self.class_methods do
+            def round(x) = x
+          end
+        end
+        helper = Module.new do
+          extend ActiveSupport::Concern
+          class_methods do
+            def anon; end
+          end
+        end
+      end
+      Tagged = Module.new do
+        extend ActiveSupport::Concern
+        class_methods do
+          def tag; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Billing::ClassMethods#rate Billing#total Order::ReleasePolicy::ClassMethods#due?
+                      Shop::Pricing::ClassMethods#round Shop#anon Tagged::ClassMethods#tag],
+                   subjects.map(&:qualified_name)
+      assert_equal ["::Billing::ClassMethods", nil, "::Order::ReleasePolicy::ClassMethods",
+                    "::Shop::Pricing::ClassMethods", nil, "::Tagged::ClassMethods"], subjects.map(&:block_owner)
+      assert_equal [["Billing"], ["Billing"], ["Order::ReleasePolicy"], %w[Shop Pricing], ["Shop"], []],
+                   subjects.map(&:lexical)
+      # An unassigned Module.new has no name, so its ClassMethods has none either.
+      assert_equal %w[Shop#anon], subjects.select(&:owner_unknown).map(&:qualified_name)
+    end
+  end
+
+  # ActiveSupport runs an `included` or `prepended` block in each includer, so
+  # its defs keep their names but have their owner unknown.
+  def test_discover_marks_included_and_prepended_block_defs_owner_unknown
+    src = <<~RUBY
+      module Billing
+        extend ActiveSupport::Concern
+        included do
+          def tag; end
+          Kind = Struct.new(:a) do
+            def b; end
+          end
+        end
+        self.prepended do
+          def wrap; end
+        end
+        included(Object)
+        def total; end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Billing#tag Billing::Kind#b Billing#wrap Billing#total], subjects.map(&:qualified_name)
+      assert_equal [true, false, true, false], subjects.map(&:owner_unknown)
+    end
+  end
+
+  # Another library can define `class_methods` or `included` and run the block
+  # in the module itself. Only a module that extended ActiveSupport::Concern
+  # earlier in the file gets ClassMethods names; any other such block keeps its
+  # names and is unplaceable, so redefine never loads a mutant onto a guess.
+  def test_discover_marks_blocks_of_a_module_not_known_as_a_concern_owner_unknown
+    src = <<~RUBY
+      module Prices
+        extend PriceDSL
+        class_methods do
+          def total(x) = x * 2
+        end
+        included do
+          def tag; end
+        end
+        extend ActiveSupport::Concern
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Prices#total Prices#tag], subjects.map(&:qualified_name)
+      assert(subjects.all? { |s| s.block_owner.nil? && s.owner_unknown })
+    end
+  end
+
+  # The extend may be `self.extend`, parenthesized or one of several modules. A
+  # later body that reopens the concern in the same file, also in compact form,
+  # is still the concern; a module nested in it is not one.
+  def test_discover_remembers_a_concern_across_bodies_and_extend_forms
+    src = <<~RUBY
+      module Billing
+        self.extend Comparable, ::ActiveSupport::Concern
+        module Inner
+          class_methods do
+            def inner; end
+          end
+        end
+      end
+      module Billing
+        class_methods do
+          def rate; end
+        end
+      end
+      module Ledger
+        extend(ActiveSupport::Concern)
+        class_methods do
+          def post; end
+        end
+      end
+      module Shop
+        module Cart
+          extend ActiveSupport::Concern
+        end
+      end
+      module Shop::Cart
+        class_methods do
+          def total; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Billing::Inner#inner Billing::ClassMethods#rate Ledger::ClassMethods#post
+                      Shop::Cart::ClassMethods#total], subjects.map(&:qualified_name)
+      assert_equal [true, false, false, false], subjects.map(&:owner_unknown)
+    end
+  end
+
+  # Only an extend that the module body runs itself counts: one in a def, in
+  # `class << self`, in another block or on another receiver does not.
+  def test_discover_ignores_a_concern_extend_the_module_body_does_not_run
+    src = <<~RUBY
+      module Audit
+        def setup
+          extend ActiveSupport::Concern
+        end
+        class << self
+          extend ActiveSupport::Concern
+        end
+        Other.class_eval do
+          extend ActiveSupport::Concern
+        end
+        Other.extend ActiveSupport::Concern
+        class_methods do
+          def rate(x) = x
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Audit#setup Audit#rate], subjects.map(&:qualified_name)
+      assert_equal [false, true], subjects.map(&:owner_unknown)
+    end
+  end
+
+  # In a def, a non-builder block (Rails' `concerning`) or `class << self`, no
+  # constant names the ClassMethods the block runs in, so its defs keep their
+  # names with their owner unknown. A call with a receiver or arguments is not
+  # the Concern DSL, so its block is a plain block.
+  def test_discover_marks_class_methods_outside_a_module_body_owner_unknown
+    src = <<~RUBY
+      module Billing
+        extend ActiveSupport::Concern
+        def setup
+          class_methods do
+            def in_def; end
+          end
+        end
+        concerning :Rates do
+          class_methods do
+            def in_block; end
+          end
+        end
+        class << self
+          class_methods do
+            def in_singleton; end
+          end
+        end
+        Order.class_methods do
+          def with_receiver; end
+        end
+        class_methods(:x) do
+          def with_args; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Billing#setup Billing#in_def Billing#in_block Billing.in_singleton Billing#with_receiver
+                      Billing#with_args], subjects.map(&:qualified_name)
+      assert(subjects.none?(&:block_owner))
+      assert_equal %w[Billing#in_def Billing#in_block Billing.in_singleton],
+                   subjects.select(&:owner_unknown).map(&:qualified_name)
+    end
+  end
+
   def test_discover_unwraps_parentheses_and_begin_and_names_or_and_and_writes
     src = <<~RUBY
       Point = (Data.define(:x) do

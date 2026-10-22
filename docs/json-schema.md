@@ -35,7 +35,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
   "schema_version": "1.8",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
-  "no_coverage":  [ /* mutants on lines no test exercises */ ],
+  "no_coverage":  [ /* mutants on lines no test exercises, or that the statement's tests may not reach (#254) */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
   "unplaceable":  [ /* redefine mutants whose class cannot be named statically; not run */ ],
   "ran_at_load":  [ /* mutants on a line that ran while the app or class loaded; no verdict */ ],
@@ -54,15 +54,15 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `total` | int | Classified results included in this report, across all statuses. With `--fail-fast`, unscheduled candidates are omitted, so this is not the full generated candidate count. |
 | `killed` | int | Mutants a test caught (suite went red). |
 | `survived` | int | Mutants no test caught. **These are the actionable test gaps.** |
-| `no_coverage` | int | Mutants on a line no test exercises (excluded from score). |
+| `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant in code that runs only sometimes on a later line of a multi-line statement, such as the right side of `a &&` on its own line, when the tests that ran the statement did not kill it: the run cannot tell whether they reached it. |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
-| `unplaceable` | int | Under `--strategy redefine`, mutants whose method belongs to a class or module that cannot be named statically (no constant, a relative path inside a namespace, a class or module opened or assigned in `class << self`, or a `self::X` opened in a block or assigned in one that does not build a class), so they were not run (excluded). Not part of `no_verdict`, so they do not fail `--threshold`. `--strategy reload` runs them. Additive key (schema `1.7`). |
+| `unplaceable` | int | Under `--strategy redefine`, mutants whose method belongs to a class or module that cannot be named statically, so they were not run (excluded). The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. `--strategy reload` runs them. Additive key (schema `1.7`). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). |
 | `errored` | int | Mutants whose run raised (excluded). |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). Under `--since`, only those on changed lines. |
-| `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants were never attempted. |
+| `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 no-coverage mutant did run its statement's tests). |
 | `no_verdict` | int | Attempted mutants that produced no verdict: `errored + timeout + uncapturable`. The completeness gate is `no_verdict / attempted`. |
 | `score` | float \| null | `killed / (killed + survived) * 100`, rounded. **`null`** when the denominator is empty (no covered mutants) — never `0.0`. |
 | `scoped` | bool | `true` when the run was diff-scoped (`--since`): the score covers only the changed-line mutants, so it is not comparable to a full-run score. A scoped CURRENT run skips `--baseline`'s score-drop check (new-survivor detection still applies); a scoped report is REFUSED as a baseline (exit 2) because survivors outside its diff would read as new regressions. Additive key (absent in reports from older versions; treat absent as `false`). |
@@ -75,7 +75,7 @@ Each surviving mutant — the records an agent or reviewer acts on:
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| `subject` | string | Fully-qualified subject, e.g. `Calculator#add`. |
+| `subject` | string | Fully-qualified subject, e.g. `Calculator#add`. A method in a `class_methods` block in the body of a module that ran `extend ActiveSupport::Concern` earlier in the same file (or of a `Module.new` block assigned to a constant that did) is named on the module the includer extends, e.g. `Billing::ClassMethods#rate`. Any other `class_methods` method keeps its enclosing name, e.g. `Billing#rate` (`Billing.rate` in `class << self`), and is `unplaceable` under redefine. |
 | `file` | string | Source file path, relative to the project root for a file inside the project (`./lib/x.rb` and an absolute path both report `lib/x.rb`); a file outside the project keeps the path as passed. |
 | `line` | int | 1-based line of the mutation. |
 | `operator` | string | Operator name, e.g. `arithmetic`, `comparison`. |
@@ -86,12 +86,17 @@ Each surviving mutant — the records an agent or reviewer acts on:
 ### `no_coverage[]`, `uncapturable[]`, `unplaceable[]` and `ran_at_load[]` (array of object)
 
 Each entry is `{ subject, file, line, operator, token, id }`, sorted by
-`(file, line, operator, id)`. `no_coverage` is a genuine coverage gap; `uncapturable` means the test that
+`(file, line, operator, id)`. `no_coverage` is a coverage gap: no test runs the line, or (#254) the tests that run a later line's statement may not reach the mutant and none killed it, so only a test that kills it clears the entry; `uncapturable` means the test that
 should cover the line errored while capturing coverage (fix the harness, not the test). `unplaceable` (schema
 `1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module cannot be
 named statically (an anonymous `Class.new`, a relative path such as `User::Permission` inside a namespace,
-a class or module opened or assigned in `class << self`, or a `self::X` opened in a block or assigned in one
-that does not build a class); `--strategy reload` runs these. `ran_at_load` (schema `1.7`) means the mutant's
+a class or module opened or assigned in `class << self`, a `self::X` opened in a block or assigned in one
+that does not build a class, a method in an `included` or `prepended` block, which ActiveSupport runs in each
+includer, or a method in a `class_methods` block that is not in the body of a module known as a concern (see
+`subject` above), such as one inside Rails' `concerning` or an unassigned `Module.new`); `--strategy reload`
+runs these, with one exception: under ActiveSupport, reload cannot yet run a concern file that has an
+`included` or `prepended` block (#257), because loading the file a second time raises
+`MultipleIncludedBlocks`, so its mutants are `errored`. `ran_at_load` (schema `1.7`) means the mutant's
 line ran while the app booted or its class loaded (for example a class body that calls the method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.

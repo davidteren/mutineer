@@ -6,6 +6,7 @@ require_relative "coverage_map"
 require_relative "daemon_client"
 require_relative "progress"
 require_relative "job_plan"
+require_relative "orphan_guard"
 
 module Mutineer
   # Daemon execution backend. Boots the app ONCE in a persistent subprocess under
@@ -31,8 +32,13 @@ module Mutineer
     DEFAULT_TIMEOUT = 60
 
     # The daemon's per-mutant tempfile, written into the source dir so
-    # require_relative resolves. Kept in step with DaemonServer#sweep_temps.
-    DAEMON_TEMP_GLOB = "mutineer_daemon*.rb"
+    # require_relative resolves. The leading dot hides it from Zeitwerk (#253);
+    # older versions wrote it without one. Kept in step with DaemonServer#sweep_temps.
+    DAEMON_TEMP_GLOB = "{.,}mutineer_daemon*.rb"
+
+    # Seconds the end-of-run sweep waits for an orphaned child to die. Its
+    # watchdog notices a dead daemon within {OrphanGuard::POLL}.
+    SWEEP_GRACE = (OrphanGuard::POLL * 2) + 0.5
 
     # Full daemon run: collect jobs, build the coverage map once, then execute
     # serially or across N worker daemons. Fail-fast forces serial so the survivor
@@ -51,14 +57,7 @@ module Mutineer
       # suppressed). Return before booting anything: the coverage daemon and the
       # worker daemons below each boot the whole app, and README documents
       # `--since origin/<base>` for PR CI, where a docs-only PR is routine.
-      if jobs.empty?
-        # The daemon sweeps orphaned temps at boot and nothing boots here, so sweep
-        # tool-side. A file a hard-killed run left in app/models breaks the app's own
-        # Zeitwerk boot, not just Mutineer's next run. A file a live run still owns
-        # is left in place.
-        JobPlan.sweep_orphans(JobPlan.source_dirs(config), DAEMON_TEMP_GLOB)
-        return [AggregateResult.new(ignored_results), source_map, extras]
-      end
+      return [AggregateResult.new(ignored_results), source_map, extras] if jobs.empty?
 
       # Worker count = resolved --jobs, capped at the job count (no idle daemons).
       # >1 → N concurrent daemon handles, each on its OWN worker DB (N-handles, the
@@ -94,6 +93,33 @@ module Mutineer
       end
 
       [AggregateResult.new(results + ignored_results), source_map, extras]
+    ensure
+      sweep_daemon_temps(config)
+    end
+
+    # Removes daemon mutant files left in the source dirs, on every exit path.
+    # The daemon sweeps at boot, but an empty run boots nothing, and a daemon
+    # that dies mid-mutant orphans a child that lives on until its watchdog
+    # fires (#250). The respawned daemon sweeps before that, and a run that
+    # ends or aborts right after the crash does too. So a file whose owner is
+    # still alive gets {SWEEP_GRACE} to go. A clean run leaves no file and pays
+    # nothing. A file a concurrent run still owns stays in place, but looks the
+    # same as a dying child's, so this run then waits the full grace.
+    #
+    # @param config [Mutineer::Config] the run config.
+    # @return [void]
+    def self.sweep_daemon_temps(config)
+      dirs = JobPlan.source_dirs(config)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + SWEEP_GRACE
+      loop do
+        still_owned = JobPlan.sweep_orphans(dirs, DAEMON_TEMP_GLOB)
+        break if still_owned.empty?
+        break if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+        sleep 0.1
+      end
+    rescue SystemCallError
+      nil # never replace the run's own result or exception with a cleanup error
     end
 
     # Build the coverage map via a short-lived daemon (boots the app once, captures
@@ -248,8 +274,9 @@ module Mutineer
     # A shared queue of job indices feeds N tool-side threads; results are placed by
     # input index so the verdict set matches serial. Callers must not pass fail_fast
     # here ({execute} forces serial for fail-fast). Per-mutant crashes are classified
-    # in {job_result}, shared with the serial path; a {DaemonBootError} ends the run
-    # here rather than scoring the remainder against a daemon that has given up.
+    # in {job_result}, shared with the serial path. Any error that escapes a worker
+    # (a {DaemonBootError}, or a defect) clears the queue, and the run ends once
+    # every worker has joined, rather than scoring the remainder first.
     #
     # @api private
     # @param prepare_client [Mutineer::DaemonClient, nil] the daemon that copied
@@ -259,31 +286,28 @@ module Mutineer
       results  = Array.new(jobs.size)
       progress = Progress.new(jobs.size)
       queue    = Queue.new
+      errors   = Queue.new
       jobs.each_index { |i| queue << i }
 
-      # Built one at a time so a refused spawn part-way (EMFILE under a high --jobs)
-      # can still quit the daemons already up. Array.new would lose every reference.
-      # The prepare daemon stays up through this loop so its lock still covers the
-      # databases until each worker holds one.
+      # Both lists grow one entry at a time, so a refused spawn part-way (EMFILE
+      # under a high --jobs) or a Ctrl-C leaves the ensure below every daemon
+      # already up. Each client joins its list before it starts, so one
+      # interrupted mid-boot is quit too. The prepare daemon stays up through
+      # this loop so its lock still covers the databases until each worker
+      # holds one.
       clients = []
+      threads = []
       begin
         worker_count.times do
-          clients << DaemonClient.new(boot: boot_config(config, abs_tests),
-                                      app_root: config.project_root).start
+          clients << DaemonClient.new(boot: boot_config(config, abs_tests), app_root: config.project_root)
+          clients.last.start
         end
-      rescue StandardError
-        clients.each(&:quit)
-        raise
       ensure
         prepare_client&.quit
       end
 
-      clients.each_with_index.map do |client, worker|
-        Thread.new do
-          # The abort below is re-raised by join and reported once there; without
-          # this Ruby also dumps the thread's backtrace, which the serial path never
-          # does. Same fault, same output, whatever --jobs is set to.
-          Thread.current.report_on_exception = false
+      clients.each_with_index do |client, worker|
+        threads << Thread.new do
           loop do
             i = begin
               queue.pop(true)
@@ -293,20 +317,35 @@ module Mutineer
             results[i] = job_result(jobs[i], i, client, worker, config, coverage_map, abs_tests, source_map)
             progress.tick
           end
-        rescue DaemonBootError
-          # The daemon gave up for good. Stop feeding the other workers rather
-          # than letting them score the rest of the run against a dead client;
-          # Thread#join re-raises this and ends the run.
+        rescue Exception => e # rubocop:disable Lint/RescueException
+          # The daemon gave up for good, or a defect escaped. Stop feeding the
+          # other workers, so they stop after their current mutant, and hand the
+          # error to the main thread. The thread itself ends cleanly.
           queue.clear
-          raise
+          errors << e
         ensure
           client.quit
         end
-      end.each(&:join)
+      end
+      # Join every worker before raising, so all daemons have quit and the
+      # end-of-run sweep sees each child gone.
+      threads.each(&:join)
+      raise errors.pop unless errors.empty?
 
       # Every job was popped by some worker and every pop assigns, so no slot can
-      # be nil here: an escaping exception aborts the run via join instead.
+      # be nil here: a worker error is raised above instead.
       results
+    ensure
+      # An exception from outside (Ctrl-C, a caller's Timeout) skips the joins
+      # above. Kill every worker first, so their daemons quit at the same time,
+      # then wait for them. A second Ctrl-C during that wait still exits.
+      queue&.clear
+      threads&.each(&:kill)
+      threads&.each(&:join)
+      # Quit every client too. One may have no thread yet (startup failed or
+      # was interrupted), and a thread killed before its block began never runs
+      # its own ensure. A second quit of a client is a no-op.
+      clients&.each(&:quit)
     end
 
     # Build the payload for one job, run it on the given daemon/worker, and attach
@@ -348,7 +387,9 @@ module Mutineer
             tests: sel ? sel[1] : abs_tests
           )
           # A survivor whose line ran at load, as in-process (Runner.run).
-          JobPlan.load_verdict(result_for(verdict), subject.file, mutation, subject, source, coverage_map)
+          loaded = JobPlan.load_verdict(result_for(verdict), subject.file, mutation, subject, source, coverage_map)
+          # Tests that may not have run the mutant, as in-process (#254).
+          JobPlan.selection_verdict(sel && sel[0], loaded)
         end
       r.with(subject: subject, mutation: mutation, id: id)
     end
@@ -427,7 +468,7 @@ module Mutineer
     # tests drive directly: {boot_config} from the zero-dep suite and
     # {build_coverage_map} from the daemon suite. Everything else is daemon-pipeline
     # internals with no caller outside this file.
-    private_class_method :run_serial, :run_parallel, :job_result, :schema_path, :result_for,
+    private_class_method :sweep_daemon_temps, :run_serial, :run_parallel, :job_result, :schema_path, :result_for,
                          :prepare_run, :coverage_map_from_client
   end
 end

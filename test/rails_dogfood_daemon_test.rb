@@ -13,10 +13,10 @@ require "mutineer/runner"
 class RailsDogfoodDaemonTest < Minitest::Test
   APP = File.expand_path("fixtures/rails_app", __dir__)
 
-  def config_for(jobs)
+  def config_for(jobs, model: "order")
     Mutineer::Config.new(
-      sources: [File.join(APP, "app/models/order.rb")],
-      tests: [File.join(APP, "test/models/order_test.rb")],
+      sources: [File.join(APP, "app/models/#{model}.rb")],
+      tests: [File.join(APP, "test/models/#{model}_test.rb")],
       project_root: APP, boot: "config/environment",
       rails: true, daemon: true, strategy: "reload", framework: "minitest", jobs: jobs
     )
@@ -70,5 +70,18 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert File.exist?(File.join(APP, "storage", "test-0.sqlite3"))
   ensure
     ENV.delete("MUTINEER_SECOND_DB")
+  end
+
+  # #253: the app loads lazily, so Zeitwerk first scans app/models/billing/ when
+  # a mutant reopens Billing. Its own mutant file, and with two workers the other
+  # worker's too, sit there by then. Their names are not constant names, so
+  # before the fix the mutants of the file errored.
+  def test_a_model_in_a_namespace_directory_is_scored_by_parallel_workers
+    aggregate = nil
+    capture_subprocess_io { aggregate, = Mutineer::Runner.execute(config_for(2, model: "billing/fee")) }
+
+    assert_operator aggregate.killed_count, :>, 1
+    assert_equal 100.0, aggregate.mutation_score
+    assert_equal 0, aggregate.errored_count
   end
 end
