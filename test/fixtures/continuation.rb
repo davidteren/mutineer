@@ -36,6 +36,11 @@ class Continuation
   def self.untested; [:a,
     :never_called]; end
 
+  def self.adult?(age, verified)
+    verified &&
+      age > 17
+  end
+
   def self.kind(value)
     case value
     when Integer then :number

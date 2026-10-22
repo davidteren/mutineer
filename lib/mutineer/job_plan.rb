@@ -152,8 +152,11 @@ module Mutineer
     # order of {CoverageMap#order_tests} (paired files, then cheapest), or
     # `[:verdict, Result]` (no_coverage / uncapturable) when none do. A line
     # Ruby does not count (a later line of a multi-line statement) uses the
-    # tests that ran the statement that holds it ({StatementLines}), unless the
-    # mutant sits in code of that statement that runs only sometimes.
+    # tests that ran the statement that holds it ({StatementLines}). When the
+    # mutant sits in code of that statement that runs only sometimes (the right
+    # side of a multi-line `a && b`), those tests may not have run it, so the
+    # answer is `[:maybe, abs_test_paths]` and {selection_verdict} treats a
+    # survivor as no_coverage (#254).
     #
     # An empty selection is `:ran_at_load` when the mutant's line ran while the
     # app booted or its class loaded ({ran_at_load?}): no test ran it, but the
@@ -170,13 +173,19 @@ module Mutineer
     # @param subject [Mutineer::Subject, nil] the subject (for its method body range).
     # @param source [String] the original source text.
     # @param coverage_map [Mutineer::CoverageMap] the built/loaded coverage map.
-    # @return [Array(Symbol, Object)] `[:run, Array<String>]` or `[:verdict, Result]`.
+    # @return [Array(Symbol, Object)] `[:run, Array<String>]`, `[:maybe, Array<String>]`
+    #   or `[:verdict, Result]`.
     def self.coverage_selection(source_file, mutation, subject, source, coverage_map)
       line   = source.byteslice(0, mutation.start_offset).count("\n") + 1
       chosen = coverage_map.tests_for(source_file, line)
+      kind   = :run
       if chosen.empty? && subject
         # A multi-line statement has a count on one of its lines only.
         lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
+        if lines.empty?
+          lines = StatementLines.for(subject.def_node, source, mutation.start_offset, loose: true)
+          kind = :maybe
+        end
         chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq
       end
       if chosen.empty?
@@ -190,7 +199,25 @@ module Mutineer
         return [:verdict, Result.no_coverage]
       end
 
-      [:run, coverage_map.order_tests(source_file, chosen).map { |t| File.expand_path(t, coverage_map.project_root) }]
+      [kind, coverage_map.order_tests(source_file, chosen).map { |t| File.expand_path(t, coverage_map.project_root) }]
+    end
+
+    # The verdict of a mutant whose tests {coverage_selection} chose as `:maybe`:
+    # they ran its statement but may not have run the mutated code. A kill is a
+    # real kill. A survivor is no_coverage, because the run cannot tell "never
+    # ran" from "ran unchecked" (#254); like any no_coverage mutant it has no
+    # `--matrix` row. An error or a timeout stays what it is: the mutant ran, and
+    # a failure is reported, not hidden. A kill keeps its whole `--matrix` row.
+    # A result of any other selection comes back unchanged.
+    #
+    # @param kind [Symbol, nil, false] the first element of {coverage_selection}'s
+    #   answer, or a falsy value when no selection ran.
+    # @param result [Mutineer::Result] the mutant's verdict.
+    # @return [Mutineer::Result]
+    def self.selection_verdict(kind, result)
+      return result unless kind == :maybe && result.survived?
+
+      result.with(status: :no_coverage, kills: nil)
     end
 
     # True when the mutant's line ran while the app booted or its class loaded,

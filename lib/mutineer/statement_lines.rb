@@ -12,12 +12,17 @@ module Mutineer
     # @param def_node [Prism::DefNode] the method that holds the position.
     # @param source [String] the source text of the file.
     # @param offset [Integer] byte offset of the position.
+    # @param loose [Boolean] also return the lines when the position is in
+    #   code that runs only sometimes when the statement runs (the right side of
+    #   `a && b`, a branch, the body of `x if c`). The tests that ran the
+    #   statement then include every test that ran the position, but may not
+    #   have run it (#254).
     # @return [Array<Integer>] the lines of the statement, with the body of each
     #   heredoc in it. Empty when no statement in the body holds the position.
     #   A first or last line that holds other code is left out, because Ruby
     #   can count that line without the statement: the `def` line counts when
     #   the file loads, and `x if done; y(` counts when `y` does not run.
-    def self.for(def_node, source, offset)
+    def self.for(def_node, source, offset, loose: false)
       return [] unless def_node.body
 
       path = path_to(def_node.body, offset) || []
@@ -25,13 +30,15 @@ module Mutineer
       return [] unless index
 
       statement = path[index]
-      # Code that runs only sometimes inside the statement: the tests that ran
-      # the statement need not have run it.
-      return [] if path[index..].each_cons(2).any? { |parent, child| sometimes?(parent, child) }
+      unless loose
+        # Code that runs only sometimes inside the statement: the tests that ran
+        # the statement need not have run it.
+        return [] if path[index..].each_cons(2).any? { |parent, child| sometimes?(parent, child) }
 
-      # Ruby counts the line of `x while c` or `x if c` when it checks `c`,
-      # also when `x` never runs. The path is the modifier, its body, statement.
-      return [] if index >= 2 && modifier?(path[index - 2])
+        # Ruby counts the line of `x while c` or `x if c` when it checks `c`,
+        # also when `x` never runs. The path is the modifier, its body, statement.
+        return [] if index >= 2 && modifier?(path[index - 2])
+      end
 
       location = statement.location
       lines = (location.start_line..last_line(statement)).to_a
