@@ -102,9 +102,10 @@ All notable changes to this project are documented here. The format is based on
   `DATABASE_URL` itself, and a malformed URL makes it raise an error that
   quotes the whole URL. The daemon sent that error to the terminal when
   the app failed to boot, and the same could happen when it set up worker
-  databases or the coverage map. The daemon now replaces the password in
-  any URL, and the `DATABASE_URL` password anywhere else, with
-  `[REDACTED]` before it reports an error.
+  databases or the coverage map, and in a `--verbose` coverage warning.
+  Mutineer now replaces the password in any URL, and the `DATABASE_URL`
+  password anywhere else (escaped or cut short included), with
+  `[REDACTED]` before it reports the error.
 - **An RSpec run that fails only on an error outside examples scores the
   mutant `errored`, not `killed`.** A spec file that raised while loading, or
   a failing `before(:suite)` hook, made RSpec exit 1, and every mutant was

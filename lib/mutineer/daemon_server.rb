@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 require "json"
-require "uri"
 require "tempfile"
 require_relative "child_stdout"
 require_relative "child_coverage"
 require_relative "orphan_guard"
+require_relative "redaction"
 
 module Mutineer
   # App-side daemon (persistent worker).
@@ -56,12 +56,6 @@ module Mutineer
     # leading dot hides a new file from Zeitwerk (#253); a file an older
     # version left behind has none, so the glob matches both.
     DAEMON_TEMP_BASENAME = "{.,}mutineer_daemon*.rb"
-    # The password in a `scheme://user:password@host` URL. Greedy up to the last
-    # `@` before a quote or line end, so a malformed password with a space or an
-    # unescaped `@` is hidden too.
-    URL_PASSWORD = %r{([a-z][a-z0-9+.\-]*://[^\s:/@"']*):[^"'\r\n]*@}i
-    # What replaces a hidden password.
-    REDACTED = "[REDACTED]"
 
     # Skips daemon mutant files when Zeitwerk scans an autoload directory.
     # The boot sweep keeps a file another process still holds. Zeitwerk skips a
@@ -282,38 +276,12 @@ module Mutineer
         redact("#{error.class}: #{error.message}")
       end
 
-      # Hide database credentials in text bound for the client or stderr: the
-      # password in any URL, and the DATABASE_URL password wherever it appears.
+      # Hide database credentials in text bound for the client or stderr.
       #
       # @param text [String]
       # @return [String]
       def redact(text)
-        text = text.to_s.gsub(URL_PASSWORD) { "#{Regexp.last_match(1)}:#{REDACTED}@" }
-        database_url_passwords.reduce(text) { |out, secret| out.gsub(secret, REDACTED) }
-      end
-
-      # The DATABASE_URL password, raw and percent-decoded, longest first. Read
-      # by position, not URI or a pattern, because the URL may be the malformed
-      # one that failed to parse and its password may hold any character: it
-      # runs from the first `:` after `scheme://` to the last `@`.
-      #
-      # @return [Array<String>]
-      def database_url_passwords
-        url = ENV.fetch("DATABASE_URL", "")
-        start = url.index("://")
-        at = url.rindex("@")
-        return [] unless start && at
-
-        colon = url.index(":", start + 3)
-        return [] unless colon && colon < at
-
-        raw = url[(colon + 1)...at]
-        decoded = begin
-          URI.decode_www_form_component(raw.gsub("+", "%2B"))
-        rescue ArgumentError
-          raw
-        end
-        [raw, decoded].uniq.reject(&:empty?).sort_by { |secret| -secret.length }
+        Redaction.text(text)
       end
 
       # Fork-safety hook for coverage capture. Each capture fork drops its copy
