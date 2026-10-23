@@ -1,0 +1,23 @@
+AGENTS.md
+  s_3b2276c6160cf1::t_b8b161bd306cab 146-156
+.expectation-fit/ways-of-working.yaml
+  s_3b2276c6160cf1::t_31b1ded20f4090 17-19
+  s_3b2276c6160cf1::t_92dc4da3e06a92 25
+  s_3b2276c6160cf1::t_8ff137ed43cdda 24,26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a31c43d0423b1af83e51b2ed4d1f76198177b3d1",
+  "prompts": {},
+  "sessions": {
+    "s_3b2276c6160cf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "864b44a2-f9e5-4433-8347-cd7184cf50e0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
