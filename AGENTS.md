@@ -144,9 +144,8 @@ workflow `release.yml`, no environment. Without it, `release.yml`'s `gem push` f
 These rules come from a postmortem of issues #252, #253, and #254 and an
 audit of every merged PR. They stop the defect patterns that reached users.
 The rule text lives in one place: `.expectation-fit/ways-of-working.yaml`.
-`/fit-review` (the expectation-fit plugin's review command) enforces it on
-every pre-PR review; without the plugin, a human reviewer applies the same
-file. Score terms are defined in "Score-model discipline" below. Two rules
+Reviewers who use the expectation-fit plugin apply it with `/fit-review`;
+every other reviewer, human or bot, applies the same file by hand. Score terms are defined in "Score-model discipline" below. Two rules
 have known open gaps: the threshold gate rounds (#280) and the clean check
 pins no seed (#282).
 
