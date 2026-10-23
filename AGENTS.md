@@ -143,27 +143,17 @@ workflow `release.yml`, no environment. Without it, `release.yml`'s `gem push` f
 
 These rules come from a postmortem of issues #252, #253, and #254 and an
 audit of every merged PR. They stop the defect patterns that reached users.
-The authoritative wording lives in `.expectation-fit/ways-of-working.yaml`,
-where the `/fit-review` convention lens enforces each one. Update both
-files in the same change.
+The rule text lives in one place: `.expectation-fit/ways-of-working.yaml`.
+`/fit-review` (the expectation-fit plugin's review command) enforces it on
+every pre-PR review; without the plugin, a human reviewer applies the same
+file. Score terms are defined in "Score-model discipline" below. Two rules
+have known open gaps: the threshold gate rounds (#280) and the clean check
+pins no seed (#282).
 
-- **Track every limitation.** A limitation, deferred trade-off, or "cannot
-  yet" that leaves work undone names its GitHub issue in the same change.
-- **Cover the siblings.** A fix to one surface names its siblings (reload vs
-  redefine, daemon vs in-process, Action vs CLI, report vs dry-run) and
-  covers or tracks each.
-- **Gate on unrounded values.** Rounding is for display only.
-- **Count what you exclude.** A new verdict class, skip, or exclusion that
-  leaves the score ships with a visible count and a budget or warning in
-  the same change.
-- **Estimate exclusion frequency.** A conservative "select/report nothing"
-  choice records how often real code hits that case.
-- **One seed contract.** The clean check and the mutant runs share one
-  ordering and seed contract.
-- **Assert the mechanism.** A regression test asserts the owner, arity, or
-  the named killing test, never only "killed", "passes", or an exit code.
-- **Repro becomes fixture.** An externally reported bug lands its minimal
-  repro as a fixture with expected verdicts in the fix PR.
+The eight rules, by title: **Track every limitation** - **Cover the
+siblings** - **Gate on unrounded values** - **Count what you exclude** -
+**Estimate exclusion frequency** - **One seed contract** - **Assert the
+mechanism** - **Repro becomes fixture**.
 
 ## Score-model discipline (don't regress this)
 

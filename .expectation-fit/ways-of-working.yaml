@@ -14,14 +14,16 @@ conventions:
     - A fix to one path or surface names its siblings and covers or tracks
       each one (reload vs redefine, daemon vs in-process, Action vs CLI,
       report vs dry-run).
-    - A gate or threshold compares unrounded values. Rounding is for display
-      only.
+    - "A gate or threshold compares unrounded values. Rounding is for
+      display only. (Known open gap: issue #280, the --threshold gate
+      compares a rounded score.)"
     - A new verdict class, skip, or exclusion that leaves the score ships
       with a visible count and a budget or warning in the same change.
     - A conservative exclusion (select nothing, report nothing, skip the
       case) records an estimate of how often real code hits the case.
-    - The clean check and the mutant runs share one ordering and seed
-      contract.
+    - "The clean check and the mutant runs share one ordering and seed
+      contract. (Known open gap: issue #282, the clean check does not pin
+      the seed that mutant runs use.)"
     - A regression test asserts the mechanism (owner, arity, the named
       killing test), never only "killed", "passes", or an exit code.
     - An externally reported bug lands its minimal repro as a fixture with
