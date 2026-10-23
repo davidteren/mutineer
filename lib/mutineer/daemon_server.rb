@@ -5,6 +5,7 @@ require "tempfile"
 require_relative "child_stdout"
 require_relative "child_coverage"
 require_relative "orphan_guard"
+require_relative "redaction"
 
 module Mutineer
   # App-side daemon (persistent worker).
@@ -178,7 +179,7 @@ module Mutineer
       rescue Exception => e # rubocop:disable Lint/RescueException
         # Boot failed (bad boot path, app error). Tell the client and exit so it
         # can surface a clean error rather than hang on the handshake.
-        @output.puts(JSON.generate("ready" => false, "error" => "#{e.class}: #{e.message}"))
+        @output.puts(JSON.generate("ready" => false, "error" => describe_error(e)))
         @output.flush
         exit!(1)
       end
@@ -211,7 +212,7 @@ module Mutineer
           @worker_db.provision(cfg.fetch("slots", 2).to_i)
         end
       rescue LoadError => e
-        @errio.puts("[daemon] worker-DB routing unavailable: #{e.message}")
+        @errio.puts("[daemon] worker-DB routing unavailable: #{redact(e.message)}")
         @worker_db = nil
       end
 
@@ -236,7 +237,7 @@ module Mutineer
         @worker_db.provision(Integer(slots)) if @worker_db
         { "ok" => true }
       rescue Exception => e # rubocop:disable Lint/RescueException
-        { "ok" => false, "error" => "#{e.class}: #{e.message}" }
+        { "ok" => false, "error" => describe_error(e) }
       end
 
       # Build the coverage map app-side (Coverage was started at boot) and return
@@ -261,8 +262,26 @@ module Mutineer
           "failed_clean_tests" => cmap.failed_clean_tests, "load_lines" => cmap.load_lines.to_a,
           "load_methods" => cmap.load_methods.to_a }
       rescue Exception => e # rubocop:disable Lint/RescueException
-        @errio.puts("[daemon] coverage build failed: #{e.class}: #{e.message}")
-        { "map" => {}, "failed_test_files" => [], "error" => "#{e.class}: #{e.message}" }
+        error = describe_error(e)
+        @errio.puts("[daemon] coverage build failed: #{error}")
+        { "map" => {}, "failed_test_files" => [], "error" => error }
+      end
+
+      # `Class: message` for an error the daemon reports, with credentials hidden.
+      # Rails parses DATABASE_URL itself, so its URI error can carry the password.
+      #
+      # @param error [Exception]
+      # @return [String]
+      def describe_error(error)
+        redact("#{error.class}: #{error.message}")
+      end
+
+      # Hide database credentials in text bound for the client or stderr.
+      #
+      # @param text [String]
+      # @return [String]
+      def redact(text)
+        Redaction.text(text)
       end
 
       # Fork-safety hook for coverage capture. Each capture fork drops its copy
@@ -309,7 +328,7 @@ module Mutineer
               apply_payload(req["payload"])
               run_tests(Array(req["tests"]))
             rescue Exception => e # rubocop:disable Lint/RescueException
-              @errio.puts("[daemon-child] #{e.class}: #{e.message}")
+              @errio.puts("[daemon-child] #{describe_error(e)}")
               2
             end
           exit!(code)
