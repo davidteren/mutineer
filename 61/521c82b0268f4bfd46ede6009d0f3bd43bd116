@@ -1,0 +1,72 @@
+docs/agentic-coding.md
+  s_b4d7fc8853589a::t_e336403bb7d864 3-5,7-9,13-14,16,54-55,59-60,70-74,76-78,82-84,132-133,135,140-141,144-149
+docs/equivalent-skips.md
+  s_b4d7fc8853589a::t_e336403bb7d864 3-5,7-12,16-20
+docs/equivalent-skips.html
+  s_b4d7fc8853589a::t_e336403bb7d864 36,53-54,57,89
+CHANGELOG.md
+  s_b4d7fc8853589a::t_e336403bb7d864 9-14
+docs/humans.txt
+  s_b4d7fc8853589a::t_e336403bb7d864 8
+docs/json-schema.md
+  s_b4d7fc8853589a::t_e336403bb7d864 4-6,37,56
+docs/agentic-coding.html
+  s_b4d7fc8853589a::t_e336403bb7d864 36,70,72,75,77,94,97,103-104,107,143,145,148-149,152,177
+  s_b4d7fc8853589a::t_764946b29d1c18 7,14,22
+docs/rails.md
+  s_b4d7fc8853589a::t_e336403bb7d864 3-4,10-11,15-16,23-24,51-52,73-77,81-82,88,91-94
+rake/site_docs.rb
+  s_b4d7fc8853589a::t_e336403bb7d864 20-21,25,31,40-41,59
+docs/rails.html
+  s_b4d7fc8853589a::t_e336403bb7d864 36,69,75,78,91,108,111,115-116,130
+  s_b4d7fc8853589a::t_765889cee4dfed 72
+  s_b4d7fc8853589a::t_4b4b7b9ed7e675 7,14,22
+docs/sample-report.html
+  s_b4d7fc8853589a::t_e336403bb7d864 29,45,61,66
+README.md
+  s_b4d7fc8853589a::t_78b8c3ea4ea797 9-11,110-111,822
+docs/index.html
+  s_b4d7fc8853589a::t_61d9b378cc89d1 7,14,22,36,55,59-60,62-63,65,80-82,99-101,106-107,111,116-117,120-121,124-125,133,137-168,175,181,213,215,218,271,298,302-305
+docs/index.md
+  s_b4d7fc8853589a::t_123849ae416227 3-5,7-9,11-13,15-17,19-20,22,24-25,28-29,32-35,37-43,45,48,51-52,97
+docs/learn.html
+  s_b4d7fc8853589a::t_a238e61444deea 1-161
+docs/learn.md
+  s_3b2276c6160cf1::t_d345bd2089c54f 1-185
+docs/llms.txt
+  s_b4d7fc8853589a::t_0a8515e4bc2588 3-6,8-9,12,25,27,30,46
+rake/docs_contract.rb
+  s_b4d7fc8853589a::t_b6388c3702c7de 516,555
+skills/mutineer/SKILL.md
+  s_b4d7fc8853589a::t_1350f4ecdaf5f7 3,32,39-40,45-46
+test/browser/site.spec.js
+  s_b4d7fc8853589a::t_a7c8e3417106e3 16,25,29,41,55,59-63
+test/docs_contract_test.rb
+  s_b4d7fc8853589a::t_6f9cd5c819fee9 172
+test/site_test.js
+  s_b4d7fc8853589a::t_79b051ae0ab054 71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "61521c82b0268f4bfd46ede6009d0f3bd43bd116",
+  "prompts": {},
+  "sessions": {
+    "s_3b2276c6160cf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "864b44a2-f9e5-4433-8347-cd7184cf50e0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_b4d7fc8853589a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16add-0a32-7201-88a0-c37afd596da6",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
