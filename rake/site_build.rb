@@ -25,6 +25,10 @@ module SiteBuild
   # committed version.
   GENERATED = %w[api llms-full.txt json-schema.html sitemap.xml].freeze
 
+  # docs/ entries kept in the repository but never published: internal
+  # review notes for maintainers, not pages for users of the gem.
+  UNPUBLISHED = %w[release-review].freeze
+
   # The agent skill, in the Agent Skills layout that `gh skill` and
   # `npx skills` install from. The site serves the same file as skill.md.
   SKILL = "skills/mutineer/SKILL.md"
@@ -139,13 +143,14 @@ module SiteBuild
       File.write(path, text.sub(pattern, "#{start}\n#{body.rstrip}\n#{stop}"))
     end
 
-    # Copy every tracked docs/ file except the entries this task regenerates.
+    # Copy every tracked docs/ file except the entries this task regenerates
+    # and the {UNPUBLISHED} ones.
     #
     # @param dest [String]
     # @return [void]
     def copy_docs_tree!(dest)
       tracked_docs_paths.each do |rel|
-        next if GENERATED.any? { |g| rel == g || rel.start_with?("#{g}/") }
+        next if (GENERATED + UNPUBLISHED).any? { |g| rel == g || rel.start_with?("#{g}/") }
 
         target = File.join(dest, rel)
         FileUtils.mkdir_p(File.dirname(target))

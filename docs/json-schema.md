@@ -10,7 +10,7 @@ add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, 
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.6"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.8"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.

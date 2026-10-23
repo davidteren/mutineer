@@ -64,6 +64,10 @@ All notable changes to this project are documented here. The format is based on
 - **Rails rollout guide.** The page walks from one model, to a report-only CI
   job, to a `--since` and `--baseline` pull request gate, to `--threshold`
   on chosen folders. It has a GitHub Actions recipe and a GitLab CI recipe.
+- **A mutation-testing primer in the README.** "What is mutation testing?"
+  walks through one small example, from a surviving mutant to the test that
+  kills it, and says what each report row means and what to do with a
+  survivor. The usage block lists all four commands.
 - **A production-ready section and a stability contract.** The README opens
   with a support matrix for Ruby, database, framework, and parallelism.
   `STABILITY.md` lists what a release keeps and what 2.0 will change.
