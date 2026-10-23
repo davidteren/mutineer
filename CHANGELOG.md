@@ -98,6 +98,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Daemon errors no longer show the database password.** Rails parses
+  `DATABASE_URL` itself, and a malformed URL makes it raise an error that
+  quotes the whole URL. The daemon sent that error to the terminal when
+  the app failed to boot, and the same could happen when it set up worker
+  databases or the coverage map, and in a `--verbose` coverage warning.
+  Mutineer now replaces the password in any URL, and the `DATABASE_URL`
+  password anywhere else (escaped or cut short included), with
+  `[REDACTED]` before it reports the error.
 - **`--strategy reload` runs concern files with an `included` or `prepended`
   block (#256).** Every mutant in such a file was `errored`: ActiveSupport
   raised `MultipleIncludedBlocks` (or `MultiplePrependBlocks`) because the
@@ -124,7 +132,6 @@ All notable changes to this project are documented here. The format is based on
   Minitest and `--daemon` already score a test file that raises at load as
   `errored`. `--test-command` sees only the exit status and still scores it
   `killed`.
-
 - **A Rails daemon boots again while a mutant file is still open.**
   The file stays when another process holds it. The next boot skips
   that file name instead of stopping.
@@ -152,6 +159,13 @@ All notable changes to this project are documented here. The format is based on
   methods. Mutineer named them as instance methods of the concern itself.
   Redefine (the `--rails` default) then loaded each mutant onto the concern.
   The tests called the includer's method, so every mutant falsely survived.
+  A concern with an instance method of the same name failed the other way:
+  the mutant replaced that instance method, so tests calling it ran the
+  wrong method and failed (an ArgumentError, when the arities differ), and
+  the mutant counted as killed whatever it changed. Both false survivors
+  and false kills are gone. An earlier redefine score is unreliable for
+  any file with a `class_methods` block: too low from false survivors, or
+  too high from false kills. Re-run those files.
   These methods are now named `Concern::ClassMethods#name`, and redefine
   loads the mutant onto that module. This applies to a module that ran
   `extend ActiveSupport::Concern` earlier in the same file. The mutant ids of
@@ -176,7 +190,7 @@ All notable changes to this project are documented here. The format is based on
   method with one of these names is `unplaceable` under redefine too, even
   when that library runs the block in the module itself and redefine used to
   run it correctly. Mutineer cannot tell that library from ActiveSupport, so it
-  does not guess. Use `--strategy reload` for those mutants.
+  does not guess. For that other library's mutants, use `--strategy reload`.
 - **A file in a namespace directory scores under `--rails --strategy reload`
   and `--rails --daemon` (#253).** Mutineer writes each mutant to a temp file
   next to the source and loads it. With lazy loading, loading it can be the

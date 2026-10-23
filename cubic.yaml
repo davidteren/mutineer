@@ -14,8 +14,9 @@ reviews:
   auto_approve: disabled
   ultrareview: automatic
   auto_ultrareview: high_risk_only
+  # Ultrareviews bill at 3x the reviewed lines. lib/** matched nearly every PR.
+  # Lib changes now get an ultrareview only when the high_risk_only check flags them.
   auto_ultrareview_file_patterns:
-    - 'lib/**'
     - '.github/workflows/**'
   custom_instructions: |
     This is the Mutineer Ruby gem (mutation testing CLI + GitHub Action).
