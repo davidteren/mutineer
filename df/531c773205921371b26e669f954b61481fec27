@@ -1,0 +1,19 @@
+AGENTS.md
+  s_3b2276c6160cf1::t_66eaf7ce94ad24 147-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "df531c773205921371b26e669f954b61481fec27",
+  "prompts": {},
+  "sessions": {
+    "s_3b2276c6160cf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "864b44a2-f9e5-4433-8347-cd7184cf50e0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
