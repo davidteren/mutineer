@@ -41,7 +41,8 @@ Tagging 1.7.0 closes the gap. The next feature merge opens it again.
 Options, in order of preference:
 
 1. **Deploy Pages when a release is tagged**, not on every push to `main`.
-   Add `push: tags: ['v*']` to `pages.yml`, and change the deploy job's guard
+   Add `push: tags: ['v*.*.*']` to `pages.yml` (not `v*`, which also
+   matches the floating `v1` tag), and change the deploy job's guard
    (`if: github.ref == 'refs/heads/main'`), which would otherwise skip every
    tag run. Keep `workflow_dispatch` for doc fixes that should go out between
    releases, and drop the push-to-main trigger. Docs-only fixes then go out by
