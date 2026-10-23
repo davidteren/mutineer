@@ -139,6 +139,29 @@ Safety nets:
 on <https://rubygems.org/gems/mutineer> → owner `davidteren`, repo `mutineer`,
 workflow `release.yml`, no environment. Without it, `release.yml`'s `gem push` fails.
 
+## Shift-left rules (from the 2026-10 PR audit)
+
+These rules come from a postmortem of issues #252, #253, and #254 and an
+audit of every merged PR. They stop the defect patterns that reached users.
+The machine-readable copy lives in `.expectation-fit/ways-of-working.yaml`,
+where the `/fit-review` convention lens enforces each one.
+
+- **Track every limitation.** A "cannot yet" in a doc, comment, or CHANGELOG
+  entry names its GitHub issue in the same change.
+- **Cover the siblings.** A fix to one surface names its siblings (reload vs
+  redefine, daemon vs in-process, Action vs CLI) and covers or tracks each.
+- **Gate on unrounded values.** Rounding is for display only.
+- **Count what you exclude.** A new verdict class or exclusion that leaves
+  the score ships with a visible count and a budget or warning.
+- **Estimate exclusion frequency.** A conservative "select/report nothing"
+  choice records how often real code hits that case.
+- **One seed contract.** The clean check and the mutant runs share one
+  ordering and seed contract.
+- **Assert the mechanism.** A regression test asserts the owner, arity, or
+  the named killing test, never only "killed" or an exit code.
+- **Repro becomes fixture.** An externally reported bug lands its minimal
+  repro as a fixture with expected verdicts in the fix PR.
+
 ## Score-model discipline (don't regress this)
 
 `score = killed / (killed + survived)`. `no_coverage`, `uncapturable`, `unplaceable`, `ran_at_load`, `ignored`,
