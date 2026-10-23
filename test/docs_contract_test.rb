@@ -142,9 +142,11 @@ class DocsContractTest < Minitest::Test
 
   def test_stability_lists_every_action_input
     listed = stability_section("Action inputs").scan(/`([a-z-]+)`/).flatten
-    YAML.load_file("action.yml").fetch("inputs").each_key do |input|
+    inputs = YAML.load_file("action.yml").fetch("inputs").keys
+    inputs.each do |input|
       assert_includes listed, input, "STABILITY.md does not list the Action input #{input}"
     end
+    assert_empty listed - inputs, "STABILITY.md lists Action inputs that action.yml does not define"
   end
 
   def test_stability_names_the_reporter_schema_version

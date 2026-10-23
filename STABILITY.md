@@ -49,7 +49,7 @@ These keys are accepted in `.mutineer.yml` in 1.7.0:
 `allow_empty`.
 
 `allow_empty` is new in 1.7.0.
-An `ignore:` entry can be a mapping with `id` and `reason` from 1.7.0.
+An `ignore:` entry can be a mapping with an `id` and an optional `reason` from 1.7.0.
 An older version does not ignore the mutant a mapping names, and it does not warn.
 
 `format`, `strategy`, `output`, `baseline_epsilon`, `dry_run`, and

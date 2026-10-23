@@ -22,7 +22,7 @@ each surface, then lists what changed here and what to do on the site.
 
 | Surface | 1 Idea | 2 Example | 3 Words | 4 Next step | 5 Cost, start | 6 Coverage |
 | --- | --- | --- | --- | --- | --- | --- |
-| README | One sentence | None | Not defined. "killed" first appears on line 402, in "Timeouts and the score" | Suppression only | None | None |
+| README | One sentence | None | Not defined. "killed" first appears about 400 lines in, in "Timeouts and the score" | Suppression only | None | None |
 | Landing page | Strong ("A passing test is a claim") | Strong (the `qty >= 10` specimen and its killing test) | Killed and survived in one line; score in the evidence strip | One sentence ("Inspect it, strengthen the test") | None | One paragraph, aimed at AI agents |
 | Explainer video | Yes | Yes (100% coverage misses a changed comparison) | Not checked frame by frame | | | Yes |
 | `docs/index.md` (Markdown twin, also read by agents) | One sentence | None | None | None | None | None |
@@ -32,7 +32,8 @@ each surface, then lists what changed here and what to do on the site.
 
 The landing page is the best teacher in the project. Its specimen and video do
 steps 1, 2, and 6 well. The README, which is what RubyGems and GitHub show
-first, did none of the six. It is also the file most people read.
+first, had one sentence of the idea and none of the other five steps. It is
+also the file most people read.
 
 ## What this change did
 

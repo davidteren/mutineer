@@ -24,7 +24,7 @@ Run these in order. Items 1 to 3 are done by this change.
 | 5 | Re-run `release-pr.yml` after the last merge, so the release PR moves the whole `[Unreleased]` block, this entry included. | **P0, open** |
 | 6 | After the tag, check the live site: the API page shows 1.7.0, and `llms-full.txt` holds the new README. | **P1, open** |
 | 7 | Decide whether Pages deploys from tags (see file 04, item 1). | **P1, open** |
-| 8 | Add a short "Highlights" list to the top of the 1.7.0 CHANGELOG section. | **P2, open** |
+| 8 | Add a short "Highlights" list to the top of `[Unreleased]` on `main`, before the release PR is rebuilt. | **P2, open** |
 
 ## PRs that change the docs
 
@@ -88,18 +88,22 @@ Recommendation: keep the order for 1.7.0. After the release, consider:
 
 See [04-site-and-landing-page.md](04-site-and-landing-page.md#1-the-site-runs-ahead-of-the-gem).
 
-### P1: two recipe bugs on the Rails page
+### P1: one Rails recipe bug and one GitLab risk
 
-Both are site pages, so they are recommendations in file 04 (items 4 and 5):
-an explicit `since: origin/main` on a shallow checkout, and the GitLab recipe's
-`origin/main`.
+Both are on a site page, so they are recommendations in file 04. Item 4 is a
+confirmed bug: an explicit `since: origin/main` on a shallow checkout. Item 5
+is a risk that was not run on GitLab: the recipe's `origin/main` may not exist
+in a merge-request pipeline.
 
 ### P2: CHANGELOG reads as a log, not as release notes
 
 The `[Unreleased]` section is about 220 lines, and the GitHub release body is
 cut from it. Each entry is precise, which is right for upgraders. A reader who
 wants "what is new" has no short list. Add five or six one-line highlights at
-the top of the 1.7.0 section when the release PR is made: `init`, `triage` and
+the top of `[Unreleased]` on `main`, before `release-pr.yml` rebuilds the
+release PR. Do not add them on the release branch: the workflow rebuilds that
+branch from `main`, and it stops replacing a branch that holds someone else's
+commit. Candidates: `init`, `triage` and
 reasons on ignored mutants, `migrate`, Postgres and MySQL worker databases,
 `--allow-empty`, and the false-kill and false-survivor fixes.
 

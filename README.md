@@ -181,7 +181,8 @@ Run Mutineer again. Both mutants are killed, and the score is 100%.
 
 Line coverage tells you which lines ran during the tests. Mutation testing tells
 you whether the tests would fail if those lines were wrong. A test with no
-assertion still adds coverage, but it kills no mutant. That gap is common in
+assertion still adds coverage, but it kills a mutant only when the change makes
+the code raise an error. That gap is common in
 tests written in a hurry, and in tests written by AI coding agents.
 
 ### What each result means
@@ -209,8 +210,8 @@ fail the run; see [Timeouts and the score](https://github.com/davidteren/mutinee
 
 1. Read the diff. Ask what behaviour the change breaks.
 2. Write or strengthen a test that fails under the change. Run again.
-3. Sometimes the change breaks nothing. For example, swapping `x * 1` for
-   `x / 1` gives the same result. That mutant is **equivalent**, and no test can
+3. Sometimes the change breaks nothing. For example, when `x` is a number,
+   swapping `x * 1` for `x / 1` gives the same result. That mutant is **equivalent**, and no test can
    kill it. Suppress it with a reason (see
    [Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants)).
 

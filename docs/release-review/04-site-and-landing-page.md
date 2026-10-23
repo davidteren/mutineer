@@ -41,9 +41,11 @@ Tagging 1.7.0 closes the gap. The next feature merge opens it again.
 Options, in order of preference:
 
 1. **Deploy Pages when a release is tagged**, not on every push to `main`.
-   Add `push: tags: ['v*']` to `pages.yml`, keep `workflow_dispatch` for doc
-   fixes that should go out between releases, and drop the push-to-main
-   trigger. Docs-only fixes then go out by a manual run.
+   Add `push: tags: ['v*']` to `pages.yml`, and change the deploy job's guard
+   (`if: github.ref == 'refs/heads/main'`), which would otherwise skip every
+   tag run. Keep `workflow_dispatch` for doc fixes that should go out between
+   releases, and drop the push-to-main trigger. Docs-only fixes then go out by
+   a manual run.
 2. **Show the version on the site.** A small "Docs for 1.7.0" label in the
    header, built from `Mutineer::VERSION` at `site:build`. When `main` is ahead
    of the last tag, say "main (unreleased)" instead. This helps with either
