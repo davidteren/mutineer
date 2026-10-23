@@ -34,6 +34,38 @@ class ConcernBlocksTest < Minitest::Test
     end
   end
 
+  # A concern the mutant's load skips (an `unless defined?` guard) stores no
+  # new block, so replace puts the original back: a class that includes the
+  # concern during the tests still gets what the block defines.
+  def test_replace_restores_a_block_the_load_did_not_store_again
+    Dir.mktmpdir("mutineer-concern") do |dir|
+      source = File.join(dir, "guarded_forget.rb")
+      copy = File.join(dir, "mutant.rb")
+      code = "unless defined?(GuardedForget)\n#{concern_source("GuardedForget")}end\n"
+      File.write(source, code)
+      File.write(copy, code)
+      load source
+      original = GuardedForget.instance_variable_get(:@_included_block)
+
+      Mutineer::ConcernBlocks.replace(source) { load copy }
+      assert_same original, GuardedForget.instance_variable_get(:@_included_block)
+      assert_equal :original, Class.new { include GuardedForget }.new.tag
+    end
+  end
+
+  # A load that stores its own block keeps it; the original does not come back.
+  def test_replace_keeps_the_block_the_load_stored
+    Dir.mktmpdir("mutineer-concern") do |dir|
+      source = File.join(dir, "replaced_forget.rb")
+      copy = File.join(dir, "mutant.rb")
+      File.write(source, concern_source("ReplacedForget"))
+      File.write(copy, concern_source("ReplacedForget"))
+      load source
+      Mutineer::ConcernBlocks.replace(source) { load copy }
+      assert_equal copy, ReplacedForget.instance_variable_get(:@_included_block).source_location.first
+    end
+  end
+
   def test_blocks_from_other_files_stay
     Dir.mktmpdir("mutineer-concern") do |dir|
       other = File.join(dir, "tagged_other.rb")

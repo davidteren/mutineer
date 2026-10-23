@@ -414,7 +414,6 @@ module Mutineer
       # (whole file) and redefine (wrapped snippet). The backend sends the whole
       # file, so the concern blocks it stores replace the forgotten ones (#256).
       def apply_payload(payload)
-        ConcernBlocks.forget(payload.fetch("source_file"))
         dir = File.dirname(File.expand_path(payload.fetch("source_file")))
         Tempfile.create([".mutineer_daemon", ".rb"], dir) do |f|
           # Held until this block ends, including SIGKILL (the kernel drops it).
@@ -422,7 +421,7 @@ module Mutineer
           f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
           f.write(payload.fetch("code"))
           f.flush
-          load f.path
+          ConcernBlocks.replace(payload.fetch("source_file")) { load f.path }
         end
       end
 

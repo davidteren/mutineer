@@ -104,7 +104,9 @@ All notable changes to this project are documented here. The format is based on
   mutant loads from a temp file with another path. Before each reload mutant
   loads, in-process and on the daemon, the forked child now forgets the blocks
   that the source file stored, so methods in the concern body and in
-  `class_methods` are killed or survive as usual. A method inside an
+  `class_methods` are killed or survive as usual. A block the mutant's load
+  does not store again (a concern under an `unless defined?` guard) is put
+  back. A method inside an
   `included` or `prepended` block is `unplaceable` under reload too: the block
   does not run again in a class that already includes or prepends the
   concern, so the mutant would falsely survive. That includes a method of a

@@ -188,19 +188,18 @@ module Mutineer
     # constant, in this child and in any other running at the same time (#253).
     #
     # A concern's stored `included` and `prepended` blocks from the source file
-    # are forgotten first, so ActiveSupport accepts the blocks the temp file
-    # stores (#256).
+    # are forgotten around the load, so ActiveSupport accepts the blocks the
+    # temp file stores (#256).
     #
     # @api private
     # @param mutated [String] mutated source text.
     # @param source_file [String] original source file path.
     # @return [Object] whatever `load` returns.
     def self.apply_whole_file(mutated, source_file)
-      ConcernBlocks.forget(source_file)
       Tempfile.create([".mutineer_mutant", ".rb"], File.dirname(File.expand_path(source_file))) do |f|
         f.write(mutated)
         f.flush
-        load f.path
+        ConcernBlocks.replace(source_file) { load f.path }
       end
     end
 
