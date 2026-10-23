@@ -83,6 +83,19 @@ All notable changes to this project are documented here. The format is based on
   `.mutineer.yml` `operators:` and keys, and in `# mutineer:disable-line`
   markers get the closest valid name. The `.mutineer.yml` warnings also say
   that 2.0 makes them errors.
+- **`--coverage-from FILE` lets parallel shards share one coverage capture.**
+  A `--rails`/`--boot` run reads the `coverage.json` of an earlier run with
+  the same tests over these sources or more. It skips the capture. Each test
+  that covers one of its sources still runs alone, as on a cache hit, because
+  a mutant runs only those tests. A test that covers none of them does not,
+  so a shard runs far fewer tests alone than a full suite. All tests then run
+  once together, and the run saves its own cache.
+  Boot-mode caches now also record each source's fingerprint, the ownership
+  list and a digest of the other inputs. A capture that does not fit is an
+  error (exit 2), never a silent recapture. So is one where loading its other
+  sources ran these sources' code, which happens under lazy loading with
+  `--strategy redefine`. Without boot mode, and with `--daemon`,
+  `--test-command` or `--dry-run`, the flag warns that it has no effect.
 
 ### Changed
 

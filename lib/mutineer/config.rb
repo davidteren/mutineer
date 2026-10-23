@@ -63,6 +63,7 @@ module Mutineer
                      flag: "--capture-timeout"),
     ConfigOption.new(field: :cache_dir, type: :string, yaml_key: "cache_dir", flag: "--cache-dir"),
     ConfigOption.new(field: :allow_empty, type: :bool, yaml_key: "allow_empty", flag: "--allow-empty"),
+    ConfigOption.new(field: :coverage_from, type: :string, flag: "--coverage-from"),
     ConfigOption.new(field: :format, type: :enum, flag: "--format", values: %w[human json html]),
     ConfigOption.new(field: :strategy, type: :enum, flag: "--strategy", values: %w[reload redefine],
                      aliases: STRATEGY_ALIASES),
@@ -95,7 +96,7 @@ module Mutineer
     # :daemon is user-facing (--daemon flag + KNOWN_KEYS + boolean coerce).
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
-    :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix, :allow_empty,
+    :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix, :allow_empty, :coverage_from,
     keyword_init: true
   ) do
     # Config file name.
@@ -365,6 +366,7 @@ module Mutineer
         # A blank cache directory (an unset CI variable) would put coverage.json
         # in the project root, so it is an error, not the default.
         raise ConfigError, "#{origin} must be a directory, not blank #{got}" if field == :cache_dir && value.to_s.strip.empty?
+        raise ConfigError, "#{origin} must be a file, not blank #{got}" if field == :coverage_from && value.to_s.strip.empty?
 
         value.to_s
       when :since
