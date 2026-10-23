@@ -1,12 +1,23 @@
 # Equivalent skips
 
-Mutineer does not emit some mutants. The change is often noise. A normal test usually cannot kill it. There is no switch to turn these skips off. A chain-link skip matches the method name only. That match does not prove the two mutants are equivalent. An endless range skip is equivalent.
+Mutineer skips some code changes to reduce results that rarely help improve tests.
+These built-in skips cannot be turned off. Chain-call skips use the method name
+only, so they are not always equivalent. Endless-range skips are equivalent.
 
-A team still silences an equivalent mutant that Mutineer does emit. Use `# mutineer:disable-line` or an `ignore:` entry, and put a reason on it. To put a reason on an `ignore:` entry, write the entry as a mapping: an `id` plus an optional `reason`. Any mapping needs Mutineer 1.7 or later in every gate that reads the file. An older version does not ignore that mutant, and it does not warn. See [Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants). `mutineer triage` prints those entries from a JSON report.
+For an equivalent mutant that does appear, use `# mutineer:disable-line` or an
+`ignore:` entry and record a reason. An ignore mapping contains an `id` and an
+optional `reason`; it requires Mutineer 1.7 or later everywhere the configuration
+is read. Older versions silently skip mappings. `mutineer triage` prepares these
+entries from a JSON report. See
+[Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants).
 
 ## Chain link
 
-The `chain_link` operator drops one dotted call from a chain. The `call_to_receiver` operator drops the last call of a chain. Neither operator drops the names below. The skip uses the name only. It does not check the receiver or the next call. The dropped call is often equivalent, not always. On a value that already has the target type, or that needs no copy, the call changes nothing. Dropping `new` sends the next call to the class. That raises, or it reaches a class method. Neither result says anything about the tests. Dropping `new` as the last call leaves the class in place of an instance, so almost any use of the result raises.
+The `chain_link` operator removes a call from the middle of a chain.
+The `call_to_receiver` operator removes the last call. Both skip the names below
+without checking the receiver or next call. Conversions and copies often leave
+the result unchanged. Removing `new` leaves the class in place of an instance,
+which usually raises an error or calls an unrelated class method.
 
 | Name | Why it is skipped |
 |------|-------------------|

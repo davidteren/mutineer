@@ -68,6 +68,7 @@ test('link checker rejects a missing file, fragment or site URL, and a duplicate
 test('HTML pages with markdown twins advertise rel=alternate', () => {
   const twins = {
     [`${SITE}/index.html`]: `${BASE}/index.md`,
+    [`${SITE}/learn.html`]: `${BASE}/learn.md`,
     [`${SITE}/agentic-coding.html`]: `${BASE}/agentic-coding.md`,
     [`${SITE}/equivalent-skips.html`]: `${BASE}/equivalent-skips.md`,
     [`${SITE}/rails.html`]: `${BASE}/rails.md`,

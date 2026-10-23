@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mutation testing, explained</title>
+<meta name="description" content="See how a passing test can miss a bug. Run a small Ruby example, add the missing test, and learn how to read a mutation testing report.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://davidteren.github.io/mutineer/learn.html">
+<link rel="alternate" type="text/markdown" href="https://davidteren.github.io/mutineer/learn.md" title="Markdown">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Mutineer">
+<meta property="og:title" content="Mutation testing, explained">
+<meta property="og:description" content="See how a passing test can miss a bug. Run a small Ruby example, add the missing test, and learn how to read a mutation testing report.">
+<meta property="og:url" content="https://davidteren.github.io/mutineer/learn.html">
+<meta property="og:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Mutineer. Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Mutation testing, explained">
+<meta name="twitter:description" content="See how a passing test can miss a bug. Run a small Ruby example, add the missing test, and learn how to read a mutation testing report.">
+<meta name="twitter:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
+<meta name="twitter:image:alt" content="Mutineer. Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='1' fill='%2367286a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
+<script src="assets/mutineer.js?v=e2f61c6ed52e"></script>
+<link rel="stylesheet" href="assets/mutineer.css?v=bbe02d1403bf">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="index.html"><span class="mark" aria-hidden="true">M↗</span> mutineer<span class="brand-note">/ Ruby mutation testing</span></a>
+    <nav aria-label="Primary">
+      <a href="learn.html" aria-current="page">Learn</a>
+      <a href="index.html#install">Install</a>
+      <a href="agentic-coding.html">Agent &amp; CI</a>
+      <a href="equivalent-skips.html">Skips</a>
+      <a href="rails.html">Rails</a>
+      <a href="json-schema.html">JSON schema</a>
+      <a href="api/">API</a>
+      <a href="sample-report.html">Sample report</a>
+      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub ↗</a>
+      <button class="toggle" id="theme" aria-label="Switch to light mode" hidden>◐ <span>Dark</span></button>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <div class="doc-layout">
+    <aside class="doc-side">
+      <div class="toc-title">On this page</div>
+      <ul><li><a href="#what-is-a-mutant">What is a mutant?</a></li>
+        <li><a href="#one-missed-boundary">One missed boundary</a></li>
+        <li><a href="#try-the-example">Try the example</a></li>
+        <li><a href="#read-your-first-report">Read your first report</a></li>
+        <li><a href="#what-to-do-with-a-survivor">What to do with a survivor</a></li>
+        <li><a href="#try-your-own-project">Try your own project</a></li>
+        <li><a href="#common-questions">Common questions</a></li></ul>
+    </aside>
+
+    <article class="prose">
+      <span class="eyebrow">Start here</span>
+      <h1>Mutation testing, explained</h1>
+      <p class="doc-lede">Your tests pass. Would they fail if the code were wrong? Mutineer makes small changes to your Ruby code and runs your tests to find out. It shows you the changes they missed, so you can decide where a better test would help.</p>
+      <h2 id="what-is-a-mutant">What is a mutant?</h2>
+      <p>A <strong>mutant</strong> is one changed version of your code. A change might replace <code>&gt;=</code> with <code>&gt;</code>, change <code>+</code> to <code>-</code>, or remove a statement. Mutineer tests one change at a time with your existing Minitest or RSpec tests.</p>
+      <ul><li><strong>Killed</strong> means a test failed against the changed code. The tests caught it.</li><li><strong>Survived</strong> means the tests still passed. Read the change: it may reveal a missing test, or it may leave the behaviour unchanged.</li></ul>
+      <p>The changed code is a test of your tests. You do not apply a surviving change as a fix. Improve the test if the change exposes a gap.</p>
+      <h2 id="one-missed-boundary">One missed boundary</h2>
+      <p>An order of 10 or more items should get a 10% discount:</p>
+      <pre><code>return 0.1 if qty &gt;= 10</code></pre>
+      <p>Mutineer changes the rule to:</p>
+      <pre><code>return 0.1 if qty &gt; 10</code></pre>
+      <p>Tests for quantities 1 and 50 still pass. Both versions give the same result for those inputs. But the changed version gives no discount at exactly 10. A test for that quantity catches the change.</p>
+      <p>Line coverage can be 100% here: every line ran. Mutation testing asks a different question: did the tests notice the wrong result?</p>
+      <h2 id="try-the-example">Try the example</h2>
+      <p>Use Ruby 3.4 or later on Linux or macOS, with Bundler installed. Create a new folder for this example, then create <code>lib</code> and <code>test</code> folders inside it. Save this as <code>Gemfile</code>:</p>
+      <pre><code>source &quot;https://rubygems.org&quot;
+gem &quot;mutineer&quot;
+gem &quot;minitest&quot;, &quot;~&gt; 5.0&quot;</code></pre>
+      <p>Save this as <code>lib/discount.rb</code>:</p>
+      <pre><code>class Discount
+  def rate(qty)
+    return 0.1 if qty &gt;= 10
+    0
+  end
+end</code></pre>
+      <p>Save this as <code>test/discount_test.rb</code>:</p>
+      <pre><code>require &quot;minitest/autorun&quot;
+require_relative &quot;../lib/discount&quot;
+
+class DiscountTest &lt; Minitest::Test
+  def test_bulk_order_gets_ten_percent
+    assert_equal 0.1, Discount.new.rate(50)
+  end
+
+  def test_small_order_gets_nothing
+    assert_equal 0, Discount.new.rate(1)
+  end
+end</code></pre>
+      <p>From the example folder, install the gems, check that the tests pass, then run Mutineer:</p>
+      <pre><code>bundle install
+bundle exec ruby test/discount_test.rb
+bundle exec mutineer run lib/discount.rb --test test/discount_test.rb</code></pre>
+      <p>The report shows a 50% mutation score: one change was caught and one survived. Under <strong>Surviving Mutants</strong>, look for the change from <code>&gt;=</code> to <code>&gt;</code>. Add this method inside <code>DiscountTest</code>, before its final <code>end</code>:</p>
+      <pre><code>def test_ten_is_the_first_bulk_quantity
+  assert_equal 0.1, Discount.new.rate(10)
+end</code></pre>
+      <p>Run both checks again:</p>
+      <pre><code>bundle exec ruby test/discount_test.rb
+bundle exec mutineer run lib/discount.rb --test test/discount_test.rb</code></pre>
+      <p>The tests pass with the original code. Both mutants are now killed and the score is 100%. You added a test for a case that the original tests missed.</p>
+      <h2 id="read-your-first-report">Read your first report</h2>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Report row">
+  <table>
+    <thead><tr><th scope="col">Report row</th><th scope="col">Meaning</th><th scope="col">What to do</th></tr></thead>
+    <tbody><tr><td class="op">Killed</td><td class="rule">A test caught the change.</td><td>Keep the test.</td></tr><tr><td class="op">Survived</td><td class="rule">The tests still passed.</td><td>Read the change and check for a test gap.</td></tr><tr><td class="op">No coverage</td><td class="rule">Mutineer could not confirm that tests reached the changed code.</td><td>Add a test that reaches it and checks the result.</td></tr><tr><td class="op">Timeout</td><td class="rule">The run exceeded the time limit.</td><td>Check for a slow test or a change that causes a loop.</td></tr><tr><td class="op">Errored</td><td class="rule">The run could not produce a verdict.</td><td>Read the error and fix the run before trusting its score.</td></tr><tr><td class="op">Ignored</td><td class="rule">You excluded this change.</td><td>Keep a clear reason for the exclusion.</td></tr><tr><td class="op">Skipped</td><td class="rule">The change did not produce valid Ruby.</td><td>No test is needed for this change.</td></tr></tbody>
+  </table>
+</div>
+      <p>The <strong>mutation score</strong> is <code>killed / (killed + survived)</code>. For example, 24 caught changes and one survivor give <code>24 / 25 = 96%</code>. The other rows are excluded. When nothing can be scored, the score is empty (<code>null</code> in JSON). A high score with many unscored changes can still leave large gaps.</p>
+      <p>The <a href="json-schema.html#summary">report reference</a> also explains Uncapturable, Unplaceable, and Ran at load. The <a href="https://github.com/davidteren/mutineer#timeouts-and-the-score">timeout rules</a> explain when incomplete results fail a score gate.</p>
+      <h2 id="what-to-do-with-a-survivor">What to do with a survivor</h2>
+      <p>Read the original line and the changed line. Identify an input for which they should give different results. Add a test for the expected behaviour, then run your tests and Mutineer again.</p>
+      <p>Sometimes the change leaves the behaviour unchanged for all inputs your code supports. This is an <strong>equivalent mutant</strong>. For example, changing <code>count * 1</code> to <code>count / 1</code> leaves the value unchanged when <code>count</code> is an Integer. No test can distinguish those results.</p>
+      <p>If you have checked that a survivor is equivalent, record why you ignore it. In Mutineer 1.7 or later, <code>mutineer triage</code> can print an ignore entry with a reason from a JSON report. It does not edit your files. See <a href="https://github.com/davidteren/mutineer#suppressing-equivalent-mutants">Suppressing equivalent mutants</a>. If you cannot explain a survivor, ask for a review instead of hiding it to raise the score.</p>
+      <h2 id="try-your-own-project">Try your own project</h2>
+      <p>Choose one small file whose tests already pass. In a Bundler project, add <code>gem &quot;mutineer&quot;, group: :test</code> to the Gemfile and run <code>bundle install</code>. Then run:</p>
+      <pre><code>bundle exec mutineer run lib/discount.rb --test test/discount_test.rb</code></pre>
+      <p>Replace both paths with files in your project. For RSpec, use the spec file with <code>--test</code>. For Rails, follow the <a href="rails.html#one-model">one-model guide</a>. To list possible changes without running tests, add <code>--dry-run</code>.</p>
+      <p>Each change runs tests again, so mutation testing takes longer than one normal test run. Start with one file, review its survivors, and expand the scope when the results are useful. You do not need to reach 100% before the tool has value.</p>
+      <p>When you are ready, the <a href="agentic-coding.html">CI guide</a> shows how to check only changed lines and compare results with an earlier run. The <a href="index.html#production-ready">support matrix</a> lists the supported Rails setups.</p>
+      <h2 id="common-questions">Common questions</h2>
+      <p><strong>Does 100% mean my code has no bugs?</strong> No. It describes the changes that Mutineer could score. It does not cover every possible bug, and unscored changes are excluded. Check the survivors and the excluded results too.</p>
+      <p><strong>Is this fuzzing?</strong> Fuzzing changes the inputs. Mutation testing changes the code and runs your tests against it.</p>
+      <p><strong>Must I rewrite my test suite first?</strong> No. Start with your existing Minitest or RSpec tests. Add or improve tests when a survivor reveals a missing check.</p>
+      <p><strong>What score should I aim for?</strong> Start by understanding one survivor. Later, choose a target for code whose results you have reviewed. A number alone does not show whether the tests cover the behaviour that matters to your users.</p>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div>
+      <strong>Mutineer</strong>, mutation testing for Ruby.
+      <div class="note">MIT licensed · Prism + stdlib only · © David Teren</div>
+    </div>
+    <nav aria-label="Footer">
+      <a href="index.html">Home</a>
+      <a href="agentic-coding.html">Agent &amp; CI</a>
+      <a href="json-schema.html">JSON schema</a>
+      <a href="api/">API</a>
+      <a href="https://github.com/davidteren/mutineer" rel="noopener">GitHub</a>
+      <a href="#main">Top ↑</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

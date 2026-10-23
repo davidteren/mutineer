@@ -33,6 +33,7 @@
   <div class="wrap nav">
     <a class="brand" href="index.html"><span class="mark" aria-hidden="true">M↗</span> mutineer<span class="brand-note">/ Ruby mutation testing</span></a>
     <nav aria-label="Primary">
+      <a href="learn.html">Learn</a>
       <a href="index.html#install">Install</a>
       <a href="agentic-coding.html">Agent &amp; CI</a>
       <a href="equivalent-skips.html" aria-current="page">Skips</a>
@@ -49,11 +50,11 @@
 <main id="main" class="wrap">
   <article class="prose">
     <h1>Equivalent skips</h1>
-    <p>Mutineer does not emit some mutants. The change is often noise. A normal test usually cannot kill it. There is no switch to turn these skips off. A chain-link skip matches the method name only. That match does not prove the two mutants are equivalent. An endless range skip is equivalent.</p>
-    <p>A team still silences an equivalent mutant that Mutineer does emit. Use <code># mutineer:disable-line</code> or an <code>ignore:</code> entry, and put a reason on it. To put a reason on an <code>ignore:</code> entry, write the entry as a mapping: an <code>id</code> plus an optional <code>reason</code>. Any mapping needs Mutineer 1.7 or later in every gate that reads the file. An older version does not ignore that mutant, and it does not warn. See <a href="https://github.com/davidteren/mutineer#suppressing-equivalent-mutants">Suppressing equivalent mutants</a>. <code>mutineer triage</code> prints those entries from a JSON report.</p>
+    <p>Mutineer skips some code changes to reduce results that rarely help improve tests. These built-in skips cannot be turned off. Chain-call skips use the method name only, so they are not always equivalent. Endless-range skips are equivalent.</p>
+    <p>For an equivalent mutant that does appear, use <code># mutineer:disable-line</code> or an <code>ignore:</code> entry and record a reason. An ignore mapping contains an <code>id</code> and an optional <code>reason</code>; it requires Mutineer 1.7 or later everywhere the configuration is read. Older versions silently skip mappings. <code>mutineer triage</code> prepares these entries from a JSON report. See <a href="https://github.com/davidteren/mutineer#suppressing-equivalent-mutants">Suppressing equivalent mutants</a>.</p>
 
     <h2 id="chain-link">Chain link</h2>
-    <p>The <code>chain_link</code> operator drops one dotted call from a chain. The <code>call_to_receiver</code> operator drops the last call of a chain. Neither operator drops the names below. The skip uses the name only. It does not check the receiver or the next call. The dropped call is often equivalent, not always. On a value that already has the target type, or that needs no copy, the call changes nothing. Dropping <code>new</code> sends the next call to the class. That raises, or it reaches a class method. Neither result says anything about the tests. Dropping <code>new</code> as the last call leaves the class in place of an instance, so almost any use of the result raises.</p>
+    <p>The <code>chain_link</code> operator removes a call from the middle of a chain. The <code>call_to_receiver</code> operator removes the last call. Both skip the names below without checking the receiver or next call. Conversions and copies often leave the result unchanged. Removing <code>new</code> leaves the class in place of an instance, which usually raises an error or calls an unrelated class method.</p>
     <table>
       <tr><th>Name</th><th>Why it is skipped</th></tr>
       <tr><td><code>to_s</code></td><td>Conversion. On a string, the call changes nothing.</td></tr>
@@ -85,7 +86,7 @@
 <footer>
   <div class="wrap foot">
     <div>
-      <strong>Mutineer</strong>, clean-room mutation testing for Ruby.
+      <strong>Mutineer</strong>, mutation testing for Ruby.
       <div class="note">MIT licensed · Prism + stdlib only · © David Teren</div>
     </div>
     <nav aria-label="Footer">

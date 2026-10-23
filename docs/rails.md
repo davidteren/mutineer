@@ -1,28 +1,27 @@
 # Rolling out Mutineer on a Rails app
 
-A Rails team can go from install to a first report with one command.
-This page is the path from that report to a CI gate.
-Stop at any stage. The next stage can wait.
+Start with one Rails model, then add checks to CI when you understand the results.
+This guide covers four stages. Stop at the stage that fits your team.
 
 `mutineer init --rails` writes `.mutineer.yml` and prints the first run command.
 It does not replace a file you already wrote.
 Pass `--force` to replace one.
 
-The full Action recipes stay in the [README](https://github.com/davidteren/mutineer#github-action)
-and in the [agent and CI guide](https://davidteren.github.io/mutineer/agentic-coding.html#action).
-This page links to them. It does not copy them.
+See the [README](https://github.com/davidteren/mutineer#github-action) and
+[agent and CI guide](https://davidteren.github.io/mutineer/agentic-coding.html#action) for all Action inputs.
 
 ## One model locally
 
-Add Mutineer to the test group. Run init. Then run the printed command on one model.
+Add `gem "mutineer"` to the test group in your Gemfile and run `bundle install`.
+Create the configuration, then run Mutineer on one model and its test:
 
 ```sh
 RAILS_ENV=test bundle exec mutineer init --rails
 RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/models/order_test.rb
 ```
 
-Read the report. Fix or suppress the survivors you accept.
-Do not turn on a failing gate yet.
+Review each survivor. Add a test for a missed behaviour, or record why the change
+is equivalent before ignoring it. Start without a score threshold.
 
 ## Report-only in CI
 
@@ -49,8 +48,8 @@ Raise the threshold only after the report stays green.
 
 ## GitHub Actions
 
-Use the Mutineer Action. The steps below are the Rails shape.
-The README and the agent guide hold the rest of the inputs.
+This workflow runs Mutineer on a Rails app. It uses the app’s bundle and
+checks the source lines changed by the pull request.
 
 ```yaml
 name: Mutation testing
@@ -71,23 +70,28 @@ jobs:
           use-bundler: true
 ```
 
-For the report-only stage, omit `threshold` and `baseline`.
-For the pull request gate, set `since: origin/main` and `baseline: .mutineer/baseline.json`.
-For the threshold stage, set `threshold` on the folders you chose.
+For report-only CI, leave `threshold` at 0 and `baseline` unset in both the workflow
+and `.mutineer.yml`. To reject new survivors, first save a full run from the default
+branch as `.mutineer/baseline.json` and make that file available in CI. Then set
+`baseline: .mutineer/baseline.json`. Leave `since` unset: the Action fetches the pull
+request’s base commit. Add a `threshold` when the chosen folders are ready.
 
 ## GitLab CI
 
-GitLab runs the gem directly. There is no Mutineer Action in this recipe.
+This GitLab job runs a full report on Rails models. Use a Linux runner with
+Ruby 3.4 or later, and prepare the test database as you do for the test suite.
 
 ```yaml
 mutineer:
   stage: test
   script:
-    - bundle exec mutineer run app/models lib --since origin/main --baseline .mutineer/baseline.json --format json
+    - RAILS_ENV=test bundle exec mutineer run app/models --rails --no-since --threshold 0 --format json
 ```
 
-Drop `--since` and `--baseline` for a report-only job.
-Add `--threshold 90` when a folder is ready for a hard gate.
+Leave `baseline` unset in `.mutineer.yml` for report-only CI. For a pull request
+check, fetch the target branch before adding `--since origin/main` (replace `main`
+with that branch’s name), and supply a baseline from a full run on that branch.
+Add `--threshold 90` when the chosen folders are ready.
 
 ## Parallel tests
 

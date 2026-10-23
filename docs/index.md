@@ -1,54 +1,55 @@
 # Mutineer
 
-Clean-room mutation testing for Ruby. Mutineer mutates your source one change at a
-time, runs your test suite (Minitest or RSpec) against each mutant, and reports the
-mutants your tests failed to catch — the gaps where a green suite is a lie.
+Your tests pass. Would they catch a bug? Mutineer makes small changes to your
+Ruby code, runs your Minitest or RSpec tests, and shows you the changes they miss.
+This is **mutation testing**.
 
-Prism + stdlib only. Zero runtime dependencies. Ruby ≥ 3.4. Versioned JSON contract
-for CI gates and AI coding agents.
+Each changed version of the code is a **mutant**. A test that fails against it
+has **killed** it. If the tests still pass, it **survived**. Read the survivor
+to decide whether a better test is needed or the change leaves the behaviour unchanged.
 
-This file is the Markdown twin of the [HTML landing page](https://davidteren.github.io/mutineer/).
+For example, changing `qty >= 10` to `qty > 10` removes the discount at exactly
+10 items. Tests for quantities 1 and 50 still pass. A test for quantity 10
+catches it. Line coverage can be 100% and still miss this case.
 
-[Watch the one-minute explainer](https://davidteren.github.io/mutineer/assets/mutineer-explainer.mp4) (MP4).
+The mutation score is `killed / (killed + survived)`. A run with 24 killed
+changes and one survivor scores 96%. Other results are excluded. The score
+is empty when nothing can be scored; even 100% does not prove the code has no bugs.
 
-<!-- site:production-ready -->
-<!-- /site:production-ready -->
+[New to mutation testing? Run the complete example](learn.html).
+This is the Markdown twin of the [HTML landing page](https://davidteren.github.io/mutineer/).
 
-## Install
+## Start with one file
+
+Use Ruby 3.4 or later on Linux or macOS. Pick a small file with passing tests.
+Mutation testing repeats test runs, so it takes longer than a normal test run.
 
 ```sh
 gem install mutineer
+mutineer run lib/discount.rb --test test/discount_test.rb
 ```
 
-Or in a Gemfile:
+Replace both paths with files in your project. For RSpec, pass a spec file to
+`--test`. In a Bundler project, add `gem "mutineer", group: :test` to the Gemfile,
+run `bundle install`, and use `bundle exec mutineer`. For Rails, follow the
+[one-model guide](rails.html#one-model).
 
-```ruby
-gem "mutineer", group: :test
-```
+Read one entry under **Surviving Mutants**. Add a test that passes with the
+original code and fails with the change, then run again. If the change leaves
+the behaviour unchanged, record why you ignore it. The
+[beginner guide](learn.html#what-to-do-with-a-survivor) explains this step.
+Start without a score target. Add [CI checks](agentic-coding.html) once you
+understand the results. Mutineer 1.7+ can create a starter configuration with
+`mutineer init`.
 
-## Run
+Preview changes without running tests:
 
 ```sh
-mutineer run <source...> --test <test> [--test <test>...] [options]
+mutineer run --dry-run lib/discount.rb
 ```
 
-Example — mutate a file against its test and fail CI below 90%:
-
-```sh
-mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
-```
-
-Diff-scoped PR gate against a baseline:
-
-```sh
-mutineer run app/ --since origin/main --baseline .mutineer/baseline.json
-```
-
-Preview mutations without running tests:
-
-```sh
-mutineer run --dry-run lib/foo.rb
-```
+<!-- site:production-ready -->
+<!-- /site:production-ready -->
 
 ## CLI essentials
 
@@ -93,7 +94,7 @@ Tier 2 (off until `--operators`): `return_nil`, `literal_mutation`, `condition_n
 
 ## Mutineer and Mutant
 
-"Clean-room" means Mutineer was written from scratch. It contains no code from
+Mutineer was written from scratch. It contains no code from
 [Mutant](https://github.com/mbj/mutant) or any other mutation-testing tool.
 Mutineer's own code is licensed under MIT.
 
