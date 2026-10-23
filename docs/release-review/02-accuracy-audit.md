@@ -20,8 +20,8 @@ Status key: **OK** (matches the code), **Fixed** (fixed in this change),
 | JSON `schema_version` is `1.8` | STABILITY.md | `Reporter::SCHEMA_VERSION` | Fixed: said `1.7`. Test: `test_stability_names_the_reporter_schema_version` |
 | `schema_version` example | `docs/json-schema.md` prose | `Reporter::SCHEMA_VERSION` | Fixed: said `"1.6"` |
 | Exit codes 0, 1, 2 | README, STABILITY.md, schema, agent guide, skill | `docs/fragments/contract.yml` | OK. Existing test: `test_every_contract_surface_carries_the_same_exit_codes` |
-| 5 default and 15 opt-in operators, by name | README, `docs/index.md`, landing page | `MutatorRegistry::DEFAULT_NAMES`, `TIER2_NAMES`, `mutineer --list-operators` | OK. New test: `test_operator_pages_name_every_registered_operator` |
-| Operator rules (for example `% -> *`) | Landing page table | `mutineer --list-operators` text | OK, all 20 rows |
+| 5 default and 16 opt-in operators, by name | README, `docs/index.md`, landing page | `MutatorRegistry::DEFAULT_NAMES`, `TIER2_NAMES`, `mutineer --list-operators` | OK. New test: `test_operator_pages_name_every_registered_operator` |
+| Operator rules (for example `% -> *`) | Landing page table | `mutineer --list-operators` text | OK, all 21 rows (after #276) |
 | Score is `killed / (killed + survived)` and `null` when empty | README, landing page, schema | `Result` statuses and the human report's score line | OK |
 | Landing page worked score: 24 ÷ (24 + 1) = 96% | Landing page | Arithmetic | OK |
 | Self-dogfood badge says at least 85% | README badge | `ci.yml` `--threshold 85` | OK. Existing test |
@@ -81,5 +81,5 @@ ruby -Ilib bin/mutineer --help | grep -oE -- '--[a-z][a-z-]+' | sort -u |
   while read -r f; do grep -q -- "$f" README.md || echo "missing: $f"; done
 
 # Hard-coded operator counts to update when an operator is added
-grep -rn -i "twenty\|20 mutation\|20 (5\|fifteen" README.md docs/*.md docs/*.html docs/llms.txt
+grep -rn -i "twenty-one\|21 mutation\|21 (5\|sixteen" README.md docs/*.md docs/*.html docs/llms.txt
 ```

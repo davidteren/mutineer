@@ -199,6 +199,7 @@ came from in the repo. Re-check the Mutant comparison before each minor release.
 | 11 | Video captions, OG image size | P2 | Landing |
 | 12 | Source for the hero claim; re-check the Mutant comparison | P2 | Landing |
 
-When an operator is added (PR #271), update the badge count, "Twenty ways",
-"Fifteen Tier-2 operators", the operator table, `docs/index.md`, and
-`docs/llms.txt`. The new contract test lists any it finds missing.
+When an operator is added, update the badge count, the heading ("Twenty-one
+ways"), the Tier-2 count in the lede, the operator table, `docs/index.md`, and
+`docs/llms.txt`. #276 did this for `call_to_receiver`. The new contract test
+lists any page it finds missing.

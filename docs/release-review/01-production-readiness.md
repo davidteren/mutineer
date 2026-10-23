@@ -31,7 +31,7 @@ Run these in order. Items 1 to 3 are done by this change.
 | PR | What it changes in the docs |
 | --- | --- |
 | #273 `--coverage-from FILE` | A new flag. Add it to the README options table and the CLI essentials on the landing page. STABILITY.md covers flags through `mutineer --help`, so no list there needs a new line, but the project notes say to name it as a flag with no config key. |
-| #271 `call_to_receiver` operator (contributor) | Operator count goes from 20 to 21 (5 default, 16 opt-in). Places that hard-code the count: README comparison table, README operator list, `docs/index.md`, the landing page badge, heading ("Twenty ways"), lede ("Fifteen Tier-2 operators") and table, and `docs/llms.txt`. The new test `test_operator_pages_name_every_registered_operator` fails until the README, `docs/index.md`, `docs/index.html`, and `docs/llms.txt` agree with the registry. |
+| #271 `call_to_receiver` operator (contributor) | Merged through #276 on 2026-10-23. The count is now 21 (5 default, 16 opt-in), and #276 updated the README, `docs/index.md`, the landing page, and `docs/llms.txt`. `test_operator_pages_name_every_registered_operator` passes on the merged code, and it will flag the pages to update when the next operator is added. |
 | #244, #245 (2.0) | Must stay unmerged for 1.7.0. STABILITY.md's 2.0 section describes them as planned. |
 
 ## Findings
