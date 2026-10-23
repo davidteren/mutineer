@@ -36,6 +36,22 @@ class RedactionTest < Minitest::Test
     assert_equal "bad URI: postgres://u:[REDACTED]...", text
   end
 
+  def test_hides_a_truncated_password_after_an_escaped_username
+    url = %(postgres://u"ser:s3cretpass@host/db)
+
+    text = redact(%(bad URI: "postgres://u\\"ser:s3cre), url)
+
+    assert_equal %(bad URI: "postgres://u\\"ser:[REDACTED]), text
+  end
+
+  def test_hides_a_password_that_starts_like_the_replacement
+    url = "postgres://u:[REDACTED]tail@host/db"
+
+    text = redact("bad URI: postgres://u:[REDACTED]tai", url)
+
+    assert_equal "bad URI: postgres://u:[REDACTED]", text
+  end
+
   def test_keeps_a_url_without_credentials_and_unrelated_text
     url = "postgres://u:s3cret@host/db"
     text = "PG::ConnectionBad: could not connect to http://host:5432/db"

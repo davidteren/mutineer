@@ -27,13 +27,16 @@ module Mutineer
     # @param env [Hash{String => String}] where DATABASE_URL is read.
     # @return [String]
     def text(text, env: ENV)
-      out = text.to_s.gsub(URL_PASSWORD) { "#{Regexp.last_match(1)}:#{REDACTED}@" }
+      out = text.to_s
       head, raw = database_url_parts(env["DATABASE_URL"].to_s)
-      return out unless raw
-
-      secrets = password_forms(raw)
-      out = secrets.reduce(out) { |acc, secret| acc.gsub(secret, REDACTED) }
-      secrets.reduce(out) { |acc, secret| redact_prefixes(acc, head, secret) }
+      secrets = raw ? password_forms(raw) : []
+      # Prefixes first, on the caller's text, so no replacement made here can
+      # be mistaken for part of a password.
+      [head, head&.inspect&.[](1...-1)].compact.uniq.each do |prefix|
+        out = secrets.reduce(out) { |acc, secret| redact_prefixes(acc, prefix, secret) }
+      end
+      out = out.gsub(URL_PASSWORD) { "#{Regexp.last_match(1)}:#{REDACTED}@" }
+      secrets.reduce(out) { |acc, secret| acc.gsub(secret, REDACTED) }
     end
 
     # Split DATABASE_URL into its `scheme://user:` head and its raw password.
@@ -75,7 +78,8 @@ module Mutineer
     # for a message that cut the URL short inside the password.
     #
     # @param text [String]
-    # @param head [String] the DATABASE_URL `scheme://user:` prefix.
+    # @param head [String] the DATABASE_URL `scheme://user:` prefix, raw or
+    #   `inspect` escaped.
     # @param secret [String]
     # @return [String]
     def redact_prefixes(text, head, secret)
@@ -85,7 +89,6 @@ module Mutineer
         start = found + head.length
         length = 0
         length += 1 while length < secret.length && text[start + length] == secret[length]
-        length = 0 if text[start, REDACTED.length] == REDACTED
         out << text[pos...start] << (length.positive? ? REDACTED : "")
         pos = start + length
       end
