@@ -8,6 +8,14 @@ require "tmpdir"
 # second `included` block from another file. ConcernBlocks.forget removes the
 # blocks the source file stored, so the mutant's load stores its own.
 class ConcernBlocksTest < Minitest::Test
+  # The concerns these tests define, removed after each test so a second run
+  # in the same process starts with no stored block.
+  CONCERNS = %i[TaggedForget TaggedOther WrappedForget GuardedForget ReplacedForget].freeze
+
+  def teardown
+    CONCERNS.each { |name| Object.send(:remove_const, name) if Object.const_defined?(name, false) }
+  end
+
   def concern_source(name)
     <<~RUBY
       module #{name}
