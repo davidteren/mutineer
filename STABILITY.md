@@ -52,8 +52,15 @@ These keys are accepted in `.mutineer.yml` in 1.7.0:
 An `ignore:` entry can be a mapping with `id` and `reason` from 1.7.0.
 An older version does not ignore the mutant a mapping names, and it does not warn.
 
-`format`, `strategy`, `output`, `baseline_epsilon`, and `dry_run` are flags only.
+`format`, `strategy`, `output`, `baseline_epsilon`, `dry_run`, and
+`coverage_from` are flags only.
 They are not config keys.
+
+`--coverage-from FILE` is new in 1.7.0.
+It has no `.mutineer.yml` key.
+When the capture in FILE cannot be reused, the run exits 2.
+That covers a capture that does not fit this run, a malformed file, and a file
+that cannot be read.
 
 ### Action inputs
 

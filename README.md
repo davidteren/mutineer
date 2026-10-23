@@ -801,7 +801,7 @@ or `0.5`, not `+2`, `1e2`, or `1_0`. String options such as `only` and `baseline
 cannot be null or boolean. A blank `since` is invalid; use `since: false` to turn
 scoping off. Unknown keys warn and are ignored. Unknown operator names warn and are skipped, and the run exits 2 when none remain. Both warnings suggest the closest valid name, and both become errors in Mutineer 2.0. `--operators` replaces a blank or unknown file list.
 
-`format`, `strategy`, `output`, `baseline_epsilon`, and `dry_run` are CLI-only.
+`format`, `strategy`, `output`, `baseline_epsilon`, `dry_run`, and `coverage_from` are CLI-only.
 For JSON output, use `--format json`, not a `format:` config key. To select RSpec
 in the file, add `framework: rspec`.
 
