@@ -1,5 +1,5 @@
 # Expectation Fit — project config for mutineer.
-# Merges over the plugin defaults (/fit-setup wrote this; /fit-setup upgrade migrates).
+# Merges over the plugin defaults; /fit-setup upgrade migrates old layouts.
 # Every lens treats each note below as a repo rule; the convention lens reports a
 # breach as a finding. The notes come from the 2026-10 shift-left audit of all
 # merged PRs (postmortem of issues #252/#253/#254 and issues #279-#293).
@@ -8,8 +8,9 @@ version: 1
 conventions:
   extends: true
   notes:
-    - A documented limitation, trade-off, or "cannot yet" names its GitHub
-      issue in the same change. Prose alone does not record a hazard.
+    - A documented limitation, deferred trade-off, or "cannot yet" that
+      leaves work undone names its GitHub issue in the same change. Prose
+      alone does not record a hazard.
     - A fix to one path or surface names its siblings and covers or tracks
       each one (reload vs redefine, daemon vs in-process, Action vs CLI,
       report vs dry-run).
