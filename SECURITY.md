@@ -4,11 +4,12 @@
 
 | Version | Supported |
 | --- | --- |
-| 1.6.x | yes |
-| older than 1.6 | no |
+| the latest 1.x minor release | yes |
+| older 1.x minor releases | no |
 
-1.6.0 is the current release.
-Only that release line gets security fixes.
+The latest release is on [RubyGems](https://rubygems.org/gems/mutineer).
+Only its minor line gets security fixes.
+For example, when 1.7.0 is the latest release, 1.7.x gets fixes and 1.6.x does not.
 
 ## Reporting a vulnerability
 

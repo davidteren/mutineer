@@ -42,6 +42,12 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
    and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`;
    the score is rounded, so `--threshold 100` alone can still pass with a survivor.
 
+A survivor you cannot kill after a few attempts may be equivalent: no test can
+tell it from the original. Do not loop on it. Report it for human review. To
+suppress it, `mutineer triage .mutineer/run.json --reason TEXT --id ID` prints an
+`ignore:` entry for `.mutineer.yml` (Mutineer 1.7 or later reads it). See
+[Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants).
+
 Keep `fail_fast` disabled (the default). If the active `.mutineer.yml` sets it to
 `true`, temporarily change that value to `false` for the loop. Restore the original
 value when the loop ends, before committing. A fail-fast run is partial,

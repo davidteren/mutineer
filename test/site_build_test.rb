@@ -63,6 +63,19 @@ class SiteBuildTest < Minitest::Test
     end
   end
 
+  # docs/release-review/ holds maintainer notes. It stays in git but is not
+  # published, while a page beside it is.
+  def test_unpublished_docs_are_not_copied_to_the_site
+    paths = ["index.md", "release-review/README.md", "release-review-notes.md"]
+    copied = []
+    SiteBuild.stub(:tracked_docs_paths, paths) do
+      FileUtils.stub(:cp, ->(_src, target) { copied << target }) do
+        Dir.mktmpdir { |dest| SiteBuild.send(:copy_docs_tree!, dest); copied.map! { |t| t.delete_prefix("#{dest}/") } }
+      end
+    end
+    assert_equal ["index.md", "release-review-notes.md"], copied
+  end
+
   def test_tracked_docs_paths_raises_outside_a_checkout
     Dir.mktmpdir do |dir|
       # Stop git at `dir`, even when the temp directory sits inside a checkout.

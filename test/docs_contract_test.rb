@@ -131,6 +131,46 @@ class DocsContractTest < Minitest::Test
     codes.each { |code| assert_includes stability, "`#{code}`", "STABILITY.md is missing exit code #{code}" }
   end
 
+  # STABILITY.md lists the config keys, Action inputs, and schema version a
+  # release keeps. These checks fail when the code moves and the file does not.
+  def test_stability_lists_every_config_key
+    keys = stability_section("Config keys").scan(/`([a-z_]+)`/).flatten
+    Mutineer::KNOWN_KEYS.each do |key|
+      assert_includes keys, key, "STABILITY.md does not list the config key #{key}"
+    end
+  end
+
+  def test_stability_lists_every_action_input
+    listed = stability_section("Action inputs").scan(/`([a-z-]+)`/).flatten
+    YAML.load_file("action.yml").fetch("inputs").each_key do |input|
+      assert_includes listed, input, "STABILITY.md does not list the Action input #{input}"
+    end
+  end
+
+  def test_stability_names_the_reporter_schema_version
+    version = Mutineer::Reporter::SCHEMA_VERSION
+    assert File.read("STABILITY.md").include?("`schema_version` `#{version}`"),
+      "STABILITY.md does not name schema_version #{version}"
+  end
+
+  # A new operator must reach every page that lists the operators, and the
+  # counts on those pages must move with it.
+  def test_operator_pages_name_every_registered_operator
+    defaults = Mutineer::MutatorRegistry::DEFAULT_NAMES
+    tier2 = Mutineer::MutatorRegistry::TIER2_NAMES
+    %w[README.md docs/index.md docs/index.html].each do |path|
+      text = File.read(path)
+      (defaults + tier2).each do |name|
+        assert text.include?("`#{name}`") || text.include?(%(<td class="op">#{name}</td>)),
+          "#{path} does not list the #{name} operator"
+      end
+    end
+    total = defaults.size + tier2.size
+    assert_includes File.read("README.md"), "| Operators | #{total} (#{defaults.size} by default, #{tier2.size} opt-in) |"
+    assert_includes File.read("docs/index.html"), %(<b class="odo" data-from="0">#{total}</b> mutation operators)
+    assert_includes File.read("docs/llms.txt"), "#{total} mutation operators"
+  end
+
   def test_json_schema_links_to_the_stability_contract
     html = DocsContract.json_schema_html
     assert_includes html, "https://github.com/davidteren/mutineer/blob/main/STABILITY.md"
@@ -152,6 +192,16 @@ class DocsContractTest < Minitest::Test
   end
 
   private
+
+  # The body of one `###` section of STABILITY.md.
+  #
+  # @param title [String]
+  # @return [String]
+  def stability_section(title)
+    section = File.read("STABILITY.md")[/^### #{Regexp.escape(title)}\n(.*?)(?=^##)/m, 1]
+    flunk("STABILITY.md has no ### #{title} section") unless section
+    section
+  end
 
   # Strip markup so HTML and Markdown meanings compare.
   #

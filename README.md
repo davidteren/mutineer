@@ -27,7 +27,18 @@ for how the two tools differ.
   first, then the rest from fastest to slowest in doubling steps (under 1 s,
   1 to 3 s, 3 to 7 s, and so on); files in one step run in path order.
 
-📖 **[mutineer.github.io →](https://davidteren.github.io/mutineer/)** — overview, operators, and usage.
+📖 **[davidteren.github.io/mutineer →](https://davidteren.github.io/mutineer/)** — overview, operators, and usage.
+
+New to mutation testing? Read
+[What is mutation testing?](https://github.com/davidteren/mutineer#what-is-mutation-testing)
+first. It takes five minutes and uses one small example.
+
+Try it on one file and its test:
+
+```sh
+gem install mutineer
+mutineer run lib/calculator.rb --test test/calculator_test.rb
+```
 
 ## Is it production-ready?
 
@@ -93,6 +104,125 @@ A crash in the command can count as a kill.
 What a release will not break is in
 [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md).
 
+## What is mutation testing?
+
+Your tests pass. That shows the code does what the tests check. It does not
+show that the tests check enough. Mutation testing finds out by changing your
+code on purpose and seeing whether any test notices.
+
+Each change is small, such as `>=` to `>` or `&&` to `||`. One changed copy of
+your code is a **mutant**. Mutineer runs your tests against each mutant:
+
+- When a test fails, the tests **killed** the mutant. Good: they noticed.
+- When every test still passes, the mutant **survived**. Your tests ran that
+  code but did not check what it does.
+
+### A small example
+
+```ruby
+# lib/discount.rb
+class Discount
+  def rate(qty)
+    return 0.1 if qty >= 10
+    0
+  end
+end
+```
+
+```ruby
+# test/discount_test.rb
+require "minitest/autorun"
+require_relative "../lib/discount"
+
+class DiscountTest < Minitest::Test
+  def test_bulk_order_gets_ten_percent
+    assert_equal 0.1, Discount.new.rate(50)
+  end
+
+  def test_small_order_gets_nothing
+    assert_equal 0, Discount.new.rate(1)
+  end
+end
+```
+
+Both tests pass, and every line runs, so line coverage is 100%. Run Mutineer:
+
+```sh
+mutineer run lib/discount.rb --test test/discount_test.rb
+```
+
+Part of the report:
+
+```text
+Mutation score: 50.0%  (killed / (killed + survived); ...)
+
+Surviving Mutants
+-----------------
+
+lib/discount.rb
+  Discount#rate (discount.rb:3)
+  Operator: comparison  (>= -> >)
+  -     return 0.1 if qty >= 10
+  +     return 0.1 if qty > 10
+```
+
+Mutineer changed `>=` to `>`, and both tests still passed. No test checks an
+order of exactly 10, so a bug at that boundary would ship. Add that test:
+
+```ruby
+def test_ten_is_the_first_bulk_quantity
+  assert_equal 0.1, Discount.new.rate(10)
+end
+```
+
+Run Mutineer again. Both mutants are killed, and the score is 100%.
+
+### Coverage and mutation testing
+
+Line coverage tells you which lines ran during the tests. Mutation testing tells
+you whether the tests would fail if those lines were wrong. A test with no
+assertion still adds coverage, but it kills no mutant. That gap is common in
+tests written in a hurry, and in tests written by AI coding agents.
+
+### What each result means
+
+| Report row | What happened | In the score? |
+| --- | --- | --- |
+| Killed | A test failed against the mutant. | Yes |
+| Survived | Every test passed against the mutant. Look at it. | Yes |
+| No coverage | No test runs that line. Write a test for it first. | No |
+| Timeout | The tests ran past `--timeout`. | No |
+| Errored | The test run crashed, so there is no verdict. | No |
+| Ignored | You marked the mutant as equivalent (see below). | No |
+| Skipped | The change made invalid Ruby, so it did not run. | No |
+
+Uncapturable, Unplaceable, and Ran at load are rarer. The
+[JSON schema](https://davidteren.github.io/mutineer/json-schema.html#summary)
+explains each one.
+
+The **mutation score** is `killed / (killed + survived)`. The other rows do not
+change the score. When nothing can be scored, the score is empty (`null` in
+JSON), not 0. Under `--threshold`, too many Timeout or Errored mutants still
+fail the run; see [Timeouts and the score](https://github.com/davidteren/mutineer#timeouts-and-the-score).
+
+### What to do with a survivor
+
+1. Read the diff. Ask what behaviour the change breaks.
+2. Write or strengthen a test that fails under the change. Run again.
+3. Sometimes the change breaks nothing. For example, swapping `x * 1` for
+   `x / 1` gives the same result. That mutant is **equivalent**, and no test can
+   kill it. Suppress it with a reason (see
+   [Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants)).
+
+### Where to start
+
+Each mutant runs part of your suite again, so a run takes longer than one test
+run. Start with one file and its test, as above. Use `--dry-run` to list the
+mutants without running tests. When the report makes sense, widen the run to a
+folder, then gate pull requests on the lines they change with `--since`. On a
+Rails app, the [Rails rollout guide](https://davidteren.github.io/mutineer/rails.html)
+walks through each stage.
+
 ## Install
 
 ```sh
@@ -109,8 +239,16 @@ gem "mutineer", group: :test
 
 ```sh
 mutineer run <source...> --test <test> [--test <test>...] [options]
+mutineer init [--rails] [--force]
+mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)
 mutineer migrate <source...> [--dry-run] [--operators LIST]
 ```
+
+- `run` mutates the sources, runs the tests, and prints the report.
+- `init` writes a commented `.mutineer.yml` and prints a first run command.
+- `triage` prints `ignore:` entries for survivors in a JSON report. It does not
+  edit files. See [Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants).
+- `migrate` rewrites old ignore ids. See [Migrate old ignore ids](https://github.com/davidteren/mutineer#migrate-old-ignore-ids).
 
 Mutate `lib/calculator.rb`, checking it against its test, and fail CI if the
 mutation score drops below 90%:
