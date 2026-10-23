@@ -10,8 +10,9 @@ module Mutineer
   # mutant of a concern with such a block would error. {.forget} removes the
   # stored blocks that the source file defined, so the mutant's load stores
   # its own. {.replace} wraps the load and puts back any block the load did not
-  # store again, such as one under an `unless defined?` guard. A class that already includes the concern keeps what the original
-  # block defined in it: ActiveSupport does not run the block there again.
+  # store again, such as one under an `unless defined?` guard. A class that
+  # already includes the concern keeps what the original block defined in it:
+  # ActiveSupport does not run the block there again.
   # Discovery marks the defs in these blocks (see {Subject#unplaceable?}).
   #
   # Call it only in a forked child that loads the mutant. Without
