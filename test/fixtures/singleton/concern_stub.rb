@@ -7,7 +7,7 @@
 # `included` block runs in each includer, which also extends ClassMethods.
 # It models what `--strategy redefine` needs only. ActiveSupport also rejects a
 # second `included` block from another file, so reloading a concern from a temp
-# file raises MultipleIncludedBlocks there (#257); this stub does not.
+# file raises MultipleIncludedBlocks there (#256); this stub does not.
 unless defined?(ActiveSupport::Concern)
   module ActiveSupport
     module Concern

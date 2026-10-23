@@ -139,6 +139,13 @@ All notable changes to this project are documented here. The format is based on
   methods. Mutineer named them as instance methods of the concern itself.
   Redefine (the `--rails` default) then loaded each mutant onto the concern.
   The tests called the includer's method, so every mutant falsely survived.
+  A concern with an instance method of the same name failed the other way:
+  the mutant replaced that instance method, so tests calling it ran the
+  wrong method and failed (an ArgumentError, when the arities differ), and
+  the mutant counted as killed whatever it changed. Both false survivors
+  and false kills are gone. An earlier redefine score is unreliable for
+  any file with a `class_methods` block: too low from false survivors, or
+  too high from false kills. Re-run those files.
   These methods are now named `Concern::ClassMethods#name`, and redefine
   loads the mutant onto that module. This applies to a module that ran
   `extend ActiveSupport::Concern` earlier in the same file. The mutant ids of
@@ -160,11 +167,11 @@ All notable changes to this project are documented here. The format is based on
   `--threshold`, so a gate that failed on these false survivors can now pass.
   Their names and mutant ids do not change. `--strategy reload` runs them, but under
   ActiveSupport it cannot yet run a concern file that has an `included` or
-  `prepended` block: those mutants are `errored` (#257). Another library's
+  `prepended` block: those mutants are `errored` (#256). Another library's
   method with one of these names is `unplaceable` under redefine too, even
   when that library runs the block in the module itself and redefine used to
   run it correctly. Mutineer cannot tell that library from ActiveSupport, so it
-  does not guess. Use `--strategy reload` for those mutants.
+  does not guess. For that other library's mutants, use `--strategy reload`.
 - **A file in a namespace directory scores under `--rails --strategy reload`
   and `--rails --daemon` (#253).** Mutineer writes each mutant to a temp file
   next to the source and loads it. With lazy loading, loading it can be the
