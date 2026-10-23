@@ -5,6 +5,7 @@ require "tempfile"
 require_relative "child_stdout"
 require_relative "child_coverage"
 require_relative "orphan_guard"
+require_relative "concern_blocks"
 require_relative "redaction"
 
 module Mutineer
@@ -429,7 +430,8 @@ module Mutineer
       # loading it can be the first time Zeitwerk scans a namespace directory,
       # and a parallel worker's file may sit there too (#253). `sweep_temps` only
       # removes orphans and never touches a live file. Same path for reload
-      # (whole file) and redefine (wrapped snippet).
+      # (whole file) and redefine (wrapped snippet). The backend sends the whole
+      # file, so the concern blocks it stores replace the forgotten ones (#256).
       def apply_payload(payload)
         dir = File.dirname(File.expand_path(payload.fetch("source_file")))
         Tempfile.create([".mutineer_daemon", ".rb"], dir) do |f|
@@ -438,7 +440,7 @@ module Mutineer
           f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
           f.write(payload.fetch("code"))
           f.flush
-          load f.path
+          ConcernBlocks.replace(payload.fetch("source_file")) { load f.path }
         end
       end
 

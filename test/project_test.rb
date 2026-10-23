@@ -323,6 +323,32 @@ class ProjectTest < Minitest::Test
       subjects = Mutineer::Project.discover([path])
       assert_equal %w[Billing#tag Billing::Kind#b Billing#wrap Billing#total], subjects.map(&:qualified_name)
       assert_equal [true, false, true, false], subjects.map(&:owner_unknown)
+      # #256: reload does not run the block again, so everything in it is marked,
+      # the named Struct's def included.
+      assert_equal [true, true, true, false], subjects.map(&:hook_block)
+    end
+  end
+
+  # #256: only a concern's `included` or `prepended` block is one ActiveSupport
+  # runs once. A `class_methods` block, or another library's `included`, is not.
+  def test_discover_marks_only_concern_included_and_prepended_blocks_as_hook_blocks
+    src = <<~RUBY
+      module Billing
+        extend ActiveSupport::Concern
+        class_methods do
+          def rate; end
+        end
+      end
+      module Plugin
+        included do
+          def hook; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Billing::ClassMethods#rate Plugin#hook], subjects.map(&:qualified_name)
+      assert_equal [false, false], subjects.map(&:hook_block)
     end
   end
 

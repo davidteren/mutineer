@@ -37,7 +37,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
   "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
   "no_coverage":  [ /* mutants on lines no test exercises, or that the statement's tests may not reach (#254) */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
-  "unplaceable":  [ /* redefine mutants whose class cannot be named statically; not run */ ],
+  "unplaceable":  [ /* mutants the strategy cannot load where the tests call them; not run */ ],
   "ran_at_load":  [ /* mutants on a line that ran while the app or class loaded; no verdict */ ],
   "no_verdict":   [ /* mutants that were attempted and produced no verdict */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
@@ -56,7 +56,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `survived` | int | Mutants no test caught. **These are the actionable test gaps.** |
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant in code that runs only sometimes on a later line of a multi-line statement, such as the right side of `a &&` on its own line, when the tests that ran the statement did not kill it: the run cannot tell whether they reached it. |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
-| `unplaceable` | int | Under `--strategy redefine`, mutants whose method belongs to a class or module that cannot be named statically, so they were not run (excluded). The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. `--strategy reload` runs them. Additive key (schema `1.7`). |
+| `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically; under either strategy, a method in a concern's `included` or `prepended` block. The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). |
 | `errored` | int | Mutants whose run raised (excluded). |
@@ -94,9 +94,10 @@ a class or module opened or assigned in `class << self`, a `self::X` opened in a
 that does not build a class, a method in an `included` or `prepended` block, which ActiveSupport runs in each
 includer, or a method in a `class_methods` block that is not in the body of a module known as a concern (see
 `subject` above), such as one inside Rails' `concerning` or an unassigned `Module.new`); `--strategy reload`
-runs these, with one exception: under ActiveSupport, reload cannot yet run a concern file that has an
-`included` or `prepended` block (#256), because loading the file a second time raises
-`MultipleIncludedBlocks`, so its mutants are `errored`. `ran_at_load` (schema `1.7`) means the mutant's
+runs these, except a method in an `included` or `prepended` block. Under `--strategy reload`, `unplaceable`
+means the mutant's method is anywhere inside a concern's `included` or `prepended` block (#256): ActiveSupport
+runs that block only when a class first includes or prepends the concern, so loading the file again never reaches
+a class that already has it, and the mutant would falsely survive. `--test-command` runs both kinds. `ran_at_load` (schema `1.7`) means the mutant's
 line ran while the app booted or its class loaded (for example a class body that calls the method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.
