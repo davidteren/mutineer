@@ -427,7 +427,7 @@ class CoverageMapTest < Minitest::Test
     File.readlines(path, chomp: true).map(&:split).tap { File.write(path, "") }
   end
 
-  def test_coverage_from_runs_only_the_combined_clean_check_and_keeps_the_subset_map
+  def test_coverage_from_runs_only_the_covering_tests_alone_and_keeps_the_subset_map
     ensure_coverage_running
     require File.join(SHARED, "boot")
     Dir.mktmpdir do |dir|
@@ -440,9 +440,9 @@ class CoverageMapTest < Minitest::Test
       assert_operator sentinel_runs(sentinel).map(&:first).uniq.size, :>=, 3, "each capture fork and the combined run"
 
       reused = shared_map(%w[alpha.rb], shard, coverage_from: File.join(capture, "coverage.json"))
-      runs = sentinel_runs(sentinel)
-      assert_equal SHARED_TESTS, runs.map(&:last).sort
-      assert_equal 1, runs.map(&:first).uniq.size, "only the combined clean run loads the tests"
+      runs = sentinel_runs(sentinel).group_by(&:first).values.map { |run| run.map(&:last).sort }
+      assert_equal [%w[alpha_test.rb], SHARED_TESTS].sort, runs.sort,
+                   "alpha_test.rb, the only test covering alpha.rb, runs alone, then the combined run"
       refute reused.phase_a_ran
       assert_path_exists File.join(shard, "coverage.json")
 
@@ -466,6 +466,10 @@ class CoverageMapTest < Minitest::Test
       "a source outside the capture" => [->(_root, _cache) {}, /not captured over beta\.rb/, %w[alpha.rb]],
       "a new owner" => [->(root, _cache) { File.write(File.join(root, "alpha_extra.rb"), "") },
                         /alpha_extra\.rb appeared since the capture/],
+      "a removed owner" => [->(_root, cache) { edit_cache.(cache) { |c| c["owners"] += ["alpha_extra.rb"] } },
+                            /alpha_extra\.rb disappeared since the capture/],
+      "another PARALLEL_WORKERS" => [->(_root, cache) { edit_cache.(cache) { |c| c["parallel_workers"] = "4" } },
+                                     /captured with PARALLEL_WORKERS="4"/],
       "a changed file the tests load" => [->(root, _cache) { File.write(File.join(root, "beta.rb"), "\n", mode: "a") },
                                           /a file its tests loaded changed/],
       "a failed capture" => [->(_root, cache) { edit_cache.(cache) { |c| c["failed_test_files"] = ["beta_test.rb"] } },
@@ -505,6 +509,20 @@ class CoverageMapTest < Minitest::Test
       assert_equal %w[alpha_test.rb], reused.failed_clean_tests
     ensure
       ENV.delete("MUTINEER_FLUNK")
+    end
+  end
+
+  def test_coverage_from_catches_a_covering_test_that_fails_only_alone
+    ensure_coverage_running
+    Dir.mktmpdir do |dir|
+      shared_map(%w[alpha.rb beta.rb], File.join(dir, "capture"))
+      ENV["MUTINEER_FLUNK_ALONE"] = "1"
+      reused = shared_map(%w[alpha.rb], File.join(dir, "shard"),
+                          coverage_from: File.join(dir, "capture", "coverage.json"))
+      assert_equal %w[alpha_test.rb], reused.failed_clean_tests
+      refute_path_exists File.join(dir, "shard", "coverage.json")
+    ensure
+      ENV.delete("MUTINEER_FLUNK_ALONE")
     end
   end
 

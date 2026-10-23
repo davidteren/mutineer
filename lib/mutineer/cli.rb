@@ -69,7 +69,8 @@ module Mutineer
         --cache-dir DIR      Directory for the coverage cache (default: .mutineer;
                              not with --test-command)
         --coverage-from FILE Reuse the coverage.json of a --rails/--boot capture over
-                             these sources or more; skips the per-file clean runs
+                             these sources or more; runs alone only the tests that
+                             cover these sources
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then
                              fork per mutant (Rails apps; requires --test)

@@ -409,8 +409,12 @@ module Mutineer
     end
 
     # Takes the map from the `--coverage-from` capture instead of capturing,
-    # keeping only this run's sources, then runs the tests clean: together, or
-    # alone when there is one, since the combined check needs two.
+    # keeping only this run's sources, then runs the tests clean. A mutant runs
+    # only the tests that cover its line, often one file alone, so each test
+    # that covers one of this run's sources runs alone, as on a cache hit: a
+    # test that fails alone here would otherwise kill every mutant it runs. The
+    # other tests never run alone in this run, so only the combined check
+    # covers them.
     #
     # @api private
     # @param after_fork [Proc, nil] boot-mode fork hook.
@@ -424,7 +428,10 @@ module Mutineer
       @failed_test_files = []
       @failed_clean_tests = []
       @loaded_dependencies = cached["dependencies"]
-      @test_paths.one? ? verify_cached_clean(after_fork: after_fork) : verify_combined_clean(after_fork: after_fork)
+      covering = @map.values.flatten.to_set
+      verify_cached_clean(after_fork: after_fork,
+                          test_paths: @test_paths.select { |t| covering.include?(relativize(t)) })
+      verify_combined_clean(after_fork: after_fork)
       save
       self
     end
@@ -469,7 +476,17 @@ module Mutineer
 
       owners = ownership_paths - cached["owners"]
       return "#{owners.join(', ')} appeared since the capture and can own a split test" if owners.any?
+
+      # The capture can list owners of sources outside this run, so compare
+      # with the disk, not with this run's owners.
+      gone = cached["owners"].reject { |rel| File.file?(absolute(rel)) }
+      return "#{gone.join(', ')} disappeared since the capture and could own a split test" if gone.any?
+
       return "a file its tests loaded changed since the capture" unless dependencies_match?(cached)
+      unless parallel_workers_match?(cached)
+        return "it was captured with PARALLEL_WORKERS=#{cached['parallel_workers'].inspect}, " \
+               "this run has #{ENV.fetch('PARALLEL_WORKERS', nil).inspect}"
+      end
 
       failed = Array(cached["failed_test_files"])
       return "capture failed for #{failed.join(', ')}" if failed.any?
@@ -732,9 +749,10 @@ module Mutineer
     #
     # @api private
     # @param after_fork [Proc, nil] boot-mode fork hook.
+    # @param test_paths [Array<String>] the tests to run, each alone.
     # @return [void]
-    def verify_cached_clean(after_fork: nil)
-      @test_paths.each do |test_path|
+    def verify_cached_clean(after_fork: nil, test_paths: @test_paths)
+      test_paths.each do |test_path|
         rel = relativize(test_path)
         next if @failed_test_files.include?(rel)
 
