@@ -65,6 +65,17 @@ class OperandRemovalTest < Minitest::Test
     assert_equal ["(<<~EOS)"], mutations.map(&:replacement)
   end
 
+  def test_heredoc_copied_whole_with_its_body_stays
+    mutations, source = run_mutator("x = [<<~EOS,\n    text\n  EOS\n    y].any? && z")
+    assert_includes mutations.map(&:replacement), "([<<~EOS,\n    text\n  EOS\n    y].any?)"
+    mutations.each { |m| assert m.valid?(source) }
+  end
+
+  def test_heredoc_operand_whose_body_is_inside_the_span_is_not_kept
+    mutations, = run_mutator("foo(<<~EOS) ||\n    text\n  EOS\n    bar")
+    assert_empty mutations
+  end
+
   # Known weak case: the removed operand assigns `m`, so a later read of `m`
   # calls a method that does not exist. The mutant parses, and any test that
   # runs the line kills it.

@@ -57,6 +57,10 @@ class MutatorRegistryTest < Minitest::Test
   end
 
 
+  def test_call_to_receiver_resolvable
+    assert_equal [M::CallToReceiver], Mutineer::MutatorRegistry.resolve(%w[call_to_receiver])
+  end
+
   def test_operand_removal_resolvable
     assert_equal [M::OperandRemoval], Mutineer::MutatorRegistry.resolve(%w[operand_removal])
   end
@@ -76,7 +80,7 @@ class MutatorRegistryTest < Minitest::Test
 
   def test_new_operators_are_tier2_and_not_default
     %w[string_literal regex collection_method safe_navigation range negation_removal chain_link
-       operand_removal array_literal condition_true condition_false
+       call_to_receiver operand_removal array_literal condition_true condition_false
        operator_assignment].each do |name|
       assert_equal 2, Mutineer::MutatorRegistry.tier(name), "#{name} should be tier 2"
       refute Mutineer::MutatorRegistry.default?(name), "#{name} should not be default"

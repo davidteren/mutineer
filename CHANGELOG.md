@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Call-to-receiver operator** (Tier-2, opt-in via `--operators`):
+  `call_to_receiver` replaces the last call of a chain with its receiver, with
+  the arguments and block of that call (`user.full_name` -> `user`). The mutant
+  survives when no test checks what that last call does. It does not overlap
+  with `chain_link`: `chain_link` drops a call in the middle of a chain, and
+  `call_to_receiver` drops only the last call. The two give the same source
+  only when the last call repeats the call before it (`node.name.name`). It
+  skips the same names as `chain_link`, and it skips operator calls and
+  setters.
 - **Reasons on ignored mutants.** Text after `--` on
   `# mutineer:disable-line`, and a `.mutineer.yml` `ignore:` mapping
   (`id` plus `reason`), is stored on the ignored mutant. The JSON report
@@ -119,6 +128,11 @@ All notable changes to this project are documented here. The format is based on
   does not run again in a class that already includes or prepends the
   concern, so the mutant would falsely survive. That includes a method of a
   class defined inside the block. Use `--test-command` to run those mutants.
+- **No heredoc opener without its body.** A mutation that kept a heredoc
+  opener but replaced the lines of its body gave source that does not parse,
+  such as `operand_removal` on `foo(<<~EOS) ||` with the body and `bar` on
+  the next lines. The mutant showed only as `skipped (invalid)`. Now the
+  operator does not emit it.
 - **An RSpec run that fails only on an error outside examples scores the
   mutant `errored`, not `killed`.** A spec file that raised while loading, or
   a failing `before(:suite)` hook, made RSpec exit 1, and every mutant was

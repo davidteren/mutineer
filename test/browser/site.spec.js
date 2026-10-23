@@ -7,7 +7,7 @@ test('theme, keyboard disclosure, copy and mobile navigation work together', asy
   // Reduced motion: no motion layer, and every number is final at once.
   await expect(root).not.toHaveClass(/\bmotion\b/);
   await expect(page.locator('.scroll-progress, .visually-hidden, .reveal')).toHaveCount(0);
-  expect(await page.locator('.odo').allTextContents()).toEqual(['20', '01', '8,170', '24']);
+  expect(await page.locator('.odo').allTextContents()).toEqual(['21', '01', '8,170', '24']);
   await expect(root).toHaveAttribute('data-theme', 'dark');
   const summary = page.locator('.boundary-test summary');
   await summary.focus();
@@ -66,7 +66,7 @@ test('printing before scrolling shows the real numbers', async ({ page }) => {
   await page.goto('/');
   expect(await page.locator('.evidence-strip .odo').textContent()).toBe('\u20070');
   await page.evaluate(() => dispatchEvent(new Event('beforeprint')));
-  expect(await page.locator('.odo').allTextContents()).toEqual(['20', '01', '8,170', '24']);
+  expect(await page.locator('.odo').allTextContents()).toEqual(['21', '01', '8,170', '24']);
   await expect(page.locator('.visually-hidden')).toHaveCount(0);
 });
 
@@ -106,7 +106,7 @@ test('motion keeps step labels, true numbers and every section visible', async (
     numbers: [...document.querySelectorAll('.odo')].map(e => e.textContent),
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
   }));
-  expect(state).toEqual({ hidden: 0, numbers: ['20', '01', '8,170', '24'], overflow: 0 });
+  expect(state).toEqual({ hidden: 0, numbers: ['21', '01', '8,170', '24'], overflow: 0 });
   // After counting, each number reads once (no hidden copy left behind).
   expect(await page.locator('.hero-proof-num').innerText()).toMatch(/^8,170\s/);
   await expect(page.locator('.odo[aria-hidden], .visually-hidden')).toHaveCount(0);

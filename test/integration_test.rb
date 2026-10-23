@@ -88,6 +88,12 @@ class IntegrationTest < Minitest::Test
     assert_equal "", s.mutation.replacement
   end
 
+  def test_call_to_receiver_survivor
+    assert_sole_survivor(source: "test/fixtures/slug.rb", test: "test/fixtures/slug_test.rb",
+                         operator: :call_to_receiver, subject: "title_of", token: "title.strip",
+                         replacement: "title")
+  end
+
   def test_operand_removal_survivor
     result = run_mutineer(sources: ["test/fixtures/discount.rb"],
                           tests: ["test/fixtures/discount_test.rb"],
