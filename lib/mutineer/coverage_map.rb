@@ -462,9 +462,10 @@ module Mutineer
     # @return [String, nil]
     def capture_mismatch(cached)
       return "it is not a coverage cache" unless cached.is_a?(Hash) && cached["map"].is_a?(Hash)
-      unless cached["sources"].is_a?(Hash) && cached["owners"].is_a?(Array) && cached["inputs"]
+      unless cached["sources"] && cached["owners"] && cached["inputs"]
         return "it has no source fingerprints; capture it again with this version and --rails/--boot"
       end
+      return "its entries are not the shape a coverage cache saves; capture it again" unless well_formed_capture?(cached)
       return "its tests, --require files, boot file, load paths or framework differ" unless cached["inputs"] == compute_digest(inputs_only: true)
 
       fingerprints = source_fingerprints
@@ -496,6 +497,21 @@ module Mutineer
 
       "lines of #{moved.join(', ')} ran at load in only one of the capture and this run: loading the capture's " \
         "other sources ran them. Under --strategy redefine, eager-load in both (config.eager_load = true)"
+    end
+
+    # True when every entry the reuse reads has the type {#save} writes, so a
+    # hand-edited or foreign file is rejected with a reason, not a backtrace.
+    #
+    # @api private
+    # @param cached [Hash] the parsed coverage.json.
+    # @return [Boolean]
+    def well_formed_capture?(cached)
+      strings = ->(value) { value.is_a?(Array) && value.all?(String) }
+      cached["inputs"].is_a?(String) && strings.(cached["owners"]) &&
+        cached["sources"].is_a?(Hash) && cached["sources"].all? { |k, v| k.is_a?(String) && v.is_a?(String) } &&
+        cached["map"].all? { |k, v| k.is_a?(String) && strings.(v) } &&
+        %w[load_lines load_methods].all? { |key| cached[key].nil? || strings.(cached[key]) } &&
+        (cached["timings"].nil? || cached["timings"].is_a?(Hash))
     end
 
     # This run's sources whose load lines or load methods differ in the capture.

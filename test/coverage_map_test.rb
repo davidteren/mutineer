@@ -476,6 +476,10 @@ class CoverageMapTest < Minitest::Test
                              /capture failed for beta_test\.rb/],
       "a cache without fingerprints" => [->(_root, cache) { edit_cache.(cache) { |c| c.delete("sources") } },
                                          /no source fingerprints/],
+      "a malformed owner list" => [->(_root, cache) { edit_cache.(cache) { |c| c["owners"] = [1] } },
+                                   /not the shape a coverage cache saves/],
+      "a malformed map" => [->(_root, cache) { edit_cache.(cache) { |c| c["map"] = { "alpha.rb:5" => "alpha_test.rb" } } },
+                            /not the shape a coverage cache saves/],
       "a missing file" => [->(_root, cache) { File.delete(cache) }, /cannot be read/]
     }
     cases.each do |name, (change, error, captured)|

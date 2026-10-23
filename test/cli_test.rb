@@ -171,6 +171,12 @@ class CliTest < Minitest::Test
       assert_equal 0, status.exitstatus, err
       fresh, = shared_capture_run(proj, "alpha.rb", "--boot", "boot.rb", "--cache-dir", "fresh")
       assert_equal JSON.parse(fresh), JSON.parse(reused)
+      # The flag is read, not ignored: a capture that is no cache stops the run.
+      File.write(File.join(proj, "capture", "coverage.json"), "{}")
+      _, err, status = shared_capture_run(proj, "alpha.rb", "--boot", "boot.rb", "--cache-dir", "shard2",
+                                          "--coverage-from", "capture/coverage.json")
+      assert_equal 2, status.exitstatus, err
+      assert_match(/is not a coverage cache/, err)
     end
   end
 
