@@ -25,6 +25,30 @@ class SubjectTest < Minitest::Test
     assert_equal "#helper", s.qualified_name
   end
 
+  # #256: redefine needs a named owner; reload reaches everything but a
+  # concern's `included` or `prepended` block.
+  def test_unplaceable_depends_on_the_strategy
+    build = lambda do |**flags|
+      Mutineer::Subject.new(file: "f.rb", namespace: ["Billing"], name: :tag, singleton: false,
+                            def_node: def_node("def tag; end"), **flags)
+    end
+    hook = build.call(owner_unknown: true, hook_block: true)
+    assert hook.unplaceable?("redefine")
+    assert hook.unplaceable?("reload")
+
+    named_in_hook = build.call(owner_unknown: false, hook_block: true)
+    refute named_in_hook.unplaceable?("redefine")
+    assert named_in_hook.unplaceable?("reload")
+
+    anonymous = build.call(owner_unknown: true, hook_block: false)
+    assert anonymous.unplaceable?("redefine")
+    refute anonymous.unplaceable?("reload")
+
+    plain = build.call
+    refute plain.unplaceable?("redefine")
+    refute plain.unplaceable?("reload")
+  end
+
   def test_body_loc_nil_for_empty_method
     s = Mutineer::Subject.new(file: "f.rb", namespace: [],
                             name: :empty, singleton: false, def_node: def_node("def empty; end"))

@@ -327,9 +327,7 @@ module Mutineer
       kind, payload = JobPlan.coverage_selection(source_file, mutation, subject, source, coverage_map)
       return payload if kind == :verdict
       # A :maybe mutant that cannot be placed stays no_coverage, as before #254.
-      if strategy == "redefine" && subject&.owner_unknown
-        return kind == :maybe ? Result.no_coverage : Result.unplaceable
-      end
+      return kind == :maybe ? Result.no_coverage : Result.unplaceable if subject&.unplaceable?(strategy)
 
       abs_tests = payload
 

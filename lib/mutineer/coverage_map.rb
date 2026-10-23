@@ -10,6 +10,7 @@ require_relative "minitest_integration"
 require_relative "test_runners"
 require_relative "child_stdout"
 require_relative "orphan_guard"
+require_relative "redaction"
 require_relative "project_path"
 require_relative "pairing"
 
@@ -720,7 +721,8 @@ module Mutineer
     def fail_test(test_path, reason)
       rel = relativize(test_path)
       @failed_test_files << rel
-      warn "[mutineer] coverage skipped for #{rel}: #{reason}"
+      # The reason can quote an app error, and so a credentialed DATABASE_URL.
+      warn "[mutineer] coverage skipped for #{rel}: #{Redaction.text(reason)}"
       nil
     end
 

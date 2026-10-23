@@ -25,7 +25,7 @@ module Mutineer
     # the tests.
     class ChainLink < Base
       # Method names whose link is never dropped: core conversions and copies,
-      # plus `new`.
+      # plus `new`. {CallToReceiver} uses the same list for the last call.
       SKIPPED = %i[
         to_s to_str to_sym to_i to_int to_f to_r to_c to_a to_ary to_h to_hash to_proc to_set
         dup clone freeze itself

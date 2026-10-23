@@ -52,24 +52,27 @@ module Mutineer
 
       private
 
-      # Drops a mutation that deletes a heredoc opener and leaves its body.
+      # Drops a mutation that splits a heredoc opener from its body.
       #
       # The body sits past the opener's node. Replacing the opener with text
       # that does not contain it turns the body into Ruby, which parses and
       # then raises. A replacement that still contains the opener keeps the
-      # body attached, so that mutation stays.
+      # body attached, so that mutation stays. The reverse also breaks: when
+      # the replaced range holds the body but the replacement keeps only the
+      # opener, the opener has no body and the source does not parse. A
+      # replacement that copies the opener and the body together stays.
       #
       # @return [void]
       def drop_dangling_heredocs
         @mutations.reject! { |mutation| dangling_heredoc?(mutation) }
       end
 
-      # Returns whether the mutation removes a heredoc opener whose body hangs
-      # past the replaced range.
+      # Returns whether the mutation replaces a heredoc opener and keeps the
+      # opener without its body, or the body without its opener.
       #
       # @param mutation [Mutineer::Mutation] candidate edit.
       # @param node [Prism::Node, nil] subtree to search. Defaults to the body.
-      # @return [Boolean] true when the edit would leave a heredoc body behind.
+      # @return [Boolean] true when the edit would split a heredoc from its body.
       def dangling_heredoc?(mutation, node = @body)
         return false if node.nil? || !node.is_a?(Prism::Node)
 
@@ -78,9 +81,13 @@ module Mutineer
           if opening && opening.start_offset >= mutation.start_offset && opening.start_offset < mutation.end_offset
             closing = node.respond_to?(:closing_loc) ? node.closing_loc : nil
             hangs = closing.nil? || closing.end_offset > mutation.end_offset
+            opener = @source.byteslice(opening.start_offset, opening.end_offset - opening.start_offset)
+            kept = !opener.empty? && mutation.replacement.include?(opener)
             if hangs
-              opener = @source.byteslice(opening.start_offset, opening.end_offset - opening.start_offset)
-              return true if opener.empty? || !mutation.replacement.include?(opener)
+              return true unless kept
+            elsif kept
+              whole = @source.byteslice(opening.start_offset, closing.end_offset - opening.start_offset)
+              return true unless mutation.replacement.include?(whole)
             end
           end
         end
