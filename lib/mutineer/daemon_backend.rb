@@ -380,6 +380,9 @@ module Mutineer
           Result.skipped
         elsif sel && sel[0] == :verdict
           sel[1]
+        elsif subject.unplaceable?("reload") # the daemon always reloads the whole file
+          # A :maybe mutant that cannot be placed stays no_coverage, as in-process.
+          sel && sel[0] == :maybe ? Result.no_coverage : Result.unplaceable
         else
           verdict = client.request(
             id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,

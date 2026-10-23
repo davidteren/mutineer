@@ -6,6 +6,7 @@ require_relative "parser"
 require_relative "child_stdout"
 require_relative "child_coverage"
 require_relative "kill_channel"
+require_relative "concern_blocks"
 
 module Mutineer
   # Fork-based isolation for running one mutant. The block runs in a child
@@ -186,6 +187,10 @@ module Mutineer
     # files, so the leading dot keeps it from rejecting the tempfile's name as a
     # constant, in this child and in any other running at the same time (#253).
     #
+    # A concern's stored `included` and `prepended` blocks from the source file
+    # are forgotten around the load, so ActiveSupport accepts the blocks the
+    # temp file stores (#256).
+    #
     # @api private
     # @param mutated [String] mutated source text.
     # @param source_file [String] original source file path.
@@ -194,7 +199,7 @@ module Mutineer
       Tempfile.create([".mutineer_mutant", ".rb"], File.dirname(File.expand_path(source_file))) do |f|
         f.write(mutated)
         f.flush
-        load f.path
+        ConcernBlocks.replace(source_file) { load f.path }
       end
     end
 
