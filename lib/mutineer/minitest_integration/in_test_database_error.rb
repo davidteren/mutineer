@@ -122,8 +122,6 @@ module Mutineer
           2
         end
 
-        private
-
         # The database error a failure wraps. The first entry of a result is
         # the error that ended the test: Minitest records the setup or body
         # error before a teardown error. The cause chain is not read: Active
@@ -131,6 +129,10 @@ module Mutineer
         #
         # Minitest before 5.14 names the wrapped error `exception`.
         #
+        # Shared with the matrix recorder so an unavailable database outcome
+        # cannot be named as a mutation kill.
+        #
+        # @api private
         # @param failure [Minitest::Assertion, nil] the result's first entry.
         # @return [Exception, nil]
         def database_error(failure)
@@ -141,6 +143,8 @@ module Mutineer
 
           error if loaded(NAMES).any? { |klass| error.is_a?(klass) }
         end
+
+        private
 
         # The named classes this process has loaded.
         #

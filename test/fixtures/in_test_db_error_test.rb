@@ -24,7 +24,8 @@ module ActiveRecord
   class LockWaitTimeout < StatementInvalid; end
 end
 
-# MUTINEER_FIXTURE_FIRST and MUTINEER_FIXTURE_SECOND set each test: pass
+# MUTINEER_FIXTURE_FIRST, MUTINEER_FIXTURE_SECOND and MUTINEER_FIXTURE_THIRD
+# set each test: pass, exit, crash, timeout,
 # (the default), fail, nested_connection (record a database error on an own
 # reporter, then pass), or the name of a database error to raise.
 # MUTINEER_FIXTURE_SETUP and MUTINEER_FIXTURE_TEARDOWN act on the first test.
@@ -58,6 +59,10 @@ class InTestDatabaseErrorFixture < Minitest::Test
     act(ENV.fetch("MUTINEER_FIXTURE_SECOND", "pass"))
   end
 
+  def test_c_third
+    act(ENV.fetch("MUTINEER_FIXTURE_THIRD", "pass"))
+  end
+
   private
 
   def act(what)
@@ -65,6 +70,9 @@ class InTestDatabaseErrorFixture < Minitest::Test
     case what
     when "pass" then pass
     when "fail" then flunk "an assertion fails"
+    when "exit" then exit!(0)
+    when "crash" then Process.kill("KILL", Process.pid)
+    when "timeout" then sleep 10
     when "connection_unmarshalable" then raise ActiveRecord::ConnectionNotEstablished.new(message).unmarshalable!
     when "nested_connection" then record_on_own_reporter(ActiveRecord::ConnectionNotEstablished.new(message))
     else raise ERRORS.fetch(what), message

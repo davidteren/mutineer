@@ -164,7 +164,8 @@ module Mutineer
   # cleanly (see Isolation.finish). It is false when the child timed out,
   # errored or exited the process early, when the recorder never armed, when
   # its lines arrived out of order, when Minitest returned after an Interrupt
-  # with tests unseen, or when the row does not agree with the verdict.
+  # with tests unseen, when a test had a database connection or lock failure,
+  # or when the row does not agree with the verdict.
   Kills = Data.define(:killed_by, :ran, :complete)
 
   # Aggregates a flat list of Results into counts, the mutation score, and the

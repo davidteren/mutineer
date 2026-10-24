@@ -60,7 +60,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically; under either strategy, a method in a concern's `included` or `prepended` block. The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). |
-| `errored` | int | Mutants whose run raised (excluded). |
+| `errored` | int | Mutants whose run crashed, or whose first failed Minitest test had a database connection or lock error (excluded). |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). Under `--since`, only those on changed lines. |
 | `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 no-coverage mutant did run its statement's tests). |
@@ -173,7 +173,9 @@ arrived out of order names no tests (`killed_by` and `ran` are empty).
 
 `status` is the verdict a run without `--matrix` gives. After the first failing test, that run skips every
 later test, test class and example group, so an exit, a crash or the timeout in one of those leaves the status
-`"killed"`. It still runs the code around the failing test (the rest of its Minitest class `run` wrapper, the
+`"killed"` for an ordinary test failure, or `"error"` for a Minitest database connection or lock failure.
+A database failure is not a killer and leaves the row incomplete, even when an earlier assertion
+already killed the mutant. It still runs the code around the failing test (the rest of its Minitest class `run` wrapper, the
 `after(:all)` hooks of its RSpec groups) and the suite's own cleanup (RSpec `after(:suite)`), so an end there
 keeps the exit status (or `"timeout"`). A failure in the tests of a Minitest `parallelize_me!` class keeps it
 too: those run after every serial class and cannot be stopped once queued, while a failure in a serial class

@@ -489,6 +489,83 @@ class TestRunnersMinitestTest < Minitest::Test
 
   # --- #296: an in-test database error is `error`, not `killed` -------------
 
+  # Runs the actual recorder and parent isolation boundary together. Fixture
+  # variables stay in the child so later tests cannot inherit these modes.
+  def db_error_verdict(env, matrix:)
+    result = nil
+    capture_subprocess_io do
+      timeout = env.value?("timeout") ? 1 : 10
+      result = Mutineer::Isolation.run(timeout: timeout, channel: matrix) do |io|
+        env.each { |key, value| ENV["MUTINEER_FIXTURE_#{key}"] = value }
+        options = matrix ? { record_to: io } : { stop_at_first_failure: true }
+        Mutineer::TestRunners::Minitest.run([DB_ERROR], **options)
+      end
+    end
+    result
+  end
+
+  %w[exit crash timeout].each do |mode|
+    define_method("test_matrix_keeps_database_error_before_later_#{mode}") do
+      env = { "FIRST" => "connection", "SECOND" => mode }
+      assert_equal :error, db_error_verdict(env, matrix: false).status, "plain run"
+      result = db_error_verdict(env, matrix: true)
+      assert_equal :error, result.status, "matrix run"
+      assert_empty result.kills.killed_by
+      refute result.kills.complete
+    end
+  end
+
+  def test_matrix_keeps_database_error_before_an_assertion_then_exit
+    env = { "FIRST" => "connection", "SECOND" => "fail", "THIRD" => "exit" }
+    assert_equal :error, db_error_verdict(env, matrix: false).status, "plain run"
+    result = db_error_verdict(env, matrix: true)
+    assert_equal :error, result.status, "matrix run"
+    assert_equal ["InTestDatabaseErrorFixture#test_b_second"], names(result.kills.killed_by)
+    refute result.kills.complete
+  end
+
+  def test_matrix_keeps_an_earlier_assertion_kill_before_database_error_then_exit
+    env = { "FIRST" => "fail", "SECOND" => "connection", "THIRD" => "exit" }
+    assert_equal :killed, db_error_verdict(env, matrix: false).status, "plain run"
+    result = db_error_verdict(env, matrix: true)
+    assert_equal :killed, result.status, "matrix run"
+    assert_equal ["InTestDatabaseErrorFixture#test_a_first"], names(result.kills.killed_by)
+    refute result.kills.complete
+  end
+
+  def test_matrix_database_errors_are_neither_killers_nor_complete_outcomes
+    ["connection", "pool_timeout", "connection_failed", "deadlock", "lock_wait"].each do |kind|
+      result = db_error_verdict({ "FIRST" => "fail", "SECOND" => kind }, matrix: true)
+      assert_equal :killed, result.status
+      assert_equal ["InTestDatabaseErrorFixture#test_a_first"], names(result.kills.killed_by)
+      refute result.kills.complete
+      matrix = Mutineer::KillMatrix.new([result])
+      unavailable = result.kills.ran.find { |test| test[1] == "InTestDatabaseErrorFixture#test_b_second" }
+      refute_nil unavailable
+      assert_equal 0, matrix.kill_count(unavailable)
+      assert_empty matrix.blind
+      assert_empty matrix.redundant
+    end
+  end
+
+  def test_matrix_database_error_only_does_not_create_a_blind_test
+    result = db_error_verdict({ "FIRST" => "connection" }, matrix: true)
+    assert_equal :error, result.status
+    assert_empty result.kills.killed_by
+    assert_equal 3, result.kills.ran.size
+    refute result.kills.complete
+    assert_empty Mutineer::KillMatrix.new([result]).blind
+  end
+
+  def test_matrix_code_database_errors_still_kill_and_complete
+    %w[statement_invalid connection_not_defined].each do |kind|
+      result = db_error_verdict({ "FIRST" => kind }, matrix: true)
+      assert_equal :killed, result.status
+      assert_equal ["InTestDatabaseErrorFixture#test_a_first"], names(result.kills.killed_by)
+      assert result.kills.complete
+    end
+  end
+
   # Runs DB_ERROR with the fixture variables in `env` (keys without the
   # MUTINEER_FIXTURE_ prefix). Returns [exit status, child stderr]. The stderr
   # line tells the new exit 2 apart from a crash, which fork_status also

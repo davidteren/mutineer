@@ -53,7 +53,7 @@ Contract text
 
 - R7. CHANGELOG `## [Unreleased]` gets a `### Fixed` entry (see U3 for the text).
 - R8. These comments describe the new 0, 1, 2 contract: the `DaemonServer` class comment (`lib/mutineer/daemon_server.rb` lines 46 to 51) and the `run_tests` comment (lines 447 and 448); the `MinitestIntegration` class comment (`lib/mutineer/minitest_integration.rb` lines 7 to 18) and its `@return` (line 39); the `TestRunners` contract comment (`lib/mutineer/test_runners.rb` lines 8 to 12); the `@return` in `lib/mutineer/test_runners/minitest.rb` (line 16); the `error` line in the `Result` status comment (`lib/mutineer/result.rb` line 7). Line numbers are for `main`; #282 moves some of them.
-- R9. User docs stay as they are. `README.md` line 189 ("The test run crashed, so there is no verdict") and `docs/json-schema.md` line 63 ("Mutants whose run raised") still hold, because the test raised. `no_verdict[].details` stays generic (`child exited with status 2` in process, `daemon verdict: error` on the daemon). The cause is in the R6 stderr line. See Deferred.
+- R9. The README result table and matrix guidance, and the JSON summary and matrix descriptions, distinguish a database connection or lock failure from a mutation kill. Unavailable database outcomes make matrix rows incomplete and never count as test kills. `no_verdict[].details` stays generic (`child exited with status 2` in process, `daemon verdict: error` on the daemon). The cause is in the R6 stderr line. See Deferred.
 
 ### Acceptance Examples
 
@@ -217,7 +217,7 @@ Run from the repo root. Prefix each command with `LANG=en_US.UTF-8 LC_ALL=en_US.
 - `bundle exec rake test:daemon` after the fixture bundle in `test/fixtures/rails_app` is installed (U2 tests).
 - `cd test/fixtures/rails_app && bin/dogfood` (exact-survivor oracle; must stay green).
 - Check that the daemon still loads without Prism: `lib/mutineer/minitest_integration/in_test_database_error.rb` requires only stdlib and other stdlib-only files.
-- AGENTS.md rules: no runtime gem, no `eval`, score model unchanged (`error` stays out of the denominator). No site check is needed, because no file under `docs/` changes.
+- AGENTS.md rules: no runtime gem, no `eval`, score model unchanged (`error` stays out of the denominator). Run the site build, Node tests, and browser checks because the JSON schema guide changes.
 
 ## Definition of Done
 
@@ -226,7 +226,7 @@ Run from the repo root. Prefix each command with `LANG=en_US.UTF-8 LC_ALL=en_US.
 - All Verification Contract commands pass.
 - The comments named in R8 match the code.
 - The PR description names the #282 dependency (merged base or stacked PR).
-- The fix PR does not add this plan file: `docs/plans/` was removed from `main` in #193 as maintainer-only notes.
+- The fix PR includes this plan under `docs/plans/`. The site build keeps maintainer plans unpublished.
 - No dead or trial code is left in the diff.
 
 ## Risks and Overlaps
