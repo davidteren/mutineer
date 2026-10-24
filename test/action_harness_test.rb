@@ -62,8 +62,9 @@ class ActionHarnessTest < Minitest::Test
     incomplete = out[/case18 baseline line: .*/].to_s
     assert_includes incomplete, "; 1 unverified survivor(s) (see baseline.unverified_survivors in the report)",
                     "unverified count missing:\n#{out}"
-    assert_includes out[/case19 baseline line: .*/].to_s, "; incomplete run: REGRESSED.", "regressed+incomplete drifted"
-    assert_includes incomplete, ": INCOMPLETE (the run did not finish; see no_verdict[]).", "incomplete marker missing"
+    assert_includes out[/case19 baseline line: .*/].to_s, "; incomplete run (read no_verdict[] first): REGRESSED.", "regressed+incomplete drifted"
+    assert_includes incomplete, ": INCOMPLETE (too many mutants produced no verdict; see no_verdict[]).",
+                    "incomplete marker missing"
     refute_includes out[/case3 baseline line: .*/].to_s, "unverified", "older report must render as before"
     assert_includes out, "Old ignore entries matched: 2.", "old-format ignore count missing"
     assert_includes out, "Baseline survivors matched only by an old id: 3.", "old-format baseline count missing"

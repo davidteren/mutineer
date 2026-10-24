@@ -62,7 +62,7 @@ broke, or when more than one mutant has no verdict and they exceed 10% of those
 attempted; it does not require zero errors. Set the threshold to your target.
 `--baseline` applies the same completeness rule without a threshold. When it
 exits 1, `baseline.regressed` means new survivors or a score drop, and
-`baseline.incomplete` means the run did not finish: read `no_verdict[]` and fix
+`baseline.incomplete` means too many mutants produced no verdict: read `no_verdict[]` and fix
 the harness, not the tests. `baseline.unverified_survivors[]` are baseline
 survivors this run did not decide (see each `status`); they are not fixed.
 

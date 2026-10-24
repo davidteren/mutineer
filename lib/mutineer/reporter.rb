@@ -792,10 +792,10 @@ module Mutineer
     # @api private
     # @return [String] e.g. "90 of 100 attempted mutants produced no verdict (90.0%, limit 10%)".
     def no_verdict_ratio
-      nv = @agg.no_verdict_count
+      no_verdict = @agg.no_verdict_count
       attempted = @agg.attempted_count
-      pct = (nv * 100.0 / attempted).round(1)
-      "#{nv} of #{attempted} attempted mutants produced no verdict " \
+      pct = (no_verdict * 100.0 / attempted).round(1)
+      "#{no_verdict} of #{attempted} attempted mutants produced no verdict " \
         "(#{pct}%, limit #{(AggregateResult::BROKEN_SHARE_LIMIT * 100).round}%)"
     end
 
@@ -869,8 +869,10 @@ module Mutineer
     # @param delta [Mutineer::Baseline::Delta] baseline delta.
     # @return [String]
     def baseline_verdict(delta)
+      # An incomplete run's score covers only part of it, so say so beside a regression.
+      return "REGRESSION and INCOMPLETE vs baseline (read no_verdict[] first)" if delta.regressed && delta.incomplete
       return "REGRESSION vs baseline" if delta.regressed
-      return "INCOMPLETE vs baseline (the run did not finish)" if delta.incomplete
+      return "INCOMPLETE vs baseline (too many mutants produced no verdict; see no_verdict[])" if delta.incomplete
 
       "OK: no regression vs baseline"
     end

@@ -444,8 +444,16 @@ class BaselineTest < Minitest::Test
                           "so not counted as fixed:"
     assert_includes text, "  ? Pricing#total (#{FILE}:3) comparison [error]"
     assert_includes text, "incomplete run: 2 of 4 attempted mutants produced no verdict"
-    assert_includes text, "INCOMPLETE vs baseline (the run did not finish)"
+    assert_includes text, "INCOMPLETE vs baseline (too many mutants produced no verdict; see no_verdict[])"
     refute_includes text, "OK: no regression"
+  end
+
+  def test_human_report_names_both_a_regression_and_an_incomplete_run
+    base = Mutineer::Baseline.new(baseline_doc([]))
+    results = [Mutineer::Result.error, Mutineer::Result.error, Mutineer::Result.killed, survivor("ccc")]
+    text = render(results, base.diff(agg(*results)), format: "human")
+
+    assert_includes text, "REGRESSION and INCOMPLETE vs baseline (read no_verdict[] first)"
   end
 
   def test_human_report_says_when_nothing_could_be_scored

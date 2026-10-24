@@ -197,7 +197,7 @@ The delta versus the prior `--format json` report, matched by `id`. A baseline w
 | `score_comparable` | bool | True when the two scores share a denominator (neither side was diff-scoped, both non-null). False means the score-drop check was skipped — do not render the scores as a comparison. Additive key. |
 | `new_survivors[]` | array | Survivors present now but absent in the baseline: `{ subject, file, line, operator, token, id }`. |
 | `fixed_survivors[]` | array | Baseline survivors that this run killed or ignored, or that it no longer has: `{ subject, file, line, operator, id }`. A survivor the user now ignores counts as fixed. Empty under a diff-scoped side: an out-of-scope survivor was never re-tested, so absence does not mean fixed. Changed in `1.9`: a baseline survivor without a decision this run is no longer listed here (see `unverified_survivors`). |
-| `unverified_survivors[]` | array | Baseline survivors whose result this run is not `killed`, `survived` or `ignored` (for example `error`, `timeout`, `ran_at_load` or `no_coverage`): `{ subject, file, line, operator, id, status }`, where `status` is this run's status. They are not fixed and do not set `regressed`. Filled under a diff-scoped side too. Additive key (schema `1.9`). |
+| `unverified_survivors[]` | array | Baseline survivors whose result this run is not `killed`, `survived` or `ignored` (for example `error`, `timeout`, `ran_at_load` or `no_coverage`): `{ subject, file, line, operator, id, status }`, where `status` is this run's status: one of `error`, `timeout`, `uncapturable`, `ran_at_load`, `no_coverage`, `unplaceable` or `skipped`. They are not fixed and do not set `regressed`. Filled under a diff-scoped side too. Additive key (schema `1.9`). |
 
 ## Exit codes
 

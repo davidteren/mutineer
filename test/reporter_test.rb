@@ -185,8 +185,9 @@ class ReporterTest < Minitest::Test
 
   # --- rendering / streams ---
 
-  # Errors are out of the score, so a run without --threshold exits 0 however
-  # many mutants errored. Say so, and name the flag that fails CI on them.
+  # Errors are out of the score, so a run that no gate fails on completeness
+  # exits 0 however many mutants errored. Say so, and name the flags
+  # (--threshold, --baseline) that fail CI on them.
   def test_errors_without_a_threshold_point_at_the_threshold_flag
     results = [Mutineer::Result.error("boom"), Mutineer::Result.error("boom"), Mutineer::Result.killed]
     err = StringIO.new

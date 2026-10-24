@@ -422,9 +422,9 @@ runs:
                            "; \((.baseline.unverified_survivors // []) | length) unverified survivor(s) (see baseline.unverified_survivors in the report)"
                          else "" end)
                       + (if .baseline.regressed then
-                           (if (.baseline.incomplete // false) then "; incomplete run" else "" end) + ": REGRESSED."
+                           (if (.baseline.incomplete // false) then "; incomplete run (read no_verdict[] first)" else "" end) + ": REGRESSED."
                          elif (.baseline.incomplete // false) then
-                           ": INCOMPLETE (the run did not finish; see no_verdict[])."
+                           ": INCOMPLETE (too many mutants produced no verdict; see no_verdict[])."
                          else "." end))
                else empty end),
               (if ((.summary.scoped // false) and .summary.total == 0) then

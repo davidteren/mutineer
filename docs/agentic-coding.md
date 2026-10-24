@@ -74,8 +74,8 @@ lists baseline survivors this run did not decide (each with its `status`). They 
 not fail the run on their own, so a run that exits `0` can still list them.
 It matches survivors by `id`; file moves and renames can change ids.
 `--baseline-epsilon` allows a small score difference. With `--since`, only new
-survivors fail the baseline check: a score for changed lines is not comparable
-to a full-run score. Add `--threshold` to enforce a minimum score as well.
+survivors and an incomplete run fail the baseline check: a score for changed
+lines is not comparable to a full-run score. Add `--threshold` to enforce a minimum score as well.
 
 Run a full scan on the pull request whenever tests change, including when source
 code changes too. A scoped check cannot detect weaker tests for unchanged source

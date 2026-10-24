@@ -692,7 +692,9 @@ worse:
 mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors, a score drop, or an incomplete run
 ```
 
-`--baseline` reports which survivors are new (by [mutant id](https://github.com/davidteren/mutineer#mutant-ids)) and any score drop. It
+`--baseline` reports which survivors are new (by [mutant id](https://github.com/davidteren/mutineer#mutant-ids)) and any score drop. It also
+fails an incomplete run (`baseline.incomplete`), and lists baseline survivors
+this run did not decide under `baseline.unverified_survivors[]`. It
 combines with `--threshold` (the worse of the two sets the exit code). Pass a
 directory (or several sources) to audit a whole layer in one boot — tests are
 auto-paired by convention and the report breaks down per source. A source
