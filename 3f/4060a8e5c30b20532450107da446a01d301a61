@@ -1,0 +1,29 @@
+test/reporter_test.rb
+  s_d164a58b33b1a3::t_232c20c20989df 79-102
+CHANGELOG.md
+  s_d164a58b33b1a3::t_f72d5aa13a854e 9-17
+docs/agentic-coding.html
+  s_d164a58b33b1a3::t_a1ac185148a40e 87
+docs/agentic-coding.md
+  s_d164a58b33b1a3::t_94e0a615dca0a9 35
+lib/mutineer/reporter.rb
+  s_d164a58b33b1a3::t_4f25a69bb1f8e9 152,973,975-978
+lib/mutineer/result.rb
+  s_d164a58b33b1a3::t_3ab9c45326957b 226-238
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3f4060a8e5c30b20532450107da446a01d301a61",
+  "prompts": {},
+  "sessions": {
+    "s_d164a58b33b1a3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c762a0aa-a2bc-48ef-8521-6cf8d063f61e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
