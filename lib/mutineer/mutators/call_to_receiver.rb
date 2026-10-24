@@ -40,7 +40,7 @@ module Mutineer
       # `freeze` and `itself` return the receiver or an equal copy, and an
       # Array answers `include?` and `empty?` as a Set does, so those mutants
       # are most often equivalent. `new` leaves the class in place of an
-      # instance, which any test that runs the line kills.
+      # instance, which almost any test that runs the line kills.
       SKIPPED = %i[new dup clone freeze itself to_set].freeze
 
       # Resets the per-subject record of calls that are links.

@@ -102,7 +102,11 @@ class CallToReceiverTest < Minitest::Test
   end
 
   def test_conversions_on_the_last_call_are_replaced
-    %w[to_s to_str to_sym to_i to_int to_f to_r to_c to_a to_ary to_h to_hash to_proc].each do |name|
+    conversions = %i[to_s to_str to_sym to_i to_int to_f to_r to_c to_a to_ary to_h to_hash to_proc]
+    # The two lists differ by exactly these names, and chain_link keeps them all.
+    assert_equal conversions, Mutineer::Mutators::ChainLink::SKIPPED - Mutineer::Mutators::CallToReceiver::SKIPPED
+    assert_empty Mutineer::Mutators::CallToReceiver::SKIPPED - Mutineer::Mutators::ChainLink::SKIPPED
+    conversions.each do |name|
       assert_equal ["x"], mutated("x.#{name}"), "for x.#{name}"
     end
     assert_equal ["m[1]"], mutated("m[1].to_i")
