@@ -752,7 +752,11 @@ structured exit codes, and diff-scoped runs. See:
 - **Agent skill** ([`skills/mutineer/SKILL.md`](https://github.com/davidteren/mutineer/blob/main/skills/mutineer/SKILL.md)): a short
   card for coding agents with install, the agent loop, and exit codes. Install it
   with `gh skill install davidteren/mutineer mutineer` or
-  `npx skills add davidteren/mutineer --skill mutineer`.
+  `npx skills add davidteren/mutineer --skill mutineer`. Releases after 1.7.0
+  also ship the skill inside the gem and opt in as a
+  [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive)
+  companion, so in a Rails app that bundles mutineer, `bin/rails hyperdrive:init`
+  installs it to `.claude/skills/mutineer/SKILL.md`.
 
 ## Configuration
 
