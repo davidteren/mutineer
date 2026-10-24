@@ -1,21 +1,19 @@
 # Mutineer for AI agents & CI pipelines
 
-Line coverage tells you which code *ran* under test. It says nothing about whether your tests would
-*notice if that code broke*. Mutation testing closes exactly that gap — and that gap is where
-AI-generated code and AI-generated tests are weakest: tests that execute and pass, but assert nothing
-meaningful ("coverage theater").
+Line coverage shows which code ran. Mutation testing checks whether tests catch
+a change to that code. Use Mutineer to give an AI coding agent concrete test gaps
+to review, or to check test quality in CI.
 
-Mutineer is built for programmatic use: a **versioned JSON contract**
-([schema](./json-schema.md)), **structured exit codes**, **diff-scoped runs** (`--since`), a **hard gate**
-(`--threshold`), and **delta gating** (`--baseline`). This page shows how to wire it into an agent loop
-and into CI.
+Mutineer provides [JSON reports](./json-schema.md), exit codes, checks on changed
+lines (`--since`), a minimum score (`--threshold`), and comparison with a saved
+report (`--baseline`). This guide shows how to use them with agents and CI.
 
 ## The agent inner loop
 
-A coding agent that writes code *and* tests can use Mutineer as an objective "are these tests any good?"
-oracle, closing the loop with a concrete stopping condition:
+An agent can use surviving mutants to find tests that need work. Review each
+change against the intended behaviour before asking the agent to add a test:
 
-1. Agent edits code + tests on a branch.
+1. Edit code and tests on a branch. Fetch `origin/main` before using it below.
 2. Run Mutineer on the diff, as JSON:
 
    ```sh
@@ -55,14 +53,13 @@ An empty run (`summary.total` is 0) exits 0 in 1.x and prints a warning on stder
 Progress lines go to **stderr**; do not merge streams (`2>&1`) when parsing JSON from
 stdout — prefer `--output FILE` and read the file.
 
-`--since` keeps each iteration fast by mutating only the lines the agent just touched. Genuinely
-equivalent mutants (which can never be killed) should be suppressed so the loop terminates — see
-**Avoiding infinite loops** below.
+`--since` limits each run to changed lines. Review equivalent mutants as described
+in **Avoiding infinite loops** below.
 
 ## CI gate: fail a PR only when it makes things worse
 
-Store a JSON run as a baseline, then gate PRs on regressions rather than an absolute bar (which lets a
-team adopt Mutineer on a legacy suite without fixing everything first):
+Save a full JSON report from the default branch as a baseline. Compare pull
+requests with that report to catch new survivors while you improve existing tests:
 
 ```sh
 # On main, refresh the baseline (e.g. nightly) and commit/cache it:
@@ -72,18 +69,28 @@ mutineer run app/ --no-since --format json --output .mutineer/baseline.json
 mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json
 ```
 
-`--baseline` exits `1` on any **new** survivor (matched by `id`, so it survives unrelated edits, but not a file move or rename) or
-a **score drop** (`--baseline-epsilon` tolerates float jitter); under `--since` the score-drop half is
-skipped, because a diff-scoped score covers a different denominator — new-survivor detection still gates.
-Combine with `--threshold` to enforce an absolute floor too — the worse of the two gates wins.
+`--baseline` exits `1` if it finds a new survivor or a lower score.
+It matches survivors by `id`; file moves and renames can change ids.
+`--baseline-epsilon` allows a small score difference. With `--since`, only new
+survivors fail the baseline check: a score for changed lines is not comparable
+to a full-run score. Add `--threshold` to enforce a minimum score as well.
 
-Keep the full-scan baseline refresh on main as the backstop: a PR that changes only tests or docs has no
-changed source lines, scores zero mutants, and passes the scoped gate vacuously — only the full scan
-catches a weakened suite for untouched code.
+Run a full scan on the pull request whenever tests change, including when source
+code changes too. A scoped check cannot detect weaker tests for unchanged source
+lines. Compare the PR's full run with the full baseline:
+
+```sh
+mutineer run app/ --no-since --baseline .mutineer/baseline.json --format json
+```
+
+Keep a full scan on the default branch to refresh the baseline. That scan does
+not check a pull request's changed tests before merge.
 
 ### GitHub Action
 
-This repo ships a composite action (`action.yml`). Minimal PR gate:
+The GitHub Action runs Mutineer and reports the result. This example requires
+`.mutineer/baseline.json` from a full run on the default branch. Commit that file
+or restore it before the Mutineer step. Omit `baseline` until it exists.
 
 ```yaml
 # .github/workflows/mutation.yml
@@ -102,8 +109,7 @@ jobs:
       - uses: davidteren/mutineer@v1
         with:
           sources: app/
-          # since: defaults to the PR's base commit SHA from the event
-          # payload (falls back to fetching the base tip); `none` = full scan.
+          since: none
           baseline: .mutineer/baseline.json
           threshold: "90"
           output: .mutineer/pr.json
@@ -114,6 +120,10 @@ jobs:
           path: .mutineer/pr.json
 ```
 
+This workflow runs a full scan on every pull request, so it checks test changes
+without a workflow edit for each PR. A full scan can take longer than a scan of
+changed source lines.
+
 For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the app's own bundle):
 
 ```yaml
@@ -122,8 +132,7 @@ For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the 
           sources: app/models/order.rb
           rails: true
           use-bundler: true
-          # since: defaults to the PR's base commit SHA (falls back to
-          # fetching the base tip); `none` = full scan.
+          since: none
 ```
 
 See `action.yml` for all inputs (`operators`, `framework`, `strategy`, `jobs`, `extra-args`, …) and the
@@ -131,20 +140,27 @@ See `action.yml` for all inputs (`operators`, `framework`, `strategy`, `jobs`, `
 
 ## Avoiding infinite loops: equivalent mutants
 
-Some mutants are semantically identical to the original and can **never** be killed by any test. In an
-unattended agent loop these would never clear, so suppress them explicitly:
+An equivalent mutant has the same behaviour as the original for all valid inputs.
+No test can catch it. After review, ignore it and record the reason:
 
-- **Inline:** `# mutineer:disable-line [operators]` on the offending source line.
+- **Inline:** `# mutineer:disable-line arithmetic -- count is an integer` suppresses every arithmetic mutant on that source line. Review all of them before adding the marker. To ignore only one reviewed mutant, use its `id` in the configuration instead.
 - **Config:** add the survivor's `id` (printed in the JSON report; it includes the file path) to `.mutineer.yml`:
 
   ```yaml
   ignore:
-    - 9f2a1c4b7e0d   # Calculator#scale — equivalent under `comparison`
+    - id: 9f2a1c4b7e0d
+      reason: "count * 1 and count / 1 are equal for integer counts"
   ```
 
-Suppressed mutants leave the score entirely (so 100% stays reachable) and appear under the JSON `ignored[]`
-key for auditing. An agent should treat a survivor it cannot kill after N attempts as a candidate for
-human review / suppression rather than looping forever.
+Replace the required `id` with the survivor's id from your report. The `reason`
+is optional; write your own explanation or omit that field. Ignore mappings and
+`mutineer triage` require Mutineer 1.7 or later in every environment that reads
+the configuration. For the GitHub Action, check the resolved gem version selected
+by `version:`. With `use-bundler: true`, check Mutineer in `Gemfile.lock` instead.
+Older versions do not apply mapping entries and do not warn, so the named mutant
+is not ignored. Ignored mutants are excluded from the score and listed in
+`ignored[]`. Set an attempt limit for the agent, then ask a person to review
+unresolved survivors. Failed attempts alone do not prove that a mutant is equivalent.
 
 ## Reading exit codes in a pipeline
 

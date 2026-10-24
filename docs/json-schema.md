@@ -1,9 +1,10 @@
 # Mutineer JSON report — schema reference
 
 `mutineer run --format json` emits a single JSON object (one line, newline-terminated) describing the
-whole run. It is the **machine-readable contract** for tooling — CI gates, dashboards, and AI coding
-agents. Output is deterministic: every array has a fixed sort order regardless of `--jobs` worker
-finish order, so two runs of the same inputs produce byte-identical output. `survivors[]` sorts by
+whole run. Use it for CI checks, dashboards, and AI coding agents. Arrays have a
+fixed sort order, independent of `--jobs` worker completion order. For the same
+inputs and results, JSON output is byte-identical. Results can still vary if
+the tests or environment change. `survivors[]` sorts by
 `(file, line, operator)`; `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
 add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`;
 `no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`.
@@ -34,7 +35,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 {
   "schema_version": "1.8",
   "summary":      { /* run totals, see below */ },
-  "survivors":    [ /* mutants the suite failed to catch — the actionable gaps */ ],
+  "survivors":    [ /* mutants the suite failed to catch; review for test gaps or equivalent behaviour */ ],
   "no_coverage":  [ /* mutants on lines no test exercises, or that the statement's tests may not reach (#254) */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
   "unplaceable":  [ /* mutants the strategy cannot load where the tests call them; not run */ ],
@@ -53,7 +54,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 |-----|------|---------|
 | `total` | int | Classified results included in this report, across all statuses. With `--fail-fast`, unscheduled candidates are omitted, so this is not the full generated candidate count. |
 | `killed` | int | Mutants a test caught (suite went red). |
-| `survived` | int | Mutants no test caught. **These are the actionable test gaps.** |
+| `survived` | int | Mutants no test caught. Review each for a missing test or equivalent behaviour. |
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant in code that runs only sometimes on a later line of a multi-line statement, such as the right side of `a &&` on its own line, when the tests that ran the statement did not kill it: the run cannot tell whether they reached it. |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
 | `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically; under either strategy, a method in a concern's `included` or `prepended` block. The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). |
