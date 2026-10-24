@@ -37,7 +37,7 @@ module Mutineer
     # sweeps ({OrphanGuard::TEMP_BASENAME}): this sweep runs after the boot and
     # waits up to {SWEEP_GRACE} while any file it matches is still owned, so a
     # parallel in-process run's live files would add that wait to every daemon run.
-    DAEMON_TEMP_GLOB = "{.,}mutineer_daemon*.rb"
+    DAEMON_TEMP_GLOB = "{.,}mutineer_daemon#{"[0-9]" * 8}-*.rb"
 
     # Seconds the end-of-run sweep waits for an orphaned child to die. Its
     # watchdog notices a dead daemon within {OrphanGuard::POLL}.

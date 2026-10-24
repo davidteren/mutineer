@@ -34,7 +34,10 @@ All notable changes to this project are documented here. The format is based on
   daemon removed only old `mutineer_daemon*.rb` files, so a file the other
   mode left made Zeitwerk raise. Now both boot sweeps remove an orphan of
   either mode, and the daemon tells Zeitwerk to skip both names. You no
-  longer delete such a file by hand. Do not run Mutineer older than 1.7.0
+  longer delete such a file by hand. A file of your own whose name only
+  starts with `mutineer_mutant` or `mutineer_daemon`, such as
+  `mutineer_mutant_helper.rb`, is no longer removed: a sweep now matches
+  only the temp file shape. Do not run Mutineer older than 1.7.0
   at the same time in the same checkout: it still writes temp files
   without the dot, and a newer run's mutants error when Zeitwerk finds
   one.

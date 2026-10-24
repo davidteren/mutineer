@@ -57,6 +57,28 @@ class TempfileLeakTest < Minitest::Test
     end
   end
 
+  # A file without the dot comes from a version before 1.7.0, which took no
+  # lock. A reused live pid in its name must not keep it, or it stops the boot.
+  def test_sweep_removes_an_undotted_mutant_file_whatever_its_pid
+    Dir.mktmpdir do |dir|
+      old = File.join(dir, "mutineer_mutant20260101-#{Process.pid}-old.rb")
+      File.write(old, "")
+      assert_empty Mutineer::JobPlan.sweep_orphans([dir])
+      refute File.exist?(old)
+    end
+  end
+
+  # A project file whose name only starts with the prefix is not a temp file.
+  def test_sweep_keeps_a_project_file_with_the_prefix
+    Dir.mktmpdir do |dir|
+      own = %w[mutineer_mutant_helper.rb mutineer_daemon_config.rb].map { |f| File.join(dir, f) }
+      own.each { |f| File.write(f, "") }
+      Mutineer::JobPlan.sweep_orphans([dir])
+      Mutineer::JobPlan.sweep_orphans([dir], Mutineer::DaemonBackend::DAEMON_TEMP_GLOB)
+      assert(own.all? { |f| File.exist?(f) })
+    end
+  end
+
   # #295: a lock keeps the file too, even when the pid in the name is gone.
   def test_sweep_keeps_a_locked_mutant_file_when_the_name_pid_is_dead
     Dir.mktmpdir do |dir|
