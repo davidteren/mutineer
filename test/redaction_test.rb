@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "minitest/mock"
 require_relative "test_helper"
 require "mutineer/redaction"
 require "mutineer/coverage_map"
@@ -58,6 +59,60 @@ class RedactionTest < Minitest::Test
 
     assert_equal text, redact(text, url)
     assert_equal text, redact(text, "")
+  end
+
+  def test_keeps_a_role_name_equal_to_the_password
+    url = "postgres://postgres:postgres@localhost/db"
+
+    text = redact(%(PG::ConnectionBad: FATAL: role "postgres" does not exist (#{url})), url)
+
+    assert_equal %(PG::ConnectionBad: FATAL: role "postgres" does not exist ) +
+                 "(postgres://postgres:[REDACTED]@localhost/db)", text
+  end
+
+  def test_keeps_words_that_contain_a_short_password
+    text = %(ActiveRecord::NoDatabaseError: database "app" does not exist)
+
+    assert_equal text, redact(text, "postgres://u:a@host/db")
+  end
+
+  def test_redacts_text_with_invalid_bytes
+    url = "postgres://u:s3cret@ho st/db"
+
+    text = redact((+"caf\xFF bad URI: #{url}").force_encoding(Encoding::UTF_8), url)
+
+    assert_includes text, "[REDACTED]"
+    refute_includes text, "s3cret"
+  end
+
+  def test_redacts_binary_text_with_a_non_ascii_password
+    text = redact("auth failed: pässword".b, "postgres://u:pässword@h/db")
+
+    assert_equal Encoding::UTF_8, text.encoding
+    assert_includes text, "[REDACTED]"
+    refute_includes text, "pässword"
+  end
+
+  def test_redacts_a_latin1_string_with_a_non_ascii_password
+    text = redact("café pässword".encode("ISO-8859-1"), "postgres://u:pässword@h/db")
+
+    assert_equal "café [REDACTED]", text
+  end
+
+  def test_fails_closed_on_an_internal_error
+    text = Mutineer::Redaction.stub(:password_forms, ->(_) { raise "boom" }) do
+      redact("password s3cret", "postgres://u:s3cret@host/db")
+    end
+
+    assert_equal "[message hidden: redaction failed]", text
+  end
+
+  def test_still_hides_a_bare_password_token
+    assert_equal "password [REDACTED] rejected", redact("password s3cret rejected", "postgres://u:s3cret@host/db")
+  end
+
+  def test_hides_a_password_next_to_punctuation
+    assert_equal %(key="[REDACTED]",), redact(%(key="s3cret",), "postgres://u:s3cret@host/db")
   end
 
   def test_coverage_warning_hides_the_password

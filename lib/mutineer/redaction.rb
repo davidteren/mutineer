@@ -5,7 +5,9 @@ require "uri"
 module Mutineer
   # Hides database credentials in text bound for a terminal: an error reply,
   # a log line, a warning. Rails parses DATABASE_URL itself, so an error about
-  # a malformed one can quote the whole URL.
+  # a malformed one can quote the whole URL. Outside a URL the password is
+  # hidden only as a whole word, and not when it equals the username (the
+  # redacted URL shows that value anyway), so `role "postgres"` stays readable.
   #
   # Stdlib only: the app-side daemon loads this file without the rest of
   # mutineer.
@@ -16,19 +18,26 @@ module Mutineer
     URL_PASSWORD = %r{([a-z][a-z0-9+.\-]*://[^\s:/@"'\\]*):(?:\\.|[^"'\r\n\\])*@}i
     # What replaces a hidden password.
     REDACTED = "[REDACTED]"
+    # What {text} returns when it fails: never the input, which may hold the
+    # password.
+    FAILED = "[message hidden: redaction failed]"
+    # An ASCII word character, the edge a whole-word match must not touch.
+    WORD_CHAR = "[A-Za-z0-9_]"
 
     module_function
 
     # Hide the password in any URL, and the DATABASE_URL password wherever it
     # appears: whole, percent-decoded, `inspect` escaped, or cut short after
-    # its `scheme://user:` prefix.
+    # its `scheme://user:` prefix. Outside a URL it is hidden as a whole word,
+    # unless it equals the username. Never raises: text in any encoding comes
+    # back as UTF-8, and an internal error returns {FAILED}.
     #
     # @param text [#to_s]
     # @param env [Hash{String => String}] where DATABASE_URL is read.
     # @return [String]
     def text(text, env: ENV)
-      out = text.to_s
-      head, raw = database_url_parts(env["DATABASE_URL"].to_s)
+      out = utf8(text.to_s)
+      head, raw = database_url_parts(utf8(env["DATABASE_URL"].to_s))
       secrets = raw ? password_forms(raw) : []
       # Prefixes first, on the caller's text, so no replacement made here can
       # be mistaken for part of a password.
@@ -36,7 +45,37 @@ module Mutineer
         out = secrets.reduce(out) { |acc, secret| redact_prefixes(acc, prefix, secret) }
       end
       out = out.gsub(URL_PASSWORD) { "#{Regexp.last_match(1)}:#{REDACTED}@" }
-      secrets.reduce(out) { |acc, secret| acc.gsub(secret, REDACTED) }
+      user_forms = head ? password_forms(head[(head.index("://") + 3)...-1]) : []
+      (secrets - user_forms).reduce(out) { |acc, secret| redact_word(acc, secret) }
+    rescue StandardError
+      FAILED
+    end
+
+    # A UTF-8 copy of `str` that every pattern here can match. Valid UTF-8 and
+    # ASCII-only text is returned as is. Binary text, or text whose bytes are
+    # invalid in its own encoding, is read as UTF-8 with bad bytes replaced.
+    # Other valid text is converted, with characters UTF-8 lacks replaced.
+    #
+    # @param str [String]
+    # @return [String]
+    def utf8(str)
+      return str if str.ascii_only? || (str.encoding == Encoding::UTF_8 && str.valid_encoding?)
+      return String.new(str, encoding: Encoding::UTF_8).scrub if str.encoding == Encoding::BINARY || !str.valid_encoding?
+
+      str.encode(Encoding::UTF_8, invalid: :replace, undef: :replace)
+    end
+
+    # Replace `form` in `text` only where it is a whole word: no ASCII word
+    # character touches an edge of `form` that is itself a word character.
+    #
+    # @param text [String]
+    # @param form [String] one form of the password.
+    # @return [String]
+    def redact_word(text, form)
+      pattern = Regexp.escape(form)
+      pattern = "(?<!#{WORD_CHAR})#{pattern}" if form.match?(/\A#{WORD_CHAR}/o)
+      pattern = "#{pattern}(?!#{WORD_CHAR})" if form.match?(/#{WORD_CHAR}\z/o)
+      text.gsub(Regexp.new(pattern), REDACTED)
     end
 
     # Split DATABASE_URL into its `scheme://user:` head and its raw password.
