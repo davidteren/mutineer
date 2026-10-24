@@ -182,12 +182,17 @@ module Mutineer
         return Result.error("test-command could not start (exit #{code})") if CANNOT_RUN_CODES.include?(code)
 
         text = summary_text(output)
-        # Every test passed, and only SimpleCov's minimum_coverage gate failed
-        # the run. No test caught the mutant: in process, the fork exits before
-        # that hook, and the mutant survives. Keyed on SimpleCov's own message,
-        # so code under test that calls `exit 2` still scores error. It needs
-        # no summary check: SimpleCov skips the gate when the tests failed.
-        return Result.survived if coverage_gate_only?(text)
+        # SimpleCov's minimum_coverage gate replaced the exit code. Under
+        # Minitest it runs in Minitest.after_run even after a failing test, so a
+        # failing summary plus its message is still a kill. A passing summary
+        # plus its message means no test caught the mutant: in process, the
+        # fork exits before that hook, and the mutant survives. Keyed on
+        # SimpleCov's own message, so code under test that calls `exit 2`
+        # still scores error.
+        if text.match?(SIMPLECOV_GATE)
+          return Result.killed if failure_reported?(text)
+          return Result.survived if tests_passed?(text)
+        end
 
         unless code == FAILURE_CODE
           return Result.error("test-command exited #{code} (only exit 1 counts as a kill; " \
@@ -241,17 +246,16 @@ module Mutineer
       text.include?(MINITEST_RUNNING) && !summary_line?(text)
     end
 
-    # True when SimpleCov reports that its coverage gate failed the run and no
-    # summary line shows a failure. SimpleCov skips that gate when the tests
-    # already failed or exited, so its message means the tests themselves
-    # passed. With `SimpleCov.print_error_status = false` it prints nothing,
-    # and the exit scores error (the reason names a coverage gate).
+    # True when a recognized summary line is present and none shows a failing
+    # test or an RSpec error outside examples. With no recognized summary line
+    # (a JUnit or custom reporter), it is false, so a SimpleCov gate exit there
+    # scores error rather than a survivor the output cannot prove.
     #
     # @api private
     # @param text [String] output from {summary_text}.
     # @return [Boolean]
-    def self.coverage_gate_only?(text)
-      text.match?(SIMPLECOV_GATE) && !failure_reported?(text) && !text.match?(RSPEC_OUTSIDE_ERROR)
+    def self.tests_passed?(text)
+      summary_line?(text) && !failure_reported?(text) && !text.match?(RSPEC_OUTSIDE_ERROR)
     end
 
     # The output as binary with ANSI colour codes removed. Binary, so bytes that

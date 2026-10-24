@@ -105,23 +105,24 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
-  # Every test passed and only SimpleCov's minimum_coverage gate failed the
-  # run (exit 2). No test caught the mutant, so it survives, as in process,
-  # where the fork exits before that hook. Code under test that calls exit 2
-  # prints no SimpleCov line and scores error, as Isolation.decode does.
-  def test_simplecov_gate_alone_is_survived
+  # SimpleCov's minimum_coverage gate replaces the exit code (exit 2). Under
+  # Minitest it runs after a failing test too, so a failing summary is still a
+  # kill. With a passing summary no test caught the mutant: it survives, as in
+  # process, where the fork exits before that hook. Without SimpleCov's line,
+  # exit 2 may be code under test calling exit 2, which scores error.
+  def test_simplecov_gate_exit_follows_the_summary
     gate = "SimpleCov failed with exit 2 due to a coverage related error\n"
-    ["3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n", "4 examples, 0 failures\n", ""].each do |summary|
-      with_script(%(STDOUT.write #{(summary + gate).dump}\nexit 2\n)) do |path|
+    {
+      "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n#{gate}" => :survived?,
+      "4 examples, 0 failures\n#{gate}" => :survived?,
+      "3 runs, 3 assertions, 1 failures, 0 errors, 0 skips\n#{gate}" => :killed?,
+      gate => :error?, # no recognized summary line: a failing run cannot be ruled out
+      "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n" => :error?
+    }.each do |output, verdict|
+      with_script(%(STDOUT.write #{output.dump}\nexit 2\n)) do |path|
         cmd = "#{RUBY} #{path} %{files}"
-        assert_predicate Backend.run(cmd, ["x"], timeout: 30, check_summary: true), :survived?, summary
-        assert_predicate Backend.run(cmd, ["x"], timeout: 30), :survived?, "check off: #{summary}"
-      end
-      next if summary.empty?
-
-      with_script(%(STDOUT.write #{summary.dump}\nexit 2\n)) do |path|
-        result = Backend.run("#{RUBY} #{path} %{files}", ["x"], timeout: 30, check_summary: true)
-        assert_predicate result, :error?, "exit 2 without the SimpleCov line"
+        assert_predicate Backend.run(cmd, ["x"], timeout: 30, check_summary: true), verdict, output.inspect
+        assert_predicate Backend.run(cmd, ["x"], timeout: 30), verdict, "check off: #{output.inspect}"
       end
     end
   end

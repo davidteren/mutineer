@@ -531,8 +531,8 @@ Tradeoffs — this path is correct but not free:
   (`3 runs, 3 assertions, 0 failures, 0 errors` or `3 examples, 0 failures`),
   an exit 1 also needs a failing test in that line, or a Minitest run that
   stopped during a test. Otherwise it scores `error`, such as a crash at load.
-  When every test passed and only a SimpleCov `minimum_coverage` gate failed
-  the run, the mutant scores `survived`, with or without a summary line.
+  When a SimpleCov `minimum_coverage` gate fails the run, the summary line
+  decides: a failing test is a kill, and every test passing is `survived`.
   When the clean run prints no summary line, Mutineer warns once and counts
   every exit 1 as a kill.
   Uncovered mutants count as survivors.

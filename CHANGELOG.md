@@ -25,8 +25,9 @@ All notable changes to this project are documented here. The format is based on
   test in that line. Code under test that calls `exit 1` or `abort` while the
   default Minitest reporter runs its tests still scores `killed`, as in
   process. Under RSpec or minitest-reporters, that case now scores `error`.
-  When only a SimpleCov `minimum_coverage` gate failed the run, the mutant
-  scores `survived`, as in process. When the clean run
+  When a SimpleCov `minimum_coverage` gate replaces the exit code, the summary
+  line decides: a failing test is a kill, and a passing run is `survived`, as
+  in process. When the clean run
   prints no summary line, Mutineer warns once and keeps the exit-code rule.
 
 ### Changed
