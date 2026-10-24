@@ -1,0 +1,23 @@
+CHANGELOG.md
+  s_d164a58b33b1a3::t_e8c8f7351126af 11-17
+lib/mutineer/external_backend.rb
+  s_d164a58b33b1a3::t_5d7b2b1a91d66c 248-253
+test/external_backend_test.rb
+  s_d164a58b33b1a3::t_0d0d916e1f0e73 199,205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f701f5c75367fda95728656aee8cbade8a1c3adc",
+  "prompts": {},
+  "sessions": {
+    "s_d164a58b33b1a3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c762a0aa-a2bc-48ef-8521-6cf8d063f61e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
