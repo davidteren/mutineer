@@ -151,14 +151,14 @@ module Mutineer
             "#{ExternalBackend.generic_env_hint}.#{minitest_seed_hint if TestRunners.for(framework) == TestRunners::Minitest}"
     end
 
-    # Says which seed the Minitest runs use, and how to reproduce or change it.
+    # Says which seed the Minitest runs used, and how to reproduce or change it.
     #
     # @api private
     # @return [String]
     def self.minitest_seed_hint
-      seed = MinitestIntegration::PINNED_SEED
-      " Mutineer runs Minitest with seed #{seed} unless SEED is set. Run the suite with " \
-        "SEED=#{seed} to reproduce the failure, or set SEED to choose another order."
+      seed = MinitestIntegration.seed
+      " Mutineer ran Minitest with SEED=#{seed}. Run the suite with SEED=#{seed} " \
+        "to reproduce the failure, or set SEED to choose another order."
     end
 
     # Coverage-based test selection, shared by the in-process ({Runner.run}) and daemon

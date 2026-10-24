@@ -437,12 +437,18 @@ class RunnerTest < Minitest::Test
   end
 
   def test_abort_if_unclean_names_the_minitest_seed
+    saved = ENV.fetch("SEED", nil)
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], failed_clean_tests: ["test/a_test.rb"],
                                           project_root: ROOT)
-    minitest = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+    minitest = without_seed_env { assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) } }
     assert_includes minitest.message, "SEED=#{Mutineer::MinitestIntegration::PINNED_SEED}"
+    ENV["SEED"] = "4242"
+    own = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+    assert_includes own.message, "SEED=4242"
     rspec = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map, framework: "rspec") }
     refute_includes rspec.message, "SEED="
+  ensure
+    saved ? ENV["SEED"] = saved : ENV.delete("SEED")
   end
 
   # #282: `test_a` needs a global that `test_b` sets. The pinned seed runs
@@ -528,10 +534,16 @@ class RunnerTest < Minitest::Test
         src, test = write_order_dependent_suite(dir, classes: true)
         map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test],
                                         cache_dir: File.join(dir, "cache"), project_root: dir)
-        subprocess = capture_subprocess_io { @passed = map.send(:subprocess_clean_pass?, [test]) } && @passed
-        script = "require 'mutineer'; Mutineer::ChildStdout.silence; exit Mutineer::TestRunners::Minitest.run([#{test.dump}])"
+        subprocess = capture = nil
+        capture_subprocess_io do
+          subprocess = map.send(:subprocess_clean_pass?, [test])
+          capture = map.send(:capture, test)&.fetch("passed")
+        end
+        script = "require 'mutineer'; Mutineer::ChildStdout.silence; exit Mutineer::TestRunners::Minitest.run([#{test.dump}], stop_at_first_failure: true)"
         in_process = system(RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", "-e", script, out: File::NULL, err: File::NULL)
+        assert in_process, "the fixture must pass in the in-process order, or this proves nothing"
         assert_equal in_process, subprocess, "the clean check and the mutant run must order classes the same way"
+        assert_equal in_process, capture, "coverage capture and the mutant run must order classes the same way"
       end
     end
   end

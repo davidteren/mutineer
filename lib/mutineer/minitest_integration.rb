@@ -18,8 +18,10 @@ module Mutineer
   # second exit-2 path and break this method's 0/1 return contract.
   class MinitestIntegration
     # The seed of every Minitest run Mutineer starts, unless `SEED` is set:
-    # coverage capture, the clean checks and the mutant runs (#282). A green
-    # clean check then holds for the order the mutant runs use. With the stop,
+    # coverage capture, the clean checks and the mutant runs (#282). A file's
+    # clean check then runs its tests in the order a mutant run of that file
+    # uses. Several covering files can still differ from the combined clean
+    # check: a smaller class list shuffles differently. With the stop,
     # the test order can decide `killed` vs `timeout`; a fixed order keeps the
     # verdict stable for a `--baseline` gate. A `--matrix` run uses the same
     # order, so its first failure comes at the same point as the stop's.
@@ -31,7 +33,15 @@ module Mutineer
     # @api private
     # @return [Array<String>] `["--seed", "1"]`, or `[]` when `SEED` is set.
     def self.seed_args
-      ENV["SEED"] ? [] : ["--seed", PINNED_SEED.to_s]
+      ENV["SEED"] ? [] : ["--seed", seed]
+    end
+
+    # The seed the Minitest runs use: `SEED` when set, else {PINNED_SEED}.
+    #
+    # @api private
+    # @return [String]
+    def self.seed
+      ENV.fetch("SEED", PINNED_SEED.to_s)
     end
 
     # Tested via runner_test.rb, not in isolation — a direct unit test
