@@ -18,10 +18,12 @@ All notable changes to this project are documented here. The format is based on
   exit scores `error`, such as a wrapper's 137 after an out-of-memory kill.
 - **A load crash under `--test-command` scores `error` (#292).** When the clean
   run prints a Minitest or RSpec summary line, an exit 1 also needs a failing
-  test in that line. Code under test that calls `exit` while the default
-  Minitest reporter runs its tests still scores `killed`, as in process. When
-  the clean run prints no summary line, Mutineer warns once and keeps the
-  exit-code rule.
+  test in that line. Code under test that calls `exit 1` or `abort` while the
+  default Minitest reporter runs its tests still scores `killed`, as in
+  process. A summary line that shows every test passed scores `survived`,
+  even when a later step such as a SimpleCov `minimum_coverage` gate fails the
+  run. When the clean run prints no summary line, Mutineer warns once and
+  keeps the exit-code rule.
 
 ### Changed
 

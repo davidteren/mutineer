@@ -51,8 +51,10 @@ module Mutineer
     RSPEC_SUMMARY = /\d+ examples?, (\d+) failures?/
     # The line Minitest prints once every test file has loaded, before the first
     # test runs. Exit 1 after it with no summary line means code under test
-    # called `exit` or `abort`, which the in-process backend also scores killed.
+    # called `exit 1` or `abort`, which the in-process backend also scores killed.
     MINITEST_RUNNING = "# Running:"
+    # RSpec's note that a file raised outside any example, such as at load.
+    RSPEC_OUTSIDE_ERROR = /errors? occurred outside of examples/
     # ANSI colour codes, removed before matching so a coloured summary still counts.
     ANSI_CODE = /\e\[[\d;]*m/
 
@@ -177,6 +179,11 @@ module Mutineer
         # such as `bundle exec` that could not start the suite: no test ran.
         return Result.error("test-command could not start (exit #{code})") if CANNOT_RUN_CODES.include?(code)
 
+        # Every test passed, but a later step failed the run, such as a SimpleCov
+        # minimum_coverage gate (exit 2). No test caught the mutant: in process,
+        # the fork exits before that hook, and the mutant survives.
+        return Result.survived if check_summary && tests_passed?(output)
+
         unless code == FAILURE_CODE
           return Result.error("test-command exited #{code} (only exit 1 counts as a kill; " \
                               "check RSpec --failure-exit-code, a coverage gate, or your wrapper)")
@@ -217,7 +224,7 @@ module Mutineer
     end
 
     # True when Minitest started its tests and the process then ended with no
-    # summary line: code under test called `exit` or `abort` mid-run. A load
+    # summary line: code under test called `exit 1` or `abort` mid-run. A load
     # crash ends before Minitest prints {MINITEST_RUNNING}, so it stays false.
     # Only the default Minitest reporter prints that line: under RSpec or
     # minitest-reporters, such an exit scores error, not killed.
@@ -227,6 +234,17 @@ module Mutineer
     # @return [Boolean]
     def self.exited_during_tests?(output)
       summary_text(output).include?(MINITEST_RUNNING) && !summary_line?(output)
+    end
+
+    # True when the output has a summary line and none reports a failing test
+    # or an RSpec error outside examples. Ceiling: a wrapper that runs two
+    # suites, where the second crashes before its summary, reads as passed.
+    #
+    # @api private
+    # @param output [String] captured child stdout+stderr.
+    # @return [Boolean]
+    def self.tests_passed?(output)
+      summary_line?(output) && !failure_reported?(output) && !summary_text(output).match?(RSPEC_OUTSIDE_ERROR)
     end
 
     # The output as binary with ANSI colour codes removed. Binary, so bytes that

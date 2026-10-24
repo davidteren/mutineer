@@ -95,12 +95,24 @@ class ExternalBackendTest < Minitest::Test
   def test_exit_one_with_no_failing_test_in_summary_is_error
     [
       "0 examples, 0 failures, 1 error occurred outside of examples\n",
-      "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n",
-      "# Running:\n\n3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n",
       "2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n" \
         "0 examples, 0 failures, 1 error occurred outside of examples\n"
     ].each do |output|
       assert_predicate run_exit_one(output), :error?, output.inspect
+    end
+  end
+
+  # Every test passed, but a later step failed the run (a SimpleCov
+  # minimum_coverage gate exits 2). No test caught the mutant, so it survives,
+  # as in process, where the fork exits before that hook.
+  def test_passing_summary_with_nonzero_exit_is_survived_when_checking
+    summary = "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n"
+    [[1, summary], [2, summary], [2, "4 examples, 0 failures\n"]].each do |code, output|
+      with_script(%(STDOUT.write #{output.dump}\nexit #{code}\n)) do |path|
+        cmd = "#{RUBY} #{path} %{files}"
+        assert_predicate Backend.run(cmd, ["x"], timeout: 30, check_summary: true), :survived?, "exit #{code}"
+        refute_predicate Backend.run(cmd, ["x"], timeout: 30), :survived?, "exit #{code}, check off"
+      end
     end
   end
 
