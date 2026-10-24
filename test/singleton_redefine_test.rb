@@ -11,11 +11,12 @@ require "tmpdir"
 class SingletonRedefineTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
-  def run_redefine(source, test, strategy: "redefine", only: nil)
+  def run_redefine(source, test, strategy: "redefine", only: nil, require_paths: [], matrix: false)
     config = Mutineer::Config.new(
       sources: ["test/fixtures/singleton/#{source}"],
       tests: ["test/fixtures/singleton/#{test}"],
-      strategy: strategy, only: only,
+      require_paths: require_paths.map { |f| "test/fixtures/singleton/#{f}" },
+      strategy: strategy, only: only, matrix: matrix,
       cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
     )
     Mutineer::Runner.execute(config).first
@@ -186,25 +187,67 @@ class SingletonRedefineTest < Minitest::Test
                   "class_methods block under reload")
   end
 
-  # #256: the `included` block does not run again in a class that already
-  # includes the concern, so a reloaded mutant never reaches the includer and
-  # would falsely survive. Reload reports it unplaceable and does not run it.
-  def test_included_block_methods_are_unplaceable_under_reload
-    reload = run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
-                          strategy: "reload", only: "ConcernPricing#doubled")
-    assert_operator reload.unplaceable_count, :>, 0
-    assert_equal 0, reload.survived_count + reload.errored_count + reload.killed_count + reload.uncapturable_count
+  # #297: the `included` block does not run again in a class that already
+  # includes the concern (#256). Reload stores the mutated def before the hook
+  # call and loads it into each class that has the method, so it is killed.
+  def test_included_block_methods_are_killed_under_reload
+    assert_killed(run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
+                               strategy: "reload", only: "ConcernPricing#doubled"), "included block under reload")
   end
 
-  # #256: the same for a `prepended` block. The concern body still loads and is
-  # killed; the block's def is unplaceable.
-  def test_prepended_block_methods_are_unplaceable_under_reload
+  # #297: the same for a `prepended` block.
+  def test_prepended_block_methods_are_killed_under_reload
     assert_killed(run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
                                strategy: "reload", only: "ConcernWrapping#tripled"), "prepended concern body")
-    reload = run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
-                          strategy: "reload", only: "ConcernWrapping#decremented")
-    assert_operator reload.unplaceable_count, :>, 0
-    assert_equal 0, reload.survived_count + reload.errored_count + reload.killed_count + reload.uncapturable_count
+    assert_killed(run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
+                               strategy: "reload", only: "ConcernWrapping#decremented"), "prepended block under reload")
+  end
+
+  # #297: the hosts load in the parent, so each one already has the method when
+  # the mutant loads. Every kind of host kills the mutant: a named class, an
+  # anonymous class, a class through a plain module, and a class built later.
+  def test_hook_block_mutants_reach_every_includer
+    agg = run_redefine("hook_edges.rb", "hook_edges_test.rb", strategy: "reload", only: "HookEdges#bumped",
+                                                              require_paths: ["hook_edges_hosts.rb"], matrix: true)
+    assert_killed(agg, "hook block, every includer")
+    agg.results.select(&:killed?).each do |result|
+      names = result.kills.killed_by.map { |entry| entry[1].split("#").last }
+      assert_empty %w[test_named_host test_anonymous_host test_mixin_host test_lazy_host] - names,
+                   "#{result.mutation.operator}: #{names.inspect}"
+    end
+  end
+
+  # #297: a `def self.`, a `class << self` def and a private def are placed too.
+  def test_hook_block_singleton_and_private_defs_are_killed_under_reload
+    %w[HookEdges.made HookEdges.tagged HookEdges#secret].each do |name|
+      assert_killed(run_redefine("hook_edges.rb", "hook_edges_test.rb", strategy: "reload", only: name,
+                                                                         require_paths: ["hook_edges_hosts.rb"]), name)
+    end
+  end
+
+  # #297, the false-kill guard: a mutant that changes nothing must survive. The
+  # block's other statements do not run again, the override keeps its own
+  # method, and each def keeps its visibility.
+  def test_equivalent_hook_block_mutants_survive
+    source_file = File.join(ROOT, "test/fixtures/singleton/hook_edges.rb")
+    require File.join(ROOT, "test/fixtures/singleton/hook_edges_hosts.rb")
+    source = File.read(source_file)
+    subjects = Mutineer::Project.discover([source_file]).select(&:reload_hook_call)
+    assert_equal %w[HookEdges#bumped HookEdges.made HookEdges.tagged HookEdges#secret HookEdges#revealed],
+                 subjects.map(&:qualified_name)
+    tests = [File.join(ROOT, "test/fixtures/singleton/hook_edges_test.rb")]
+    subjects.each do |subject|
+      body = subject.body_loc
+      mutation = Mutineer::Mutation.new(start_offset: body.start_offset, end_offset: body.end_offset,
+                                        replacement: body.slice, operator: "equivalent")
+      result = Mutineer::Isolation.run do
+        code, hook_def = Mutineer::JobPlan.hook_mutant(mutation.apply(source), mutation, subject, source)
+        Mutineer::Isolation.apply_whole_file(code, source_file)
+        Mutineer::ConcernBlocks.place_hook_def(source_file: source_file, **hook_def)
+        Mutineer::TestRunners.for("minitest").run(tests, stop_at_first_failure: true)
+      end
+      assert_equal :survived, result.status, subject.qualified_name
+    end
   end
 
   # Parity control — this form already worked; it must keep working.

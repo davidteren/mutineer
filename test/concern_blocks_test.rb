@@ -10,7 +10,7 @@ require "tmpdir"
 class ConcernBlocksTest < Minitest::Test
   # The concerns these tests define, removed after each test so a second run
   # in the same process starts with no stored block.
-  CONCERNS = %i[TaggedForget TaggedOther WrappedForget GuardedForget ReplacedForget].freeze
+  CONCERNS = %i[TaggedForget TaggedOther WrappedForget GuardedForget ReplacedForget HookPlaced HookPlacedHost].freeze
 
   def teardown
     CONCERNS.each { |name| Object.send(:remove_const, name) if Object.const_defined?(name, false) }
@@ -98,6 +98,141 @@ class ConcernBlocksTest < Minitest::Test
       Mutineer::ConcernBlocks.forget(source)
       load copy
       assert_equal copy, WrappedForget.instance_variable_get(:@_prepended_block).source_location.first
+    end
+  end
+
+  # #297: writes a concern whose `included` block holds `body`, loads it, and
+  # yields the file and the first line of the block body.
+  def with_hook_concern(body)
+    Dir.mktmpdir("mutineer-hook") do |dir|
+      source = File.join(dir, "hook_placed.rb")
+      File.write(source, "module HookPlaced\n  extend ActiveSupport::Concern\n  included do\n#{body}\n  end\nend\n")
+      load source
+      yield source, 4
+    ensure
+      Mutineer::ConcernBlocks.instance_variable_set(:@hook_def, nil)
+    end
+  end
+
+  def place(source, line, name, singleton: false)
+    Mutineer::ConcernBlocks.place_hook_def(source_file: source, line: line, name: name, singleton: singleton)
+  end
+
+  def test_place_hook_def_reaches_named_and_anonymous_owners
+    with_hook_concern("def tag = :original") do |source, line|
+      named = Object.const_set(:HookPlacedHost, Class.new { include HookPlaced })
+      anonymous = Class.new { include HookPlaced }
+      mixin = Module.new { include HookPlaced }
+      through = Class.new { include mixin }
+      Mutineer::ConcernBlocks.store_hook_def { def tag = :mutant }
+
+      assert_equal 3, place(source, line, :tag)
+      assert_equal :mutant, named.new.tag
+      assert_equal :mutant, anonymous.new.tag
+      assert mixin.method_defined?(:tag, false)
+      assert_equal :mutant, through.new.tag
+      refute through.method_defined?(:tag, false)
+    end
+  end
+
+  def test_place_hook_def_skips_an_override_and_an_inheritor
+    with_hook_concern("def tag = :original") do |source, line|
+      host = Class.new { include HookPlaced }
+      override = Class.new(host) { def tag = :override }
+      inheritor = Class.new(host)
+      Mutineer::ConcernBlocks.store_hook_def { def tag = :mutant }
+
+      assert_equal 1, place(source, line, :tag)
+      assert_equal :override, override.new.tag
+      assert_equal :mutant, inheritor.new.tag
+      refute inheritor.method_defined?(:tag, false)
+    end
+  end
+
+  def test_place_hook_def_keeps_private_visibility
+    with_hook_concern("private\ndef secret = :original") do |source, _line|
+      host = Class.new { include HookPlaced }
+      Mutineer::ConcernBlocks.store_hook_def { def secret = :mutant }
+
+      assert_equal 1, place(source, 5, :secret)
+      assert host.private_method_defined?(:secret, false)
+      assert_equal :mutant, host.new.send(:secret)
+    end
+  end
+
+  def test_place_hook_def_targets_singleton_defs
+    with_hook_concern("def self.made = :original\nclass << self\ndef tagged = :original\nend") do |source, line|
+      hosts = [Class.new { include HookPlaced }, Class.new { include HookPlaced }]
+      Mutineer::ConcernBlocks.store_hook_def { def self.made = :mutant }
+      assert_equal 2, place(source, line, :made, singleton: true)
+      Mutineer::ConcernBlocks.store_hook_def do
+        class << self
+          def tagged = :mutant
+        end
+      end
+      assert_equal 2, place(source, 6, :tagged, singleton: true)
+
+      hosts.each do |host|
+        assert_equal %i[mutant mutant], [host.made, host.tagged]
+        refute host.method_defined?(:made)
+      end
+    end
+  end
+
+  def test_place_hook_def_keeps_a_private_singleton_def_private
+    with_hook_concern("class << self\nprivate\ndef hidden = :original\nend") do |source, _line|
+      host = Class.new { include HookPlaced }
+      Mutineer::ConcernBlocks.store_hook_def do
+        class << self
+          def hidden = :mutant
+        end
+      end
+
+      assert_equal 1, place(source, 6, :hidden, singleton: true)
+      assert host.singleton_class.private_method_defined?(:hidden, false)
+      assert_equal :mutant, host.send(:hidden)
+    end
+  end
+
+  def test_place_hook_def_raises_without_a_stored_def
+    with_hook_concern("def tag = :original") do |source, line|
+      error = assert_raises(RuntimeError) { place(source, line, :tag) }
+      assert_includes error.message, "tag (#{source}:#{line})"
+      assert_includes error.message, "did not reach its included or prepended call"
+    end
+  end
+
+  def test_place_hook_def_raises_when_an_owner_aliased_the_method
+    with_hook_concern("def tag = :original") do |source, line|
+      host = Class.new do
+        include HookPlaced
+        alias_method :old_tag, :tag
+      end
+      Mutineer::ConcernBlocks.store_hook_def { def tag = :mutant }
+
+      error = assert_raises(RuntimeError) { place(source, line, :tag) }
+      assert_includes error.message, "#old_tag is an alias of it"
+      assert_equal :original, host.new.tag
+    end
+  end
+
+  def test_place_hook_def_raises_when_a_subclass_aliased_the_method
+    with_hook_concern("def tag = :original") do |source, line|
+      host = Class.new { include HookPlaced }
+      Class.new(host) { alias_method :base_tag, :tag }
+      Mutineer::ConcernBlocks.store_hook_def { def tag = :mutant }
+
+      error = assert_raises(RuntimeError) { place(source, line, :tag) }
+      assert_includes error.message, "#base_tag is an alias of it"
+    end
+  end
+
+  def test_place_hook_def_with_no_owner_is_a_no_op
+    with_hook_concern("def tag = :original") do |source, line|
+      Mutineer::ConcernBlocks.store_hook_def { def tag = :mutant }
+      assert_equal 0, place(source, line, :tag)
+      # The stored def was taken, so a second placement has none.
+      assert_raises(RuntimeError) { place(source, line, :tag) }
     end
   end
 end

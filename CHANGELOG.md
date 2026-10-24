@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Included and prepended block methods under reload.** After you upgrade,
+  write a new baseline with `--format json`: a `--baseline` check against an
+  older report lists the new survivors as regressions. This applies to GitHub
+  Action users too: the Action runs `--strategy reload` by default (a Rails app
+  without a daemon uses redefine).
+  Under `--strategy reload`, in-process and on the daemon, a method in a
+  concern's `included` or `prepended` block is now mutated and scored (#297).
+  Mutineer loads the mutated method into each class that already has it. A
+  class that includes the concern later gets it from the reloaded block. The
+  rest of the block does not run again, so validators and callbacks are not
+  added twice. These mutants used to be `unplaceable`, so a reload score can go
+  down and a `--threshold` gate can start to fail. Some methods stay
+  `unplaceable`: a method in a class, module or `Struct.new` block inside the
+  block, a method inside another method or block, every method in a block that
+  uses `alias` or `alias_method`, a method the block itself calls, and every
+  method in a block whose `included do` call is not a plain line of the module
+  body (for example inside `if`, `unless`, or `x = included do`). The full list
+  is in `docs/json-schema.md`. If a class aliases a method that Mutineer does
+  run (one not in that list) outside the block, the mutant scores `error`,
+  because the alias keeps the original method. `--strategy redefine` still
+  reports all of these methods `unplaceable`.
+
 ### Changed
 
 - Explain mutation testing before setup, with a runnable beginner guide and a

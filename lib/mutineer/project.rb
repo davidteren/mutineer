@@ -17,13 +17,51 @@ module Mutineer
     def self.discover(paths, only: nil)
       subjects = Array(paths).flat_map do |path|
         result = Parser.parse_file(path)
-        visitor = SubjectVisitor.new(path)
+        visitor = SubjectVisitor.new(path, plain_path_calls(result.value))
         visitor.visit(result.value)
         visitor.promote_module_functions!
         visitor.subjects
       end
       only ? subjects.select { |s| s.qualified_name == only } : subjects
     end
+
+    # The call statements that run each time the file loads, in order: each one
+    # sits in the file's top-level statements or in a `module` or `class` body
+    # reached only through such statements. A call under any `if`, `unless`,
+    # `case`, `&&`, `rescue` or loop, an assignment, an argument, a def or a block
+    # is not on this path. A file with a `return` outside any def or block may
+    # stop before a call, so it has none (#297).
+    #
+    # @param program [Prism::ProgramNode] the parsed file.
+    # @return [Set<Prism::CallNode>] compared by identity.
+    def self.plain_path_calls(program)
+      calls = Set.new.compare_by_identity
+      return calls if top_level_return?(program)
+
+      bodies = [program.statements]
+      while (body = bodies.pop)
+        body.body.each do |node|
+          calls << node if node.is_a?(Prism::CallNode)
+          bodies << node.body if (node.is_a?(Prism::ModuleNode) || node.is_a?(Prism::ClassNode)) &&
+                                 node.body.is_a?(Prism::StatementsNode)
+        end
+      end
+      calls
+    end
+    private_class_method :plain_path_calls
+
+    # True when the node holds a `return` that is not inside a def, a block or a
+    # lambda, so loading the file can stop early.
+    #
+    # @param node [Prism::Node] node to search.
+    # @return [Boolean]
+    def self.top_level_return?(node)
+      return true if node.is_a?(Prism::ReturnNode)
+      return false if node.is_a?(Prism::DefNode) || node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode)
+
+      node.compact_child_nodes.any? { |child| top_level_return?(child) }
+    end
+    private_class_method :top_level_return?
 
     # Walks an AST, maintaining a namespace stack, emitting Subjects.
     # Nested inside Project to signal its private role.
@@ -61,8 +99,11 @@ module Mutineer
       # Builds a subject visitor.
       #
       # @param file [String] source file path being visited.
-      def initialize(file)
+      # @param plain_calls [Set<Prism::CallNode>] the file's call statements on a
+      #   plain path (see {Project.plain_path_calls}); only these hook calls can be placed.
+      def initialize(file, plain_calls = Set.new)
         @file = file
+        @plain_calls = plain_calls
         @namespace_stack = []
         @lexical_stack = [] # class/module names as written, `::X` kept (#145)
         @subjects = []
@@ -83,6 +124,8 @@ module Mutineer
         @singleton_uncertain = false # the open `class << self` was inside a def or a non-builder block
         @concern_modules = Set.new   # the {#module_key} of each module that ran `extend ActiveSupport::Concern`
         @hook_block = false          # inside a concern's `included` or `prepended` block (see {#hook_block?})
+        @hook_call = nil             # that block's call node, when reload can place its defs (see {#placeable_hook})
+        @hook_uses = Set.new         # the names that block calls outside its def bodies
         super()
       end
 
@@ -96,7 +139,12 @@ module Mutineer
         return if @module_function_names.empty?
 
         named = @module_function_names.to_set
-        @subjects.each_with_index { |s, i| s.singleton = true if named.include?([@subject_keys[i], s.name]) }
+        @subjects.each_with_index do |s, i|
+          next unless named.include?([@subject_keys[i], s.name])
+
+          s.singleton = true
+          s.reload_hook_call = nil # a module function has a second, private copy no hook def placement makes
+        end
       end
 
       # Visits class nodes and tracks namespace nesting.
@@ -156,6 +204,7 @@ module Mutineer
           hook = hook_block?(node)
           return preserving_scope do
             @hook_block ||= hook
+            @hook_call, @hook_uses = placeable_hook(node) if hook
             @owner_unknown = true
             super
           end
@@ -251,6 +300,7 @@ module Mutineer
           block_owner: @block_owner,
           owner_unknown: @owner_unknown,
           hook_block: @hook_block,
+          reload_hook_call: reload_hook_call_for(node),
           name: node.name,
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node
@@ -347,7 +397,7 @@ module Mutineer
             end
           @lexical_stack += [root ? "::#{name}" : name]
           @module_function_active = false
-          @block_owner = @block_namespace = nil
+          @block_owner = @block_namespace = @hook_call = nil
           # redefine reopens the lexical chain, which does not pass through the block's `self`
           @namespace_unknown = @owner_unknown = in_singleton || self_in_block || @namespace_unknown
           @singleton_depth = 0
@@ -361,7 +411,7 @@ module Mutineer
       # Visitor state a class/module body or builder block sets for what it contains.
       SCOPE_STATE = %i[@namespace_stack @lexical_stack @module_function_active @block_owner @block_namespace
                        @owner_unknown @singleton_depth @singleton_cref @namespace_unknown @anonymous_block @body
-                       @self_unknown @self_scope @singleton_uncertain @hook_block].freeze
+                       @self_unknown @self_scope @singleton_uncertain @hook_block @hook_call @hook_uses].freeze
 
       # Runs the block and then restores every {SCOPE_STATE} variable, so a
       # nested body's state never leaks out of it.
@@ -512,14 +562,66 @@ module Mutineer
       # ActiveSupport::Concern` earlier in this file (see {#concern_block}).
       # ActiveSupport runs the block only when a class first includes or prepends
       # the concern, so loading the file again stores the new block but never
-      # runs it in a class that already has the concern (#256). Everything the
-      # block defines, a nested class or a builder block included, stays as the
-      # original wrote it under `--strategy reload`.
+      # runs it in a class that already has the concern (#256). Reload can still
+      # place a def that sits directly in such a block (see {#placeable_hook} and
+      # {#reload_hook_call_for}, #297); anything else the block defines, a nested
+      # class or a builder block included, stays as the original wrote it.
       #
       # @param node [Prism::CallNode] a call {#concern_block} sorted as a concern block.
       # @return [Boolean]
       def hook_block?(node)
         %i[included prepended].include?(node.name) && @concern_modules.include?(module_key)
+      end
+
+      # The hook call and the names its block calls outside its def bodies, when
+      # reload can place the block's defs (#297), else nil and an empty set. The
+      # call must be on a plain path ({Project.plain_path_calls}), so the statement
+      # the mutant file adds before it runs exactly when the call runs. An alias in
+      # the block keeps the original body, so a block with any `alias` or
+      # `alias_method` places nothing. The names come from bare calls, `self.`
+      # calls and the symbol given to `method` or `instance_method`, in every
+      # nested block and lambda too: discovery cannot tell a block that runs at
+      # once from one that runs later.
+      #
+      # @param node [Prism::CallNode] the hook call.
+      # @return [Array(Prism::CallNode, Set<Symbol>), Array(nil, Set<Symbol>)]
+      def placeable_hook(node)
+        uses = Set.new
+        return [nil, uses] unless @plain_calls.include?(node)
+
+        nodes = [node.block.body].compact
+        while (current = nodes.pop)
+          next if current.is_a?(Prism::DefNode)
+          return [nil, Set.new] if current.is_a?(Prism::AliasMethodNode)
+
+          if current.is_a?(Prism::CallNode) && (current.receiver.nil? || current.receiver.is_a?(Prism::SelfNode))
+            return [nil, Set.new] if current.name == :alias_method
+
+            uses << current.name
+            if %i[method instance_method].include?(current.name)
+              current.arguments&.arguments&.each { |arg| uses << arg.value.to_sym if arg.is_a?(Prism::SymbolNode) }
+            end
+          end
+          nodes.concat(current.compact_child_nodes)
+        end
+        [node, uses]
+      end
+
+      # The hook call of the block this def sits in directly, when reload can
+      # place the def (#297), else nil. The def must be in the block itself, or
+      # in its `class << self` without a receiver: not in a def, a nested class
+      # or module, or another block. `module_function` gives the def a second,
+      # private copy, and a name the block itself uses kept the original's
+      # result, so neither is placeable.
+      #
+      # @param node [Prism::DefNode] the def being recorded.
+      # @return [Prism::CallNode, nil]
+      def reload_hook_call_for(node)
+        return unless @hook_call && @self_scope.equal?(@hook_call.block) && !@module_function_active
+        return if @singleton_depth > 1 || (@singleton_depth == 1 && node.receiver)
+        return if @hook_uses.include?(node.name)
+
+        @hook_call
       end
 
       # Runs the block with the defs it visits owned by the class a builder block builds.

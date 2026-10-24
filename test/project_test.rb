@@ -329,6 +329,235 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #297: reload can place a def that sits directly in a plain `included` or
+  # `prepended` block, in its `class << self` too. Each such subject carries
+  # the hook call that discovery found.
+  def test_discover_sets_the_hook_call_for_placeable_hook_defs
+    src = <<~RUBY
+      module Billing
+        extend ActiveSupport::Concern
+        included do
+          def a; end
+          def self.b; end
+          class << self
+            def c; end
+          end
+          private def d; end
+        end
+        self.prepended do
+          def e; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Billing#a Billing.b Billing.c Billing#d Billing#e], subjects.map(&:qualified_name)
+      assert_equal [3, 3, 3, 3, 11], subjects.map { |s| s.reload_hook_call&.location&.start_line }
+      assert(subjects.none? { |s| s.unplaceable?("reload") })
+      assert(subjects.all? { |s| s.unplaceable?("redefine") })
+    end
+  end
+
+  # #297: a def that is not directly in the hook block stays unplaceable.
+  def test_discover_leaves_nested_hook_defs_unplaceable
+    src = <<~RUBY
+      module Billing
+        extend ActiveSupport::Concern
+        included do
+          class Inner
+            def a; end
+          end
+          Kind = Struct.new(:a) do
+            def b; end
+          end
+          Anon = Class.new do
+            def f; end
+          end
+          def outer
+            def c; end
+          end
+          [1].each do
+            def d; end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      %i[a b f c d].each do |name|
+        assert subjects.fetch(name).hook_block, name
+        assert_nil subjects.fetch(name).reload_hook_call, name
+      end
+      refute_nil subjects.fetch(:outer).reload_hook_call
+    end
+  end
+
+  # #297: an alias keeps the original body, so a block that aliases anything
+  # keeps every def in it unplaceable.
+  def test_an_alias_in_the_hook_block_makes_every_def_unplaceable
+    src = <<~RUBY
+      module Billing
+        extend ActiveSupport::Concern
+        included do
+          def tag; end
+          def other; end
+          alias_method :copy, :tag
+        end
+      end
+      module Shipping
+        extend ActiveSupport::Concern
+        included do
+          def tag; end
+          alias twin tag
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal 3, subjects.size
+      assert(subjects.all? { |s| s.hook_block && s.reload_hook_call.nil? })
+    end
+  end
+
+  # #297: the added statement must run exactly when the hook call runs, so
+  # only a hook call on a plain path from the top of the file is placeable.
+  def test_discover_requires_a_hook_call_on_a_plain_path
+    src = <<~RUBY
+      module A
+        extend ActiveSupport::Concern
+        x = included do
+          def a; end
+        end
+      end
+      module B
+        extend ActiveSupport::Concern
+        x =
+          included do
+            def b; end
+          end
+      end
+      module C
+        extend ActiveSupport::Concern
+        foo(included do
+          def c; end
+        end)
+      end
+      module D
+        extend ActiveSupport::Concern
+        included do
+          def d; end
+        end if true
+      end
+      module G
+        extend ActiveSupport::Concern
+        included do
+          def g; end
+        end
+      end unless defined?(G)
+      defined?(H) || module H
+        extend ActiveSupport::Concern
+        included do
+          def h; end
+        end
+      end
+      module I
+        extend ActiveSupport::Concern
+        case 1
+        in Integer then included do
+          def i; end
+        end
+        end
+      end
+      module J
+        extend ActiveSupport::Concern
+        def self.setup
+          included do
+            def j; end
+          end
+        end
+      end
+      module K
+        extend ActiveSupport::Concern
+        class << self
+          included do
+            def k; end
+          end
+        end
+      end
+      module L
+        extend ActiveSupport::Concern
+        included do
+          def l; end
+          module_function :l
+        end
+      end
+      module M
+        extend ActiveSupport::Concern; included do
+          def m; end
+        end
+      end
+      module N
+        extend ActiveSupport::Concern
+        included do
+          def n; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      %i[a b c d g h i j k l].each { |name| assert_nil subjects.fetch(name).reload_hook_call, name }
+      refute_nil subjects.fetch(:m).reload_hook_call
+      refute_nil subjects.fetch(:n).reload_hook_call
+    end
+  end
+
+  # #297: a file that can return early may never reach its hook call.
+  def test_a_top_level_return_makes_the_file_unplaceable
+    src = <<~RUBY
+      return if defined?(R)
+
+      module R
+        extend ActiveSupport::Concern
+        included do
+          def r; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subject = Mutineer::Project.discover([path]).first
+      assert subject.hook_block
+      assert_nil subject.reload_hook_call
+    end
+  end
+
+  # #297: the block ran once with the original def, so a def the block itself
+  # calls outside a def body keeps that result and stays unplaceable. A symbol
+  # argument calls by name later, so it stays placeable.
+  def test_a_def_the_block_uses_stays_unplaceable
+    src = <<~RUBY
+      module Billing
+        extend ActiveSupport::Concern
+        included do
+          def self.columns = %i[a]
+          searchable columns
+          def cb; end
+          register method(:cb)
+          def compute; end
+          %i[a].each { register(compute) }
+          def normalize; end
+          before_save { normalize }
+          def saved; end
+          before_save :saved
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      %i[columns cb compute normalize].each { |name| assert_nil subjects.fetch(name).reload_hook_call, name }
+      refute_nil subjects.fetch(:saved).reload_hook_call
+    end
+  end
+
   # #256: only a concern's `included` or `prepended` block is one ActiveSupport
   # runs once. A `class_methods` block, or another library's `included`, is not.
   def test_discover_marks_only_concern_included_and_prepended_blocks_as_hook_blocks

@@ -34,6 +34,8 @@ module Mutineer
   #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
   #               "tests":["test/models/order_test.rb"],"timeout":30}
+  #              (a mutant of a def in a concern's hook block adds to the payload
+  #               "hook_def":{"line":12,"name":"total","singleton":false}, #297)
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
   #   quit in  : {"cmd":"quit"}
   #
@@ -432,6 +434,9 @@ module Mutineer
       # removes orphans and never touches a live file. Same path for reload
       # (whole file) and redefine (wrapped snippet). The backend sends the whole
       # file, so the concern blocks it stores replace the forgotten ones (#256).
+      # With a `"hook_def"`, the loaded file stored a mutated hook-block def, and
+      # {ConcernBlocks.place_hook_def} loads it into each class that has the
+      # method; it raises when none was stored, so the mutant scores `error` (#297).
       def apply_payload(payload)
         dir = File.dirname(File.expand_path(payload.fetch("source_file")))
         Tempfile.create([".mutineer_daemon", ".rb"], dir) do |f|
@@ -442,6 +447,10 @@ module Mutineer
           f.flush
           ConcernBlocks.replace(payload.fetch("source_file")) { load f.path }
         end
+        hook = payload["hook_def"] or return
+
+        ConcernBlocks.place_hook_def(source_file: payload.fetch("source_file"), line: hook.fetch("line"),
+                                     name: hook.fetch("name").to_sym, singleton: hook.fetch("singleton"))
       end
 
       # Load the covering test files and run them; 0 = all passed (survived),
