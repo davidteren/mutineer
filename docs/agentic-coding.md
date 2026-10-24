@@ -58,13 +58,16 @@ in **Avoiding infinite loops** below.
 
 Save a full JSON report from the default branch as a baseline. Compare pull
 requests with that report to catch new survivors while you improve existing tests.
-For both the first baseline and each refresh, temporarily remove `baseline:` from
-`.mutineer.yml` before this command. Keep the source, test, and operator settings.
-The refresh must describe main without comparing it with the old baseline:
+For both the first baseline and each refresh, temporarily remove `baseline:` and `only:`
+from `.mutineer.yml` before this command. Keep the source, test, and operator settings.
+The refresh must describe main without comparing it with the old baseline.
+The examples use `app/` and the default cache directory, `.mutineer`. Use the
+same sources, explicit test files, and operators as your CI gate. If `cache_dir`
+is different, replace `.mutineer` in every example path with that directory:
 
 ```sh
 # On main, write a candidate without replacing the saved baseline:
-mutineer run app/ --no-since --format json --output .mutineer/baseline-candidate.json
+mutineer run app/ --no-since --no-fail-fast --format json --output .mutineer/baseline-candidate.json
 ```
 
 Use a separate output path to preserve the saved report for review. An output
@@ -80,7 +83,7 @@ saved baseline:
 cp .mutineer/baseline-candidate.json .mutineer/baseline.json
 ```
 
-Restore any `baseline:` setting after the saved report is in place. On a pull
+Restore any `baseline:` and `only:` settings after the saved report is in place. On a pull
 request, compare against that file:
 
 ```sh

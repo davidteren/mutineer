@@ -44,8 +44,14 @@ for new survivors and a score drop, including in code whose source did not chang
 A scheduled scan on the default branch refreshes the baseline; it does not check
 the pull request's tests before merge.
 For the first baseline and each refresh, follow the [baseline recipe](agentic-coding.md#ci-gate-fail-a-pr-only-when-it-makes-things-worse).
-Temporarily remove `baseline:` from `.mutineer.yml`, write a separate candidate,
-and review it before replacing the saved report. Restore the setting afterward.
+Temporarily remove `baseline:` and `only:` from `.mutineer.yml`, disable
+`fail_fast`, write a separate candidate, and review it before replacing the saved
+report. Use the same sources as your CI gate (`app/models` in the workflow below),
+with the same test files, operators, Rails mode, strategy, daemon setting, and environment. Run the Rails
+refresh with `RAILS_ENV=test bundle exec mutineer run app/models --rails` plus
+the recipe's remaining flags for the workflow shown below. Pass the same
+strategy or daemon options if your workflow changes those defaults. The recipe uses the default cache path;
+replace `.mutineer` if your `cache_dir` differs. Restore the settings afterward.
 
 ## A threshold on chosen folders
 
