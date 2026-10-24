@@ -342,6 +342,9 @@ different entry point. Boot mode requires at least one `--test` file and is
 coverage-guided — each mutant runs only the test files that exercise its line
 (coverage is captured by forking the booted app, then cached).
 
+When redefine uses the system temp directory, the run warns that methods using
+`__dir__` or `require_relative` can be falsely killed. The score can then be too high.
+
 Some code runs while the app boots or a class loads, for example a class body
 that calls a method to build a constant, a `to_prepare` initializer, or a
 `--require` file that calls a source method. That run
