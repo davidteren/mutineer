@@ -245,7 +245,9 @@ module Mutineer
       kind, code = wait_with_timeout(pid, timeout)
       elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
       out.rewind
-      [kind, code, out.read, elapsed]
+      # Test output is arbitrary bytes. Read it as UTF-8 whatever the locale (#303),
+      # with invalid bytes replaced, so the smoke-failure checks can match on it.
+      [kind, code, out.read.force_encoding(Encoding::UTF_8).scrub, elapsed]
     ensure
       if out
         out.close

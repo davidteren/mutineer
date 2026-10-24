@@ -447,7 +447,7 @@ module Mutineer
         raise CoverageFromError, "--coverage-from #{@coverage_from} is this run's own cache; give the run another --cache-dir"
       end
 
-      cached = JSON.parse(File.read(@coverage_from))
+      cached = JSON.parse(File.read(@coverage_from, encoding: "UTF-8"))
       reason = capture_mismatch(cached)
       raise CoverageFromError, "--coverage-from #{@coverage_from} cannot be reused: #{reason}" if reason
 
@@ -857,7 +857,7 @@ module Mutineer
     def spawn_script(script, result: true)
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @capture_timeout
       script_rd, script_wr = IO.pipe
-      result_rd, result_wr = IO.pipe if result
+      result_rd, result_wr = IO.pipe(Encoding::UTF_8) if result
       options = { in: script_rd, out: File::NULL, pgroup: true }
       options[RESULT_FD] = result_wr if result
       pid = Process.spawn(RbConfig.ruby, "-", **options)
@@ -1448,7 +1448,7 @@ module Mutineer
     def read_cache
       return nil unless File.exist?(cache_path)
 
-      JSON.parse(File.read(cache_path))
+      JSON.parse(File.read(cache_path, encoding: "UTF-8"))
     rescue JSON::ParserError
       nil # corrupt cache: rebuild from scratch
     end

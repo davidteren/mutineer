@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- Mutineer reads its files and pipes as UTF-8 when `LANG` is unset (#303).
+  Before, a non-ASCII character in a source file, a baseline, a coverage
+  cache, a triage report, `.mutineer.yml` (for `migrate`), a `--since` diff,
+  test-command output, or a daemon message stopped the run with "invalid byte
+  sequence in US-ASCII" (exit 2) or a backtrace (exit 1).
+
 ### Changed
 
 - Explain mutation testing before setup, with a runnable beginner guide and a

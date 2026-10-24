@@ -256,7 +256,7 @@ module Mutineer
     #
     # @return [Mutineer::Result] verdict for this mutant.
     def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:)
-      source  = File.read(subject.file)
+      source  = File.read(subject.file, encoding: "UTF-8")
       mutated = mutation.apply(source)
       return Result.skipped if Parser.parse_string(mutated).errors.any?
 
@@ -314,7 +314,7 @@ module Mutineer
     # @return [Mutineer::Result] mutant result.
     def self.run(mutation, source_file:, coverage_map: nil, subject: nil, strategy: "reload",
                  timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest", matrix: false)
-      source  = File.read(source_file)
+      source  = File.read(source_file, encoding: "UTF-8")
       mutated = mutation.apply(source)
 
       # Validity rule: a mutant that does not re-parse is skipped before forking.
