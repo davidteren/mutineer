@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **The gem ships the agent skill.** `skills/mutineer/SKILL.md` is now
+  packaged in the gem, and the gemspec opts in as a
+  [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive)
+  companion (`hyperdrive_targets: "*"`, `hyperdrive_artifacts: "skill"`). In a
+  Rails app that bundles mutineer, `bin/rails hyperdrive:init` installs the
+  skill to `.claude/skills/mutineer/SKILL.md`. A test in the default suite
+  fails if the gemspec stops shipping the skill or drops the opt-in (#315).
+
 ### Changed
 
 - Explain mutation testing before setup, with a runnable beginner guide and a
