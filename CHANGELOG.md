@@ -21,7 +21,7 @@ All notable changes to this project are documented here. The format is based on
   in-process `--boot` or `--rails` run, a source file, or a `require:`
   file) no longer prints the raw password or a backtrace. The run prints a
   `mutineer: cannot load <path>: ...` message (a `SyntaxError` keeps its code
-  excerpt) and a hint to rerun with `--verbose`, and exits 1. `--verbose`
+  excerpt) and a hint to re-run with `--verbose`, and exits 1. `--verbose`
   adds a redacted backtrace and the redacted cause chain. CLI error messages, the
   fork child's error line, the worker crash text in the report, the daemon's
   stderr lines, the failing test report from the clean-suite and coverage

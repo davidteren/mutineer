@@ -98,7 +98,9 @@ module Mutineer
                              matrix:)
         --allow-empty        A run with no mutants is expected; do not warn (--no-allow-empty
                              beats a .mutineer.yml allow_empty:)
-        --verbose            Show the full error and backtrace when a load or fork capture fails (alias: --debug)
+        --verbose            Show full error details: the backtrace and causes of a load
+                             failure, the real error of a failed fork capture, and the
+                             --test-command output (alias: --debug)
 
       Options:
         --list-operators  List available operators (default vs optional) and exit
@@ -379,7 +381,7 @@ module Mutineer
         (e.backtrace || []).each { |frame| warn "\t#{Redaction.text(frame)}" }
         e.causes.each { |cause| warn "mutineer: caused by: #{cause}" }
       else
-        warn "mutineer: rerun with --verbose for the backtrace"
+        warn "mutineer: re-run with --verbose for the backtrace and causes"
       end
       exit 1
     end

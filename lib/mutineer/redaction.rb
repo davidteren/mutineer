@@ -66,15 +66,19 @@ module Mutineer
     end
 
     # A UTF-8 copy of `str` that every pattern here can match. Valid UTF-8 and
-    # ASCII-only text is returned as is. Binary text, or text whose bytes are
-    # invalid in its own encoding, is read as UTF-8 with bad bytes replaced.
-    # Other valid text is converted, with characters UTF-8 lacks replaced.
+    # ASCII-only text is returned as is. Binary text, or ASCII-compatible text
+    # whose bytes are invalid in its own encoding, is read as UTF-8 with bad
+    # bytes replaced. Other text (including UTF-16 and UTF-32, valid or not)
+    # is converted, with bad bytes and characters UTF-8 lacks replaced:
+    # reading UTF-16 bytes as UTF-8 would hide the password behind NULs.
     #
     # @param str [String]
     # @return [String]
     def utf8(str)
       return str if str.ascii_only? || (str.encoding == Encoding::UTF_8 && str.valid_encoding?)
-      return String.new(str, encoding: Encoding::UTF_8).scrub if str.encoding == Encoding::BINARY || !str.valid_encoding?
+
+      reread = str.encoding == Encoding::BINARY || (!str.valid_encoding? && str.encoding.ascii_compatible?)
+      return String.new(str, encoding: Encoding::UTF_8).scrub if reread
 
       str.encode(Encoding::UTF_8, invalid: :replace, undef: :replace)
     end

@@ -1035,7 +1035,7 @@ module Mutineer
         #{abs_preload_paths.inspect}.each { |f| require f }
         #{loads}
         _passed = Minitest.run([])
-        $stderr.write(#{redacted("_report.string")}) unless _passed
+        $stderr.write(#{redacted_expression("_report.string")}) unless _passed
         exit(_passed ? 0 : 1)
       RUBY
     end
@@ -1060,7 +1060,7 @@ module Mutineer
         #{abs_preload_paths.inspect}.each { |f| require f }
         _sink = StringIO.new
         status = RSpec::Core::Runner.run(["--no-color", #{specs}], _sink, _sink)
-        $stderr.write(#{redacted("_sink.string")}) unless status.zero?
+        $stderr.write(#{redacted_expression("_sink.string")}) unless status.zero?
         exit(status.zero? ? 0 : 1)
       RUBY
     end
@@ -1071,7 +1071,7 @@ module Mutineer
     # @api private
     # @param expression [String] Ruby source for the text to redact.
     # @return [String] Ruby script text.
-    def redacted(expression)
+    def redacted_expression(expression)
       "(require #{REDACTION_PATH.inspect}; Mutineer::Redaction.text(#{expression}))"
     end
 
@@ -1106,7 +1106,7 @@ module Mutineer
         _load = #{load_coverage_expression}
         load #{absolute(test_path).inspect}
         _passed = Minitest.run([])
-        $stderr.write(#{redacted("_report.string")}) unless _passed
+        $stderr.write(#{redacted_expression("_report.string")}) unless _passed
         _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => _coverage,
                                     "load_coverage" => _load,
@@ -1140,7 +1140,7 @@ module Mutineer
         _load = #{load_coverage_expression}
         _sink = StringIO.new
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
-        $stderr.write(#{redacted("_sink.string")}) unless _status.zero?
+        $stderr.write(#{redacted_expression("_sink.string")}) unless _status.zero?
         _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
         _result.puts JSON.generate("passed" => _status.zero?, "coverage" => _coverage,
                                     "load_coverage" => _load,

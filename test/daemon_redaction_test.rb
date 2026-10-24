@@ -164,8 +164,9 @@ class DaemonRedactionTest < Minitest::Test
     refute_includes out, "s3cret"
   end
 
-  # A tool stderr that has gone away (EPIPE) ends the drain quietly, so
-  # close_io's join cannot re-raise the error mid-cleanup.
+  # After a tool stderr has gone away (EPIPE), the drain drops lines but keeps
+  # reading, so the daemon never blocks, and it ends quietly, so close_io's
+  # join cannot re-raise the error mid-cleanup.
   def test_daemon_stderr_drain_survives_a_broken_errio
     errio = Object.new
     def errio.write(*) = raise(Errno::EPIPE)

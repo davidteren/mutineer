@@ -100,6 +100,16 @@ class RedactionTest < Minitest::Test
     assert_equal "café [REDACTED]", text
   end
 
+  # Reading UTF-16 bytes as UTF-8 would put a NUL in every character, so the
+  # password would never match and would print in clear.
+  def test_redacts_utf16_text_with_an_invalid_byte
+    text = redact("pw hunter2 x".encode("UTF-16LE").b.+("\xFF".b).force_encoding("UTF-16LE"),
+                  "postgres://app:hunter2@db/app")
+
+    assert_includes text, "[REDACTED]"
+    refute_includes text, "hunter2"
+  end
+
   def test_fails_closed_on_an_internal_error
     text = Mutineer::Redaction.stub(:password_forms, ->(_) { raise "boom" }) do
       redact("password s3cret", "postgres://u:s3cret@host/db")
