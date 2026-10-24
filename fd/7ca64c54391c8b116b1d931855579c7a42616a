@@ -1,0 +1,25 @@
+test/fixtures/nested_deep.rb
+  s_533ed13f8f67ea::t_6c51ebd7a6b3ec 3,15
+test/fixtures/nested_deep_test.rb
+  s_533ed13f8f67ea::t_6c51ebd7a6b3ec 8
+test/fixtures/nested_deep_outer_test.rb
+  s_533ed13f8f67ea::t_6c51ebd7a6b3ec 8
+docs/plans/2026-10-24-290-fix-nested-def-redefine-plan.md
+  s_533ed13f8f67ea::t_d09b5fc7d6b38b 141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fd7ca64c54391c8b116b1d931855579c7a42616a",
+  "prompts": {},
+  "sessions": {
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
