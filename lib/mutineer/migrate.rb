@@ -9,10 +9,10 @@ module Mutineer
   # Rewrites old-format mutant ids in a `.mutineer.yml` `ignore:` list to the
   # current id format. The map is the inverse of the `id_map` and
   # `dropped_id_map` from {JobPlan.collect_jobs}: each old id goes to every new
-  # id that still hashes to it, in collection order. A dropped repeat of an
-  # edit is not reported, but its id is still current (#275). The map covers
-  # only the configured operators and the sources on the command line. Ids are
-  # static hashes, so this runs no tests.
+  # id that still hashes to it, reported ids first, each group in collection
+  # order. A dropped repeat of an edit is not reported, but its id is still
+  # current (#275). The map covers only the configured operators and the
+  # sources on the command line. Ids are static hashes, so this runs no tests.
   #
   # The file is edited as text. A YAML load and dump would drop comments and
   # reorder keys. Only a bare id inside `ignore:` is replaced. A flow list may
@@ -24,7 +24,7 @@ module Mutineer
   # one mapping, so it is left in place and reported for a hand edit. A
   # baseline file is never read.
   module Migrate
-    # One old id and the new ids that replace it, in collection order.
+    # One old id and the new ids that replace it, in {Migrate.id_maps} order.
     Replacement = Data.define(:old_id, :new_ids)
 
     # The outcome of rewriting one file in memory. `text` is what to write.

@@ -37,9 +37,11 @@ All notable changes to this project are documented here. The format is based on
     `mutineer migrate` keeps both as current ids. This also fixes the #159
     copies: an `ignore:` list that names both copies of a repeated edit no
     longer makes `mutineer migrate` exit 1.
-  - An old-format ignore entry that matches only a dropped copy still gets
-    the old-id-format warning and still counts in
-    `summary.legacy_id_matches.ignore`, so `mutineer migrate` updates it.
+  - An old-format ignore entry that matches only a dropped copy gets the
+    old-id-format warning and counts in `summary.legacy_id_matches.ignore`,
+    so `mutineer migrate` updates it. For the #159 copies this is new: such
+    an entry was not counted before, so with one operator the count can go
+    up, and the warning can name an id that no report shows.
   - Within a method, mutants now run and list in the `--list-operators`
     order. This applies to any run whose `--operators` or `operators:` list
     is in another order, so `--dry-run` lists and `--fail-fast` can differ.
