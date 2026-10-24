@@ -149,7 +149,7 @@ class IsolationTest < Minitest::Test
   def test_nesting_keywords_mixed_simple_and_compact
     Object.const_set(:OuterNS, Module.new) unless Object.const_defined?(:OuterNS)
     OuterNS.const_set(:Mid, Module.new) unless OuterNS.const_defined?(:Mid)
-    OuterNS::Mid.const_set(:Deep, Class.new) unless OuterNS::Mid.const_defined?(:Deep)
+    OuterNS::Mid.const_set(:Deep, Class.new) unless OuterNS::Mid.const_defined?(:Deep, false)
     assert_equal [["module", "OuterNS"], ["class", "Mid::Deep"]],
                  Mutineer::Isolation.nesting_keywords(["OuterNS", "Mid::Deep"])
   end

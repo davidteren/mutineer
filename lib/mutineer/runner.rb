@@ -313,7 +313,8 @@ module Mutineer
     # @param mutation [Mutineer::Mutation] mutation to run.
     # @param source_file [String] source file path.
     # @param coverage_map [Mutineer::CoverageMap, nil] coverage map.
-    # @param subject [Mutineer::Subject, nil] subject for surgical strategy.
+    # @param subject [Mutineer::Subject, nil] subject for surgical strategy;
+    #   redefine also loads each of its enclosing subjects.
     # @param strategy [String] mutation strategy.
     # @param timeout [Integer] child timeout in seconds.
     # @param rails [Boolean] whether Rails reconnect handling is enabled.
@@ -345,7 +346,11 @@ module Mutineer
         # across processes corrupts it. Drop it so AR reconnects per child.
         reconnect_active_record if rails
         if strategy == "redefine"
+          # Load each enclosing def too: its body holds the original nested def,
+          # which a call to it would define again over the mutant (#290).
           Isolation.apply_surgical(mutation, subject, source)
+          s = subject
+          Isolation.apply_surgical(mutation, s, source) while (s = s.enclosing_subject)
         else
           Isolation.apply_whole_file(mutated, source_file)
         end
