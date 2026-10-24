@@ -1,0 +1,69 @@
+CHANGELOG.md
+  s_1e16fc3c31aa20::t_5c55454d75e8b7 14,18,22-32,47-56,58-61
+README.md
+  s_533ed13f8f67ea::t_a9f8ab7ea8aa3d 312
+STABILITY.md
+  s_533ed13f8f67ea::t_a01ce2c6ebbffe 16,30-35,41
+action.yml
+  s_533ed13f8f67ea::t_29277e95f50d3a 45-46,379-389,437-439,443-444
+docs/agentic-coding.html
+  s_533ed13f8f67ea::t_d63999340aa696 163
+docs/agentic-coding.md
+  s_533ed13f8f67ea::t_4a8af34c31ebf5 172
+docs/fragments/contract.yml
+  s_533ed13f8f67ea::t_5fedfb143a7938 17
+docs/index.md
+  s_533ed13f8f67ea::t_b3255556cf3630 61,82
+docs/json-schema.md
+  s_533ed13f8f67ea::t_4d7c1dbea27e6f 15,24-30,44,70,113,201,207-208,215
+docs/plans/2026-10-24-283-286-fix-baseline-unverified-survivors-plan.md
+  s_533ed13f8f67ea::t_a984a4f02a12cf 17,21,46,58-59,71,97,101,116-118,214-217,243,245,257-258,299-300,304,307,317,321,330-331,345,362,371,376
+docs/rails.html
+  s_533ed13f8f67ea::t_10b3fb90fbc92b 85
+docs/rails.md
+  s_533ed13f8f67ea::t_4aa0ab3540bc61 38
+lib/mutineer/baseline.rb
+  s_533ed13f8f67ea::t_eda194dc12c896 21-24,29-30,119-125,148-150,154-155,161-162,183,195-200,222-244
+lib/mutineer/cli.rb
+  s_533ed13f8f67ea::t_736ff7ffb1c245 677-679
+lib/mutineer/reporter.rb
+  s_533ed13f8f67ea::t_ce6979ff68fa0d 18,176,209,568,583,884
+skills/mutineer/SKILL.md
+  s_533ed13f8f67ea::t_629f683d74b668 65,76
+test/action_harness_test.rb
+  s_533ed13f8f67ea::t_5e30700fc48e33 29-30,69-75
+test/baseline_test.rb
+  s_1e16fc3c31aa20::t_b3138fd18b5c0a 72-127,296,460-469,517-525
+test/cli_test.rb
+  s_533ed13f8f67ea::t_05127ef990d171 738,877,1115-1225
+test/equivalent_mutant_test.rb
+  s_533ed13f8f67ea::t_b836db7abd9752 308
+test/fixtures/action_harness.sh
+  s_533ed13f8f67ea::t_86ad539c922ec6 15,20-24,221-233
+test/json_reporter_test.rb
+  s_1e16fc3c31aa20::t_1d2218e5ff6832 61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "13d6b5c64262849860bae4b56a96e72644568a8d",
+  "prompts": {},
+  "sessions": {
+    "s_1e16fc3c31aa20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
