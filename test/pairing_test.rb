@@ -343,8 +343,19 @@ class PairingTest < Minitest::Test
     refute flagged?("test_b.rb", ["test_a.rb"])
   end
 
+  def test_given_as_source_keeps_a_test_prefixed_source_in_a_nested_test_dir
+    refute flagged?("lib/foo/test/test_app.rb", ["test/a_test.rb"])
+    refute flagged?("/proj/lib/foo/spec/test_app.rb", ["test/a_test.rb"])
+    assert flagged?("/proj/test/test_b.rb", ["test/test_a.rb"])
+  end
+
+  def test_given_as_source_keeps_a_test_named_source_in_another_dir
+    refute flagged?("lib/ab_test.rb", ["test/other_test.rb"])
+    refute flagged?("b_test.rb", ["sub/a_test.rb"])
+  end
+
   def test_given_as_source_keeps_a_source_whose_own_test_is_given
-    %w[ab_test_test.rb test_ab_test.rb ab_test_strong_test.rb].each do |test|
+    %w[ab_test_test.rb test_ab_test.rb ab_test_spec.rb ab_test_strong_test.rb].each do |test|
       refute flagged?("ab_test.rb", [test]), test
     end
   end

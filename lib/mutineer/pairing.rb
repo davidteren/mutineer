@@ -152,11 +152,12 @@ module Mutineer
     TEST_NAME = /\A(?!test_helper\.rb\z)(?:.+_(?:test|spec)|test_.+)\.rb\z/
 
     # Whether the `run` guard rejects a positional argument as a test file
-    # given as a source (#293). A test-named path is flagged when it has a
-    # `test/` or `spec/` segment as typed (the guard's original rule), or when
-    # it is a `*_test.rb` / `*_spec.rb` in the same directory as a given test,
-    # which catches root-level tests. The `test_` prefix is left out of the
-    # same-directory rule because real sources use it (`test_runners.rb`). A
+    # given as a source (#293). A `*_test.rb` / `*_spec.rb` path is flagged
+    # when it has a `test/` or `spec/` segment as typed (the guard's original
+    # rule), or when it sits in the same directory as a given test, which
+    # catches root-level tests. A `test_*.rb` path is flagged only under the
+    # project's top-level `test/` or `spec/`, because real sources use the
+    # prefix (`lib/mutineer/test_runners.rb`, `lib/foo/test/test_app.rb`). A
     # source whose own test (`<stem>_test.rb`, `test_<stem>.rb`,
     # `<stem>_spec.rb` or a split `<stem>_*_test.rb`) sits beside it in the
     # test set is not flagged. Directories compare as paths expanded against
@@ -169,17 +170,19 @@ module Mutineer
     def test_given_as_source?(path, project_root:, tests:)
       name = File.basename(path)
       return false unless name.match?(TEST_NAME)
-      return true if path.match?(%r{(\A|/)(test|spec)/})
-      return false unless name.match?(/_(test|spec)\.rb\z/)
 
       root = File.expand_path(project_root)
-      dir = File.dirname(File.expand_path(path, root))
+      abs = File.expand_path(path, root)
+      return abs.delete_prefix("#{root}/").match?(%r{\A(test|spec)/}) unless name.match?(/_(test|spec)\.rb\z/)
+      return true if path.match?(%r{(\A|/)(test|spec)/})
+
+      dir = File.dirname(abs)
       beside = Array(tests).map { |t| File.expand_path(t, root) }
                            .select { |t| File.dirname(t) == dir }
                            .map { |t| File.basename(t) }
       stem = File.basename(name, ".rb")
-      own = ["#{stem}_test.rb", "test_#{stem}.rb", "#{stem}_spec.rb"]
-      return false if beside.any? { |t| own.include?(t) || (t.start_with?("#{stem}_") && t.end_with?("_test.rb")) }
+      own = ["test_#{stem}.rb", "#{stem}_spec.rb"]
+      return false if beside.any? { |t| own.include?(t) || longer_owns_entry?(t, stem) }
 
       beside.any?
     end
