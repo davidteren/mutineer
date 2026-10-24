@@ -1,0 +1,30 @@
+docs/plans/2026-10-24-274-feat-call-to-receiver-skip-list-plan.md
+  s_d164a58b33b1a3::t_b34f2e7b598f05 1-19,21-49,51-55,59-63,65-69,72-79,81,84-112,114-117,119-122,127-130,133-141,144-147,155-157,160-200,203,205-212,214-221
+  s_d164a58b33b1a3::t_0679bc30104bae 20
+  s_d164a58b33b1a3::t_67c036d55f7fac 56-58
+  s_d164a58b33b1a3::t_d11e3d5d3b287d 50
+  s_d164a58b33b1a3::t_a6f31a5d999bb6 131-132
+  s_d164a58b33b1a3::t_6f999d3044a63b 201-202,204
+  s_d164a58b33b1a3::t_eb18dd7080538e 213
+  s_d164a58b33b1a3::t_99eea94377f203 123-126
+  s_d164a58b33b1a3::t_6dc3532d25a94d 82-83
+  s_d164a58b33b1a3::t_bc9e5c24668fa4 118
+  s_d164a58b33b1a3::t_02ddca7ac1163c 142-143,148-152,154,158
+  s_d164a58b33b1a3::t_5b1fa3fa9fc102 64,70-71,80,113,153,159,222-224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2d133009966acdd569c97623a532b03b8d826dcb",
+  "prompts": {},
+  "sessions": {
+    "s_d164a58b33b1a3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c762a0aa-a2bc-48ef-8521-6cf8d063f61e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
