@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Load failures now use the runtime-error exit code (#288).** An
+  `ArgumentError` or `SystemCallError` raised while a boot file, a source
+  file or a `.mutineer.yml` `require:` file loads now exits 1 (runtime
+  error), instead of 2 (usage error). Missing boot and `require:` files
+  remain usage errors (exit 2).
 - Explain mutation testing before setup, with a runnable beginner guide and a
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.
@@ -15,14 +20,11 @@ All notable changes to this project are documented here. The format is based on
 ### Fixed
 
 - **No `DATABASE_URL` password in load errors and mutineer's own messages (#288).**
-  **Exit code change:** an `ArgumentError` or `SystemCallError` raised while
-  the boot file, a source file or a `.mutineer.yml` `require:` file loads now exits 1
-  (runtime error), not 2 (usage error). A load error in the tool process (an
+  A load error in the tool process (an
   in-process `--boot` or `--rails` run, a source file, or a `require:`
   file) no longer prints the raw password or a backtrace. The run prints a
   `mutineer: cannot load <path>: ...` message (a `SyntaxError` keeps its code
-  excerpt) and exits 1. Missing boot and `require:` files remain usage errors
-  (exit 2). By default, a load error adds a hint to re-run with `--verbose`;
+  excerpt) and exits 1. By default, a load error adds a hint to re-run with `--verbose`;
   verbose output gives a redacted backtrace and cause chain. CLI error messages, the
   fork child's error line, the worker crash text in the report, the daemon's
   stderr lines (except bare passwords known only to the app after boot),
