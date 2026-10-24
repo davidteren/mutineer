@@ -2,6 +2,7 @@
 
 require "digest"
 require "uri"
+require_relative "redaction"
 
 module Mutineer
   # Per-worker database isolation for the daemon path.
@@ -518,6 +519,27 @@ module Mutineer
       adapter == "mysql2" || adapter == "trilogy"
     end
 
+    # Classify a MySQL `SELECT VERSION()` text against the support matrix.
+    # MariaDB is matched by name first: it reports 10.x or 11.x, and some
+    # builds prefix `5.5.5-`, so a numeric check alone would misread it.
+    #
+    # @param version [String, nil]
+    # @return [Symbol] `:supported` (MySQL 8), `:not_supported` (before 8),
+    #   `:not_tested` (MariaDB, MySQL 9 or later), or `:unreadable`.
+    def self.mysql_version_support(version)
+      text = version.to_s
+      return :not_tested if text.match?(/mariadb/i)
+
+      major = text[/\A(\d+)\.\d+/, 1]
+      return :unreadable unless major
+
+      major = major.to_i
+      return :not_supported if major < 8
+      return :not_tested if major > 8
+
+      :supported
+    end
+
     # Drop and recreate slots `0...count` from the booted test database.
     # Holds the exclusive advisory lock only for the copy, then a shared lock
     # for the rest of this process so a second run cannot drop those databases.
@@ -819,7 +841,8 @@ module Mutineer
     #
     # @param count [Integer]
     # @return [void]
-    # @raise [RuntimeError] when `count` exceeds {MYSQL_LOCK_SLOTS}, or another run holds the lock.
+    # @raise [RuntimeError] when `count` exceeds {MYSQL_LOCK_SLOTS}, the server is
+    #   MySQL older than 8.0, or another run holds the lock.
     def self.provision_mysql(count)
       if count > MYSQL_LOCK_SLOTS
         raise "MySQL worker databases support at most #{MYSQL_LOCK_SLOTS} workers"
@@ -829,6 +852,10 @@ module Mutineer
       remember_mysql_base_config(hash)
       base = hash[:database].to_s
       conn = open_mysql_connection(hash, base)
+      if (refusal = check_mysql_server(conn))
+        conn.close
+        raise "could not provision #{base}: #{refusal}"
+      end
       unless try_mysql_lock(conn, base, shared: false)
         conn.close
         raise "another Mutineer run is using #{base}"
@@ -859,6 +886,43 @@ module Mutineer
 
       @lock_connection = conn
       warn "[mutineer] provisioned #{count} mysql worker database(s) from #{base}"
+    end
+
+    # Read the server version and print a warning when the matrix does not
+    # test it. Does not close `conn` or raise: the caller does both. A failed
+    # version query only warns, with its cause and credentials hidden.
+    #
+    # @param conn [Mysql2::Client, Trilogy]
+    # @return [String, nil] the refusal text for MySQL older than 8.0, else nil.
+    def self.check_mysql_server(conn)
+      failure = nil
+      version = begin
+        mysql_rows(conn, "SELECT VERSION() AS version").first&.fetch("version", nil)
+      rescue StandardError => e
+        failure = Redaction.text("#{e.class}: #{e.message.lines.first.to_s.strip}")
+        nil
+      end
+
+      case mysql_version_support(version)
+      when :not_supported
+        "MySQL #{version} is not supported. --daemon needs MySQL 8.0 or later. " \
+          "Pass --no-daemon (or daemon: false) to stay serial."
+      when :not_tested
+        warn "[mutineer] server version #{version} is not tested with --daemon. " \
+             "The run continues. If a result looks wrong, pass --no-daemon."
+        nil
+      when :unreadable
+        shown = if failure
+                  "an error: #{failure}"
+                elsif version.to_s.empty?
+                  "nothing"
+                else
+                  "\"#{version}\""
+                end
+        warn "[mutineer] could not read the MySQL server version (got #{shown}). " \
+             "The run continues. --daemon is tested on MySQL 8."
+        nil
+      end
     end
 
     # Take one shared GET_LOCK name and drop this process's app connection.
