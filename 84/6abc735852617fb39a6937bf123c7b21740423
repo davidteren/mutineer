@@ -1,0 +1,31 @@
+README.md
+  s_d2b7b963e307a9::t_2d50ceabf087ed 60,79,81
+docs/rails.html
+  s_661fc5f0fd609c::t_9a138f51472a3e 126
+docs/rails.md
+  s_661fc5f0fd609c::t_14f67e9a01ef0f 126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "846abc735852617fb39a6937bf123c7b21740423",
+  "prompts": {},
+  "sessions": {
+    "s_661fc5f0fd609c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a16dd5-7b15-7ab0-b4e0-7d7830b052e7",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_d2b7b963e307a9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16dd5-7b15-7ab0-b4e0-7d7830b052e7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
