@@ -696,8 +696,10 @@ module Mutineer
       if config.test_command
         warn "[mutineer] --test-command score is an upper bound, not comparable to an " \
              "in-process run: no coverage narrowing (uncovered mutants count as survivors). " \
-             "Only exit 1 counts as a kill; when the clean run printed a Minitest or RSpec " \
-             "summary line, the output must also show a failing test. Other exits score error."
+             "Only exit 1 counts as a kill; other exits score error (an RSpec --failure-exit-code " \
+             "other than 1 makes every kill an error). When the clean run printed a Minitest or " \
+             "RSpec summary line, an exit 1 must also show a failing test, or a Minitest run " \
+             "that stopped during a test."
       end
 
       # Nudge toward the opt-in tier-2 operators (human report only: never

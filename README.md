@@ -93,7 +93,8 @@ Mutineer still runs on Ruby 3.4 or later.
 That path is serial.
 It does not narrow tests by coverage.
 Only exit 1 counts as a kill.
-A crash or another exit code scores `error`.
+Another exit code, or a crash before any test fails, scores `error`
+(details under [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34)).
 
 What a release will not break is in
 [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md).
@@ -522,9 +523,14 @@ Tradeoffs — this path is correct but not free:
 - **No coverage narrowing:** every mutant runs the full `--test` set.
   The run is serial.
   Only exit 1 counts as a kill.
-  When the clean run prints a Minitest or RSpec summary line, an exit 1 must
-  also show a failing test in that line.
-  Every other exit, a signal, or an exit 1 with no failing test scores `error`.
+  Other exit codes and signals score `error`.
+  An RSpec `--failure-exit-code` other than 1 turns every kill into `error`.
+  When the clean run prints a Minitest or RSpec summary line
+  (`3 runs, 3 assertions, 0 failures, 0 errors` or `3 examples, 0 failures`),
+  an exit 1 also needs a failing test in that line, or a Minitest run that
+  stopped during a test. Otherwise it scores `error`, such as a crash at load.
+  When the clean run prints no summary line, Mutineer warns once and counts
+  every exit 1 as a kill.
   Uncovered mutants count as survivors.
   Do not compare a `--test-command` score with an in-process score.
   Mutineer prints this caveat on every run and aborts up

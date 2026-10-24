@@ -212,13 +212,15 @@ module Mutineer
     # @return [Boolean]
     def self.failure_reported?(output)
       text = summary_text(output)
-      text.scan(MINITEST_SUMMARY).any? { |failures, errors| failures.to_i + errors.to_i > 0 } ||
-        text.scan(RSPEC_SUMMARY).any? { |(failures)| failures.to_i > 0 }
+      text.scan(MINITEST_SUMMARY).any? { |failures, errors| (failures.to_i + errors.to_i).positive? } ||
+        text.scan(RSPEC_SUMMARY).any? { |(failures)| failures.to_i.positive? }
     end
 
     # True when Minitest started its tests and the process then ended with no
     # summary line: code under test called `exit` or `abort` mid-run. A load
     # crash ends before Minitest prints {MINITEST_RUNNING}, so it stays false.
+    # Only the default Minitest reporter prints that line: under RSpec or
+    # minitest-reporters, such an exit scores error, not killed.
     #
     # @api private
     # @param output [String] captured child stdout+stderr.

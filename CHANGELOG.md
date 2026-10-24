@@ -8,18 +8,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Upgrade note for `--test-command` with a custom failure exit code (#292).**
+  An RSpec setup with `--failure-exit-code 3` now scores every kill as
+  `error`. Use the default exit code, or a wrapper that maps a failure to
+  exit 1. More `error` verdicts can fail a `--threshold` run through the
+  existing no-verdict check.
 - **A crash of `--test-command` no longer counts as a kill (#292).** Only exit 1
   scores `killed`, the same rule as the in-process backend. Any other non-zero
-  exit scores `error`, such as a wrapper's 137 after an out-of-memory kill. When
-  the clean run prints a Minitest or RSpec summary line, an exit 1 also needs a
-  failing test in that line, so a suite that crashed at load scores `error`.
-  Code under test that calls `exit` while Minitest runs its tests still scores
-  `killed`, as it does in process.
-  When the clean run prints no summary line, Mutineer warns once and keeps the
-  exit-code rule. An RSpec setup with `--failure-exit-code 3` now scores every
-  kill as `error`: use the default exit code, or a wrapper that maps a failure
-  to exit 1. More `error` verdicts can fail a `--threshold` run through the
-  existing no-verdict check.
+  exit scores `error`, such as a wrapper's 137 after an out-of-memory kill.
+- **A load crash under `--test-command` scores `error` (#292).** When the clean
+  run prints a Minitest or RSpec summary line, an exit 1 also needs a failing
+  test in that line. Code under test that calls `exit` while the default
+  Minitest reporter runs its tests still scores `killed`, as in process. When
+  the clean run prints no summary line, Mutineer warns once and keeps the
+  exit-code rule.
 
 ### Changed
 

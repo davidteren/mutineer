@@ -232,9 +232,10 @@ module Mutineer
         # #292: the summary check needs a summary line to look for. Without one
         # on the clean run, keep the exit-code rule and say what that costs.
         unless check_summary
-          warn "[mutineer] the clean run of --test-command printed no Minitest or RSpec summary line, " \
-               "so an exit 1 counts as a kill even when the suite crashed before its tests ran. " \
-               "Use a formatter that prints the summary line to score such a crash as error."
+          warn "[mutineer] the clean run of --test-command printed no Minitest or RSpec summary line " \
+               "(such as \"3 runs, 3 assertions, 0 failures, 0 errors\" or \"3 examples, 0 failures\"), " \
+               "so the crash check is off: an exit 1 counts as a kill even when the suite crashed " \
+               "before its tests ran. Use the default Minitest or RSpec progress output to turn it on."
         end
 
         results = []
