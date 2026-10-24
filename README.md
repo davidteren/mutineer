@@ -93,7 +93,8 @@ Mutineer still runs on Ruby 3.4 or later.
 That path is serial.
 It does not narrow tests by coverage.
 Only exit 1 counts as a kill.
-Another exit code scores `error`, and so can a crash before any test fails
+Another exit code scores `error` unless the output shows every test passed,
+and a crash before any test fails can also score `error`
 (details under [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34)).
 
 What a release will not break is in
@@ -529,8 +530,8 @@ Tradeoffs — this path is correct but not free:
   (`3 runs, 3 assertions, 0 failures, 0 errors` or `3 examples, 0 failures`),
   an exit 1 also needs a failing test in that line, or a Minitest run that
   stopped during a test. Otherwise it scores `error`, such as a crash at load.
-  A summary line that shows every test passed scores `survived`, whatever the
-  exit code (for example a SimpleCov coverage gate that exits 2).
+  A summary line that shows every test passed scores `survived` when the exit
+  code is not 1 (for example a SimpleCov coverage gate that exits 2).
   When the clean run prints no summary line, Mutineer warns once and counts
   every exit 1 as a kill.
   Uncovered mutants count as survivors.

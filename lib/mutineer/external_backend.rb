@@ -181,8 +181,10 @@ module Mutineer
 
         # Every test passed, but a later step failed the run, such as a SimpleCov
         # minimum_coverage gate (exit 2). No test caught the mutant: in process,
-        # the fork exits before that hook, and the mutant survives.
-        return Result.survived if check_summary && tests_passed?(output)
+        # the fork exits before that hook, and the mutant survives. Not for exit
+        # 1: RSpec prints "N examples, 0 failures" when code under test calls
+        # `exit 1` mid-example, which is a kill in process.
+        return Result.survived if check_summary && code != FAILURE_CODE && tests_passed?(output)
 
         unless code == FAILURE_CODE
           return Result.error("test-command exited #{code} (only exit 1 counts as a kill; " \
@@ -227,7 +229,9 @@ module Mutineer
     # summary line: code under test called `exit 1` or `abort` mid-run. A load
     # crash ends before Minitest prints {MINITEST_RUNNING}, so it stays false.
     # Only the default Minitest reporter prints that line: under RSpec or
-    # minitest-reporters, such an exit scores error, not killed.
+    # minitest-reporters, such an exit scores error, not killed. Ceiling: an
+    # exception that escapes Minitest.run itself (a reporter plugin bug) also
+    # reads as a kill here, where the in-process backend scores error.
     #
     # @api private
     # @param output [String] captured child stdout+stderr.
@@ -237,8 +241,9 @@ module Mutineer
     end
 
     # True when the output has a summary line and none reports a failing test
-    # or an RSpec error outside examples. Ceiling: a wrapper that runs two
-    # suites, where the second crashes before its summary, reads as passed.
+    # or an RSpec error outside examples. Ceiling: in a wrapper that runs more
+    # than one process, one passing summary hides a second process that failed
+    # without a Minitest or RSpec summary line.
     #
     # @api private
     # @param output [String] captured child stdout+stderr.

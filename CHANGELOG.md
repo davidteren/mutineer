@@ -11,18 +11,21 @@ All notable changes to this project are documented here. The format is based on
 - **Upgrade note for `--test-command` with a custom failure exit code (#292).**
   An RSpec setup with `--failure-exit-code 3` now scores every kill as
   `error`. Use the default exit code, or a wrapper that maps a failure to
-  exit 1. More `error` verdicts can fail a `--threshold` run through the
-  existing no-verdict check.
+  exit 1. An `error` verdict leaves the score, so the score can drop, and more
+  `error` verdicts can fail a `--threshold` run through the existing no-verdict
+  check. A `--baseline` made before this change can report new survivors and
+  errors: make a new baseline after the upgrade.
 - **A crash of `--test-command` no longer counts as a kill (#292).** Only exit 1
   scores `killed`, the same rule as the in-process backend. Any other non-zero
-  exit scores `error`, such as a wrapper's 137 after an out-of-memory kill.
+  exit scores `error`, such as a wrapper's 137 after an out-of-memory kill,
+  unless its output shows every test passed (see the next entry).
 - **A load crash under `--test-command` scores `error` (#292).** When the clean
   run prints a Minitest or RSpec summary line, an exit 1 also needs a failing
   test in that line. Code under test that calls `exit 1` or `abort` while the
   default Minitest reporter runs its tests still scores `killed`, as in
-  process. A summary line that shows every test passed scores `survived`,
-  even when a later step such as a SimpleCov `minimum_coverage` gate fails the
-  run. When the clean run prints no summary line, Mutineer warns once and
+  process. A summary line that shows every test passed scores `survived`
+  when a later step such as a SimpleCov `minimum_coverage` gate (exit 2) fails
+  the run. When the clean run prints no summary line, Mutineer warns once and
   keeps the exit-code rule.
 
 ### Changed
