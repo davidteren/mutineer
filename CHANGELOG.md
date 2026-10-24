@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **`--threshold` compares the exact score, not the rounded one** (#280). The
+  score is rounded to one decimal for display, and the gate used to compare that
+  rounded value. A run with 1999 of 2000 mutants killed showed 100.0% and passed
+  `--threshold 100` with a survivor. The exit code, the Action, and the PASSED or
+  FAILED line now use the exact counts. When the rounded score hides a fail, the
+  FAILED line gives the counts and says that the score is rounded.
+
 ## [1.7.0] - 2026-10-23
 
 ### Added
