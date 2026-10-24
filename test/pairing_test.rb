@@ -349,6 +349,12 @@ class PairingTest < Minitest::Test
     assert flagged?("/proj/test/test_b.rb", ["test/test_a.rb"])
   end
 
+  def test_given_as_source_ignores_test_dirs_above_the_root
+    refute flagged?("/home/test/proj/lib/test_runners.rb", [], root: "/home/test/proj")
+    refute flagged?("/home/test/proj/lib/ab_test.rb", ["test/ab_test_test.rb"], root: "/home/test/proj")
+    assert flagged?("/home/test/proj/test/b_test.rb", [], root: "/home/test/proj")
+  end
+
   def test_given_as_source_keeps_a_test_named_source_in_another_dir
     refute flagged?("lib/ab_test.rb", ["test/other_test.rb"])
     refute flagged?("b_test.rb", ["sub/a_test.rb"])

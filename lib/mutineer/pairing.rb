@@ -152,10 +152,12 @@ module Mutineer
     TEST_NAME = /\A(?!test_helper\.rb\z)(?:.+_(?:test|spec)|test_.+)\.rb\z/
 
     # Whether the `run` guard rejects a positional argument as a test file
-    # given as a source (#293). A `*_test.rb` / `*_spec.rb` path is flagged
-    # when it has a `test/` or `spec/` segment as typed (the guard's original
-    # rule), or when it sits in the same directory as a given test, which
-    # catches root-level tests. A `test_*.rb` path is flagged only under the
+    # given as a source (#293). Segments are read from the path relative to
+    # the root, so a `test/` folder above the project never counts. A
+    # `*_test.rb` / `*_spec.rb` path is flagged when it has a `test/` or
+    # `spec/` segment (the guard's original rule), or when it sits in the same
+    # directory as a given test, which catches root-level tests. A
+    # `test_*.rb` path is flagged only under the
     # project's top-level `test/` or `spec/`, because real sources use the
     # prefix (`lib/mutineer/test_runners.rb`, `lib/foo/test/test_app.rb`). A
     # source whose own test (`<stem>_test.rb`, `test_<stem>.rb`,
@@ -173,8 +175,9 @@ module Mutineer
 
       root = File.expand_path(project_root)
       abs = File.expand_path(path, root)
-      return abs.delete_prefix("#{root}/").match?(%r{\A(test|spec)/}) unless name.match?(/_(test|spec)\.rb\z/)
-      return true if path.match?(%r{(\A|/)(test|spec)/})
+      rel = abs.delete_prefix("#{root}/")
+      return rel.match?(%r{\A(test|spec)/}) unless name.match?(/_(test|spec)\.rb\z/)
+      return true if rel.match?(%r{(\A|/)(test|spec)/})
 
       dir = File.dirname(abs)
       beside = Array(tests).map { |t| File.expand_path(t, root) }
