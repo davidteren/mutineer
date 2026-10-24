@@ -169,6 +169,9 @@ class SingletonRedefineTest < Minitest::Test
                          strategy: strategy, only: "ConcernPricing::ClassMethods#scaled", matrix: true)
       assert_killed(agg, "class_methods block (#{strategy})")
       agg.results.each do |r|
+        assert r.kills.complete, "#{strategy}: the matrix row must run every covering test"
+        assert_includes r.kills.ran.map { |_file, name, _id| name }, "ConcernClassMethodsTest#test_instance_scaled",
+                        "#{strategy}: the instance twin must run against the mutant"
         assert_equal ["ConcernClassMethodsTest#test_scaled"], r.kills.killed_by.map { |_file, name, _id| name },
                      "#{strategy}: only the class method test may kill a class_methods mutant"
       end
