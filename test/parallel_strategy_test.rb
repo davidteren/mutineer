@@ -66,6 +66,37 @@ class ParallelStrategyTest < Minitest::Test
     assert_operator removals, :>=, 1, "statement_removal must run on the multi-statement body"
   end
 
+  # #279: a method that reads a file through `__dir__` gives the same verdicts
+  # under both strategies. Before the fix, redefine loaded the method from the
+  # temp dir, so the read raised ENOENT and the equivalent mutant died too.
+  def test_path_relative_method_redefine_equals_reload
+    a, b = %w[reload redefine].map do |strategy|
+      Mutineer::Runner.execute(Mutineer::Config.new(
+        sources: ["test/fixtures/path_relative.rb"], tests: ["test/fixtures/path_relative_test.rb"],
+        operators: ["arithmetic"], cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT,
+        strategy: strategy, jobs: 1
+      )).first
+    end
+    assert_equal [["shout", "-"]], survivor_keys(a), "the equivalent `+ 0` mutant survives under reload"
+    assert_equal survivor_keys(a), survivor_keys(b), "redefine must not falsely kill it"
+    assert_equal a.killed_count, b.killed_count
+  end
+
+  # apply_surgical writes its file beside the source and hidden, as
+  # apply_whole_file does (#279).
+  def test_apply_surgical_loads_beside_the_source
+    Dir.mktmpdir do |dir|
+      Dir.mkdir(File.join(dir, "lib"))
+      src = "class S279\n  def where\n    __dir__\n  end\nend\n"
+      loaded = Dir.chdir(dir) do
+        surgical_result(src, namespace: ["S279"], singleton: false,
+                             token: "__dir__", replacement: "__FILE__", call: "S279.new.where", file: "lib/x.rb")
+      end
+      assert_equal File.join(File.realpath(dir), "lib"), File.dirname(loaded)
+      assert_match(/\A\.mutineer_mutant/, File.basename(loaded))
+    end
+  end
+
   # apply_surgical mutates a live constant; run it in a child so the parent
   # process is left untouched.
   def test_apply_surgical_instance_method
@@ -115,13 +146,13 @@ class ParallelStrategyTest < Minitest::Test
 
   # Defines the source in a forked child, applies the surgical mutation, and
   # returns the post-mutation value of `call` as a string.
-  def surgical_result(src, namespace:, singleton:, token:, replacement:, call:)
+  def surgical_result(src, namespace:, singleton:, token:, replacement:, call:, file: "x.rb")
     rd, wr = IO.pipe
     pid = fork do
       rd.close
       eval(src, TOPLEVEL_BINDING) # rubocop:disable Security/Eval
       def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
-      subject = Mutineer::Subject.new(file: "x.rb", namespace: namespace,
+      subject = Mutineer::Subject.new(file: file, namespace: namespace,
                                     name: def_node.name, singleton: singleton, def_node: def_node)
       off = src.index(token)
       mutation = Mutineer::Mutation.new(start_offset: off, end_offset: off + token.length,
