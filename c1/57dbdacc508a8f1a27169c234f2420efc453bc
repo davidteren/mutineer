@@ -1,0 +1,19 @@
+test/result_test.rb
+  s_d164a58b33b1a3::t_43ebca673e9773 4,144-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c157dbdacc508a8f1a27169c234f2420efc453bc",
+  "prompts": {},
+  "sessions": {
+    "s_d164a58b33b1a3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c762a0aa-a2bc-48ef-8521-6cf8d063f61e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
