@@ -12,7 +12,7 @@ add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, 
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.9"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"2.0"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -20,6 +20,12 @@ The top-level `schema_version` (a string, e.g. `"1.9"`) follows these rules:
   version (`1.x` → `2.0`).
 
 A consumer should accept any `1.x` document and read only the keys it knows.
+
+Schema `2.0` narrows `baseline.fixed_survivors`: a survivor without a verdict
+is now listed in `baseline.unverified_survivors` instead. Consumers that accept
+only schema `1.x` must support this new major before reading a current report.
+Other existing keys keep their meaning. A saved `1.x` report remains valid as
+an input to `--baseline`; this change does not alter mutant ids.
 
 Mutant `id` values are opaque identifiers. How an id is derived is versioned by
 `summary.id_format`, not by `schema_version`: when `id_format` changes, every id
@@ -34,7 +40,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 
 ```jsonc
 {
-  "schema_version": "1.9",
+  "schema_version": "2.0",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch; review for test gaps or equivalent behaviour */ ],
   "no_coverage":  [ /* mutants on lines no test exercises, or that the statement's tests may not reach (#254) */ ],
@@ -190,21 +196,21 @@ The delta versus the prior `--format json` report, matched by `id`. A baseline w
 | Key | Type | Meaning |
 |-----|------|---------|
 | `regressed` | bool | True if there are new survivors OR a score drop. **Drives exit 1.** An incomplete run also exits 1; read `incomplete`. |
-| `incomplete` | bool | True when the run fails the completeness rule: nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted. It is the no-verdict rule only: a run that is partial by design (`--fail-fast`, `--only`) is not incomplete for that reason, and its absent survivors still read as fixed. **Drives exit 1** under `--baseline`, without `--threshold`. Additive key (schema `1.9`). |
+| `incomplete` | bool | True when the run fails the completeness rule: nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted. It is the no-verdict rule only: a run that is partial by design (`--fail-fast`, `--only`) is not incomplete for that reason. **Drives exit 1** under `--baseline`, without `--threshold`. Additive key (schema `2.0`). |
 | `score_before` | float \| null | Baseline score. |
 | `score_after` | float \| null | This run's score. |
 | `score_dropped` | bool | True if `score_after < score_before - epsilon`. |
 | `score_comparable` | bool | True when the two scores share a denominator (neither side was diff-scoped, both non-null). False means the score-drop check was skipped — do not render the scores as a comparison. Additive key. |
 | `new_survivors[]` | array | Survivors present now but absent in the baseline: `{ subject, file, line, operator, token, id }`. |
-| `fixed_survivors[]` | array | Baseline survivors that this run killed or ignored, or that it no longer has: `{ subject, file, line, operator, id }`. A survivor the user now ignores counts as fixed. Empty under a diff-scoped side: an out-of-scope survivor was never re-tested, so absence does not mean fixed. Changed in `1.9`: a baseline survivor without a decision this run is no longer listed here (see `unverified_survivors`). |
-| `unverified_survivors[]` | array | Baseline survivors whose result this run is not `killed`, `survived` or `ignored` (for example `error`, `timeout`, `ran_at_load` or `no_coverage`): `{ subject, file, line, operator, id, status }`, where `status` is this run's status: one of `error`, `timeout`, `uncapturable`, `ran_at_load`, `no_coverage`, `unplaceable` or `skipped`. They are not fixed and do not set `regressed`. Filled under a diff-scoped side too. Additive key (schema `1.9`). |
+| `fixed_survivors[]` | array | Baseline survivors that this run killed or ignored, or that it no longer has: `{ subject, file, line, operator, id }`. A survivor the user now ignores counts as fixed. Under `--only` or `--fail-fast`, only known kills and ignores count; absent ids were not verified. Empty when this run has no results, or under a diff-scoped side: an out-of-scope survivor was never re-tested, so absence does not mean fixed. Changed in `2.0`: a baseline survivor without a decision this run is no longer listed here (see `unverified_survivors`). |
+| `unverified_survivors[]` | array | Baseline survivors whose result this run is not `killed`, `survived` or `ignored` (for example `error`, `timeout`, `ran_at_load` or `no_coverage`): `{ subject, file, line, operator, id, status }`, where `status` is this run's status: one of `error`, `timeout`, `uncapturable`, `ran_at_load`, `no_coverage`, `unplaceable` or `skipped`. They are not fixed and do not set `regressed`. Filled under a diff-scoped side too. Additive key (schema `2.0`). |
 
 ## Exit codes
 
 <!-- contract:exit-codes -->
 | Code | Meaning |
 |------|---------|
-| `0` | Score ≥ threshold (or no gate) **and** no baseline regression or incomplete `--baseline` run. |
+| `0` | Score ≥ threshold (or no gate) **and** no baseline regression, **and** no incomplete run under an active `--threshold` or `--baseline` gate. |
 | `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error. |
 | `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
 <!-- /contract:exit-codes -->

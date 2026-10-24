@@ -62,7 +62,7 @@ broke, or when more than one mutant has no verdict and they exceed 10% of those
 attempted; it does not require zero errors. Set the threshold to your target.
 `--baseline` applies the same completeness rule without a threshold. When it
 exits 1, `baseline.regressed` means new survivors or a score drop, and
-`baseline.incomplete` means too many mutants produced no verdict: read `no_verdict[]` and fix
+`baseline.incomplete` means the run failed completeness: nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted. Read `no_verdict[]` and fix
 the harness, not the tests. `baseline.unverified_survivors[]` are baseline
 survivors this run did not decide (see each `status`); they are not fixed.
 
@@ -73,7 +73,7 @@ An empty run (`summary.total` is 0) exits 0 in 1.x and prints a warning on stder
 <!-- contract:exit-codes -->
 | Code | Meaning |
 |------|---------|
-| `0` | Score ≥ threshold (or no gate) **and** no baseline regression or incomplete `--baseline` run. |
+| `0` | Score ≥ threshold (or no gate) **and** no baseline regression, **and** no incomplete run under an active `--threshold` or `--baseline` gate. |
 | `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error. |
 | `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
 <!-- /contract:exit-codes -->

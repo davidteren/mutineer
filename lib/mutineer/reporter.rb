@@ -15,7 +15,7 @@ module Mutineer
   # containing source line for each survivor diff.
   class Reporter
     # The JSON report's `schema_version` (see docs/json-schema.md).
-    SCHEMA_VERSION = "1.9"
+    SCHEMA_VERSION = "2.0"
 
     # The warning both matrix renderers give under the redundant tests.
     MATRIX_REDUNDANT_NOTE = "Delete redundant tests one at a time: two of them can be the only killers of one mutant."
@@ -561,7 +561,7 @@ module Mutineer
     def baseline_json(delta)
       {
         regressed: delta.regressed,
-        # Additive (1.9, #283): the run fails the completeness rule; --baseline exits 1.
+        # Additive (2.0, #283): the run fails the completeness rule; --baseline exits 1.
         incomplete: delta.incomplete,
         score_before: delta.score_before,
         score_after: delta.score_after,
@@ -576,7 +576,7 @@ module Mutineer
           { subject: h["subject"], file: h["file"], line: h["line"],
             operator: h["operator"], id: h["id"] }
         end.sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s] },
-        # Additive (1.9, #283, #286): stored survivors this run did not decide.
+        # Additive (2.0, #283, #286): stored survivors this run did not decide.
         unverified_survivors: delta.unverified_survivors.map do |h|
           { subject: h["subject"], file: h["file"], line: h["line"],
             operator: h["operator"], id: h["id"], status: h["status"] }
@@ -872,6 +872,7 @@ module Mutineer
       # An incomplete run's score covers only part of it, so say so beside a regression.
       return "REGRESSION and INCOMPLETE vs baseline (read no_verdict[] first)" if delta.regressed && delta.incomplete
       return "REGRESSION vs baseline" if delta.regressed
+      return "INCOMPLETE vs baseline (nothing could be scored; see no_verdict[])" if delta.incomplete && @agg.broken_nil_score?
       return "INCOMPLETE vs baseline (too many mutants produced no verdict; see no_verdict[])" if delta.incomplete
 
       "OK: no regression vs baseline"

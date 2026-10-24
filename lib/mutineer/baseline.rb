@@ -18,9 +18,10 @@ module Mutineer
     #                     the baseline (the regressions to name).
     #   fixed_survivors - baseline survivor hashes that this run killed or
     #                     ignored, or that it no longer has (informational, never
-    #                     gates). Empty when either side is diff-scoped: an
-    #                     out-of-scope baseline survivor was never re-tested, so
-    #                     absence does not mean fixed.
+    #                     gates). Empty when this run has no results, or either
+    #                     side is diff-scoped: an out-of-scope baseline survivor
+    #                     was never re-tested, so absence does not mean fixed.
+    #                     A partial run counts only known kills and ignores.
     #   unverified_survivors - baseline survivor hashes whose current result is
     #                     undecided (not killed, survived or ignored: an error,
     #                     a timeout, ran_at_load, no_coverage and so on), each
@@ -113,7 +114,10 @@ module Mutineer
     # ran_at_load, no_coverage, ...) the run says nothing about it, so it goes
     # to Delta#unverified_survivors instead. Delta#incomplete carries the
     # completeness rule, so a broken run that errors every stored survivor
-    # fails `--baseline` rather than reading as a fix (#283).
+    # fails `--baseline` rather than reading as a fix (#283). An empty run
+    # cannot verify a fix, so it reports no fixed survivors.
+    # `partial: true` marks a run that can omit mutants (`--only`, `--fail-fast`):
+    # known kills and ignores still count as fixes, but absent ids do not.
     #
     # `scoped: true` marks the current run as diff-scoped (`--since`): its score
     # is computed over only the changed-line mutants, a different denominator
@@ -136,10 +140,11 @@ module Mutineer
     # @param aggregate [Mutineer::AggregateResult] current results.
     # @param epsilon [Float] score-drop tolerance.
     # @param scoped [Boolean] current run was diff-scoped (`--since`).
+    # @param partial [Boolean] current run can omit mutants (`--only`, `--fail-fast`).
     # @param id_map [Hash{String => String}] current new id => old-format id.
     # @param project_root [String] root that survivor `file` paths resolve against.
     # @return [Mutineer::Baseline::Delta] delta summary.
-    def diff(aggregate, epsilon: 0.0, scoped: false, id_map: {}, project_root: Dir.pwd)
+    def diff(aggregate, epsilon: 0.0, scoped: false, partial: false, id_map: {}, project_root: Dir.pwd)
       current = aggregate.surviving_mutants
       baseline_ids = @survivors.map { |h| h["id"] }.to_set
       # A new-format baseline never matches on old ids.
@@ -165,6 +170,7 @@ module Mutineer
       end
       survivor_index = match_index(current, legacy, file_key)
       undecided_index = match_index(aggregate.results.reject { |r| DECIDED.include?(r.status) }, legacy, file_key)
+      fixed_index = match_index(aggregate.results.select { |r| r.killed? || r.ignored? }, legacy, file_key) if partial
       # Under a diff-scoped side an out-of-scope baseline survivor was never
       # re-tested, so reporting it "fixed" would be false: empty is honest.
       unscoped = !scoped && !@scoped
@@ -175,7 +181,7 @@ module Mutineer
 
         if (r = stored_match(undecided_index, h, foreign, file_key))
           unverified << h.merge("status" => r.status.to_s)
-        elsif unscoped
+        elsif unscoped && aggregate.total.positive? && (!partial || stored_match(fixed_index, h, foreign, file_key))
           fixed << h
         end
       end

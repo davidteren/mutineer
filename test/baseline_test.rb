@@ -69,6 +69,39 @@ class BaselineTest < Minitest::Test
     assert_equal 1, delta.fixed_survivors.size # bbb fixed (informational)
   end
 
+  def test_empty_run_does_not_report_stored_survivors_as_fixed
+    base = Mutineer::Baseline.new(baseline_doc(%w[aaa bbb]))
+
+    delta = base.diff(agg)
+
+    assert_empty delta.fixed_survivors
+    refute delta.regressed
+    refute delta.incomplete, "an empty run does not change the shared completeness rule"
+    assert_empty base.diff(agg, scoped: true).fixed_survivors
+  end
+
+  def test_partial_run_reports_only_verified_fixed_survivors
+    base = Mutineer::Baseline.new(baseline_doc(%w[killed ignored absent undecided]))
+    current = agg(as_status(:killed, "killed"), as_status(:ignored, "ignored"),
+                  as_status(:error, "undecided"))
+
+    delta = base.diff(current, partial: true)
+
+    assert_equal %w[killed ignored], delta.fixed_survivors.map { |h| h["id"] }
+    assert_equal [%w[undecided error]], unverified(delta)
+    assert_empty base.diff(current, partial: true, scoped: true).fixed_survivors
+    assert_equal %w[killed ignored absent], base.diff(current).fixed_survivors.map { |h| h["id"] }
+  end
+
+  def test_partial_run_matches_verified_fixes_in_an_old_format_baseline
+    base = Mutineer::Baseline.new(baseline_doc(%w[old_killed old_ignored old_absent]))
+    current = agg(as_status(:killed, "new_killed"), as_status(:ignored, "new_ignored"))
+    delta = base.diff(current, partial: true,
+                              id_map: { "new_killed" => "old_killed", "new_ignored" => "old_ignored" })
+
+    assert_equal %w[old_killed old_ignored], delta.fixed_survivors.map { |h| h["id"] }
+  end
+
   # A --since run's score covers a different denominator than a full-run
   # baseline, so scoped: true skips the score-drop half of the gate. The
   # new-survivor half (stable ids compare fine across scopes) still fires.
@@ -237,7 +270,7 @@ class BaselineTest < Minitest::Test
     results = [Mutineer::Result.killed, survivor("ccc")]
     doc = JSON.parse(render(results, base.diff(agg(*results)), format: "json"))
 
-    assert_equal "1.9", doc["schema_version"] # 1.9 = baseline incomplete and unverified_survivors; 1.8 = ignore reason
+    assert_equal "2.0", doc["schema_version"] # 2.0 corrects fixed_survivors and adds baseline completeness.
     assert doc["baseline"]["regressed"]
     assert_equal 1, doc["baseline"]["new_survivors"].size
     assert_equal "ccc", doc["baseline"]["new_survivors"].first["id"]
@@ -401,6 +434,16 @@ class BaselineTest < Minitest::Test
     assert_equal [%w[a no_coverage]], unverified(delta)
   end
 
+  # A timeout or an uncapturable mutant has no verdict either: not a fix.
+  def test_timeout_and_uncapturable_baseline_survivors_are_unverified_not_fixed
+    base = Mutineer::Baseline.new(baseline_doc(%w[a b]))
+    delta = base.diff(agg(as_status(:timeout, "a"), as_status(:uncapturable, "b"),
+                          *Array.new(20) { Mutineer::Result.killed }))
+
+    assert_empty delta.fixed_survivors
+    assert_equal [%w[a timeout], %w[b uncapturable]], unverified(delta)
+  end
+
   # The user decided it is equivalent, so it stays fixed.
   def test_ignored_baseline_survivor_still_counts_as_fixed
     base = Mutineer::Baseline.new(baseline_doc(%w[a]))
@@ -446,6 +489,15 @@ class BaselineTest < Minitest::Test
     assert_includes text, "incomplete run: 2 of 4 attempted mutants produced no verdict"
     assert_includes text, "INCOMPLETE vs baseline (too many mutants produced no verdict; see no_verdict[])"
     refute_includes text, "OK: no regression"
+  end
+
+  # Nothing was scored: the verdict names that, not a no-verdict share.
+  def test_human_report_names_a_nil_score_incomplete_run
+    base = Mutineer::Baseline.new(baseline_doc(%w[a]))
+    results = [as_status(:error, "a")]
+    text = render(results, base.diff(agg(*results)), format: "human")
+
+    assert_includes text, "INCOMPLETE vs baseline (nothing could be scored; see no_verdict[])"
   end
 
   def test_human_report_names_both_a_regression_and_an_incomplete_run

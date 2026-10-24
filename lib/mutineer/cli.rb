@@ -674,6 +674,7 @@ module Mutineer
       delta = if config.baseline
                 Baseline.load(config.baseline).diff(aggregate, epsilon: config.baseline_epsilon,
                                                                scoped: !config.since.nil?,
+                                                               partial: config.fail_fast || !config.only.nil?,
                                                                id_map: extras[:id_map],
                                                                project_root: config.project_root)
               end
