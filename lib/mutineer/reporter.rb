@@ -968,14 +968,15 @@ module Mutineer
 
       # Same rule as exit_code, or the report says PASSED on a run that exits 1 —
       # and with --output that wrong verdict is what gets archived.
+      passed = @agg.meets_threshold?(threshold)
       if broken_share_exceeded?
         out.puts "FAILED: #{no_verdict_ratio}; #{score}% covers only part of the run"
-      elsif @agg.meets_threshold?(threshold)
+      elsif passed != (score >= threshold)
+        # The rounded score points the other way, so give the exact counts.
+        out.puts "#{passed ? 'PASSED' : 'FAILED'}: #{@agg.killed_count} of #{@agg.covered_count} killed " \
+                 "#{passed ? 'meets' : 'is below'} threshold #{threshold}% (the #{score}% score is rounded)"
+      elsif passed
         out.puts "PASSED: #{score}% >= threshold #{threshold}%"
-      elsif score >= threshold
-        # The rounded score reads as a pass, so give the exact counts.
-        out.puts "FAILED: #{@agg.killed_count} of #{@agg.covered_count} killed is below threshold " \
-                 "#{threshold}% (the #{score}% score is rounded)"
       else
         out.puts "FAILED: #{score}% < threshold #{threshold}%"
       end

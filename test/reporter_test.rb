@@ -91,13 +91,21 @@ class ReporterTest < Minitest::Test
     end
   end
 
-  # When the rounded score reads as a pass, the FAILED line must say why.
-  def test_verdict_names_the_exact_counts_when_the_rounded_score_hides_a_fail
+  # When the rounded score points the other way, the verdict line must give the
+  # exact counts, or it states a false inequality.
+  def test_verdict_names_the_exact_counts_when_the_rounded_score_disagrees
     out = StringIO.new
     reporter(Array.new(1999) { Mutineer::Result.killed } + [survivor_result]).human_report(out, StringIO.new, 100.0)
 
     refute_match(/PASSED/, out.string)
     assert_match(/FAILED: 1999 of 2000 killed is below threshold 100.0% \(the 100.0% score is rounded\)/, out.string)
+
+    out = StringIO.new
+    r = reporter(Array.new(2001) { Mutineer::Result.killed } + Array.new(499) { survivor_result })
+    r.human_report(out, StringIO.new, 80.04) # exactly 80.04, shows 80.0
+
+    assert_equal 0, r.exit_code(threshold: 80.04)
+    assert_match(/PASSED: 2001 of 2500 killed meets threshold 80.04% \(the 80.0% score is rounded\)/, out.string)
   end
 
   # A score over a slice of the run is not this suite's score: 90 errored and 10
