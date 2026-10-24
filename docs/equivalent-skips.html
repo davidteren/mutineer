@@ -54,7 +54,7 @@
     <p>For an equivalent mutant that does appear, use <code># mutineer:disable-line</code> or an <code>ignore:</code> entry and record a reason. An ignore mapping contains an <code>id</code> and an optional <code>reason</code>; it requires Mutineer 1.7 or later everywhere the configuration is read. Older versions do not apply mappings and do not warn, so the named mutant is not ignored. <code>mutineer triage</code> prints these entries using survivor ids from a JSON report. Select survivors with <code>--id ID</code> (repeat it for more than one), or use <code>--all</code> for every survivor. Supply the reason with the required <code>--reason TEXT</code> argument. The command does not edit files. See <a href="https://github.com/davidteren/mutineer#suppressing-equivalent-mutants">Suppressing equivalent mutants</a>.</p>
 
     <h2 id="chain-link">Chain link</h2>
-    <p>The <code>chain_link</code> operator removes a call from the middle of a chain. The <code>call_to_receiver</code> operator removes the last call. Both skip the names below without checking the receiver or next call. Conversions and copies often leave the result unchanged. Removing a middle <code>new</code> sends the next call to the class. That can raise an error or reach a class method that builds the instance itself. Removing a final <code>new</code> leaves the class in place of an instance.</p>
+    <p>The <code>chain_link</code> operator removes a call from the middle of a chain. It skips the names below without checking the receiver or next call. Conversions and copies often leave the result unchanged. Removing a middle <code>new</code> sends the next call to the class. That can raise an error or reach a class method that builds the instance itself. The <code>call_to_receiver</code> operator has its own, shorter list: see <a href="#call-to-receiver">Call to receiver</a>.</p>
     <table>
       <tr><th>Name</th><th>Why it is skipped</th></tr>
       <tr><td><code>to_s</code></td><td>Conversion. On a string, the call changes nothing.</td></tr>
@@ -76,6 +76,18 @@
       <tr><td><code>freeze</code></td><td>A freeze that nothing later mutates changes nothing a test can see.</td></tr>
       <tr><td><code>itself</code></td><td>Returns the receiver. Dropping it changes nothing.</td></tr>
       <tr><td><code>new</code></td><td>The next call goes to the class. That raises, or it is a class method.</td></tr>
+    </table>
+
+    <h2 id="call-to-receiver">Call to receiver</h2>
+    <p>The <code>call_to_receiver</code> operator replaces the last call of a chain with its receiver. It does not use the <code>chain_link</code> list. It skips only the names below, by name only. It replaces the other conversions, such as <code>to_s</code> and <code>to_i</code>. On the last call, a conversion decides the type of the value that the expression returns, so a test can check it. Some of those mutants are equivalent, for example <code>to_s</code> on a value that is already a string, or inside string interpolation. Suppress them with <code># mutineer:disable-line</code> or an <code>ignore:</code> entry, as the top of the page says.</p>
+    <table>
+      <tr><th>Name</th><th>Why it is skipped</th></tr>
+      <tr><td><code>new</code></td><td>The class takes the place of an instance, so almost any use raises.</td></tr>
+      <tr><td><code>dup</code></td><td>Copy. The mutant shows when code later changes the copy or the original, or compares the result with the original by identity.</td></tr>
+      <tr><td><code>clone</code></td><td>Copy. The mutant shows when code later changes the copy or the original, or compares the result with the original by identity.</td></tr>
+      <tr><td><code>freeze</code></td><td>Returns the receiver. Only a later write shows the difference.</td></tr>
+      <tr><td><code>itself</code></td><td>Returns the receiver.</td></tr>
+      <tr><td><code>to_set</code></td><td>An array answers <code>include?</code> and <code>empty?</code> as a set does, so the mutant is most often equivalent. It keeps duplicates, so <code>size</code> and <code>each</code> can differ.</td></tr>
     </table>
 
     <h2 id="endless-range">Endless range</h2>
