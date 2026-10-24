@@ -23,7 +23,7 @@ base: fix/279-surgical-beside-source
 - **Authority:** this plan, then `AGENTS.md`, then the issue comment on #290.
 - **Stop conditions:** stop and ask if the fix needs a change to `Isolation.apply_surgical`'s slicing, to mutant ids, or to the daemon or `--test-command` paths. None of them should change.
 - **Base:** branch from `fix/279-surgical-beside-source` (draft PR #304). Rebase onto `main` after #304 merges.
-- **Size:** M (about 15 changed lines in `lib/`, 2 new fixtures, 4 tests (one replaces the old pin), 1 CHANGELOG entry, 1 README sentence).
+- **Size:** M (about 15 changed lines in `lib/`, 3 new fixture files, 5 tests (one replaces the old pin; the fifth came from code review), 1 CHANGELOG entry, 1 README sentence).
 
 ---
 
@@ -152,7 +152,7 @@ run the covering tests
 
 **Files:** `CHANGELOG.md`, `README.md`
 
-**Approach:** add under `## [Unreleased]` / `### Fixed`, after the #279 entry:
+**Approach:** add under `## [Unreleased]` / `### Fixed`, after the #279 entry (the shipped text in `CHANGELOG.md` adds the review findings: the upgrade note, the alias and wrapped-method limits, and the reload workaround):
 
 ```text
 - **A nested method's mutant under `--strategy redefine`.** Redefine now

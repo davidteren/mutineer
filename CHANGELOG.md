@@ -32,7 +32,9 @@ All notable changes to this project are documented here. The format is based on
   be removed. A method defined inside a non-builder block (for example
   inside `define_method`), inside a `module_function` method, inside
   `class << self` in a method, or called through an alias of the outer
-  method can still falsely survive under redefine. Use
+  method can still falsely survive under redefine. An enclosing method
+  that a memoizer or decorator wraps after its `def` loses that wrapper
+  when redefine loads it, so its verdict can differ from reload. Use
   `--strategy reload` for those cases.
 
 ## [1.7.0] - 2026-10-23
