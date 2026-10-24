@@ -415,6 +415,48 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # Ruby reports only the definition's file and line. Equal names on one line
+  # cannot identify which concern supplied an existing host's method.
+  def test_discover_leaves_ambiguous_same_line_hook_defs_unplaceable
+    src = "module First; extend ActiveSupport::Concern; included do; def total = 1; end; end; " \
+          "module Second; extend ActiveSupport::Concern; included do; def total = 2; end; end\n"
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[First#total Second#total], subjects.map(&:qualified_name)
+      assert(subjects.all? { |subject| subject.unplaceable?("reload") })
+      selected = Mutineer::Project.discover([path], only: "First#total")
+      assert selected.first.unplaceable?("reload"), "--only must not hide the other definition"
+    end
+  end
+
+  def test_discover_leaves_same_line_instance_and_singleton_hook_defs_unplaceable
+    src = "module TwoDefs; extend ActiveSupport::Concern; included do; def total = 1; def self.total = 2; end; end\n"
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[TwoDefs#total TwoDefs.total], subjects.map(&:qualified_name)
+      assert(subjects.all? { |subject| subject.unplaceable?("reload") })
+    end
+  end
+
+  def test_discover_leaves_a_hook_def_ambiguous_with_an_ordinary_def_unplaceable
+    src = "module Hook; extend ActiveSupport::Concern; included do; def total = 1; end; end; " \
+          "class Ordinary; def total = 2; end\n"
+    with_source(src) do |path|
+      hook, ordinary = Mutineer::Project.discover([path])
+      assert hook.unplaceable?("reload")
+      refute ordinary.unplaceable?("reload")
+    end
+  end
+
+  def test_discover_keeps_different_same_line_hook_defs_placeable
+    src = "module TwoDefs; extend ActiveSupport::Concern; included do; def a = 1; def b = 2; end; end\n"
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[TwoDefs#a TwoDefs#b], subjects.map(&:qualified_name)
+      assert(subjects.none? { |subject| subject.unplaceable?("reload") })
+    end
+  end
+
   # #297: an alias keeps the original body, so a block that aliases anything
   # keeps every def in it unplaceable.
   def test_an_alias_in_the_hook_block_makes_every_def_unplaceable

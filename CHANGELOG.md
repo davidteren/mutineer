@@ -28,6 +28,7 @@ All notable changes to this project are documented here. The format is based on
   `unplaceable`: a method in a class, module or `Struct.new` block inside the
   block, a method inside another method or block, a method with an explicit
   receiver other than `self` (such as `def base.tag` in `included do |base|`),
+  a hook-block method with the same name and first line as another definition,
   every method in a block that uses `alias` or `alias_method`, a method the
   block itself calls, and every method in a block whose `included do` call is
   not a plain line of the module
@@ -35,7 +36,9 @@ All notable changes to this project are documented here. The format is based on
   is in `docs/json-schema.md`. If a class aliases a method that Mutineer does
   run (one not in that list) outside the block, the mutant scores `error`,
   because the alias keeps the original method. This also applies when a
-  wrapper replaces the original name and calls the saved alias.
+  wrapper replaces the original name and calls the saved alias. A retained
+  `Method` or `UnboundMethod` for the original also makes the mutant score
+  `error`: a wrapper can call that handle without testing the mutated method.
   `--strategy redefine` still
   reports all of these methods `unplaceable`.
 

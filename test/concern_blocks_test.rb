@@ -280,13 +280,102 @@ class ConcernBlocksTest < Minitest::Test
     assert_aliased_wrapper_rejected(singleton: true, ordinary: true)
   end
 
-  def test_reload_scores_an_aliased_wrapper_as_error
+  # Retained handles can call the original even after its name was replaced.
+  def assert_retained_handle_rejected(kind:, singleton:)
+    definition = singleton ? "def self.tag = :original" : "def tag = :original"
+    with_hook_concern(definition) do |source, line|
+      wrapped = Class.new { include HookPlaced }
+      target = singleton ? wrapped.singleton_class : wrapped
+      original = if kind == :unbound
+                   target.instance_method(:tag)
+                 else
+                   (singleton ? wrapped : wrapped.new).method(:tag)
+                 end
+      target.define_method(:tag) do
+        original.is_a?(Method) ? original.call : original.bind_call(self)
+      end
+      plain = nil
+      2.times do |pass|
+        if singleton
+          Mutineer::ConcernBlocks.store_hook_def { def self.tag = :mutant }
+        else
+          Mutineer::ConcernBlocks.store_hook_def { def tag = :mutant }
+        end
+        error = assert_raises(RuntimeError) { place(source, line, :tag, singleton: singleton) }
+        assert_includes error.message, "retained in a Method or UnboundMethod"
+        assert_equal :original, singleton ? wrapped.tag : wrapped.new.tag
+        assert_equal :original, singleton ? plain.tag : plain.new.tag if plain
+        # The second pass must fail before changing this ordinary owner.
+        plain = Class.new { include HookPlaced } if pass.zero?
+      end
+    end
+  end
+
+  def test_place_hook_def_rejects_a_retained_unbound_method
+    assert_retained_handle_rejected(kind: :unbound, singleton: false)
+  end
+
+  def test_place_hook_def_rejects_a_retained_method
+    assert_retained_handle_rejected(kind: :bound, singleton: false)
+  end
+
+  def test_place_hook_def_rejects_a_retained_singleton_unbound_method
+    assert_retained_handle_rejected(kind: :unbound, singleton: true)
+  end
+
+  def test_place_hook_def_rejects_a_retained_singleton_method
+    assert_retained_handle_rejected(kind: :bound, singleton: true)
+  end
+
+  # Reflection used only to inspect the old definition must not block placement.
+  def discard_hook_handles(host)
+    host.instance_method(:tag)
+    host.new.method(:tag)
+    nil
+  end
+
+  def test_place_hook_def_ignores_discarded_reflection_handles
+    already_disabled = GC.disable
+    with_hook_concern("def tag = :original") do |source, line|
+      host = Class.new { include HookPlaced }
+      discard_hook_handles(host)
+      Mutineer::ConcernBlocks.store_hook_def { def tag = :mutant }
+
+      assert_equal 1, place(source, line, :tag)
+      assert_equal :mutant, host.new.tag
+    end
+  ensure
+    GC.enable unless already_disabled
+  end
+
+  def test_place_hook_def_distinguishes_two_defs_on_one_line
+    with_hook_concern("def a = :original; def b = :other") do |source, line|
+      host = Class.new { include HookPlaced }
+      Mutineer::ConcernBlocks.store_hook_def { def a = :mutant }
+
+      assert_equal 1, place(source, line, :a)
+      assert_equal :mutant, host.new.a
+      assert_equal :other, host.new.b
+    end
+  end
+
+  def test_place_hook_def_distinguishes_two_singleton_defs_on_one_line
+    with_hook_concern("def self.a = :original; def self.b = :other") do |source, line|
+      host = Class.new { include HookPlaced }
+      Mutineer::ConcernBlocks.store_hook_def { def self.a = :mutant }
+
+      assert_equal 1, place(source, line, :a, singleton: true)
+      assert_equal :mutant, host.a
+      assert_equal :other, host.b
+    end
+  end
+
+  # Exercise the public single-mutant reload entry point against a real test.
+  def assert_reload_wrapper_error
     with_hook_concern("def tag\n  :original\nend") do |source, _line|
-      Object.const_set(:HookPlacedHost, Class.new do
-        include HookPlaced
-        alias_method :old_tag, :tag
-        def tag = old_tag
-      end)
+      host = Class.new { include HookPlaced }
+      yield host
+      Object.const_set(:HookPlacedHost, host)
       test_file = File.join(File.dirname(source), "hook_placed_test.rb")
       File.write(test_file, <<~RUBY)
         require "minitest/autorun"
@@ -305,6 +394,22 @@ class ConcernBlocksTest < Minitest::Test
       result = Mutineer::Runner.run(mutation, source_file: source, subject: subject,
                                              strategy: "reload", coverage_map: map)
       assert_predicate result, :error?, "a wrapper that keeps the original must not score survived"
+    end
+  end
+
+  def test_reload_scores_an_aliased_wrapper_as_error
+    assert_reload_wrapper_error do |host|
+      host.class_eval do
+        alias_method :old_tag, :tag
+        def tag = old_tag
+      end
+    end
+  end
+
+  def test_reload_scores_a_retained_method_wrapper_as_error
+    assert_reload_wrapper_error do |host|
+      original = host.instance_method(:tag)
+      host.define_method(:tag) { original.bind_call(self) }
     end
   end
 

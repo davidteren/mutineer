@@ -90,4 +90,16 @@ class DaemonServerHookDefTest < Minitest::Test
     end
     assert_predicate result, :error?, "the original body retained by an alias must not score survived"
   end
+
+  def test_apply_payload_scores_a_retained_method_wrapper_as_error
+    sent = payload("x * 5")
+    result = Mutineer::Isolation.run do
+      require FIXTURE
+      original = ConcernProduct.instance_method(:doubled)
+      ConcernProduct.define_method(:doubled) { |x| original.bind_call(self, x) }
+      Mutineer::DaemonServer.send(:apply_payload, sent)
+      ConcernProduct.new.doubled(2) == 4 ? 0 : 1
+    end
+    assert_predicate result, :error?, "a retained method handle must not let the original body score survived"
+  end
 end

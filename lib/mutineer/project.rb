@@ -20,10 +20,29 @@ module Mutineer
         visitor = SubjectVisitor.new(path, plain_path_calls(result.value))
         visitor.visit(result.value)
         visitor.promote_module_functions!
+        exclude_ambiguous_hook_defs!(visitor.subjects)
         visitor.subjects
       end
       only ? subjects.select { |s| s.qualified_name == only } : subjects
     end
+
+    # Keeps hook defs unplaceable when another definition in the file has the
+    # same name and first line. Ruby's source location cannot distinguish them,
+    # so placement could load one concern's mutant into another method's host.
+    # Instance and singleton definitions can both reach singleton-class hosts;
+    # their shared name and line are ambiguous too. Run before the `only` filter
+    # so selecting one subject cannot hide a collision.
+    #
+    # @param subjects [Array<Mutineer::Subject>] subjects from one source file.
+    # @return [void]
+    def self.exclude_ambiguous_hook_defs!(subjects)
+      subjects.group_by { |subject| [subject.name, subject.def_node.location.start_line] }.each_value do |same|
+        next if same.one?
+
+        same.each { |subject| subject.reload_hook_call = nil }
+      end
+    end
+    private_class_method :exclude_ambiguous_hook_defs!
 
     # The call statements that run each time the file loads, in order: each one
     # sits in the file's top-level statements or in a `module` or `class` body

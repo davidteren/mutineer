@@ -95,7 +95,8 @@ module Mutineer
     # @param singleton [Boolean] true for a class method.
     # @raise [RuntimeError] when no def was kept (the mutant file did not reach
     #   its hook call), or when a module keeps the original under another name
-    #   (see {.aliases}); the child then scores the mutant `error`.
+    #   (see {.aliases}) or in a live method handle; the child then scores the
+    #   mutant `error`.
     # @return [Integer] how many owners got the mutated def.
     def self.place_hook_def(source_file:, line:, name:, singleton:)
       block = @hook_def
@@ -104,6 +105,12 @@ module Mutineer
       unless block
         raise "#{where}: the mutant file did not reach its included or prepended call. " \
               "This is a mutineer bug; please report it."
+      end
+
+      # Check before owner and alias lookup create temporary UnboundMethods.
+      if retained_hook_def?(source_file: source_file, line: line, name: name)
+        raise "#{where}: the original is retained in a Method or UnboundMethod object, " \
+              "so the mutant scores error."
       end
 
       # ponytail: one ObjectSpace walk per mutant (about 11 ms with Rails loaded);
@@ -160,7 +167,7 @@ module Mutineer
       modules.flat_map do |mod|
         target = singleton ? mod.singleton_class : mod
         (target.instance_methods(false) + target.private_instance_methods(false)).filter_map do |other|
-          [mod, other] if other != name && own_method_at?(target, other, path, line)
+          [mod, other] if other != name && own_method_at?(target, other, path, line, original_name: name)
         end
       end
     end
@@ -173,8 +180,10 @@ module Mutineer
     # @param name [Symbol] the method name.
     # @param path [String] the source file's real path.
     # @param line [Integer] the def's first line.
+    # @param original_name [Symbol] the name the original definition used;
+    #   distinguishes an alias from another definition on the same line.
     # @return [Boolean]
-    def self.own_method_at?(target, name, path, line)
+    def self.own_method_at?(target, name, path, line, original_name: name)
       return false unless target.method_defined?(name, false) || target.private_method_defined?(name, false)
 
       method = target.instance_method(name)
@@ -182,7 +191,42 @@ module Mutineer
       return false unless method
 
       file, def_line = method.source_location
-      def_line == line && !file.nil? && real_path(file) == path
+      method.original_name == original_name && def_line == line && !file.nil? && real_path(file) == path
+    end
+
+    # True when a live Method or UnboundMethod keeps the original definition.
+    # A wrapper can call that handle after the named method was replaced, so
+    # loading another def cannot make the wrapper test the mutant. A matching
+    # but unreachable reflection result is harmless: collect it, then check
+    # again. Most mutants have no matching handle and need no explicit GC.
+    #
+    # @param source_file [String] the file the mutant replaces.
+    # @param line [Integer] the original def's first line.
+    # @param name [Symbol] the original method name.
+    # @return [Boolean]
+    def self.retained_hook_def?(source_file:, line:, name:)
+      path = real_path(source_file)
+      return false unless method_handle_at?(path, line, name)
+
+      GC.start
+      method_handle_at?(path, line, name)
+    end
+
+    # True when the heap contains a handle for this original definition. Return
+    # only a boolean, so the first check does not itself retain a dead handle
+    # across the GC in {.retained_hook_def?}.
+    #
+    # @param path [String] the source file's real path.
+    # @param line [Integer] the original def's first line.
+    # @param name [Symbol] the original method name.
+    # @return [Boolean]
+    def self.method_handle_at?(path, line, name)
+      [Method, UnboundMethod].any? do |kind|
+        ObjectSpace.each_object(kind).any? do |method|
+          file, def_line = method.source_location
+          method.original_name == name && def_line == line && !file.nil? && real_path(file) == path
+        end
+      end
     end
 
     # The file's real path, so a symlinked or relative path matches the path

@@ -108,6 +108,8 @@ mutant's method is one of these:
 - a method inside another method, or inside a block that does not build a class (such as `[1].each do`);
 - a method with an explicit receiver other than `self` (such as `def base.tag` in `included do |base|`),
   because extracting the definition does not keep a receiver bound inside the hook;
+- a hook-block method whose name and first line match another definition in the same file, including a
+  collision between an instance and a singleton definition; Ruby's source location cannot distinguish them;
 - every method in a block that uses `alias` or `alias_method`;
 - a method the block itself calls outside a method body (a bare call, `self.name`, `method(:name)` or
   `instance_method(:name)`, also inside a nested block or lambda); a symbol such as `before_save :name` is fine;
@@ -120,7 +122,10 @@ mutant's method is one of these:
 For an otherwise placeable hook-block method, an `alias` made outside the block keeps the original body and
 makes the mutant score `error`. This includes a wrapper that replaces the original name and calls the saved
 alias, even when no host keeps the original at its current name. The methods listed as `unplaceable` above
-keep that verdict and are not run. `--test-command` runs every kind. `ran_at_load` (schema `1.7`) means the mutant's
+keep that verdict and are not run. A live `Method` or `UnboundMethod` for the original definition also makes
+an otherwise placeable mutant score `error`: a wrapper can keep and call that handle after the method was
+redefined. A discarded reflection result does not trigger this error. `--test-command` runs every kind.
+`ran_at_load` (schema `1.7`) means the mutant's
 line ran while the app booted or its class loaded (for example a class body that calls the method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.
