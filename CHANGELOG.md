@@ -22,6 +22,28 @@ All notable changes to this project are documented here. The format is based on
   `--rails` without `--daemon`. When a source directory is not writable,
   redefine still uses the system temp directory there, as before, and
   the run warns that path-relative methods there can be falsely killed.
+- **A second in-process run no longer deletes a live mutant file (#295).**
+  Each in-process run sweeps the source directories before its boot and
+  after its run. That sweep treated every `.mutineer_mutant*.rb` file as an
+  orphan, so it could delete another run's file between the write and the
+  load, and that mutant scored `errored`. Now the file is locked while it
+  loads, as the daemon's file is, and a sweep keeps a file whose creating
+  process still runs.
+- **An old temp file of the other mode no longer stops the boot (#287).**
+  Before the app boots, each mode sweeps the source directories. In 1.7.0
+  an in-process run removed only old `mutineer_mutant*.rb` files and the
+  daemon removed only old `mutineer_daemon*.rb` files, so a file the other
+  mode left made Zeitwerk raise. Now both boot sweeps remove an orphan of
+  either mode, and the daemon tells Zeitwerk to skip both names. You no
+  longer delete such a file by hand. A file of your own whose name only
+  starts with `mutineer_mutant` or `mutineer_daemon`, such as
+  `mutineer_mutant_helper.rb`, is no longer removed: a sweep now matches
+  only the temp file shape. An unlocked old file is removed even when its
+  creator's pid has been reused; a held file lock still protects it.
+  Do not run Mutineer older than 1.7.0
+  at the same time in the same checkout: it still writes temp files
+  without the dot, and a newer run's mutants error when Zeitwerk finds
+  one.
 
 ## [1.7.0] - 2026-10-23
 

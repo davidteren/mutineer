@@ -435,16 +435,17 @@ module Mutineer
       config.sources.map { |f| File.dirname(File.expand_path(f, config.project_root)) }.uniq
     end
 
-    # Removes stale mutant tempfiles from the given directories. The daemon writes a
-    # differently-named temp, so {DaemonBackend} passes its glob when it sweeps
-    # tool-side at the end of every daemon run, empty or not.
-    # A daemon file another process still owns is left in place. In-process mutant
-    # files have no owner recorded in the name, so this still removes those orphans.
+    # Removes stale mutant tempfiles from the given directories. The default
+    # glob matches the files of both modes, so the in-process boot sweep also
+    # removes an old daemon file (#287). {DaemonBackend} passes its daemon-only
+    # glob when it sweeps tool-side at the end of every daemon run, empty or not.
+    # A file another process still owns is left in place: both modes record the
+    # creating pid in the name and lock the file while it loads (#295).
     #
     # @param dirs [Array<String>] directories to sweep.
     # @param glob [String] filename pattern to remove.
     # @return [Array<String>] the files left in place because a process owns them.
-    def self.sweep_orphans(dirs, glob = "{.,}mutineer_mutant*.rb")
+    def self.sweep_orphans(dirs, glob = OrphanGuard::TEMP_BASENAME)
       dirs.flat_map do |dir|
         Dir.glob(File.join(dir, glob)).select do |path|
           next true if OrphanGuard.mutant_file_in_use?(path)
