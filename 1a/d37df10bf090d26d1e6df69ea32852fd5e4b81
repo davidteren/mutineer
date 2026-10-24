@@ -1,0 +1,51 @@
+CHANGELOG.md
+  s_04fd8c79e6fa52::t_ddd45d774d9fdb 33-36
+README.md
+  s_04fd8c79e6fa52::t_590432f02e0c98 312
+STABILITY.md
+  s_04fd8c79e6fa52::t_32136c69b48ec3 35
+action.yml
+  s_04fd8c79e6fa52::t_47a965baf9bf3e 427-428
+docs/agentic-coding.html
+  s_04fd8c79e6fa52::t_990b7264521028 163
+docs/agentic-coding.md
+  s_04fd8c79e6fa52::t_a26cea71fda94a 172
+docs/fragments/contract.yml
+  s_04fd8c79e6fa52::t_2b0b981b9908dc 17
+docs/index.md
+  s_04fd8c79e6fa52::t_76958e7b065a96 61,82
+docs/json-schema.md
+  s_04fd8c79e6fa52::t_4f9fb103caf042 207
+docs/plans/2026-10-24-283-286-fix-baseline-unverified-survivors-plan.md
+  s_04fd8c79e6fa52::t_fc132b9ae07077 323
+docs/rails.html
+  s_04fd8c79e6fa52::t_5b5ef8219c12cb 85
+docs/rails.md
+  s_04fd8c79e6fa52::t_b3f4435d9da43e 38
+lib/mutineer/reporter.rb
+  s_04fd8c79e6fa52::t_2652effac455d4 875
+skills/mutineer/SKILL.md
+  s_04fd8c79e6fa52::t_af9b06c860cfc1 65,76
+test/action_harness_test.rb
+  s_04fd8c79e6fa52::t_0dca98d6ccd008 68-69
+test/baseline_test.rb
+  s_04fd8c79e6fa52::t_1d0da4ec3dd7a4 404-413,461-469
+test/fixtures/action_harness.sh
+  s_04fd8c79e6fa52::t_2880f7487c0346 22,219-222
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1ad37df10bf090d26d1e6df69ea32852fd5e4b81",
+  "prompts": {},
+  "sessions": {
+    "s_04fd8c79e6fa52": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16cbd-26a2-7b61-8d84-799333c245e9",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

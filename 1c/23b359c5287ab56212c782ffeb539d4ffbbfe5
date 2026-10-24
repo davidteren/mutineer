@@ -1,0 +1,52 @@
+test/cli_test.rb
+  s_533ed13f8f67ea::t_0d96b39d6249d5 1132-1133,1159-1160
+  s_533ed13f8f67ea::t_52b6b4751c7953 1161-1162,1164-1222
+  s_661fc5f0fd609c::t_b5c5cb69915e0e 1163
+STABILITY.md
+  s_533ed13f8f67ea::t_030f217983dbea 32-33
+CHANGELOG.md
+  s_533ed13f8f67ea::t_7b85b35bda3aa8 49-52
+  s_533ed13f8f67ea::t_030f217983dbea 21-23,45-48
+test/fixtures/action_harness.sh
+  s_533ed13f8f67ea::t_030f217983dbea 229
+lib/mutineer/cli.rb
+  s_533ed13f8f67ea::t_3c4a3c603f79d8 678-679
+docs/json-schema.md
+  s_533ed13f8f67ea::t_7b85b35bda3aa8 206-207
+  s_533ed13f8f67ea::t_030f217983dbea 27-29
+lib/mutineer/baseline.rb
+  s_533ed13f8f67ea::t_030f217983dbea 29-30,123
+  s_533ed13f8f67ea::t_3c4a3c603f79d8 124-125,149-150,154-155,161-162,183,194-195,197-200,222-230,232-237,239-243
+  s_533ed13f8f67ea::t_c824043ada04b4 196,231,238
+  s_533ed13f8f67ea::t_b0a4905725fb49 244
+test/baseline_test.rb
+  s_533ed13f8f67ea::t_52b6b4751c7953 108-125
+  s_533ed13f8f67ea::t_0d96b39d6249d5 78,82,93,105
+  s_661fc5f0fd609c::t_841e29b5064a7d 106-107
+docs/plans/2026-10-24-283-286-fix-baseline-unverified-survivors-plan.md
+  s_533ed13f8f67ea::t_5e2bf81aed1ceb 46,58-59,97,101,114,116-117,215-217,243,257-258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1c23b359c5287ab56212c782ffeb539d4ffbbfe5",
+  "prompts": {},
+  "sessions": {
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_661fc5f0fd609c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a16dd5-7b15-7ab0-b4e0-7d7830b052e7",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

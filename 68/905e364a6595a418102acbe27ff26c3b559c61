@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_533ed13f8f67ea::t_ec3176c49b490c 21-24
+lib/mutineer/isolation.rb
+  s_533ed13f8f67ea::t_ec3176c49b490c 204-205,215-216,219-222,301-304
+README.md
+  s_533ed13f8f67ea::t_a43b4864605684 339
+lib/mutineer/runner.rb
+  s_533ed13f8f67ea::t_c0f24be7410bb6 65-67,74-79
+test/parallel_strategy_test.rb
+  s_533ed13f8f67ea::t_f0c345de252500 85-114,130-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "68905e364a6595a418102acbe27ff26c3b559c61",
+  "prompts": {},
+  "sessions": {
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

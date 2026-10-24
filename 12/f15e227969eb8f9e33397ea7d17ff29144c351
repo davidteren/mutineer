@@ -1,0 +1,20 @@
+test/baseline_test.rb
+  s_533ed13f8f67ea::t_9fedfdf418b012 38-39,128-141
+  s_533ed13f8f67ea::t_3bb3b93bcbf4f4 142-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "12f15e227969eb8f9e33397ea7d17ff29144c351",
+  "prompts": {},
+  "sessions": {
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
