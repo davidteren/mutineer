@@ -28,8 +28,9 @@ All notable changes to this project are documented here. The format is based on
   `shared_databases` entry. A copy loads its database's schema file when it is
   out of date. Postgres and MySQL keep the one-worker limit unless
   `shared_databases` lists the other databases. A SQLite database listed in
-  `shared_databases` keeps its base file. Rails 7.0 keeps the one-worker
-  limit, because the routing check needs Rails 7.1 or later.
+  `shared_databases` keeps its base file. Routing is checked before schema
+  loading, and a worker destination cannot alias a configured base file.
+  Rails 7.0 keeps the one-worker limit.
 
 ### Changed
 

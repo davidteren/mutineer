@@ -472,7 +472,7 @@ So an app whose test databases are all SQLite files runs in parallel with no ext
 A connection opened with an inline hash (`establish_connection(adapter: "sqlite3", database: ...)`) is not in `config/database.yml`.
 Mutineer cannot copy it, so every mutant scores `error`, even with one worker. Move that database into `config/database.yml`.
 A primary given as a `file:` URI also scores `error`. Use a plain file path.
-On Rails 7.0, a second database still means one worker: the check that catches an uncopied connection needs Rails 7.1 or later.
+On Rails 7.0, a second database still means one worker.
 
 On Postgres and MySQL, each worker copies only the primary database, the one `ActiveRecord::Base` uses.
 An app with a second test database there runs one worker. So does a SQLite app with a second database that is not a file.

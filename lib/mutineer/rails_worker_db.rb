@@ -368,8 +368,7 @@ module Mutineer
       configs = test_configs.reject(&:replica?)
       primary = ActiveRecord::Base.connection_db_config.name
       copied  = [primary]
-      # Rails 7.0 lists no pool for the routing check ({verify_routing!}), so
-      # there a second database still keeps one worker, as before.
+      # Keep Rails 7.0's conservative one-worker policy for several databases.
       if sqlite_adapter?(current_adapter) && ActiveRecord.version >= Gem::Version.new("7.1")
         copied |= configs.select { |c| sqlite_file_config?(c) }.map(&:name)
       end
@@ -423,6 +422,7 @@ module Mutineer
       end
 
       @routing = route_sqlite_configs(worker, seed: seed, shared: shared, primary: sqlite_file(primary))
+      verify_routing!(*@routing)
       load_schema(schema_path) if schema_path && !schema_current?(schema_path)
       load_other_schemas(primary, routed: @routing.first) if seed
       verify_routing!(*@routing)
@@ -450,6 +450,7 @@ module Mutineer
     # A replica that names the same file as its primary gets the same worker
     # file. A config named in `shared`, and any config on the same file, keeps
     # the base file, except the primary's file: every worker always copies it.
+    # Shared aliases use one base path so the shared-connection check sees them.
     #
     # @param worker [Integer] the worker slot index.
     # @param seed [Boolean] copy each base file into its worker file first.
@@ -460,21 +461,56 @@ module Mutineer
     # @raise [RuntimeError] when a worker file would be another config's base file.
     def self.route_sqlite_configs(worker, seed:, shared:, primary: nil)
       configs = test_configs.select { |c| sqlite_file_config?(c) }
-      bases   = configs.map { |c| sqlite_file(c) }
-      kept    = configs.select { |c| shared.include?(c.name) }.map { |c| sqlite_file(c) }.uniq - [primary]
-      routed  = {}
-      configs.each do |config|
-        base = sqlite_file(config)
-        next if kept.include?(base)
-
-        routed[base] ||= worker_database_path(base, worker).tap do |file|
-          raise "worker file #{file} is also the base file of a test database; rename one of them" if bases.include?(file)
-
-          seed_worker_file(base, file) if seed
+      groups = configs.group_by { |config| database_file_identity(sqlite_file(config)) }
+      primary_key = database_file_identity(primary) if primary
+      routed = {}
+      kept = {}
+      groups.each do |identity, aliases|
+        shared_config = identity == primary_key ? nil : aliases.find { |config| shared.include?(config.name) }
+        if shared_config
+          kept[identity] = sqlite_file(shared_config)
+        else
+          routed[identity] = worker_database_path(sqlite_file(aliases.first), worker)
         end
-        config._database = routed[base]
       end
-      [routed.values, kept]
+
+      # Validate every destination before any backup or deletion can touch it.
+      routed.each_value do |file|
+        if groups.key?(database_file_identity(file))
+          raise "worker file #{file} is also the base file of a test database; rename one of them"
+        end
+      end
+      routed.each do |identity, file|
+        seed_worker_file(sqlite_file(groups.fetch(identity).first), file) if seed
+      end
+      groups.each do |identity, aliases|
+        file = routed[identity] || kept.fetch(identity)
+        aliases.each { |config| config._database = file }
+      end
+      [routed.values, kept.values]
+    end
+
+    # Identity of an existing file, including hard links. A missing file uses
+    # its canonical path so aliases are detected before schema loading creates it.
+    #
+    # @param file [String] absolute database path.
+    # @return [Array<Symbol, Integer, String>]
+    def self.database_file_identity(file)
+      stat = File.stat(file)
+      [:file, stat.dev, stat.ino]
+    rescue Errno::ENOENT
+      [:path, canonical_database_path(file)]
+    end
+
+    # Resolve existing symlinks, preserving missing path components after the
+    # nearest existing parent directory.
+    #
+    # @param file [String] absolute database path.
+    # @return [String]
+    def self.canonical_database_path(file)
+      File.realdirpath(file)
+    rescue Errno::ENOENT
+      File.join(canonical_database_path(File.dirname(file)), File.basename(file))
     end
 
     # Copy `base` into `file`. When the base file does not exist yet (Rails
@@ -531,7 +567,7 @@ module Mutineer
     # @return [void]
     # @raise [RuntimeError] when a pool points at a file that is neither.
     def self.verify_routing!(routed, kept)
-      ActiveRecord::Base.connection_handler.connection_pool_list(:all).each do |pool|
+      ActiveRecord::Base.connection_handler.connection_pool_list(nil).each do |pool|
         config = pool.db_config
         next unless sqlite_file_config?(config)
 
@@ -651,12 +687,15 @@ module Mutineer
       # check would always pass. Fail every mutant instead of trusting it.
       raise "shared_databases needs Rails 7.1 or later" if ActiveRecord.version < Gem::Version.new("7.1")
 
+      database_key = lambda do |config|
+        sqlite_file_config?(config) ? database_file_identity(sqlite_file(config)) : config.database
+      end
       by_database = {}
-      test_configs.each { |c| by_database[c.database] = c.name if shared.include?(c.name) && c.database }
+      test_configs.each { |c| by_database[database_key.call(c)] = c.name if shared.include?(c.name) && c.database }
       pools = ActiveRecord::Base.connection_handler.connection_pool_list(:all).select(&:connected?)
       names = pools.map do |pool|
         config = pool.db_config
-        shared.include?(config.name) ? config.name : by_database[config.database]
+        shared.include?(config.name) ? config.name : by_database[database_key.call(config)]
       end
       names.compact.uniq
     end
