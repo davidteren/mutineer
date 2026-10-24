@@ -201,7 +201,8 @@ module Mutineer
 
     # Writes `code` to a hidden `.mutineer_mutant` file beside `source_file`,
     # yields its path, and removes it after the block. Both strategies write
-    # through here.
+    # through here. Only redefine enables the system-temp fallback when the
+    # source directory is not writable.
     #
     # The file is locked until the block ends, as the daemon locks its own file
     # (#295). A SIGKILL drops the lock too. The pid in the name and the lock
@@ -211,10 +212,14 @@ module Mutineer
     # @api private
     # @param code [String] the Ruby source to write.
     # @param source_file [String] the source file the code replaces.
+    # @param fallback [Boolean] use the system temp directory when the source
+    #   directory is not writable; redefine only.
     # @yieldparam path [String] absolute path of the written file.
     # @return [Object] whatever the block returns.
-    def self.write_beside(code, source_file)
-      Tempfile.create([".mutineer_mutant", ".rb"], File.dirname(File.expand_path(source_file))) do |f|
+    def self.write_beside(code, source_file, fallback: false)
+      dir = File.dirname(File.expand_path(source_file))
+      dir = Dir.tmpdir if fallback && !File.writable?(dir)
+      Tempfile.create([".mutineer_mutant", ".rb"], dir) do |f|
         f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
         f.write(code)
         f.flush
@@ -293,7 +298,10 @@ module Mutineer
       # every mutant of the method dies whatever it changes. The hidden
       # `.mutineer_mutant` name keeps Zeitwerk away (#253) and lets the parent
       # sweep an orphan after a timeout kill.
-      write_beside(wrapped, subject.file) { |path| load path }
+      #
+      # A read-only source dir keeps the 1.x system-temp location, so redefine
+      # still runs there (only path-relative methods mis-score, as before).
+      write_beside(wrapped, subject.file, fallback: true) { |path| load path }
 
       target.send(vis, subject.name) if vis && vis != :public
     end

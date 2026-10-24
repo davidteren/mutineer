@@ -18,9 +18,10 @@ All notable changes to this project are documented here. The format is based on
   the mutated method from a hidden file beside the source, as reload does.
   It used the system temp directory before, so `__dir__` and
   `require_relative` in the method pointed there, and every mutant of such
-  a method was falsely killed (#279). Redefine (also the default under
-  `--rails` without `--daemon`) now needs write access to each source
-  directory, as reload already does.
+  a method was falsely killed (#279). Redefine is also the default under
+  `--rails` without `--daemon`. When a source directory is not writable,
+  redefine still uses the system temp directory there, as before, and
+  the run warns that path-relative methods there can be falsely killed.
 - **A second in-process run no longer deletes a live mutant file (#295).**
   Each in-process run sweeps the source directories before its boot and
   after its run. That sweep treated every `.mutineer_mutant*.rb` file as an
