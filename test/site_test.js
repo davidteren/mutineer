@@ -100,6 +100,14 @@ test('index.md landing twin exists and sitemap lists the same Pages URLs as llms
   }
 });
 
+// docs/plans/ and docs/release-review/ are maintainer notes kept in git.
+// rake site:build must leave them out of the published tree.
+test('maintainer notes under docs/ are not published', () => {
+  for (const dir of ['plans', 'release-review']) {
+    assert.ok(!fs.existsSync(`${SITE}/${dir}`), `${SITE}/${dir} must not be published`);
+  }
+});
+
 
 // The hero explainer autoplays muted in view, pauses off screen or in a hidden
 // tab (not in Picture-in-Picture), resumes only what it paused, keeps a
