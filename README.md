@@ -57,7 +57,7 @@ It runs in parallel on those systems.
 | 3.4 or later | MariaDB | Minitest | not tested | not tested |
 | 3.4 or later | SQLite in memory | Minitest | not supported | serial only |
 | 3.4 or later | SQLite in memory | RSpec | not supported | serial only |
-| 3.4 or later | more than one database, all SQLite files | Minitest | supported with `--daemon` | supported |
+| 3.4 or later | more than one database, all SQLite files | Minitest | supported with `--daemon` on Rails 7.1 or later | supported |
 | 3.4 or later | more than one database, Postgres or MySQL | Minitest | one worker | serial only |
 | 3.4 or later | more than one database, the extra ones in `shared_databases` | Minitest | supported with `--daemon` | supported |
 | 3.4 or later | more than one database | RSpec | not supported | serial only |
@@ -76,8 +76,9 @@ MySQL 8 with Minitest can use `--daemon`.
 MariaDB is not tested.
 MySQL 5.7 is not supported.
 A `:memory:` database is serial only.
-An app with more than one SQLite file database runs in parallel: each worker copies every file.
+On Rails 7.1 or later, an app with more than one SQLite file database runs in parallel: each worker copies every file.
 CI tests that row.
+On Rails 7.0, an app with more than one database runs one worker.
 On Postgres or MySQL, an app with more than one database runs one worker.
 When `shared_databases` lists every database except the primary, `--daemon` runs in parallel.
 CI tests that row on SQLite.
