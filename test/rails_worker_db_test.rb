@@ -415,6 +415,74 @@ class RailsWorkerDbTest < Minitest::Test
     Object.const_set(:ActiveRecord, saved) if saved
   end
 
+  # The tool counts these names; the primary is the config each worker copies.
+  # Hidden configs count, replicas do not.
+  def test_database_names_lists_the_test_configs_and_the_primary
+    saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    config = Struct.new(:name, :replica) do
+      def replica? = replica
+    end
+    # `legacy` stands for a `database_tasks: false` config: Rails hides it
+    # unless include_hidden is set, and workers would still share it.
+    all = [config.new("primary"), config.new("primary_replica", true), config.new("cable"), config.new("legacy")]
+    configs = Object.new
+    configs.define_singleton_method(:configs_for) do |env_name:, include_hidden: false|
+      include_hidden ? all : all.first(1) + all[2, 1]
+    end
+    base = Class.new
+    base.define_singleton_method(:configurations) { configs }
+    base.define_singleton_method(:connection_db_config) { config.new("primary") }
+    Object.const_set(:ActiveRecord, Module.new.tap { |m| m.const_set(:Base, base) })
+
+    assert_equal({ "names" => %w[primary cable legacy], "primary" => "primary" },
+                 Mutineer::RailsWorkerDb.database_names)
+  ensure
+    Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    Object.const_set(:ActiveRecord, saved) if saved
+  end
+
+  # The tripwire reads the live pools: a connected pool on a shared database
+  # is a use, under its own name or as a replica of it. An idle pool is not.
+  def test_touched_shared_databases_names_connected_shared_pools_only
+    saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    config = Struct.new(:name, :database)
+    pool = Struct.new(:db_config, :connected) do
+      def connected? = connected
+    end
+    cable = config.new("cable", "storage/cable.sqlite3")
+    queue = config.new("queue", "storage/queue.sqlite3")
+    replica = config.new("queue_replica", "storage/queue.sqlite3")
+    primary = config.new("primary", "storage/test.sqlite3")
+    pools = [pool.new(primary, true), pool.new(cable, true), pool.new(queue, false), pool.new(cable, true)]
+    handler = Object.new
+    handler.define_singleton_method(:connection_pool_list) { |role| role == :all ? pools : [] }
+    configs = Object.new
+    configs.define_singleton_method(:configs_for) { |env_name:, include_hidden:| [primary, cable, queue, replica] }
+    base = Class.new
+    base.define_singleton_method(:connection_handler) { handler }
+    base.define_singleton_method(:configurations) { configs }
+    version = Gem::Version.new("7.2.3")
+    active_record = Module.new.tap { |m| m.const_set(:Base, base) }
+    active_record.define_singleton_method(:version) { version }
+    Object.const_set(:ActiveRecord, active_record)
+
+    db = Mutineer::RailsWorkerDb
+    assert_equal %w[cable], db.touched_shared_databases(%w[cable queue])
+    assert_empty db.touched_shared_databases(%w[queue])
+    assert_empty db.touched_shared_databases([])
+
+    pools << pool.new(replica, true)
+    assert_equal %w[queue], db.touched_shared_databases(%w[queue]), "a replica read is a use of the shared database"
+
+    # Rails 7.0 lists no pool for :all, so a pass there would be a false clean.
+    version = Gem::Version.new("7.0.8")
+    error = assert_raises(RuntimeError) { db.touched_shared_databases(%w[cable]) }
+    assert_equal "shared_databases needs Rails 7.1 or later", error.message
+  ensure
+    Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    Object.const_set(:ActiveRecord, saved) if saved
+  end
+
   def test_too_many_mysql_workers_fail_before_a_connection
     error = assert_raises(RuntimeError) do
       Mutineer::RailsWorkerDb.provision_mysql(Mutineer::RailsWorkerDb::MYSQL_LOCK_SLOTS + 1)

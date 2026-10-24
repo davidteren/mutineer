@@ -13,12 +13,13 @@ require "mutineer/runner"
 class RailsDogfoodDaemonTest < Minitest::Test
   APP = File.expand_path("fixtures/rails_app", __dir__)
 
-  def config_for(jobs, model: "order")
+  def config_for(jobs, model: "order", shared_databases: [])
     Mutineer::Config.new(
       sources: [File.join(APP, "app/models/#{model}.rb")],
       tests: [File.join(APP, "test/models/#{model}_test.rb")],
       project_root: APP, boot: "config/environment",
-      rails: true, daemon: true, strategy: "reload", framework: "minitest", jobs: jobs
+      rails: true, daemon: true, strategy: "reload", framework: "minitest", jobs: jobs,
+      shared_databases: shared_databases
     )
   end
 
@@ -68,6 +69,79 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_equal 1, err.scan(sentence).size
     refute File.exist?(slot1), "a second worker must not start"
     assert File.exist?(File.join(APP, "storage", "test-0.sqlite3"))
+  ensure
+    ENV.delete("MUTINEER_SECOND_DB")
+  end
+
+  # #316: with the second database listed in shared_databases, the guard lifts.
+  # No warning, a second worker starts, and the score matches one worker.
+  def test_shared_databases_lets_a_second_database_run_parallel_workers
+    ENV["MUTINEER_SECOND_DB"] = "1"
+    slot1 = File.join(APP, "storage", "test-1.sqlite3")
+    File.delete(slot1) if File.exist?(slot1)
+    aggregate = nil
+    _out, err = capture_subprocess_io do
+      aggregate, = Mutineer::Runner.execute(config_for(4, shared_databases: %w[extra]))
+    end
+
+    assert_equal 100.0, aggregate.mutation_score
+    assert_equal 0, aggregate.errored_count
+    refute_match(/databases; Mutineer runs one worker/, err)
+    refute_match(/shared database used/, err)
+    assert File.exist?(slot1), "a second worker must start"
+  ensure
+    ENV.delete("MUTINEER_SECOND_DB")
+  end
+
+  # #316: MUTINEER_EXTRA_POOL registers a pool for `extra`, so transactional
+  # tests connect it in every test (the solid_cable case). A parallel run must
+  # then score every mutant it runs `error`, never killed or survived.
+  def test_a_used_shared_database_errors_every_parallel_mutant
+    ENV["MUTINEER_SECOND_DB"] = "1"
+    ENV["MUTINEER_EXTRA_POOL"] = "1"
+    aggregate = nil
+    _out, err = capture_subprocess_io do
+      aggregate, = Mutineer::Runner.execute(config_for(2, shared_databases: %w[extra]))
+    end
+
+    assert_operator aggregate.errored_count, :>, 0
+    assert_equal 0, aggregate.killed_count
+    assert_equal 0, aggregate.survived_count
+    assert_includes err, "shared database used during a parallel run: extra."
+  ensure
+    ENV.delete("MUTINEER_SECOND_DB")
+    ENV.delete("MUTINEER_EXTRA_POOL")
+  end
+
+  # #316: one worker shares nothing, so the same setup scores normally.
+  def test_one_worker_runs_no_shared_database_check
+    ENV["MUTINEER_SECOND_DB"] = "1"
+    ENV["MUTINEER_EXTRA_POOL"] = "1"
+    aggregate = nil
+    _out, err = capture_subprocess_io do
+      aggregate, = Mutineer::Runner.execute(config_for(1, shared_databases: %w[extra]))
+    end
+
+    assert_equal 100.0, aggregate.mutation_score
+    assert_equal 0, aggregate.errored_count
+    refute_match(/shared database used/, err)
+  ensure
+    ENV.delete("MUTINEER_SECOND_DB")
+    ENV.delete("MUTINEER_EXTRA_POOL")
+  end
+
+  # #316: the daemon reports which database each worker copies, so listing it
+  # stops the run before any mutant.
+  def test_listing_the_primary_database_stops_the_run
+    ENV["MUTINEER_SECOND_DB"] = "1"
+    error = nil
+    capture_subprocess_io do
+      error = assert_raises(Mutineer::ConfigError) do
+        Mutineer::Runner.execute(config_for(2, shared_databases: %w[primary extra]))
+      end
+    end
+
+    assert_includes error.message, "shared_databases lists primary, the database each worker copies."
   ensure
     ENV.delete("MUTINEER_SECOND_DB")
   end

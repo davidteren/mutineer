@@ -58,6 +58,7 @@ It runs in parallel on those systems.
 | 3.4 or later | SQLite in memory | Minitest | not supported | serial only |
 | 3.4 or later | SQLite in memory | RSpec | not supported | serial only |
 | 3.4 or later | more than one database | Minitest | one worker | serial only |
+| 3.4 or later | more than one database, the extra ones in `shared_databases` | Minitest | supported with `--daemon` | supported |
 | 3.4 or later | more than one database | RSpec | not supported | serial only |
 
 This matrix is for a Rails app on Ruby 3.4 or later.
@@ -75,6 +76,8 @@ MariaDB is not tested.
 MySQL 5.7 is not supported.
 A `:memory:` database is serial only.
 An app with more than one database runs one worker.
+When `shared_databases` lists every database except the primary, `--daemon` runs in parallel.
+CI tests that row on SQLite.
 `--daemon` isolates only the primary connection.
 `--rails` without `--daemon` is serial on every row.
 A Postgres worker database is copied once, at the start of the run.
@@ -455,6 +458,37 @@ MariaDB is not tested.
 MySQL 5.7 is not supported.
 A `:memory:` database is not supported on `--daemon`.
 
+#### More than one database
+
+Each worker copies only the primary database, the one `ActiveRecord::Base` uses.
+An app with a second test database therefore runs one worker.
+A database with `database_tasks: false` counts too. A replica does not.
+If your tests never use the other databases, list them in `.mutineer.yml`:
+
+```yaml
+shared_databases: [cable, queue]
+```
+
+The workers then share those databases, and `--jobs N` runs in parallel.
+After each mutant, a worker checks whether a shared database holds an Active Record connection.
+If one does, the mutant scores `error`, never a false kill or survive.
+A replica of a shared database counts as that database.
+The check needs Rails 7.1 or later. On Rails 7.0, every mutant of a parallel run scores `error`.
+The check does not see a connection that a test closes or removes before it ends, or a database reached without Active Record.
+One worker shares nothing, so it skips the check.
+Do not list the primary database: the run stops with exit 2.
+A name that matches no test database warns and lifts nothing.
+If Mutineer cannot list the app's databases, or the first daemon does not boot, it runs one worker.
+
+Transactional tests open a connection to every database that has a connection pool in the test environment.
+So if the test environment registers a pool for a shared database, every mutant scores `error`.
+A `connects_to` for solid_cable or solid_queue in the test environment does this.
+To fix it, register no pool there in test: use `adapter: test` for Action Cable in `config/cable.yml`, and the `:test` Active Job adapter.
+The Rails 8 defaults do this.
+On Rails 8.1 or later, `skip_transactional_tests_for_database :cable` in `ActiveSupport::TestCase` also works.
+The check then fires only when a test really uses that database.
+Otherwise leave that database out of `shared_databases`, and the run uses one worker.
+
 ### Apps on Ruby < 3.4
 
 Mutineer's own process needs Ruby ≥ 3.4 (it parses with stdlib Prism), and the
@@ -784,6 +818,7 @@ config file accepts these keys:
 | `cache_dir` | The coverage cache directory (default `.mutineer`) |
 | `matrix` | `true` or `false`; runs every covering test for each mutant and adds the kill matrix to the report |
 | `allow_empty` | `true` or `false`; a run with no mutants is expected, so it does not warn |
+| `shared_databases` | A list of test database names that parallel `--daemon` workers may share; see [More than one database](https://github.com/davidteren/mutineer#more-than-one-database) |
 
 Invalid values for known scalar keys, and a blank `operators` list, exit 2
 with a message naming the file and key. An unknown operator name warns and

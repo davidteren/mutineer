@@ -3,7 +3,9 @@
 require_relative "test_helper"
 require "open3"
 require "rbconfig"
+require "minitest/mock"
 require "mutineer/config"
+require "mutineer/cli"
 
 # #26/#27 Phase 2 (U8): the --daemon opt-in flag + its usage guards. Drives the real
 # binary so flag parsing + validation exit codes are exercised end to end; the two
@@ -94,5 +96,23 @@ class CliDaemonTest < Minitest::Test
     assert_equal true,  Mutineer::Config.parse(:daemon, true, file: "f")
     assert_equal true,  Mutineer::Config.parse(:daemon, "true", file: "f")
     assert_equal false, Mutineer::Config.parse(:daemon, false, file: "f")
+  end
+
+  # `shared_databases` naming the primary database is found only after the app
+  # boots. The daemon backend raises ConfigError then, and the CLI must report
+  # it as a usage error (exit 2), not a backtrace.
+  def test_a_config_error_during_the_run_is_a_usage_error
+    config = Mutineer::Config.new(sources: ["x.rb"], tests: [], project_root: Dir.tmpdir, framework: "minitest")
+    status = nil
+    _out, err = capture_io do
+      Mutineer::CLI.stub(:validate!, nil) do
+        Mutineer::CLI.stub(:execute, ->(_) { raise Mutineer::ConfigError, "shared_databases lists primary" }) do
+          status = assert_raises(SystemExit) { Mutineer::CLI.run(config) }
+        end
+      end
+    end
+
+    assert_equal 2, status.status
+    assert_includes err, "mutineer: shared_databases lists primary"
   end
 end

@@ -352,20 +352,28 @@ module Mutineer
       ActiveRecord::Base.establish_connection(worker_db_config(slot))
     end
 
-    # How many database configs the test environment declares. One is normal.
-    # More than one means the run must use a single worker.
+    # The database config names the test environment declares, and the one
+    # each worker copies (the config `ActiveRecord::Base` uses). The tool
+    # counts the names that `shared_databases` does not list: more than one
+    # means the run must use a single worker.
     #
-    # @return [Integer]
-    def self.database_count
-      return 1 unless available?
+    # A config with `database_tasks: false` counts: workers would share it like
+    # any other. A replica does not, as before: it reads another config's database.
+    # No rescue: a failure must reach the tool, which then keeps one worker.
+    #
+    # @return [Hash{String => Object}] "names" (Array<String>) and "primary" (String).
+    def self.database_names
+      names = test_configs.reject(&:replica?).map(&:name)
+      { "names" => names, "primary" => ActiveRecord::Base.connection_db_config.name }
+    end
 
+    # The test environment's database configs, hidden ones and replicas included.
+    #
+    # @return [Array<ActiveRecord::DatabaseConfigurations::DatabaseConfig>]
+    def self.test_configs
       env = ENV["RAILS_ENV"].to_s
       env = "test" if env.empty?
-      list = ActiveRecord::Base.configurations.configs_for(env_name: env)
-      count = list.size
-      count < 1 ? 1 : count
-    rescue StandardError
-      1
+      ActiveRecord::Base.configurations.configs_for(env_name: env, include_hidden: true)
     end
 
     # Child-side (after fork): route this process's ActiveRecord at the worker's
@@ -457,6 +465,36 @@ module Mutineer
     # @return [Integer, nil]
     def self.schema_file_version(text)
       text[/define\(version:\s*([\d_]+)/, 1]&.delete("_")&.to_i
+    end
+
+    # Names from `shared` whose database a connected pool uses in this
+    # process. Run in a fork after its tests: a name here means a test used a
+    # database that parallel workers share, so the verdict cannot be trusted.
+    # A pool counts when its config has a shared name, or names the same
+    # database as a shared config (a replica of it, say). Transactional tests
+    # connect every registered writing pool, so a pool registered for a shared
+    # database shows up here after any test.
+    #
+    # No rescue: a failed check must raise (scored `error`), never read as clean.
+    # ponytail: a snapshot after the run; a pool the test removes
+    # (`remove_connection`) is missed. Upgrade path: watch `sql.active_record`.
+    #
+    # @param shared [Array<String>] database config names in `shared_databases`.
+    # @return [Array<String>]
+    def self.touched_shared_databases(shared)
+      return [] if shared.empty? || !available?
+      # Rails 7.0 reads `:all` below as a role name and lists no pool, so the
+      # check would always pass. Fail every mutant instead of trusting it.
+      raise "shared_databases needs Rails 7.1 or later" if ActiveRecord.version < Gem::Version.new("7.1")
+
+      by_database = {}
+      test_configs.each { |c| by_database[c.database] = c.name if shared.include?(c.name) && c.database }
+      pools = ActiveRecord::Base.connection_handler.connection_pool_list(:all).select(&:connected?)
+      names = pools.map do |pool|
+        config = pool.db_config
+        shared.include?(config.name) ? config.name : by_database[config.database]
+      end
+      names.compact.uniq
     end
 
     # Load a Rails `schema.rb` into the current connection with output silenced
