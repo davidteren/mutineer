@@ -12,6 +12,33 @@ All notable changes to this project are documented here. The format is based on
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.
 
+### Fixed
+
+- **A mutant that two operators make is scored once** (#275).
+  `literal_mutation` and `string_literal` both turn `"hi"` into `""`, and
+  `chain_link` and `call_to_receiver` both turn `node.name.name` into
+  `node.name`. Each copy had its own id, so one surviving edit counted twice.
+  Now one copy runs: the copy of the operator that comes first in
+  `mutineer --list-operators`, whatever the `--operators` order. Only the
+  same text counts: a single-quoted `'hi'` still gives two mutants (`""` and
+  `''`).
+  - Every kept mutant keeps its id. The dropped copy's id no longer appears
+    in reports. Runs that use only one of these operators keep the same
+    mutants and ids.
+  - If you combine these operators, the mutant count and the score can move
+    with no code change, so a `--threshold` gate can change its result.
+    Regenerate a `--baseline` file with `--format json` after upgrading. In a
+    full (unscoped) comparison, a dropped copy that survived is listed as
+    fixed.
+  - An ignore entry for one copy's id still ignores only that copy. Keep the
+    entry: a run with that operator alone still uses it, and
+    `mutineer migrate` keeps it as a current id. This also fixes the #159
+    copies: an `ignore:` list that names both copies of a repeated edit no
+    longer makes `mutineer migrate` exit 1.
+  - Within a method, mutants now run and list in the `--list-operators`
+    order. This applies to any run whose `--operators` or `operators:` list
+    is in another order, so `--dry-run` lists and `--fail-fast` can differ.
+
 ## [1.7.0] - 2026-10-23
 
 ### Added

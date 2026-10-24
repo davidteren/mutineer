@@ -514,6 +514,97 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # #275: literal_mutation and string_literal both turn "hi" into "". The copy
+  # runs once, and the kept mutant keeps the id of a literal_mutation-only run.
+  def test_collect_jobs_runs_a_cross_operator_copy_once
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      jobs, _ignored, _map, extras = collect(path, dir, %w[literal_mutation string_literal])
+      assert_equal [:literal_mutation], jobs.map { |_s, m, _id| m.operator }
+      assert_equal collect(path, dir, %w[literal_mutation]).first.map(&:last), jobs.map(&:last)
+      assert_equal 1, extras[:id_map].size
+    end
+  end
+
+  # #275: the registry-first copy stays, whatever the --operators order.
+  def test_collect_jobs_keeps_the_registry_first_copy_in_any_operator_order
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      jobs, = collect(path, dir, %w[string_literal literal_mutation])
+      assert_equal [:literal_mutation], jobs.map { |_s, m, _id| m.operator }
+      assert_equal collect(path, dir, %w[literal_mutation string_literal]).first.map(&:last), jobs.map(&:last)
+    end
+  end
+
+  # #275: chain_link and call_to_receiver both turn node.name.name into
+  # node.name. One copy runs, the chain_link one (it is first in the registry).
+  def test_collect_jobs_runs_a_chain_copy_once
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "chain.rb")
+      File.write(path, "class Chain\n  def a(node)\n    node.name.name\n  end\nend\n")
+      jobs, = collect(path, dir, %w[call_to_receiver chain_link])
+      source = File.read(path)
+      mutated = jobs.map { |_s, m, _id| m.apply(source) }
+      assert_equal mutated.uniq, mutated
+      short = jobs.select { |_s, m, _id| m.apply(source).include?("    node.name\n") }
+      assert_equal [:chain_link], short.map { |_s, m, _id| m.operator }
+    end
+  end
+
+  # #275, #159: an ignore entry for the string_literal copy ignores only that
+  # copy. The literal_mutation copy still runs.
+  def test_collect_jobs_keeps_the_run_copy_when_the_other_operator_copy_is_ignored
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      string_id = collect(path, dir, %w[string_literal]).first.first.last
+      jobs, ignored, = collect(path, dir, %w[literal_mutation string_literal], ignore: [string_id])
+      assert_equal [string_id], ignored.map(&:id)
+      assert_equal [:literal_mutation], jobs.map { |_s, m, _id| m.operator }
+    end
+  end
+
+  # #275: two ignored copies of one edit are recorded once.
+  def test_collect_jobs_records_one_ignored_copy_across_operators
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi" # mutineer:disable-line))
+      jobs, ignored, = collect(path, dir, %w[string_literal literal_mutation])
+      assert_empty jobs
+      assert_equal [:literal_mutation], ignored.map { |r| r.mutation.operator }
+    end
+  end
+
+  # #275: within a method, mutants follow the registry order, not the
+  # --operators order.
+  def test_collect_jobs_lists_mutants_in_registry_order
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "plus.rb")
+      File.write(path, "class Plus\n  def a(x)\n    \"hi\" + x\n  end\nend\n")
+      jobs, = collect(path, dir, %w[string_literal arithmetic])
+      assert_equal %i[arithmetic string_literal], jobs.map { |_s, m, _id| m.operator }
+    end
+  end
+
+  # #275 scope: 'hi' gives "" and '', which are different text, so both stay.
+  def test_collect_jobs_keeps_both_copies_of_a_single_quoted_string
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", "'hi'")
+      jobs, = collect(path, dir, %w[literal_mutation string_literal])
+      assert_equal %i[literal_mutation string_literal], jobs.map { |_s, m, _id| m.operator }
+    end
+  end
+
+  # #275: a dropped copy's old-format ignore entry is still reported for
+  # migration, so the run-time migrate warning lists it.
+  def test_collect_jobs_reports_an_old_format_entry_for_a_dropped_copy
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      olds = %w[literal_mutation string_literal].map { |op| collect(path, dir, [op]).last[:id_map].values.first }
+      _jobs, ignored, _map, extras = collect(path, dir, %w[literal_mutation string_literal], ignore: olds)
+      assert_equal 1, ignored.size
+      assert_equal olds.sort, extras[:legacy_ignore_matches].keys.sort
+    end
+  end
+
   # Every row of a large matrix names the same tests; after share_tests they
   # are one frozen array per test, whatever row they came from.
   def test_share_tests_gives_every_row_the_same_test_objects
@@ -582,6 +673,20 @@ class RunnerTest < Minitest::Test
     yield
   ensure
     orig.nil? ? ENV.delete("RAILS_ENV") : (ENV["RAILS_ENV"] = orig)
+  end
+
+  # Writes `class <name>; def a; <body>; end; end` to dir and returns its path.
+  # The body is on line 3.
+  def write_class(dir, name, body)
+    path = File.join(dir, "#{name.downcase}.rb")
+    File.write(path, "class #{name}\n  def a\n    #{body}\n  end\nend\n")
+    path
+  end
+
+  # JobPlan.collect_jobs on one file with the named operators.
+  def collect(path, dir, operators, ignore: [])
+    config = Mutineer::Config.new(sources: [path], project_root: dir, ignore: ignore)
+    Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(operators))
   end
 
   def line_of(mutation, source)

@@ -7,11 +7,12 @@ require_relative "mutator_registry"
 
 module Mutineer
   # Rewrites old-format mutant ids in a `.mutineer.yml` `ignore:` list to the
-  # current id format. The map is the inverse of the `id_map` from
-  # {JobPlan.collect_jobs}: each old id goes to every new id that still hashes
-  # to it, in collection order. The map covers only the configured operators
-  # and the sources on the command line. Ids are static hashes, so this runs
-  # no tests.
+  # current id format. The map is the inverse of the `id_map` and
+  # `dropped_id_map` from {JobPlan.collect_jobs}: each old id goes to every new
+  # id that still hashes to it, in collection order. A dropped repeat of an
+  # edit is not reported, but its id is still current (#275). The map covers
+  # only the configured operators and the sources on the command line. Ids are
+  # static hashes, so this runs no tests.
   #
   # The file is edited as text. A YAML load and dump would drop comments and
   # reorder keys. Only a bare id inside `ignore:` is replaced. A flow list may
@@ -42,12 +43,13 @@ module Mutineer
     def self.id_maps(config)
       names = config.operators || MutatorRegistry::DEFAULT_NAMES
       _jobs, _ignored, _source_map, extras = JobPlan.collect_jobs(config, MutatorRegistry.resolve(names))
+      all = extras[:id_map].merge(extras[:dropped_id_map])
       old_to_new = {}
-      extras[:id_map].each do |new_id, old_id|
+      all.each do |new_id, old_id|
         list = (old_to_new[old_id] ||= [])
         list << new_id unless list.include?(new_id)
       end
-      [extras[:id_map].keys.to_set, old_to_new]
+      [all.keys.to_set, old_to_new]
     end
 
     # Rewrites `ignore:` ids in `text`. An id that is already a current new id

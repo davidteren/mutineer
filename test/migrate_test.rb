@@ -32,6 +32,25 @@ class MigrateTest < Minitest::Test
     assert_equal found, old_to_new.size
   end
 
+  # #275: literal_mutation and string_literal both turn "hi" into "", so the
+  # string_literal copy is dropped. Its id stays current, so migrate keeps an
+  # ignore entry for it and maps its old-format id to it.
+  def test_a_dropped_copy_id_is_still_current
+    Dir.mktmpdir("mutineer-migrate") do |root|
+      path = File.join(root, "str.rb")
+      File.write(path, "class Str\n  def a\n    \"hi\"\n  end\nend\n")
+      only = Mutineer::Config.new(sources: [path], project_root: root)
+      extras = Mutineer::JobPlan.collect_jobs(only, Mutineer::MutatorRegistry.resolve(%w[string_literal])).last
+      new_id, old_id = extras[:id_map].first
+      config = Mutineer::Config.new(sources: [path], project_root: root,
+                                    operators: %w[literal_mutation string_literal])
+      current, old_to_new = Mutineer::Migrate.id_maps(config)
+      assert_includes current, new_id
+      assert_equal [new_id], old_to_new[old_id]
+      assert_empty Mutineer::Migrate.rewrite("ignore:\n  - #{new_id}\n", current, old_to_new).unmapped
+    end
+  end
+
   # The collision fixed in #126: one old id, two files, both new ids.
   def test_an_old_id_shared_by_two_files_maps_to_both_new_ids
     Dir.mktmpdir("mutineer-migrate") do |root|
