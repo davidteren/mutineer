@@ -16,9 +16,10 @@ module Mutineer
     #   have run the position: when it is in code that runs only sometimes
     #   when the statement runs (the right side of `a && b`, a branch, the body
     #   of `x if c`, #254), and with a first or last line that holds other code
-    #   (the opener of a one-line block, #289). Every test that ran the
-    #   position is then among the tests of these lines. The `def` line is
-    #   never given, because it counts when the file loads.
+    #   (the opener of a one-line block, #289). The `def` line is never
+    #   given, because it counts when the file loads. So every test that ran
+    #   the position is among the tests of these lines, unless the statement
+    #   starts on the `def` line.
     # @return [Array<Integer>] the lines of the statement, with the body of each
     #   heredoc in it. Empty when no statement in the body holds the position.
     #   Unless `loose`, a first or last line that holds other code is left out,

@@ -11,8 +11,9 @@ module Mutineer
   #                  Also a mutant on a later line of a multi-line statement,
   #                  in code that runs only sometimes, that the statement's
   #                  tests ran but did not kill (#254): they may not reach it.
-  #                  Also a mutant on a later line of a call inside a one-line
-  #                  block that the opener's tests ran but did not kill (#289).
+  #                  Also a mutant on a later line of a statement whose first
+  #                  or last line holds other code (a call inside a one-line
+  #                  block), that the tests of that line did not kill (#289).
   #   uncapturable - the line's would-be covering test errored during capture,
   #                  so coverage was lost. Excluded from the denominator exactly
   #                  like no_coverage, but reported separately: it signals a
