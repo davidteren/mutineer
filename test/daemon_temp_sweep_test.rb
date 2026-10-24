@@ -125,6 +125,30 @@ class DaemonTempSweepTest < Minitest::Test
     end
   end
 
+  # A legacy file's creator may be gone even when its pid has been reused.
+  # Current dotted files still use that pid to protect the pre-lock window.
+  def test_both_sweeps_remove_legacy_files_with_reused_pids
+    Dir.mktmpdir do |dir|
+      legacy = %w[daemon mutant].map { |mode| File.join(dir, "mutineer_#{mode}20200101-#{Process.pid}-old.rb") }
+      current = %w[daemon mutant].map { |mode| File.join(dir, ".mutineer_#{mode}20200101-#{Process.pid}-live.rb") }
+      Mutineer::DaemonServer.instance_variable_set(:@source_dirs, [dir])
+
+      %i[tool daemon].each do |mode|
+        (legacy + current).each { |path| File.write(path, "") }
+        if mode == :tool
+          Mutineer::JobPlan.sweep_orphans([dir])
+        else
+          Mutineer::DaemonServer.send(:sweep_temps)
+        end
+
+        legacy.each { |path| refute_path_exists path, "#{mode} sweep must not trust a legacy pid" }
+        current.each { |path| assert_path_exists path, "#{mode} sweep must keep a current live owner's file" }
+      end
+    end
+  ensure
+    Mutineer::DaemonServer.instance_variable_set(:@source_dirs, nil)
+  end
+
   # #250: where pid 1 does not reap orphans (a container without init), a
   # killed mutant child stays a zombie. It owns nothing, so its file goes.
   def test_sweep_removes_a_file_whose_owner_is_a_zombie
@@ -135,7 +159,7 @@ class DaemonTempSweepTest < Minitest::Test
     sleep 0.01 until File.read("/proc/#{zombie}/stat").split(") ").last.start_with?("Z") ||
                      Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
     Dir.mktmpdir do |dir|
-      path = File.join(dir, "mutineer_daemon20200101-#{zombie}-zombie.rb")
+      path = File.join(dir, ".mutineer_daemon20200101-#{zombie}-zombie.rb")
       File.write(path, "module ZombieOwned; end\n")
 
       assert_empty Mutineer::JobPlan.sweep_orphans([dir], Mutineer::DaemonBackend::DAEMON_TEMP_GLOB)

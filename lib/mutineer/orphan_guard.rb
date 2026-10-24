@@ -13,10 +13,10 @@ module Mutineer
     # `Tempfile.create([".mutineer_daemon", ".rb"])` names the file
     # `.mutineer_daemon<YYYYMMDD>-<pid>-<rand>.rb` (without the dot before #253).
     # An in-process `.mutineer_mutant` file has the same shape (#295). The pid
-    # is the child that is loading the mutant. An undotted mutant name is a
-    # leftover of a version before 1.7.0, which took no lock, so its pid is not
-    # read: a reused pid must not keep a file that stops the next boot.
-    TEMP_PID = /\A(?:\.?mutineer_daemon|\.mutineer_mutant)\d{8}-(\d+)-/
+    # is the child that is loading the mutant. An undotted name is a leftover
+    # of a version before 1.7.0, so its pid is not read: a reused pid must not
+    # keep a file that stops the next boot. A held file lock still protects it.
+    TEMP_PID = /\A\.mutineer_(?:daemon|mutant)\d{8}-(\d+)-/
     # Basename glob for the mutant files of both modes. Tempfile puts hyphens in
     # the name, so it is not a constant name. The leading dot hides a new file
     # from Zeitwerk (#253); a file an older version left behind has none, so the
