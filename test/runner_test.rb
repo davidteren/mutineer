@@ -280,6 +280,33 @@ class RunnerTest < Minitest::Test
     assert_equal :no_coverage, selection(source, "false", {}, load_lines: [2])[1].status
   end
 
+  # #289: when the strict lines give no tests, the tests of the statement's
+  # first or last line run as :maybe. A strict hit still wins as :run.
+  def test_coverage_selection_retries_with_the_edge_lines_as_maybe
+    source = "def f(users)\n  users.map { |u| format(\"%s %s\",\n    u + 1,\n    u - 1) }\nend\n"
+
+    assert_equal [:maybe, ["/root/t_test.rb"]], selection(source, "u + 1", { 2 => ["t_test.rb"] })
+    assert_equal [:run, ["/root/t_test.rb"]],
+                 selection(source, "u - 1", { 2 => ["a_test.rb"], 3 => ["t_test.rb"] })
+  end
+
+  # #289: a mutant whose strict lines ran at load runs the tests of an edge
+  # line as :maybe, so a kill counts and a survivor stays ran_at_load.
+  def test_coverage_selection_runs_a_load_time_mutant_with_an_edge_line_test_as_maybe
+    source = "def f(xs)\n  x = 1; y = xs.map { |v|\n    v }.size + 1\nend\n"
+
+    assert_equal [:maybe, ["/root/t_test.rb"]], selection(source, "+ 1", { 2 => ["t_test.rb"] }, load_lines: [3])
+  end
+
+  # #289: a #254 :maybe selection also gets the tests of a first line that it
+  # shares with other code.
+  def test_coverage_selection_adds_the_shared_first_line_to_a_maybe_selection
+    source = "def f(p, q)\n  return if p.nil?; g(p &&\n    qq)\nend\n"
+
+    assert_equal [:maybe, ["/root/t_test.rb"]], selection(source, "qq", { 2 => ["t_test.rb"] })
+    assert_equal :no_coverage, selection(source, "qq", {})[1].status
+  end
+
   # #254: under redefine, a mutant whose owner cannot be named is unplaceable; a
   # :maybe one stays no_coverage, as it was before #254.
   def test_an_unplaceable_maybe_mutant_stays_no_coverage

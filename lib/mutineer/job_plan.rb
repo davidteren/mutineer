@@ -152,11 +152,14 @@ module Mutineer
     # order of {CoverageMap#order_tests} (paired files, then cheapest), or
     # `[:verdict, Result]` (no_coverage / uncapturable) when none do. A line
     # Ruby does not count (a later line of a multi-line statement) uses the
-    # tests that ran the statement that holds it ({StatementLines}). When the
-    # mutant sits in code of that statement that runs only sometimes (the right
-    # side of a multi-line `a && b`), those tests may not have run it, so the
-    # answer is `[:maybe, abs_test_paths]` and {selection_verdict} treats a
-    # survivor as no_coverage (#254).
+    # tests that ran the statement that holds it ({StatementLines}). When those
+    # lines give no tests, it retries with the loose lines of the statement:
+    # code of the statement that runs only sometimes (the right side of a
+    # multi-line `a && b`, #254), and a first or last line that holds other
+    # code (the opener of a one-line block, #289), but never the `def` line.
+    # Those tests may not have run the mutant, so the answer is
+    # `[:maybe, abs_test_paths]` and {selection_verdict} treats a survivor as
+    # no_coverage.
     #
     # An empty selection is `:ran_at_load` when the mutant's line ran while the
     # app booted or its class loaded ({ran_at_load?}): no test ran it, but the
@@ -182,11 +185,12 @@ module Mutineer
       if chosen.empty? && subject
         # A multi-line statement has a count on one of its lines only.
         lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
-        if lines.empty?
+        chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq
+        if chosen.empty?
           lines = StatementLines.for(subject.def_node, source, mutation.start_offset, loose: true)
+          chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq
           kind = :maybe
         end
-        chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq
       end
       if chosen.empty?
         # Method BODY range, not the whole def: the def/end lines are "covered" at
