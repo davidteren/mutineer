@@ -226,14 +226,16 @@ module Mutineer
     # Checks the unrounded score against a threshold. `mutation_score` is
     # rounded for display, so 1999 of 2000 killed reads 100.0; a gate that
     # compared it would pass `--threshold 100` with a survivor. The comparison
-    # is exact: integer counts against the threshold as a rational, so a float
-    # product such as `64.4 * 250` cannot tip a run at the boundary.
+    # is exact: integer counts against the threshold as the decimal it prints
+    # as, so a float product such as `64.4 * 250` cannot tip a run at the
+    # boundary. `to_s.to_r` keeps that decimal; `rationalize` could round a
+    # long threshold such as 66.66666666666667 down to 200/3.
     #
     # @param threshold [Numeric] threshold percentage.
     # @return [Boolean] true when killed / covered * 100 >= threshold; false
     #   when nothing was covered.
     def meets_threshold?(threshold)
-      covered_count.positive? && killed_count * 100 >= threshold.rationalize * covered_count
+      covered_count.positive? && killed_count * 100 >= threshold.to_s.to_r * covered_count
     end
 
     # Returns the surviving mutants.

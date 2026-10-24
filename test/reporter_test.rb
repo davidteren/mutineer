@@ -83,7 +83,8 @@ class ReporterTest < Minitest::Test
       [1999, 1, 100.0] => 1, # shows 100.0
       [1599, 400, 80.0] => 1, # shows 80.0
       [57, 43, 57.0] => 0, # 57.0 / 100 * 100 is 56.99999999999999 as a float
-      [161, 89, 64.4] => 0 # 64.4 * 250 is 16100.000000000002 as a float
+      [161, 89, 64.4] => 0, # 64.4 * 250 is 16100.000000000002 as a float
+      [2, 1, 66.66666666666667] => 1 # rationalize would read this as 200/3
     }.each do |(killed, survived, threshold), expected|
       r = reporter(Array.new(killed) { Mutineer::Result.killed } + Array.new(survived) { Mutineer::Result.survived })
 
