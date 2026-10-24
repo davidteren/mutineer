@@ -34,11 +34,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **`--daemon` on SQLite now fails a mutant with `error` when a connection
+- **Breaking: `--daemon` on SQLite now fails a mutant with `error` when a connection
   cannot be copied per worker** (#332). Before, the fork reconnected
   `ActiveRecord::Base` to a worker file whatever its config. Now Mutineer
   copies only databases in `config/database.yml`. A connection from an inline
-  `establish_connection` hash, or a primary given as a `file:` URI, scores
+  `establish_connection` hash, or any SQLite pool given as a `file:` URI, scores
   every mutant `error`, even with one worker. Move that database into
   `config/database.yml` as a plain file path.
 - Explain mutation testing before setup, with a runnable beginner guide and a

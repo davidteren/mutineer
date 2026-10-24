@@ -533,8 +533,8 @@ module Mutineer
     # config's own file (`db/<name>_schema.rb` by default) and skips a config
     # with no file. Shared base files are never loaded. No purge: the schema
     # loads over the copy, so tables a --require file wrote at boot survive
-    # (#222). Rails 7.0 has no temporary
-    # pool helper, so there the copy is used as it is.
+    # (#222). Rails 7.1 names its helper for connections, not pools. Older
+    # versions with neither helper use the copy as it is.
     #
     # @param primary [ActiveRecord::DatabaseConfigurations::DatabaseConfig] the
     #   config `ActiveRecord::Base` uses. {load_schema} covers it.
@@ -542,13 +542,14 @@ module Mutineer
     # @return [void]
     def self.load_other_schemas(primary, routed:)
       tasks = ActiveRecord::Tasks::DatabaseTasks
-      return unless tasks.respond_to?(:with_temporary_pool_for_each)
+      helper = %i[with_temporary_pool_for_each with_temporary_connection_for_each].find { |name| tasks.respond_to?(name) }
+      return unless helper
 
       test_configs.each do |config|
         next if config.equal?(primary) || config.replica? || !config.database_tasks? || !sqlite_file_config?(config)
         next unless routed.include?(sqlite_file(config))
 
-        tasks.with_temporary_pool_for_each(env: config.env_name, name: config.name) do
+        tasks.public_send(helper, env: config.env_name, name: config.name) do
           tasks.load_schema(config) unless tasks.schema_up_to_date?(config)
         end
       end
@@ -567,8 +568,13 @@ module Mutineer
     # @return [void]
     # @raise [RuntimeError] when a pool points at a file that is neither.
     def self.verify_routing!(routed, kept)
-      ActiveRecord::Base.connection_handler.connection_pool_list(nil).each do |pool|
+      role = ActiveRecord.version < Gem::Version.new("7.1") ? nil : :all
+      ActiveRecord::Base.connection_handler.connection_pool_list(role).each do |pool|
         config = pool.db_config
+        if sqlite_adapter?(config.adapter.to_s) && config.database.to_s.start_with?("file:")
+          raise "#{config.name} uses a SQLite file: URI, which cannot be copied per worker. " \
+                "Use a plain database file path in config/database.yml."
+        end
         next unless sqlite_file_config?(config)
 
         file = sqlite_file(config)
@@ -683,6 +689,13 @@ module Mutineer
     # @return [Array<String>]
     def self.touched_shared_databases(shared)
       return [] if shared.empty? || !available?
+
+      copied = Array(@routing&.first).map { |file| database_file_identity(file) }
+      configs = test_configs.select { |config| shared.include?(config.name) && config.database }
+      configs.reject! { |config| sqlite_file_config?(config) && copied.include?(database_file_identity(sqlite_file(config))) }
+      shared_names = configs.map(&:name)
+      return [] if shared_names.empty?
+
       # Rails 7.0 reads `:all` below as a role name and lists no pool, so the
       # check would always pass. Fail every mutant instead of trusting it.
       raise "shared_databases needs Rails 7.1 or later" if ActiveRecord.version < Gem::Version.new("7.1")
@@ -691,11 +704,11 @@ module Mutineer
         sqlite_file_config?(config) ? database_file_identity(sqlite_file(config)) : config.database
       end
       by_database = {}
-      test_configs.each { |c| by_database[database_key.call(c)] = c.name if shared.include?(c.name) && c.database }
+      configs.each { |config| by_database[database_key.call(config)] = config.name }
       pools = ActiveRecord::Base.connection_handler.connection_pool_list(:all).select(&:connected?)
       names = pools.map do |pool|
         config = pool.db_config
-        shared.include?(config.name) ? config.name : by_database[database_key.call(config)]
+        shared_names.include?(config.name) ? config.name : by_database[database_key.call(config)]
       end
       names.compact.uniq
     end

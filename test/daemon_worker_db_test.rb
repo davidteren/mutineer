@@ -249,13 +249,25 @@ class DaemonWorkerDbTest < Minitest::Test
   # The check after tests must catch an inline pool opened by the test file,
   # after the worker's initial routing check has already passed.
   def test_an_inline_pool_opened_during_tests_scores_error
+    assert_late_inline_pool_error
+  end
+
+  def test_an_inline_uri_pool_opened_during_tests_scores_error
+    assert_late_inline_pool_error(uri: true)
+  end
+
+  def assert_late_inline_pool_error(uri: false)
     Dir.mktmpdir do |dir|
       test = File.join(dir, "late_inline_test.rb")
+      database = File.join(dir, "inline.sqlite3")
+      database = "file:#{database}" if uri
+      flags = uri ? ", flags: SQLite3::Constants::Open::READWRITE | SQLite3::Constants::Open::CREATE | SQLite3::Constants::Open::URI" : ""
       File.write(test, <<~RUBY)
         require #{File.join(APP, "test/test_helper.rb").inspect}
+        require "sqlite3"
         class LateInlineRecord < ActiveRecord::Base
           self.abstract_class = true
-          establish_connection(adapter: "sqlite3", database: #{File.join(dir, "inline.sqlite3").inspect})
+          establish_connection(adapter: "sqlite3", database: #{database.inspect}#{flags})
         end
         class LateInlineTest < ActiveSupport::TestCase
           self.use_transactional_tests = false
@@ -298,6 +310,14 @@ class DaemonWorkerDbTest < Minitest::Test
       config = ActiveRecord::Base.configurations.configs_for(env_name: "test", name: "extra")
       tasks.with_temporary_pool_for_each(env: "test", name: "extra") { tasks.load_schema(config) }
       SQLite3::Database.new(extra) { |db| db.execute("INSERT INTO extra_notes (body) VALUES ('boot row')") }
+      if ENV["MUTINEER_TEST_LEGACY_SCHEMA_HELPER"] == "1"
+        File.delete(extra)
+        pool_helper = tasks.method(:with_temporary_pool_for_each)
+        tasks.define_singleton_method(:with_temporary_connection_for_each) do |**options, &block|
+          pool_helper.call(**options) { |pool| block.call(pool.connection) }
+        end
+        tasks.singleton_class.send(:undef_method, :with_temporary_pool_for_each)
+      end
       [0, 1].each do |worker|
         connect.call
         ActiveRecord::Base.connection_pool.disconnect!
@@ -317,6 +337,16 @@ class DaemonWorkerDbTest < Minitest::Test
     assert status.success?, out
     assert_includes out, "extra_worker_0=1"
     assert_includes out, "extra_worker_1=1"
+  end
+
+  def test_the_legacy_schema_helper_loads_an_absent_second_database
+    env = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+    env["MUTINEER_TEST_LEGACY_SCHEMA_HELPER"] = "1"
+    out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", EXTRA_SCHEMA_CHECK,
+                                  chdir: APP, unsetenv_others: true)
+    assert status.success?, out
+    assert_includes out, "extra_worker_0=0"
+    assert_includes out, "extra_worker_1=0"
   end
 
   def test_verdicts_are_correct_across_distinct_worker_dbs

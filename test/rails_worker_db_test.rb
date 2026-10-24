@@ -610,12 +610,22 @@ class RailsWorkerDbTest < Minitest::Test
     shared = pool.new(SqliteConfig.new("queue", "/app/queue.sqlite3", "sqlite3"), 0)
     inline = pool.new(SqliteConfig.new("primary", "/tmp/inline.sqlite3", "sqlite3"), 0)
     pools = [routed, shared]
+    version = Gem::Version.new("7.0.8")
     handler = Object.new
-    # Rails 7.0 enumerates every role with nil, but treats :all as a role name.
-    handler.define_singleton_method(:connection_pool_list) { |role| role.nil? ? pools : [] }
+    handler.define_singleton_method(:connection_pool_list) do |role|
+      if version < Gem::Version.new("7.1")
+        role.nil? ? pools : []
+      elsif version < Gem::Version.new("7.2")
+        role == :all ? pools : [routed]
+      else
+        role.nil? || role == :all ? pools : []
+      end
+    end
     base = Class.new
     base.define_singleton_method(:connection_handler) { handler }
-    Object.const_set(:ActiveRecord, Module.new.tap { |m| m.const_set(:Base, base) })
+    active_record = Module.new.tap { |m| m.const_set(:Base, base) }
+    active_record.define_singleton_method(:version) { version }
+    Object.const_set(:ActiveRecord, active_record)
     db = Mutineer::RailsWorkerDb
 
     File.stub(:identical?, ->(a, b) { a == b }) do
@@ -631,6 +641,16 @@ class RailsWorkerDbTest < Minitest::Test
       pools << inline
       error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
       assert_includes error.message, "primary still uses /tmp/inline.sqlite3, which every worker shares."
+
+      %w[7.1.5.1 7.2.3].each do |release|
+        version = Gem::Version.new(release)
+        error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
+        assert_includes error.message, "primary still uses /tmp/inline.sqlite3"
+      end
+
+      pools.replace([routed, shared, pool.new(SqliteConfig.new("inline", "file:/tmp/inline.sqlite3", "sqlite3"), 0)])
+      error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
+      assert_includes error.message, "SQLite file: URI"
     end
   ensure
     Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
@@ -640,6 +660,8 @@ class RailsWorkerDbTest < Minitest::Test
   # The tripwire reads the live pools: a connected pool on a shared database
   # is a use, under its own name or as a replica of it. An idle pool is not.
   def test_touched_shared_databases_names_connected_shared_pools_only
+    db = Mutineer::RailsWorkerDb
+    saved_routing = db.instance_variable_get(:@routing)
     saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
     config = Struct.new(:name, :database, :adapter)
     pool = Struct.new(:db_config, :connected) do
@@ -649,11 +671,12 @@ class RailsWorkerDbTest < Minitest::Test
     queue = config.new("queue", "storage/queue.sqlite3", "sqlite3")
     replica = config.new("queue_replica", "storage/queue.sqlite3", "sqlite3")
     primary = config.new("primary", "storage/test.sqlite3", "sqlite3")
+    primary_alias = config.new("cache", primary.database, "sqlite3")
     pools = [pool.new(primary, true), pool.new(cable, true), pool.new(queue, false), pool.new(cable, true)]
     handler = Object.new
     handler.define_singleton_method(:connection_pool_list) { |role| role == :all ? pools : [] }
     configs = Object.new
-    configs.define_singleton_method(:configs_for) { |env_name:, include_hidden:| [primary, cable, queue, replica] }
+    configs.define_singleton_method(:configs_for) { |env_name:, include_hidden:| [primary, cable, queue, replica, primary_alias] }
     base = Class.new
     base.define_singleton_method(:connection_handler) { handler }
     base.define_singleton_method(:configurations) { configs }
@@ -662,7 +685,6 @@ class RailsWorkerDbTest < Minitest::Test
     active_record.define_singleton_method(:version) { version }
     Object.const_set(:ActiveRecord, active_record)
 
-    db = Mutineer::RailsWorkerDb
     assert_equal %w[cable], db.touched_shared_databases(%w[cable queue])
     assert_empty db.touched_shared_databases(%w[queue])
     assert_empty db.touched_shared_databases([])
@@ -673,11 +695,15 @@ class RailsWorkerDbTest < Minitest::Test
     replica.database = File.expand_path(queue.database)
     assert_equal %w[queue], db.touched_shared_databases(%w[queue]), "absolute and relative paths name the same shared file"
 
+    db.instance_variable_set(:@routing, [[File.expand_path(primary.database)], []])
+    assert_empty db.touched_shared_databases(%w[cache]), "a copied primary alias is not shared"
+
     # Rails 7.0 lists no pool for :all, so a pass there would be a false clean.
     version = Gem::Version.new("7.0.8")
     error = assert_raises(RuntimeError) { db.touched_shared_databases(%w[cable]) }
     assert_equal "shared_databases needs Rails 7.1 or later", error.message
   ensure
+    db.instance_variable_set(:@routing, saved_routing)
     Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
     Object.const_set(:ActiveRecord, saved) if saved
   end

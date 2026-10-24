@@ -124,6 +124,7 @@ class DaemonBackendContractTest < Minitest::Test
     assert_equal 1, count
     assert_includes err, "each worker copies only primary; this app also has cable. Mutineer runs one worker."
     assert_includes err, "under shared_databases: cable."
+    assert_includes err, "SQLite file databases on Rails 7.1 or later"
   end
 
   # On SQLite each worker copies every file database, so nothing is left to
