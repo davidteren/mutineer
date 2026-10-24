@@ -173,6 +173,8 @@ module Mutineer
           uncapturable: @agg.uncapturable_count,
           unplaceable: @agg.unplaceable_count,
           ran_at_load: @agg.ran_at_load_count,
+          # Additive (1.9, #286): ran_at_load mutants whose covering tests ran and passed.
+          ran_at_load_tested: @agg.ran_at_load_tested_count,
           skipped_invalid: @agg.skipped_invalid_count,
           errored: @agg.errored_count, timeout: @agg.timeout_count,
           ignored: @agg.ignored_count,
@@ -204,7 +206,8 @@ module Mutineer
         unplaceable: @agg.results.select(&:unplaceable?).map { |r| mutant_json(r) }
                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Additive (1.7, #187): mutants on a line that ran at load. Not in no_verdict.
-        ran_at_load: @agg.results.select(&:ran_at_load?).map { |r| mutant_json(r) }
+        # `tested` (1.9, #286): its covering tests ran and passed.
+        ran_at_load: @agg.results.select(&:ran_at_load?).map { |r| mutant_json(r).merge(tested: r.tested_at_load?) }
                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Every mutant that was attempted and produced no verdict, whatever the
         # reason — the set the --threshold completeness gate counts. Named for the
@@ -301,7 +304,8 @@ module Mutineer
         "total" => @agg.total, "killed" => @agg.killed_count,
         "survived" => @agg.survived_count, "no_coverage" => @agg.no_coverage_count,
         "uncapturable" => @agg.uncapturable_count, "unplaceable" => @agg.unplaceable_count,
-        "ran_at_load" => @agg.ran_at_load_count, "ignored" => @agg.ignored_count,
+        "ran_at_load" => @agg.ran_at_load_count, "ran_at_load_tested" => @agg.ran_at_load_tested_count,
+        "ignored" => @agg.ignored_count,
         "skipped" => @agg.skipped_invalid_count,
         "errored" => @agg.errored_count, "timeout" => @agg.timeout_count
       }
@@ -757,6 +761,11 @@ module Mutineer
       # Not a verdict: the line ran before the mutant was applied (#187).
       out.puts format("Ran at load:  %-6d  (ran while the app or class loaded; mutineer cannot re-run that; " \
                       "verify with --test-command)", @agg.ran_at_load_count)
+      tested = @agg.ran_at_load_tested_count
+      if tested.positive?
+        out.puts "              of which #{tested} ran in their covering tests and passed " \
+                 "(may hide a test gap; not in the score)"
+      end
       # Equivalent mutants the user suppressed; excluded from the denominator.
       out.puts format("Ignored:      %-6d  (equivalent, suppressed)", @agg.ignored_count)
     end

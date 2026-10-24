@@ -140,4 +140,11 @@ class ResultTest < Minitest::Test
     refute_predicate agg, :incomplete?
   end
 
+  def test_tested_at_load_defaults_to_false
+    refute_predicate Mutineer::Result.ran_at_load, :tested_at_load?
+    tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true)
+    assert_predicate tested, :tested_at_load?
+    agg = Mutineer::AggregateResult.new([tested, Mutineer::Result.ran_at_load])
+    assert_equal 1, agg.ran_at_load_tested_count
+  end
 end

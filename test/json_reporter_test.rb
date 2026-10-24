@@ -357,6 +357,18 @@ class JsonReporterTest < Minitest::Test
     assert_equal [], doc["no_verdict"]
   end
 
+  # #286: a ran_at_load mutant whose covering tests ran and passed is counted
+  # and marked, so a reader can see survivors that ran_at_load hides.
+  def test_ran_at_load_entries_say_which_ran_in_their_tests
+    tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true, subject: subject,
+                                            id: "aaa111", mutation: mutation_at(">=", ">", :comparison))
+    plain = Mutineer::Result.ran_at_load.with(subject: subject, id: "bbb222",
+                                              mutation: mutation_at("100", "0", :literal_mutation))
+    doc = render([Mutineer::Result.killed, plain, tested])
+    assert_equal [2, 1], doc["summary"].values_at("ran_at_load", "ran_at_load_tested")
+    assert_equal [["aaa111", true], ["bbb222", false]], doc["ran_at_load"].map { |h| h.values_at("id", "tested") }
+  end
+
   # #11: additive per_source array, sorted by file, with per-file counts + score.
   def test_per_source_array_sorted_with_scores
     other = Mutineer::Subject.new(file: "z.rb", namespace: ["Z"], name: :m,
