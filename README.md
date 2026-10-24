@@ -686,10 +686,12 @@ with `fail_fast: true` in the file, pass `--no-fail-fast`.
 ## CI gating
 
 Store a JSON run as a baseline, then fail the build only when a PR makes things
-worse:
+worse. Keep `only:` unset for these full-baseline checks. Create and refresh the
+saved report with the [full-run baseline recipe](https://davidteren.github.io/mutineer/agentic-coding.html#ci-gate),
+using the same sources, test files and operators as the gate:
 
 ```sh
-mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
+mutineer run app/ --no-since --no-fail-fast --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
 ```
 
 `--baseline` reports which survivors are new (by [mutant id](https://github.com/davidteren/mutineer#mutant-ids)) and any score drop. It
@@ -714,6 +716,7 @@ This repo ships a composite action (`action.yml`) that wraps the CLI for CI:
   with:
     sources: app/
     baseline: .mutineer/baseline.json
+    extra-args: "--no-fail-fast"
     threshold: "90"
 ```
 

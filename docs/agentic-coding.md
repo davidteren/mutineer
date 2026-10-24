@@ -58,9 +58,10 @@ in **Avoiding infinite loops** below.
 
 Save a full JSON report from the default branch as a baseline. Compare pull
 requests with that report to catch new survivors while you improve existing tests.
-For both the first baseline and each refresh, temporarily remove `baseline:` and `only:`
-from `.mutineer.yml` before this command. Keep the source, test, and operator settings.
-The refresh must describe main without comparing it with the old baseline.
+For this workflow, leave `baseline:` and `only:` unset in `.mutineer.yml`.
+Pass the baseline only in the pull request command or Action input. This keeps
+refreshes independent of the old report and prevents a hidden subject filter.
+Keep the source, test, and operator settings the same in both runs.
 The examples use `app/` and the default cache directory, `.mutineer`. Use the
 same sources, explicit test files, and operators as your CI gate. If `cache_dir`
 is different, replace `.mutineer` in every example path with that directory:
@@ -83,11 +84,11 @@ saved baseline:
 cp .mutineer/baseline-candidate.json .mutineer/baseline.json
 ```
 
-Restore any `baseline:` and `only:` settings after the saved report is in place. On a pull
-request, compare against that file:
+Leave `only:` unset throughout these checks. On a pull request, compare against
+the saved file:
 
 ```sh
-mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json
+mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --no-fail-fast --format json
 ```
 
 `--baseline` exits `1` if it finds a new survivor or a lower score.
@@ -101,7 +102,7 @@ code changes too. A scoped check cannot detect weaker tests for unchanged source
 lines. Compare the PR's full run with the full baseline:
 
 ```sh
-mutineer run app/ --no-since --baseline .mutineer/baseline.json --format json
+mutineer run app/ --no-since --baseline .mutineer/baseline.json --no-fail-fast --format json
 ```
 
 Keep a full scan on the default branch to refresh the baseline. That scan does
@@ -132,6 +133,7 @@ jobs:
           sources: app/
           since: none
           baseline: .mutineer/baseline.json
+          extra-args: "--no-fail-fast"
           threshold: "90"
           output: .mutineer/pr.json
       - uses: actions/upload-artifact@v4
@@ -153,6 +155,7 @@ For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the 
           sources: app/models/order.rb
           rails: true
           use-bundler: true
+          extra-args: "--no-fail-fast"
           since: none
 ```
 
