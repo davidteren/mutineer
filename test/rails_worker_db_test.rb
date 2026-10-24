@@ -423,14 +423,21 @@ class RailsWorkerDbTest < Minitest::Test
     error = nil
     _out, err = capture_io { error = provision_mysql_against(VersionMysql.new("10.11.6-MariaDB")) }
     assert_equal "another Mutineer run is using app_test", error.message
-    assert_equal 1, err.scan("10.11.6-MariaDB is not tested with --daemon").size
+    assert_equal 1, err.scan("server version 10.11.6-MariaDB is not tested with --daemon").size
   end
 
   def test_provision_mysql_warns_when_the_version_query_fails
     error = nil
     _out, err = capture_io { error = provision_mysql_against(VersionMysql.new(RuntimeError.new("boom"))) }
     assert_equal "another Mutineer run is using app_test", error.message
-    assert_equal 1, err.scan("could not read the MySQL server version (got nothing)").size
+    assert_equal 1, err.scan("could not read the MySQL server version (got an error: RuntimeError: boom)").size
+  end
+
+  def test_provision_mysql_hides_a_password_in_the_version_query_error
+    failure = RuntimeError.new("bad url mysql2://app:s3cret@db/app_test")
+    _out, err = capture_io { provision_mysql_against(VersionMysql.new(failure)) }
+    assert_includes err, "mysql2://app:[REDACTED]@db/app_test"
+    refute_includes err, "s3cret"
   end
 
   def test_provision_mysql_accepts_mysql_8_without_a_warning

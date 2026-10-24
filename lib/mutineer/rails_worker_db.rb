@@ -2,6 +2,7 @@
 
 require "digest"
 require "uri"
+require_relative "redaction"
 
 module Mutineer
   # Per-worker database isolation for the daemon path.
@@ -888,14 +889,17 @@ module Mutineer
     end
 
     # Read the server version and print a warning when the matrix does not
-    # test it. Does not close `conn` or raise: the caller does both.
+    # test it. Does not close `conn` or raise: the caller does both. A failed
+    # version query only warns, with its cause and credentials hidden.
     #
     # @param conn [Mysql2::Client, Trilogy]
     # @return [String, nil] the refusal text for MySQL older than 8.0, else nil.
     def self.check_mysql_server(conn)
+      failure = nil
       version = begin
         mysql_rows(conn, "SELECT VERSION() AS version").first&.fetch("version", nil)
-      rescue StandardError
+      rescue StandardError => e
+        failure = Redaction.text("#{e.class}: #{e.message.lines.first.to_s.strip}")
         nil
       end
 
@@ -904,11 +908,17 @@ module Mutineer
         "MySQL #{version} is not supported. --daemon needs MySQL 8.0 or later. " \
           "Pass --no-daemon (or daemon: false) to stay serial."
       when :not_tested
-        warn "[mutineer] #{version} is not tested with --daemon. The run continues. " \
-             "If a result looks wrong, pass --no-daemon."
+        warn "[mutineer] server version #{version} is not tested with --daemon. " \
+             "The run continues. If a result looks wrong, pass --no-daemon."
         nil
       when :unreadable
-        shown = version.to_s.empty? ? "nothing" : "\"#{version}\""
+        shown = if failure
+                  "an error: #{failure}"
+                elsif version.to_s.empty?
+                  "nothing"
+                else
+                  "\"#{version}\""
+                end
         warn "[mutineer] could not read the MySQL server version (got #{shown}). " \
              "The run continues. --daemon is tested on MySQL 8."
         nil
