@@ -386,7 +386,7 @@ module Mutineer
       validate_since!(config) if config.since
       preflight_output!(config.output, config) if config.output
       preflight_baseline!(config.baseline) if config.baseline
-      preflight_same_file!(config) if config.output && config.baseline
+      preflight_same_file!(config) if config.output && config.baseline && !config.dry_run
 
       # When --test is omitted, infer each source's test by convention. Autopair
       # also re-detects framework from inferred tests when --framework was not set.

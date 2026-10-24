@@ -1116,6 +1116,23 @@ class CliTest < Minitest::Test
     assert_includes err, "mutineer:"
   end
 
+  def test_dry_run_allows_output_same_file_as_baseline_without_writing_it
+    with_project do |proj|
+      baseline = File.join(proj, "base.json")
+      before = JSON.generate("schema_version" => "1.8", "survivors" => [])
+      File.write(baseline, before)
+      File.write(File.join(proj, ".mutineer.yml"), "baseline: base.json\n")
+
+      [[], ["--baseline", "base.json"]].each do |flags|
+        out, err, status = mutineer("run", "calculator.rb", "--dry-run",
+                                   "--output", "base.json", *flags, chdir: proj)
+        assert_equal 0, status.exitstatus, err
+        assert_includes out, "mutations (dry run, not executed)"
+        assert_equal before, File.read(baseline)
+      end
+    end
+  end
+
   # #281: --output naming the baseline file (directly or via a link) is a
   # usage error, so a failing run cannot replace its own baseline.
   def test_output_same_file_as_baseline_exits_two
