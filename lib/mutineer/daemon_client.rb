@@ -352,14 +352,8 @@ module Mutineer
           )
           # Drain daemon stderr to the tool's stderr so child/boot errors are visible,
           # redacted line by line (#288: the app's output goes through here too).
-          # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn;
-          # the rescue swallows the benign EBADF/IOError raised when close_io closes
-          # the pipe out from under an in-flight read.
-          @drain = Thread.new do # rubocop:disable ThreadSafety/NewThread
-            drain_stderr(@stderr)
-          rescue IOError, Errno::EBADF
-            nil
-          end
+          # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn.
+          @drain = Thread.new { drain_stderr(@stderr) } # rubocop:disable ThreadSafety/NewThread
 
           send_line(@boot)
           read_line(BOOT_TIMEOUT)
@@ -420,12 +414,18 @@ module Mutineer
 
     # Copy each line of the daemon's stderr to the tool's stderr, redacted.
     # A line is the unit the daemon and the app write, so a password is never
-    # split across two redaction calls.
+    # split across two redaction calls. The rescue swallows the benign
+    # EBADF/IOError raised when close_io closes the pipe out from under an
+    # in-flight read, and an EPIPE from a tool stderr that went away, so the
+    # thread never ends with an error that close_io's join would re-raise.
     #
     # @param io [IO] the daemon's stderr pipe.
-    # @return [void]
+    # @return [nil]
     def drain_stderr(io)
       io.each_line { |line| @errio.write(Redaction.text(line)) }
+      nil
+    rescue IOError, SystemCallError
+      nil
     end
 
     # Close the IPC pipes, stop the stderr-drain thread, and reap the daemon so a

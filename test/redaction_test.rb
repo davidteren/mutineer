@@ -108,6 +108,19 @@ class RedactionTest < Minitest::Test
     assert_equal "[message hidden: redaction failed]", text
   end
 
+  def test_hides_a_short_password_that_stands_alone
+    assert_equal "pw [REDACTED] rejected", redact("pw a rejected", "postgres://u:a@host/db")
+  end
+
+  # A percent-encoded password that decodes to invalid UTF-8 must not make
+  # every message the fail-closed placeholder.
+  def test_handles_a_password_that_decodes_to_invalid_utf8
+    url = "postgres://u:p%E4ss@host/db"
+
+    assert_equal "auth [REDACTED] failed", redact((+"auth p\xE4ss failed").force_encoding(Encoding::UTF_8), url)
+    assert_equal "unrelated text", redact("unrelated text", url)
+  end
+
   def test_still_hides_a_bare_password_token
     assert_equal "password [REDACTED] rejected", redact("password s3cret rejected", "postgres://u:s3cret@host/db")
   end

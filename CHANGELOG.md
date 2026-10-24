@@ -16,9 +16,9 @@ All notable changes to this project are documented here. The format is based on
 
 - **No `DATABASE_URL` password in load errors and other output (#288).**
   **Exit code change:** an `ArgumentError` or `SystemCallError` raised while
-  the boot file, a source file or a `--require` file loads now exits 1
+  the boot file, a source file or a `.mutineer.yml` `require:` file loads now exits 1
   (runtime error), not 2 (usage error). A load error in the tool process (an
-  in-process `--boot` or `--rails` run, a source file, or a `--require`
+  in-process `--boot` or `--rails` run, a source file, or a `require:`
   file) no longer prints the raw password or a backtrace. The run prints one
   `mutineer: cannot load <path>: ...` line and exits 1. `--verbose` adds a
   redacted backtrace and the redacted cause chain. CLI error messages, the

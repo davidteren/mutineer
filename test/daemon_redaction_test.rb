@@ -164,6 +164,35 @@ class DaemonRedactionTest < Minitest::Test
     refute_includes out, "s3cret"
   end
 
+  # A tool stderr that has gone away (EPIPE) ends the drain quietly, so
+  # close_io's join cannot re-raise the error mid-cleanup.
+  def test_daemon_stderr_drain_survives_a_broken_errio
+    errio = Object.new
+    def errio.write(*) = raise(Errno::EPIPE)
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe
+    wr.write("line\n")
+    wr.close
+
+    assert_nil client.send(:drain_stderr, rd)
+  ensure
+    rd&.close
+  end
+
+  def test_close_io_lets_the_drain_finish_a_last_partial_line
+    errio = StringIO.new
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe
+    client.instance_variable_set(:@stderr, rd)
+    client.instance_variable_set(:@drain, Thread.new { client.send(:drain_stderr, rd) })
+    wr.write("boot failed: #{BAD_URL}")
+    wr.close
+
+    client.send(:close_io)
+
+    assert_equal "boot failed: postgres://u:[REDACTED]@ho st/db", errio.string
+  end
+
   def test_daemon_stderr_drain_keeps_a_last_partial_line
     assert drain("first\ntail without newline").end_with?("tail without newline")
   end

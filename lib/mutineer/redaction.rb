@@ -119,7 +119,8 @@ module Mutineer
     # @return [Array<String>]
     def password_forms(raw)
       decoded = begin
-        URI.decode_www_form_component(raw.gsub("+", "%2B"))
+        # Decoding can yield invalid UTF-8 (`%E4`); scrub it like the text.
+        utf8(URI.decode_www_form_component(raw.gsub("+", "%2B")))
       rescue ArgumentError
         raw
       end

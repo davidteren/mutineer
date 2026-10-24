@@ -753,7 +753,8 @@ class CliTest < Minitest::Test
     with_project do |proj|
       File.write(File.join(proj, "broken.rb"), "def oops(\n")
       _, err, status = mutineer("run", "broken.rb", "--test", "calculator_strong_test.rb", chdir: proj)
-      refute_equal 0, status.exitstatus
+      assert_equal 1, status.exitstatus
+      assert_includes err, "mutineer: cannot load broken.rb: SyntaxError"
       refute_includes err, "cli.rb:", "no internal backtrace should leak"
     end
   end
@@ -817,6 +818,34 @@ class CliTest < Minitest::Test
     assert_equal 1, status.exitstatus, err
     assert_includes err, "mutineer: cannot load boot.rb: LoadError"
     assert_empty backtrace_lines(err)
+  end
+
+  def test_require_file_error_hides_the_password
+    with_project do |proj|
+      File.write(File.join(proj, "extra.rb"), %(raise "no db: #{BAD_DATABASE_URL}"\n))
+      File.write(File.join(proj, ".mutineer.yml"), "require:\n  - extra.rb\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "mutineer: cannot load extra.rb: RuntimeError"
+      refute_includes err, "s3cret"
+      assert_empty backtrace_lines(err)
+    end
+  end
+
+  # A non-ASCII path next to a Latin-1 message must not break the message
+  # build, or Ruby would print the raw error as the cause.
+  def test_boot_error_with_a_non_ascii_path_and_latin1_message_hides_the_password
+    with_project do |proj|
+      File.write(File.join(proj, "bööt.rb"), %(raise "caf\\xE9 #{BAD_DATABASE_URL}".dup.force_encoding("ISO-8859-1")\n))
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--boot", "bööt.rb",
+                                chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "mutineer: cannot load bööt.rb: RuntimeError"
+      refute_includes err.b, "s3cret".b
+    end
   end
 
   def test_source_argument_error_at_load_exits_one

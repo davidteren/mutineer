@@ -345,8 +345,9 @@ module Mutineer
       warn "mutineer: #{Redaction.text(e.message)}"
       exit 2
     rescue SyntaxError => e
-      # A syntactically invalid source file surfaces when `require`d; report it
-      # cleanly rather than dumping a backtrace.
+      # Boot, source and require files report a SyntaxError as ProjectLoadError
+      # below. This covers a file loaded on any other path; report it cleanly
+      # rather than dumping a backtrace.
       warn "mutineer: cannot load source: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::ParseError => e
