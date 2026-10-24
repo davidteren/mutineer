@@ -303,7 +303,7 @@ class RailsWorkerDbTest < Minitest::Test
         assert_equal File.join(root, "db/schema_sqlite.rb"), Mutineer::RailsWorkerDb.ruby_schema_path,
                      "a relative SCHEMA value is expanded, so `load` never searches $LOAD_PATH"
       end
-      with_schema_config(dump: nil, dump_path: false) do
+      with_schema_config(dump: nil, rails7: false) do
         assert_equal File.join(root, "db/schema.rb"), Mutineer::RailsWorkerDb.ruby_schema_path,
                      "Rails < 7.0 has no schema_dump_path: keep its fixed db/schema.rb"
       end
@@ -343,8 +343,9 @@ class RailsWorkerDbTest < Minitest::Test
   end
 
   # Stub the ActiveRecord surface {RailsWorkerDb.ruby_schema_path} reads.
-  # `dump` is what Rails' schema_dump_path returns. Yields the formats it was asked for.
-  def with_schema_config(dump:, global: :ruby, per_config: nil, dump_path: true)
+  # `dump` is what Rails' schema_dump_path returns; `rails7: false` drops that method.
+  # Yields the formats it was asked for.
+  def with_schema_config(dump:, global: :ruby, per_config: nil, rails7: true)
     saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
     asked = []
     db_config = Object.new
@@ -352,7 +353,7 @@ class RailsWorkerDbTest < Minitest::Test
     base = Module.new
     base.define_singleton_method(:connection_db_config) { db_config }
     tasks = Module.new
-    if dump_path
+    if rails7 # DatabaseTasks.schema_dump_path exists since Rails 7.0
       tasks.define_singleton_method(:schema_dump_path) do |config, format|
         raise "wrong db config" unless config.equal?(db_config)
 

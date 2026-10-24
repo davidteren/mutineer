@@ -21,8 +21,8 @@ All notable changes to this project are documented here. The format is based on
   `db/schema.rb` errored every mutant. The booted daemon now asks Rails for
   the file. With `schema_dump: false` or `structure.sql` it loads no schema,
   even when a `db/schema.rb` exists: the worker keeps its copy of the test
-  database. Postgres and MySQL workers do not load a schema file here, so
-  they are not affected.
+  database. Postgres and MySQL were not affected: a Postgres worker is a
+  copy of the test database, and MySQL already asked Rails for the file.
 
 ## [1.7.0] - 2026-10-23
 
