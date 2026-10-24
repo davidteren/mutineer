@@ -1,0 +1,44 @@
+docs/equivalent-skips.html
+  s_b1f7ddfe9bccdd::t_e1eb4793ea938b 54
+docs/agentic-coding.md
+  s_b1f7ddfe9bccdd::t_e1eb4793ea938b 110,121-123
+  s_4caa099c6c87f9::t_ef5a9dcd6644d0 133
+docs/equivalent-skips.md
+  s_b1f7ddfe9bccdd::t_e1eb4793ea938b 12-14
+docs/rails.html
+  s_4caa099c6c87f9::t_ef5a9dcd6644d0 106,109
+  s_b1f7ddfe9bccdd::t_9dce467bd31915 91
+docs/learn.md
+  s_b1f7ddfe9bccdd::t_e1eb4793ea938b 145-146
+docs/rails.md
+  s_4caa099c6c87f9::t_ef5a9dcd6644d0 73,81-84
+  s_b1f7ddfe9bccdd::t_9dce467bd31915 56
+docs/agentic-coding.html
+  s_4caa099c6c87f9::t_ef5a9dcd6644d0 126,135,142
+docs/learn.html
+  s_b1f7ddfe9bccdd::t_e1eb4793ea938b 127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2eb6bee5063558cabba8e3812b97f1214ebbb8ce",
+  "prompts": {},
+  "sessions": {
+    "s_4caa099c6c87f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a16a26-cbd9-75b0-9a60-c1027763da8b",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_b1f7ddfe9bccdd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16a26-cbd9-75b0-9a60-c1027763da8b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
