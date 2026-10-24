@@ -437,18 +437,17 @@ class RunnerTest < Minitest::Test
   end
 
   def test_abort_if_unclean_names_the_minitest_seed
-    saved = ENV.fetch("SEED", nil)
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], failed_clean_tests: ["test/a_test.rb"],
                                           project_root: ROOT)
-    minitest = without_seed_env { assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) } }
-    assert_includes minitest.message, "SEED=#{Mutineer::MinitestIntegration::PINNED_SEED}"
-    ENV["SEED"] = "4242"
-    own = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
-    assert_includes own.message, "SEED=4242"
-    rspec = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map, framework: "rspec") }
-    refute_includes rspec.message, "SEED="
-  ensure
-    saved ? ENV["SEED"] = saved : ENV.delete("SEED")
+    without_seed_env do
+      minitest = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+      assert_includes minitest.message, "SEED=#{Mutineer::MinitestIntegration::PINNED_SEED}"
+      ENV["SEED"] = "4242"
+      own = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+      assert_includes own.message, "SEED=4242"
+      rspec = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map, framework: "rspec") }
+      refute_includes rspec.message, "SEED="
+    end
   end
 
   # #282: `test_a` needs a global that `test_b` sets. The pinned seed runs

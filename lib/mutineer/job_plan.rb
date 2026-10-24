@@ -146,9 +146,10 @@ module Mutineer
       files = coverage_map.failed_clean_tests
       return if files.empty?
 
+      seed_hint = TestRunners.for(framework) == TestRunners::Minitest ? minitest_seed_hint : ""
       raise SmokeCheckError,
             "the unmutated suite is not green (#{files.join(', ')}) — " \
-            "#{ExternalBackend.generic_env_hint}.#{minitest_seed_hint if TestRunners.for(framework) == TestRunners::Minitest}"
+            "#{ExternalBackend.generic_env_hint}.#{seed_hint}"
     end
 
     # Says which seed the Minitest runs used, and how to reproduce or change it.
@@ -157,8 +158,9 @@ module Mutineer
     # @return [String]
     def self.minitest_seed_hint
       seed = MinitestIntegration.seed
-      " Mutineer ran Minitest with SEED=#{seed}. Run the suite with SEED=#{seed} " \
-        "to reproduce the failure, or set SEED to choose another order."
+      " Mutineer runs Minitest with SEED=#{seed}, so an order-dependent test can fail here " \
+        "and pass in a random run. Run a listed file with SEED=#{seed} to look for it, " \
+        "or set SEED to choose another order."
     end
 
     # Coverage-based test selection, shared by the in-process ({Runner.run}) and daemon

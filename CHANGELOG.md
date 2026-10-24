@@ -21,8 +21,8 @@ All notable changes to this project are documented here. The format is based on
   in every mutant run, so each mutant scored a false `killed`. Every Minitest
   run now uses seed `1`, or `SEED` when the environment sets it. Such a suite
   now stops the run with "the unmutated suite is not green", and the message
-  names the seed: run the suite with `SEED=1` to see the failure, or set
-  `SEED` to choose another order. One gap stays: when a mutant runs several
+  names the seed: run a listed test file with `SEED=1` to look for the
+  order-dependent test, or set `SEED` to choose another order. One gap stays: when a mutant runs several
   covering test files, their test classes can still run in a different order
   than in the combined clean check. RSpec does not change.
 
