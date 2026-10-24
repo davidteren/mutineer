@@ -29,10 +29,12 @@ module Mutineer
     # Keeps hook defs unplaceable when the raw AST can define another method
     # with the same name and source line. Count all defs, including bodies that
     # SubjectVisitor does not select, and Ruby's explicit method creators (see
-    # {.created_method_locations}). An unknown creator name blocks that source
-    # line. Instance and singleton definitions can both reach singleton-class
-    # hosts, so their shared name and line are ambiguous too. Run before `only`
-    # so selecting one subject cannot hide a collision.
+    # {.created_method_locations}). Indirect callable bodies may come from any
+    # block or lambda in this file, including a stored hook block. An unknown
+    # creator name blocks only those possible source lines. Instance and
+    # singleton definitions can both reach singleton-class hosts, so their
+    # shared name and line are ambiguous too. Run before `only` so selecting
+    # one subject cannot hide a collision.
     #
     # @param subjects [Array<Mutineer::Subject>] subjects from one source file.
     # @param program [Prism::ProgramNode] the complete parsed file.
@@ -41,9 +43,14 @@ module Mutineer
       return unless subjects.any?(&:reload_hook_call)
 
       counts = Hash.new(0)
+      body_lines = Set.new
+      indirect_names = Set.new
       nodes = [program]
       while (node = nodes.pop)
         nodes.concat(node.compact_child_nodes)
+        if node.is_a?(Prism::LambdaNode) || node.is_a?(Prism::BlockNode)
+          body_lines << node.location.start_line
+        end
         location = if node.is_a?(Prism::DefNode)
                      [node.location.start_line, [node.name]]
                    elsif node.is_a?(Prism::CallNode)
@@ -52,8 +59,13 @@ module Mutineer
         next unless location
 
         line, names = location
-        names.each { |name| counts[[line, name]] += 1 }
+        if line
+          names.each { |name| counts[[line, name]] += 1 }
+        else
+          names.each { |name| indirect_names << name }
+        end
       end
+      indirect_names.each { |name| body_lines.each { |line| counts[[line, name]] += 1 } }
       subjects.each do |subject|
         line = subject.def_node.location.start_line
         subject.reload_hook_call = nil if counts[[line, subject.name]] > 1 || counts[[line, nil]].positive?
@@ -62,19 +74,24 @@ module Mutineer
     private_class_method :exclude_ambiguous_hook_defs!
 
     # The source line and names Ruby assigns to explicit method creators. A
-    # block-defined method starts at the block opening, while an attribute
-    # method starts at the message token; a multiline receiver starts too early.
+    # block-defined method starts at the block opening and a literal lambda at
+    # its arrow. A positional callable takes precedence over a supplied block.
+    # Other positional bodies and block passes have an indirect source: the
+    # caller checks possible block/lambda lines instead of the call line.
+    # An attribute method starts at the message token, not its receiver line.
     # Literal symbol and string names are exact. A dynamic name, splat, or attr
     # writer flag may name any method on that line, represented by nil.
     #
     # @param node [Prism::CallNode] call to inspect.
-    # @return [Array(Integer, Array<Symbol, nil>), nil] source line and names,
-    #   or nil for a call outside this built-in family.
+    # @return [Array, nil] source line and names (a nil line means an indirect
+    #   callable body), or nil for a call outside this built-in family.
     def self.created_method_locations(node)
       arguments = node.arguments&.arguments || []
       case node.name
       when :define_method, :define_singleton_method
-        line = node.block.is_a?(Prism::BlockNode) ? node.block.location.start_line : node.message_loc.start_line
+        body = arguments[1] || node.block
+        body = body.expression if body.is_a?(Prism::BlockArgumentNode)
+        line = body.location.start_line if body.is_a?(Prism::BlockNode) || body.is_a?(Prism::LambdaNode)
         return [line, [literal_method_name(arguments.first)]]
       when :attr_reader, :attr_writer, :attr_accessor, :attr
         mode = { attr_reader: :reader, attr_writer: :writer, attr_accessor: :both, attr: :reader }.fetch(node.name)

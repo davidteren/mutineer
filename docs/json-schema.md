@@ -111,8 +111,12 @@ mutant's method is one of these:
 - a hook-block method whose name and first line match another definition in the same file, including a
   collision between an instance and a singleton definition. The check reads all parsed `def`s, even when
   they are not selected as subjects, and explicit `define_method`, `define_singleton_method`, `attr_reader`,
-  `attr_writer`, `attr_accessor` and `attr` calls. A dynamic name or writer flag blocks hook methods on that
-  creation line. Ruby's source location cannot distinguish which definition an existing host has;
+  `attr_writer`, `attr_accessor` and `attr` calls. A positional lambda uses its own source line. When a
+  callable body comes through a variable or another expression, the check includes possible block and
+  lambda source lines in that file, including stored hook blocks. A matching-name or unknown-name
+  indirect creator can therefore conservatively exclude a one-line hook. A dynamic name blocks only those
+  possible body lines; a dynamic attribute name or writer flag blocks the attribute creation line.
+  Ruby's source location cannot distinguish which definition an existing host has;
 - every method in a block that uses `alias` or `alias_method`;
 - a method the block itself calls outside a method body (a bare call, `self.name`, `method(:name)` or
   `instance_method(:name)`, also inside a nested block or lambda); a symbol such as `before_save :name` is fine;

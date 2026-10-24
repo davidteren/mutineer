@@ -525,6 +525,67 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  def assert_hook_callable_body_ambiguity(body, unplaceable: true)
+    src = "module HookCollision\n extend ActiveSupport::Concern\n included do\n#{body}\n end\nend\n"
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal ["HookCollision#tag"], subjects.map(&:qualified_name), body
+      assert_equal unplaceable, subjects.first.unplaceable?("reload"), body
+    end
+  end
+
+  def test_discover_uses_inline_positional_and_block_pass_callable_lines
+    ["TARGET.define_singleton_method(:tag,\n -> { 2 }); def tag = 1",
+     "TARGET.define_singleton_method(:tag,\n &-> { 2 }); def tag = 1",
+     "TARGET.define_singleton_method(:tag,\n proc { 2 }); def tag = 1"].each do |body|
+      assert_hook_callable_body_ambiguity(body)
+    end
+  end
+
+  def test_discover_counts_stored_callable_body_lines_for_indirect_creators
+    ["body = -> { 2 }; def tag = 1\n TARGET.define_singleton_method(:tag, body)",
+     "body = proc { 2 }; def tag = 1\n TARGET.define_singleton_method(:tag, &body)",
+     "body = -> { 2 }; def tag = 1\n method_name = :tag\n TARGET.define_singleton_method(method_name, body)"].each do |body|
+      assert_hook_callable_body_ambiguity(body)
+    end
+  end
+
+  def test_discover_keeps_noncolliding_callable_sources_placeable
+    ["body = -> { 2 }\n def tag = 1\n TARGET.define_singleton_method(:tag, body)",
+     "body = -> { 2 }; def tag = 1\n TARGET.define_singleton_method(:other, body)",
+     "body = proc { 2 }\n TARGET.define_singleton_method(:tag, &body); def tag = 1",
+     "TARGET.define_singleton_method(:tag,\n -> { 2 }\n ) { 3 }; def tag = 1"].each do |body|
+      assert_hook_callable_body_ambiguity(body, unplaceable: false)
+    end
+  end
+
+  def test_discover_counts_a_reused_hook_container_as_a_possible_method_body
+    src = <<~RUBY
+      module ContainerReuse
+        extend ActiveSupport::Concern
+        included do; def tag = 1 unless self.equal?(TARGET)
+          body = ContainerReuse.instance_variable_get(:@_included_block)
+          TARGET.define_singleton_method(:tag, body) unless self.equal?(TARGET)
+          2
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subject = Mutineer::Project.discover([path]).first
+      assert subject.unplaceable?("reload")
+    end
+  end
+
+  def test_discover_keeps_ordinary_one_line_hooks_placeable
+    ["", "body = -> { 2 }\n TARGET.define_singleton_method(:other, body)"].each do |body|
+      src = "module HookCollision\n extend ActiveSupport::Concern\n included do; def tag = 1\n#{body}\n end\nend\n"
+      with_source(src) do |path|
+        subject = Mutineer::Project.discover([path]).first
+        refute subject.unplaceable?("reload")
+      end
+    end
+  end
+
   # #297: an alias keeps the original body, so a block that aliases anything
   # keeps every def in it unplaceable.
   def test_an_alias_in_the_hook_block_makes_every_def_unplaceable
