@@ -386,6 +386,7 @@ module Mutineer
       validate_since!(config) if config.since
       preflight_output!(config.output, config) if config.output
       preflight_baseline!(config.baseline) if config.baseline
+      preflight_same_file!(config) if config.output && config.baseline
 
       # When --test is omitted, infer each source's test by convention. Autopair
       # also re-detects framework from inferred tests when --framework was not set.
@@ -634,6 +635,26 @@ module Mutineer
       Baseline.load(path)
     rescue Mutineer::ConfigError, SystemCallError => e
       warn "mutineer: #{e.message}"
+      exit 2
+    end
+
+    # #281: a report written over its own baseline turns a failed gate into the
+    # next baseline. Same check as the Action's guard (action.yml); the message
+    # is that guard's text adapted for the CLI, so keep the two in step. The
+    # output is expanded the way Reporter#report writes it, so `x/../b.json`
+    # with a missing `x/` still matches `b.json`. File.identical? is false when
+    # either file is missing, so a new output path never matches.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration (output and baseline set).
+    # @return [void]
+    def self.preflight_same_file!(config)
+      output = File.expand_path(config.output)
+      return unless File.identical?(output, config.baseline)
+
+      warn "mutineer: --output and #{config.origin(:baseline)} are the same file ('#{File.realpath(output)}'). " \
+           "A failing run would replace the baseline. Write the report to a separate path. " \
+           "Copy that file onto the baseline only when the run exits 0."
       exit 2
     end
 

@@ -1116,6 +1116,35 @@ class CliTest < Minitest::Test
     assert_includes err, "mutineer:"
   end
 
+  # #281: --output naming the baseline file (directly or via a symlink) is a
+  # usage error, so a failing run cannot replace its own baseline.
+  def test_output_same_file_as_baseline_exits_two
+    with_project do |proj|
+      _, _, s1 = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                          "--format", "json", "--output", "base.json", chdir: proj)
+      assert_equal 0, s1.exitstatus
+      before = File.read(File.join(proj, "base.json"))
+      File.symlink("base.json", File.join(proj, "link.json"))
+      %w[base.json ./base.json link.json nosuch/../base.json].each do |output|
+        _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                  "--baseline", "base.json", "--output", output, chdir: proj)
+        assert_equal 2, status.exitstatus, output
+        assert_includes err, "--output and --baseline are the same file"
+      end
+      # A baseline from .mutineer.yml is named as such.
+      File.write(File.join(proj, ".mutineer.yml"), "baseline: base.json\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                "--output", "base.json", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "--output and baseline in .mutineer.yml are the same file"
+      # A separate report path is still allowed.
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--baseline", "base.json", "--format", "json", "--output", "pr.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal before, File.read(File.join(proj, "base.json"))
+    end
+  end
+
   # NEW survivors vs a clean (100%) baseline regress -> exit 1, named on stdout.
   def test_baseline_new_survivors_exit_one
     with_project do |proj|
