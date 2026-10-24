@@ -295,6 +295,7 @@ class RailsWorkerDbTest < Minitest::Test
     db.forget_mysql_base_config
     db.instance_variable_set(:@mysql_held_locks, nil)
     db.instance_variable_set(:@lock_connection, nil)
+    db.instance_variable_set(:@routing, nil)
   end
 
   # A server that requires TLS refuses a maintenance session without it.
@@ -518,6 +519,26 @@ class RailsWorkerDbTest < Minitest::Test
     assert_equal %w[/app/queue.sqlite3 /app/test-0.sqlite3 /app/test-0.sqlite3], configs.map(&:database)
   end
 
+  # Rails 7.0 cannot load each extra schema through DatabaseTasks. It copies
+  # the primary group and leaves independent files on their serial base paths.
+  def test_route_sqlite_configs_can_copy_only_the_primary_file_group
+    db = Mutineer::RailsWorkerDb
+    configs = [SqliteConfig.new("primary", "/app/test.sqlite3", "sqlite3"),
+               SqliteConfig.new("alias", "/app/test.sqlite3", "sqlite3"),
+               SqliteConfig.new("extra", "/app/extra.sqlite3", "sqlite3")]
+    seeds = []
+    routed = kept = nil
+    db.stub(:test_configs, configs) do
+      db.stub(:seed_worker_file, ->(*paths) { seeds << paths }) do
+        routed, kept = db.route_sqlite_configs(0, seed: true, shared: [], primary: "/app/test.sqlite3", copy_all: false)
+      end
+    end
+    assert_equal [["/app/test.sqlite3", "/app/test-0.sqlite3"]], seeds
+    assert_equal %w[/app/test-0.sqlite3], routed
+    assert_equal %w[/app/extra.sqlite3], kept
+    assert_equal %w[/app/test-0.sqlite3 /app/test-0.sqlite3 /app/extra.sqlite3], configs.map(&:database)
+  end
+
   # Symlinks and hard links to one file share a copy or one shared base path.
   def test_route_sqlite_configs_groups_physical_file_aliases
     Dir.mktmpdir do |dir|
@@ -573,6 +594,41 @@ class RailsWorkerDbTest < Minitest::Test
     end
   end
 
+  # Distinct bases must never share a worker destination. Check all paths
+  # before seeding, deleting stale files, or rewriting a config.
+  def test_route_sqlite_configs_refuses_aliased_worker_destinations_before_seeding
+    %i[hard_link symlink missing].each do |kind|
+      Dir.mktmpdir do |dir|
+        first = File.join(dir, "first.sqlite3")
+        second = File.join(dir, "second.sqlite3")
+        first_worker = File.join(dir, "first-0.sqlite3")
+        second_worker = File.join(dir, "second-0.sqlite3")
+        File.write(first, "first source")
+        File.write(second, "second source")
+        if kind == :missing
+          missing = File.join(dir, "missing.sqlite3")
+          File.symlink(missing, first_worker)
+          File.symlink(missing, second_worker)
+        else
+          File.write(first_worker, "keep worker")
+          kind == :hard_link ? File.link(first_worker, second_worker) : File.symlink(first_worker, second_worker)
+        end
+        configs = [SqliteConfig.new("primary", first, "sqlite3"), SqliteConfig.new("extra", second, "sqlite3")]
+        seeds = []
+        db = Mutineer::RailsWorkerDb
+        db.stub(:test_configs, configs) do
+          db.stub(:seed_worker_file, ->(*paths) { seeds << paths }) do
+            error = assert_raises(RuntimeError, kind.to_s) { db.route_sqlite_configs(0, seed: true, shared: []) }
+            assert_includes error.message, "worker files"
+          end
+        end
+        assert_empty seeds
+        assert_equal [first, second], configs.map(&:database)
+        assert_equal ["first source", "second source"], [File.read(first), File.read(second)]
+      end
+    end
+  end
+
   # A primary Mutineer cannot copy (in memory, a `file:` URI) fails the fork
   # with `error` rather than running every worker on one shared database.
   def test_after_fork_refuses_a_sqlite_primary_it_cannot_copy
@@ -589,6 +645,46 @@ class RailsWorkerDbTest < Minitest::Test
         assert_includes error.message, "needs a SQLite database file (got #{database.inspect})"
       end
     end
+  ensure
+    Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    Object.const_set(:ActiveRecord, saved) if saved
+  end
+
+  # Server adapters must check SQLite pools before and after tests without
+  # moving configured secondary files out of their existing serial setup.
+  def test_server_adapters_check_inline_sqlite_pools_and_keep_declared_files
+    saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    declared = SqliteConfig.new("archive", "/app/archive.sqlite3", "sqlite3")
+    pool = Struct.new(:db_config)
+    pools = [pool.new(declared)]
+    handler = Object.new
+    handler.define_singleton_method(:connection_pool_list) { |_role| pools }
+    base = Class.new
+    base.define_singleton_method(:connection_handler) { handler }
+    ar = Module.new.tap { |m| m.const_set(:Base, base) }
+    ar.define_singleton_method(:version) { Gem::Version.new("7.1") }
+    Object.const_set(:ActiveRecord, ar)
+    db = Mutineer::RailsWorkerDb
+    %w[postgresql mysql2 trilogy].each do |adapter|
+      db.stub(:current_adapter, adapter) do
+        db.stub(:test_configs, [declared]) do
+          db.stub(:connect, nil) do
+            db.stub(:verify_connection!, nil) do
+              db.instance_variable_set(:@routing, [["/old/worker.sqlite3"], []])
+              db.after_fork(0)
+              assert_equal [[], [declared.database]], db.instance_variable_get(:@routing)
+              ["/tmp/inline.sqlite3", "file:/tmp/inline.sqlite3", ":memory:", ""].each do |file|
+                pools << pool.new(SqliteConfig.new("inline", file, "sqlite3"))
+                assert_raises(RuntimeError, "#{adapter} rejects #{file.inspect} after tests") { db.recheck_routing! }
+                assert_raises(RuntimeError, "#{adapter} rejects #{file.inspect} before tests") { db.after_fork(0) }
+                pools.pop
+              end
+            end
+          end
+        end
+      end
+    end
+    assert_equal "/app/archive.sqlite3", declared.database
   ensure
     Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
     Object.const_set(:ActiveRecord, saved) if saved
@@ -756,7 +852,11 @@ class RailsWorkerDbTest < Minitest::Test
     db.stub(:available?, true) do
       db.stub(:current_adapter, "mysql2") do
         db.stub(:connect, ->(_slot) { seen = db.instance_variable_get(:@lock_connection) }) do
-          db.stub(:verify_connection!, nil) { db.after_fork(0) }
+          db.stub(:test_configs, []) do
+            db.stub(:verify_routing!, nil) do
+              db.stub(:verify_connection!, nil) { db.after_fork(0) }
+            end
+          end
         end
       end
     end

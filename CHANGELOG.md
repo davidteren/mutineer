@@ -21,16 +21,21 @@ All notable changes to this project are documented here. The format is based on
   daemon does not boot (before, each case could start several workers). See
   "More than one database" in the README for the transactional-tests caveat.
 - **Parallel `--daemon` runs for apps with several SQLite databases** (#332).
-  Each worker now copies every SQLite test database file in
-  `config/database.yml`, not only the primary, as Rails' parallel tests do
-  (`storage/cable.sqlite3` becomes `storage/cable-0.sqlite3`). An app whose
-  test databases are all SQLite files runs `--jobs N` in parallel with no
-  `shared_databases` entry. A copy loads its database's schema file when it is
-  out of date. Postgres and MySQL keep the one-worker limit unless
+  On Rails 7.1 or later, when every test database in `config/database.yml` uses
+  SQLite with a plain file path, each worker copies every file except those shared through
+  `shared_databases` (`storage/cable.sqlite3` becomes `storage/cable-0.sqlite3`).
+  Such an app runs `--jobs N` in parallel with no `shared_databases` entry.
+  A copy loads its database's schema file when it is out of date.
+  Postgres and MySQL keep the one-worker limit unless
   `shared_databases` lists the other databases. A SQLite database listed in
-  `shared_databases` keeps its base file. Routing is checked before schema
-  loading, and a worker destination cannot alias a configured base file.
-  Rails 7.0 keeps the one-worker limit.
+  `shared_databases` and all other names for the same file keep the base file,
+  unless it is the primary file. Every name for the primary file uses the
+  worker copy, even if an alias is listed in `shared_databases`. Routing is
+  checked before schema loading, and a worker destination cannot alias a
+  configured base file. On Rails 7.0, an extra database outside
+  `shared_databases` means one worker, and only the primary database is copied.
+  A parallel run that shares extra databases scores every mutant `error`:
+  the shared-connection check needs Rails 7.1 or later.
 
 ### Changed
 

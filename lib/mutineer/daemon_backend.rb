@@ -229,7 +229,7 @@ module Mutineer
       return worker_count unless uncopied.any? && worker_count > 1
 
       outside = shared.empty? ? "" : " outside shared_databases"
-      warn "[mutineer] each worker copies only #{copied.join(", ")}; this app also has " \
+      warn "[mutineer] each worker copies only #{(copied - shared).join(", ")}; this app also has " \
            "#{uncopied.join(", ")}#{outside}. Mutineer runs one worker. Parallel workers support " \
            "SQLite file databases on Rails 7.1 or later, but only the primary on Postgres and MySQL. To run in parallel, list each one " \
            "your tests never use under shared_databases: #{uncopied.join(", ")}."

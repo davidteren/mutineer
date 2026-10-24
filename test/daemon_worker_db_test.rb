@@ -246,6 +246,172 @@ class DaemonWorkerDbTest < Minitest::Test
     assert_includes out, "archive_row=keep this row"
   end
 
+  # Worker destinations can alias each other while both sources are distinct.
+  # Every file must keep its rows when routing rejects the collision.
+  WORKER_DESTINATION_CHECK = <<~RUBY
+    require "./config/environment"
+    require #{File.expand_path("../lib/mutineer/rails_worker_db", __dir__).inspect}
+    require "sqlite3"
+    require "tmpdir"
+    %w[hard_link symlink].each do |kind|
+      Dir.mktmpdir do |dir|
+        first = File.join(dir, "first.sqlite3")
+        second = File.join(dir, "second.sqlite3")
+        destination = File.join(dir, "first-0.sqlite3")
+        other_destination = File.join(dir, "second-0.sqlite3")
+        { first => "first source", second => "second source", destination => "keep worker" }.each do |file, row|
+          SQLite3::Database.new(file) do |db|
+            db.execute("CREATE TABLE markers (body TEXT)")
+            db.execute("INSERT INTO markers (body) VALUES (?)", [row])
+          end
+        end
+        kind == "hard_link" ? File.link(destination, other_destination) : File.symlink(destination, other_destination)
+        ActiveRecord::Base.configurations = {
+          "test" => {
+            "primary" => { "adapter" => "sqlite3", "database" => first },
+            "extra" => { "adapter" => "sqlite3", "database" => second }
+          }
+        }
+        begin
+          Mutineer::RailsWorkerDb.route_sqlite_configs(0, seed: true, shared: [])
+          puts "unexpected copy"
+        rescue RuntimeError => e
+          puts e.message
+        end
+        [first, second, destination, other_destination].each do |file|
+          SQLite3::Database.new(file) { |db| puts "\#{kind}_row=\#{db.get_first_value('SELECT body FROM markers')}" }
+        end
+        puts "\#{kind}_configs_unchanged=\#{Mutineer::RailsWorkerDb.test_configs.map(&:database) == [first, second]}"
+      end
+    end
+  RUBY
+
+  def test_worker_destination_aliases_fail_before_any_database_copy
+    env = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+    out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", WORKER_DESTINATION_CHECK,
+                                  chdir: APP, unsetenv_others: true)
+    assert status.success?, out
+    refute_includes out, "unexpected copy"
+    %w[hard_link symlink].each do |kind|
+      assert_includes out, "#{kind}_row=first source"
+      assert_includes out, "#{kind}_row=second source"
+      assert_equal 2, out.lines.count { |line| line.strip == "#{kind}_row=keep worker" }
+      assert_includes out, "#{kind}_configs_unchanged=true"
+    end
+  end
+
+  # A config on the primary's file uses its schema, even when the alias has
+  # a different schema dump. An independent extra file still loads its schema.
+  PRIMARY_ALIAS_SCHEMA_CHECK = <<~RUBY
+    require "./config/environment"
+    require #{File.expand_path("../lib/mutineer/rails_worker_db", __dir__).inspect}
+    require "sqlite3"
+    require "tmpdir"
+    ActiveRecord::Migration.verbose = false
+    %w[alias independent].each do |kind|
+      Dir.mktmpdir do |dir|
+        primary = File.join(dir, "primary.sqlite3")
+        extra = File.join(dir, "extra.sqlite3")
+        schema = File.join(dir, "extra_schema.rb")
+        ActiveRecord::Tasks::DatabaseTasks.db_dir = dir
+        File.write(schema, "ActiveRecord::Schema.define(version: 2) { create_table(:orders, force: true) { |t| t.string :body } }")
+        files = kind == "alias" ? [primary] : [primary, extra]
+        files.each do |file|
+          SQLite3::Database.new(file) do |db|
+            db.execute("CREATE TABLE orders (body TEXT)")
+            db.execute("INSERT INTO orders VALUES ('boot row')")
+          end
+        end
+        File.symlink(primary, extra) if kind == "alias"
+        ActiveRecord::Base.configurations = {
+          "test" => {
+            "primary" => { "adapter" => "sqlite3", "database" => primary },
+            "extra" => { "adapter" => "sqlite3", "database" => extra, "schema_dump" => "extra_schema.rb" }
+          }
+        }
+        ActiveRecord::Base.establish_connection(:primary)
+        ActiveRecord::Base.connection_pool.disconnect!
+        Mutineer::RailsWorkerDb.after_fork(0, seed: true)
+        extra_config = Mutineer::RailsWorkerDb.test_configs.find { |config| config.name == "extra" }
+        SQLite3::Database.new(extra_config.database) do |db|
+          puts "\#{kind}_rows=\#{db.get_first_value('SELECT COUNT(*) FROM orders')}"
+        end
+      end
+    end
+  RUBY
+
+  def test_a_primary_file_alias_keeps_the_primary_schema_and_boot_rows
+    env = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+    out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", PRIMARY_ALIAS_SCHEMA_CHECK,
+                                  chdir: APP, unsetenv_others: true)
+    assert status.success?, out
+    assert_includes out, "alias_rows=1"
+    assert_includes out, "independent_rows=0"
+  end
+
+  # Exercise the Rails 7.0 version and helper seams in an isolated process
+  # with real ActiveRecord pools and SQLite rows. Extra files stay on their
+  # base path so no empty copy needs an unavailable per-config schema loader.
+  LEGACY_ROUTING_CHECK = <<~RUBY
+    require "./config/environment"
+    require #{File.expand_path("../lib/mutineer/rails_worker_db", __dir__).inspect}
+    require "sqlite3"
+    require "tmpdir"
+    ActiveRecord.define_singleton_method(:version) { Gem::Version.new("7.0.8") }
+    tasks = ActiveRecord::Tasks::DatabaseTasks
+    %i[with_temporary_pool_for_each with_temporary_connection_for_each].each do |helper|
+      tasks.singleton_class.send(:undef_method, helper) if tasks.respond_to?(helper)
+    end
+    Dir.mktmpdir do |dir|
+      primary = File.join(dir, "primary.sqlite3")
+      extra = File.join(dir, "extra.sqlite3")
+      missing = File.join(dir, "missing.sqlite3")
+      [primary, extra].each do |file|
+        SQLite3::Database.new(file) do |db|
+          db.execute("CREATE TABLE markers (body TEXT)")
+          db.execute("INSERT INTO markers VALUES ('boot row')")
+        end
+      end
+      ActiveRecord::Base.configurations = {
+        "test" => {
+          "primary" => { "adapter" => "sqlite3", "database" => primary },
+          "alias" => { "adapter" => "sqlite3", "database" => primary },
+          "extra" => { "adapter" => "sqlite3", "database" => extra },
+          "missing" => { "adapter" => "sqlite3", "database" => missing }
+        }
+      }
+      ActiveRecord::Base.establish_connection(:primary)
+      Class.new(ActiveRecord::Base) do
+        def self.name = "LegacyExtraRecord"
+        self.abstract_class = true
+        establish_connection(:extra)
+      end
+      ActiveRecord::Base.connection_handler.connection_pool_list.each(&:disconnect!)
+      puts "metadata_copied=\#{Mutineer::RailsWorkerDb.database_names.fetch('copied').join(',')}"
+      Mutineer::RailsWorkerDb.after_fork(0, seed: true)
+      configs = Mutineer::RailsWorkerDb.test_configs.to_h { |config| [config.name, config.database] }
+      puts "primary_copied=\#{configs.fetch('primary') == File.join(dir, 'primary-0.sqlite3')}"
+      puts "alias_copied=\#{configs.fetch('alias') == configs.fetch('primary')}"
+      puts "extra_kept=\#{configs.fetch('extra') == extra}"
+      puts "missing_kept=\#{configs.fetch('missing') == missing && !File.exist?(File.join(dir, 'missing-0.sqlite3'))}"
+      puts "extra_copy_absent=\#{!File.exist?(File.join(dir, 'extra-0.sqlite3'))}"
+      puts "primary_rows=\#{ActiveRecord::Base.connection.select_value('SELECT COUNT(*) FROM markers')}"
+      Mutineer::RailsWorkerDb.recheck_routing!
+    end
+  RUBY
+
+  def test_rails_70_routes_only_the_primary_file_group
+    env = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+    out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", LEGACY_ROUTING_CHECK,
+                                  chdir: APP, unsetenv_others: true)
+    assert status.success?, out
+    assert_includes out, "metadata_copied=primary"
+    %w[primary_copied alias_copied extra_kept missing_kept extra_copy_absent].each do |check|
+      assert_includes out, "#{check}=true"
+    end
+    assert_includes out, "primary_rows=1"
+  end
+
   # The check after tests must catch an inline pool opened by the test file,
   # after the worker's initial routing check has already passed.
   def test_an_inline_pool_opened_during_tests_scores_error

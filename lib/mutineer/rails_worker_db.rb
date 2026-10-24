@@ -388,8 +388,9 @@ module Mutineer
     # own database and confirm it is reachable, so a routing failure reads as
     # `error` rather than a false verdict.
     #
-    # SQLite gives the worker its own copy of every test database file, as
-    # Rails' ActiveRecord::TestDatabases does (see {route_sqlite_configs}).
+    # SQLite gives the worker its own copy of every test database file on
+    # Rails 7.1 or later (see {route_sqlite_configs}). Rails 7.0 copies only
+    # the primary file group and keeps other files on their serial base paths.
     # With `seed: true` it copies each base file first, then loads the primary's
     # `schema.rb` only when the copy differs from that file, and each other
     # database's schema file only when its copy is out of date. Postgres and
@@ -406,11 +407,14 @@ module Mutineer
     #   a `file:` URI, or blank): {route_sqlite_configs} could not copy it.
     # @raise [RuntimeError] when a pool still points at a base file (see {verify_routing!}).
     def self.after_fork(worker, schema_path = nil, seed: false, shared: [])
+      @routing = nil
       return unless available?
 
       forget_lock_connection_after_fork!
       if postgres_adapter?(current_adapter) || mysql_adapter?(current_adapter)
+        @routing = [[], test_configs.select { |config| sqlite_file_config?(config) }.map { |config| sqlite_file(config) }]
         connect(worker)
+        verify_routing!(*@routing)
         verify_connection!
         return
       end
@@ -421,7 +425,8 @@ module Mutineer
               "worker-DB isolation needs a SQLite database file (got #{primary.database.inspect})."
       end
 
-      @routing = route_sqlite_configs(worker, seed: seed, shared: shared, primary: sqlite_file(primary))
+      @routing = route_sqlite_configs(worker, seed: seed, shared: shared, primary: sqlite_file(primary),
+                                      copy_all: ActiveRecord.version >= Gem::Version.new("7.1"))
       verify_routing!(*@routing)
       load_schema(schema_path) if schema_path && !schema_current?(schema_path)
       load_other_schemas(primary, routed: @routing.first) if seed
@@ -432,7 +437,7 @@ module Mutineer
     # Run the routing check again after the tests. A pool that a test or an
     # autoloaded model opened after {after_fork} (an inline
     # `establish_connection` hash) then also fails the mutant with `error`.
-    # A no-op unless {after_fork} routed SQLite configs in this process.
+    # Also checks SQLite pools when the primary uses Postgres or MySQL.
     #
     # @return [void]
     # @raise [RuntimeError] when a pool points at a base file every worker shares.
@@ -456,17 +461,20 @@ module Mutineer
     # @param seed [Boolean] copy each base file into its worker file first.
     # @param shared [Array<String>] config names that keep the base file.
     # @param primary [String, nil] the primary's absolute file, never kept.
+    # @param copy_all [Boolean] copy independent files; false keeps the Rails 7.0 serial fallback.
     # @return [Array(Array<String>, Array<String>)] the worker files, and the
-    #   base files kept for `shared`.
-    # @raise [RuntimeError] when a worker file would be another config's base file.
-    def self.route_sqlite_configs(worker, seed:, shared:, primary: nil)
+    #   base files kept for `shared` or the Rails 7.0 serial fallback.
+    # @raise [RuntimeError] when a worker file aliases a base file or another worker file.
+    def self.route_sqlite_configs(worker, seed:, shared:, primary: nil, copy_all: true)
       configs = test_configs.select { |c| sqlite_file_config?(c) }
       groups = configs.group_by { |config| database_file_identity(sqlite_file(config)) }
       primary_key = database_file_identity(primary) if primary
       routed = {}
       kept = {}
       groups.each do |identity, aliases|
-        shared_config = identity == primary_key ? nil : aliases.find { |config| shared.include?(config.name) }
+        shared_config = if identity != primary_key
+                          copy_all ? aliases.find { |config| shared.include?(config.name) } : aliases.first
+                        end
         if shared_config
           kept[identity] = sqlite_file(shared_config)
         else
@@ -475,10 +483,16 @@ module Mutineer
       end
 
       # Validate every destination before any backup or deletion can touch it.
+      destinations = {}
       routed.each_value do |file|
-        if groups.key?(database_file_identity(file))
+        identity = database_file_identity(file)
+        if groups.key?(identity)
           raise "worker file #{file} is also the base file of a test database; rename one of them"
         end
+        if destinations.key?(identity)
+          raise "worker files #{destinations.fetch(identity)} and #{file} use the same file; rename one of them"
+        end
+        destinations[identity] = file
       end
       routed.each do |identity, file|
         seed_worker_file(sqlite_file(groups.fetch(identity).first), file) if seed
@@ -528,7 +542,7 @@ module Mutineer
       end
     end
 
-    # Load the schema file of each SQLite database other than the primary
+    # Load the schema file of each SQLite database other than the primary file
     # when its worker copy is out of date. Rails' DatabaseTasks picks each
     # config's own file (`db/<name>_schema.rb` by default) and skips a config
     # with no file. Shared base files are never loaded. No purge: the schema
@@ -545,8 +559,10 @@ module Mutineer
       helper = %i[with_temporary_pool_for_each with_temporary_connection_for_each].find { |name| tasks.respond_to?(name) }
       return unless helper
 
+      primary_file = database_file_identity(sqlite_file(primary))
       test_configs.each do |config|
         next if config.equal?(primary) || config.replica? || !config.database_tasks? || !sqlite_file_config?(config)
+        next if database_file_identity(sqlite_file(config)) == primary_file
         next unless routed.include?(sqlite_file(config))
 
         tasks.public_send(helper, env: config.env_name, name: config.name) do
@@ -564,7 +580,7 @@ module Mutineer
     # `shared_databases` check does not see a connection the tool opened.
     #
     # @param routed [Array<String>] the worker files.
-    # @param kept [Array<String>] the base files kept for `shared_databases`.
+    # @param kept [Array<String>] the base files kept for shared or serial use.
     # @return [void]
     # @raise [RuntimeError] when a pool points at a file that is neither.
     def self.verify_routing!(routed, kept)
@@ -573,6 +589,10 @@ module Mutineer
         config = pool.db_config
         if sqlite_adapter?(config.adapter.to_s) && config.database.to_s.start_with?("file:")
           raise "#{config.name} uses a SQLite file: URI, which cannot be copied per worker. " \
+                "Use a plain database file path in config/database.yml."
+        end
+        if sqlite_adapter?(config.adapter.to_s) && !sqlite_file_config?(config) && !test_configs.include?(config)
+          raise "#{config.name} uses an inline SQLite database #{config.database.inspect}, which cannot be copied per worker. " \
                 "Use a plain database file path in config/database.yml."
         end
         next unless sqlite_file_config?(config)

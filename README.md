@@ -58,8 +58,8 @@ It runs in parallel on those systems.
 | 3.4 or later | SQLite in memory | Minitest | not supported | serial only |
 | 3.4 or later | SQLite in memory | RSpec | not supported | serial only |
 | 3.4 or later | more than one database, all SQLite files | Minitest | supported with `--daemon` on Rails 7.1 or later | supported |
-| 3.4 or later | more than one database, Postgres or MySQL | Minitest | one worker | serial only |
-| 3.4 or later | more than one database, the extra ones in `shared_databases` | Minitest | supported with `--daemon` | supported |
+| 3.4 or later | more than one database, Postgres or MySQL, with an extra database outside `shared_databases` | Minitest | one worker | serial only |
+| 3.4 or later | more than one database, the extra ones in `shared_databases` | Minitest | supported with `--daemon` on Rails 7.1 or later | supported |
 | 3.4 or later | more than one database | RSpec | not supported | serial only |
 
 This matrix is for a Rails app on Ruby 3.4 or later.
@@ -76,12 +76,15 @@ MySQL 8 with Minitest can use `--daemon`.
 MariaDB is not tested.
 MySQL 5.7 is not supported.
 A `:memory:` database is serial only.
-On Rails 7.1 or later, an app with more than one SQLite file database runs in parallel: each worker copies every file.
+On Rails 7.1 or later, an app whose test databases are all SQLite files runs in parallel.
+Each worker copies every file except those shared through `shared_databases`.
+The primary file and all its aliases always use the worker copy.
 CI tests that row.
-On Rails 7.0, an app with more than one database runs one worker.
-On Postgres or MySQL, an app with more than one database runs one worker.
-When `shared_databases` lists every database except the primary, `--daemon` runs in parallel.
+On Rails 7.0, an app with an extra database outside `shared_databases` runs one worker and copies only the primary database.
+On Postgres or MySQL, an app with an extra database outside `shared_databases` runs one worker.
+On Rails 7.1 or later, when `shared_databases` lists every database except the primary, `--daemon` runs in parallel.
 CI tests that row on SQLite.
+On Rails 7.0, a parallel run that shares extra databases scores every mutant `error`: the shared-connection check needs Rails 7.1 or later.
 On Postgres and MySQL, `--daemon` isolates only the primary connection.
 `--rails` without `--daemon` is serial on every row.
 A Postgres worker database is copied once, at the start of the run.
@@ -464,7 +467,7 @@ A `:memory:` database is not supported on `--daemon`.
 
 #### More than one database
 
-On SQLite, each worker copies every test database file in `config/database.yml`, as Rails' parallel tests do.
+On Rails 7.1 or later, when every test database in `config/database.yml` uses SQLite with a plain file path, each worker copies every file except those shared through `shared_databases`.
 `storage/cable.sqlite3` becomes `storage/cable-0.sqlite3` for worker 0, and so on.
 Each copy starts from the base file. When a copy's schema is out of date, Mutineer loads that database's schema file (`db/cable_schema.rb`).
 A replica on the same file uses the same copy.
@@ -473,10 +476,10 @@ So an app whose test databases are all SQLite files runs in parallel with no ext
 A connection opened with an inline hash (`establish_connection(adapter: "sqlite3", database: ...)`) is not in `config/database.yml`.
 Mutineer cannot copy it, so every mutant scores `error`, even with one worker. Move that database into `config/database.yml`.
 A SQLite pool given as a `file:` URI also scores `error`. Use a plain file path.
-On Rails 7.0, a second database still means one worker.
+On Rails 7.0, an extra database outside `shared_databases` means one worker, and only the primary database is copied.
 
 On Postgres and MySQL, each worker copies only the primary database, the one `ActiveRecord::Base` uses.
-An app with a second test database there runs one worker. So does a SQLite app with a second database that is not a file.
+An app with an extra test database outside `shared_databases` runs one worker on those adapters. The same limit applies when a SQLite app has a database that is not a file.
 A database with `database_tasks: false` counts too. A replica does not.
 If your tests never use the other databases, list them in `.mutineer.yml`:
 
@@ -485,11 +488,12 @@ shared_databases: [cable, queue]
 ```
 
 The workers then share those databases, and `--jobs N` runs in parallel.
-On SQLite, a database you list there is not copied: the workers share its base file.
+On SQLite, a database you list there and all other names for the same file share its base file, unless it is the primary file.
+Every name for the primary file uses the worker copy, even if an alias is listed in `shared_databases`.
 After each mutant, a worker checks whether a shared database holds an Active Record connection.
 If one does, the mutant scores `error`, never a false kill or survive.
 A replica of a shared database counts as that database.
-The check needs Rails 7.1 or later. On Rails 7.0, every mutant of a parallel run scores `error`.
+The check needs Rails 7.1 or later. On Rails 7.0, every mutant of a parallel run that shares extra databases scores `error`.
 The check does not see a connection that a test closes or removes before it ends, or a database reached without Active Record.
 One worker shares nothing, so it skips the check.
 Do not list the primary database: the run stops with exit 2.
