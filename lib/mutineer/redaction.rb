@@ -92,6 +92,17 @@ module Mutineer
       text.gsub(Regexp.new(pattern), REDACTED)
     end
 
+    # An exception as `Class: message`, redacted. Each part is redacted on its
+    # own, so the join cannot raise on mixed encodings (a non-ASCII class name
+    # next to, say, a Latin-1 message): a raise inside a rescue would make the
+    # raw error the cause of the new one.
+    #
+    # @param error [Exception]
+    # @return [String]
+    def describe(error)
+      "#{text(error.class)}: #{text(error.message)}"
+    end
+
     # Split DATABASE_URL into its `scheme://user:` head and its raw password.
     # Read by position, not URI or a pattern, because the URL may be the
     # malformed one and its password may hold any character: the password runs

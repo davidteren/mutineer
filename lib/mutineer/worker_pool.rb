@@ -75,7 +75,7 @@ module Mutineer
               begin
                 yield(*items[idx])
               rescue Exception => e # rubocop:disable Lint/RescueException
-                Result.error("worker crashed: #{Redaction.text("#{e.class}: #{e.message}")}")
+                Result.error("worker crashed: #{Redaction.describe(e)}")
               end
             begin
               wr.write(Marshal.dump(payload))

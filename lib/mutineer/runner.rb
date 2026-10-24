@@ -450,18 +450,16 @@ module Mutineer
       file = File.expand_path(path, root)
       begin
         require file
-      rescue StandardError, LoadError, SyntaxError => e
-        # Redact each part on its own: Redaction.text returns UTF-8, so the join
-        # cannot raise on a non-ASCII path next to, say, a Latin-1 message. A
-        # raise here would make the raw error the new error's cause.
-        describe = ->(err) { "#{Redaction.text(err.class)}: #{Redaction.text(err.message)}" }
+      rescue StandardError, ScriptError => e
+        # Every part is redacted on its own, so the message build cannot raise
+        # on mixed encodings and leave the raw error as the new one's cause.
         causes = []
         cause = e.cause
         while cause
-          causes << describe.call(cause)
+          causes << Redaction.describe(cause)
           cause = cause.cause
         end
-        error = ProjectLoadError.new("cannot load #{Redaction.text(path)}: #{describe.call(e)}", causes: causes)
+        error = ProjectLoadError.new("cannot load #{Redaction.text(path)}: #{Redaction.describe(e)}", causes: causes)
         error.set_backtrace(e.backtrace)
         raise error, cause: nil
       end

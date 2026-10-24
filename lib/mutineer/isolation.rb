@@ -67,7 +67,7 @@ module Mutineer
           code = e.status
         rescue Exception => e # rubocop:disable Lint/RescueException
           # STDERR, not `warn`: a test may have left `$stderr` as a StringIO.
-          STDERR.puts "[mutineer-child] #{Redaction.text("#{e.class}: #{e.message}")}"
+          STDERR.puts "[mutineer-child] #{Redaction.describe(e)}"
           code = 2
         end
         STDERR.flush

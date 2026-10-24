@@ -860,6 +860,34 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_boot_not_implemented_error_exits_one_cleanly
+    _, err, status = run_with_boot(%(raise NotImplementedError, "adapter for #{BAD_DATABASE_URL}"\n))
+
+    assert_equal 1, status.exitstatus, err
+    assert_includes err, "mutineer: cannot load boot.rb: NotImplementedError"
+    refute_includes err, "s3cret"
+  end
+
+  # The clean-suite check writes a failing test's report to stderr; a test that
+  # fails on a database error can quote DATABASE_URL.
+  def test_failing_clean_suite_report_hides_the_password
+    with_project do |proj|
+      File.write(File.join(proj, "fail_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "calculator"
+        class FailTest < Minitest::Test
+          def test_db = flunk("no db: \#{ENV.fetch("DATABASE_URL")}")
+        end
+      RUBY
+      _, err, status = mutineer("run", "calculator.rb", "--test", "fail_test.rb",
+                                chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "no db: postgres://u:[REDACTED]@ho st/db"
+      refute_includes err, "s3cret"
+    end
+  end
+
   def test_source_argument_error_at_load_exits_one
     with_project do |proj|
       File.write(File.join(proj, "bad.rb"), %(def one = 1\nraise ArgumentError, "bad #{BAD_DATABASE_URL}"\n))

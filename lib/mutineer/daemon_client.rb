@@ -414,16 +414,26 @@ module Mutineer
 
     # Copy each line of the daemon's stderr to the tool's stderr, redacted.
     # A line is the unit the daemon and the app write, so a password is never
-    # split across two redaction calls. Copying is best effort: the rescue
-    # swallows the benign EBADF/IOError raised when close_io closes the pipe
-    # out from under an in-flight read, an EPIPE from a tool stderr that went
-    # away, and any write error, so the thread never ends with an error that
-    # close_io's join would re-raise.
+    # split across two redaction calls. The line break is kept outside the
+    # redaction, so a line redaction hides as a whole still ends its line.
+    # After a write fails (EPIPE from a tool stderr that went away), the drain
+    # keeps reading and drops the lines, so the daemon never blocks on a full
+    # pipe. The outer rescue swallows the benign EBADF/IOError raised when
+    # close_io closes the pipe under an in-flight read, so the thread never
+    # ends with an error that close_io's join would re-raise.
     #
     # @param io [IO] the daemon's stderr pipe.
     # @return [nil]
     def drain_stderr(io)
-      io.each_line { |line| @errio.write(Redaction.text(line)) }
+      writable = true
+      io.each_line do |line|
+        next unless writable
+
+        body = line.chomp("\n")
+        @errio.write(Redaction.text(body), body.length < line.length ? "\n" : "")
+      rescue StandardError
+        writable = false
+      end
       nil
     rescue StandardError
       nil

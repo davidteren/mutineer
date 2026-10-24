@@ -121,6 +121,20 @@ class RedactionTest < Minitest::Test
     assert_equal "unrelated text", redact("unrelated text", url)
   end
 
+  def test_describe_survives_a_non_ascii_class_next_to_a_latin1_message
+    url = "postgres://u:s3cret@ho st/db"
+    klass = Class.new(StandardError) { def self.to_s = "Ärger288Error" }
+    error = klass.new("café #{url}".encode("ISO-8859-1"))
+
+    saved = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = url
+    text = Mutineer::Redaction.describe(error)
+
+    assert_equal "Ärger288Error: café postgres://u:[REDACTED]@ho st/db", text
+  ensure
+    ENV["DATABASE_URL"] = saved
+  end
+
   def test_still_hides_a_bare_password_token
     assert_equal "password [REDACTED] rejected", redact("password s3cret rejected", "postgres://u:s3cret@host/db")
   end

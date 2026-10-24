@@ -37,6 +37,10 @@ module Mutineer
     # The result is already in the pipe then; the wait only lets the reader
     # thread run, even when the capture deadline has passed (#129).
     RESULT_GRACE = 1
+    # The redaction module, by absolute path, for the subprocess scripts: they
+    # write a failing test's report to the inherited stderr, and that report
+    # can quote DATABASE_URL.
+    REDACTION_PATH = File.expand_path("redaction.rb", __dir__)
 
     attr_reader :project_root, :failed_test_files, :failed_clean_tests, :phase_a_ran, :map
 
@@ -1031,7 +1035,7 @@ module Mutineer
         #{abs_preload_paths.inspect}.each { |f| require f }
         #{loads}
         _passed = Minitest.run([])
-        $stderr.write(_report.string) unless _passed
+        $stderr.write(#{redacted("_report.string")}) unless _passed
         exit(_passed ? 0 : 1)
       RUBY
     end
@@ -1056,9 +1060,19 @@ module Mutineer
         #{abs_preload_paths.inspect}.each { |f| require f }
         _sink = StringIO.new
         status = RSpec::Core::Runner.run(["--no-color", #{specs}], _sink, _sink)
-        $stderr.write(_sink.string) unless status.zero?
+        $stderr.write(#{redacted("_sink.string")}) unless status.zero?
         exit(status.zero? ? 0 : 1)
       RUBY
+    end
+
+    # Ruby source, for a subprocess script, that loads the redaction module
+    # and returns the redacted value of `expression`.
+    #
+    # @api private
+    # @param expression [String] Ruby source for the text to redact.
+    # @return [String] Ruby script text.
+    def redacted(expression)
+      "(require #{REDACTION_PATH.inspect}; Mutineer::Redaction.text(#{expression}))"
     end
 
     # Builds the framework-specific subprocess script.
@@ -1092,7 +1106,7 @@ module Mutineer
         _load = #{load_coverage_expression}
         load #{absolute(test_path).inspect}
         _passed = Minitest.run([])
-        $stderr.write(_report.string) unless _passed
+        $stderr.write(#{redacted("_report.string")}) unless _passed
         _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => _coverage,
                                     "load_coverage" => _load,
@@ -1126,7 +1140,7 @@ module Mutineer
         _load = #{load_coverage_expression}
         _sink = StringIO.new
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
-        $stderr.write(_sink.string) unless _status.zero?
+        $stderr.write(#{redacted("_sink.string")}) unless _status.zero?
         _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
         _result.puts JSON.generate("passed" => _status.zero?, "coverage" => _coverage,
                                     "load_coverage" => _load,

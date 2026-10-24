@@ -98,7 +98,7 @@ module Mutineer
                              matrix:)
         --allow-empty        A run with no mutants is expected; do not warn (--no-allow-empty
                              beats a .mutineer.yml allow_empty:)
-        --verbose            Surface the real error when a fork capture fails (alias: --debug)
+        --verbose            Show the full error and backtrace when a load or fork capture fails (alias: --debug)
 
       Options:
         --list-operators  List available operators (default vs optional) and exit

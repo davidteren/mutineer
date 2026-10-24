@@ -171,12 +171,20 @@ class DaemonRedactionTest < Minitest::Test
     def errio.write(*) = raise(Errno::EPIPE)
     client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
     rd, wr = IO.pipe
-    wr.write("line\n")
+    wr.write("line\n" * 100)
     wr.close
 
     assert_nil client.send(:drain_stderr, rd)
+    assert_predicate rd, :eof?, "the drain must keep reading so the daemon never blocks on a full pipe"
   ensure
     rd&.close
+  end
+
+  def test_daemon_stderr_drain_keeps_line_breaks_when_redaction_fails_closed
+    failed = Mutineer::Redaction::FAILED
+    out = Mutineer::Redaction.stub(:text, failed) { drain("one\ntwo\n") }
+
+    assert_equal "#{failed}\n#{failed}\n", out
   end
 
   def test_close_io_lets_the_drain_finish_a_last_partial_line
