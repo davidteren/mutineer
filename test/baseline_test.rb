@@ -35,8 +35,8 @@ class BaselineTest < Minitest::Test
   # A baseline doc (a prior --format json run) carrying the given survivor ids.
   def baseline_doc(ids, score: nil, scoped: nil, id_format: nil, file: FILE)
     {
-      # Deliberately an older schema: a baseline written by a prior version must
-      # still be readable, per the "accept any 1.x" contract in docs/json-schema.md.
+      # Deliberately an older schema: saved full-run 1.x reports remain valid
+      # baseline inputs, per docs/json-schema.md.
       "schema_version" => "1.1",
       "summary" => { "score" => score, "scoped" => scoped, "id_format" => id_format }.compact,
       "survivors" => ids.map do |id|
@@ -122,6 +122,23 @@ class BaselineTest < Minitest::Test
 
       assert_equal %w[killed ignored removed_id removed_file], delta.fixed_survivors.map { |h| h["id"] }
       assert_equal [%w[omitted_source not_run], %w[omitted_operator not_run], %w[foreign not_run]], unverified(delta)
+    end
+  end
+
+  def test_missing_file_metadata_keeps_an_absent_survivor_unverified_and_a_known_kill_fixed
+    Dir.mktmpdir do |root|
+      File.write(File.join(root, FILE), SRC)
+      doc = baseline_doc(%w[omitted known])
+      doc["survivors"].each { |entry| entry.delete("file") }
+      baseline_path = File.join(root, "baseline.json")
+      File.write(baseline_path, JSON.generate(doc))
+
+      delta = Mutineer::Baseline.load(baseline_path).diff(agg(as_status(:killed, "known")),
+                                                       sources: [File.join(root, FILE)],
+                                                       operators: %w[comparison], project_root: root)
+
+      assert_equal [%w[omitted not_run]], unverified(delta)
+      assert_equal %w[known], delta.fixed_survivors.map { |h| h["id"] }
     end
   end
 
