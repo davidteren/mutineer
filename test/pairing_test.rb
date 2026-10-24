@@ -316,4 +316,74 @@ class PairingTest < Minitest::Test
       assert_equal ["test/helper_extra_test.rb"], infer_tests("lib/helper.rb", root)
     end
   end
+
+  def flagged?(path, tests, root: "/proj")
+    Mutineer::Pairing.test_given_as_source?(path, project_root: root, tests: tests)
+  end
+
+  def test_given_as_source_flags_suffix_and_prefix_names_under_test_dirs
+    %w[test/a_test.rb test/test_a.rb spec/a_spec.rb test/models/test_user.rb].each do |path|
+      assert flagged?(path, []), path
+    end
+  end
+
+  def test_given_as_source_skips_test_helper_and_non_test_names
+    %w[test/test_helper.rb test/a_tests.rb lib/calc.rb].each do |path|
+      refute flagged?(path, []), path
+    end
+  end
+
+  def test_given_as_source_flags_a_root_level_test_beside_a_given_test
+    assert flagged?("b_test.rb", ["a_test.rb"])
+    assert flagged?("./b_test.rb", ["a_test.rb"])
+  end
+
+  def test_given_as_source_keeps_a_test_prefixed_source_beside_a_test
+    refute flagged?("lib/test_runners.rb", ["lib/runner_test.rb"])
+    refute flagged?("test_b.rb", ["test_a.rb"])
+  end
+
+  def test_given_as_source_keeps_a_test_prefixed_source_in_a_nested_test_dir
+    refute flagged?("lib/foo/test/test_app.rb", ["test/a_test.rb"])
+    refute flagged?("/proj/lib/foo/spec/test_app.rb", ["test/a_test.rb"])
+    assert flagged?("/proj/test/test_b.rb", ["test/test_a.rb"])
+  end
+
+  def test_given_as_source_matches_paths_typed_through_the_real_root
+    Dir.mktmpdir("mutineer-pair") do |tmp|
+      real = File.join(tmp, "real")
+      FileUtils.mkdir_p(real)
+      link = File.join(tmp, "link")
+      File.symlink(real, link)
+      root_real = File.realpath(real)
+      assert flagged?(File.join(root_real, "test/test_b.rb"), [], root: link)
+      assert flagged?(File.join(root_real, "b_test.rb"), ["a_test.rb"], root: link)
+    end
+  end
+
+  def test_given_as_source_ignores_test_dirs_above_the_root
+    refute flagged?("/home/test/proj/lib/test_runners.rb", [], root: "/home/test/proj")
+    refute flagged?("/home/test/proj/lib/ab_test.rb", ["test/ab_test_test.rb"], root: "/home/test/proj")
+    assert flagged?("/home/test/proj/test/b_test.rb", [], root: "/home/test/proj")
+  end
+
+  def test_given_as_source_keeps_a_test_named_source_in_another_dir
+    refute flagged?("lib/ab_test.rb", ["test/other_test.rb"])
+    refute flagged?("b_test.rb", ["sub/a_test.rb"])
+  end
+
+  def test_given_as_source_keeps_a_source_whose_own_test_is_given
+    %w[ab_test_test.rb test_ab_test.rb ab_test_spec.rb ab_test_strong_test.rb].each do |test|
+      refute flagged?("ab_test.rb", [test]), test
+    end
+  end
+
+  def test_given_as_source_flags_a_test_named_source_beside_another_test
+    # Known limit (#293 plan AE6): no name link to the given test, same dir.
+    assert flagged?("ab_test.rb", ["other_test.rb"])
+  end
+
+  def test_given_as_source_keeps_a_test_named_source_outside_test_dirs
+    refute flagged?("app/models/ab_test.rb", ["test/models/ab_test_test.rb"])
+  end
 end

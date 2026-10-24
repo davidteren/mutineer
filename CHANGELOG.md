@@ -12,6 +12,17 @@ All notable changes to this project are documented here. The format is based on
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.
 
+### Fixed
+
+- **A test file given as a source after `--test` now exits 2 in more layouts
+  (#293).** The check missed Minitest `test_*.rb` files under `test/` or
+  `spec/`, and `*_test.rb` or `*_spec.rb` files in the same directory as a
+  `--test` file, such as the project root. Mutineer then mutated that file as
+  a source and never ran it as a test. With `--format json`, the stray file's
+  Minitest output also made the report invalid JSON. A support file with a
+  `test_` name under the top-level `test/` or `spec/` (other than
+  `test_helper.rb`) now also exits 2 when given as a source with `--test`.
+
 ## [1.7.0] - 2026-10-23
 
 ### Added
