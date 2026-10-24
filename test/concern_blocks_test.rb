@@ -370,6 +370,18 @@ class ConcernBlocksTest < Minitest::Test
     end
   end
 
+  def test_place_hook_def_ignores_a_retained_handle_for_another_same_line_method
+    with_hook_concern("def a = :original; def b = :other") do |source, line|
+      host = Class.new { include HookPlaced }
+      other = host.instance_method(:b)
+      Mutineer::ConcernBlocks.store_hook_def { def a = :mutant }
+
+      assert_equal 1, place(source, line, :a)
+      assert_equal :mutant, host.new.a
+      assert_equal :other, other.bind_call(host.new)
+    end
+  end
+
   # Exercise the public single-mutant reload entry point against a real test.
   def assert_reload_wrapper_error
     with_hook_concern("def tag\n  :original\nend") do |source, _line|

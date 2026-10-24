@@ -28,7 +28,8 @@ All notable changes to this project are documented here. The format is based on
   `unplaceable`: a method in a class, module or `Struct.new` block inside the
   block, a method inside another method or block, a method with an explicit
   receiver other than `self` (such as `def base.tag` in `included do |base|`),
-  a hook-block method with the same name and first line as another definition,
+  a hook-block method whose source line conflicts with another `def` or an
+  explicit Ruby method creator (the full rule is in `docs/json-schema.md`),
   every method in a block that uses `alias` or `alias_method`, a method the
   block itself calls, and every method in a block whose `included do` call is
   not a plain line of the module

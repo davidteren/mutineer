@@ -457,6 +457,74 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # Method creators that Ruby maps to the same file and line are ambiguous
+  # even when their definitions are absent from SubjectVisitor's output.
+  def assert_hook_creator_ambiguity(creator, name: :tag, unplaceable: true)
+    definition = name.to_s.end_with?("=") ? "def #{name}(value); 1; end" : "def #{name} = 1"
+    src = "module HookCollision; extend ActiveSupport::Concern; included do; #{definition}; #{creator}; end; end\n"
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal ["HookCollision##{name}"], subjects.map(&:qualified_name), creator
+      assert_equal unplaceable, subjects.first.unplaceable?("reload"), creator
+    end
+  end
+
+  def test_discover_counts_defs_inside_an_unselected_singleton_class
+    assert_hook_creator_ambiguity("class << TARGET; def tag = 2; end")
+  end
+
+  def test_discover_counts_builtin_method_creators_on_the_hook_line
+    ["TARGET.singleton_class.define_method(:tag) { 2 }",
+     'TARGET.define_singleton_method("tag") { 2 }',
+     "TARGET.singleton_class.attr_reader(:tag)",
+     'TARGET.singleton_class.attr_accessor("tag")',
+     "TARGET.singleton_class.attr(:tag)"].each { |creator| assert_hook_creator_ambiguity(creator) }
+    ["TARGET.singleton_class.attr_writer(:tag)",
+     'TARGET.singleton_class.attr_accessor("tag")',
+     "TARGET.singleton_class.attr(:tag, true)"].each do |creator|
+      assert_hook_creator_ambiguity(creator, name: :tag=)
+    end
+  end
+
+  def test_discover_blocks_unknown_creator_names_only_on_the_hook_line
+    ["TARGET.singleton_class.define_method(method_name) { 2 }",
+     "TARGET.define_singleton_method(method_name) { 2 }",
+     "TARGET.singleton_class.attr_reader(method_name)",
+     "TARGET.singleton_class.attr_writer(method_name)",
+     "TARGET.singleton_class.attr_accessor(method_name)",
+     "TARGET.singleton_class.attr(method_name)"].each { |creator| assert_hook_creator_ambiguity(creator) }
+    assert_hook_creator_ambiguity("TARGET.singleton_class.attr(:tag, writable)", name: :tag=)
+  end
+
+  def test_discover_keeps_nonmatching_creator_names_placeable
+    assert_hook_creator_ambiguity("TARGET.singleton_class.define_method(:other) { 2 }", unplaceable: false)
+    assert_hook_creator_ambiguity("TARGET.singleton_class.attr_writer(:tag)", unplaceable: false)
+    assert_hook_creator_ambiguity("TARGET.singleton_class.attr(:tag, false)", name: :tag=, unplaceable: false)
+  end
+
+  def test_discover_uses_the_method_creators_runtime_source_line
+    ["TARGET.singleton_class\n .define_method(\n :tag\n ) { 2 }; def tag = 1",
+     "TARGET\n .singleton_class\n .attr_reader(:tag); def tag = 1"].each do |body|
+      src = "module HookCollision\n extend ActiveSupport::Concern\n included do\n #{body}\n end\nend\n"
+      with_source(src) do |path|
+        subject = Mutineer::Project.discover([path]).first
+        assert subject.unplaceable?("reload"), body
+      end
+    end
+  end
+
+  def test_discover_does_not_treat_a_multiline_receiver_as_the_creation_line
+    ["def tag = 1; TARGET.singleton_class\n .define_method(:tag) { 2 }",
+     "def tag = 1; TARGET\n .singleton_class\n .attr_reader(:tag)",
+     "def tag = 1\n TARGET.singleton_class.attr_reader(method_name)"].each do |body|
+      src = "module HookCollision\n extend ActiveSupport::Concern\n included do\n #{body}\n end\nend\n"
+      with_source(src) do |path|
+        subject = Mutineer::Project.discover([path]).first
+        refute subject.unplaceable?("reload"), body
+      end
+    end
+  end
+
   # #297: an alias keeps the original body, so a block that aliases anything
   # keeps every def in it unplaceable.
   def test_an_alias_in_the_hook_block_makes_every_def_unplaceable

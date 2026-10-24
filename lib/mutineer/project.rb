@@ -20,29 +20,92 @@ module Mutineer
         visitor = SubjectVisitor.new(path, plain_path_calls(result.value))
         visitor.visit(result.value)
         visitor.promote_module_functions!
-        exclude_ambiguous_hook_defs!(visitor.subjects)
+        exclude_ambiguous_hook_defs!(visitor.subjects, result.value)
         visitor.subjects
       end
       only ? subjects.select { |s| s.qualified_name == only } : subjects
     end
 
-    # Keeps hook defs unplaceable when another definition in the file has the
-    # same name and first line. Ruby's source location cannot distinguish them,
-    # so placement could load one concern's mutant into another method's host.
-    # Instance and singleton definitions can both reach singleton-class hosts;
-    # their shared name and line are ambiguous too. Run before the `only` filter
+    # Keeps hook defs unplaceable when the raw AST can define another method
+    # with the same name and source line. Count all defs, including bodies that
+    # SubjectVisitor does not select, and Ruby's explicit method creators (see
+    # {.created_method_locations}). An unknown creator name blocks that source
+    # line. Instance and singleton definitions can both reach singleton-class
+    # hosts, so their shared name and line are ambiguous too. Run before `only`
     # so selecting one subject cannot hide a collision.
     #
     # @param subjects [Array<Mutineer::Subject>] subjects from one source file.
+    # @param program [Prism::ProgramNode] the complete parsed file.
     # @return [void]
-    def self.exclude_ambiguous_hook_defs!(subjects)
-      subjects.group_by { |subject| [subject.name, subject.def_node.location.start_line] }.each_value do |same|
-        next if same.one?
+    def self.exclude_ambiguous_hook_defs!(subjects, program)
+      return unless subjects.any?(&:reload_hook_call)
 
-        same.each { |subject| subject.reload_hook_call = nil }
+      counts = Hash.new(0)
+      nodes = [program]
+      while (node = nodes.pop)
+        nodes.concat(node.compact_child_nodes)
+        location = if node.is_a?(Prism::DefNode)
+                     [node.location.start_line, [node.name]]
+                   elsif node.is_a?(Prism::CallNode)
+                     created_method_locations(node)
+                   end
+        next unless location
+
+        line, names = location
+        names.each { |name| counts[[line, name]] += 1 }
+      end
+      subjects.each do |subject|
+        line = subject.def_node.location.start_line
+        subject.reload_hook_call = nil if counts[[line, subject.name]] > 1 || counts[[line, nil]].positive?
       end
     end
     private_class_method :exclude_ambiguous_hook_defs!
+
+    # The source line and names Ruby assigns to explicit method creators. A
+    # block-defined method starts at the block opening, while an attribute
+    # method starts at the message token; a multiline receiver starts too early.
+    # Literal symbol and string names are exact. A dynamic name, splat, or attr
+    # writer flag may name any method on that line, represented by nil.
+    #
+    # @param node [Prism::CallNode] call to inspect.
+    # @return [Array(Integer, Array<Symbol, nil>), nil] source line and names,
+    #   or nil for a call outside this built-in family.
+    def self.created_method_locations(node)
+      arguments = node.arguments&.arguments || []
+      case node.name
+      when :define_method, :define_singleton_method
+        line = node.block.is_a?(Prism::BlockNode) ? node.block.location.start_line : node.message_loc.start_line
+        return [line, [literal_method_name(arguments.first)]]
+      when :attr_reader, :attr_writer, :attr_accessor, :attr
+        mode = { attr_reader: :reader, attr_writer: :writer, attr_accessor: :both, attr: :reader }.fetch(node.name)
+        if node.name == :attr && arguments.size == 2 &&
+           (arguments.last.is_a?(Prism::TrueNode) || arguments.last.is_a?(Prism::FalseNode))
+          mode = arguments.last.is_a?(Prism::TrueNode) ? :both : :reader
+          arguments = arguments.first(1)
+        end
+        names = arguments.flat_map do |argument|
+          name = literal_method_name(argument)
+          next [nil] unless name
+
+          case mode
+          when :reader then [name]
+          when :writer then [:"#{name}="]
+          else [name, :"#{name}="]
+          end
+        end
+        [node.message_loc.start_line, names]
+      end
+    end
+    private_class_method :created_method_locations
+
+    # A literal method name, or nil when it depends on a runtime value.
+    #
+    # @param node [Prism::Node, nil] name argument.
+    # @return [Symbol, nil]
+    def self.literal_method_name(node)
+      node.unescaped.to_sym if node.is_a?(Prism::SymbolNode) || node.is_a?(Prism::StringNode)
+    end
+    private_class_method :literal_method_name
 
     # The call statements that run each time the file loads, in order: each one
     # sits in the file's top-level statements or in a `module` or `class` body

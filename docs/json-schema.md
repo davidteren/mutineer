@@ -109,7 +109,10 @@ mutant's method is one of these:
 - a method with an explicit receiver other than `self` (such as `def base.tag` in `included do |base|`),
   because extracting the definition does not keep a receiver bound inside the hook;
 - a hook-block method whose name and first line match another definition in the same file, including a
-  collision between an instance and a singleton definition; Ruby's source location cannot distinguish them;
+  collision between an instance and a singleton definition. The check reads all parsed `def`s, even when
+  they are not selected as subjects, and explicit `define_method`, `define_singleton_method`, `attr_reader`,
+  `attr_writer`, `attr_accessor` and `attr` calls. A dynamic name or writer flag blocks hook methods on that
+  creation line. Ruby's source location cannot distinguish which definition an existing host has;
 - every method in a block that uses `alias` or `alias_method`;
 - a method the block itself calls outside a method body (a bare call, `self.name`, `method(:name)` or
   `instance_method(:name)`, also inside a nested block or lambda); a symbol such as `before_save :name` is fine;
