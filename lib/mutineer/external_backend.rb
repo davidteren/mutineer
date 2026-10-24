@@ -49,6 +49,10 @@ module Mutineer
     # The end-of-run summary line of RSpec ("N examples, N failures").
     # Captures the failure count.
     RSPEC_SUMMARY = /\d+ examples?, (\d+) failures?/
+    # The line Minitest prints once every test file has loaded, before the first
+    # test runs. Exit 1 after it with no summary line means code under test
+    # called `exit` or `abort`, which the in-process backend also scores killed.
+    MINITEST_RUNNING = "# Running:"
     # ANSI colour codes, removed before matching so a coloured summary still counts.
     ANSI_CODE = /\e\[[\d;]*m/
 
@@ -175,10 +179,10 @@ module Mutineer
 
         unless code == FAILURE_CODE
           return Result.error("test-command exited #{code} (only exit 1 counts as a kill; " \
-                              "check RSpec --failure-exit-code or your wrapper)")
+                              "check RSpec --failure-exit-code, a coverage gate, or your wrapper)")
         end
 
-        if check_summary && !failure_reported?(output)
+        if check_summary && !failure_reported?(output) && !exited_during_tests?(output)
           return Result.error("test-command exited 1 but its output shows no failing test " \
                               "(the suite or the mutant crashed before tests ran; --verbose shows the output)")
         end
@@ -210,6 +214,17 @@ module Mutineer
       text = summary_text(output)
       text.scan(MINITEST_SUMMARY).any? { |failures, errors| failures.to_i + errors.to_i > 0 } ||
         text.scan(RSPEC_SUMMARY).any? { |(failures)| failures.to_i > 0 }
+    end
+
+    # True when Minitest started its tests and the process then ended with no
+    # summary line: code under test called `exit` or `abort` mid-run. A load
+    # crash ends before Minitest prints {MINITEST_RUNNING}, so it stays false.
+    #
+    # @api private
+    # @param output [String] captured child stdout+stderr.
+    # @return [Boolean]
+    def self.exited_during_tests?(output)
+      summary_text(output).include?(MINITEST_RUNNING) && !summary_line?(output)
     end
 
     # The output as binary with ANSI colour codes removed. Binary, so bytes that

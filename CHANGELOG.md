@@ -13,6 +13,8 @@ All notable changes to this project are documented here. The format is based on
   exit scores `error`, such as a wrapper's 137 after an out-of-memory kill. When
   the clean run prints a Minitest or RSpec summary line, an exit 1 also needs a
   failing test in that line, so a suite that crashed at load scores `error`.
+  Code under test that calls `exit` while Minitest runs its tests still scores
+  `killed`, as it does in process.
   When the clean run prints no summary line, Mutineer warns once and keeps the
   exit-code rule. An RSpec setup with `--failure-exit-code 3` now scores every
   kill as `error`: use the default exit code, or a wrapper that maps a failure

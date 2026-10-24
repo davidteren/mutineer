@@ -50,7 +50,7 @@ class ExternalBackendTest < Minitest::Test
       result = Backend.run("#{RUBY} -e exit(#{code}) %{files}", ["x"], timeout: 30)
       assert_predicate result, :error?, "exit #{code}"
       assert_equal "test-command exited #{code} (only exit 1 counts as a kill; " \
-                   "check RSpec --failure-exit-code or your wrapper)", result.details
+                   "check RSpec --failure-exit-code, a coverage gate, or your wrapper)", result.details
     end
   end
 
@@ -78,6 +78,11 @@ class ExternalBackendTest < Minitest::Test
       "2 runs, 1 assertions, 0 failures, 1 errors, 0 skips\n",
       "3 tests, 3 assertions, 1 failures, 0 errors, 0 skips\n", # minitest-reporters
       "2 examples, 1 failure\n",
+      "\e[31m3 examples, 2 failures\e[0m\n",
+      # A wrapper that runs two suites: a kill in either one is a kill.
+      "2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n4 examples, 1 failure\n",
+      # Minitest started its tests, then code under test called exit or abort.
+      "Run options: --seed 1\n\n# Running:\n\n",
       "\e[31m5 tests, 5 assertions, \e[0m\e[31m1 failures\e[0m, 0 errors, 0 skips\n",
       "café ✓\n1 runs, 1 assertions, 1 failures, 0 errors, 0 skips\n\xFF\n"
     ].each do |output|
@@ -90,7 +95,10 @@ class ExternalBackendTest < Minitest::Test
   def test_exit_one_with_no_failing_test_in_summary_is_error
     [
       "0 examples, 0 failures, 1 error occurred outside of examples\n",
-      "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n"
+      "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n",
+      "# Running:\n\n3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n",
+      "2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n" \
+        "0 examples, 0 failures, 1 error occurred outside of examples\n"
     ].each do |output|
       assert_predicate run_exit_one(output), :error?, output.inspect
     end
@@ -222,9 +230,11 @@ class ExternalBackendTest < Minitest::Test
   end
 
   def test_smoke_check_reports_summary_line
-    with_script(%(puts "4 runs, 4 assertions, 0 failures, 0 errors, 0 skips"\n)) do |path|
-      _elapsed, summary = Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
-      assert summary
+    ["4 runs, 4 assertions, 0 failures, 0 errors, 0 skips", "3 examples, 0 failures"].each do |line|
+      with_script(%(puts #{line.dump}\n)) do |path|
+        _elapsed, summary = Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
+        assert summary, line
+      end
     end
   end
 

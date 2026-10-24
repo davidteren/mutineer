@@ -257,9 +257,8 @@ module Mutineer
 
     # Runs one mutant through the external backend: apply the whole-file mutation
     # on disk, run the command, restore. An invalid (non-reparsing) mutant would
-    # fail to load (scored `error`, or a false `killed` when the summary check is
-    # off), so skip it tool-side (Prism, already
-    # cheap) and never write the file, preserving the `skipped` verdict the
+    # fail to load (scored `error`, or a false `killed` without the summary
+    # check), so skip it tool-side (Prism, already cheap) and never write the file, preserving the `skipped` verdict the
     # in-process path gives at the pre-fork check.
     #
     # @param check_summary [Boolean] passed to {ExternalBackend.run}.
