@@ -21,7 +21,9 @@ All notable changes to this project are documented here. The format is based on
   Now one copy runs: the copy of the operator that comes first in
   `mutineer --list-operators`, whatever the `--operators` order. Only the
   same text counts: a single-quoted `'hi'` still gives two mutants (`""` and
-  `''`).
+  `''`). Both edits must also start on the same line: in a chain with one
+  call per line, the two copies start on different lines, and both still
+  run, so a line-based filter such as `--since` never loses the edit.
   - Every kept mutant keeps its id. The dropped copy's id no longer appears
     in reports. Runs that use only one of these operators keep the same
     mutants and ids.
