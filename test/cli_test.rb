@@ -785,6 +785,7 @@ class CliTest < Minitest::Test
     assert_includes err, "[REDACTED]"
     refute_includes err, "s3cret"
     assert_empty backtrace_lines(err)
+    assert_includes err, "mutineer: rerun with --verbose for the backtrace"
   end
 
   def test_boot_error_prints_a_redacted_backtrace_under_verbose
@@ -793,6 +794,7 @@ class CliTest < Minitest::Test
     assert_equal 1, status.exitstatus, err
     assert_includes err, "boot.rb:2"
     refute_includes err, "s3cret"
+    refute_includes err, "rerun with --verbose"
   end
 
   def test_boot_error_prints_a_redacted_cause_under_verbose

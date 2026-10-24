@@ -19,9 +19,10 @@ All notable changes to this project are documented here. The format is based on
   the boot file, a source file or a `.mutineer.yml` `require:` file loads now exits 1
   (runtime error), not 2 (usage error). A load error in the tool process (an
   in-process `--boot` or `--rails` run, a source file, or a `require:`
-  file) no longer prints the raw password or a backtrace. The run prints one
-  `mutineer: cannot load <path>: ...` line and exits 1. `--verbose` adds a
-  redacted backtrace and the redacted cause chain. CLI error messages, the
+  file) no longer prints the raw password or a backtrace. The run prints a
+  `mutineer: cannot load <path>: ...` message (a `SyntaxError` keeps its code
+  excerpt) and a hint to rerun with `--verbose`, and exits 1. `--verbose`
+  adds a redacted backtrace and the redacted cause chain. CLI error messages, the
   fork child's error line, the worker crash text in the report, the daemon's
   stderr lines and the `--verbose` test command output are redacted too.
   Daemon stderr is now copied line by line as UTF-8, so an invalid byte

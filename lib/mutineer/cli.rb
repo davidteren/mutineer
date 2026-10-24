@@ -378,6 +378,8 @@ module Mutineer
       if config.verbose
         (e.backtrace || []).each { |frame| warn "\t#{Redaction.text(frame)}" }
         e.causes.each { |cause| warn "mutineer: caused by: #{cause}" }
+      else
+        warn "mutineer: rerun with --verbose for the backtrace"
       end
       exit 1
     end
