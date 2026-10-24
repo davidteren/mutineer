@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "minitest/mock"
 
 class ResultTest < Minitest::Test
   def test_killed
@@ -138,6 +139,19 @@ class ResultTest < Minitest::Test
                                          Mutineer::Result.killed])
     assert_equal 0, agg.no_verdict_count
     refute_predicate agg, :incomplete?
+  end
+
+  # #286: only a survivor whose line ran at load becomes a tested ran_at_load
+  # mutant; any other verdict comes back unchanged.
+  def test_load_verdict_marks_only_a_survivor_as_tested_at_load
+    Mutineer::JobPlan.stub(:ran_at_load?, true) do
+      survived = Mutineer::JobPlan.load_verdict(Mutineer::Result.survived, "a.rb", nil, nil, "", nil)
+      assert_predicate survived, :ran_at_load?
+      assert_predicate survived, :tested_at_load?
+
+      killed = Mutineer::Result.killed
+      assert_same killed, Mutineer::JobPlan.load_verdict(killed, "a.rb", nil, nil, "", nil)
+    end
   end
 
   def test_tested_at_load_defaults_to_false
