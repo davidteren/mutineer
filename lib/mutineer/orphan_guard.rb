@@ -15,6 +15,12 @@ module Mutineer
     # An in-process `.mutineer_mutant` file has the same shape (#295). The pid
     # is the child that is loading the mutant.
     TEMP_PID = /\A\.?mutineer_(?:daemon|mutant)\d{8}-(\d+)-/
+    # Basename glob for the mutant files of both modes. Tempfile puts hyphens in
+    # the name, so it is not a constant name. The leading dot hides a new file
+    # from Zeitwerk (#253); a file an older version left behind has none, so the
+    # glob matches both. Each boot sweep removes an orphan of either mode, so an
+    # old file of the other mode does not stop the boot (#287).
+    TEMP_BASENAME = "{.,}mutineer_{mutant,daemon}*.rb"
 
     # Starts the watchdog in the current (child) process.
     #

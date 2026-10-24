@@ -33,7 +33,10 @@ module Mutineer
 
     # The daemon's per-mutant tempfile, written into the source dir so
     # require_relative resolves. The leading dot hides it from Zeitwerk (#253);
-    # older versions wrote it without one. Kept in step with DaemonServer#sweep_temps.
+    # older versions wrote it without one. Daemon files only, unlike the boot
+    # sweeps ({OrphanGuard::TEMP_BASENAME}): this sweep runs after the boot and
+    # waits {SWEEP_GRACE} for each file a live process owns, so a parallel
+    # in-process run's files would slow every daemon run.
     DAEMON_TEMP_GLOB = "{.,}mutineer_daemon*.rb"
 
     # Seconds the end-of-run sweep waits for an orphaned child to die. Its

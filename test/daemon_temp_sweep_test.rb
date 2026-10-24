@@ -163,10 +163,28 @@ class DaemonTempSweepTest < Minitest::Test
       name = File.basename($mutant_file)
 
       assert_match(/\A\.mutineer_daemon\d{8}-#{Process.pid}-/, name)
-      [Mutineer::DaemonServer::DAEMON_TEMP_BASENAME, Mutineer::DaemonBackend::DAEMON_TEMP_GLOB].each do |glob|
+      [Mutineer::OrphanGuard::TEMP_BASENAME, Mutineer::DaemonBackend::DAEMON_TEMP_GLOB].each do |glob|
         assert File.fnmatch?(glob, name, File::FNM_EXTGLOB), glob
       end
     end
+  end
+
+  # #287: the daemon boot sweep also removes an old in-process file, which
+  # would stop the boot, and keeps one a live in-process run still owns.
+  def test_sweep_temps_removes_an_old_in_process_file
+    Dir.mktmpdir do |dir|
+      old = File.join(dir, "mutineer_mutant20200101-#{unused_pid}-old.rb")
+      live = File.join(dir, ".mutineer_mutant20200101-#{Process.pid}-live.rb")
+      [old, live].each { |f| File.write(f, "") }
+      Mutineer::DaemonServer.instance_variable_set(:@source_dirs, [dir])
+
+      Mutineer::DaemonServer.send(:sweep_temps)
+
+      refute File.exist?(old), "an old in-process file must not stop the daemon boot"
+      assert File.exist?(live), "a live in-process run's file must stay"
+    end
+  ensure
+    Mutineer::DaemonServer.instance_variable_set(:@source_dirs, nil)
   end
 
   def read_child_path(reader)

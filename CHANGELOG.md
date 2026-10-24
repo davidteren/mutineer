@@ -28,6 +28,16 @@ All notable changes to this project are documented here. The format is based on
   load, and that mutant scored `errored`. Now the file is locked while it
   loads, as the daemon's file is, and a sweep keeps a file whose creating
   process still runs.
+- **An old temp file of the other mode no longer stops the boot (#287).**
+  Before the app boots, each mode sweeps the source directories. In 1.7.0
+  an in-process run removed only old `mutineer_mutant*.rb` files and the
+  daemon removed only old `mutineer_daemon*.rb` files, so a file the other
+  mode left made Zeitwerk raise. Now both boot sweeps remove an orphan of
+  either mode, and the daemon tells Zeitwerk to skip both names. You no
+  longer delete such a file by hand. Do not run Mutineer older than 1.7.0
+  at the same time in the same checkout: it still writes temp files
+  without the dot, and a newer run's mutants error when Zeitwerk finds
+  one.
 
 ## [1.7.0] - 2026-10-23
 

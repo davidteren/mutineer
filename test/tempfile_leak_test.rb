@@ -30,11 +30,13 @@ class TempfileLeakTest < Minitest::Test
     end
   end
 
-  # The sweep removes a file an older version left (no dot) and a new hidden one.
+  # The sweep removes a file an older version left (no dot) and a new hidden
+  # one, of either mode: an old daemon file would stop the boot too (#287).
   def test_sweep_removes_hidden_and_older_mutant_files
     Dir.mktmpdir do |dir|
       dead = unused_pid
-      files = %W[.mutineer_mutant20260101-#{dead}-a.rb mutineer_mutant20260101-#{dead}-b.rb].map { |f| File.join(dir, f) }
+      files = %W[.mutineer_mutant20260101-#{dead}-a.rb mutineer_mutant20260101-#{dead}-b.rb
+                 mutineer_daemon20260101-#{dead}-c.rb].map { |f| File.join(dir, f) }
       files.each { |f| File.write(f, "") }
       Mutineer::JobPlan.sweep_orphans([dir])
       assert(files.none? { |f| File.exist?(f) })
