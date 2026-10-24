@@ -9,7 +9,7 @@ All notable changes to this project are documented here. The format is based on
 ### Added
 
 - **Included and prepended block methods under reload.** After you upgrade,
-  follow the [full baseline refresh recipe](docs/agentic-coding.md#ci-gate-fail-a-pr-only-when-it-makes-things-worse)
+  follow the [full baseline refresh recipe](https://davidteren.github.io/mutineer/agentic-coding.html#ci-gate)
   with `--no-since --format json --output .mutineer/refreshed-baseline.json` and your
   existing source and test options. Review the report and replace the stored
   baseline. GitHub Action users must replace the file passed to the `baseline`
