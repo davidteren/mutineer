@@ -24,8 +24,8 @@ class DaemonClientTest < Minitest::Test
     }
   end
 
-  def with_client
-    client = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).start
+  def with_client(**options)
+    client = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP, **options).start
     yield client
   ensure
     client&.quit
@@ -59,7 +59,8 @@ class DaemonClientTest < Minitest::Test
   # #296: an Active Record connection error inside a test is `error`, not
   # `killed`. Any other database error still kills: a mutant can cause bad SQL.
   def test_in_test_database_error_is_error_not_killed
-    with_client do |client|
+    errio = StringIO.new
+    with_client(errio: errio) do |client|
       lost = ORIGINAL.sub("quantity * unit_price_cents",
                           "ActiveRecord::Base.remove_connection; Order.count")
       refute_equal ORIGINAL, lost, "mutation anchor must exist"
@@ -74,6 +75,10 @@ class DaemonClientTest < Minitest::Test
 
       assert_equal "survived", run_payload(client, 4, ORIGINAL)
     end
+    # The line tells this path apart from a crash, which is also `error`.
+    line = "[mutineer-child] a test failed with a database error, so the run has no verdict: " \
+           "ActiveRecord::ConnectionNotEstablished: gone."
+    assert_includes errio.string, line
   end
 
   # A payload that hangs on load is SIGKILLed at the deadline → timeout (fast).

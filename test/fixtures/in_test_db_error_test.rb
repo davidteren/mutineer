@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
+require "stringio"
 
 # Stand-ins for the Active Record 7.2 error classes (#296). This file is only
 # ever loaded in a forked child, so they never reach the parent suite.
@@ -15,6 +16,7 @@ module ActiveRecord
     end
   end
   class ConnectionTimeoutError < ConnectionNotEstablished; end
+  class ConnectionNotDefined < ConnectionNotEstablished; end
   class QueryAborted < StatementInvalid; end
   class ConnectionFailed < QueryAborted; end
   class TransactionRollbackError < StatementInvalid; end
@@ -23,7 +25,8 @@ module ActiveRecord
 end
 
 # MUTINEER_FIXTURE_FIRST and MUTINEER_FIXTURE_SECOND set each test: pass
-# (the default), fail, or the name of a database error to raise.
+# (the default), fail, nested_connection (record a database error on an own
+# reporter, then pass), or the name of a database error to raise.
 # MUTINEER_FIXTURE_SETUP and MUTINEER_FIXTURE_TEARDOWN act on the first test.
 class InTestDatabaseErrorFixture < Minitest::Test
   i_suck_and_my_tests_are_order_dependent!
@@ -31,6 +34,7 @@ class InTestDatabaseErrorFixture < Minitest::Test
   ERRORS = {
     "connection" => ActiveRecord::ConnectionNotEstablished,
     "pool_timeout" => ActiveRecord::ConnectionTimeoutError,
+    "connection_not_defined" => ActiveRecord::ConnectionNotDefined,
     "connection_failed" => ActiveRecord::ConnectionFailed,
     "deadlock" => ActiveRecord::Deadlocked,
     "lock_wait" => ActiveRecord::LockWaitTimeout,
@@ -62,7 +66,18 @@ class InTestDatabaseErrorFixture < Minitest::Test
     when "pass" then pass
     when "fail" then flunk "an assertion fails"
     when "connection_unmarshalable" then raise ActiveRecord::ConnectionNotEstablished.new(message).unmarshalable!
+    when "nested_connection" then record_on_own_reporter(ActiveRecord::ConnectionNotEstablished.new(message))
     else raise ERRORS.fetch(what), message
     end
+  end
+
+  # As a gem that tests its reporters does: the run's verdict must ignore it.
+  def record_on_own_reporter(error)
+    composite = Minitest::CompositeReporter.new(Minitest::StatisticsReporter.new(StringIO.new))
+    composite.start
+    failing = Minitest::Result.new("inner")
+    failing.failures = [Minitest::UnexpectedError.new(error)]
+    composite.record(failing)
+    pass
   end
 end

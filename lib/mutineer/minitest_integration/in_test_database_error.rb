@@ -12,9 +12,12 @@ module Mutineer
     #
     # Only the first failed result on the outer reporter counts (see
     # {OuterReporter}). A run that stops at its first failure ends there, so a
-    # full run and a `--matrix` run give the same verdict. Stdlib only: the
-    # app-side daemon loads this file without Prism. An unknown Minitest shape
-    # arms nothing, and the run keeps its 0 or 1.
+    # full run and a `--matrix` run give the same verdict. One limit: the tests
+    # of a `parallelize_me!` class record in the order their threads finish, so
+    # a mutant that makes one parallel test hit a database error and another
+    # fail an assertion can score `error` in one run and `killed` in the next.
+    # Stdlib only: the app-side daemon loads this file without Prism. An
+    # unknown Minitest shape arms nothing, and the run keeps its 0 or 1.
     module InTestDatabaseError
       extend OuterReporter::Client
 
@@ -30,6 +33,11 @@ module Mutineer
         ActiveRecord::Deadlocked
         ActiveRecord::LockWaitTimeout
       ].freeze
+
+      # Subclasses of {NAMES} that point at the code, not the database. Rails 8
+      # raises `ConnectionNotDefined` for a role or shard that no connection
+      # defines, which a mutant of a `connected_to` call can cause.
+      CODE_ERROR_NAMES = %w[ActiveRecord::ConnectionNotDefined].freeze
 
       # Prepended on `Minitest::CompositeReporter`.
       module RecordFirstFailure
@@ -76,7 +84,9 @@ module Mutineer
         end
 
         # Keeps the first failed result recorded on the outer reporter. Minitest
-        # records from several threads only under its own reporter lock.
+        # records from several threads only under its own reporter lock. A
+        # result it cannot read counts as an ordinary failure, so a fault here
+        # keeps the old verdict and never turns a kill into an error.
         #
         # @param reporter [Minitest::CompositeReporter] the recording reporter.
         # @param result [Minitest::Result] the result of one test.
@@ -86,16 +96,19 @@ module Mutineer
           return unless first_failure.nil? && outer_reporter?(reporter)
 
           self.first_failure = database_error(result.failures.first) || false
+        rescue StandardError
+          self.first_failure = false
         end
 
-        # The run's exit code: 2 instead of 1 when the armed run's first failure
-        # was a database error, with one line on stderr that names it.
-        # `STDERR`, not `warn`: a test can leave `$stderr` as a `StringIO`. The
-        # flush matters because both fork boundaries end with `exit!`.
+        # Ends the decision: returns 2 instead of 1 when the armed run's first
+        # failure was a database error, and writes one line on stderr that
+        # names it. `STDERR`, not `warn`: a test can leave `$stderr` as a
+        # `StringIO`. The flush matters because both fork boundaries end with
+        # `exit!`.
         #
         # @param code [Integer] 0 or 1 from the run.
         # @return [Integer] `code`, or 2.
-        def exit_code(code)
+        def finish!(code)
           error = first_failure if armed_here?
           return code unless code == 1 && error
 
@@ -111,31 +124,38 @@ module Mutineer
         # error before a teardown error. The cause chain is not read: Active
         # Record already translates driver errors into the listed classes.
         #
+        # Minitest before 5.14 names the wrapped error `exception`.
+        #
         # @param failure [Minitest::Assertion, nil] the result's first entry.
         # @return [Exception, nil]
         def database_error(failure)
           return unless failure.is_a?(::Minitest::UnexpectedError)
 
-          error = failure.error
-          error if database_classes.any? { |klass| error.is_a?(klass) }
+          error = failure.respond_to?(:error) ? failure.error : failure.exception
+          return if loaded(CODE_ERROR_NAMES).any? { |klass| error.is_a?(klass) }
+
+          error if loaded(NAMES).any? { |klass| error.is_a?(klass) }
         end
 
-        # The listed classes this process has loaded.
+        # The named classes this process has loaded.
         #
+        # @param names [Array<String>] constant names.
         # @return [Array<Class>]
-        def database_classes
-          NAMES.filter_map { |name| Object.const_get(name) if Object.const_defined?(name) }
+        def loaded(names)
+          names.filter_map { |name| Object.const_get(name) if Object.const_defined?(name) }
         end
 
         # The stderr line. Redacted before the cut to one line, so a cut can
-        # never split a password away from its URL.
+        # never split a password away from its URL. The wording fits every run,
+        # the clean check included, and a mutant can cause the error too.
         #
         # @param error [Exception] the database error.
         # @return [String]
         def line(error)
-          text = Redaction.text("#{error.class}: #{error.message}").lines.first.to_s.chomp.delete_suffix(".")
-          "[mutineer-child] in-test database error, not a test failure: #{text}. " \
-            "Check the database server and its connection limit."
+          text = Redaction.text("#{error.class}: #{error.message}".scrub)
+          text = text.lines.first.to_s.chomp.delete_suffix(".")
+          "[mutineer-child] a test failed with a database error, so the run has no verdict: #{text}. " \
+            "Check that the database server is up and has free connections."
         end
       end
     end

@@ -115,7 +115,8 @@ module Mutineer
       KillRecorder.finish! if record_to
 
       # A plugin can replace the summary reporter, so a stop decides by itself.
-      InTestDatabaseError.exit_code(passed && !StopAtFirstFailure.stopped_here? ? 0 : 1)
+      code = passed && !StopAtFirstFailure.stopped_here? ? 0 : 1
+      InTestDatabaseError.finish!(code)
     ensure
       StopAtFirstFailure.disarm!
       KillRecorder.disarm!

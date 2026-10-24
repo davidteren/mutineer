@@ -335,8 +335,9 @@ module Mutineer
         end
         verdict = wait_verdict(pid, timeout)
         # Mark ready only when the child finished cleanly after seeding
-        # (killed/survived). Timeout can interrupt mid-copy; error is a routing
-        # failure. Both leave the slot unready so the next fork seeds again.
+        # (killed/survived). Timeout can interrupt mid-copy; error can be a
+        # routing failure or a database error inside a test (#296). Both leave
+        # the slot unready so the next fork seeds again.
         @slot_ready[worker] = true if first_use && %w[killed survived].include?(verdict)
         # A SIGKILLed timeout child skipped its Tempfile unlink. Sweep the orphan
         # so it cannot outlive the run.

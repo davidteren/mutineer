@@ -504,7 +504,7 @@ class TestRunnersMinitestTest < Minitest::Test
     end
   end
 
-  DB_ERROR_LINE = "[mutineer-child] in-test database error, not a test failure: "
+  DB_ERROR_LINE = "[mutineer-child] a test failed with a database error, so the run has no verdict: "
 
   def assert_db_error(klass, result)
     code, err = result
@@ -550,6 +550,27 @@ class TestRunnersMinitestTest < Minitest::Test
   # A mutant can cause bad SQL, so other database errors still kill.
   def test_statement_invalid_in_test_returns_one
     assert_equal 1, db_error_run({ "FIRST" => "statement_invalid" }).first
+  end
+
+  # Rails 8 raises ConnectionNotDefined for an unknown role or shard: the code's
+  # fault, so it still kills.
+  def test_connection_not_defined_returns_one
+    assert_equal [1, ""], db_error_run({ "FIRST" => "connection_not_defined" })
+  end
+
+  # Only the outer reporter counts: a test that records a database error on its
+  # own reporter does not decide the run.
+  def test_database_error_on_a_nested_reporter_is_ignored
+    assert_equal [1, ""], db_error_run({ "FIRST" => "nested_connection", "SECOND" => "fail" })
+  end
+
+  def test_unknown_minitest_shape_keeps_one_for_a_database_error
+    code = fork_status do
+      Mutineer::MinitestIntegration::OuterReporter.define_singleton_method(:hook_for_loaded_minitest) { nil }
+      ENV["MUTINEER_FIXTURE_FIRST"] = "connection"
+      Mutineer::TestRunners::Minitest.run([DB_ERROR])
+    end
+    assert_equal 1, code
   end
 
   def test_passing_run_with_the_hook_returns_zero
