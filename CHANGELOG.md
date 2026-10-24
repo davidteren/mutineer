@@ -19,6 +19,12 @@ All notable changes to this project are documented here. The format is based on
   failing run wrote its report over the baseline, and the next run passed
   against it (#281).
 
+### Changed
+
+- Explain mutation testing before setup, with a runnable beginner guide and a
+  first run on one file. Simplify wording across the website and clarify Rails
+  setup, CI baselines, and reasons for ignoring a mutant.
+
 ## [1.7.0] - 2026-10-23
 
 ### Added
