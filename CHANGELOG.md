@@ -12,6 +12,33 @@ All notable changes to this project are documented here. The format is based on
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.
 
+### Fixed
+
+- **The `range` operator swaps endless ranges outside slices.** Before, it
+  skipped every endless range (`1..`, `1..nil`) as equivalent. But `(1..)`
+  and `(1...)` differ on `==`, `hash`, `exclude_end?` and `to_s`, so a test
+  can kill that mutant. Now the operator skips an endless range only when it
+  is a direct index argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`,
+  `bytesplice`, `values_at` or an index write, and the receiver is not a
+  class (`Array[1..]` is swapped). See
+  [Equivalent skips](https://davidteren.github.io/mutineer/equivalent-skips.html#endless-range).
+  A run that names `range` can get new mutants, new survivors and new mutant
+  ids. A new mutant can take the id of an older `range` mutant in the same
+  method, so an old `ignore:` id can name a different mutant. If you use
+  `range`:
+  - Delete the `ignore:` entries for `range` mutants.
+  - Save a new report with the same operators you gate with:
+    `mutineer run <paths> --operators <list> --no-since --format json --output <file>`.
+    Use it as your new baseline.
+  - Print new entries with
+    `mutineer triage <file> --reason TEXT (--id ID ... | --all)` and paste
+    them under `ignore:`. The command does not edit files.
+
+  Some new mutants are equivalent, for example a range used only with
+  `include?`, or a range in an Active Record query such as
+  `where(created_at: time..)`. Suppress them with `# mutineer:disable-line`
+  or an `ignore:` entry. (#299)
+
 ## [1.7.0] - 2026-10-23
 
 ### Added
