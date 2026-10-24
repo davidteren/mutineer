@@ -1,0 +1,35 @@
+test/coverage_map_test.rb
+  s_533ed13f8f67ea::t_6d5187b0ca2ce5 54-98
+  s_533ed13f8f67ea::t_ae377bfe7c8e54 99-119
+test/redaction_test.rb
+  s_533ed13f8f67ea::t_6d5187b0ca2ce5 125-133
+lib/mutineer/runner.rb
+  s_533ed13f8f67ea::t_b04006158061ae 4,446,453-455
+CHANGELOG.md
+  s_533ed13f8f67ea::t_b04006158061ae 24-26,28-29,34-42
+lib/mutineer/redaction.rb
+  s_533ed13f8f67ea::t_ae377bfe7c8e54 9,25,27,37
+  s_533ed13f8f67ea::t_b04006158061ae 86-87,93
+lib/mutineer/coverage_map.rb
+  s_533ed13f8f67ea::t_b04006158061ae 1095-1102
+test/cli_test.rb
+  s_533ed13f8f67ea::t_6d5187b0ca2ce5 863-884
+docs/plans/2026-10-24-288-fix-redaction-sinks-and-overmatch-plan.md
+  s_533ed13f8f67ea::t_edecde4aa42f78 19,40,69,81,113-114,117,277,281,303
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b314fd63a624d0f0aad3b2f73ab07e3d705fa6da",
+  "prompts": {},
+  "sessions": {
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
