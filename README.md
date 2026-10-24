@@ -502,7 +502,9 @@ To fix it, register no pool there in test: use `adapter: test` for Action Cable 
 The Rails 8 defaults do this.
 On Rails 8.1 or later, `skip_transactional_tests_for_database :cable` in `ActiveSupport::TestCase` also works.
 The check then fires only when a test really uses that database.
-Otherwise leave that database out of `shared_databases`, and the run uses one worker.
+Otherwise leave that database out of `shared_databases`.
+On SQLite with Rails 7.1 or later, each worker copies the file and the run stays parallel.
+On Postgres or MySQL, an extra database keeps the run on one worker.
 
 ### Apps on Ruby < 3.4
 
