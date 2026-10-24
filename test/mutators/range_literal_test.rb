@@ -42,15 +42,40 @@ class RangeLiteralTest < Minitest::Test
     end
   end
 
-  def test_endless_ranges_yield_none
-    ["(1..)", "(1...)", "list[1..]", "(1..nil)", "(1...nil)"].each do |body|
+  def test_endless_slice_arguments_yield_none
+    ["list[1..]", "list[1...]", "list[1..nil]", "list[1..] = x", "list.[](1..)",
+     "s.slice(1..)", "s.slice!(1..)", "s.byteslice(1..)", "s&.byteslice(1...)",
+     "byteslice(1..)", "s.bytesplice(1.., x)", "row.values_at(1..)",
+     "list[1..] += x", "list[1..] ||= x", "list[1..] &&= x", "list[1..], b = x, y"].each do |body|
       mutations, = run_mutator(body)
       assert_empty mutations, "expected no mutation for #{body.inspect}"
     end
   end
 
+  def test_endless_ranges_outside_a_slice_are_swapped
+    { "(1..)" => "...", "(1...)" => "..", "(1..nil)" => "...", "(1...nil)" => "..",
+      "r = (1..)" => "...", "list.fetch(1..)" => "...", "h[:k] = 1..nil" => "...",
+      "list[(1..)]" => "..." }.each do |body, replacement|
+      mutations, source = run_mutator(body)
+      assert_equal 1, mutations.size, "expected 1 mutation for #{body.inspect}"
+      m = mutations.first
+      assert_equal Mutineer::Mutators::RangeLiteral::SWAPS.fetch(replacement), source[m.start_offset...m.end_offset]
+      assert_equal replacement, m.replacement
+      assert_equal :range, m.operator
+      assert m.valid?(source), "mutated #{body.inspect} should re-parse"
+    end
+  end
+
+  def test_endless_def_body_is_swapped
+    source = "def r = (1..nil)\n"
+    mutations = Mutineer::Mutators::RangeLiteral.new.mutations_for(subject_for(source), source)
+    assert_equal 1, mutations.size
+    assert_equal "...", mutations.first.replacement
+    assert mutations.first.valid?(source), "mutated source should re-parse"
+  end
+
   def test_endless_range_still_visits_its_begin
-    mutations, source = run_mutator("((1..2)..)")
+    mutations, source = run_mutator("list[(1..2)..]")
     assert_equal 1, mutations.size
     assert_equal "..", source[mutations.first.start_offset...mutations.first.end_offset]
     assert_equal 2, mutations.first.start_offset - source.index("(1")

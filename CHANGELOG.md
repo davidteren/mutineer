@@ -12,6 +12,22 @@ All notable changes to this project are documented here. The format is based on
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.
 
+### Fixed
+
+- **The `range` operator swaps endless ranges outside slices.** Before, it
+  skipped every endless range (`1..`, `1..nil`) as equivalent. But `(1..)`
+  and `(1...)` differ on `==`, `hash`, `exclude_end?` and `to_s`, so a test
+  can kill that mutant. Now the operator skips an endless range only when it
+  is a direct argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`,
+  `bytesplice`, `values_at` or an index write. A run that names `range` can
+  get new mutants, new survivors and new mutant ids. If you gate on it with
+  `--threshold` or `--baseline`, re-check `ignore:` entries for `range` and
+  save a new baseline with
+  `mutineer run <paths> --no-since --format json --output <file>`. Some new
+  mutants are equivalent, for example a range used only with `include?`, or a
+  range in an Active Record query such as `where(created_at: time..)`.
+  Suppress them with `# mutineer:disable-line` or an `ignore:` entry. (#299)
+
 ## [1.7.0] - 2026-10-23
 
 ### Added
