@@ -1,0 +1,25 @@
+lib/mutineer/runner.rb
+  s_04fd8c79e6fa52::t_c3972432a64b1c 308-309,341-342,344-345
+test/fixtures/nested_deep.rb
+  s_04fd8c79e6fa52::t_855e774cb9089f 1-15
+test/fixtures/nested_deep_test.rb
+  s_04fd8c79e6fa52::t_0e01c2d8ba0f1f 1-10
+test/nested_redefine_test.rb
+  s_04fd8c79e6fa52::t_1e109e414e0bd7 6-9,13,16,29,31-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2d185455812f3187e65650fb56bbabf286f164ce",
+  "prompts": {},
+  "sessions": {
+    "s_04fd8c79e6fa52": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16cbd-26a2-7b61-8d84-799333c245e9",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
