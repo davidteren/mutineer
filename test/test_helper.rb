@@ -80,6 +80,8 @@ module AsciiLocale
     swap_default_external(previous)
   end
 
+  private
+
   # Sets Encoding.default_external without the warning Ruby prints under -w.
   def swap_default_external(encoding)
     verbose = $VERBOSE

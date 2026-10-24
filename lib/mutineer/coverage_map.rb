@@ -857,7 +857,7 @@ module Mutineer
     def spawn_script(script, result: true)
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @capture_timeout
       script_rd, script_wr = IO.pipe
-      result_rd, result_wr = IO.pipe(Encoding::UTF_8) if result
+      result_rd, result_wr = IO.pipe if result
       options = { in: script_rd, out: File::NULL, pgroup: true }
       options[RESULT_FD] = result_wr if result
       pid = Process.spawn(RbConfig.ruby, "-", **options)

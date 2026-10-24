@@ -548,7 +548,8 @@ class CoverageMapTest < Minitest::Test
       map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, coverage_from: capture)
       with_ascii_default_external do
         assert_equal [1], map.send(:read_cache)["caf\u00e9.rb"]
-        assert_raises(Mutineer::CoverageFromError) { map.send(:accepted_capture) }
+        err = assert_raises(Mutineer::CoverageFromError) { map.send(:accepted_capture) }
+        assert_match(/cannot be reused/, err.message, "the capture parsed, then failed the fit check")
       end
     end
   end
