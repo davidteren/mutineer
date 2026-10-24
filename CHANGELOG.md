@@ -20,9 +20,27 @@ All notable changes to this project are documented here. The format is based on
   keeps one worker when the app's databases cannot be listed or the first
   daemon does not boot (before, each case could start several workers). See
   "More than one database" in the README for the transactional-tests caveat.
+- **Parallel `--daemon` runs for apps with several SQLite databases** (#332).
+  Each worker now copies every SQLite test database file in
+  `config/database.yml`, not only the primary, as Rails' parallel tests do
+  (`storage/cable.sqlite3` becomes `storage/cable-0.sqlite3`). An app whose
+  test databases are all SQLite files runs `--jobs N` in parallel with no
+  `shared_databases` entry. A copy loads its database's schema file when it is
+  out of date. Postgres and MySQL keep the one-worker limit unless
+  `shared_databases` lists the other databases. A SQLite database listed in
+  `shared_databases` keeps its base file. Routing is checked before schema
+  loading, and a worker destination cannot alias a configured base file.
+  Rails 7.0 keeps the one-worker limit.
 
 ### Changed
 
+- **Breaking: `--daemon` on SQLite now fails a mutant with `error` when a connection
+  cannot be copied per worker** (#332). Before, the fork reconnected
+  `ActiveRecord::Base` to a worker file whatever its config. Now Mutineer
+  copies only databases in `config/database.yml`. A connection from an inline
+  `establish_connection` hash, or any SQLite pool given as a `file:` URI, scores
+  every mutant `error`, even with one worker. Move that database into
+  `config/database.yml` as a plain file path.
 - Explain mutation testing before setup, with a runnable beginner guide and a
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.

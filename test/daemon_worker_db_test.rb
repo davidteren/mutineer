@@ -3,6 +3,7 @@
 require_relative "test_helper"
 require "mutineer/daemon_client"
 require "open3"
+require "tmpdir"
 
 # #26/U5 — per-worker DB routing, proven end-to-end against the bundled fixture app.
 # Drives the daemon directly (via DaemonClient) so it can exercise MORE THAN ONE
@@ -58,10 +59,35 @@ class DaemonWorkerDbTest < Minitest::Test
     client&.quit
   end
 
+  # Each worker copies every SQLite database, not only the primary. A
+  # non-transactional test commits a row to the second database on worker 0.
+  # Worker 1 must not see that row: if the workers shared the file, worker 1's
+  # test would fail and its mutant would read as a false kill. The base files
+  # are removed first, so each copy starts from the extra database's schema file.
+  def test_each_worker_copies_the_second_database
+    ENV["MUTINEER_SECOND_DB"] = "1"
+    ENV["MUTINEER_EXTRA_POOL"] = "1"
+    Dir.glob(File.join(APP, "storage", "extra*.sqlite3*")).each { |path| File.delete(path) }
+    note = File.join(APP, "test/models/extra_note_test.rb")
+    with_client do |client|
+      [0, 1].each do |w|
+        assert_equal "survived", client.request(id: 40 + w, worker: w, timeout: 60,
+                                                payload: { "code" => File.read(ORDER), "source_file" => ORDER },
+                                                tests: [note]),
+                     "worker #{w}'s copy of the extra database holds no other worker's row"
+        assert File.exist?(File.join(APP, "storage", "extra-#{w}.sqlite3")), "worker #{w} has its own extra file"
+      end
+    end
+  ensure
+    ENV.delete("MUTINEER_SECOND_DB")
+    ENV.delete("MUTINEER_EXTRA_POOL")
+  end
+
   # #222: a seeded worker keeps the copied rows when the base schema is current,
   # and reloads schema.rb (dropping them) when the schema version or the stored
   # schema_sha1 differs, or no schema_sha1 is stored (a plain `load schema.rb`).
-  # Runs under the fixture bundle against a temp base DB.
+  # Runs under the fixture bundle against a temp base DB. The base is a
+  # database.yml-style config: Mutineer copies only configured databases.
   SCHEMA_CHECK = <<~RUBY
     require "./config/environment"
     require #{File.expand_path("../lib/mutineer/rails_worker_db", __dir__).inspect}
@@ -70,8 +96,13 @@ class DaemonWorkerDbTest < Minitest::Test
     ActiveRecord::Migration.verbose = false
     schema = File.expand_path("db/schema.rb")
     Dir.mktmpdir do |dir|
-      base = { adapter: "sqlite3", database: File.join(dir, "base.sqlite3") }
-      ActiveRecord::Base.establish_connection(base)
+      base = { "test" => { "adapter" => "sqlite3", "database" => File.join(dir, "base.sqlite3") } }
+      # New config objects each time: after_fork rewrites them in place.
+      connect = lambda do
+        ActiveRecord::Base.configurations = base
+        ActiveRecord::Base.establish_connection(:test)
+      end
+      connect.call
       load schema
       c = ActiveRecord::Base.connection
       c.execute("INSERT INTO orders (created_at, updated_at) VALUES (datetime(), datetime())")
@@ -83,9 +114,11 @@ class DaemonWorkerDbTest < Minitest::Test
         same_sha1: -> { set_sha.(Digest::SHA1.hexdigest(File.read(schema))) }
       }
       counts = steps.each_with_index.to_h do |(name, step), worker|
-        ActiveRecord::Base.establish_connection(base)
+        connect.call
         c = ActiveRecord::Base.connection
         step.call
+        # A fork discards the connections it inherits. This stands in for it.
+        ActiveRecord::Base.connection_pool.disconnect!
         Mutineer::RailsWorkerDb.after_fork(worker, schema, seed: true)
         [name, ActiveRecord::Base.connection.select_value("SELECT COUNT(*) FROM orders")]
       end
@@ -99,6 +132,221 @@ class DaemonWorkerDbTest < Minitest::Test
                                   chdir: APP, unsetenv_others: true)
     assert status.success?, out
     assert_includes out, { no_sha1: 0, old_version: 0, old_sha1: 0, same_sha1: 1 }.inspect
+  end
+
+  # A shared database must keep its rows even when its schema is out of date.
+  # Schema loading belongs only to the worker copies, never the shared base.
+  SHARED_SCHEMA_CHECK = <<~RUBY
+    require "./config/environment"
+    require #{File.expand_path("../lib/mutineer/rails_worker_db", __dir__).inspect}
+    require "tmpdir"
+    ActiveRecord::Migration.verbose = false
+    Dir.mktmpdir do |dir|
+      shared = File.join(dir, "shared.sqlite3")
+      ActiveRecord::Base.configurations = {
+        "test" => {
+          "primary" => { "adapter" => "sqlite3", "database" => File.join(dir, "primary.sqlite3") },
+          "extra" => { "adapter" => "sqlite3", "database" => shared }
+        }
+      }
+      ActiveRecord::Base.establish_connection(:primary)
+      load File.expand_path("db/schema.rb")
+      SQLite3::Database.new(shared) do |db|
+        db.execute("CREATE TABLE extra_notes (id INTEGER PRIMARY KEY, body TEXT)")
+        db.execute("INSERT INTO extra_notes (body) VALUES ('keep this row')")
+      end
+      ActiveRecord::Base.connection_pool.disconnect!
+      Mutineer::RailsWorkerDb.after_fork(0, seed: true, shared: %w[extra])
+      SQLite3::Database.new(shared) do |db|
+        puts "shared_rows=\#{db.get_first_value('SELECT COUNT(*) FROM extra_notes')}"
+      end
+    end
+  RUBY
+
+  def test_a_shared_database_is_not_changed_by_schema_loading
+    env = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+    out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", SHARED_SCHEMA_CHECK,
+                                  chdir: APP, unsetenv_others: true)
+    assert status.success?, out
+    assert_includes out, "shared_rows=1"
+  end
+
+  # A pool from an inline establish_connection hash is not in database.yml, so
+  # Mutineer cannot give the worker its own copy. The routing check raises,
+  # and the daemon scores the mutant `error`, never a false verdict.
+  INLINE_CHECK = <<~RUBY
+    require "./config/environment"
+    require #{File.expand_path("../lib/mutineer/rails_worker_db", __dir__).inspect}
+    require "tmpdir"
+    Dir.mktmpdir do |dir|
+      ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: File.join(dir, "inline.sqlite3"))
+      ActiveRecord::Base.connection.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY)")
+      ActiveRecord::Base.connection.execute("INSERT INTO orders DEFAULT VALUES")
+      Mutineer::RailsWorkerDb.after_fork(0, File.expand_path("db/schema.rb"), seed: true)
+      puts "routed"
+    rescue RuntimeError => e
+      puts e.message
+      puts "inline_rows=\#{ActiveRecord::Base.connection.select_value('SELECT COUNT(*) FROM orders')}"
+    end
+  RUBY
+
+  def test_an_inline_hash_pool_fails_the_routing_check
+    env = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+    out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", INLINE_CHECK,
+                                  chdir: APP, unsetenv_others: true)
+    assert status.success?, out
+    assert_match(/inline\.sqlite3, which every worker shares/, out)
+    assert_includes out, "inline_rows=1"
+    refute_includes out, "routed"
+  end
+
+  # A symlinked directory can hide that a worker destination is another test
+  # database's base file. Reject it before the backup replaces that base's rows.
+  SYMLINK_CHECK = <<~RUBY
+    require "./config/environment"
+    require #{File.expand_path("../lib/mutineer/rails_worker_db", __dir__).inspect}
+    require "sqlite3"
+    require "tmpdir"
+    Dir.mktmpdir do |dir|
+      real = File.join(dir, "real")
+      linked = File.join(dir, "linked")
+      Dir.mkdir(real)
+      File.symlink(real, linked)
+      primary = File.join(real, "test.sqlite3")
+      archive = File.join(linked, "test-0.sqlite3")
+      { primary => "source row", archive => "keep this row" }.each do |file, body|
+        SQLite3::Database.new(file) do |db|
+          db.execute("CREATE TABLE markers (body TEXT)")
+          db.execute("INSERT INTO markers (body) VALUES (?)", [body])
+        end
+      end
+      ActiveRecord::Base.configurations = {
+        "test" => {
+          "primary" => { "adapter" => "sqlite3", "database" => primary },
+          "archive" => { "adapter" => "sqlite3", "database" => archive }
+        }
+      }
+      begin
+        Mutineer::RailsWorkerDb.route_sqlite_configs(0, seed: true, shared: [])
+      rescue RuntimeError => e
+        puts e.message
+      end
+      SQLite3::Database.new(archive) do |db|
+        puts "archive_row=\#{db.get_first_value('SELECT body FROM markers')}"
+      end
+    end
+  RUBY
+
+  def test_a_symlink_cannot_make_a_worker_copy_overwrite_a_base_database
+    env = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+    out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", SYMLINK_CHECK,
+                                  chdir: APP, unsetenv_others: true)
+    assert status.success?, out
+    assert_includes out, "is also the base file of a test database"
+    assert_includes out, "archive_row=keep this row"
+  end
+
+  # The check after tests must catch an inline pool opened by the test file,
+  # after the worker's initial routing check has already passed.
+  def test_an_inline_pool_opened_during_tests_scores_error
+    assert_late_inline_pool_error
+  end
+
+  def test_an_inline_uri_pool_opened_during_tests_scores_error
+    assert_late_inline_pool_error(uri: true)
+  end
+
+  def assert_late_inline_pool_error(uri: false)
+    Dir.mktmpdir do |dir|
+      test = File.join(dir, "late_inline_test.rb")
+      database = File.join(dir, "inline.sqlite3")
+      database = "file:#{database}" if uri
+      flags = uri ? ", flags: SQLite3::Constants::Open::READWRITE | SQLite3::Constants::Open::CREATE | SQLite3::Constants::Open::URI" : ""
+      File.write(test, <<~RUBY)
+        require #{File.join(APP, "test/test_helper.rb").inspect}
+        require "sqlite3"
+        class LateInlineRecord < ActiveRecord::Base
+          self.abstract_class = true
+          establish_connection(adapter: "sqlite3", database: #{database.inspect}#{flags})
+        end
+        class LateInlineTest < ActiveSupport::TestCase
+          self.use_transactional_tests = false
+          def test_connection
+            assert_equal 1, LateInlineRecord.connection.select_value("SELECT 1")
+          end
+        end
+      RUBY
+      with_client do |client|
+        assert_equal "error", client.request(id: 80, worker: 0, timeout: 60,
+                                              payload: { "code" => File.read(ORDER), "source_file" => ORDER },
+                                              tests: [test])
+      end
+    end
+  end
+
+  # A current extra schema must not be loaded again: its force:true table
+  # definitions would delete rows copied from a --require file's boot setup.
+  EXTRA_SCHEMA_CHECK = <<~RUBY
+    require "./config/environment"
+    require #{File.expand_path("../lib/mutineer/rails_worker_db", __dir__).inspect}
+    require "sqlite3"
+    require "tmpdir"
+    ActiveRecord::Migration.verbose = false
+    Dir.mktmpdir do |dir|
+      extra = File.join(dir, "extra.sqlite3")
+      original = {
+        "test" => {
+          "primary" => { "adapter" => "sqlite3", "database" => File.join(dir, "primary.sqlite3") },
+          "extra" => { "adapter" => "sqlite3", "database" => extra }
+        }
+      }
+      connect = lambda do
+        ActiveRecord::Base.configurations = original
+        ActiveRecord::Base.establish_connection(:primary)
+      end
+      connect.call
+      load File.expand_path("db/schema.rb")
+      tasks = ActiveRecord::Tasks::DatabaseTasks
+      config = ActiveRecord::Base.configurations.configs_for(env_name: "test", name: "extra")
+      tasks.with_temporary_pool_for_each(env: "test", name: "extra") { tasks.load_schema(config) }
+      SQLite3::Database.new(extra) { |db| db.execute("INSERT INTO extra_notes (body) VALUES ('boot row')") }
+      if ENV["MUTINEER_TEST_LEGACY_SCHEMA_HELPER"] == "1"
+        File.delete(extra)
+        pool_helper = tasks.method(:with_temporary_pool_for_each)
+        tasks.define_singleton_method(:with_temporary_connection_for_each) do |**options, &block|
+          pool_helper.call(**options) { |pool| block.call(pool.connection) }
+        end
+        tasks.singleton_class.send(:undef_method, :with_temporary_pool_for_each)
+      end
+      [0, 1].each do |worker|
+        connect.call
+        ActiveRecord::Base.connection_pool.disconnect!
+        Mutineer::RailsWorkerDb.after_fork(worker, seed: true)
+        config = ActiveRecord::Base.configurations.configs_for(env_name: "test", name: "extra")
+        SQLite3::Database.new(config.database) do |db|
+          puts "extra_worker_\#{worker}=\#{db.get_first_value('SELECT COUNT(*) FROM extra_notes')}"
+        end
+      end
+    end
+  RUBY
+
+  def test_each_worker_keeps_boot_rows_in_a_current_second_database
+    env = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+    out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", EXTRA_SCHEMA_CHECK,
+                                  chdir: APP, unsetenv_others: true)
+    assert status.success?, out
+    assert_includes out, "extra_worker_0=1"
+    assert_includes out, "extra_worker_1=1"
+  end
+
+  def test_the_legacy_schema_helper_loads_an_absent_second_database
+    env = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+    env["MUTINEER_TEST_LEGACY_SCHEMA_HELPER"] = "1"
+    out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", EXTRA_SCHEMA_CHECK,
+                                  chdir: APP, unsetenv_others: true)
+    assert status.success?, out
+    assert_includes out, "extra_worker_0=0"
+    assert_includes out, "extra_worker_1=0"
   end
 
   def test_verdicts_are_correct_across_distinct_worker_dbs
