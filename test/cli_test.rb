@@ -850,6 +850,16 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_boot_path_ruby_cannot_expand_stays_a_usage_error
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--boot", "~nosuchuser288/boot.rb", chdir: proj)
+
+      assert_equal 2, status.exitstatus, err
+      refute_includes err, "cannot load"
+    end
+  end
+
   def test_source_argument_error_at_load_exits_one
     with_project do |proj|
       File.write(File.join(proj, "bad.rb"), %(def one = 1\nraise ArgumentError, "bad #{BAD_DATABASE_URL}"\n))

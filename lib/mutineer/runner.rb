@@ -445,21 +445,26 @@ module Mutineer
     # @raise [ProjectLoadError] when the file raises while it loads.
     # @return [void]
     def self.require_project_file(root, path)
-      require File.expand_path(path, root)
-    rescue StandardError, LoadError, SyntaxError => e
-      # Redact each part on its own: Redaction.text returns UTF-8, so the join
-      # cannot raise on a non-ASCII path next to, say, a Latin-1 message. A
-      # raise here would make the raw error the new error's cause.
-      describe = ->(err) { "#{Redaction.text(err.class)}: #{Redaction.text(err.message)}" }
-      causes = []
-      cause = e.cause
-      while cause
-        causes << describe.call(cause)
-        cause = cause.cause
+      # Outside the rescue: a path Ruby cannot expand (`~nosuchuser/boot.rb`)
+      # stays a usage error (exit 2), not a load failure.
+      file = File.expand_path(path, root)
+      begin
+        require file
+      rescue StandardError, LoadError, SyntaxError => e
+        # Redact each part on its own: Redaction.text returns UTF-8, so the join
+        # cannot raise on a non-ASCII path next to, say, a Latin-1 message. A
+        # raise here would make the raw error the new error's cause.
+        describe = ->(err) { "#{Redaction.text(err.class)}: #{Redaction.text(err.message)}" }
+        causes = []
+        cause = e.cause
+        while cause
+          causes << describe.call(cause)
+          cause = cause.cause
+        end
+        error = ProjectLoadError.new("cannot load #{Redaction.text(path)}: #{describe.call(e)}", causes: causes)
+        error.set_backtrace(e.backtrace)
+        raise error, cause: nil
       end
-      error = ProjectLoadError.new("cannot load #{Redaction.text(path)}: #{describe.call(e)}", causes: causes)
-      error.set_backtrace(e.backtrace)
-      raise error, cause: nil
     end
     private_class_method :require_project_file
 
