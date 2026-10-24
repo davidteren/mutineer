@@ -92,7 +92,8 @@ An app on an older Ruby uses `--test-command`.
 Mutineer still runs on Ruby 3.4 or later.
 That path is serial.
 It does not narrow tests by coverage.
-A crash in the command can count as a kill.
+Only exit 1 counts as a kill.
+A crash or another exit code scores `error`.
 
 What a release will not break is in
 [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md).
@@ -520,10 +521,12 @@ Tradeoffs — this path is correct but not free:
 - **Slower:** your app re-boots for every mutant (no shared boot yet).
 - **No coverage narrowing:** every mutant runs the full `--test` set.
   The run is serial.
-  A crash in the command can count as a kill.
+  Only exit 1 counts as a kill.
+  When the clean run prints a Minitest or RSpec summary line, an exit 1 must
+  also show a failing test in that line.
+  Every other exit, a signal, or an exit 1 with no failing test scores `error`.
   Uncovered mutants count as survivors.
   Do not compare a `--test-command` score with an in-process score.
-  Exit codes 126 and 127 (the command could not start) are scored `error`.
   Mutineer prints this caveat on every run and aborts up
   front (a "smoke check") if your unmutated suite isn't green.
 - **Reload strategy only** (`--strategy redefine` is rejected on this path) and

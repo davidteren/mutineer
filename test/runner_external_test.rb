@@ -4,6 +4,7 @@ require_relative "test_helper"
 require "open3"
 require "tmpdir"
 require "fileutils"
+require "json"
 
 # #27 (U4/U5): end-to-end for the external --test-command backend. Drives the real
 # bin against copied fixtures, using `ruby <test_file>` as the app's suite (the
@@ -36,6 +37,7 @@ class RunnerExternalTest < Minitest::Test
       assert_equal 0, status.exitstatus, "stdout:#{out}\nstderr:#{err}"
       assert_match(/100(\.0)?%/, out)
       assert_match(/upper bound/, err)
+      refute_includes err, "no Minitest or RSpec summary line"
       assert_match(%r{\[mutineer\] \d+/\d+ mutants \(\d+%\)}, err,
                    "external backend must emit progress on stderr")
     end
@@ -103,6 +105,36 @@ class RunnerExternalTest < Minitest::Test
       assert_equal 1, status.exitstatus
       assert_match(/unmutated suite is not green/, err)
       refute_match(/mutation score/i, out)
+    end
+  end
+
+  # #292: the clean run prints a Minitest summary, so a mutant run that exits 1
+  # with no summary (the mutant crashed the suite at load) scores error, not
+  # killed. The wrapper runs the suite on the clean tree and crashes otherwise.
+  def test_exit_one_without_summary_scores_error_after_summary_smoke
+    with_project("calculator_strong_test.rb") do |proj|
+      original = File.read(File.join(proj, "calculator.rb"))
+      wrapper = File.join(proj, "wrapper.rb")
+      File.write(wrapper, <<~RUBY)
+        exit 1 unless File.read(#{File.join(proj, 'calculator.rb').dump}) == #{original.dump}
+        load ARGV.fetch(0)
+      RUBY
+      out, err, = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--format", "json",
+                           "--test-command", "#{RUBY} #{wrapper} %{files}", chdir: proj)
+      summary = JSON.parse(out).fetch("summary")
+      assert_equal 0, summary.fetch("killed"), err
+      assert_equal 6, summary.fetch("errored"), err
+      refute_includes err, "no Minitest or RSpec summary line"
+    end
+  end
+
+  # #292: a clean run with no summary line keeps the exit-code rule and says so once.
+  def test_no_summary_on_clean_run_warns_once
+    with_project("calculator_strong_test.rb") do |proj|
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                   "--test-command", "#{RUBY} -e exit(0) %{files}", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, err.scan("no Minitest or RSpec summary line").size, err
     end
   end
 

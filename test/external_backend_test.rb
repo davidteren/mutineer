@@ -43,9 +43,57 @@ class ExternalBackendTest < Minitest::Test
     assert_predicate result, :killed?
   end
 
-  def test_other_nonzero_is_killed
-    result = Backend.run("#{RUBY} -e exit(3) %{files}", ["x"], timeout: 30)
-    assert_predicate result, :killed?
+  # #292: only exit 1 is the test-failure code, as in Isolation.decode. A
+  # custom failure code or a wrapper's 128+N signal exit is not a kill.
+  def test_other_nonzero_is_error_not_killed
+    [3, 137].each do |code|
+      result = Backend.run("#{RUBY} -e exit(#{code}) %{files}", ["x"], timeout: 30)
+      assert_predicate result, :error?, "exit #{code}"
+      assert_equal "test-command exited #{code} (only exit 1 counts as a kill; " \
+                   "check RSpec --failure-exit-code or your wrapper)", result.details
+    end
+  end
+
+  # #292: with summary checking on, exit 1 is a kill only when a Minitest or
+  # RSpec summary line reports a failing test.
+  def run_exit_one(output, check_summary: true)
+    with_script(%(STDOUT.write #{output.dump}\nexit 1\n)) do |path|
+      Backend.run("#{RUBY} #{path} %{files}", ["x"], timeout: 30, check_summary: check_summary)
+    end
+  end
+
+  def test_exit_one_without_summary_is_error_when_checking
+    result = run_exit_one("LoadError: cannot load such file\n")
+    assert_predicate result, :error?
+    assert_match(/exited 1 but its output shows no failing test/, result.details)
+  end
+
+  def test_exit_one_without_summary_is_killed_when_not_checking
+    assert_predicate run_exit_one("LoadError\n", check_summary: false), :killed?
+  end
+
+  def test_exit_one_with_failing_summary_is_killed
+    [
+      "1 runs, 1 assertions, 1 failures, 0 errors, 0 skips\n",
+      "2 runs, 1 assertions, 0 failures, 1 errors, 0 skips\n",
+      "3 tests, 3 assertions, 1 failures, 0 errors, 0 skips\n", # minitest-reporters
+      "2 examples, 1 failure\n",
+      "\e[31m5 tests, 5 assertions, \e[0m\e[31m1 failures\e[0m, 0 errors, 0 skips\n",
+      "café ✓\n1 runs, 1 assertions, 1 failures, 0 errors, 0 skips\n\xFF\n"
+    ].each do |output|
+      assert_predicate run_exit_one(output), :killed?, output.inspect
+    end
+  end
+
+  # An RSpec file that raises while loading prints a summary line with no
+  # failing example, the case #246 scores as error in process.
+  def test_exit_one_with_no_failing_test_in_summary_is_error
+    [
+      "0 examples, 0 failures, 1 error occurred outside of examples\n",
+      "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n"
+    ].each do |output|
+      assert_predicate run_exit_one(output), :error?, output.inspect
+    end
   end
 
   # 126 (cannot execute) and 127 (command not found) come from a wrapper such
@@ -167,9 +215,17 @@ class ExternalBackendTest < Minitest::Test
   end
 
   # smoke check — green returns elapsed, non-green raises with the output tail.
-  def test_smoke_check_green_returns_elapsed
-    elapsed = Backend.smoke_check!("#{RUBY} -e exit(0) %{files}", ["x"], timeout: 30)
+  def test_smoke_check_green_returns_elapsed_and_no_summary
+    elapsed, summary = Backend.smoke_check!("#{RUBY} -e exit(0) %{files}", ["x"], timeout: 30)
     assert_kind_of Float, elapsed
+    refute summary
+  end
+
+  def test_smoke_check_reports_summary_line
+    with_script(%(puts "4 runs, 4 assertions, 0 failures, 0 errors, 0 skips"\n)) do |path|
+      _elapsed, summary = Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
+      assert summary
+    end
   end
 
   def test_smoke_check_non_green_raises_with_output
