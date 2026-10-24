@@ -438,8 +438,8 @@ module Mutineer
     # Removes stale mutant tempfiles from the given directories. The daemon writes a
     # differently-named temp, so {DaemonBackend} passes its glob when it sweeps
     # tool-side at the end of every daemon run, empty or not.
-    # A daemon file another process still owns is left in place. In-process mutant
-    # files have no owner recorded in the name, so this still removes those orphans.
+    # A file another process still owns is left in place: both modes record the
+    # creating pid in the name and lock the file while it loads (#295).
     #
     # @param dirs [Array<String>] directories to sweep.
     # @param glob [String] filename pattern to remove.

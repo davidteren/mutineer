@@ -196,10 +196,29 @@ module Mutineer
     # @param source_file [String] original source file path.
     # @return [Object] whatever `load` returns.
     def self.apply_whole_file(mutated, source_file)
+      write_beside(mutated, source_file) { |path| ConcernBlocks.replace(source_file) { load path } }
+    end
+
+    # Writes `code` to a hidden `.mutineer_mutant` file beside `source_file`,
+    # yields its path, and removes it after the block. Both strategies write
+    # through here.
+    #
+    # The file is locked until the block ends, as the daemon locks its own file
+    # (#295). A SIGKILL drops the lock too. The pid in the name and the lock
+    # tell another run's sweep that the file is in use, so the sweep does not
+    # delete it between the write and the `load`.
+    #
+    # @api private
+    # @param code [String] the Ruby source to write.
+    # @param source_file [String] the source file the code replaces.
+    # @yieldparam path [String] absolute path of the written file.
+    # @return [Object] whatever the block returns.
+    def self.write_beside(code, source_file)
       Tempfile.create([".mutineer_mutant", ".rb"], File.dirname(File.expand_path(source_file))) do |f|
-        f.write(mutated)
+        f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
+        f.write(code)
         f.flush
-        ConcernBlocks.replace(source_file) { load f.path }
+        yield f.path
       end
     end
 
@@ -274,11 +293,7 @@ module Mutineer
       # every mutant of the method dies whatever it changes. The hidden
       # `.mutineer_mutant` name keeps Zeitwerk away (#253) and lets the parent
       # sweep an orphan after a timeout kill.
-      Tempfile.create([".mutineer_mutant", ".rb"], File.dirname(File.expand_path(subject.file))) do |f|
-        f.write(wrapped)
-        f.flush
-        load f.path
-      end
+      write_beside(wrapped, subject.file) { |path| load path }
 
       target.send(vis, subject.name) if vis && vis != :public
     end

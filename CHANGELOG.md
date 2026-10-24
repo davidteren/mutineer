@@ -21,6 +21,13 @@ All notable changes to this project are documented here. The format is based on
   a method was falsely killed (#279). Redefine (also the default under
   `--rails` without `--daemon`) now needs write access to each source
   directory, as reload already does.
+- **A second in-process run no longer deletes a live mutant file (#295).**
+  Each in-process run sweeps the source directories before its boot and
+  after its run. That sweep treated every `.mutineer_mutant*.rb` file as an
+  orphan, so it could delete another run's file between the write and the
+  load, and that mutant scored `errored`. Now the file is locked while it
+  loads, as the daemon's file is, and a sweep keeps a file whose creating
+  process still runs.
 
 ## [1.7.0] - 2026-10-23
 

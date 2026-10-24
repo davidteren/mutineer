@@ -33,10 +33,37 @@ class TempfileLeakTest < Minitest::Test
   # The sweep removes a file an older version left (no dot) and a new hidden one.
   def test_sweep_removes_hidden_and_older_mutant_files
     Dir.mktmpdir do |dir|
-      files = %w[.mutineer_mutant20260101-1-a.rb mutineer_mutant20260101-1-b.rb].map { |f| File.join(dir, f) }
+      dead = unused_pid
+      files = %W[.mutineer_mutant20260101-#{dead}-a.rb mutineer_mutant20260101-#{dead}-b.rb].map { |f| File.join(dir, f) }
       files.each { |f| File.write(f, "") }
       Mutineer::JobPlan.sweep_orphans([dir])
       assert(files.none? { |f| File.exist?(f) })
+    end
+  end
+
+  # #295: a second run sweeps the source dir before its boot. A file whose
+  # creating pid still runs belongs to that live run, so it stays.
+  def test_sweep_keeps_a_mutant_file_whose_creator_is_alive
+    Dir.mktmpdir do |dir|
+      live = File.join(dir, ".mutineer_mutant20260101-#{Process.pid}-live.rb")
+      dead = File.join(dir, ".mutineer_mutant20260101-#{unused_pid}-dead.rb")
+      [live, dead].each { |f| File.write(f, "") }
+
+      assert_equal [live], Mutineer::JobPlan.sweep_orphans([dir])
+      assert File.exist?(live), "a live run's mutant file must stay"
+      refute File.exist?(dead), "a dead owner's file is an orphan"
+    end
+  end
+
+  # #295: a lock keeps the file too, even when the pid in the name is gone.
+  def test_sweep_keeps_a_locked_mutant_file_when_the_name_pid_is_dead
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, ".mutineer_mutant20260101-#{unused_pid}-locked.rb")
+      File.open(path, "w") do |file|
+        file.flock(File::LOCK_EX)
+        Mutineer::JobPlan.sweep_orphans([dir])
+        assert File.exist?(path), "a lock means another process still owns the file"
+      end
     end
   end
 
