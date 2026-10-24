@@ -415,6 +415,49 @@ class RailsWorkerDbTest < Minitest::Test
     Object.const_set(:ActiveRecord, saved) if saved
   end
 
+  # The tool counts these names; the primary is the config each worker copies.
+  def test_database_names_lists_the_test_configs_and_the_primary
+    saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    config = Struct.new(:name)
+    configs = Object.new
+    configs.define_singleton_method(:configs_for) { |env_name:| %w[primary cable queue].map { |n| config.new(n) } }
+    base = Class.new
+    base.define_singleton_method(:configurations) { configs }
+    base.define_singleton_method(:connection_db_config) { config.new("primary") }
+    Object.const_set(:ActiveRecord, Module.new.tap { |m| m.const_set(:Base, base) })
+
+    assert_equal({ "names" => %w[primary cable queue], "primary" => "primary" },
+                 Mutineer::RailsWorkerDb.database_names)
+  ensure
+    Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    Object.const_set(:ActiveRecord, saved) if saved
+  end
+
+  # The tripwire reads the live pools: a shared one with a connection is used,
+  # an idle one or an isolated one is not.
+  def test_touched_shared_databases_names_connected_shared_pools_only
+    saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    pool = Struct.new(:db_config, :connected) do
+      def connected? = connected
+    end
+    config = Struct.new(:name)
+    pools = [pool.new(config.new("primary"), true), pool.new(config.new("cable"), true),
+             pool.new(config.new("queue"), false), pool.new(config.new("cable"), true)]
+    handler = Object.new
+    handler.define_singleton_method(:connection_pool_list) { |role| role == :all ? pools : [] }
+    base = Class.new
+    base.define_singleton_method(:connection_handler) { handler }
+    Object.const_set(:ActiveRecord, Module.new.tap { |m| m.const_set(:Base, base) })
+
+    db = Mutineer::RailsWorkerDb
+    assert_equal %w[cable], db.touched_shared_databases(%w[cable queue])
+    assert_empty db.touched_shared_databases(%w[queue])
+    assert_empty db.touched_shared_databases([])
+  ensure
+    Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    Object.const_set(:ActiveRecord, saved) if saved
+  end
+
   def test_too_many_mysql_workers_fail_before_a_connection
     error = assert_raises(RuntimeError) do
       Mutineer::RailsWorkerDb.provision_mysql(Mutineer::RailsWorkerDb::MYSQL_LOCK_SLOTS + 1)

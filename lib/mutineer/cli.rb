@@ -338,6 +338,11 @@ module Mutineer
       # Unknown --operators value surfaces here; no backtrace reaches the user.
       warn "mutineer: #{e.message}"
       exit 2
+    rescue Mutineer::ConfigError => e
+      # A config value that only the booted app can check (`shared_databases`
+      # naming the primary database). A usage error, raised before any mutant runs.
+      warn "mutineer: #{e.message}"
+      exit 2
     rescue SystemCallError => e
       # A missing/unreadable path reaches here as Errno::ENOENT etc. A plain
       # message and usage exit, never a raw backtrace.

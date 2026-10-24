@@ -63,6 +63,7 @@ module Mutineer
                      flag: "--capture-timeout"),
     ConfigOption.new(field: :cache_dir, type: :string, yaml_key: "cache_dir", flag: "--cache-dir"),
     ConfigOption.new(field: :allow_empty, type: :bool, yaml_key: "allow_empty", flag: "--allow-empty"),
+    ConfigOption.new(field: :shared_databases, type: :string_list, yaml_key: "shared_databases"),
     ConfigOption.new(field: :coverage_from, type: :string, flag: "--coverage-from"),
     ConfigOption.new(field: :format, type: :enum, flag: "--format", values: %w[human json html]),
     ConfigOption.new(field: :strategy, type: :enum, flag: "--strategy", values: %w[reload redefine],
@@ -84,6 +85,9 @@ module Mutineer
   # `matrix` (--matrix) runs every covering test for each mutant and reports
   # which tests kill it (see KillMatrix); it never changes a verdict.
   #
+  # `shared_databases` (file only) names test database configs that parallel
+  # `--daemon` workers may share; see DaemonBackend.worker_count_for.
+  #
   # Boot mode adds: boot (a file to require ONCE in the parent so the app env,
   # e.g. Rails, is booted before forking; sources are then NOT manually required)
   # and rails (sugar: defaults boot to config/environment, prefers redefine without
@@ -97,6 +101,7 @@ module Mutineer
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
     :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix, :allow_empty, :coverage_from,
+    :shared_databases,
     keyword_init: true
   ) do
     # Config file name.
@@ -133,6 +138,7 @@ module Mutineer
       self.daemon        = false if daemon.nil?
       self.matrix        = false if matrix.nil?
       self.allow_empty   = false if allow_empty.nil?
+      self.shared_databases ||= []
     end
 
     # True when the user wrote `key`, on the command line or in the config

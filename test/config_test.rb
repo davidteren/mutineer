@@ -617,7 +617,8 @@ class ConfigTest < Minitest::Test
     daemon: [false, true],
     timeout: [30, 60],
     capture_timeout: [300, 600],
-    cache_dir: ["a", "b"]
+    cache_dir: ["a", "b"],
+    shared_databases: [%w[cable], %w[queue]]
   }.freeze
 
   def test_every_option_with_a_yaml_key_has_a_layer_sample

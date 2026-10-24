@@ -29,7 +29,8 @@ module Mutineer
   # Protocol (one JSON object per line, both directions):
   #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment","require_paths":[...],
   #               "load_paths":["test"],"framework":"minitest","rails":true,"schema":"db/schema.rb"}
-  #   ready out: {"ready":true,"ruby":"3.3.6","database_count":1}
+  #   ready out: {"ready":true,"ruby":"3.3.6","databases":{"names":["primary"],"primary":"primary"}}
+  #              ("databases" is null with no worker-DB adapter, {"error":"..."} when the lookup fails)
   #              (or {"ready":false,"error":"..."} then exit)
   #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
@@ -91,7 +92,7 @@ module Mutineer
         return if boot_line.nil? # client vanished before boot
 
         boot!(JSON.parse(boot_line.strip))
-        output.puts(JSON.generate("ready" => true, "ruby" => RUBY_VERSION, "database_count" => database_count))
+        output.puts(JSON.generate("ready" => true, "ruby" => RUBY_VERSION, "databases" => databases))
         output.flush
 
         input.each_line do |line|
@@ -199,6 +200,8 @@ module Mutineer
         @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
         schema = cfg["schema"] && File.expand_path(cfg["schema"])
         @schema_path = schema if schema && File.exist?(schema)
+        # Only a parallel worker daemon gets these names (DaemonBackend.boot_config).
+        @shared_databases = Array(cfg["shared_databases"]).map(&:to_s)
         # Each SQLite slot is seeded once, on first use (not every mutant fork).
         # Postgres and MySQL slots are copied at provision time, so this flag is unused there.
         @slot_ready = {}
@@ -217,16 +220,34 @@ module Mutineer
         @worker_db = nil
       end
 
-      # Database configs in the booted test environment. 1 when the app has no
-      # worker-DB adapter. The tool uses this to force a single worker.
+      # The booted test environment's database config names and the one each
+      # worker copies, for the tool's worker count. nil when the app has no
+      # worker-DB adapter. A failed lookup is reported, not hidden: the tool
+      # then keeps one worker.
       #
-      # @return [Integer]
-      def database_count
-        return 1 unless @worker_db
+      # @return [Hash, nil]
+      def databases
+        return nil unless @worker_db
 
-        @worker_db.database_count
-      rescue StandardError
-        1
+        @worker_db.database_names
+      rescue StandardError => e
+        { "error" => describe_error(e) }
+      end
+
+      # Raise when a test in this fork used a database that parallel workers
+      # share (`shared_databases`). Its verdict may rest on another worker's
+      # rows, so the mutant is scored `error`. A serial run sends no names.
+      #
+      # @return [void]
+      # @raise [RuntimeError] when a shared database holds a connection.
+      def check_shared_databases!
+        return if @worker_db.nil? || @shared_databases.nil? || @shared_databases.empty?
+
+        used = @worker_db.touched_shared_databases(@shared_databases)
+        return if used.empty?
+
+        raise "shared database used during a parallel run: #{used.join(", ")}. " \
+              "Remove it from shared_databases, or see the README note on transactional tests."
       end
 
       # Run {RailsWorkerDb.provision} and report success or the cause. A failure
@@ -327,7 +348,9 @@ module Mutineer
               # A routing failure raises here and is scored `error`, never a false verdict.
               @worker_db&.after_fork(worker, first_use ? @schema_path : nil, seed: first_use)
               apply_payload(req["payload"])
-              run_tests(Array(req["tests"]))
+              result = run_tests(Array(req["tests"]))
+              check_shared_databases!
+              result
             rescue Exception => e # rubocop:disable Lint/RescueException
               @errio.puts("[daemon-child] #{describe_error(e)}")
               2

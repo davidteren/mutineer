@@ -46,7 +46,9 @@ These keys are accepted in `.mutineer.yml` in 1.7.0:
 `operators`, `jobs`, `threshold`, `only`, `require`, `boot`, `rails`, `since`,
 `framework`, `verbose`, `ignore`, `baseline`, `fail_fast`, `matrix`,
 `test_command`, `daemon`, `timeout`, `capture_timeout`, `cache_dir`,
-`allow_empty`.
+`allow_empty`, `shared_databases`.
+
+`shared_databases` is new after 1.7.0. It is not in a release yet.
 
 `allow_empty` is new in 1.7.0.
 An `ignore:` entry can be a mapping with an `id` and an optional `reason` from 1.7.0.

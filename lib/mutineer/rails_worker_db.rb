@@ -352,20 +352,19 @@ module Mutineer
       ActiveRecord::Base.establish_connection(worker_db_config(slot))
     end
 
-    # How many database configs the test environment declares. One is normal.
-    # More than one means the run must use a single worker.
+    # The database config names the test environment declares, and the one
+    # each worker copies (the config `ActiveRecord::Base` uses). The tool
+    # counts the names that `shared_databases` does not list: more than one
+    # means the run must use a single worker.
     #
-    # @return [Integer]
-    def self.database_count
-      return 1 unless available?
-
+    # No rescue: a failure must reach the tool, which then keeps one worker.
+    #
+    # @return [Hash{String => Object}] "names" (Array<String>) and "primary" (String).
+    def self.database_names
       env = ENV["RAILS_ENV"].to_s
       env = "test" if env.empty?
-      list = ActiveRecord::Base.configurations.configs_for(env_name: env)
-      count = list.size
-      count < 1 ? 1 : count
-    rescue StandardError
-      1
+      names = ActiveRecord::Base.configurations.configs_for(env_name: env).map(&:name)
+      { "names" => names, "primary" => ActiveRecord::Base.connection_db_config.name }
     end
 
     # Child-side (after fork): route this process's ActiveRecord at the worker's
@@ -457,6 +456,26 @@ module Mutineer
     # @return [Integer, nil]
     def self.schema_file_version(text)
       text[/define\(version:\s*([\d_]+)/, 1]&.delete("_")&.to_i
+    end
+
+    # Names from `shared` whose connection pool holds a connection in this
+    # process. Run in a fork after its tests: a name here means a test used a
+    # database that parallel workers share, so the verdict cannot be trusted.
+    # Transactional tests connect every registered writing pool, so a pool
+    # registered for a shared database shows up here after any test.
+    #
+    # No rescue: a failed check must raise (scored `error`), never read as clean.
+    # ponytail: a snapshot after the run; a pool the test removes
+    # (`remove_connection`) is missed. Upgrade path: watch `sql.active_record`.
+    #
+    # @param shared [Array<String>] database config names in `shared_databases`.
+    # @return [Array<String>]
+    def self.touched_shared_databases(shared)
+      return [] if shared.empty? || !available?
+
+      ActiveRecord::Base.connection_handler.connection_pool_list(:all)
+                        .select { |pool| shared.include?(pool.db_config.name) && pool.connected? }
+                        .map { |pool| pool.db_config.name }.uniq
     end
 
     # Load a Rails `schema.rb` into the current connection with output silenced

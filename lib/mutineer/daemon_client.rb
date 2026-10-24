@@ -72,13 +72,12 @@ module Mutineer
       self
     end
 
-    # How many database configs the booted test environment reported.
-    # 1 when the daemon did not send a count.
+    # The booted test environment's databases, as the daemon reported them:
+    # "names" and "primary", or "error" when the lookup failed. nil when the
+    # app has no worker-DB adapter.
     #
-    # @return [Integer]
-    def database_count
-      @database_count || 1
-    end
+    # @return [Hash, nil]
+    attr_reader :databases
 
     # Ask the daemon to create `slots` worker databases. Raises when the copy
     # fails or another run holds the database, so the caller stops before any
@@ -373,7 +372,7 @@ module Mutineer
         close_io
         raise (timed_out ? DaemonBootTimeout : DaemonBootError), "daemon failed to boot under the app bundle: #{detail}"
       end
-      @database_count = ready["database_count"] || 1
+      @databases = ready["databases"]
     end
 
     # Respawn after a crash, up to MAX_RESTARTS, then hard-fail loudly.
