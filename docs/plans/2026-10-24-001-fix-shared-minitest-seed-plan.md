@@ -213,11 +213,13 @@ still passes where the machine can run it.
 `lib/mutineer/daemon_backend.rb`, `test/runner_test.rb`
 
 **Approach:** `JobPlan.abort_if_unclean!` takes an optional `framework:`
-keyword. For `"minitest"`, the message appends a fixed hint built from
-`PINNED_SEED`: Mutineer runs Minitest with seed 1 unless `SEED` is set; run
-the suite with `SEED=1` to reproduce, or set `SEED` to pick another order.
-The hint does not re-derive the seed rule, so it cannot disagree with
-`seed_args`. Both callers pass
+keyword. For `"minitest"`, the message appends a hint that names the seed
+the runs used (`MinitestIntegration.seed`: `SEED` when set, else
+`PINNED_SEED`). It tells the user to run the listed test files with that
+seed to look for the order-dependent test (all of them together for
+"combined suite"), or to set `SEED` to pick another order. Changed in
+review: the first draft always named seed 1, which was wrong when `SEED` is
+set. `seed_args` is built on `seed`, so both use one rule. Both callers pass
 `config.framework`. Other frameworks keep today's text.
 
 **Test scenarios:**
