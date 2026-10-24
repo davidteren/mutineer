@@ -19,7 +19,7 @@ The top-level `schema_version` (a string, e.g. `"2.0"`) follows these rules:
 - **Breaking changes** (renaming/removing a key, changing a value's type or meaning) bump the **major**
   version (`1.x` → `2.0`).
 
-A consumer should accept any `1.x` document and read only the keys it knows.
+A consumer should accept documents from each schema major that it supports and read only the keys it knows.
 
 Schema `2.0` narrows `baseline.fixed_survivors`: a survivor without a verdict
 is now listed in `baseline.unverified_survivors` instead. Consumers that accept
@@ -95,7 +95,8 @@ Each surviving mutant — the records an agent or reviewer acts on:
 
 ### `no_coverage[]`, `uncapturable[]`, `unplaceable[]` and `ran_at_load[]` (array of object)
 
-Each entry is `{ subject, file, line, operator, token, id }`, sorted by
+Each entry is `{ subject, file, line, operator, token, id }`. Entries in
+`ran_at_load[]` also carry `tested` (schema `2.0`). Entries are sorted by
 `(file, line, operator, id)`. `no_coverage` is a coverage gap: no test runs the line, or (#254) the tests that run a later line's statement may not reach the mutant and none killed it, so only a test that kills it clears the entry; `uncapturable` means the test that
 should cover the line errored while capturing coverage (fix the harness, not the test). `unplaceable` (schema
 `1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module cannot be
