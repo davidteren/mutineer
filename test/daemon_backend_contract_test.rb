@@ -151,6 +151,7 @@ class DaemonBackendContractTest < Minitest::Test
 
     assert_equal 1, count
     assert_includes err, "shared_databases names no test database: cabel. This app has primary, cable."
+    assert_includes err, "this app has 2 databases outside shared_databases; Mutineer runs one worker."
   end
 
   # Each worker copies the primary database. Sharing it would leave the other

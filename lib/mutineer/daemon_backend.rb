@@ -223,7 +223,8 @@ module Mutineer
       unshared = names - shared
       return worker_count unless unshared.size > 1 && worker_count > 1
 
-      warn "[mutineer] this app has #{unshared.size} databases; Mutineer runs one worker. " \
+      outside = shared.empty? ? "" : " outside shared_databases"
+      warn "[mutineer] this app has #{unshared.size} databases#{outside}; Mutineer runs one worker. " \
            "Parallel runs support one database. To run in parallel, list each one " \
            "your tests never use under shared_databases: #{(unshared - [primary]).join(", ")}."
       1
