@@ -12,6 +12,26 @@ All notable changes to this project are documented here. The format is based on
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.
 
+### Fixed
+
+- **No `DATABASE_URL` password in load errors and other output (#288).**
+  **Exit code change:** an `ArgumentError` or `SystemCallError` raised while
+  the boot file, a source file or a `--require` file loads now exits 1
+  (runtime error), not 2 (usage error). A load error in the tool process (an
+  in-process `--boot` or `--rails` run, a source file, or a `--require`
+  file) no longer prints the raw password or a backtrace. The run prints one
+  `mutineer: cannot load <path>: ...` line and exits 1. `--verbose` adds a
+  redacted backtrace and the redacted cause chain. CLI error messages, the
+  fork child's error line, the worker crash text in the report, the daemon's
+  stderr lines and the `--verbose` test command output are redacted too.
+  Daemon stderr is now copied line by line as UTF-8, so an invalid byte
+  shows as U+FFFD. A password that equals the username no longer blanks the
+  same text elsewhere (for example `role "postgres"`). A password of 3
+  characters or fewer no longer blanks words that contain it, but it still
+  blanks the same word when it stands alone. A longer password is still
+  hidden wherever it appears, and the password inside a URL is always
+  hidden.
+
 ## [1.7.0] - 2026-10-23
 
 ### Added
