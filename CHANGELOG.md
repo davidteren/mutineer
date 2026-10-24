@@ -21,6 +21,19 @@ All notable changes to this project are documented here. The format is based on
   a method was falsely killed (#279). Redefine (also the default under
   `--rails` without `--daemon`) now needs write access to each source
   directory, as reload already does.
+- **A nested method's mutant under `--strategy redefine`.** Redefine now
+  also loads the mutated method into each method that encloses it. Before,
+  a call to the outer method defined the original inner method again, so
+  the mutant could falsely survive (#290). For a method nested in other
+  methods, redefine now gives the same verdict as reload when a test calls
+  an enclosing method by its own name. Mutant ids do not change, so
+  baselines and `ignore:` entries stay valid. Scores under redefine can
+  rise, and an `ignore:` entry added only to hide such a survivor can now
+  be removed. A method defined inside a non-builder block (for example
+  inside `define_method`), inside a `module_function` method, inside
+  `class << self` in a method, or called through an alias of the outer
+  method can still falsely survive under redefine. Use
+  `--strategy reload` for those cases.
 
 ## [1.7.0] - 2026-10-23
 
