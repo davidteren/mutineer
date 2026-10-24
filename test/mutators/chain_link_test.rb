@@ -102,4 +102,16 @@ class ChainLinkTest < Minitest::Test
     assert_equal [".c"], removed
     mutations.each { |m| assert m.valid?(source) }
   end
+
+  # The declined count after one run on `body`.
+  def declined(body)
+    source = "def m\n  #{body}\nend\n"
+    Mutineer::Mutators::ChainLink.new.tap { |op| op.mutations_for(subject_for(source), source) }.declined
+  end
+
+  def test_skipped_link_counts_as_declined
+    assert_equal 1, declined("value.to_s.strip.downcase")
+    assert_equal 2, declined("value.dup.to_a.strip")
+    assert_equal 0, declined("a.b.c")
+  end
 end

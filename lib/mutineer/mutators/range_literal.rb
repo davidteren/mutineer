@@ -12,7 +12,8 @@ module Mutineer
     #
     # Endless ranges (`1..`, `1..nil`) are skipped. `(1..)` and `(1...)` give
     # the same result for slicing, `include?`, `===`, `size` and patterns, so
-    # the mutant is equivalent and no normal test can kill it.
+    # the mutant is equivalent and no normal test can kill it. Each skipped
+    # range counts as declined.
     class RangeLiteral < Base
       # Maps each range operator to its opposite.
       SWAPS = { ".." => "...", "..." => ".." }.freeze
@@ -22,7 +23,7 @@ module Mutineer
       # @param node [Prism::RangeNode] range node to inspect.
       # @return [void]
       def visit_range_node(node)
-        emit(node) unless endless?(node)
+        endless?(node) ? decline : emit(node)
         super # nested ranges ((1..2)...(3..4)) each get their own mutation
       end
 

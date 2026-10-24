@@ -162,4 +162,19 @@ class CallToReceiverTest < Minitest::Test
     assert_equal 1, mutations.size
     assert_equal "row.first", source[mutations.first.start_offset...mutations.first.end_offset]
   end
+
+  # The declined count after one run on `body`.
+  def declined(body)
+    source = "def m\n  #{body}\nend\n"
+    Mutineer::Mutators::CallToReceiver.new.tap { |op| op.mutations_for(subject_for(source), source) }.declined
+  end
+
+  def test_skipped_name_counts_as_declined
+    %w[x.to_s x.dup Foo.new x.freeze x.itself x.to_a].each do |body|
+      assert_equal 1, declined(body), "for #{body.inspect}"
+    end
+    ["a.+(1)", "a.b = 1", "x.to_s.strip"].each do |body|
+      assert_equal 0, declined(body), "for #{body.inspect}"
+    end
+  end
 end
