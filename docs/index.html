@@ -212,7 +212,7 @@
       <div class="grid">
         <div class="card"><h3>Zero runtime deps</h3><p>Mutineer uses the parser and standard library included with Ruby 3.4 or later. It adds no runtime gems.</p></div>
         <div class="card"><h3>Valid mutants only</h3><p>Every mutation is re-parsed before it runs. Syntactically broken mutants are skipped, not counted against your score.</p></div>
-        <div class="card"><h3>Fork isolation</h3><p>Each mutant runs in a separate process on Linux or macOS. Plain Ruby runs use multiple workers. Rails runs need <code>--daemon</code> for multiple workers; custom test commands use one.</p></div>
+        <div class="card"><h3>Fork isolation</h3><p>Each mutant runs in a separate process on Linux or macOS. Plain Ruby runs use multiple workers. Rails runs need <code>--daemon</code> for multiple workers. <code>--test-command</code> forces one Mutineer worker. It also sets <code>PARALLEL_WORKERS=1</code> for Rails tests. A script that sets this variable again can start Rails test workers.</p></div>
         <div class="card"><h3>Coverage-mapped</h3><p>A per-mutant coverage map runs only the test files that reach the mutated line. Digest-keyed cache skips unchanged work.</p></div>
         <div class="card"><h3>CI &amp; agent ready</h3><p>Stable, sorted <code>--format json</code> with a versioned schema and mutant ids that survive unrelated edits. <code>--threshold</code> and <code>--baseline</code> gate the build.</p></div>
         <div class="card"><h3>Rails-aware</h3><p>Use <code>--rails</code> to load your app. Minitest apps can add <code>--daemon</code> for worker test databases on SQLite files, PostgreSQL, or MySQL 8. <a href="rails.html">Start with one model.</a></p></div>

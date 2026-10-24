@@ -12,7 +12,7 @@ See the [README](https://github.com/davidteren/mutineer#github-action) and
 
 ## One model locally
 
-Add `gem "mutineer"` to the test group in your Gemfile and run `bundle install`.
+Add `gem "mutineer", group: :test` to your Gemfile and run `bundle install`.
 Create the configuration, then run Mutineer on one model and its test:
 
 ```sh
@@ -38,7 +38,11 @@ Use `--since origin/main` and `--baseline`.
 With `--since`, `--baseline` fails the job only when a new survivor appears.
 That run does not check a score drop.
 The score drop check is for a full run.
-Keep a full scan on the default branch so a test-only change cannot hide a weaker suite.
+When a pull request changes tests, run a full scan of the chosen sources on that
+pull request's commit before merging. Use `--no-since` with `--baseline` to check
+for new survivors and a score drop, including in code whose source did not change.
+A scheduled scan on the default branch refreshes the baseline; it does not check
+the pull request's tests before merge.
 
 ## A threshold on chosen folders
 
@@ -74,12 +78,14 @@ For report-only CI, leave `threshold` at 0 and `baseline` unset in both the work
 and `.mutineer.yml`. To reject new survivors, first save a full run from the default
 branch as `.mutineer/baseline.json` and make that file available in CI. Then set
 `baseline: .mutineer/baseline.json`. Leave `since` unset: the Action fetches the pull
-request’s base commit. Add a `threshold` when the chosen folders are ready.
+request’s base commit. When tests change, set `since: none` to run the full scan
+on the pull request's commit. Add a `threshold` when the chosen folders are ready.
 
 ## GitLab CI
 
-This GitLab job runs a full report on Rails models. Use a Linux runner with
-Ruby 3.4 or later, and prepare the test database as you do for the test suite.
+This GitLab job reports on Rails models paired with conventionally named tests.
+Use a Linux or macOS runner with Ruby 3.4 or later, and prepare the test database
+as you do for the test suite.
 
 ```yaml
 mutineer:
@@ -88,9 +94,20 @@ mutineer:
     - RAILS_ENV=test bundle exec mutineer run app/models --rails --no-since --threshold 0 --format json
 ```
 
+Models without a conventionally named test are skipped with a warning, even if
+other tests cover them. To include a model covered by differently named tests,
+pass the relevant test files explicitly. For example:
+
+```sh
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/integration/checkout_test.rb --test test/integration/refunds_test.rb --rails --no-since --threshold 0 --format json
+```
+
+Replace these paths with the model and tests in your app.
+
 Leave `baseline` unset in `.mutineer.yml` for report-only CI. For a pull request
 check, fetch the target branch before adding `--since origin/main` (replace `main`
 with that branch’s name), and supply a baseline from a full run on that branch.
+When tests change, keep `--no-since` to check the pull request's full source scope.
 Add `--threshold 90` when the chosen folders are ready.
 
 ## Parallel tests

@@ -101,7 +101,9 @@
 <span class="c"># On a PR:</span>
 <span class="p">$</span> mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json</code></pre>
       <p><code>--baseline</code> exits <code>1</code> if it finds a new survivor or a lower score. It matches survivors by <code>id</code>; file moves and renames can change ids. <code>--baseline-epsilon</code> allows a small score difference. With <code>--since</code>, only new survivors fail the baseline check: a score for changed lines is not comparable to a full-run score. Add <code>--threshold</code> to enforce a minimum score as well.</p>
-      <p>Keep a full scan on the default branch. A pull request that changes only tests has no changed source lines, so a check limited to those lines cannot detect tests that became weaker.</p>
+      <p>Run a full scan on the pull request whenever tests change, including when source code changes too. A scoped check cannot detect weaker tests for unchanged source lines. Compare the PR's full run with the full baseline:</p>
+      <pre><code>mutineer run app/ --no-since --baseline .mutineer/baseline.json --format json</code></pre>
+      <p>Keep a full scan on the default branch to refresh the baseline. That scan does not check a pull request's changed tests before merge.</p>
 
       <h3 id="action">GitHub Action</h3>
       <p>The GitHub Action runs Mutineer and reports the result. This example requires <code>.mutineer/baseline.json</code> from a full run on the default branch. Commit that file or restore it before the Mutineer step. Omit <code>baseline</code> until it exists.</p>
@@ -130,6 +132,8 @@ jobs:
         with:
           name: mutineer-report
           path: .mutineer/pr.json</code></pre>
+      <p>When tests change, set <code>since: none</code> on the PR's Mutineer step to run the full scan described above:</p>
+      <pre><code>          since: none</code></pre>
       <p>For a Rails app, add <code>rails: true</code> and <code>use-bundler: true</code> (boot mode needs the app's own bundle):</p>
       <pre><code>      - uses: davidteren/mutineer@v1
         with:
@@ -142,14 +146,14 @@ jobs:
       <h2 id="equivalent">Avoiding infinite loops: equivalent mutants</h2>
       <p>An equivalent mutant has the same behaviour as the original for all valid inputs. No test can catch it. After review, ignore it and record the reason:</p>
       <ul>
-        <li><strong>Inline:</strong> <code># mutineer:disable-line arithmetic -- count is an integer</code> on the source line. Choose the operator and reason for the change you reviewed.</li>
+        <li><strong>Inline:</strong> <code># mutineer:disable-line arithmetic -- count is an integer</code> suppresses every arithmetic mutant on that source line. Review all of them before adding the marker. To ignore only one reviewed mutant, use its <code>id</code> in the configuration instead.</li>
         <li><strong>Config:</strong> add the survivor's <code>id</code> (printed in the JSON report; it includes the file path) to <code>.mutineer.yml</code>:
           <pre><code>ignore:
   - id: 9f2a1c4b7e0d
     reason: "count * 1 and count / 1 are equal for integer counts"</code></pre>
         </li>
       </ul>
-      <p>Replace the example id and reason with values from your report. Ignore mappings and <code>mutineer triage</code> require Mutineer 1.7 or later in every environment that reads the configuration. Older versions silently skip mapping entries. Ignored mutants are excluded from the score and listed in <code>ignored[]</code>. Set an attempt limit for the agent, then ask a person to review unresolved survivors. Failed attempts alone do not prove that a mutant is equivalent.</p>
+      <p>Replace the required <code>id</code> with the survivor's id from your report. The <code>reason</code> is optional; write your own explanation or omit that field. Ignore mappings and <code>mutineer triage</code> require Mutineer 1.7 or later in every environment that reads the configuration. For the GitHub Action, check the resolved gem version selected by <code>version:</code>. With <code>use-bundler: true</code>, check Mutineer in <code>Gemfile.lock</code> instead. Older versions do not apply mapping entries and do not warn, so the named mutant is not ignored. Ignored mutants are excluded from the score and listed in <code>ignored[]</code>. Set an attempt limit for the agent, then ask a person to review unresolved survivors. Failed attempts alone do not prove that a mutant is equivalent.</p>
 
       <h2 id="exit-codes">Reading exit codes in a pipeline</h2>
       <!-- contract:exit-codes-html -->

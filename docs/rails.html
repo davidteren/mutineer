@@ -72,7 +72,7 @@
       <p>See the <a href="https://github.com/davidteren/mutineer#github-action">README</a> and <a href="agentic-coding.html#action">agent and CI guide</a> for all Action inputs.</p>
 
       <h2 id="one-model">One model locally</h2>
-      <p>Add <code>gem "mutineer"</code> to the test group in your Gemfile and run <code>bundle install</code>. Create the configuration, then run Mutineer on one model and its test:</p>
+      <p>Add <code>gem "mutineer", group: :test</code> to your Gemfile and run <code>bundle install</code>. Create the configuration, then run Mutineer on one model and its test:</p>
       <pre><code>RAILS_ENV=test bundle exec mutineer init --rails
 RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/models/order_test.rb</code></pre>
       <p>Review each survivor. Add a test for a missed behaviour, or record why the change is equivalent before ignoring it. Start without a score threshold.</p>
@@ -82,7 +82,7 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/models/o
 
       <h2 id="pull-request-gate">A pull request gate</h2>
       <p>Scope the run to the pull request and fail when it adds a survivor. Use <code>--since origin/main</code> and <code>--baseline</code>.</p>
-      <p><code>--since</code> checks the lines the pull request changed. With <code>--since</code>, <code>--baseline</code> fails the job only when a new survivor appears. That run does not check a score drop. The score drop check is for a full run. Keep a full scan on the default branch so a test-only change cannot hide a weaker suite.</p>
+      <p><code>--since</code> checks the lines the pull request changed. With <code>--since</code>, <code>--baseline</code> fails the job only when a new survivor appears. That run does not check a score drop. The score drop check is for a full run. When a pull request changes tests, run a full scan of the chosen sources on that pull request's commit before merging. Use <code>--no-since</code> with <code>--baseline</code> to check for new survivors and a score drop, including in code whose source did not change. A scheduled scan on the default branch refreshes the baseline; it does not check the pull request's tests before merge.</p>
 
       <h2 id="threshold">A threshold on chosen folders</h2>
       <p>Set <code>--threshold</code> on the folders whose score you trust, such as <code>app/models</code>. Leave a new folder at report-only until its score is stable. Raise the threshold only after the report stays green.</p>
@@ -105,15 +105,18 @@ jobs:
           sources: app/models
           rails: true
           use-bundler: true</code></pre>
-      <p>For report-only CI, leave <code>threshold</code> at 0 and <code>baseline</code> unset in both the workflow and <code>.mutineer.yml</code>. To reject new survivors, first save a full run from the default branch as <code>.mutineer/baseline.json</code> and make that file available in CI. Then set <code>baseline: .mutineer/baseline.json</code>. Leave <code>since</code> unset: the Action fetches the pull request’s base commit. Add a <code>threshold</code> when the chosen folders are ready.</p>
+      <p>For report-only CI, leave <code>threshold</code> at 0 and <code>baseline</code> unset in both the workflow and <code>.mutineer.yml</code>. To reject new survivors, first save a full run from the default branch as <code>.mutineer/baseline.json</code> and make that file available in CI. Then set <code>baseline: .mutineer/baseline.json</code>. Leave <code>since</code> unset: the Action fetches the pull request’s base commit. When tests change, set <code>since: none</code> to run the full scan on the pull request's commit. Add a <code>threshold</code> when the chosen folders are ready.</p>
 
       <h2 id="gitlab-ci">GitLab CI</h2>
-      <p>This GitLab job runs a full report on Rails models. Use a Linux runner with Ruby 3.4 or later, and prepare the test database as you do for the test suite.</p>
+      <p>This GitLab job reports on Rails models paired with conventionally named tests. Use a Linux or macOS runner with Ruby 3.4 or later, and prepare the test database as you do for the test suite.</p>
       <pre><code>mutineer:
   stage: test
   script:
     - RAILS_ENV=test bundle exec mutineer run app/models --rails --no-since --threshold 0 --format json</code></pre>
-      <p>Leave <code>baseline</code> unset in <code>.mutineer.yml</code> for report-only CI. For a pull request check, fetch the target branch before adding <code>--since origin/main</code> (replace <code>main</code> with that branch’s name), and supply a baseline from a full run on that branch. Add <code>--threshold 90</code> when the chosen folders are ready.</p>
+      <p>Models without a conventionally named test are skipped with a warning, even if other tests cover them. To include a model covered by differently named tests, pass the relevant test files explicitly. For example:</p>
+      <pre><code>RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/integration/checkout_test.rb --test test/integration/refunds_test.rb --rails --no-since --threshold 0 --format json</code></pre>
+      <p>Replace these paths with the model and tests in your app.</p>
+      <p>Leave <code>baseline</code> unset in <code>.mutineer.yml</code> for report-only CI. For a pull request check, fetch the target branch before adding <code>--since origin/main</code> (replace <code>main</code> with that branch’s name), and supply a baseline from a full run on that branch. When tests change, keep <code>--no-since</code> to check the pull request's full source scope. Add <code>--threshold 90</code> when the chosen folders are ready.</p>
 
       <h2 id="parallel-tests">Parallel tests</h2>
       <p>Mutineer sets <code>PARALLEL_WORKERS=1</code>, so <code>parallelize</code> in <code>test_helper.rb</code> starts no Rails workers during a mutant run. A <code>--test-command</code> script that sets <code>PARALLEL_WORKERS</code> again turns the workers back on. Details: <a href="https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis">Rails parallel tests, Spring, Bootsnap, and Redis</a>.</p>

@@ -2,8 +2,9 @@
 
 `mutineer run --format json` emits a single JSON object (one line, newline-terminated) describing the
 whole run. Use it for CI checks, dashboards, and AI coding agents. Arrays have a
-fixed sort order, independent of `--jobs` worker completion order. Results can
-still vary if the tests or environment change. `survivors[]` sorts by
+fixed sort order, independent of `--jobs` worker completion order. For the same
+inputs and results, JSON output is byte-identical. Results can still vary if
+the tests or environment change. `survivors[]` sorts by
 `(file, line, operator)`; `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
 add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`;
 `no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`.

@@ -819,7 +819,8 @@ the directory you set with `--cache-dir` if it is inside the project. Keep
 [Mutant](https://github.com/mbj/mutant), by Markus Schirp, is the established
 mutation-testing tool for Ruby. It has been in development since 2012 and is
 the subject of published research. Mutineer is a separate tool, and it shares
-no code with Mutant. Mutineer was written from scratch and is MIT licensed.
+no code with Mutant or any other mutation-testing tool. Mutineer was written
+from scratch and is MIT licensed.
 
 | Aspect | Mutineer | Mutant |
 |---|---|---|

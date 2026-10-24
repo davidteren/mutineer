@@ -37,7 +37,8 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 3. Parse `survivors[]` — each carries a `diff` and an `id`. File moves, renames,
    project-root changes, and changes to repeated-name or repeated-mutation order can
    change ids; see [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). Review each change
-   against the intended behaviour. Add or improve a test when it exposes a gap.
+   against the intended behaviour. If review finds a test gap, write or strengthen
+   a test that fails under that change.
 4. Re-run. Accept the result only when this run exits `0`, `summary.score` is not `null`,
    and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`;
    the score is rounded, so `--threshold 100` alone can still pass with a survivor.

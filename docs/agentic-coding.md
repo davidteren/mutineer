@@ -73,9 +73,16 @@ It matches survivors by `id`; file moves and renames can change ids.
 survivors fail the baseline check: a score for changed lines is not comparable
 to a full-run score. Add `--threshold` to enforce a minimum score as well.
 
-Keep a full scan on the default branch. A pull request that changes only tests
-has no changed source lines, so a check limited to those lines cannot detect
-tests that became weaker.
+Run a full scan on the pull request whenever tests change, including when source
+code changes too. A scoped check cannot detect weaker tests for unchanged source
+lines. Compare the PR's full run with the full baseline:
+
+```sh
+mutineer run app/ --no-since --baseline .mutineer/baseline.json --format json
+```
+
+Keep a full scan on the default branch to refresh the baseline. That scan does
+not check a pull request's changed tests before merge.
 
 ### GitHub Action
 
@@ -112,6 +119,13 @@ jobs:
           path: .mutineer/pr.json
 ```
 
+When tests change, set `since: none` on the PR's Mutineer step to run the full
+scan described above:
+
+```yaml
+          since: none
+```
+
 For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the app's own bundle):
 
 ```yaml
@@ -132,7 +146,7 @@ See `action.yml` for all inputs (`operators`, `framework`, `strategy`, `jobs`, `
 An equivalent mutant has the same behaviour as the original for all valid inputs.
 No test can catch it. After review, ignore it and record the reason:
 
-- **Inline:** `# mutineer:disable-line arithmetic -- count is an integer` on the source line. Choose the operator and reason for the change you reviewed.
+- **Inline:** `# mutineer:disable-line arithmetic -- count is an integer` suppresses every arithmetic mutant on that source line. Review all of them before adding the marker. To ignore only one reviewed mutant, use its `id` in the configuration instead.
 - **Config:** add the survivor's `id` (printed in the JSON report; it includes the file path) to `.mutineer.yml`:
 
   ```yaml
@@ -141,12 +155,15 @@ No test can catch it. After review, ignore it and record the reason:
       reason: "count * 1 and count / 1 are equal for integer counts"
   ```
 
-Replace the example id and reason with values from your report. Ignore mappings
-and `mutineer triage` require Mutineer 1.7 or later in every environment that reads
-the configuration. Older versions silently skip mapping entries. Ignored mutants
-are excluded from the score and listed in `ignored[]`. Set an attempt limit for
-the agent, then ask a person to review unresolved survivors. Failed attempts alone
-do not prove that a mutant is equivalent.
+Replace the required `id` with the survivor's id from your report. The `reason`
+is optional; write your own explanation or omit that field. Ignore mappings and
+`mutineer triage` require Mutineer 1.7 or later in every environment that reads
+the configuration. For the GitHub Action, check the resolved gem version selected
+by `version:`. With `use-bundler: true`, check Mutineer in `Gemfile.lock` instead.
+Older versions do not apply mapping entries and do not warn, so the named mutant
+is not ignored. Ignored mutants are excluded from the score and listed in
+`ignored[]`. Set an attempt limit for the agent, then ask a person to review
+unresolved survivors. Failed attempts alone do not prove that a mutant is equivalent.
 
 ## Reading exit codes in a pipeline
 

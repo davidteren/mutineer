@@ -7,8 +7,10 @@ only, so they are not always equivalent. Endless-range skips are equivalent.
 For an equivalent mutant that does appear, use `# mutineer:disable-line` or an
 `ignore:` entry and record a reason. An ignore mapping contains an `id` and an
 optional `reason`; it requires Mutineer 1.7 or later everywhere the configuration
-is read. Older versions silently skip mappings. `mutineer triage` prepares these
-entries from a JSON report. See
+is read. Older versions do not apply mappings and do not warn, so the named mutant
+is not ignored. `mutineer triage` prints these entries using survivor ids from a
+JSON report and the reason you supply with the required `--reason TEXT` argument.
+It does not edit files. See
 [Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants).
 
 ## Chain link
@@ -16,8 +18,9 @@ entries from a JSON report. See
 The `chain_link` operator removes a call from the middle of a chain.
 The `call_to_receiver` operator removes the last call. Both skip the names below
 without checking the receiver or next call. Conversions and copies often leave
-the result unchanged. Removing `new` leaves the class in place of an instance,
-which usually raises an error or calls an unrelated class method.
+the result unchanged. Removing a middle `new` sends the next call to the class.
+That can raise an error or reach a class method that builds the instance itself.
+Removing a final `new` leaves the class in place of an instance.
 
 | Name | Why it is skipped |
 |------|-------------------|

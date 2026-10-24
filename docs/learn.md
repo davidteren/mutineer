@@ -141,8 +141,9 @@ to `count / 1` leaves the value unchanged when `count` is an Integer.
 No test can distinguish those results.
 
 If you have checked that a survivor is equivalent, record why you ignore it.
-In Mutineer 1.7 or later, `mutineer triage` can print an ignore entry with a
-reason from a JSON report. It does not edit your files. See
+In Mutineer 1.7 or later, `mutineer triage` can print an ignore entry for a
+survivor from a JSON report. You must supply its reason with `--reason TEXT`.
+It does not edit your files. See
 [Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants).
 If you cannot explain a survivor, ask for a review instead of hiding it to raise the score.
 

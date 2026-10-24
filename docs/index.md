@@ -70,6 +70,10 @@ mutineer run --dry-run lib/discount.rb
 
 Typed flags override `.mutineer.yml`. Full flag list: `mutineer --help` or the [README](https://github.com/davidteren/mutineer/blob/main/README.md).
 
+`--test-command` forces one Mutineer worker. It also sets `PARALLEL_WORKERS=1`
+for Rails tests. A script that sets this variable again can start Rails test
+workers.
+
 ## Exit codes
 
 <!-- contract:exit-codes -->
