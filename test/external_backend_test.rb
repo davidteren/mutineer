@@ -105,16 +105,21 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
-  # Every test passed, but a later step failed the run (a SimpleCov
-  # minimum_coverage gate exits 2). No test caught the mutant, so it survives,
-  # as in process, where the fork exits before that hook.
-  def test_passing_summary_with_exit_two_is_survived_when_checking
-    ["3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n", "4 examples, 0 failures\n"].each do |output|
-      code = 2
-      with_script(%(STDOUT.write #{output.dump}\nexit #{code}\n)) do |path|
+  # Every test passed and only SimpleCov's minimum_coverage gate failed the
+  # run (exit 2). No test caught the mutant, so it survives, as in process,
+  # where the fork exits before that hook. Code under test that calls exit 2
+  # prints no SimpleCov line and scores error, as Isolation.decode does.
+  def test_passing_summary_with_simplecov_gate_is_survived_when_checking
+    gate = "SimpleCov failed with exit 2 due to a coverage related error\n"
+    ["3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n", "4 examples, 0 failures\n"].each do |summary|
+      with_script(%(STDOUT.write #{(summary + gate).dump}\nexit 2\n)) do |path|
         cmd = "#{RUBY} #{path} %{files}"
-        assert_predicate Backend.run(cmd, ["x"], timeout: 30, check_summary: true), :survived?, output
-        refute_predicate Backend.run(cmd, ["x"], timeout: 30), :survived?, "check off"
+        assert_predicate Backend.run(cmd, ["x"], timeout: 30, check_summary: true), :survived?, summary
+        assert_predicate Backend.run(cmd, ["x"], timeout: 30), :error?, "check off"
+      end
+      with_script(%(STDOUT.write #{summary.dump}\nexit 2\n)) do |path|
+        result = Backend.run("#{RUBY} #{path} %{files}", ["x"], timeout: 30, check_summary: true)
+        assert_predicate result, :error?, "exit 2 without the SimpleCov line"
       end
     end
   end

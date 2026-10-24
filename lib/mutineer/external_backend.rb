@@ -53,6 +53,8 @@ module Mutineer
     # test runs. Exit 1 after it with no summary line means code under test
     # called `exit 1` or `abort`, which the in-process backend also scores killed.
     MINITEST_RUNNING = "# Running:"
+    # The line SimpleCov prints when its minimum_coverage gate fails the run.
+    SIMPLECOV_GATE = /SimpleCov failed with exit \d+ due to a coverage related error/
     # RSpec's note that a file raised outside any example, such as at load.
     RSPEC_OUTSIDE_ERROR = /errors? occurred outside of examples/
     # ANSI colour codes, removed before matching so a coloured summary still counts.
@@ -179,19 +181,19 @@ module Mutineer
         # such as `bundle exec` that could not start the suite: no test ran.
         return Result.error("test-command could not start (exit #{code})") if CANNOT_RUN_CODES.include?(code)
 
-        # Every test passed, but a later step failed the run, such as a SimpleCov
-        # minimum_coverage gate (exit 2). No test caught the mutant: in process,
-        # the fork exits before that hook, and the mutant survives. Not for exit
-        # 1: RSpec prints "N examples, 0 failures" when code under test calls
-        # `exit 1` mid-example, which is a kill in process.
-        return Result.survived if check_summary && code != FAILURE_CODE && tests_passed?(output)
+        text = summary_text(output)
+        # Every test passed, and only SimpleCov's minimum_coverage gate failed
+        # the run. No test caught the mutant: in process, the fork exits before
+        # that hook, and the mutant survives. Keyed on SimpleCov's own message,
+        # so code under test that calls `exit 2` still scores error.
+        return Result.survived if check_summary && coverage_gate_only?(text)
 
         unless code == FAILURE_CODE
           return Result.error("test-command exited #{code} (only exit 1 counts as a kill; " \
                               "check RSpec --failure-exit-code, a coverage gate, or your wrapper)")
         end
 
-        if check_summary && !failure_reported?(output) && !exited_during_tests?(output)
+        if check_summary && !failure_reported?(text) && !exited_during_tests?(text)
           return Result.error("test-command exited 1 but its output shows no failing test " \
                               "(the suite or the mutant crashed before tests ran; --verbose shows the output)")
         end
@@ -200,13 +202,12 @@ module Mutineer
       end
     end
 
-    # True when the output has a Minitest or RSpec summary line.
+    # True when the text has a Minitest or RSpec summary line.
     #
     # @api private
-    # @param output [String] captured child stdout+stderr.
+    # @param text [String] output from {summary_text}.
     # @return [Boolean]
-    def self.summary_line?(output)
-      text = summary_text(output)
+    def self.summary_line?(text)
       text.match?(MINITEST_SUMMARY) || text.match?(RSPEC_SUMMARY)
     end
 
@@ -217,10 +218,9 @@ module Mutineer
     # A test that prints a fake summary line to stdout fools this check.
     #
     # @api private
-    # @param output [String] captured child stdout+stderr.
+    # @param text [String] output from {summary_text}.
     # @return [Boolean]
-    def self.failure_reported?(output)
-      text = summary_text(output)
+    def self.failure_reported?(text)
       text.scan(MINITEST_SUMMARY).any? { |failures, errors| (failures.to_i + errors.to_i).positive? } ||
         text.scan(RSPEC_SUMMARY).any? { |(failures)| failures.to_i.positive? }
     end
@@ -234,26 +234,27 @@ module Mutineer
     # reads as a kill here, where the in-process backend scores error.
     #
     # @api private
-    # @param output [String] captured child stdout+stderr.
+    # @param text [String] output from {summary_text}.
     # @return [Boolean]
-    def self.exited_during_tests?(output)
-      summary_text(output).include?(MINITEST_RUNNING) && !summary_line?(output)
+    def self.exited_during_tests?(text)
+      text.include?(MINITEST_RUNNING) && !summary_line?(text)
     end
 
-    # True when the output has a summary line and none reports a failing test
-    # or an RSpec error outside examples. Ceiling: in a wrapper that runs more
-    # than one process, one passing summary hides a second process that failed
-    # without a Minitest or RSpec summary line.
+    # True when every summary line shows a pass and SimpleCov reports that its
+    # coverage gate failed the run. SimpleCov skips that gate when the tests
+    # already failed or exited, so its message means the tests themselves passed.
     #
     # @api private
-    # @param output [String] captured child stdout+stderr.
+    # @param text [String] output from {summary_text}.
     # @return [Boolean]
-    def self.tests_passed?(output)
-      summary_line?(output) && !failure_reported?(output) && !summary_text(output).match?(RSPEC_OUTSIDE_ERROR)
+    def self.coverage_gate_only?(text)
+      text.match?(SIMPLECOV_GATE) && summary_line?(text) && !failure_reported?(text) &&
+        !text.match?(RSPEC_OUTSIDE_ERROR)
     end
 
     # The output as binary with ANSI colour codes removed. Binary, so bytes that
     # are invalid in the default encoding (an unset locale) cannot raise.
+    # Computed once per run and passed to the predicates above.
     #
     # @api private
     # @param output [String] captured child stdout+stderr.
@@ -275,7 +276,7 @@ module Mutineer
     # @raise [Mutineer::SmokeCheckError] when the clean suite is not green.
     def self.smoke_check!(command, files, timeout: SMOKE_TIMEOUT)
       kind, code, output, elapsed = spawn_capture(command, files, timeout)
-      return [elapsed, summary_line?(output)] if kind == :exited && code&.zero?
+      return [elapsed, summary_line?(summary_text(output))] if kind == :exited && code&.zero?
 
       reason =
         if kind == :timeout then "did not finish within #{timeout}s"
