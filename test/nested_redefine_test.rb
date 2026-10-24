@@ -10,10 +10,10 @@ require "tmpdir"
 class NestedRedefineTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
-  def run_strategy(strategy, fixture = "nested")
+  def run_strategy(strategy, fixture = "nested", test = "#{fixture}_test")
     Dir.mktmpdir("mutineer-cache") do |cache_dir|
       config = Mutineer::Config.new(
-        sources: ["test/fixtures/#{fixture}.rb"], tests: ["test/fixtures/#{fixture}_test.rb"],
+        sources: ["test/fixtures/#{fixture}.rb"], tests: ["test/fixtures/#{test}.rb"],
         operators: ["arithmetic"], strategy: strategy,
         cache_dir: cache_dir, project_root: ROOT
       )
@@ -36,6 +36,15 @@ class NestedRedefineTest < Minitest::Test
   def test_redefine_and_reload_agree_on_a_deeply_nested_mutant
     %w[reload redefine].each do |strategy|
       agg = run_strategy(strategy, "nested_deep")
+      assert_equal [1, 0], [agg.killed_count, agg.survived_count], strategy
+    end
+  end
+
+  # The test calls `a` first, which defines `b` again from `a`'s body. Only
+  # loading the outermost level too, not just the immediate one, kills it.
+  def test_redefine_and_reload_agree_when_the_test_calls_the_outermost_method
+    %w[reload redefine].each do |strategy|
+      agg = run_strategy(strategy, "nested_deep", "nested_deep_outer_test")
       assert_equal [1, 0], [agg.killed_count, agg.survived_count], strategy
     end
   end
