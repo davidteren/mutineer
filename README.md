@@ -405,6 +405,7 @@ Two mutants of the same size, written in the same second, could then load the fi
 So `--test-command` also sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1`, and Bootsnap compiles each file again on every boot.
 This makes each mutant boot slower.
 The variable works through `require "bootsnap/setup"`, which Rails puts in `config/boot.rb`.
+It needs Bootsnap 1.7.0 or later. Older versions ignore it, so upgrade Bootsnap first.
 If your app calls `Bootsnap.setup` itself, set `compile_cache_iseq: false` there for mutant runs.
 Bootsnap checks only that the variable is set, so `DISABLE_BOOTSNAP_COMPILE_CACHE=0` still turns the cache off.
 To keep the cache, run the suite through a wrapper script that runs `unset DISABLE_BOOTSNAP_COMPILE_CACHE` first.

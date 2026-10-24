@@ -14,8 +14,8 @@ All notable changes to this project are documented here. The format is based on
   written in the same second could load the first one's cached code, so a
   mutant could be scored on code that was not the mutant. Each mutant boot now
   compiles the app again, which is slower. The variable works through
-  `require "bootsnap/setup"`; an app that calls `Bootsnap.setup` itself must
-  pass `compile_cache_iseq: false` for mutant runs. The `--daemon` path is
+  `require "bootsnap/setup"` on Bootsnap 1.7.0 or later; an app that calls
+  `Bootsnap.setup` itself must pass `compile_cache_iseq: false` for mutant runs. The `--daemon` path is
   unchanged (#285).
 
 ## [1.7.0] - 2026-10-23
