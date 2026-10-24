@@ -94,7 +94,8 @@ That path is serial.
 It does not narrow tests by coverage.
 Only exit 1 counts as a kill.
 Another exit code scores `error`, and a crash before any test fails can
-also score `error`
+also score `error`. A mutant that only fails a SimpleCov coverage gate
+scores `survived`
 (details under [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34)).
 
 What a release will not break is in
@@ -531,7 +532,7 @@ Tradeoffs — this path is correct but not free:
   an exit 1 also needs a failing test in that line, or a Minitest run that
   stopped during a test. Otherwise it scores `error`, such as a crash at load.
   When every test passed and only a SimpleCov `minimum_coverage` gate failed
-  the run, the mutant scores `survived`.
+  the run, the mutant scores `survived`, with or without a summary line.
   When the clean run prints no summary line, Mutineer warns once and counts
   every exit 1 as a kill.
   Uncovered mutants count as survivors.
