@@ -35,8 +35,11 @@ All notable changes to this project are documented here. The format is based on
   run that Mutineer starts itself (not `--test-command`) now uses seed `1`,
   or `SEED` when the environment sets it. Such a suite now stops the run
   with "the unmutated suite is not green", and the message names the seed:
-  run the listed test files with `SEED=1` to look for the order-dependent
-  test, or set `SEED` to choose another order. The internal constant
+  run the listed test files with that seed to look for the order-dependent
+  test, or set `SEED` to choose another order. A coverage cache from another
+  seed or an older version is captured again. A `--coverage-from` capture
+  from another seed or an older version is rejected with exit 2: capture it
+  again with this version. The internal constant
   `MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED` is now `PINNED_SEED`.
   One gap stays: when a mutant runs several covering test files, their test
   classes can still run in a different order than in the combined clean
