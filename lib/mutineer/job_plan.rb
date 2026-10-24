@@ -159,8 +159,8 @@ module Mutineer
     def self.minitest_seed_hint
       seed = MinitestIntegration.seed
       " Mutineer runs Minitest with SEED=#{seed}, so an order-dependent test can fail here " \
-        "and pass in a random run. Run a listed file with SEED=#{seed} to look for it, " \
-        "or set SEED to choose another order."
+        "and pass in a random run. Run the listed test files with SEED=#{seed} to look for it " \
+        "(for \"combined suite\", all of them together), or set SEED to choose another order."
     end
 
     # Coverage-based test selection, shared by the in-process ({Runner.run}) and daemon

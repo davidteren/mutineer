@@ -25,6 +25,9 @@ module Mutineer
     # the test order can decide `killed` vs `timeout`; a fixed order keeps the
     # verdict stable for a `--baseline` gate. A `--matrix` run uses the same
     # order, so its first failure comes at the same point as the stop's.
+    # (Renamed from STOP_AT_FIRST_FAILURE_SEED in #282.)
+    #
+    # @api private
     PINNED_SEED = 1
 
     # The arguments that give `Minitest.run` the shared seed. With `SEED` set,
