@@ -20,13 +20,15 @@ All notable changes to this project are documented here. The format is based on
   can kill that mutant. Now the operator skips an endless range only when it
   is a direct argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`,
   `bytesplice`, `values_at` or an index write. A run that names `range` can
-  get new mutants, new survivors and new mutant ids. If you gate on it with
-  `--threshold` or `--baseline`, re-check `ignore:` entries for `range` and
-  save a new baseline with
-  `mutineer run <paths> --no-since --format json --output <file>`. Some new
-  mutants are equivalent, for example a range used only with `include?`, or a
-  range in an Active Record query such as `where(created_at: time..)`.
-  Suppress them with `# mutineer:disable-line` or an `ignore:` entry. (#299)
+  get new mutants, new survivors and new mutant ids. A new mutant can take the
+  id of an older `range` mutant in the same method, so an `ignore:` id can
+  name a different mutant. If you use `range`, save a new report with
+  `mutineer run <paths> --no-since --format json --output <file>`, use it as
+  your new baseline, and make the `range` ignore entries again with
+  `mutineer triage`. Some new mutants are equivalent, for example a range
+  used only with `include?`, or a range in an Active Record query such as
+  `where(created_at: time..)`. Suppress them with `# mutineer:disable-line`
+  or an `ignore:` entry. (#299)
 
 ## [1.7.0] - 2026-10-23
 

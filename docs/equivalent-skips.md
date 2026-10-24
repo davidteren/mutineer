@@ -55,4 +55,4 @@ Every other endless range is swapped. This includes the assigned value in `h[:k]
 
 Some of these mutants are equivalent: a range in parentheses inside a slice, or a range used only with `include?`, `===`, `case`/`when` or `clamp`. In a Rails app, a range in an Active Record query, as in `where(created_at: time..)`, also gives an equivalent mutant, because both ranges become the same `>=` SQL condition. So does `validates :age, inclusion: { in: 18.. }`. Suppress such a mutant with `# mutineer:disable-line` or an `ignore:` entry, as described at the top of the page.
 
-The `range` operator is not in the default set. It runs only with `--operators range`.
+The `range` operator is not in the default set. Turn it on with `--operators range` or the `operators:` list in `.mutineer.yml`.

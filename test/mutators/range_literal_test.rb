@@ -45,7 +45,7 @@ class RangeLiteralTest < Minitest::Test
   def test_endless_slice_arguments_yield_none
     ["list[1..]", "list[1...]", "list[1..nil]", "list[1..] = x", "list.[](1..)",
      "s.slice(1..)", "s.slice!(1..)", "s.byteslice(1..)", "s&.byteslice(1...)",
-     "byteslice(1..)", "s.bytesplice(1.., x)", "row.values_at(1..)",
+     "byteslice(1..)", "s.bytesplice(1.., x)", "row.values_at(1..)", "row.values_at",
      "list[1..] += x", "list[1..] ||= x", "list[1..] &&= x", "list[1..], b = x, y"].each do |body|
       mutations, = run_mutator(body)
       assert_empty mutations, "expected no mutation for #{body.inspect}"
@@ -55,7 +55,7 @@ class RangeLiteralTest < Minitest::Test
   def test_endless_ranges_outside_a_slice_are_swapped
     { "(1..)" => "...", "(1...)" => "..", "(1..nil)" => "...", "(1...nil)" => "..",
       "r = (1..)" => "...", "list.fetch(1..)" => "...", "h[:k] = 1..nil" => "...",
-      "list[(1..)]" => "..." }.each do |body, replacement|
+      "list[(1..)]" => "...", "list[1..] = (2..)" => "..." }.each do |body, replacement|
       mutations, source = run_mutator(body)
       assert_equal 1, mutations.size, "expected 1 mutation for #{body.inspect}"
       m = mutations.first
