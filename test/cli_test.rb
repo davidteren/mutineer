@@ -1116,7 +1116,7 @@ class CliTest < Minitest::Test
     assert_includes err, "mutineer:"
   end
 
-  # #281: --output naming the baseline file (directly or via a symlink) is a
+  # #281: --output naming the baseline file (directly or via a link) is a
   # usage error, so a failing run cannot replace its own baseline.
   def test_output_same_file_as_baseline_exits_two
     with_project do |proj|
@@ -1124,12 +1124,18 @@ class CliTest < Minitest::Test
                           "--format", "json", "--output", "base.json", chdir: proj)
       assert_equal 0, s1.exitstatus
       before = File.read(File.join(proj, "base.json"))
+      marker = File.join(proj, "tests-loaded")
+      File.open(File.join(proj, "calculator_weak_test.rb"), "a") do |file|
+        file.puts "File.write(#{marker.dump}, 'loaded')"
+      end
       File.symlink("base.json", File.join(proj, "link.json"))
-      %w[base.json ./base.json link.json nosuch/../base.json].each do |output|
+      File.link(File.join(proj, "base.json"), File.join(proj, "hardlink.json"))
+      %w[base.json ./base.json link.json hardlink.json nosuch/../base.json].each do |output|
         _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
                                   "--baseline", "base.json", "--output", output, chdir: proj)
         assert_equal 2, status.exitstatus, output
         assert_includes err, "--output and --baseline are the same file"
+        refute_path_exists marker, "same-file rejection must happen before tests load (#{output})"
       end
       # A baseline from .mutineer.yml is named as such.
       File.write(File.join(proj, ".mutineer.yml"), "baseline: base.json\n")
@@ -1137,10 +1143,12 @@ class CliTest < Minitest::Test
                                 "--output", "base.json", chdir: proj)
       assert_equal 2, status.exitstatus
       assert_includes err, "--output and baseline in .mutineer.yml are the same file"
-      # A separate report path is still allowed.
-      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+      refute_path_exists marker, "a configured baseline must be checked before tests load"
+      # A separate report path runs the tests without replacing the baseline.
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
                                 "--baseline", "base.json", "--format", "json", "--output", "pr.json", chdir: proj)
-      assert_equal 0, status.exitstatus, err
+      assert_equal 1, status.exitstatus, err
+      assert_path_exists marker, "the marker must detect a run that loads the tests"
       assert_equal before, File.read(File.join(proj, "base.json"))
     end
   end
