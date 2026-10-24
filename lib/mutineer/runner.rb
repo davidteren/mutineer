@@ -60,8 +60,9 @@ module Mutineer
       # payloads (Prism), so branch before any in-process boot.
       return DaemonBackend.execute(config, operator_classes) if config.daemon
 
-      # Whole-file reload writes .mutineer_mutant*.rb into each source dir (so
-      # require_relative resolves). A SIGKILL'd child skips the tempfile's
+      # Both strategies (whole-file reload and redefine, #279) write
+      # .mutineer_mutant*.rb into each source dir (so require_relative and
+      # __dir__ resolve). A SIGKILL'd child skips the tempfile's
       # ensure-unlink, orphaning it. `ensure` is unreliable vs SIGKILL, so the
       # PARENT sweeps each source dir before and after the run. Orphans are
       # impossible after a normal run. The first sweep runs before the boot: a
