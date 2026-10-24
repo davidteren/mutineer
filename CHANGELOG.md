@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **`--output .mutineer/run.json` on a fresh checkout.** The documented
+  report path no longer exits 2 when `.mutineer/` does not exist yet. The
+  output check now creates the cache directory (`cache_dir`) when it is the
+  missing parent. Any other missing directory still exits 2 (#270).
+- **`--output` can no longer replace its own baseline.** When `--output`
+  and `--baseline` or `baseline:` in `.mutineer.yml` name the same file
+  (also through a symlink or hard link), a real `mutineer run` exits 2
+  before the run, with the GitHub Action's error adapted for the CLI. A dry run
+  still works because it writes no report. Before, a
+  failing run wrote its report over the baseline, and the next run passed
+  against it (#281).
+
 ### Changed
 
 - Explain mutation testing before setup, with a runnable beginner guide and a
