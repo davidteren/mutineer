@@ -1,0 +1,46 @@
+docs/agentic-coding.html
+  s_b1f7ddfe9bccdd::t_f52abbe177cd30 104-106,135-136,149,156
+docs/agentic-coding.md
+  s_b1f7ddfe9bccdd::t_f52abbe177cd30 76-85,122-128,149,158-166
+docs/sample-report.html
+  s_b1f7ddfe9bccdd::t_27d41370491dd2 66
+docs/index.md
+  s_b1f7ddfe9bccdd::t_3f12240b186438 73-75
+  s_b1f7ddfe9bccdd::t_61ba3970b75c5c 76
+docs/rails.md
+  s_b1f7ddfe9bccdd::t_61ba3970b75c5c 15,41-45,81-82,86-88,97-106,110
+docs/learn.md
+  s_b1f7ddfe9bccdd::t_27d41370491dd2 144-146
+docs/rails.html
+  s_b1f7ddfe9bccdd::t_61ba3970b75c5c 75,85,108,111,116-119
+docs/json-schema.md
+  s_b1f7ddfe9bccdd::t_265950d251b837 5-7
+docs/equivalent-skips.html
+  s_b1f7ddfe9bccdd::t_27d41370491dd2 54,57
+docs/equivalent-skips.md
+  s_b1f7ddfe9bccdd::t_27d41370491dd2 10-13,21-23
+README.md
+  s_b1f7ddfe9bccdd::t_265950d251b837 822-823
+docs/learn.html
+  s_b1f7ddfe9bccdd::t_27d41370491dd2 116,127
+skills/mutineer/SKILL.md
+  s_b1f7ddfe9bccdd::t_f52abbe177cd30 40-41
+docs/index.html
+  s_b1f7ddfe9bccdd::t_3f12240b186438 215
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f634e912386fdfb724cf63e7803a39674fad74fd",
+  "prompts": {},
+  "sessions": {
+    "s_b1f7ddfe9bccdd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16a26-cbd9-75b0-9a60-c1027763da8b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
