@@ -470,6 +470,66 @@ class RailsWorkerDbTest < Minitest::Test
     Object.const_set(:ActiveRecord, saved) if saved
   end
 
+  # A SQLite DatabaseConfig stand-in: `_database=` rewrites it, as Rails' does.
+  SqliteConfig = Struct.new(:name, :database, :adapter) do
+    def _database=(value)
+      self.database = value
+    end
+  end
+
+  # Every SQLite file config moves to the worker's file. A replica on the
+  # primary's file shares its copy. A shared config, and an in-memory or
+  # non-SQLite one, keep their database.
+  def test_route_sqlite_configs_rewrites_each_file_config_but_shared_ones
+    db = Mutineer::RailsWorkerDb
+    configs = [SqliteConfig.new("primary", "/app/test.sqlite3", "sqlite3"),
+               SqliteConfig.new("primary_replica", "/app/test.sqlite3", "sqlite3"),
+               SqliteConfig.new("cable", "/app/cable.sqlite3", "sqlite3"),
+               SqliteConfig.new("queue", "/app/queue.sqlite3", "sqlite3"),
+               SqliteConfig.new("scratch", ":memory:", "sqlite3"),
+               SqliteConfig.new("legacy", "legacy_test", "postgresql")]
+    routed = kept = nil
+    db.stub(:test_configs, configs) { routed, kept = db.route_sqlite_configs(3, seed: false, shared: %w[queue]) }
+
+    assert_equal %w[/app/test-3.sqlite3 /app/test-3.sqlite3 /app/cable-3.sqlite3 /app/queue.sqlite3 :memory: legacy_test],
+                 configs.map(&:database)
+    assert_equal %w[/app/test-3.sqlite3 /app/cable-3.sqlite3], routed
+    assert_equal %w[/app/queue.sqlite3], kept
+  end
+
+  # The routing check: a pool on a SQLite file that is neither a worker file
+  # nor a shared base (an inline establish_connection hash) raises. Routed
+  # pools get a round-trip; shared pools do not, so the shared check stays clean.
+  def test_verify_routing_raises_for_an_unrouted_pool_and_skips_shared_ones
+    saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    pool = Struct.new(:db_config, :trips) do
+      def with_connection
+        self.trips += 1
+        yield Object.new.tap { |c| c.define_singleton_method(:execute) { |_sql| nil } }
+      end
+    end
+    routed = pool.new(SqliteConfig.new("primary", "/app/test-0.sqlite3", "sqlite3"), 0)
+    shared = pool.new(SqliteConfig.new("queue", "/app/queue.sqlite3", "sqlite3"), 0)
+    inline = pool.new(SqliteConfig.new("primary", "/tmp/inline.sqlite3", "sqlite3"), 0)
+    pools = [routed, shared]
+    handler = Object.new
+    handler.define_singleton_method(:connection_pool_list) { |_role| pools }
+    base = Class.new
+    base.define_singleton_method(:connection_handler) { handler }
+    Object.const_set(:ActiveRecord, Module.new.tap { |m| m.const_set(:Base, base) })
+    db = Mutineer::RailsWorkerDb
+
+    db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3])
+    assert_equal [1, 0], [routed.trips, shared.trips]
+
+    pools << inline
+    error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
+    assert_includes error.message, "primary still uses /tmp/inline.sqlite3, which every worker shares."
+  ensure
+    Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    Object.const_set(:ActiveRecord, saved) if saved
+  end
+
   # The tripwire reads the live pools: a connected pool on a shared database
   # is a use, under its own name or as a replica of it. An idle pool is not.
   def test_touched_shared_databases_names_connected_shared_pools_only
