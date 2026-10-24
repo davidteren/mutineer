@@ -1,7 +1,7 @@
 name: Mutineer Ruby
 description: >-
-  Mutation-test your Ruby suite in CI; fail the build on new surviving mutants
-  or a mutation-score drop versus a baseline.
+  Mutation-test your Ruby suite in CI; fail the build on new surviving mutants,
+  a mutation-score drop, or an incomplete run versus a baseline.
 author: David Teren
 branding:
   icon: git-merge
@@ -41,7 +41,7 @@ inputs:
   baseline:
     description: >-
       Path to a prior `--format json` report. Fail (exit 1) on NEW survivors or
-      a score drop versus this baseline.
+      a score drop versus this baseline, or an incomplete run.
     required: false
     default: ""
   baseline-epsilon:

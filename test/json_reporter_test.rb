@@ -58,7 +58,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.8", doc["schema_version"] # 1.8 adds reason on ignored[]; 1.7 added unplaceable and ran_at_load
+    assert_equal "1.9", doc["schema_version"] # 1.9 adds baseline incomplete and unverified_survivors; 1.8 adds reason on ignored[]
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]

@@ -67,7 +67,7 @@ mutineer run app/ --no-since --format json --output .mutineer/baseline.json
 mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json
 ```
 
-`--baseline` exits `1` if it finds a new survivor or a lower score.
+`--baseline` exits `1` if it finds a new survivor or a lower score, or if the run is incomplete.
 It matches survivors by `id`; file moves and renames can change ids.
 `--baseline-epsilon` allows a small score difference. With `--since`, only new
 survivors fail the baseline check: a score for changed lines is not comparable
@@ -166,7 +166,7 @@ unresolved survivors. Failed attempts alone do not prove that a mutant is equiva
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error. |
 | `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
 <!-- /contract:exit-codes -->
 

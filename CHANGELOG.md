@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **`--baseline` fails an incomplete run, and a survivor without a verdict is
+  not fixed (#283).** A run where nothing could be scored and something
+  broke, or where more than one mutant has no verdict and they exceed 10% of
+  those attempted, now sets the new `baseline.incomplete`, and `--baseline`
+  exits 1 without `--threshold`. A baseline survivor counts as fixed only
+  when this run killed it, ignored it, or no longer has it. Other baseline
+  survivors go into the new `baseline.unverified_survivors[]` with their
+  status, and the human report and the Action summary name them. If CI turns
+  red after the upgrade, read `no_verdict[]` in the JSON report: the run did
+  not finish, and the tests did not get weaker. Schema `1.9`.
+- **A baseline survivor that is now `ran_at_load` is not listed as fixed
+  (#286).** 1.7.0 listed it as fixed. It is now in
+  `baseline.unverified_survivors[]`.
+
 ### Changed
 
 - Explain mutation testing before setup, with a runnable beginner guide and a

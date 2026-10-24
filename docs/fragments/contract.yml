@@ -19,6 +19,7 @@ exit_codes:
     meaning: >-
       Score below `--threshold`, OR nothing could be scored and something
       broke, or more than one mutant produced no verdict and they exceed 10%
-      of those attempted, OR a `--baseline` regression, OR a runtime error.
+      of those attempted (under `--threshold` or `--baseline`), OR a
+      `--baseline` regression, OR a runtime error.
   - code: "2"
     meaning: Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline).
