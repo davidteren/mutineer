@@ -14,11 +14,12 @@ All notable changes to this project are documented here. The format is based on
   in parallel. After each mutant, a parallel worker checks those databases: if
   one holds an Active Record connection, the mutant scores `error`. Listing
   the primary database stops the run with exit 2. A name that matches no test
-  database warns. Two safety changes come with it: a test database with
-  `database_tasks: false` now counts toward the one-worker limit, and if the
-  app's databases cannot be listed, the run keeps one worker (before, both
-  cases could lift the limit). See "More than one database" in the README for
-  the transactional-tests caveat.
+  database warns. The check needs Rails 7.1 or later. Three safety changes
+  come with it for `--rails --daemon`: a test database with
+  `database_tasks: false` now counts toward the one-worker limit, and the run
+  keeps one worker when the app's databases cannot be listed or the first
+  daemon does not boot (before, each case could start several workers). See
+  "More than one database" in the README for the transactional-tests caveat.
 
 ### Changed
 

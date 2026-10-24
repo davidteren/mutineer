@@ -483,6 +483,9 @@ module Mutineer
     # @return [Array<String>]
     def self.touched_shared_databases(shared)
       return [] if shared.empty? || !available?
+      # Rails 7.0 reads `:all` below as a role name and lists no pool, so the
+      # check would always pass. Fail every mutant instead of trusting it.
+      raise "shared_databases needs Rails 7.1 or later" if ActiveRecord.version < Gem::Version.new("7.1")
 
       by_database = {}
       test_configs.each { |c| by_database[c.database] = c.name if shared.include?(c.name) && c.database }

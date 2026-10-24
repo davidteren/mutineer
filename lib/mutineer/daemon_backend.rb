@@ -169,8 +169,10 @@ module Mutineer
         raise
       rescue DaemonBootError => e
         warn_coverage_fallback("#{e.class}: #{e.message}")
-        # No daemon listed the databases, so no second worker may share them.
-        return [nil, worker_count_for({ "error" => "the first daemon did not boot" }, [], worker_count), nil]
+        # No daemon listed a Rails app's databases, so no second worker may
+        # share them. A --boot app without --rails has no database routing.
+        unknown = { "error" => "the first daemon did not boot" }
+        return [nil, config.rails ? worker_count_for(unknown, [], worker_count) : worker_count, nil]
       end
 
       begin

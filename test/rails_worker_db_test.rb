@@ -461,7 +461,10 @@ class RailsWorkerDbTest < Minitest::Test
     base = Class.new
     base.define_singleton_method(:connection_handler) { handler }
     base.define_singleton_method(:configurations) { configs }
-    Object.const_set(:ActiveRecord, Module.new.tap { |m| m.const_set(:Base, base) })
+    version = Gem::Version.new("7.2.3")
+    active_record = Module.new.tap { |m| m.const_set(:Base, base) }
+    active_record.define_singleton_method(:version) { version }
+    Object.const_set(:ActiveRecord, active_record)
 
     db = Mutineer::RailsWorkerDb
     assert_equal %w[cable], db.touched_shared_databases(%w[cable queue])
@@ -470,6 +473,11 @@ class RailsWorkerDbTest < Minitest::Test
 
     pools << pool.new(replica, true)
     assert_equal %w[queue], db.touched_shared_databases(%w[queue]), "a replica read is a use of the shared database"
+
+    # Rails 7.0 lists no pool for :all, so a pass there would be a false clean.
+    version = Gem::Version.new("7.0.8")
+    error = assert_raises(RuntimeError) { db.touched_shared_databases(%w[cable]) }
+    assert_equal "shared_databases needs Rails 7.1 or later", error.message
   ensure
     Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
     Object.const_set(:ActiveRecord, saved) if saved
