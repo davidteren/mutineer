@@ -282,7 +282,7 @@ no tests. It does not rewrite a baseline. Generate a new baseline with
 | `--framework NAME` | `minitest` (default) or `rspec`; auto-detected as rspec when most `--test` files end in `_spec.rb` |
 | `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`). Untracked files are scored in full unless Git ignores them. The report lists only suppressed mutants on changed lines, too. |
 | `--no-since` | Disable diff scoping; a typed no beats a `.mutineer.yml` `since:` key |
-| `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (score drop is skipped under `--since`, whose score covers a different denominator; see [CI](https://github.com/davidteren/mutineer#ci-gating)) |
+| `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop, or an incomplete run (score drop is skipped under `--since`, whose score covers a different denominator; see [CI](https://github.com/davidteren/mutineer#ci-gating)) |
 | `--baseline-epsilon FLOAT` | Score-drop tolerance for `--baseline` (default: 0) |
 | `--jobs N` | Parallel worker count (default: processor count); forced to `1` by `--test-command`, `--fail-fast`, or `--rails` without `--daemon` |
 | `--boot FILE` | Require an app entry point once before forking; select at least one test file |
@@ -309,8 +309,8 @@ no tests. It does not rewrite a baseline. Generate a new baseline with
 <!-- contract:exit-codes -->
 | Code | Meaning |
 |------|---------|
-| `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
+| `0` | Score ≥ threshold (or no gate) **and** no baseline regression, **and** no incomplete run under an active `--threshold` or `--baseline` gate. |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error. |
 | `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
 <!-- /contract:exit-codes -->
 
@@ -689,10 +689,12 @@ Store a JSON run as a baseline, then fail the build only when a PR makes things
 worse:
 
 ```sh
-mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
+mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors, a score drop, or an incomplete run
 ```
 
-`--baseline` reports which survivors are new (by [mutant id](https://github.com/davidteren/mutineer#mutant-ids)) and any score drop. It
+`--baseline` reports which survivors are new (by [mutant id](https://github.com/davidteren/mutineer#mutant-ids)) and any score drop. It also
+fails an incomplete run (`baseline.incomplete`), and lists baseline survivors
+this run did not decide under `baseline.unverified_survivors[]`. It
 combines with `--threshold` (the worse of the two sets the exit code). Pass a
 directory (or several sources) to audit a whole layer in one boot — tests are
 auto-paired by convention and the report breaks down per source. A source

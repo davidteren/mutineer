@@ -6,11 +6,64 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`baseline.incomplete` and `baseline.unverified_survivors[]` in the JSON
+  report (#283).** `incomplete` says the run fails the completeness rule;
+  each `unverified_survivors[]` entry is a baseline survivor this run did not
+  decide, with its current `status`. Schema `2.0`.
+
 ### Changed
 
+- The Ruby API score-gate constants `BROKEN_SHARE_LIMIT` and `BROKEN_FLOOR`
+  now also live on `AggregateResult`. The `Reporter` names remain compatibility
+  aliases, and the CLI and report use the same limits.
+
+- **The JSON report uses schema `2.0` (#283).** `baseline.fixed_survivors`
+  no longer includes a survivor whose current result is undecided. Consumers
+  that require schema `1.x` must support the new major and read
+  `baseline.unverified_survivors` for those entries. Existing full-run `1.x`
+  reports remain valid baseline inputs; `--since` reports remain invalid
+  baselines (exit 2). Mutant ids and the gem version do not change.
+- **The Action rejects a JSON baseline report without a boolean
+  `baseline.incomplete` (#283).** A gem selected through `version` or
+  `use-bundler` that omits this field now gives exit 2 with an upgrade message,
+  instead of treating an unknown completeness result as success. The report
+  remains available. Older reports without a baseline block still work.
 - Explain mutation testing before setup, with a runnable beginner guide and a
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.
+
+### Fixed
+
+- **`--baseline` fails an incomplete run, and a survivor without a verdict is
+  not fixed (#283).** A run where nothing could be scored and something
+  broke, or where more than one mutant has no verdict and they exceed 10% of
+  those attempted, now sets the new `baseline.incomplete`, and `--baseline`
+  exits 1 without `--threshold`. A baseline survivor counts as fixed only
+  when this run killed it, ignored it, or no longer has it. Other baseline
+  survivors go into the new `baseline.unverified_survivors[]` with their
+  status. The human report names them and the Action summary counts them.
+  A run that produces no results reports no stored survivors as fixed.
+  Under `--only` or `--fail-fast`, known kills and ignores still count as
+  fixes; absent, untested survivors are listed as unverified with status
+  `not_run`. An empty unscoped run uses the same label. This label belongs
+  only to baseline entries; it does not add a mutant status or change counts
+  or gates.
+  Selecting fewer source files or operators also lists omitted survivors as
+  `not_run`. A removed mutant within the selected scope, or a source file
+  actually removed from the project, still counts as fixed. A foreign stored
+  path whose removal cannot be checked stays unverified.
+  Under a diff-scoped (`--since`) side, `fixed_survivors` stays empty, as
+  before. If CI turns red after the upgrade and `baseline.incomplete` is
+  true, read `no_verdict[]` in the JSON report: the run is incomplete, and
+  the tests did not get weaker. If `baseline.regressed` is true, a new
+  survivor or a score drop failed the job. If the
+  same mutants time out on every run, a retry does not help: raise
+  `--timeout` or ignore those mutants.
+- **A baseline survivor that is now `ran_at_load` is not listed as fixed
+  (#286).** 1.7.0 listed it as fixed. It is now in
+  `baseline.unverified_survivors[]`.
 
 ## [1.7.0] - 2026-10-23
 

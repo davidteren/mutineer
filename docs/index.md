@@ -58,7 +58,7 @@ mutineer run --dry-run lib/discount.rb
 | `--test FILE` | Test file covering the sources (repeatable) |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when the run is incomplete (default: 0 = off) |
 | `--since REF` | Only mutate lines changed since git `REF` |
-| `--baseline FILE` | Exit 1 on new survivors / score drop versus a prior JSON run |
+| `--baseline FILE` | Exit 1 on new survivors / score drop versus a prior JSON run, or on an incomplete run (score drop is skipped under `--since`, whose score has a different denominator) |
 | `--format human\|json\|html` | Report format (default: human) |
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--jobs N` | Parallel worker count; forced to 1 by `--test-command`, `--fail-fast`, or `--rails` without `--daemon` |
@@ -79,8 +79,8 @@ workers.
 <!-- contract:exit-codes -->
 | Code | Meaning |
 |------|---------|
-| `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
+| `0` | Score ≥ threshold (or no gate) **and** no baseline regression, **and** no incomplete run under an active `--threshold` or `--baseline` gate. |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error. |
 | `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
 <!-- /contract:exit-codes -->
 

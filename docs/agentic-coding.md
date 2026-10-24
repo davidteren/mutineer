@@ -67,11 +67,15 @@ mutineer run app/ --no-since --format json --output .mutineer/baseline.json
 mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json
 ```
 
-`--baseline` exits `1` if it finds a new survivor or a lower score.
+`--baseline` exits `1` if it finds a new survivor or a lower score, or if the run is incomplete.
+`baseline.regressed` and `baseline.incomplete` in the JSON report say which. For an incomplete run, read
+`no_verdict[]`, fix the harness, and re-run; do not change the tests. `baseline.unverified_survivors[]`
+lists baseline survivors this run did not decide (each with its `status`). They are not fixed, and they do
+not fail the run on their own, so a run that exits `0` can still list them.
 It matches survivors by `id`; file moves and renames can change ids.
 `--baseline-epsilon` allows a small score difference. With `--since`, only new
-survivors fail the baseline check: a score for changed lines is not comparable
-to a full-run score. Add `--threshold` to enforce a minimum score as well.
+survivors and an incomplete run fail the baseline check: a score for changed
+lines is not comparable to a full-run score. Add `--threshold` to enforce a minimum score as well.
 
 Run a full scan on the pull request whenever tests change, including when source
 code changes too. A scoped check cannot detect weaker tests for unchanged source
@@ -165,8 +169,8 @@ unresolved survivors. Failed attempts alone do not prove that a mutant is equiva
 <!-- contract:exit-codes -->
 | Code | Meaning |
 |------|---------|
-| `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
+| `0` | Score ≥ threshold (or no gate) **and** no baseline regression, **and** no incomplete run under an active `--threshold` or `--baseline` gate. |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error. |
 | `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
 <!-- /contract:exit-codes -->
 

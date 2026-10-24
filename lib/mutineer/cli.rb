@@ -51,8 +51,9 @@ module Mutineer
         --test FILE          Test file covering the sources (one per flag; repeat it)
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
-        --baseline FILE      Fail (exit 1) on NEW survivors / score drop vs a prior
-                             --format json run (CI delta gate)
+        --baseline FILE      Fail (exit 1) on NEW survivors or a score drop vs a prior
+                             --format json run, or when the run is incomplete
+                             (CI delta gate)
         --baseline-epsilon FLOAT  Score-drop tolerance for --baseline (default: 0)
         --only NAME          Restrict to one fully-qualified subject
         --since REF          Only mutate lines changed since git REF (e.g. origin/main)
@@ -673,6 +674,9 @@ module Mutineer
       delta = if config.baseline
                 Baseline.load(config.baseline).diff(aggregate, epsilon: config.baseline_epsilon,
                                                                scoped: !config.since.nil?,
+                                                               partial: config.fail_fast || !config.only.nil?,
+                                                               sources: config.sources,
+                                                               operators: config.operators || MutatorRegistry::DEFAULT_NAMES,
                                                                id_map: extras[:id_map],
                                                                project_root: config.project_root)
               end
@@ -703,9 +707,10 @@ module Mutineer
         puts hint
       end
 
-      # --baseline and --threshold are independent gates OR'd together.
+      # --baseline and --threshold are independent gates OR'd together. The
+      # baseline gate fails on a regression or an incomplete run (#283).
       # `max` of two 0/1 codes is the OR; usage (2) is handled earlier and wins.
-      baseline_exit = delta&.regressed ? 1 : 0
+      baseline_exit = delta && (delta.regressed || delta.incomplete) ? 1 : 0
       exit [reporter.exit_code(threshold: config.threshold), baseline_exit].max
     end
 

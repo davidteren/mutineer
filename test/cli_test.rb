@@ -735,7 +735,7 @@ class CliTest < Minitest::Test
                               "--format", "json", "--output", "report.json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(File.read(File.join(proj, "report.json")))
-      assert_equal "1.8", doc["schema_version"]
+      assert_equal "2.0", doc["schema_version"]
       assert_equal 100.0, doc["summary"]["score"]
     end
   end
@@ -874,7 +874,7 @@ class CliTest < Minitest::Test
       out, _, status = mutineer("run", "lib", "--format", "json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(out)
-      assert_equal "1.8", doc["schema_version"]
+      assert_equal "2.0", doc["schema_version"]
       per = doc["per_source"].sort_by { |h| h["file"] }
       assert_equal ["lib/calc.rb", "lib/greeter.rb"], per.map { |h| h["file"] }
       assert_equal 100.0, per.find { |h| h["file"] == "lib/greeter.rb" }["score"]
@@ -1109,6 +1109,145 @@ class CliTest < Minitest::Test
       assert_equal 0, status.exitstatus
       assert_includes out, "0 new survivors vs baseline"
       assert_includes out, "OK: no regression vs baseline"
+    end
+  end
+
+  def test_only_reports_the_killed_baseline_survivor_as_fixed
+    with_project do |proj|
+      _, err, first = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                               "--operators", "arithmetic", "--format", "json", "--output", "base.json", chdir: proj)
+      assert_equal 0, first.exitstatus, err
+      stored = JSON.parse(File.read(File.join(proj, "base.json")))["survivors"]
+      assert_equal %w[Calculator#add Calculator#subtract], stored.map { |h| h["subject"] }.sort
+
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--operators", "arithmetic", "--only", "Calculator#add",
+                                  "--baseline", "base.json", "--format", "json", chdir: proj)
+
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal 1, doc["summary"]["killed"]
+      assert_equal [stored.find { |h| h["subject"] == "Calculator#add" }["id"]],
+                   doc["baseline"]["fixed_survivors"].map { |h| h["id"] }
+      assert_equal [[stored.find { |h| h["subject"] == "Calculator#subtract" }["id"], "not_run"]],
+                   doc["baseline"]["unverified_survivors"].map { |h| [h["id"], h["status"]] }
+    end
+  end
+
+  def test_fail_fast_keeps_absent_baseline_survivors_out_of_fixed
+    with_project do |proj|
+      tests = File.join(proj, "calculator_weak_test.rb")
+      File.write(tests, File.read(tests).sub("assert_equal 6, Calculator.new.multiply(2, 3)",
+                                           "assert_equal 1, Calculator.new.multiply(1, 1)"))
+      _, err, first = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                               "--operators", "arithmetic", "--format", "json", "--output", "base.json", chdir: proj)
+      assert_equal 0, first.exitstatus, err
+      stored = JSON.parse(File.read(File.join(proj, "base.json")))["survivors"]
+      assert_equal %w[Calculator#add Calculator#multiply Calculator#subtract], stored.map { |h| h["subject"] }.sort
+      File.write(tests, File.read(tests).sub("Calculator.new.add(5, 0)", "Calculator.new.add(2, 3)"))
+
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                  "--operators", "arithmetic", "--fail-fast", "--baseline", "base.json",
+                                  "--format", "json", chdir: proj)
+
+      assert_equal 0, status.exitstatus, err # Both runs score 50%; the gate is unchanged.
+      doc = JSON.parse(out)
+      assert_equal 2, doc["summary"]["total"], "the run stopped before multiply"
+      assert_equal 1, doc["summary"]["killed"]
+      assert_equal [stored.find { |h| h["subject"] == "Calculator#add" }["id"]],
+                   doc["baseline"]["fixed_survivors"].map { |h| h["id"] }
+      assert_equal [[stored.find { |h| h["subject"] == "Calculator#multiply" }["id"], "not_run"]],
+                   doc["baseline"]["unverified_survivors"].map { |h| [h["id"], h["status"]] }
+    end
+  end
+
+  def test_narrower_sources_keep_existing_file_survivors_unverified_but_removed_files_fixed
+    with_project do |proj|
+      other = File.join(proj, "other.rb")
+      File.write(other, "class OtherCalc\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(File.join(proj, "other_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "other"
+        class OtherCalcTest < Minitest::Test
+          def test_add = assert_equal(5, OtherCalc.new.add(5, 0))
+        end
+      RUBY
+      _, err, first = mutineer("run", "calculator.rb", "other.rb", "--test", "calculator_weak_test.rb",
+                               "--test", "other_test.rb", "--operators", "arithmetic", "--format", "json",
+                               "--output", "base.json", chdir: proj)
+      assert_equal 0, first.exitstatus, err
+      stored = JSON.parse(File.read(File.join(proj, "base.json")))["survivors"]
+      assert_equal 3, stored.size
+      calculator = stored.reject { |h| h["subject"] == "OtherCalc#add" }.map { |h| h["id"] }.sort
+      other_id = stored.find { |h| h["subject"] == "OtherCalc#add" }.fetch("id")
+
+      args = ["run", "calculator.rb", "--test", "calculator_strong_test.rb", "--operators", "arithmetic",
+              "--baseline", "base.json", "--format", "json"]
+      out, err, status = mutineer(*args, chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      delta = JSON.parse(out).fetch("baseline")
+      assert_equal calculator, delta["fixed_survivors"].map { |h| h["id"] }.sort
+      assert_equal [[other_id, "not_run"]], delta["unverified_survivors"].map { |h| [h["id"], h["status"]] }
+
+      File.delete(other)
+      out, err, status = mutineer(*args, chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      delta = JSON.parse(out).fetch("baseline")
+      assert_equal stored.map { |h| h["id"] }.sort, delta["fixed_survivors"].map { |h| h["id"] }.sort
+      assert_empty delta["unverified_survivors"], "the absent source was actually removed"
+    end
+  end
+
+  def test_narrower_operators_keep_absent_baseline_survivors_unverified
+    with_project do |proj|
+      args = ["run", "calculator.rb", "--test", "calculator_weak_test.rb", "--test-command", "true %{files}",
+              "--format", "json"]
+      _, err, first = mutineer(*args, "--operators", "arithmetic,return_nil", "--output", "base.json", chdir: proj)
+      assert_equal 0, first.exitstatus, err
+      stored = JSON.parse(File.read(File.join(proj, "base.json")))["survivors"]
+      assert_equal %w[arithmetic return_nil], stored.map { |h| h["operator"] }.uniq.sort
+      omitted = stored.select { |h| h["operator"] == "return_nil" }.map { |h| [h["id"], "not_run"] }.sort
+      refute_empty omitted
+
+      %i[flag file default].each do |mode|
+        config = File.join(proj, ".mutineer.yml")
+        File.delete(config) if File.exist?(config)
+        File.write(config, "operators: [arithmetic]\n") if mode == :file
+        extra = mode == :flag ? ["--operators", "arithmetic"] : []
+        out, err, status = mutineer(*args, *extra, "--baseline", "base.json", chdir: proj)
+        assert_equal 0, status.exitstatus, "#{mode}: #{err}"
+        delta = JSON.parse(out).fetch("baseline")
+        assert_empty delta["fixed_survivors"], mode.to_s
+        assert_equal omitted, delta["unverified_survivors"].map { |h| [h["id"], h["status"]] }.sort, mode.to_s
+      end
+    end
+  end
+
+  # #283 AE1 end to end: a broken run errors every baseline survivor. Without
+  # --threshold, --baseline still fails it (exit 1), and none reads as fixed.
+  # The test command is shell only, so it does not depend on which Ruby the
+  # external backend picks: it passes on the original file and exits 127
+  # (scored error) on any mutant.
+  def test_baseline_exits_one_when_every_baseline_survivor_errors
+    with_project do |proj|
+      _, err, s1 = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                            "--format", "json", "--output", "base.json", chdir: proj)
+      assert_equal 0, s1.exitstatus, err
+      stored = JSON.parse(File.read(File.join(proj, "base.json")))["survivors"].map { |h| h["id"] }.sort
+      refute_empty stored
+
+      FileUtils.cp(File.join(proj, "calculator.rb"), File.join(proj, "calculator.rb.orig"))
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                  "--test-command", "sh -c 'cmp -s calculator.rb calculator.rb.orig || exit 127' " \
+                                                    "sh %{files}",
+                                  "--jobs", "1", "--format", "json", "--baseline", "base.json", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      doc = JSON.parse(out)["baseline"]
+      assert_equal true, doc["incomplete"]
+      assert_equal false, doc["regressed"]
+      assert_empty doc["fixed_survivors"]
+      assert_equal stored, doc["unverified_survivors"].map { |h| h["id"] }.sort
+      assert_includes err, "so the --baseline gate fails"
     end
   end
 
