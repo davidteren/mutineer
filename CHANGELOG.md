@@ -20,6 +20,17 @@ All notable changes to this project are documented here. The format is based on
   keeps one worker when the app's databases cannot be listed or the first
   daemon does not boot (before, each case could start several workers). See
   "More than one database" in the README for the transactional-tests caveat.
+- **Parallel `--daemon` runs for apps with several SQLite databases** (#332).
+  Each worker now copies every SQLite test database file in
+  `config/database.yml`, not only the primary, as Rails' parallel tests do
+  (`storage/cable.sqlite3` becomes `storage/cable-0.sqlite3`). An app whose
+  test databases are all SQLite files runs `--jobs N` in parallel with no
+  `shared_databases` entry. A copy loads its database's schema file when it is
+  out of date. Postgres and MySQL keep the one-worker limit unless
+  `shared_databases` lists the other databases. A SQLite database listed in
+  `shared_databases` keeps its base file. A connection from an inline
+  `establish_connection` hash cannot be copied, so its mutants now score
+  `error`: move that database into `config/database.yml`.
 
 ### Changed
 

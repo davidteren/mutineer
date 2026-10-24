@@ -123,7 +123,7 @@ Details: [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/
 `--daemon` gives each worker its own test database.
 It works with Minitest on a SQLite file, PostgreSQL, or MySQL 8 (`mysql2` or `trilogy`).
 MariaDB is not tested. MySQL 5.7 is not supported.
-An app with more than one database runs one worker, unless `shared_databases` lists each database the tests never use.
+Each worker copies every SQLite test database file. On Postgres or MySQL, an app with more than one database runs one worker, unless `shared_databases` lists each database the tests never use.
 On another adapter, `--daemon` stops the run with an error before it scores any mutant.
 The [support matrix](https://github.com/davidteren/mutineer#is-it-production-ready) lists each case.
 Leave `daemon` commented in `.mutineer.yml` until that matrix says your app fits.

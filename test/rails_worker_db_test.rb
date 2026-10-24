@@ -434,8 +434,37 @@ class RailsWorkerDbTest < Minitest::Test
     base.define_singleton_method(:connection_db_config) { config.new("primary") }
     Object.const_set(:ActiveRecord, Module.new.tap { |m| m.const_set(:Base, base) })
 
-    assert_equal({ "names" => %w[primary cable legacy], "primary" => "primary" },
-                 Mutineer::RailsWorkerDb.database_names)
+    Mutineer::RailsWorkerDb.stub(:current_adapter, "postgresql") do
+      assert_equal({ "names" => %w[primary cable legacy], "primary" => "primary", "copied" => %w[primary] },
+                   Mutineer::RailsWorkerDb.database_names)
+    end
+  ensure
+    Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    Object.const_set(:ActiveRecord, saved) if saved
+  end
+
+  # On SQLite each worker copies every file database. An in-memory one is not
+  # copied, so it still counts toward the one-worker limit.
+  def test_database_names_on_sqlite_copies_every_file_database
+    saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    config = Struct.new(:name, :adapter, :database, :replica) do
+      def replica? = replica
+    end
+    all = [config.new("primary", "sqlite3", "storage/test.sqlite3"),
+           config.new("primary_replica", "sqlite3", "storage/test.sqlite3", true),
+           config.new("cable", "sqlite3", "storage/cable.sqlite3"),
+           config.new("scratch", "sqlite3", ":memory:")]
+    configs = Object.new
+    configs.define_singleton_method(:configs_for) { |env_name:, include_hidden: false| all }
+    base = Class.new
+    base.define_singleton_method(:configurations) { configs }
+    base.define_singleton_method(:connection_db_config) { all.first }
+    Object.const_set(:ActiveRecord, Module.new.tap { |m| m.const_set(:Base, base) })
+
+    Mutineer::RailsWorkerDb.stub(:current_adapter, "sqlite3") do
+      assert_equal({ "names" => %w[primary cable scratch], "primary" => "primary", "copied" => %w[primary cable] },
+                   Mutineer::RailsWorkerDb.database_names)
+    end
   ensure
     Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
     Object.const_set(:ActiveRecord, saved) if saved

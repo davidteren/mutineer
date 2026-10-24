@@ -29,7 +29,7 @@ module Mutineer
   # Protocol (one JSON object per line, both directions):
   #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment","require_paths":[...],
   #               "load_paths":["test"],"framework":"minitest","rails":true,"schema":"db/schema.rb"}
-  #   ready out: {"ready":true,"ruby":"3.3.6","databases":{"names":["primary"],"primary":"primary"}}
+  #   ready out: {"ready":true,"ruby":"3.3.6","databases":{"names":["primary"],"primary":"primary","copied":["primary"]}}
   #              ("databases" is null with no worker-DB adapter, {"error":"..."} when the lookup fails)
   #              (or {"ready":false,"error":"..."} then exit)
   #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
@@ -346,7 +346,9 @@ module Mutineer
               close_protocol
               # Route THIS fork at its own worker database before any test loads.
               # A routing failure raises here and is scored `error`, never a false verdict.
-              @worker_db&.after_fork(worker, first_use ? @schema_path : nil, seed: first_use)
+              # SQLite databases in shared_databases keep the base file.
+              @worker_db&.after_fork(worker, first_use ? @schema_path : nil,
+                                     seed: first_use, shared: Array(@shared_databases))
               apply_payload(req["payload"])
               result = run_tests(Array(req["tests"]))
               check_shared_databases!

@@ -189,13 +189,14 @@ module Mutineer
     end
 
     # The worker count once the booted app's databases are known. Each worker
-    # copies only the primary database, so a second database forces one worker
+    # copies the databases in "copied" (every SQLite file database, or only the
+    # primary on Postgres and MySQL). Any other database forces one worker
     # unless `shared_databases` lists it. Listing the primary is a config error.
     # A failed lookup also forces one worker: a database nobody counted must
     # never be shared by accident.
     #
-    # @param databases [Hash, nil] the daemon's report: "names" and "primary",
-    #   or "error". nil when the app has no worker-DB adapter.
+    # @param databases [Hash, nil] the daemon's report: "names", "primary" and
+    #   "copied", or "error". nil when the app has no worker-DB adapter.
     # @param shared [Array<String>] the `shared_databases` config names.
     # @param worker_count [Integer] the workers requested.
     # @return [Integer] the workers to start.
@@ -223,13 +224,15 @@ module Mutineer
              "This app has #{names.join(", ")}."
       end
 
-      unshared = names - shared
-      return worker_count unless unshared.size > 1 && worker_count > 1
+      copied = Array(databases["copied"] || [primary])
+      uncopied = names - shared - copied
+      return worker_count unless uncopied.any? && worker_count > 1
 
       outside = shared.empty? ? "" : " outside shared_databases"
-      warn "[mutineer] this app has #{unshared.size} databases#{outside}; Mutineer runs one worker. " \
-           "Parallel runs support one database. To run in parallel, list each one " \
-           "your tests never use under shared_databases: #{(unshared - [primary]).join(", ")}."
+      warn "[mutineer] each worker copies only #{copied.join(", ")}; this app also has " \
+           "#{uncopied.join(", ")}#{outside}. Mutineer runs one worker. Workers copy every SQLite " \
+           "database, but only the primary on Postgres and MySQL. To run in parallel, list each one " \
+           "your tests never use under shared_databases: #{uncopied.join(", ")}."
       1
     end
 

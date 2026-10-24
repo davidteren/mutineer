@@ -352,19 +352,24 @@ module Mutineer
       ActiveRecord::Base.establish_connection(worker_db_config(slot))
     end
 
-    # The database config names the test environment declares, and the one
-    # each worker copies (the config `ActiveRecord::Base` uses). The tool
-    # counts the names that `shared_databases` does not list: more than one
-    # means the run must use a single worker.
+    # The database config names the test environment declares, the primary
+    # (the config `ActiveRecord::Base` uses), and the names each worker copies.
+    # On SQLite, each worker copies every file database. On Postgres and MySQL,
+    # it copies only the primary. The tool counts the names that are neither
+    # copied nor in `shared_databases`: any such name means one worker.
     #
     # A config with `database_tasks: false` counts: workers would share it like
     # any other. A replica does not, as before: it reads another config's database.
     # No rescue: a failure must reach the tool, which then keeps one worker.
     #
-    # @return [Hash{String => Object}] "names" (Array<String>) and "primary" (String).
+    # @return [Hash{String => Object}] "names" (Array<String>), "primary"
+    #   (String), and "copied" (Array<String>).
     def self.database_names
-      names = test_configs.reject(&:replica?).map(&:name)
-      { "names" => names, "primary" => ActiveRecord::Base.connection_db_config.name }
+      configs = test_configs.reject(&:replica?)
+      primary = ActiveRecord::Base.connection_db_config.name
+      copied  = [primary]
+      copied |= configs.select { |c| sqlite_file_config?(c) }.map(&:name) if sqlite_adapter?(current_adapter)
+      { "names" => configs.map(&:name), "primary" => primary, "copied" => copied }
     end
 
     # The test environment's database configs, hidden ones and replicas included.
@@ -380,16 +385,23 @@ module Mutineer
     # own database and confirm it is reachable, so a routing failure reads as
     # `error` rather than a false verdict.
     #
-    # SQLite with `seed: true` copies the base file first, then loads `schema.rb`
-    # only when the copy differs from that file. Postgres and MySQL ignore `seed`
-    # and the schema path: the slot was copied at {provision}, and loading
-    # `schema.rb` again would drop those rows.
+    # SQLite gives the worker its own copy of every test database file, as
+    # Rails' ActiveRecord::TestDatabases does (see {route_sqlite_configs}).
+    # With `seed: true` it copies each base file first, then loads the primary's
+    # `schema.rb` only when the copy differs from that file, and each other
+    # database's schema file only when its copy is out of date. Postgres and
+    # MySQL ignore `seed`, the schema path, and `shared`: the slot was copied at
+    # {provision}, and loading `schema.rb` again would drop those rows.
     #
     # @param worker [Integer] the worker slot index.
     # @param schema_path [String, nil] absolute path to `db/schema.rb`, or nil to skip.
-    # @param seed [Boolean] copy the base SQLite file into the worker file first.
+    # @param seed [Boolean] copy each base SQLite file into its worker file first.
+    # @param shared [Array<String>] SQLite config names the workers share
+    #   (`shared_databases`). They keep the base file.
     # @return [void]
-    def self.after_fork(worker, schema_path = nil, seed: false)
+    # @raise [NotImplementedError] when the primary is an in-memory or unnamed database.
+    # @raise [RuntimeError] when a pool still points at a base file (see {verify_routing!}).
+    def self.after_fork(worker, schema_path = nil, seed: false, shared: [])
       return unless available?
 
       forget_lock_connection_after_fork!
@@ -399,27 +411,144 @@ module Mutineer
         return
       end
 
-      config = worker_db_config(worker)
-      base   = ActiveRecord::Base.connection.select_value("SELECT file FROM pragma_database_list WHERE name = 'main'") if seed
-      ActiveRecord::Base.establish_connection(config)
-      seed_from(base) if seed
+      worker_db_config(worker) # raises for an in-memory or unnamed primary
+      primary = ActiveRecord::Base.connection_db_config
+      routed, kept = route_sqlite_configs(worker, seed: seed, shared: shared)
       load_schema(schema_path) if schema_path && !schema_current?(schema_path)
+      load_other_schemas(primary) if seed
+      verify_routing!(routed, kept)
       verify_connection!
     end
 
-    # Copy the base test database file into the worker database this fork is
-    # now connected to, with the SQLite online backup API: one consistent
-    # snapshot of the committed data (WAL included) that replaces whatever the
-    # worker file held (an earlier run, or a copy a timeout interrupted). Both
-    # ends are files SQLite itself opened, so no path rules are re-derived here.
+    # Point every SQLite file config of the test environment at this worker's
+    # copy. Each DatabaseConfig is rewritten in place (`_database=`), so every
+    # pool resolved from `configurations` follows: `ActiveRecord::Base` and each
+    # `connects_to` class. Rails discards inherited pools after a fork, and a
+    # new pool opens connections from its config's current hash. Runs only in
+    # a fork child, so the daemon keeps the base names for the next fork.
     #
-    # @param base_file [String] the base database file, from `pragma_database_list`.
+    # A replica that names the same file as its primary gets the same worker
+    # file. A config named in `shared`, and any config on the same file, keeps
+    # the base file.
+    #
+    # @param worker [Integer] the worker slot index.
+    # @param seed [Boolean] copy each base file into its worker file first.
+    # @param shared [Array<String>] config names that keep the base file.
+    # @return [Array(Array<String>, Array<String>)] the worker files, and the
+    #   base files kept for `shared`.
+    def self.route_sqlite_configs(worker, seed:, shared:)
+      configs = test_configs.select { |c| sqlite_file_config?(c) }
+      kept    = configs.select { |c| shared.include?(c.name) }.map { |c| sqlite_file(c) }.uniq
+      routed  = {}
+      configs.each do |config|
+        base = sqlite_file(config)
+        next if kept.include?(base)
+
+        routed[base] ||= worker_database_path(base, worker).tap { |file| seed_worker_file(base, file) if seed }
+        config._database = routed[base]
+      end
+      [routed.values, kept]
+    end
+
+    # Copy `base` into `file`. When the base file does not exist yet (Rails
+    # creates a SQLite file on first connect), delete the worker file instead,
+    # so the worker starts from an empty database, not an old run's rows.
+    #
+    # @param base [String] the base database file.
+    # @param file [String] the worker database file.
     # @return [void]
-    def self.seed_from(base_file)
+    def self.seed_worker_file(base, file)
+      if File.exist?(base)
+        seed_from(base, file)
+      else
+        ["", "-wal", "-shm"].each { |suffix| File.delete("#{file}#{suffix}") if File.exist?("#{file}#{suffix}") }
+      end
+    end
+
+    # Load the schema file of each SQLite database other than the primary
+    # when its worker copy is out of date. Rails' DatabaseTasks picks each
+    # config's own file (`db/<name>_schema.rb` by default) and skips a config
+    # with no file. No purge: the schema loads over the copy, so tables a
+    # --require file wrote at boot survive (#222). Rails 7.0 has no temporary
+    # pool helper, so there the copy is used as it is.
+    #
+    # @param primary [ActiveRecord::DatabaseConfigurations::DatabaseConfig] the
+    #   config `ActiveRecord::Base` uses. {load_schema} covers it.
+    # @return [void]
+    def self.load_other_schemas(primary)
+      tasks = ActiveRecord::Tasks::DatabaseTasks
+      return unless tasks.respond_to?(:with_temporary_pool_for_each)
+
+      test_configs.each do |config|
+        next if config.equal?(primary) || config.replica? || !config.database_tasks? || !sqlite_file_config?(config)
+
+        tasks.with_temporary_pool_for_each(env: config.env_name, name: config.name) do
+          tasks.load_schema(config) unless tasks.schema_up_to_date?(config)
+        end
+      end
+    end
+
+    # Check every pool on a SQLite file, then make a round-trip on each routed
+    # one. A pool built from an inline `establish_connection` hash is not in
+    # `configurations`, so {route_sqlite_configs} cannot rewrite it: it would
+    # still use the base file that every worker shares. That raises here, and
+    # the mutant scores `error`. Shared pools get no round-trip, so the
+    # `shared_databases` check does not see a connection the tool opened.
+    #
+    # @param routed [Array<String>] the worker files.
+    # @param kept [Array<String>] the base files kept for `shared_databases`.
+    # @return [void]
+    # @raise [RuntimeError] when a pool points at a file that is neither.
+    def self.verify_routing!(routed, kept)
+      ActiveRecord::Base.connection_handler.connection_pool_list(:all).each do |pool|
+        config = pool.db_config
+        next unless sqlite_file_config?(config)
+
+        file = sqlite_file(config)
+        next if kept.include?(file)
+        unless routed.include?(file)
+          raise "#{config.name} still uses #{file}, which every worker shares. " \
+                "Mutineer copies only databases in config/database.yml, not an inline establish_connection hash."
+        end
+
+        pool.with_connection { |conn| conn.execute("SELECT 1") }
+      end
+    end
+
+    # True for a SQLite config with a database file: not `:memory:`, not a
+    # `file:` URI, not blank.
+    #
+    # @param config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    # @return [Boolean]
+    def self.sqlite_file_config?(config)
+      database = config.database.to_s
+      sqlite_adapter?(config.adapter.to_s) && !database.empty? && database != ":memory:" && !database.start_with?("file:")
+    end
+
+    # Absolute path of a SQLite config's file, resolved as the Rails adapter
+    # does: against `Rails.root` when it is set.
+    #
+    # @param config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    # @return [String]
+    def self.sqlite_file(config)
+      root = defined?(Rails.root) && Rails.root
+      root ? File.expand_path(config.database, root.to_s) : File.expand_path(config.database)
+    end
+
+    # Copy a base SQLite file into a worker file with the SQLite online backup
+    # API: one consistent snapshot of the committed data (WAL included) that
+    # replaces whatever the worker file held (an earlier run, or a copy a
+    # timeout interrupted).
+    #
+    # @param base_file [String] the base database file.
+    # @param dest_file [String] the worker database file.
+    # @return [void]
+    def self.seed_from(base_file, dest_file)
       codes  = SQLite3::Constants::ErrorCode
       source = SQLite3::Database.new(base_file, readonly: true)
       source.busy_timeout = 5000
-      backup = SQLite3::Backup.new(ActiveRecord::Base.connection.raw_connection, "main", source, "main")
+      dest   = SQLite3::Database.new(dest_file)
+      backup = SQLite3::Backup.new(dest, "main", source, "main")
       # Another worker's process can hold a lock on the base file for a moment;
       # BUSY/LOCKED steps are retried for up to 5 seconds, then the copy fails
       # with a message that names the database (scored `error`).
@@ -433,6 +562,7 @@ module Mutineer
     ensure
       backup&.finish
       source&.close
+      dest&.close
     end
 
     # True when the current database already holds the schema that `schema.rb`
