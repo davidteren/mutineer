@@ -19,7 +19,7 @@ The top-level `schema_version` (a string, e.g. `"2.0"`) follows these rules:
 - **Breaking changes** (renaming/removing a key, changing a value's type or meaning) bump the **major**
   version (`1.x` → `2.0`).
 
-A consumer should accept any `1.x` document and read only the keys it knows.
+A consumer should accept documents from each schema major that it supports and read only the keys it knows.
 
 Schema `2.0` narrows `baseline.fixed_survivors`: a survivor without a verdict
 is now listed in `baseline.unverified_survivors` instead. Consumers that accept
