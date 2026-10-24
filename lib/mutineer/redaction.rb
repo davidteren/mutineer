@@ -5,9 +5,10 @@ require "uri"
 module Mutineer
   # Hides database credentials in text bound for a terminal: an error reply,
   # a log line, a warning. Rails parses DATABASE_URL itself, so an error about
-  # a malformed one can quote the whole URL. Outside a URL the password is
-  # hidden only as a whole word, and not when it equals the username (the
-  # redacted URL shows that value anyway), so `role "postgres"` stays readable.
+  # a malformed one can quote the whole URL. Outside a URL a password of 3
+  # characters or fewer is hidden only as a whole word, so it cannot blank
+  # letters inside other words. A password that exactly equals the username is
+  # left visible outside a URL, so `role "postgres"` stays readable.
   #
   # Stdlib only: the app-side daemon loads this file without the rest of
   # mutineer.
@@ -23,14 +24,18 @@ module Mutineer
     FAILED = "[message hidden: redaction failed]"
     # An ASCII word character, the edge a whole-word match must not touch.
     WORD_CHAR = "[A-Za-z0-9_]"
+    # The longest password form hidden only as a whole word. A longer form is
+    # hidden wherever it appears, even glued to an escape such as `%40` or
+    # `\x41`: failing toward hiding too much is safer for a long secret.
+    SHORT_FORM = 3
 
     module_function
 
     # Hide the password in any URL, and the DATABASE_URL password wherever it
     # appears: whole, percent-decoded, `inspect` escaped, or cut short after
-    # its `scheme://user:` prefix. Outside a URL it is hidden as a whole word,
-    # unless it equals the username. Never raises: text in any encoding comes
-    # back as UTF-8, and an internal error returns {FAILED}.
+    # its `scheme://user:` prefix. Outside a URL a form of {SHORT_FORM}
+    # characters or fewer is hidden only as a whole word. Never raises: text in
+    # any encoding comes back as UTF-8, and an internal error returns {FAILED}.
     #
     # @param text [#to_s]
     # @param env [Hash{String => String}] where DATABASE_URL is read.
@@ -45,8 +50,17 @@ module Mutineer
         out = secrets.reduce(out) { |acc, secret| redact_prefixes(acc, prefix, secret) }
       end
       out = out.gsub(URL_PASSWORD) { "#{Regexp.last_match(1)}:#{REDACTED}@" }
-      user_forms = head ? password_forms(head[(head.index("://") + 3)...-1]) : []
-      (secrets - user_forms).reduce(out) { |acc, secret| redact_word(acc, secret) }
+      # A password that exactly equals the username is left visible outside a
+      # URL. The username is not a secret: mutineer prints it in every
+      # redacted URL, so the value is already shown, and blanking it would
+      # hide every role and database name in a `postgres:postgres` setup. The
+      # skip needs an exact raw match: a password that only shares a form or a
+      # prefix with the username is a separate secret and stays hidden.
+      return out if head && raw == head[(head.index("://") + 3)...-1]
+
+      secrets.reduce(out) do |acc, secret|
+        secret.length > SHORT_FORM ? acc.gsub(secret, REDACTED) : redact_word(acc, secret)
+      end
     rescue StandardError
       FAILED
     end

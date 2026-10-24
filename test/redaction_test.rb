@@ -115,6 +115,31 @@ class RedactionTest < Minitest::Test
     assert_equal %(key="[REDACTED]",), redact(%(key="s3cret",), "postgres://u:s3cret@host/db")
   end
 
+  # A password longer than 3 characters is hidden wherever it appears, even
+  # glued to a word character by an escape: %40, \u0041, \x41.
+  def test_hides_a_long_password_right_after_an_escape
+    url = "postgres://u:s3cret@host/db"
+
+    %w[u%40s3cret \\u0041s3cret \\x41s3cret xs3cret].each do |glued|
+      text = redact("auth failed for #{glued}", url)
+
+      refute_includes text, "s3cret", glued
+      assert_includes text, "[REDACTED]", glued
+    end
+  end
+
+  def test_still_hides_a_password_that_only_partly_matches_the_username
+    url = "postgres://postgres:postgres1@localhost/db"
+
+    assert_equal %(role "postgres" said [REDACTED]), redact(%(role "postgres" said postgres1), url)
+  end
+
+  def test_hides_a_decoded_password_that_equals_the_username
+    # Only an exact raw match skips: `a%62cd` decodes to `abcd`, the username,
+    # but the raw values differ, so the decoded form is still hidden.
+    assert_equal "user [REDACTED]", redact("user abcd", "postgres://abcd:a%62cd@host/db")
+  end
+
   def test_coverage_warning_hides_the_password
     url = "postgres://u:s3cret@ho st/db"
     map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [])
