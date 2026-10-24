@@ -63,4 +63,16 @@ class ArrayLiteralTest < Minitest::Test
       mutations.each { |m| assert m.valid?(source), "mutated #{body.inspect} should re-parse" }
     end
   end
+
+  # The declined count after one run on `body`.
+  def declined(body)
+    source = "def m\n  #{body}\nend\n"
+    Mutineer::Mutators::ArrayLiteral.new.tap { |op| op.mutations_for(subject_for(source), source) }.declined
+  end
+
+  def test_array_with_heredoc_counts_as_declined
+    assert_equal 1, declined("[<<~A, b]\n    text\n  A")
+    assert_equal 0, declined("x = 1, 2")
+    assert_equal 0, declined("[]")
+  end
 end

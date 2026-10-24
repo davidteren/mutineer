@@ -68,4 +68,17 @@ class RangeLiteralTest < Minitest::Test
     mutations, = run_mutator("puts x if (x == 1)..(x == 5)")
     assert_empty mutations
   end
+
+  # The declined count after one run on `body`.
+  def declined(body)
+    source = "def m\n  #{body}\nend\n"
+    Mutineer::Mutators::RangeLiteral.new.tap { |op| op.mutations_for(subject_for(source), source) }.declined
+  end
+
+  def test_endless_range_counts_as_declined
+    ["(1..)", "(1...)", "list[1..]", "(1..nil)", "(1...nil)"].each do |body|
+      assert_equal 1, declined(body), "for #{body.inspect}"
+    end
+    assert_equal 0, declined("(1..10)")
+  end
 end

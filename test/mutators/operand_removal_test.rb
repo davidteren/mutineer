@@ -104,4 +104,19 @@ class OperandRemovalTest < Minitest::Test
       mutations.each { |m| assert m.valid?(source), "mutated #{body.inspect} should re-parse" }
     end
   end
+
+  # The declined count after one run on `body`.
+  def declined(body)
+    source = "def m\n  #{body}\nend\n"
+    Mutineer::Mutators::OperandRemoval.new.tap { |op| op.mutations_for(subject_for(source), source) }.declined
+  end
+
+  # One `heredoc?(removed)` skip plus one dangling-heredoc drop.
+  def test_heredoc_operand_counts_as_declined
+    assert_equal 2, declined("foo(<<~EOS) ||\n    text\n  EOS\n    bar")
+  end
+
+  def test_jump_operand_is_not_declined
+    assert_equal 0, declined("x = (a or return)")
+  end
 end

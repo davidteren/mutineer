@@ -16,6 +16,7 @@ module Mutineer
       def mutations_for(subject, source)
         @source = source
         @mutations = []
+        @declined = 0
         @body = subject.def_node.body
         if @body
           @body.accept(self)       # rule 1 (explicit return nodes in this body)

@@ -23,7 +23,8 @@ module Mutineer
     # same source only when the last call repeats the link before it, as in
     # `node.name.name`.
     #
-    # Calls in {ChainLink::SKIPPED} are never replaced. On the last call,
+    # Calls in {ChainLink::SKIPPED} are never replaced; each one counts as
+    # declined. On the last call,
     # `x.to_s` is the same as `x` for the same reason as on a link. `Foo.new`
     # becomes the class, and almost any use of the class raises.
     #
@@ -112,7 +113,7 @@ module Mutineer
         name = node.name.to_s
         return unless name.match?(WORD_NAME)
         return if name.end_with?("=")
-        return if ChainLink::SKIPPED.include?(node.name)
+        return decline if ChainLink::SKIPPED.include?(node.name)
 
         receiver = node.receiver.location
         @mutations << Mutation.new(

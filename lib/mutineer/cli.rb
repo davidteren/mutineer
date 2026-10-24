@@ -683,7 +683,8 @@ module Mutineer
                             baseline: delta ? delta.legacy_matches : 0 }
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
-                      scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches)
+                      scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches,
+                      declined: extras.fetch(:declined, {}))
       warn_empty_run(config, extras) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
@@ -717,15 +718,21 @@ module Mutineer
     #
     # @param config [Mutineer::Config] run configuration.
     # @param extras [Hash] the run extras; `:unscoped_mutants` counts the mutants (run and
-    #   suppressed) before --since.
+    #   suppressed) before --since, and `:declined` the candidates each operator did not mutate.
     # @return [void]
     def self.warn_empty_run(config, extras)
       # Mutants existed before --since narrowed them: the changes held none.
       if config.since && extras[:unscoped_mutants].to_i.positive?
         warn "mutineer: nothing to test in the changes since #{config.since}"
       elsif !config.allow_empty
-        warn "mutineer: no mutants were generated. Check that the sources contain code the " \
-             "operators mutate. The run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
+        declined = extras.fetch(:declined, {}).values.sum
+        cause = if declined.positive?
+                  "#{declined} #{declined == 1 ? 'candidate was' : 'candidates were'} declined " \
+                    "(--dry-run shows the count per operator)."
+                else
+                  "Check that the sources contain code the operators mutate."
+                end
+        warn "mutineer: no mutants were generated. #{cause} The run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
              "Pass --allow-empty (or allow_empty: true) if an empty run is expected."
       end
     end
@@ -837,8 +844,25 @@ module Mutineer
       breakdown = per_operator.map { |op, n| "#{op}: #{n}" }.join(", ")
       summary = breakdown.empty? ? "" : "#{breakdown} — "
       puts "#{summary}#{total} mutations (dry run, not executed); " \
-           "#{skipped} skipped (invalid); #{ignored} ignored (suppressed)"
+           "#{skipped} skipped (invalid); #{ignored} ignored (suppressed); " \
+           "#{declined_summary(extras[:declined], since: config.since)}"
       exit 0
+    end
+
+    # Formats the dry run's declined count: the total, then each operator's
+    # count when the total is above zero. `--since` does not narrow the count,
+    # so under `--since` the text says so.
+    #
+    # @param declined [Hash{String => Integer}] operator name => declined count.
+    # @param since [String, nil] the `--since` ref, when set.
+    # @return [String] e.g. `2 declined (range: 2)`.
+    def self.declined_summary(declined, since:)
+      total = declined.values.sum
+      text = "#{total} declined"
+      text += " in the scanned files (not narrowed by --since)" if since
+      return text if total.zero?
+
+      "#{text} (#{declined.map { |op, n| "#{op}: #{n}" }.join(', ')})"
     end
   end
 end
