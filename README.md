@@ -471,6 +471,7 @@ shared_databases: [cable, queue]
 
 The workers then share those databases, and `--jobs N` runs in parallel.
 After each mutant, a worker checks whether a shared database holds an Active Record connection.
+A replica of a shared database counts as that database.
 If one does, the mutant scores `error`, never a false kill or survive.
 The check does not see a connection that a test closes or removes before it ends, or a database reached without Active Record.
 One worker shares nothing, so it skips the check.

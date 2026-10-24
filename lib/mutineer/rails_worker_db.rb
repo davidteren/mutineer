@@ -363,11 +363,17 @@ module Mutineer
     #
     # @return [Hash{String => Object}] "names" (Array<String>) and "primary" (String).
     def self.database_names
+      names = test_configs.reject(&:replica?).map(&:name)
+      { "names" => names, "primary" => ActiveRecord::Base.connection_db_config.name }
+    end
+
+    # The test environment's database configs, hidden ones and replicas included.
+    #
+    # @return [Array<ActiveRecord::DatabaseConfigurations::DatabaseConfig>]
+    def self.test_configs
       env = ENV["RAILS_ENV"].to_s
       env = "test" if env.empty?
-      configs = ActiveRecord::Base.configurations.configs_for(env_name: env, include_hidden: true)
-      names = configs.reject(&:replica?).map(&:name)
-      { "names" => names, "primary" => ActiveRecord::Base.connection_db_config.name }
+      ActiveRecord::Base.configurations.configs_for(env_name: env, include_hidden: true)
     end
 
     # Child-side (after fork): route this process's ActiveRecord at the worker's
@@ -461,11 +467,13 @@ module Mutineer
       text[/define\(version:\s*([\d_]+)/, 1]&.delete("_")&.to_i
     end
 
-    # Names from `shared` whose connection pool holds a connection in this
+    # Names from `shared` whose database a connected pool uses in this
     # process. Run in a fork after its tests: a name here means a test used a
     # database that parallel workers share, so the verdict cannot be trusted.
-    # Transactional tests connect every registered writing pool, so a pool
-    # registered for a shared database shows up here after any test.
+    # A pool counts when its config has a shared name, or names the same
+    # database as a shared config (a replica of it, say). Transactional tests
+    # connect every registered writing pool, so a pool registered for a shared
+    # database shows up here after any test.
     #
     # No rescue: a failed check must raise (scored `error`), never read as clean.
     # ponytail: a snapshot after the run; a pool the test removes
@@ -476,9 +484,14 @@ module Mutineer
     def self.touched_shared_databases(shared)
       return [] if shared.empty? || !available?
 
-      ActiveRecord::Base.connection_handler.connection_pool_list(:all)
-                        .select { |pool| shared.include?(pool.db_config.name) && pool.connected? }
-                        .map { |pool| pool.db_config.name }.uniq
+      by_database = {}
+      test_configs.each { |c| by_database[c.database] = c.name if shared.include?(c.name) && c.database }
+      pools = ActiveRecord::Base.connection_handler.connection_pool_list(:all).select(&:connected?)
+      names = pools.map do |pool|
+        config = pool.db_config
+        shared.include?(config.name) ? config.name : by_database[config.database]
+      end
+      names.compact.uniq
     end
 
     # Load a Rails `schema.rb` into the current connection with output silenced

@@ -169,7 +169,8 @@ module Mutineer
         raise
       rescue DaemonBootError => e
         warn_coverage_fallback("#{e.class}: #{e.message}")
-        return [nil, worker_count, nil]
+        # No daemon listed the databases, so no second worker may share them.
+        return [nil, worker_count_for({ "error" => "the first daemon did not boot" }, [], worker_count), nil]
       end
 
       begin

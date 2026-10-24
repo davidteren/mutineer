@@ -163,6 +163,24 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # The first daemon lists the databases. When it cannot boot, nobody counted
+  # them, so the run must not start a second worker that could share one.
+  def test_a_failed_first_boot_keeps_one_worker
+    config = Mutineer::Config.new(sources: [], tests: [], project_root: Dir.pwd, framework: "minitest")
+    client = Object.new
+    client.define_singleton_method(:start) { raise Mutineer::DaemonBootError, "boom" }
+    result = nil
+    _out, err = capture_io do
+      Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+        result = Mutineer::DaemonBackend.send(:prepare_run, config, [], 4)
+      end
+    end
+
+    assert_equal [nil, 1, nil], result
+    assert_includes err, "daemon coverage map unavailable"
+    assert_includes err, "could not list this app's databases (the first daemon did not boot); Mutineer runs one worker."
+  end
+
   # A failed lookup must not lift the guard: an uncounted database could be
   # shared without anyone listing it.
   def test_a_failed_database_lookup_keeps_one_worker
