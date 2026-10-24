@@ -16,8 +16,8 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 
 - The Ruby API score-gate constants `BROKEN_SHARE_LIMIT` and `BROKEN_FLOOR`
-  now live on `AggregateResult` instead of `Reporter`. The CLI and report
-  contracts use the same limits.
+  now also live on `AggregateResult`. The `Reporter` names remain compatibility
+  aliases, and the CLI and report use the same limits.
 
 - **The JSON report uses schema `2.0` (#283).** `baseline.fixed_survivors`
   no longer includes a survivor whose current result is undecided. Consumers

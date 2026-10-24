@@ -4,6 +4,7 @@ require "json"
 require "stringio"
 require "cgi"
 require_relative "mutation"
+require_relative "result"
 
 module Mutineer
   # Renders an AggregateResult: the summary block, mutation score, and per-file
@@ -16,6 +17,12 @@ module Mutineer
   class Reporter
     # The JSON report's `schema_version` (see docs/json-schema.md).
     SCHEMA_VERSION = "2.0"
+
+    # Compatibility name for the aggregate's incomplete-run share limit.
+    BROKEN_SHARE_LIMIT = AggregateResult::BROKEN_SHARE_LIMIT
+
+    # Compatibility name for the aggregate's incomplete-run count floor.
+    BROKEN_FLOOR = AggregateResult::BROKEN_FLOOR
 
     # The warning both matrix renderers give under the redundant tests.
     MATRIX_REDUNDANT_NOTE = "Delete redundant tests one at a time: two of them can be the only killers of one mutant."
