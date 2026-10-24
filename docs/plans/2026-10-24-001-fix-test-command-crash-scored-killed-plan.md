@@ -32,8 +32,8 @@ The external backend (`--test-command`) scores every non-zero exit except 126 an
 
 ## Requirements
 
-- R1. A non-zero exit other than 1 scores `error` with the reason `test-command exited N (only exit 1 counts as a kill; check RSpec --failure-exit-code or your wrapper)`. 126/127 keep their "could not start" reason. A signal death keeps its reason.
-- R2. When summary checking is on, exit 1 with no summary line, or with summary lines that report zero failures (and, for Minitest, zero errors), scores `error` with the reason `test-command exited 1 but its output shows no failing test (the suite or the mutant crashed before tests ran; --verbose shows the output)`. Exit 1 with a summary line that reports at least one failure (Minitest failures or errors; RSpec failures) scores `killed`.
+- R1. A non-zero exit other than 1 scores `error` with the reason `test-command exited N (only exit 1 counts as a kill; check RSpec --failure-exit-code or your wrapper)`. 126/127 keep their "could not start" reason. A signal death keeps its reason. Exception (added in review): when SimpleCov's gate message is present, the summary decides the verdict (see Key Technical Decisions).
+- R2. When summary checking is on, exit 1 with no summary line, or with summary lines that report zero failures (and, for Minitest, zero errors), scores `error` with the reason `test-command exited 1 but its output shows no failing test (the suite or the mutant crashed before tests ran; --verbose shows the output)`. Exit 1 with a summary line that reports at least one failure (Minitest failures or errors; RSpec failures) scores `killed`. Exception (added in review): exit 1 after Minitest's `# Running:` line with no summary scores `killed` (see Key Technical Decisions).
 - R3. The smoke check reports whether the clean output contains a known summary line. The runner turns summary checking on only in that case. Otherwise it prints one `[mutineer]` stderr line: what happened (no Minitest or RSpec summary line in the clean run), the effect (an exit 1 counts as a kill even if the suite did not load), and the fix (use a formatter that prints the summary line).
 - R4. CHANGELOG `## [Unreleased]` gets a `### Fixed` entry that names the contract change, including that an RSpec `--failure-exit-code 3` setup now scores `error` (fix: the default exit code, or a wrapper that maps failures to exit 1), and that more `error` verdicts can now fail a run through the existing no-verdict gate. Repo shape: `- **Bold lead (#292).** prose`.
 - R5. README and the CLI warning no longer say a crash can count as a kill; they state the new rule. The CLI warning reads only config, not the calibration result, so its text must hold in both modes: only exit 1 counts as a kill, and when the clean run printed a Minitest or RSpec summary, the exit 1 output must also show a failing test.
@@ -68,7 +68,7 @@ The external backend (`--test-command`) scores every non-zero exit except 126 an
 
 **Approach:**
 - Add two documented regex constants (Minitest, RSpec) and two documented private-API predicates: one for "a summary line is present", one for "a summary line reports a failure".
-- In `run`, after the existing 0 / signal / 126-127 branches: a code other than 1 returns `error` naming the code; exit 1 with checking on and no reported failure returns `error`; otherwise `killed`.
+- In `run`, after the existing 0 / signal / 126-127 branches: a code other than 1 returns `error` naming the code; exit 1 with checking on and no reported failure returns `error`; otherwise `killed`. The two review-added exceptions in Key Technical Decisions (SimpleCov gate exit, exit during tests) take precedence over these rules.
 - `smoke_check!` returns the elapsed seconds and the summary flag together; update its YARD `@return`.
 - Update the module docstring that says the backend cannot tell an infra error from a kill.
 
