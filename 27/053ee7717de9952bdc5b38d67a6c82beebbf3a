@@ -1,0 +1,54 @@
+lib/mutineer/minitest_integration/in_test_database_error.rb
+  s_533ed13f8f67ea::t_cd790872be00dd 132-135,147
+  s_d2b7b963e307a9::t_57a63da1ebe850 148
+test/test_runners/minitest_test.rb
+  s_533ed13f8f67ea::t_9a7573700bb62b 492-496,499-550
+  s_533ed13f8f67ea::t_88d6e374823f92 551-568
+  s_533ed13f8f67ea::t_14b4b1e4567dfe 497-498
+README.md
+  s_533ed13f8f67ea::t_d3fae07f4b7ea3 189,630-632,651-653,677-678
+test/fixtures/in_test_db_error_test.rb
+  s_533ed13f8f67ea::t_14b4b1e4567dfe 27-28
+  s_533ed13f8f67ea::t_9a7573700bb62b 62-65,73-75
+lib/mutineer/result.rb
+  s_533ed13f8f67ea::t_8193af5d7ce1bf 167-168
+lib/mutineer/isolation.rb
+  s_533ed13f8f67ea::t_cd790872be00dd 141,143-144,171
+test/kill_channel_test.rb
+  s_533ed13f8f67ea::t_b484aa82d4d643 55-92
+lib/mutineer/minitest_integration/kill_recorder.rb
+  s_533ed13f8f67ea::t_78369db572777c 4,118-119,122,153,190,210,218,256-263
+  s_533ed13f8f67ea::t_8193af5d7ce1bf 26,39,50,63,74
+  s_533ed13f8f67ea::t_14b4b1e4567dfe 228-229
+  s_533ed13f8f67ea::t_d3fae07f4b7ea3 226-227
+docs/json-schema.md
+  s_533ed13f8f67ea::t_d3fae07f4b7ea3 63,176-178
+lib/mutineer/kill_channel.rb
+  s_533ed13f8f67ea::t_cd790872be00dd 12,31,37,44-46,67-69,96-99,101,107,179,221-227,251
+docs/plans/2026-10-24-296-fix-in-test-db-error-verdict-plan.md
+  s_533ed13f8f67ea::t_ba9b3815b0912a 56,220,229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "27053ee7717de9952bdc5b38d67a6c82beebbf3a",
+  "prompts": {},
+  "sessions": {
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_d2b7b963e307a9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16dd5-7b15-7ab0-b4e0-7d7830b052e7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
