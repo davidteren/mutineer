@@ -459,11 +459,17 @@ class RailsWorkerDbTest < Minitest::Test
     base = Class.new
     base.define_singleton_method(:configurations) { configs }
     base.define_singleton_method(:connection_db_config) { all.first }
-    Object.const_set(:ActiveRecord, Module.new.tap { |m| m.const_set(:Base, base) })
+    version = Gem::Version.new("7.1.0")
+    ar = Module.new.tap { |m| m.const_set(:Base, base) }
+    ar.define_singleton_method(:version) { version }
+    Object.const_set(:ActiveRecord, ar)
 
     Mutineer::RailsWorkerDb.stub(:current_adapter, "sqlite3") do
       assert_equal({ "names" => %w[primary cable scratch], "primary" => "primary", "copied" => %w[primary cable] },
                    Mutineer::RailsWorkerDb.database_names)
+      # Rails 7.0 has no routing check, so only the primary counts as copied.
+      version = Gem::Version.new("7.0.8")
+      assert_equal %w[primary], Mutineer::RailsWorkerDb.database_names["copied"]
     end
   ensure
     Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
@@ -495,6 +501,31 @@ class RailsWorkerDbTest < Minitest::Test
                  configs.map(&:database)
     assert_equal %w[/app/test-3.sqlite3 /app/cable-3.sqlite3], routed
     assert_equal %w[/app/queue.sqlite3], kept
+  end
+
+  # A shared config on the primary's file never stops the primary's copy.
+  def test_route_sqlite_configs_always_copies_the_primary_file
+    db = Mutineer::RailsWorkerDb
+    configs = [SqliteConfig.new("primary", "/app/test.sqlite3", "sqlite3"),
+               SqliteConfig.new("cable", "/app/test.sqlite3", "sqlite3")]
+    kept = nil
+    db.stub(:test_configs, configs) do
+      _routed, kept = db.route_sqlite_configs(0, seed: false, shared: %w[cable], primary: "/app/test.sqlite3")
+    end
+    assert_empty kept
+    assert_equal %w[/app/test-0.sqlite3 /app/test-0.sqlite3], configs.map(&:database)
+  end
+
+  # A worker file that is another config's base file would overwrite (or
+  # delete) that database, so routing refuses it.
+  def test_route_sqlite_configs_refuses_a_worker_file_that_is_another_base
+    db = Mutineer::RailsWorkerDb
+    configs = [SqliteConfig.new("primary", "/app/test.sqlite3", "sqlite3"),
+               SqliteConfig.new("other", "/app/test-0.sqlite3", "sqlite3")]
+    error = db.stub(:test_configs, configs) do
+      assert_raises(RuntimeError) { db.route_sqlite_configs(0, seed: false, shared: []) }
+    end
+    assert_includes error.message, "worker file /app/test-0.sqlite3 is also the base file of a test database"
   end
 
   # A primary Mutineer cannot copy (in memory, a `file:` URI) fails the fork

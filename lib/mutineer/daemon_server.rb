@@ -351,6 +351,7 @@ module Mutineer
                                      seed: first_use, shared: Array(@shared_databases))
               apply_payload(req["payload"])
               result = run_tests(Array(req["tests"]))
+              @worker_db&.recheck_routing!
               check_shared_databases!
               result
             rescue Exception => e # rubocop:disable Lint/RescueException

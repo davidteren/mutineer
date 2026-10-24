@@ -354,8 +354,8 @@ module Mutineer
 
     # The database config names the test environment declares, the primary
     # (the config `ActiveRecord::Base` uses), and the names each worker copies.
-    # On SQLite, each worker copies every file database. On Postgres and MySQL,
-    # it copies only the primary. The tool counts the names that are neither
+    # On SQLite (Rails 7.1 or later), each worker copies every file database.
+    # On Postgres and MySQL, it copies only the primary. The tool counts the names that are neither
     # copied nor in `shared_databases`: any such name means one worker.
     #
     # A config with `database_tasks: false` counts: workers would share it like
@@ -368,7 +368,11 @@ module Mutineer
       configs = test_configs.reject(&:replica?)
       primary = ActiveRecord::Base.connection_db_config.name
       copied  = [primary]
-      copied |= configs.select { |c| sqlite_file_config?(c) }.map(&:name) if sqlite_adapter?(current_adapter)
+      # Rails 7.0 lists no pool for the routing check ({verify_routing!}), so
+      # there a second database still keeps one worker, as before.
+      if sqlite_adapter?(current_adapter) && ActiveRecord.version >= Gem::Version.new("7.1")
+        copied |= configs.select { |c| sqlite_file_config?(c) }.map(&:name)
+      end
       { "names" => configs.map(&:name), "primary" => primary, "copied" => copied }
     end
 
@@ -418,11 +422,22 @@ module Mutineer
               "worker-DB isolation needs a SQLite database file (got #{primary.database.inspect})."
       end
 
-      routed, kept = route_sqlite_configs(worker, seed: seed, shared: shared)
+      @routing = route_sqlite_configs(worker, seed: seed, shared: shared, primary: sqlite_file(primary))
       load_schema(schema_path) if schema_path && !schema_current?(schema_path)
       load_other_schemas(primary) if seed
-      verify_routing!(routed, kept)
+      verify_routing!(*@routing)
       verify_connection!
+    end
+
+    # Run the routing check again after the tests. A pool that a test or an
+    # autoloaded model opened after {after_fork} (an inline
+    # `establish_connection` hash) then also fails the mutant with `error`.
+    # A no-op unless {after_fork} routed SQLite configs in this process.
+    #
+    # @return [void]
+    # @raise [RuntimeError] when a pool points at a base file every worker shares.
+    def self.recheck_routing!
+      verify_routing!(*@routing) if @routing
     end
 
     # Point every SQLite file config of the test environment at this worker's
@@ -434,22 +449,29 @@ module Mutineer
     #
     # A replica that names the same file as its primary gets the same worker
     # file. A config named in `shared`, and any config on the same file, keeps
-    # the base file.
+    # the base file, except the primary's file: every worker always copies it.
     #
     # @param worker [Integer] the worker slot index.
     # @param seed [Boolean] copy each base file into its worker file first.
     # @param shared [Array<String>] config names that keep the base file.
+    # @param primary [String, nil] the primary's absolute file, never kept.
     # @return [Array(Array<String>, Array<String>)] the worker files, and the
     #   base files kept for `shared`.
-    def self.route_sqlite_configs(worker, seed:, shared:)
+    # @raise [RuntimeError] when a worker file would be another config's base file.
+    def self.route_sqlite_configs(worker, seed:, shared:, primary: nil)
       configs = test_configs.select { |c| sqlite_file_config?(c) }
-      kept    = configs.select { |c| shared.include?(c.name) }.map { |c| sqlite_file(c) }.uniq
+      bases   = configs.map { |c| sqlite_file(c) }
+      kept    = configs.select { |c| shared.include?(c.name) }.map { |c| sqlite_file(c) }.uniq - [primary]
       routed  = {}
       configs.each do |config|
         base = sqlite_file(config)
         next if kept.include?(base)
 
-        routed[base] ||= worker_database_path(base, worker).tap { |file| seed_worker_file(base, file) if seed }
+        routed[base] ||= worker_database_path(base, worker).tap do |file|
+          raise "worker file #{file} is also the base file of a test database; rename one of them" if bases.include?(file)
+
+          seed_worker_file(base, file) if seed
+        end
         config._database = routed[base]
       end
       [routed.values, kept]
