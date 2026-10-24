@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "outer_reporter"
+require_relative "in_test_database_error"
 require_relative "../kill_channel"
 
 module Mutineer
@@ -22,7 +23,7 @@ module Mutineer
       # Prepended on each loaded test class: one test's run. Serial and parallel
       # runs both call it, in Minitest 5 and 6.
       module MarkSkippedTest
-        # Runs the test inside a `skip` region once a serial test has killed.
+        # Runs the test inside a `skip` region once a serial test has failed.
         #
         # @return [Minitest::Result]
         def run
@@ -35,7 +36,7 @@ module Mutineer
       # A run without `--matrix` skips both after a stop (see
       # StopAtFirstFailure::SkipAfterStop6).
       module MarkSkippedClass6
-        # Runs the class inside a `skip` region once a serial test has killed.
+        # Runs the class inside a `skip` region once a serial test has failed.
         #
         # @param reporter [Minitest::CompositeReporter]
         # @param options [Hash]
@@ -46,7 +47,7 @@ module Mutineer
         end
 
         # Runs one test's class-level step inside a `skip` region once a
-        # serial test has killed.
+        # serial test has failed.
         #
         # @param klass [Class]
         # @param method_name [String]
@@ -59,7 +60,7 @@ module Mutineer
 
       # The Minitest 5 form of {MarkSkippedClass6}.
       module MarkSkippedClass5
-        # Runs the class inside a `skip` region once a serial test has killed.
+        # Runs the class inside a `skip` region once a serial test has failed.
         #
         # @param reporter [Minitest::CompositeReporter]
         # @param options [Hash]
@@ -70,7 +71,7 @@ module Mutineer
         end
 
         # Runs one test's class-level step inside a `skip` region once a
-        # serial test has killed.
+        # serial test has failed.
         #
         # @param klass [Class]
         # @param method_name [String]
@@ -114,11 +115,11 @@ module Mutineer
         # @return [Integer, nil]
         attr_accessor :seen
 
-        # True once a serial test killed: from then on, a run without `--matrix`
-        # skips each later test and class.
+        # True once a serial test failed, including a database failure: from
+        # then on, a run without `--matrix` skips each later test and class.
         #
         # @return [Boolean, nil]
-        attr_accessor :serial_killed
+        attr_accessor :serial_failed
 
         # Installs the hooks, arms the recorder for this process, and writes the
         # channel's `start` line. Call it after the test files load, so the
@@ -149,7 +150,7 @@ module Mutineer
           # the run joins it without running, which would break the count.
           self.runnables = runnables.dup
           self.seen = 0
-          self.serial_killed = false
+          self.serial_failed = false
           KillChannel.write_start(channel)
           true
         end
@@ -186,7 +187,7 @@ module Mutineer
           self.armed_reporter = nil
           self.channel = nil
           self.runnables = nil
-          self.serial_killed = false
+          self.serial_failed = false
         end
 
         # Writes the `parallel` line when the first parallel class starts on the
@@ -206,7 +207,7 @@ module Mutineer
         end
 
         # Runs the block between `skip` and `unskip` when a serial test has
-        # killed in this armed process, else just runs it. No `ensure`: a block
+        # failed in this armed process, else just runs it. No `ensure`: a block
         # that never returns (an exit, a crash) must leave its region open, so
         # the parent knows the child ended where a run without `--matrix`
         # would not have been.
@@ -214,7 +215,7 @@ module Mutineer
         # @yieldreturn [Object]
         # @return [Object] the block's value.
         def skipping
-          open = channel && serial_killed && armed_here?
+          open = channel && serial_failed && armed_here?
           KillChannel.write_skip(channel) if open
           value = yield
           KillChannel.write_unskip(channel) if open
@@ -222,9 +223,10 @@ module Mutineer
         end
 
         # Sends one result recorded on `reporter`: a pass, or a kill for a
-        # failure or an error. Skips send no test line, though they count as
-        # seen, and results on other reporters count for nothing. The
-        # `parallel` line goes out when the first parallel class starts (see
+        # failure or an error, or an unavailable database outcome. Skips send
+        # no test line, though they count as seen, and results on other
+        # reporters count for nothing. The `parallel` line goes out when the
+        # first parallel class starts (see
         # {.class_starting}), so a kill that precedes it came from a serial test.
         #
         # @param reporter [Minitest::CompositeReporter] the recording reporter.
@@ -251,8 +253,14 @@ module Mutineer
         def send_result(result)
           return if result.skipped?
 
-          event = result.passed? ? KillChannel::PASS : KillChannel::KILL
-          self.serial_killed = true if event == KillChannel::KILL && !parallel_marked
+          event = if result.passed?
+                    KillChannel::PASS
+                  elsif InTestDatabaseError.database_error(result.failures.first)
+                    KillChannel::UNAVAILABLE
+                  else
+                    KillChannel::KILL
+                  end
+          self.serial_failed = true if event != KillChannel::PASS && !parallel_marked
           file, line = Array(result.source_location)
           KillChannel.write(channel, event, file, *name_and_id(result, line))
         rescue StandardError

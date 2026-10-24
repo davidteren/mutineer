@@ -4,7 +4,9 @@ module Mutineer
   # Immutable outcome of running one mutant. Ten distinct states:
   #   killed       - a test failed/errored, so the mutation was caught.
   #   survived     - every test passed, so the mutation went undetected.
-  #   error        - the child crashed (unhandled exception): exit status 2.
+  #   error        - the child crashed (unhandled exception), or a Minitest
+  #                  run's first failure was a database connection or lock
+  #                  error (#296): exit status 2.
   #   timeout      - the parent SIGKILLed a child that overran its wall clock.
   #   skipped      - the mutated source failed to re-parse (invalid); no fork.
   #   no_coverage  - no test exercises the mutated line; not run, not scored.
@@ -162,7 +164,8 @@ module Mutineer
   # cleanly (see Isolation.finish). It is false when the child timed out,
   # errored or exited the process early, when the recorder never armed, when
   # its lines arrived out of order, when Minitest returned after an Interrupt
-  # with tests unseen, or when the row does not agree with the verdict.
+  # with tests unseen, when a test had a database connection or lock failure,
+  # or when the row does not agree with the verdict.
   Kills = Data.define(:killed_by, :ran, :complete)
 
   # Aggregates a flat list of Results into counts, the mutation score, and the
