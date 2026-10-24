@@ -1,0 +1,25 @@
+test/rails_worker_db_test.rb
+  s_d2b7b963e307a9::t_10ad1a0eb9e659 557,560-561,564,575-577,579-588
+lib/mutineer/rails_worker_db.rb
+  s_d2b7b963e307a9::t_69cd65267dd5e9 498-500
+  s_d2b7b963e307a9::t_626229b98a0b4c 427,505,507,513
+  s_d2b7b963e307a9::t_10ad1a0eb9e659 521-524,545-548
+test/daemon_worker_db_test.rb
+  s_d2b7b963e307a9::t_4765a855702c19 136-172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4fedaa7b6fe44fb5df2762ea89580a0ecc9b97d6",
+  "prompts": {},
+  "sessions": {
+    "s_d2b7b963e307a9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16dd5-7b15-7ab0-b4e0-7d7830b052e7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
