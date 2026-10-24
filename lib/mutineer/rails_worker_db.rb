@@ -436,7 +436,7 @@ module Mutineer
     # @param schema_path [String] absolute path to `db/schema.rb`.
     # @return [Boolean]
     def self.schema_current?(schema_path)
-      text    = File.read(schema_path)
+      text    = File.read(schema_path, encoding: "UTF-8")
       version = schema_file_version(text)
       conn = ActiveRecord::Base.connection
       base       = ActiveRecord::Base
