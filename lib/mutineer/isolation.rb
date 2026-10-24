@@ -267,7 +267,14 @@ module Mutineer
       # Module.nesting identically, with no dynamic string execution for
       # scanners to flag. The input is the project's OWN source (the enclosing
       # method, textually mutated), loaded only in this forked child.
-      Tempfile.create(["mutineer_surgical", ".rb"]) do |f|
+      #
+      # The file sits beside the source, as in apply_whole_file, so `__dir__`
+      # and `require_relative` in the method resolve against its real
+      # neighbours (#279). In the temp dir they raise ENOENT or LoadError, and
+      # every mutant of the method dies whatever it changes. The hidden
+      # `.mutineer_mutant` name keeps Zeitwerk away (#253) and lets the parent
+      # sweep an orphan after a timeout kill.
+      Tempfile.create([".mutineer_mutant", ".rb"], File.dirname(File.expand_path(subject.file))) do |f|
         f.write(wrapped)
         f.flush
         load f.path
