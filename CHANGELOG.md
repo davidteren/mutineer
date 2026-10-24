@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **`--output .mutineer/run.json` on a fresh checkout.** The documented
+  report path no longer exits 2 when `.mutineer/` does not exist yet. The
+  output check now creates the cache directory (`cache_dir`) when it is the
+  missing parent. Any other missing directory still exits 2 (#270).
+
 ## [1.7.0] - 2026-10-23
 
 ### Added
