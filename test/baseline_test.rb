@@ -75,9 +75,11 @@ class BaselineTest < Minitest::Test
     delta = base.diff(agg)
 
     assert_empty delta.fixed_survivors
+    assert_equal [%w[aaa not_run], %w[bbb not_run]], unverified(delta)
     refute delta.regressed
     refute delta.incomplete, "an empty run does not change the shared completeness rule"
     assert_empty base.diff(agg, scoped: true).fixed_survivors
+    assert_empty base.diff(agg, scoped: true).unverified_survivors
   end
 
   def test_partial_run_reports_only_verified_fixed_survivors
@@ -88,7 +90,7 @@ class BaselineTest < Minitest::Test
     delta = base.diff(current, partial: true)
 
     assert_equal %w[killed ignored], delta.fixed_survivors.map { |h| h["id"] }
-    assert_equal [%w[undecided error]], unverified(delta)
+    assert_equal [%w[absent not_run], %w[undecided error]], unverified(delta)
     assert_empty base.diff(current, partial: true, scoped: true).fixed_survivors
     assert_equal %w[killed ignored absent], base.diff(current).fixed_survivors.map { |h| h["id"] }
   end
@@ -100,6 +102,27 @@ class BaselineTest < Minitest::Test
                               id_map: { "new_killed" => "old_killed", "new_ignored" => "old_ignored" })
 
     assert_equal %w[old_killed old_ignored], delta.fixed_survivors.map { |h| h["id"] }
+    assert_equal [%w[old_absent not_run]], unverified(delta)
+  end
+
+  def test_selected_sources_and_operators_only_limit_absent_survivors
+    Dir.mktmpdir do |root|
+      File.write(File.join(root, FILE), SRC)
+      File.write(File.join(root, "other.rb"), SRC)
+      doc = baseline_doc(%w[killed ignored omitted_source omitted_operator removed_id removed_file foreign])
+      doc["survivors"].each do |entry|
+        entry["file"] = "other.rb" if %w[killed ignored omitted_source].include?(entry["id"])
+        entry["operator"] = "arithmetic" if %w[killed ignored omitted_operator].include?(entry["id"])
+        entry["file"] = "removed.rb" if entry["id"] == "removed_file"
+        entry["file"] = "/other/checkout/pricing.rb" if entry["id"] == "foreign"
+      end
+      base = Mutineer::Baseline.new(doc)
+      delta = base.diff(agg(as_status(:killed, "killed"), as_status(:ignored, "ignored")),
+                        sources: [File.join(root, ".", FILE)], operators: %w[comparison], project_root: root)
+
+      assert_equal %w[killed ignored removed_id removed_file], delta.fixed_survivors.map { |h| h["id"] }
+      assert_equal [%w[omitted_source not_run], %w[omitted_operator not_run], %w[foreign not_run]], unverified(delta)
+    end
   end
 
   # A --since run's score covers a different denominator than a full-run

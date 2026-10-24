@@ -226,7 +226,7 @@ echo "  case20 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case20/summary.
 echo; echo "== 21: old gem omitted baseline completeness (expects exit 2, report preserved) =="
 run_step case21 STUB_EXIT=0 STUB_REPORT="$SCRATCH/report-old-baseline.json" OUTPUT="$SCRATCH/case21/out.json"
 grep -q 'baseline.incomplete' "$SCRATCH/case21/stdout.txt" && echo "  OK: old baseline report needs an upgrade" || echo "  FAIL: missing completeness silently accepted"
-[ -s "$SCRATCH/case21/out.json" ] && echo "  OK: old baseline report delivered" || echo "  FAIL: old report lost"
+cmp -s "$SCRATCH/report-old-baseline.json" "$SCRATCH/case21/out.json" && echo "  OK: old baseline report delivered" || echo "  FAIL: old report changed or lost"
 echo "  case21 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case21/summary.md")"
 
 echo; echo "== 22: old gem report without a baseline (expects exit 0) =="

@@ -43,7 +43,7 @@ Checked on main (`18ef483`) in this clone:
 
 - **No verdict:** `error`, `timeout` or `uncapturable`, as today (`summary.no_verdict`, `no_verdict[]`). This plan does not change it.
 - **Undecided:** any status other than `killed`, `survived` or `ignored`. This is the no-verdict set plus `ran_at_load`, `no_coverage`, `unplaceable` and `skipped`.
-- **Unverified survivor:** a stored survivor whose current result is undecided.
+- **Unverified survivor:** a stored survivor whose current result is undecided, or whose id was omitted by partial selection or an empty unscoped run (labelled `not_run` only in the baseline delta).
 
 ### Requirements
 
@@ -55,8 +55,8 @@ Checked on main (`18ef483`) in this clone:
 
 **Fixed versus unverified (#283, #286)**
 
-- R4. A stored survivor is fixed only when its current result is `killed` or `ignored`, or when no current result has its id in a complete run. With `--only` or `--fail-fast`, known kills and ignores remain fixed but absent ids do not. A run with no results reports no stored survivor as fixed. The scoped rule stays: under a diff-scoped side, `fixed_survivors` is empty.
-- R5. Each unverified survivor goes into `Delta#unverified_survivors` with its current status. This list is informational. It does not set `regressed` or the exit code. It is filled under a diff-scoped side too.
+- R4. A stored survivor is fixed only when its current result is `killed` or `ignored`, or when no current result has its id in a full run within the selected source/operator scope. Existing unselected files and omitted operators are not verified; a source actually removed from the project is a genuine removal. With `--only` or `--fail-fast`, known kills and ignores remain fixed but absent ids do not. A run with no results reports no stored survivor as fixed. The scoped rule stays: under a diff-scoped side, `fixed_survivors` is empty.
+- R5. Each unverified survivor goes into `Delta#unverified_survivors` with its current status. Stored ids omitted by `--only`, `--fail-fast`, selected sources/operators, or an empty unscoped run use `not_run`, a baseline-only label that does not create a Result status or alter aggregate counts. Omitted ids under `--since` stay absent, as before. This list is informational. It does not set `regressed` or the exit code. It is filled under a diff-scoped side too.
 - R6. The old-format id matching from #126 applies to unverified survivors exactly as it applies to survivors.
 - R7. The JSON `baseline` block adds `incomplete` and `unverified_survivors[]`. The human "Baseline comparison" section names the unverified survivors and gives the completeness ratio when the run is incomplete.
 - R8. The GitHub Action job summary says when the baseline run is incomplete and how many survivors are unverified.
@@ -94,11 +94,11 @@ Checked on main (`18ef483`) in this clone:
 
 ### Key Technical Decisions
 
-- KTD1. **"Fixed" means killed, ignored, or absent in a complete run.** This is the root-cause fix. The comments list error, timeout, uncapturable and `ran_at_load`. A stored survivor that is now `no_coverage` lost its covering test, and one that is now `unplaceable` or `skipped` was not run. None of them is a fix. One rule covers them all, so a later status cannot reopen the hole. `ignored` stays fixed because the user decided that mutant is equivalent; the schema row says so. `CLI.execute` passes `partial: true` to `Baseline#diff` when `--only` or `--fail-fast` is enabled. In that mode, only matched killed or ignored results count as fixed; absent ids do not. This reporting rule does not change score, regression, completeness, or exit-code math. `--since` still reports no fixed survivors.
+- KTD1. **"Fixed" means killed, ignored, or absent within a full run's selected source/operator scope.** This is the root-cause fix. The comments list error, timeout, uncapturable and `ran_at_load`. A stored survivor that is now `no_coverage` lost its covering test, and one that is now `unplaceable` or `skipped` was not run. None of them is a fix. One rule covers them all, so a later status cannot reopen the hole. `ignored` stays fixed because the user decided that mutant is equivalent; the schema row says so. `CLI.execute` passes `partial: true` to `Baseline#diff` when `--only` or `--fail-fast` is enabled. In that mode, only matched killed or ignored results count as fixed; absent ids go to `unverified_survivors` with the baseline-only status `not_run`. An empty unscoped run uses the same label. No Result status or aggregate count changes. `CLI.execute` also passes the expanded selected source paths and active operator names into optional `Baseline#diff` parameters. Only absent ids consult those selections; known matching kills and ignores remain fixed despite old stored metadata. An existing unselected source or an omitted operator is `not_run`. A removed project file remains a fix; a foreign stored path whose removal cannot be checked is unverified. `ProjectPath` supplies path normalization. Default nil selections preserve direct callers. This reporting rule does not change score, regression, completeness, or exit-code math. `--since` still reports no fixed survivors.
 - KTD2. **Add the nil-score guard inside `broken_nil_score?`.** Today `Reporter#broken_nil_score?` (`lib/mutineer/reporter.rb:795-798`) is true whenever any mutant has no verdict, also when the run has a score. Every current caller (lines 82, 783, 962) checks `mutation_score.nil?` first. On `AggregateResult` the guard moves into the method, so `incomplete?` is `broken_nil_score? || broken_share_exceeded?` and is safe to call alone.
 - KTD3. **Move the constants with the helpers.** `BROKEN_SHARE_LIMIT` and `BROKEN_FLOOR` move from `Reporter` to `AggregateResult`. Nothing outside `lib/mutineer/reporter.rb` reads them, and the Ruby API is not in `STABILITY.md`.
 - KTD4. **Mark tested `ran_at_load` results with a new `Result` field.** Add `tested_at_load` to `Result = Data.define(...)` (`lib/mutineer/result.rb:63`) with default `false` in `initialize` (line 74), plus a predicate `tested_at_load?`. The factory builders (lines 81-128) do not change, because every field is a keyword with a default; `reason` was added the same way. The `details` field stays free text, as `result.rb:42-44` requires. The #286 comment suggested a `details` marker; this plan does not use it.
-- KTD5. **Use JSON schema `2.0`, and keep `regressed` narrow.** The new keys are additive, but `baseline.fixed_survivors` changes meaning by excluding undecided survivors. The schema contract requires a major bump for that change. David approved fixing the review findings now; JSON schema `2.0` carries the meaning change, independently of the gem version. Consumers must accept the new schema major, and saved `1.x` reports remain valid baseline inputs. `baseline.regressed` still means new survivors or a score drop; consumers read `baseline.incomplete` for a broken run. The CLI ORs the two as it already ORs `--threshold` and `--baseline`. Q4 is resolved by this decision.
+- KTD5. **Use JSON schema `2.0`, and keep `regressed` narrow.** The new keys are additive, but `baseline.fixed_survivors` changes meaning by excluding undecided survivors. The schema contract requires a major bump for that change. David approved fixing the review findings now; JSON schema `2.0` carries the meaning change, independently of the gem version. Consumers must accept the new schema major, and saved full-run `1.x` reports remain valid baseline inputs. Reports written with `--since` remain invalid baselines and exit 2. `baseline.regressed` still means new survivors or a score drop; consumers read `baseline.incomplete` for a broken run. The CLI ORs the two as it already ORs `--threshold` and `--baseline`. Q4 is resolved by this decision.
 - KTD6. **Keep the `Delta` defaults.** `Baseline#diff` (`lib/mutineer/baseline.rb:167`) is the only `Delta.new` call. The new fields still get defaults, to match the existing `legacy_matches: 0` and keep one style in `Delta`.
 
 ### High-Level Technical Design
@@ -111,10 +111,10 @@ flowchart TD
   A -->|yes| K[Still a survivor: not listed]
   A -->|no| B{An undecided current result matches h?}
   B -->|yes| U[unverified_survivors, with that status]
-  B -->|no| C{Empty run or either side diff-scoped?}
+  B -->|no| C{Either side diff-scoped?}
   C -->|yes| N[Not listed]
-  C -->|no| P{Partial run and no killed or ignored match?}
-  P -->|yes| N
+  C -->|no| P{Empty, partial, or outside source/operator selection without a killed or ignored match?}
+  P -->|yes| O[unverified_survivors, status not_run]
   P -->|no| F[fixed_survivors]
 ```
 
@@ -212,8 +212,9 @@ Which stderr note prints (U3):
 - `test_old_format_baseline_errored_survivor_is_unverified` (R6): baseline `old1`, current `error` `new1`, `id_map: { "new1" => "old1" }`. Expect unverified `[old1]`, fixed empty. Before: fixed `[old1]`.
 - `test_single_error_among_many_kills_does_not_regress` (AE4): 1 error, 50 kills. Expect `incomplete` false.
 - `test_empty_run_does_not_report_stored_survivors_as_fixed` prevents an empty result list from claiming that every stored survivor is fixed, without changing the shared completeness rule.
-- `test_partial_run_reports_only_verified_fixed_survivors` retains killed and ignored fixes, keeps undecided results unverified, suppresses absent ids only on a partial run, and keeps the `--since` rule. `test_partial_run_matches_verified_fixes_in_an_old_format_baseline` applies the same rule through legacy ids.
-- The existing `test_subset_does_not_regress` keeps "absent means fixed" when the run has results.
+- `test_partial_run_reports_only_verified_fixed_survivors` retains killed and ignored fixes, keeps undecided results unverified, lists omitted partial-run ids with baseline-only status `not_run`, and keeps the `--since` rule. `test_partial_run_matches_verified_fixes_in_an_old_format_baseline` applies the same rule through legacy ids.
+- `test_selected_sources_and_operators_only_limit_absent_survivors` keeps existing omitted files/operators and unknown foreign removals unverified, preserves actual removed ids/files, and gives matched kills/ignores precedence over stale metadata.
+- The existing `test_subset_does_not_regress` keeps "absent means fixed" when an unscoped full run has results.
 
 **Verification:** every existing test in `test/baseline_test.rb` passes unchanged, including the #126 old-format tests (lines 256-350).
 
@@ -239,7 +240,7 @@ Which stderr note prints (U3):
   - When the list is not empty: `"<n> baseline survivor(s) not decided this run (not killed, survived or ignored), so not counted as fixed:"`, with "survivor" or "survivors" by count. Then one line per entry, `"  ? <subject> (<file>:<line>) <operator> [<status>]"`, through `printable` (#163), with `.to_s` on each stored field first, because a hand-edited baseline can lack one. Show at most `MATRIX_LIST_LIMIT` entries, then `"  and <k> more (see baseline.unverified_survivors in --format json)"`.
   - When `delta.incomplete`: `"incomplete run: <no_verdict_ratio>"` when the run has a score, and `"incomplete run: nothing could be scored (<broken_counts_detail>)"` when it has none. This matches the stderr note.
   - The verdict line: `REGRESSION vs baseline` when `regressed`, else `INCOMPLETE vs baseline (the run did not finish)` when `incomplete`, else `OK: no regression vs baseline`.
-- `CLI.execute` passes `partial: config.fail_fast || !config.only.nil?` into `Baseline#diff`. No new CLI option or summary field is added.
+- `CLI.execute` passes `partial: config.fail_fast || !config.only.nil?`, `sources: config.sources`, and the active operator names (including the default set) into `Baseline#diff`. No new CLI option or summary field is added.
 - Help text: "Fail (exit 1) on NEW survivors or a score drop vs a prior --format json run, or when the run is incomplete (CI delta gate)".
 - `action.yml`: append `"; <n> unverified survivor(s)"` when `.baseline.unverified_survivors` is not empty. End the line with `: REGRESSED.` when `regressed`, else `: INCOMPLETE (the run did not finish; see no_verdict[]).` when `incomplete`, else `.`. When both are true, append `"; incomplete run"` before `: REGRESSED.`. Use `// []` for an absent unverified list. A JSON baseline report must contain a boolean `incomplete`; otherwise the Action exits 2 with an upgrade message, preserves the report, and labels completeness unavailable in the summary. Older reports without a baseline block remain supported.
 
@@ -253,7 +254,8 @@ Which stderr note prints (U3):
 - `test_baseline_on_a_complete_run_keeps_the_errored_count_note` (`test/reporter_test.rb`, AE4): 1 error, 50 kills, a complete delta, `threshold: 0`. Stderr includes "1 mutant errored." and "With a positive --threshold, or with --baseline".
 - Update `test_errors_without_a_threshold_point_at_the_threshold_flag` (`test/reporter_test.rb:190`) to the new first sentence. Its second assertion stays.
 - `test_baseline_exits_one_when_every_baseline_survivor_errors` (`test/cli_test.rb`, AE1 end to end): write a JSON baseline from the weak run (`calculator_weak_test.rb`). Run again with `--test-command` set to a shell-only command that exits 0 when `calculator.rb` equals a saved copy and 127 otherwise (for example `sh -c 'cmp -s calculator.rb calculator.rb.orig || exit 127' sh %{files}`). Shell avoids the Ruby that `ExternalBackend.child_env` picks from version-manager shims. Every mutant then errors (exit 127 is scored `error`). Expect exit 1, `baseline.incomplete` true, `baseline.regressed` false, `fixed_survivors` empty, and the unverified ids equal to the baseline survivor ids. Before the fix the run exits 0.
-- `test_only_reports_the_killed_baseline_survivor_as_fixed` writes a real weak-suite baseline, kills only `Calculator#add`, and verifies that the untested `Calculator#subtract` survivor is not fixed. `test_fail_fast_keeps_absent_baseline_survivors_out_of_fixed` writes a baseline with three survivors, kills add, stops on subtract, and verifies that unrun multiply is not fixed. Both use the real CLI.
+- `test_only_reports_the_killed_baseline_survivor_as_fixed` writes a real weak-suite baseline, kills only `Calculator#add`, and verifies that the untested `Calculator#subtract` survivor is unverified with status `not_run`. `test_fail_fast_keeps_absent_baseline_survivors_out_of_fixed` writes a baseline with three survivors, kills add, stops on subtract, and verifies that unrun multiply is unverified with status `not_run`. Both use the real CLI.
+- `test_narrower_sources_keep_existing_file_survivors_unverified_but_removed_files_fixed` verifies both source omission and genuine file removal through the real CLI. `test_narrower_operators_keep_absent_baseline_survivors_unverified` verifies omitted operators selected by flag, config file, and default selection.
 - Action harness: in `test/fixtures/action_harness.sh`, add a report fixture with `baseline.incomplete: true`, `regressed: false` and one unverified survivor, run the step, and echo its baseline line (`grep -o 'Baseline: .*'` on that case's `summary.md`, as the existing case3 line does). In `test/action_harness_test.rb`, assert the echoed line contains `1 unverified survivor(s)` and `INCOMPLETE`, and add the case to the exit-code map.
 
 **Verification:** with `--baseline` and no `--threshold`, an incomplete run exits 1 and stdout, stderr and the Action summary all say why; a complete run exits as before.

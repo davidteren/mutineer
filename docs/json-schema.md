@@ -24,8 +24,9 @@ A consumer should accept any `1.x` document and read only the keys it knows.
 Schema `2.0` narrows `baseline.fixed_survivors`: a survivor without a verdict
 is now listed in `baseline.unverified_survivors` instead. Consumers that accept
 only schema `1.x` must support this new major before reading a current report.
-Other existing keys keep their meaning. A saved `1.x` report remains valid as
-an input to `--baseline`; this change does not alter mutant ids.
+Other existing keys keep their meaning. A saved full-run `1.x` report remains
+valid as an input to `--baseline`; reports written with `--since` remain
+invalid baselines and exit 2. This change does not alter mutant ids.
 
 Mutant `id` values are opaque identifiers. How an id is derived is versioned by
 `summary.id_format`, not by `schema_version`: when `id_format` changes, every id
@@ -202,8 +203,8 @@ The delta versus the prior `--format json` report, matched by `id`. A baseline w
 | `score_dropped` | bool | True if `score_after < score_before - epsilon`. |
 | `score_comparable` | bool | True when the two scores share a denominator (neither side was diff-scoped, both non-null). False means the score-drop check was skipped — do not render the scores as a comparison. Additive key. |
 | `new_survivors[]` | array | Survivors present now but absent in the baseline: `{ subject, file, line, operator, token, id }`. |
-| `fixed_survivors[]` | array | Baseline survivors that this run killed or ignored, or that it no longer has: `{ subject, file, line, operator, id }`. A survivor the user now ignores counts as fixed. Under `--only` or `--fail-fast`, only known kills and ignores count; absent ids were not verified. Empty when this run has no results, or under a diff-scoped side: an out-of-scope survivor was never re-tested, so absence does not mean fixed. Changed in `2.0`: a baseline survivor without a decision this run is no longer listed here (see `unverified_survivors`). |
-| `unverified_survivors[]` | array | Baseline survivors whose result this run is not `killed`, `survived` or `ignored` (for example `error`, `timeout`, `ran_at_load` or `no_coverage`): `{ subject, file, line, operator, id, status }`, where `status` is this run's status: one of `error`, `timeout`, `uncapturable`, `ran_at_load`, `no_coverage`, `unplaceable` or `skipped`. They are not fixed and do not set `regressed`. Filled under a diff-scoped side too. Additive key (schema `2.0`). |
+| `fixed_survivors[]` | array | Baseline survivors that this run killed or ignored, or that it no longer has within the selected source/operator scope: `{ subject, file, line, operator, id }`. A source file actually removed from this project counts as removed; an existing file omitted from the selected sources does not. A known matching kill or ignore counts as fixed even if the stored file/operator metadata differs. Under `--only` or `--fail-fast`, only known kills and ignores count; absent ids were not verified. Empty when this run has no results, or under a diff-scoped side: an out-of-scope survivor was never re-tested, so absence does not mean fixed. Changed in `2.0`: a baseline survivor without a decision this run is no longer listed here (see `unverified_survivors`). |
+| `unverified_survivors[]` | array | Baseline survivors whose result this run is not `killed`, `survived` or `ignored` (for example `error`, `timeout`, `ran_at_load` or `no_coverage`): `{ subject, file, line, operator, id, status }`. `status` is the current result status: one of `error`, `timeout`, `uncapturable`, `ran_at_load`, `no_coverage`, `unplaceable` or `skipped`. A stored id omitted by `--only`, `--fail-fast`, source selection, operator selection, or an empty unscoped run uses `not_run`. A foreign stored path whose removal cannot be checked uses the same label. This is a baseline-only label, not a mutant Result status; it adds nothing to aggregate counts or the completeness gate. These survivors are not fixed and do not set `regressed`. Current undecided results are included under a diff-scoped side too; omitted ids under `--since` remain absent from the list. Additive key (schema `2.0`). |
 
 ## Exit codes
 

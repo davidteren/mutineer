@@ -26,6 +26,8 @@ module Mutineer
     #                     undecided (not killed, survived or ignored: an error,
     #                     a timeout, ran_at_load, no_coverage and so on), each
     #                     with its current `status`. Not fixed, and never gates.
+    #                     Omitted ids in a partial or empty unscoped run use
+    #                     `not_run`, a baseline-only label, not a Result status.
     #                     Filled on a diff-scoped side too (#283, #286).
     #   score_drop      - current score < baseline score - epsilon. nil on
     #                     either side skips the check, and a diff-scoped run
@@ -118,6 +120,9 @@ module Mutineer
     # cannot verify a fix, so it reports no fixed survivors.
     # `partial: true` marks a run that can omit mutants (`--only`, `--fail-fast`):
     # known kills and ignores still count as fixes, but absent ids do not.
+    # Those absent ids are unverified with the baseline-only `not_run` label.
+    # With source/operator selections, an absent id outside the selection is
+    # also `not_run`. A deleted project file still counts as a genuine fix.
     #
     # `scoped: true` marks the current run as diff-scoped (`--since`): its score
     # is computed over only the changed-line mutants, a different denominator
@@ -141,15 +146,20 @@ module Mutineer
     # @param epsilon [Float] score-drop tolerance.
     # @param scoped [Boolean] current run was diff-scoped (`--since`).
     # @param partial [Boolean] current run can omit mutants (`--only`, `--fail-fast`).
+    # @param sources [Array<String>, nil] selected source paths; nil keeps full-source semantics.
+    # @param operators [Array<String>, nil] selected operator names; nil keeps all-operator semantics.
     # @param id_map [Hash{String => String}] current new id => old-format id.
     # @param project_root [String] root that survivor `file` paths resolve against.
     # @return [Mutineer::Baseline::Delta] delta summary.
-    def diff(aggregate, epsilon: 0.0, scoped: false, partial: false, id_map: {}, project_root: Dir.pwd)
+    def diff(aggregate, epsilon: 0.0, scoped: false, partial: false, sources: nil, operators: nil,
+             id_map: {}, project_root: Dir.pwd)
       current = aggregate.surviving_mutants
       baseline_ids = @survivors.map { |h| h["id"] }.to_set
       # A new-format baseline never matches on old ids.
       legacy = @id_format.nil? ? id_map : {}
       file_key = ->(path) { path && ProjectPath.relative(path, project_root) }
+      source_keys = sources&.map { |path| file_key.call(path) }&.to_set
+      operator_names = operators&.map(&:to_s)&.to_set
       # [old id, file] for each stored survivor: an old id alone is ambiguous.
       baseline_pairs = @survivors.map { |h| [h["id"], file_key.call(h["file"])] }.to_set
       # Old ids stored with a file from another machine: matched on the id alone.
@@ -170,7 +180,7 @@ module Mutineer
       end
       survivor_index = match_index(current, legacy, file_key)
       undecided_index = match_index(aggregate.results.reject { |r| DECIDED.include?(r.status) }, legacy, file_key)
-      fixed_index = match_index(aggregate.results.select { |r| r.killed? || r.ignored? }, legacy, file_key) if partial
+      fixed_index = match_index(aggregate.results.select { |r| r.killed? || r.ignored? }, legacy, file_key)
       # Under a diff-scoped side an out-of-scope baseline survivor was never
       # re-tested, so reporting it "fixed" would be false: empty is honest.
       unscoped = !scoped && !@scoped
@@ -181,8 +191,13 @@ module Mutineer
 
         if (r = stored_match(undecided_index, h, foreign, file_key))
           unverified << h.merge("status" => r.status.to_s)
-        elsif unscoped && aggregate.total.positive? && (!partial || stored_match(fixed_index, h, foreign, file_key))
-          fixed << h
+        elsif unscoped
+          if stored_match(fixed_index, h, foreign, file_key) ||
+             (!partial && aggregate.total.positive? && !outside_selection?(h, source_keys, operator_names, project_root))
+            fixed << h
+          else
+            unverified << h.merge("status" => "not_run")
+          end
         end
       end
 
@@ -203,6 +218,29 @@ module Mutineer
     end
 
     private
+
+    # Whether an absent stored mutant was excluded by source or operator
+    # selection. A missing project file is a removal, but a foreign path cannot
+    # prove removal in this checkout. Matched results bypass this metadata check.
+    #
+    # @param stored [Hash] stored baseline survivor.
+    # @param sources [Set<String>, nil] normalized selected source paths.
+    # @param operators [Set<String>, nil] selected operator names.
+    # @param project_root [String] root for stored project-relative paths.
+    # @return [Boolean] whether the stored id was outside the selected scope.
+    def outside_selection?(stored, sources, operators, project_root)
+      return true if operators && !operators.include?(stored["operator"].to_s)
+      return false unless sources
+
+      path = stored["file"]
+      return true unless path
+
+      key = ProjectPath.relative(path, ProjectPath.root_real(project_root))
+      return false if sources.include?(key)
+      return true if File.absolute_path?(key)
+
+      File.exist?(ProjectPath.absolute(path, project_root))
+    end
 
     # Indexes results by the three keys a stored survivor can match on: the
     # current id, the `[old id, file]` pair, and the old id alone (for a stored

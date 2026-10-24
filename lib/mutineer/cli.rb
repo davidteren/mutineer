@@ -675,6 +675,8 @@ module Mutineer
                 Baseline.load(config.baseline).diff(aggregate, epsilon: config.baseline_epsilon,
                                                                scoped: !config.since.nil?,
                                                                partial: config.fail_fast || !config.only.nil?,
+                                                               sources: config.sources,
+                                                               operators: config.operators || MutatorRegistry::DEFAULT_NAMES,
                                                                id_map: extras[:id_map],
                                                                project_root: config.project_root)
               end

@@ -29,7 +29,8 @@ Each number moves on its own.
 
 The unreleased report uses JSON schema `2.0` because `baseline.fixed_survivors`
 now excludes undecided survivors. Consumers must support the new schema major;
-saved `1.x` reports remain valid baseline inputs. This does not enable the
+saved full-run `1.x` reports remain valid baseline inputs. Reports written with
+`--since` remain invalid as baselines and exit 2. This does not enable the
 planned gem `2.0` changes below. Published gem `1.7.0` reports schema `1.8`.
 
 ### Exit codes
