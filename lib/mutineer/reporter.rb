@@ -304,7 +304,7 @@ module Mutineer
         "total" => @agg.total, "killed" => @agg.killed_count,
         "survived" => @agg.survived_count, "no_coverage" => @agg.no_coverage_count,
         "uncapturable" => @agg.uncapturable_count, "unplaceable" => @agg.unplaceable_count,
-        "ran_at_load" => @agg.ran_at_load_count, "ran_at_load_tested" => @agg.ran_at_load_tested_count,
+        "ran_at_load" => @agg.ran_at_load_count, "ran_at_load (tested)" => @agg.ran_at_load_tested_count,
         "ignored" => @agg.ignored_count,
         "skipped" => @agg.skipped_invalid_count,
         "errored" => @agg.errored_count, "timeout" => @agg.timeout_count

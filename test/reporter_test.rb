@@ -415,7 +415,7 @@ class ReporterTest < Minitest::Test
     tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true)
     out = StringIO.new
     reporter([Mutineer::Result.killed, tested]).report(out: out, err: StringIO.new, format: "html")
-    assert_includes out.string, "<span><strong>1</strong> ran_at_load_tested</span>"
+    assert_includes out.string, "<span><strong>1</strong> ran_at_load (tested)</span>"
   end
 
   def test_na_score_warns_on_stderr
