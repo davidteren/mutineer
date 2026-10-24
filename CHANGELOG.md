@@ -27,6 +27,8 @@ All notable changes to this project are documented here. The format is based on
   SQL statement, still score `killed`. So does `ConnectionNotDefined`, which
   Rails 8 raises for an unknown role or shard. Rails 7.2 raises a plain
   `ConnectionNotEstablished` there, so such a mutant scores `error` on 7.2.
+  With `--matrix`, a database-failed test is never a killer and leaves its
+  row incomplete, even if an earlier assertion already killed the mutant.
 - **The Minitest clean check now runs the tests in the order the mutant runs
   use (#282).** Since 1.1.0, each mutant run used seed `1`, but coverage
   capture, the clean checks and the `--daemon` mutant runs used a random
