@@ -5,7 +5,7 @@
 
 /* PROJECT */
   Name: Mutineer
-  Description: Clean-room mutation testing for Ruby — Prism + stdlib only, zero runtime dependencies.
+  Description: Mutation testing for Ruby. Checks whether your tests catch small code changes.
   Repository: https://github.com/davidteren/mutineer
   Package: https://rubygems.org/gems/mutineer
   License: MIT

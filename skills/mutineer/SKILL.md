@@ -1,6 +1,6 @@
 ---
 name: mutineer
-description: Clean-room mutation testing for Ruby (Prism + stdlib, zero deps). Mutates source one change at a time, runs the suite against each mutant, and reports the mutants tests fail to catch, with a versioned JSON contract and CI/agent gating. Use when checking whether a Ruby test suite would catch a change, finding weak or missing tests, gating CI on a mutation score, or acting on mutineer's JSON report.
+description: Mutation testing for Ruby (Prism + stdlib, zero deps). Mutates source one change at a time, runs the suite against each mutant, and reports the mutants tests fail to catch, with a versioned JSON contract and CI/agent gating. Use when checking whether a Ruby test suite would catch a change, finding weak or missing tests, gating CI on a mutation score, or acting on mutineer's JSON report.
 ---
 
 # Mutineer
@@ -29,21 +29,22 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 
 ## Agent loop
 
-1. Edit code + tests on a branch.
+1. Edit code and tests on a branch. Fetch `origin/main` before using it below.
 2. Run diff-scoped, as JSON:
    ```sh
    mutineer run app/ --since origin/main --threshold 90 --format json --output .mutineer/run.json
    ```
 3. Parse `survivors[]` — each carries a `diff` and an `id`. File moves, renames,
    project-root changes, and changes to repeated-name or repeated-mutation order can
-   change ids; see [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). For each, write/strengthen a
-   test that fails under that change.
+   change ids; see [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). Review each change
+   against the intended behaviour. If review finds a test gap, write or strengthen
+   a test that fails under that change.
 4. Re-run. Accept the result only when this run exits `0`, `summary.score` is not `null`,
    and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`;
    the score is rounded, so `--threshold 100` alone can still pass with a survivor.
 
-A survivor you cannot kill after a few attempts may be equivalent: no test can
-tell it from the original. Do not loop on it. Report it for human review. To
+Stop after a few unsuccessful attempts and ask a person to review the survivor.
+Failed attempts do not prove that a mutant is equivalent. To
 suppress it, `mutineer triage .mutineer/run.json --reason TEXT --id ID` prints an
 `ignore:` entry for `.mutineer.yml` (Mutineer 1.7 or later reads it). See
 [Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants).

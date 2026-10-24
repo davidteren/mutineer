@@ -169,7 +169,7 @@ class DocsContractTest < Minitest::Test
     end
     total = defaults.size + tier2.size
     assert_includes File.read("README.md"), "| Operators | #{total} (#{defaults.size} by default, #{tier2.size} opt-in) |"
-    assert_includes File.read("docs/index.html"), %(<b class="odo" data-from="0">#{total}</b> mutation operators)
+    assert_includes File.read("docs/index.html"), %(<b class="odo" data-from="0">#{total}</b> types of code change)
     assert_includes File.read("docs/llms.txt"), "#{total} mutation operators"
   end
 
