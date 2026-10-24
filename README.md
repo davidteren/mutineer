@@ -533,6 +533,8 @@ Tradeoffs — this path is correct but not free:
   stopped during a test. Otherwise it scores `error`, such as a crash at load.
   When a SimpleCov `minimum_coverage` gate fails the run, the summary line
   decides: a failing test is a kill, and every test passing is `survived`.
+  With no recognized summary line, or with SimpleCov's
+  `print_error_status = false`, the gate's exit scores `error`.
   When the clean run prints no summary line, Mutineer warns once and counts
   every exit 1 as a kill.
   Uncovered mutants count as survivors.

@@ -188,7 +188,8 @@ module Mutineer
         # plus its message means no test caught the mutant: in process, the
         # fork exits before that hook, and the mutant survives. Keyed on
         # SimpleCov's own message, so code under test that calls `exit 2`
-        # still scores error.
+        # still scores error. Ceiling: with `SimpleCov.print_error_status =
+        # false` the gate prints nothing, and its exit scores error too.
         if text.match?(SIMPLECOV_GATE)
           return Result.killed if failure_reported?(text)
           return Result.survived if tests_passed?(text)
