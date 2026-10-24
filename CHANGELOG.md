@@ -17,15 +17,17 @@ All notable changes to this project are documented here. The format is based on
 - **The Minitest clean check now runs the tests in the order the mutant runs
   use (#282).** Since 1.1.0, each mutant run used seed `1`, but coverage
   capture, the clean checks and the `--daemon` mutant runs used a random
-  seed. An order-dependent suite could pass the clean check and then fail
-  in every mutant run, so each mutant scored a false `killed`. Every Minitest
-  run now uses seed `1`, or `SEED` when the environment sets it. Such a suite
-  now stops the run with "the unmutated suite is not green", and the message
-  names the seed: run the listed test files with `SEED=1` to look for the
-  order-dependent test, or set `SEED` to choose another order. The internal
-  constant `MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED` is now `PINNED_SEED`. One gap stays: when a mutant runs several
-  covering test files, their test classes can still run in a different order
-  than in the combined clean check. RSpec does not change.
+  seed. An order-dependent suite could pass the clean check and then fail in
+  every mutant run, so each mutant scored a false `killed`. Every Minitest
+  run that Mutineer starts itself (not `--test-command`) now uses seed `1`,
+  or `SEED` when the environment sets it. Such a suite now stops the run
+  with "the unmutated suite is not green", and the message names the seed:
+  run the listed test files with `SEED=1` to look for the order-dependent
+  test, or set `SEED` to choose another order. The internal constant
+  `MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED` is now `PINNED_SEED`.
+  One gap stays: when a mutant runs several covering test files, their test
+  classes can still run in a different order than in the combined clean
+  check. RSpec does not change.
 
 ## [1.7.0] - 2026-10-23
 
