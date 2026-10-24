@@ -37,6 +37,10 @@ module Mutineer
     # The result is already in the pipe then; the wait only lets the reader
     # thread run, even when the capture deadline has passed (#129).
     RESULT_GRACE = 1
+    # The redaction module, by absolute path, for the subprocess scripts: they
+    # write a failing test's report, or a load error, to the inherited stderr,
+    # and either can quote DATABASE_URL.
+    REDACTION_PATH = File.expand_path("redaction.rb", __dir__)
 
     attr_reader :project_root, :failed_test_files, :failed_clean_tests, :phase_a_ran, :map
 
@@ -1028,10 +1032,13 @@ module Mutineer
         Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
         Minitest.extensions << "mutineer_report"
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_preload_paths.inspect}.each { |f| require f }
-        #{loads}
+        begin
+          #{abs_preload_paths.inspect}.each { |f| require f }
+          #{loads}
+        #{load_failure_rescue}
+        end
         _passed = Minitest.run([])
-        $stderr.write(_report.string) unless _passed
+        $stderr.write(#{redacted_expression("_report.string")}) unless _passed
         exit(_passed ? 0 : 1)
       RUBY
     end
@@ -1053,11 +1060,55 @@ module Mutineer
         end
         RSpec::Core::Runner.disable_autorun!
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_preload_paths.inspect}.each { |f| require f }
+        begin
+          #{abs_preload_paths.inspect}.each { |f| require f }
+        #{load_failure_rescue}
+        end
         _sink = StringIO.new
         status = RSpec::Core::Runner.run(["--no-color", #{specs}], _sink, _sink)
-        $stderr.write(_sink.string) unless status.zero?
+        $stderr.write(#{redacted_expression("_sink.string")}) unless status.zero?
         exit(status.zero? ? 0 : 1)
+      RUBY
+    end
+
+    # Ruby source, for a subprocess script, that loads the redaction module
+    # and returns the redacted value of `expression`.
+    #
+    # @api private
+    # @param expression [String] Ruby source for the text to redact.
+    # @return [String] Ruby script text.
+    def redacted_expression(expression)
+      "(require #{REDACTION_PATH.inspect}; Mutineer::Redaction.text(#{expression}))"
+    end
+
+    # Ruby source, for a subprocess script, that closes a `begin` around the
+    # project and test file loads. A load error then prints one redacted line
+    # (Ruby's own printer would show DATABASE_URL raw), and the child still
+    # exits 1, as it did when the error went uncaught. Under --verbose the
+    # redacted backtrace follows; otherwise a hint says how to get it.
+    #
+    # @api private
+    # @return [String] Ruby script text.
+    def load_failure_rescue
+      detail =
+        if @verbose
+          <<~RUBY.chomp
+            (_e.backtrace || []).each { |_f| $stderr.puts("\t" + Mutineer::Redaction.text(_f)) }
+            _cause = _e.cause
+            while _cause
+              $stderr.puts("[mutineer] caused by: " + Mutineer::Redaction.describe(_cause))
+              _cause = _cause.cause
+            end
+          RUBY
+        else
+          '$stderr.puts("[mutineer] re-run with --verbose for the backtrace")'
+        end
+      <<~RUBY.chomp
+        rescue ScriptError, StandardError => _e
+          require #{REDACTION_PATH.inspect}
+          $stderr.puts("[mutineer] load failed: " + Mutineer::Redaction.describe(_e))
+          #{detail}
+          exit 1
       RUBY
     end
 
@@ -1088,11 +1139,14 @@ module Mutineer
         Minitest.extensions << "mutineer_report"
         Coverage.start(lines: true, methods: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_preload_paths.inspect}.each { |f| require f }
-        _load = #{load_coverage_expression}
-        load #{absolute(test_path).inspect}
+        begin
+          #{abs_preload_paths.inspect}.each { |f| require f }
+          _load = #{load_coverage_expression}
+          load #{absolute(test_path).inspect}
+        #{load_failure_rescue}
+        end
         _passed = Minitest.run([])
-        $stderr.write(_report.string) unless _passed
+        $stderr.write(#{redacted_expression("_report.string")}) unless _passed
         _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => _coverage,
                                     "load_coverage" => _load,
@@ -1122,11 +1176,14 @@ module Mutineer
         RSpec::Core::Runner.disable_autorun!
         Coverage.start(lines: true, methods: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_preload_paths.inspect}.each { |f| require f }
-        _load = #{load_coverage_expression}
+        begin
+          #{abs_preload_paths.inspect}.each { |f| require f }
+          _load = #{load_coverage_expression}
+        #{load_failure_rescue}
+        end
         _sink = StringIO.new
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
-        $stderr.write(_sink.string) unless _status.zero?
+        $stderr.write(#{redacted_expression("_sink.string")}) unless _status.zero?
         _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
         _result.puts JSON.generate("passed" => _status.zero?, "coverage" => _coverage,
                                     "load_coverage" => _load,
