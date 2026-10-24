@@ -124,7 +124,7 @@ class ParallelStrategyTest < Minitest::Test
       rd.close
       eval(src, TOPLEVEL_BINDING) # rubocop:disable Security/Eval
       def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
-      subject = Mutineer::Subject.new(file: "x.rb", namespace: ["S7bMB"],
+      subject = Mutineer::Subject.new(file: File.join(Dir.tmpdir, "x.rb"), namespace: ["S7bMB"],
                                     name: def_node.name, singleton: false, def_node: def_node)
       off = src.byteindex("1")
       mutation = Mutineer::Mutation.new(start_offset: off, end_offset: off + 1,
@@ -145,8 +145,9 @@ class ParallelStrategyTest < Minitest::Test
   private
 
   # Defines the source in a forked child, applies the surgical mutation, and
-  # returns the post-mutation value of `call` as a string.
-  def surgical_result(src, namespace:, singleton:, token:, replacement:, call:, file: "x.rb")
+  # returns the post-mutation value of `call` as a string. The snippet file is
+  # written beside `file`, so the default keeps it out of the checkout.
+  def surgical_result(src, namespace:, singleton:, token:, replacement:, call:, file: File.join(Dir.tmpdir, "x.rb"))
     rd, wr = IO.pipe
     pid = fork do
       rd.close
