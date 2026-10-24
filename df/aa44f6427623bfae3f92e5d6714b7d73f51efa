@@ -1,0 +1,29 @@
+CHANGELOG.md
+  s_d164a58b33b1a3::t_6e924e70fe2b46 15-30
+docs/equivalent-skips.html
+  s_d164a58b33b1a3::t_d6f99aba77cf57 7,14,22,53,82-86
+docs/equivalent-skips.md
+  s_d164a58b33b1a3::t_3afd1fe1777e0b 4-5,50-58
+lib/mutineer/mutators/range_literal.rb
+  s_d164a58b33b1a3::t_4435db52d3fb23 13-17,22-81,87,93-104
+test/mutators/range_literal_test.rb
+  s_d164a58b33b1a3::t_5cc705ee5c8dbc 45-49,55-76,78
+test/site_docs_test.rb
+  s_d164a58b33b1a3::t_ecf86414070cc7 88-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dfaa44f6427623bfae3f92e5d6714b7d73f51efa",
+  "prompts": {},
+  "sessions": {
+    "s_d164a58b33b1a3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c762a0aa-a2bc-48ef-8521-6cf8d063f61e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
