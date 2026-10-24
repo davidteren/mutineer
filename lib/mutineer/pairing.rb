@@ -162,8 +162,10 @@ module Mutineer
     # prefix (`lib/mutineer/test_runners.rb`, `lib/foo/test/test_app.rb`). A
     # source whose own test (`<stem>_test.rb`, `test_<stem>.rb`,
     # `<stem>_spec.rb` or a split `<stem>_*_test.rb`) sits beside it in the
-    # test set is not flagged. Directories compare as paths expanded against
-    # the root, so `./a_test.rb` and `a_test.rb` match. No file is read.
+    # test set is not flagged. Paths compare relative to the root, as in
+    # {expand_sources} (the root's real path counts too, for macOS `/var` vs
+    # `/private/var`), so `./a_test.rb` and `a_test.rb` match. No file content
+    # is read.
     #
     # @param path [String] positional argument as typed.
     # @param project_root [String] repository root for relative expansion.
@@ -174,13 +176,17 @@ module Mutineer
       return false unless name.match?(TEST_NAME)
 
       root = File.expand_path(project_root)
-      abs = File.expand_path(path, root)
-      rel = abs.delete_prefix("#{root}/")
+      roots = [root, ProjectPath.root_real(root)].uniq
+      relative = lambda do |p|
+        abs = File.expand_path(p, root)
+        root_relative(abs, roots) || abs
+      end
+      rel = relative.call(path)
       return rel.match?(%r{\A(test|spec)/}) unless name.match?(/_(test|spec)\.rb\z/)
       return true if rel.match?(%r{(\A|/)(test|spec)/})
 
-      dir = File.dirname(abs)
-      beside = Array(tests).map { |t| File.expand_path(t, root) }
+      dir = File.dirname(rel)
+      beside = Array(tests).map(&relative)
                            .select { |t| File.dirname(t) == dir }
                            .map { |t| File.basename(t) }
       stem = File.basename(name, ".rb")

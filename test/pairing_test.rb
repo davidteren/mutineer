@@ -349,6 +349,18 @@ class PairingTest < Minitest::Test
     assert flagged?("/proj/test/test_b.rb", ["test/test_a.rb"])
   end
 
+  def test_given_as_source_matches_paths_typed_through_the_real_root
+    Dir.mktmpdir("mutineer-pair") do |tmp|
+      real = File.join(tmp, "real")
+      FileUtils.mkdir_p(real)
+      link = File.join(tmp, "link")
+      File.symlink(real, link)
+      root_real = File.realpath(real)
+      assert flagged?(File.join(root_real, "test/test_b.rb"), [], root: link)
+      assert flagged?(File.join(root_real, "b_test.rb"), ["a_test.rb"], root: link)
+    end
+  end
+
   def test_given_as_source_ignores_test_dirs_above_the_root
     refute flagged?("/home/test/proj/lib/test_runners.rb", [], root: "/home/test/proj")
     refute flagged?("/home/test/proj/lib/ab_test.rb", ["test/ab_test_test.rb"], root: "/home/test/proj")
