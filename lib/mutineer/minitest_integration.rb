@@ -7,7 +7,8 @@ require_relative "minitest_integration/in_test_database_error"
 module Mutineer
   # Child-process-only: loads a test file in the current process and runs it
   # programmatically, returning an exit status integer (0 = all passed,
-  # 1 = any failure/error, 2 = the first failure was a database error).
+  # 1 = any failure/error, 2 = the first failure was an Active Record
+  # connection or lock error).
   #
   # Never call this in the parent — it manipulates global Minitest state
   # (autorun, runnables) that only makes sense in a throwaway forked child.
@@ -63,7 +64,7 @@ module Mutineer
     # @param record_to [IO, nil] a `--matrix` run: send each test's outcome to
     #   this channel (see {KillRecorder}) and run every test.
     # @return [Integer] 0 on success, 1 on failure, 2 when the first failure
-    #   was a database error (see {InTestDatabaseError}).
+    #   was an Active Record connection or lock error (see {InTestDatabaseError}).
     # @raise [ArgumentError] when both options are given: a matrix run never stops.
     def self.run(test_files, stop_at_first_failure: false, record_to: nil)
       if stop_at_first_failure && record_to
@@ -116,7 +117,7 @@ module Mutineer
 
       # A plugin can replace the summary reporter, so a stop decides by itself.
       code = passed && !StopAtFirstFailure.stopped_here? ? 0 : 1
-      InTestDatabaseError.finish!(code)
+      InTestDatabaseError.exit_code(code)
     ensure
       StopAtFirstFailure.disarm!
       KillRecorder.disarm!

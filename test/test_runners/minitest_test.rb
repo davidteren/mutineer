@@ -28,6 +28,7 @@ class TestRunnersMinitestTest < Minitest::Test
   LATER    = File.join(FIX, "stop_at_first_failure_later_class_test.rb")
   NESTED   = File.join(FIX, "stop_at_first_failure_nested_run_test.rb")
   DB_ERROR = File.join(FIX, "in_test_db_error_test.rb")
+  DB_ERROR_LINE = "[mutineer-child] a test failed with a database error, so the run has no verdict: "
 
   # Wraps each assertion in capture_subprocess_io, which reopens $stdout.
   SUBPROCESS_IO = File.join(FIX, "calculator_subprocess_io_test.rb")
@@ -504,8 +505,6 @@ class TestRunnersMinitestTest < Minitest::Test
     end
   end
 
-  DB_ERROR_LINE = "[mutineer-child] a test failed with a database error, so the run has no verdict: "
-
   def assert_db_error(klass, result)
     code, err = result
     assert_equal 2, code, err
@@ -527,7 +526,9 @@ class TestRunnersMinitestTest < Minitest::Test
 
   def test_first_database_error_decides_on_every_path
     env = { "FIRST" => "deadlock", "SECOND" => "fail" }
-    assert_db_error "Deadlocked", db_error_run(env, stop_at_first_failure: true)
+    result = db_error_run(env, stop_at_first_failure: true)
+    assert_db_error "Deadlocked", result
+    assert_includes result.last, "holds a lock on a second connection or thread."
     assert_db_error "Deadlocked", db_error_run(env)
     IO.pipe do |_rd, wr|
       assert_db_error "Deadlocked", db_error_run(env, record_to: wr)
@@ -581,6 +582,6 @@ class TestRunnersMinitestTest < Minitest::Test
     result = db_error_run({ "FIRST" => "connection", "MESSAGE" => "could not connect to postgres://user:secret@db/app" })
     assert_db_error "ConnectionNotEstablished", result
     refute_includes result.last, "secret"
+    assert_includes result.last, "Check that the database server is up and has free connections."
   end
-
 end

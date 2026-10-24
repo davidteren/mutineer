@@ -61,10 +61,13 @@ class DaemonClientTest < Minitest::Test
   def test_in_test_database_error_is_error_not_killed
     errio = StringIO.new
     with_client(errio: errio) do |client|
-      lost = ORIGINAL.sub("quantity * unit_price_cents",
-                          "ActiveRecord::Base.remove_connection; Order.count")
-      refute_equal ORIGINAL, lost, "mutation anchor must exist"
-      assert_equal "error", run_payload(client, 1, lost)
+      # Active Record itself raises here: the pool is gone. The fixture app runs
+      # Rails 7.2, which raises ConnectionNotEstablished. Rails 8 raises
+      # ConnectionNotDefined, which stays `killed`.
+      removed_pool = ORIGINAL.sub("quantity * unit_price_cents",
+                                  "ActiveRecord::Base.remove_connection; Order.count")
+      refute_equal ORIGINAL, removed_pool, "mutation anchor must exist"
+      assert_equal "error", run_payload(client, 1, removed_pool)
 
       raised = ORIGINAL.sub("quantity * unit_price_cents",
                             'raise ActiveRecord::ConnectionNotEstablished, "gone"')

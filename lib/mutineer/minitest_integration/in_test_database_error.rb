@@ -36,8 +36,13 @@ module Mutineer
 
       # Subclasses of {NAMES} that point at the code, not the database. Rails 8
       # raises `ConnectionNotDefined` for a role or shard that no connection
-      # defines, which a mutant of a `connected_to` call can cause.
+      # defines, which a mutant of a `connected_to` call can cause. Rails 7.2
+      # raises a plain `ConnectionNotEstablished` there, so on 7.2 such a mutant
+      # scores `error`. The message is not matched (plan Q2).
       CODE_ERROR_NAMES = %w[ActiveRecord::ConnectionNotDefined].freeze
+
+      # The lock errors in {NAMES}, which get their own stderr hint.
+      LOCK_ERROR_NAMES = %w[ActiveRecord::Deadlocked ActiveRecord::LockWaitTimeout].freeze
 
       # Prepended on `Minitest::CompositeReporter`.
       module RecordFirstFailure
@@ -100,15 +105,15 @@ module Mutineer
           self.first_failure = false
         end
 
-        # Ends the decision: returns 2 instead of 1 when the armed run's first
-        # failure was a database error, and writes one line on stderr that
-        # names it. `STDERR`, not `warn`: a test can leave `$stderr` as a
-        # `StringIO`. The flush matters because both fork boundaries end with
+        # The run's exit code: 2 instead of 1 when the armed run's first failure
+        # was a database error. Then it also writes one line on stderr that
+        # names the error. `STDERR`, not `warn`: a test can leave `$stderr` as
+        # a `StringIO`. The flush matters because both fork boundaries end with
         # `exit!`.
         #
         # @param code [Integer] 0 or 1 from the run.
         # @return [Integer] `code`, or 2.
-        def finish!(code)
+        def exit_code(code)
           error = first_failure if armed_here?
           return code unless code == 1 && error
 
@@ -154,8 +159,20 @@ module Mutineer
         def line(error)
           text = Redaction.text("#{error.class}: #{error.message}".scrub)
           text = text.lines.first.to_s.chomp.delete_suffix(".")
-          "[mutineer-child] a test failed with a database error, so the run has no verdict: #{text}. " \
+          "[mutineer-child] a test failed with a database error, so the run has no verdict: #{text}. #{hint(error)}"
+        end
+
+        # What to check for the error: a lock error comes from a second
+        # connection or thread, any other from the server.
+        #
+        # @param error [Exception] the database error.
+        # @return [String]
+        def hint(error)
+          if loaded(LOCK_ERROR_NAMES).any? { |klass| error.is_a?(klass) }
+            "Look for a test or app code that holds a lock on a second connection or thread."
+          else
             "Check that the database server is up and has free connections."
+          end
         end
       end
     end
