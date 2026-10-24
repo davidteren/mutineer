@@ -401,8 +401,12 @@ Bootsnap checks its compile cache by file path, size, and modification time in w
 When the size and the time match, it uses the cached code without reading the file content.
 The in-process and `--daemon` paths load each mutant from a new file, so the cache cannot mix them up.
 `--test-command` rewrites the source file in place.
-Two mutants of the same size, written in the same second, can then load the first one's cached code.
-To rule that out, set `DISABLE_BOOTSNAP_COMPILE_CACHE=1` on the Mutineer command.
+Two mutants of the same size, written in the same second, could then load the first one's cached code.
+So `--test-command` also sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1`, and Bootsnap compiles each file again on every boot.
+This makes each mutant boot slower.
+The variable works through `require "bootsnap/setup"`, which Rails puts in `config/boot.rb`.
+If your app calls `Bootsnap.setup` itself, set `compile_cache_iseq: false` there for mutant runs.
+A wrapper that sets `DISABLE_BOOTSNAP_COMPILE_CACHE` again wins, same as `DISABLE_SPRING`.
 Bootsnap keeps its cache in `tmp/cache/bootsnap`, or under `$BOOTSNAP_CACHE_DIR` when that is set.
 If a run uses code that no longer matches your files, delete that folder and run again.
 

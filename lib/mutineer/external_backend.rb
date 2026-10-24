@@ -26,7 +26,8 @@ module Mutineer
   # Child environment: bundler/gem env injected by Mutineer's Ruby is stripped, and
   # version-manager concrete version bins (e.g. `~/.rbenv/versions/3.4.9/bin`) are
   # removed from PATH so shims / `.ruby-version` can select the app's Ruby (#32).
-  # PARALLEL_WORKERS and DISABLE_SPRING are set to 1 ({RailsRunEnv}).
+  # PARALLEL_WORKERS and DISABLE_SPRING are set to 1 ({RailsRunEnv}), and so is
+  # DISABLE_BOOTSNAP_COMPILE_CACHE ({child_env}).
   module ExternalBackend
     # Generous ceiling for the one-off smoke/calibration run (a cold app boot plus
     # the full suite). The per-mutant timeout is derived from how long this took.
@@ -72,8 +73,13 @@ module Mutineer
     # onto the parent env: set a key to +nil+ to unset it. Scrubs Mutineer/bundler
     # injection and version-manager PATH pins so shims / `.ruby-version` can win.
     # Keeps other vars (e.g. `RAILS_ENV`) so setting them on the Mutineer command
-    # still reaches the suite. Also sets +PARALLEL_WORKERS+ to 1 and
-    # +DISABLE_SPRING+ to 1. A wrapper that sets either variable again wins.
+    # still reaches the suite. Also sets +PARALLEL_WORKERS+, +DISABLE_SPRING+ and
+    # +DISABLE_BOOTSNAP_COMPILE_CACHE+ to 1. A wrapper that sets one of them again
+    # wins. The Bootsnap pin is here, not in {RailsRunEnv.pin_child!}: this
+    # backend rewrites each source file in place, and Bootsnap keys its compile
+    # cache on path, size and whole-second mtime, so a same-size mutant written in
+    # the same second can load the previous mutant's cached code (#285). The
+    # daemon loads each mutant from a new file and keeps the cache.
     #
     # @api private
     # @return [Hash{String => String, nil}] env for Process.spawn.
@@ -97,6 +103,7 @@ module Mutineer
              end
       env["PATH"] = path.join(File::PATH_SEPARATOR)
       RailsRunEnv.pin_child!(env, spring: true)
+      env["DISABLE_BOOTSNAP_COMPILE_CACHE"] = "1"
       env
     end
 
