@@ -16,6 +16,8 @@ cat > "$SCRATCH/report.json" <<'JSON'
 JSON
 sed 's/"scoped":false/"scoped":true/; s/"score_comparable":true/"score_comparable":false/' "$SCRATCH/report.json" > "$SCRATCH/report-scoped.json"
 sed 's/"scoped":false/"scoped":false,"id_format":2,"legacy_id_matches":{"ignore":2,"baseline":3}/' "$SCRATCH/report.json" > "$SCRATCH/report-legacy.json"
+# #283: an incomplete run with one unverified baseline survivor and no regression.
+sed 's/"regressed":true,/"regressed":false,"incomplete":true,"unverified_survivors":[{"subject":"Calc#mul","file":"lib\/calc.rb","line":30,"operator":"arithmetic","id":"aaa111bbb222","status":"error"}],/' "$SCRATCH/report.json" > "$SCRATCH/report-incomplete.json"
 
 mkdir -p "$SCRATCH/bin"
 cat > "$SCRATCH/bin/mutineer" <<STUB
@@ -204,3 +206,7 @@ after=$(cksum "$weird")
 [ "$before" = "$after" ] && echo "  OK: escaped-path baseline kept" || echo "  FAIL: escaped-path baseline was replaced"
 [ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on an escaped path" || echo "  OK: escaped path rejected before running"
 grep '::error::' "$SCRATCH/case17/stdout.txt"
+
+echo; echo "== 18: incomplete baseline run (expects the INCOMPLETE baseline line) =="
+run_step case18 STUB_REPORT="$SCRATCH/report-incomplete.json"
+echo "  case18 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case18/summary.md")"

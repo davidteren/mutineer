@@ -63,23 +63,29 @@ module Mutineer
         out.print rendered
       end
 
-      return warn_errors_without_gate(err) unless threshold&.positive?
+      # --baseline gates on completeness on its own (#283); --threshold always does.
+      gates = []
+      gates << "--threshold" if threshold&.positive?
+      gates << "--baseline" if baseline&.incomplete
+      return warn_errors_without_gate(err) if gates.empty?
 
+      fails = gates.size == 1 ? "the #{gates.first} gate fails" : "the #{gates.join(' and ')} gates fail"
       # Both ways a run can fail the gate on completeness, said here rather than in
       # the human renderer: --format json is the documented CI path, and a run that
       # exits 1 must say why on every format, not only the one a person reads.
       if @agg.broken_nil_score?
-        err.puts "[mutineer] nothing could be scored (#{broken_counts_detail}), so the " \
-                 "--threshold gate fails. See no_verdict[] in --format json for the cause of each."
+        err.puts "[mutineer] nothing could be scored (#{broken_counts_detail}), so " \
+                 "#{fails}. See no_verdict[] in --format json for the cause of each."
       elsif @agg.broken_share_exceeded?
         err.puts "[mutineer] #{no_verdict_ratio}: #{broken_counts_detail}. The score covers " \
-                 "only part of the run, so the --threshold gate fails. See no_verdict[] in " \
+                 "only part of the run, so #{fails}. See no_verdict[] in " \
                  "--format json for the cause of each."
       end
     end
 
-    # Errors are out of the score, so a run with no --threshold passes however
-    # many mutants errored. Say so, and say what --threshold would enforce.
+    # Errors are out of the score, so a run that no gate fails on completeness
+    # passes however many mutants errored. Say so, and say what --threshold and
+    # --baseline enforce.
     #
     # @api private
     # @param err [IO] error stream.
@@ -89,8 +95,8 @@ module Mutineer
       return unless count.positive?
 
       err.puts "[mutineer] #{count} #{count == 1 ? 'mutant' : 'mutants'} errored. Errors are not in the " \
-               "score, so they do not fail a run without a positive --threshold. With one, the run fails " \
-               "when nothing can be scored, or when more than one mutant has no verdict and they exceed " \
+               "score, so they do not fail a run on their own. With a positive --threshold, or with " \
+               "--baseline, the run fails when nothing can be scored, or when more than one mutant has no verdict and they exceed " \
                "#{(AggregateResult::BROKEN_SHARE_LIMIT * 100).round}% of those attempted (no_verdict[] in --format json)."
     end
 
@@ -558,6 +564,8 @@ module Mutineer
     def baseline_json(delta)
       {
         regressed: delta.regressed,
+        # Additive (1.9, #283): the run fails the completeness rule; --baseline exits 1.
+        incomplete: delta.incomplete,
         score_before: delta.score_before,
         score_after: delta.score_after,
         score_dropped: delta.score_drop,
@@ -570,7 +578,12 @@ module Mutineer
         fixed_survivors: delta.fixed_survivors.map do |h|
           { subject: h["subject"], file: h["file"], line: h["line"],
             operator: h["operator"], id: h["id"] }
-        end.sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s] }
+        end.sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s] },
+        # Additive (1.9, #283, #286): stored survivors this run did not decide.
+        unverified_survivors: delta.unverified_survivors.map do |h|
+          { subject: h["subject"], file: h["file"], line: h["line"],
+            operator: h["operator"], id: h["id"], status: h["status"] }
+        end.sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s, h[:id].to_s] }
       }
     end
 
@@ -824,8 +837,9 @@ module Mutineer
     end
 
     # The --baseline delta, appended after the normal report. Names every NEW
-    # survivor (subject (file:line) operator) and the score delta when it dropped,
-    # then a one-line REGRESSION/OK verdict so CI logs show which gate fired.
+    # survivor (subject (file:line) operator), every unverified baseline
+    # survivor, the score delta when it dropped and an incomplete run, then a
+    # one-line REGRESSION/INCOMPLETE/OK verdict so CI logs show which gate fired.
     def baseline_section(out, delta)
       out.puts
       out.puts "Baseline comparison"
@@ -839,11 +853,52 @@ module Mutineer
         line, = diff_for(r.mutation, source)
         out.puts "  + #{printable(r.subject.qualified_name)} (#{printable(file)}:#{line}) #{r.mutation.operator}"
       end
+      unverified_lines(out, delta.unverified_survivors)
+      if delta.incomplete
+        # The same facts as the stderr note in {#report}.
+        detail = @agg.broken_nil_score? ? "nothing could be scored (#{broken_counts_detail})" : no_verdict_ratio
+        out.puts "incomplete run: #{detail}"
+      end
       out.puts "score dropped #{delta.score_before}% -> #{delta.score_after}%" if delta.score_drop
       # An OK verdict must not imply a check that never ran: say when the score
       # comparison was skipped (a diff-scoped side or a nil score).
       out.puts "score-drop check skipped (scores not comparable)" unless delta.score_comparable
-      out.puts(delta.regressed ? "REGRESSION vs baseline" : "OK: no regression vs baseline")
+      out.puts baseline_verdict(delta)
+    end
+
+    # The last line of the baseline section: which gate failed, if any.
+    #
+    # @api private
+    # @param delta [Mutineer::Baseline::Delta] baseline delta.
+    # @return [String]
+    def baseline_verdict(delta)
+      return "REGRESSION vs baseline" if delta.regressed
+      return "INCOMPLETE vs baseline (the run did not finish)" if delta.incomplete
+
+      "OK: no regression vs baseline"
+    end
+
+    # The baseline survivors this run did not decide, at most MATRIX_LIST_LIMIT
+    # of them. Each stored field goes through `to_s` first: a hand-edited
+    # baseline can lack one.
+    #
+    # @api private
+    # @param out [IO] output stream.
+    # @param entries [Array<Hash>] Delta#unverified_survivors.
+    # @return [void]
+    def unverified_lines(out, entries)
+      return if entries.empty?
+
+      out.puts "#{entries.size} baseline #{entries.size == 1 ? 'survivor' : 'survivors'} not decided this run " \
+               "(not killed, survived or ignored), so not counted as fixed:"
+      entries.sort_by { |h| [h["file"].to_s, h["line"].to_i, h["operator"].to_s, h["id"].to_s] }
+             .first(MATRIX_LIST_LIMIT).each do |h|
+        subject, file, line, operator, status = h.values_at("subject", "file", "line", "operator", "status").map(&:to_s)
+        out.puts "  ? #{printable(subject)} (#{printable(file)}:#{printable(line)}) #{printable(operator)} " \
+                 "[#{printable(status)}]"
+      end
+      rest = entries.size - MATRIX_LIST_LIMIT
+      out.puts "  and #{rest} more (see baseline.unverified_survivors in --format json)" if rest.positive?
     end
 
     # Writes the survivors block.

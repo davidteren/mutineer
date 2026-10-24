@@ -1112,6 +1112,34 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #283 AE1 end to end: a broken run errors every baseline survivor. Without
+  # --threshold, --baseline still fails it (exit 1), and none reads as fixed.
+  # The test command is shell only, so it does not depend on which Ruby the
+  # external backend picks: it passes on the original file and exits 127
+  # (scored error) on any mutant.
+  def test_baseline_exits_one_when_every_baseline_survivor_errors
+    with_project do |proj|
+      _, err, s1 = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                            "--format", "json", "--output", "base.json", chdir: proj)
+      assert_equal 0, s1.exitstatus, err
+      stored = JSON.parse(File.read(File.join(proj, "base.json")))["survivors"].map { |h| h["id"] }.sort
+      refute_empty stored
+
+      FileUtils.cp(File.join(proj, "calculator.rb"), File.join(proj, "calculator.rb.orig"))
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                  "--test-command", "sh -c 'cmp -s calculator.rb calculator.rb.orig || exit 127' " \
+                                                    "sh %{files}",
+                                  "--jobs", "1", "--format", "json", "--baseline", "base.json", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      doc = JSON.parse(out)["baseline"]
+      assert_equal true, doc["incomplete"]
+      assert_equal false, doc["regressed"]
+      assert_empty doc["fixed_survivors"]
+      assert_equal stored, doc["unverified_survivors"].map { |h| h["id"] }.sort
+      assert_includes err, "so the --baseline gate fails"
+    end
+  end
+
   # The [mutineer] regenerate-baseline warnings in a stderr capture.
   def baseline_warnings(err)
     err.lines.grep(/\A\[mutineer\] the baseline/)

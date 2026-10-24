@@ -349,6 +349,158 @@ class BaselineTest < Minitest::Test
     assert_empty delta.fixed_survivors
   end
 
+  # --- #283 / #286: a stored survivor is fixed only when this run decided it ---
+
+  # A current result with the given status for a stored survivor's mutant.
+  def as_status(status, id)
+    Mutineer::Result.new(status: status).with(subject: subject, mutation: mutation_at(">=", ">", :comparison), id: id)
+  end
+
+  def unverified(delta) = delta.unverified_survivors.map { |h| [h["id"], h["status"]] }
+
+  # AE1: a broken run errors every stored survivor. None is fixed, the run is
+  # incomplete, and regressed keeps its meaning (no new survivor, no drop).
+  def test_errored_baseline_survivors_are_unverified_not_fixed
+    base = Mutineer::Baseline.new(baseline_doc(%w[a b]))
+    delta = base.diff(agg(as_status(:error, "a"), as_status(:error, "b"),
+                          Mutineer::Result.killed, Mutineer::Result.killed))
+
+    assert_empty delta.fixed_survivors
+    assert_equal [%w[a error], %w[b error]], unverified(delta)
+    assert delta.incomplete
+    refute delta.regressed
+  end
+
+  # AE2: one error in a complete run is unverified; the kill is a real fix.
+  def test_one_errored_survivor_in_a_complete_run_is_unverified_and_does_not_regress
+    base = Mutineer::Baseline.new(baseline_doc(%w[a b]))
+    delta = base.diff(agg(as_status(:error, "a"), as_status(:killed, "b"),
+                          *Array.new(20) { Mutineer::Result.killed }))
+
+    assert_equal %w[b], delta.fixed_survivors.map { |h| h["id"] }
+    assert_equal [%w[a error]], unverified(delta)
+    refute delta.incomplete
+    refute delta.regressed
+  end
+
+  # AE3 (#286): its tests ran and passed, so ran_at_load is not a fix.
+  def test_ran_at_load_baseline_survivor_is_unverified_not_fixed
+    base = Mutineer::Baseline.new(baseline_doc(%w[a]))
+    delta = base.diff(agg(as_status(:ran_at_load, "a"), Mutineer::Result.killed))
+
+    assert_empty delta.fixed_survivors
+    assert_equal [%w[a ran_at_load]], unverified(delta)
+  end
+
+  # It lost its covering test: not a fix either.
+  def test_no_coverage_baseline_survivor_is_unverified_not_fixed
+    base = Mutineer::Baseline.new(baseline_doc(%w[a]))
+    delta = base.diff(agg(as_status(:no_coverage, "a"), Mutineer::Result.killed))
+
+    assert_empty delta.fixed_survivors
+    assert_equal [%w[a no_coverage]], unverified(delta)
+  end
+
+  # The user decided it is equivalent, so it stays fixed.
+  def test_ignored_baseline_survivor_still_counts_as_fixed
+    base = Mutineer::Baseline.new(baseline_doc(%w[a]))
+    delta = base.diff(agg(as_status(:ignored, "a"), Mutineer::Result.killed))
+
+    assert_equal %w[a], delta.fixed_survivors.map { |h| h["id"] }
+    assert_empty delta.unverified_survivors
+  end
+
+  def test_scoped_diff_lists_unverified_survivors_but_no_fixed_ones
+    base = Mutineer::Baseline.new(baseline_doc(%w[a b]))
+    delta = base.diff(agg(as_status(:error, "a"), Mutineer::Result.killed), scoped: true)
+
+    assert_empty delta.fixed_survivors
+    assert_equal [%w[a error]], unverified(delta)
+  end
+
+  def test_old_format_baseline_errored_survivor_is_unverified
+    base = Mutineer::Baseline.new(baseline_doc(%w[old1]))
+    delta = base.diff(agg(as_status(:error, "new1"), Mutineer::Result.killed), id_map: { "new1" => "old1" })
+
+    assert_empty delta.fixed_survivors
+    assert_equal [%w[old1 error]], unverified(delta)
+  end
+
+  # AE4: one error among many kills is noise, not an incomplete run.
+  def test_single_error_among_many_kills_does_not_regress
+    base = Mutineer::Baseline.new(baseline_doc([]))
+    delta = base.diff(agg(Mutineer::Result.error, *Array.new(50) { Mutineer::Result.killed }))
+
+    refute delta.incomplete
+    refute delta.regressed
+  end
+
+  def test_human_report_names_unverified_survivors_and_an_incomplete_run
+    base = Mutineer::Baseline.new(baseline_doc(%w[a b]))
+    results = [as_status(:error, "a"), as_status(:error, "b"), Mutineer::Result.killed, Mutineer::Result.killed]
+    text = render(results, base.diff(agg(*results)), format: "human")
+
+    assert_includes text, "2 baseline survivors not decided this run (not killed, survived or ignored), " \
+                          "so not counted as fixed:"
+    assert_includes text, "  ? Pricing#total (#{FILE}:3) comparison [error]"
+    assert_includes text, "incomplete run: 2 of 4 attempted mutants produced no verdict"
+    assert_includes text, "INCOMPLETE vs baseline (the run did not finish)"
+    refute_includes text, "OK: no regression"
+  end
+
+  def test_human_report_says_when_nothing_could_be_scored
+    base = Mutineer::Baseline.new(baseline_doc(%w[a]))
+    results = [as_status(:error, "a")]
+    text = render(results, base.diff(agg(*results)), format: "human")
+
+    assert_includes text, "incomplete run: nothing could be scored (1 errored)"
+  end
+
+  def test_human_report_uses_the_singular_for_one_unverified_survivor
+    base = Mutineer::Baseline.new(baseline_doc(%w[a b]))
+    results = [as_status(:error, "a"), as_status(:killed, "b"), *Array.new(20) { Mutineer::Result.killed }]
+    text = render(results, base.diff(agg(*results)), format: "human")
+
+    assert_includes text, "1 baseline survivor not decided this run"
+    refute_includes text, "incomplete run:"
+    assert_includes text, "OK: no regression vs baseline"
+  end
+
+  def test_human_report_caps_the_unverified_list
+    ids = Array.new(21) { |i| "s#{i}" }
+    base = Mutineer::Baseline.new(baseline_doc(ids))
+    results = ids.map { |id| as_status(:error, id) }
+    text = render(results, base.diff(agg(*results)), format: "human")
+
+    assert_equal 20, text.lines.count { |l| l.start_with?("  ? ") }
+    assert_includes text, "  and 1 more (see baseline.unverified_survivors in --format json)"
+  end
+
+  # A hand-edited baseline can lack a field; the list still renders.
+  def test_human_report_renders_an_unverified_survivor_with_missing_fields
+    doc = baseline_doc(%w[a])
+    doc["survivors"].first.delete("subject")
+    doc["survivors"].first.delete("line")
+    base = Mutineer::Baseline.new(doc)
+    results = [as_status(:error, "a"), *Array.new(20) { Mutineer::Result.killed }]
+    text = render(results, base.diff(agg(*results)), format: "human")
+
+    assert_includes text, "  ?  (#{FILE}:) comparison [error]"
+  end
+
+  def test_json_baseline_block_carries_unverified_survivors_and_incomplete
+    base = Mutineer::Baseline.new(baseline_doc(%w[b a]))
+    results = [as_status(:error, "a"), as_status(:error, "b"), Mutineer::Result.killed, Mutineer::Result.killed]
+    doc = JSON.parse(render(results, base.diff(agg(*results)), format: "json"))
+
+    assert_equal true, doc["baseline"]["incomplete"]
+    assert_equal false, doc["baseline"]["regressed"]
+    assert_empty doc["baseline"]["fixed_survivors"]
+    assert_equal %w[a b], doc["baseline"]["unverified_survivors"].map { |h| h["id"] }
+    assert_equal({ "subject" => "Pricing#total", "file" => FILE, "line" => 3, "operator" => "comparison",
+                   "id" => "a", "status" => "error" }, doc["baseline"]["unverified_survivors"].first)
+  end
+
   # Baseline is side-effect free: it never prints, the CLI owns every warning.
   def test_diff_prints_nothing
     base = Mutineer::Baseline.new(baseline_doc(%w[aaa old1], score: 80.0))

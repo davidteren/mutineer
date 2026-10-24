@@ -418,7 +418,14 @@ runs:
                          else
                            "; score-drop check skipped (\(.baseline.score_after // "N/A" | oneline) now vs \(.baseline.score_before // "N/A" | oneline) baseline: the two scores do not share a comparable denominator)"
                          end)
-                      + (if .baseline.regressed then ": REGRESSED." else "." end))
+                      + (if ((.baseline.unverified_survivors // []) | length) > 0 then
+                           "; \((.baseline.unverified_survivors // []) | length) unverified survivor(s)"
+                         else "" end)
+                      + (if .baseline.regressed then
+                           (if (.baseline.incomplete // false) then "; incomplete run" else "" end) + ": REGRESSED."
+                         elif (.baseline.incomplete // false) then
+                           ": INCOMPLETE (the run did not finish; see no_verdict[])."
+                         else "." end))
                else empty end),
               (if ((.summary.scoped // false) and .summary.total == 0) then
                  "", "No mutants were in scope for this diff (docs- or test-only changes), so the gate is vacuous for this PR; a full scan (e.g. the baseline refresh on main) is the backstop."
