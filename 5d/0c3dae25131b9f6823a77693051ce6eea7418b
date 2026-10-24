@@ -1,0 +1,31 @@
+CHANGELOG.md
+  s_d164a58b33b1a3::t_837545c147119d 9-21
+README.md
+  s_d164a58b33b1a3::t_6bfd197ed47f2c 95-96,524-527
+lib/mutineer/cli.rb
+  s_d164a58b33b1a3::t_554f8cc540e0d6 691-695,698-700
+lib/mutineer/external_backend.rb
+  s_d164a58b33b1a3::t_ea16ef1c85c600 21-26,42-53,149-151,153,176-185,190-224,226-229,234,238
+lib/mutineer/runner.rb
+  s_d164a58b33b1a3::t_7580b74f33b191 230,232-238,245,260-261,265,267,273
+test/external_backend_test.rb
+  s_d164a58b33b1a3::t_09a63cb3a89597 46-96,218-219,221-228
+test/runner_external_test.rb
+  s_d164a58b33b1a3::t_57014c28a10a17 7,40,111-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5d0c3dae25131b9f6823a77693051ce6eea7418b",
+  "prompts": {},
+  "sessions": {
+    "s_d164a58b33b1a3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c762a0aa-a2bc-48ef-8521-6cf8d063f61e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
