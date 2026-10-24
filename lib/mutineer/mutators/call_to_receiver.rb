@@ -35,11 +35,11 @@ module Mutineer
       WORD_NAME = /\A[[:alpha:]_]/
 
       # Method names whose last call is never replaced. A name is here when
-      # its mutant is most often equivalent, or when every test that runs the
-      # line kills it; neither says anything about the tests. `dup`, `clone`,
-      # `freeze` and `itself` return the receiver or an equal copy, and an
-      # Array answers `include?` and `empty?` as a Set does, so those mutants
-      # are most often equivalent. `new` leaves the class in place of an
+      # its mutant is most often equivalent, or when almost any test that runs
+      # the line kills it; neither says anything about the tests. `dup`,
+      # `clone`, `freeze` and `itself` return the receiver or an equal copy,
+      # and without `to_set` an Array answers `include?` and `empty?` as a Set
+      # does, so those mutants are most often equivalent. `new` leaves the class in place of an
       # instance, which almost any test that runs the line kills.
       SKIPPED = %i[new dup clone freeze itself to_set].freeze
 
