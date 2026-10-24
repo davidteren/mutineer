@@ -59,8 +59,8 @@ entry, as the top of the page says.
 | Name | Why it is skipped |
 |------|-------------------|
 | `new` | The class takes the place of an instance, so almost any use raises. |
-| `dup` | Copy. The copy is equal to the receiver. The mutant differs only when code later changes the copy or the original. |
-| `clone` | Copy. The copy is equal to the receiver. The mutant differs only when code later changes the copy or the original. |
+| `dup` | Copy. The mutant shows when code later changes the copy or the original, or compares the result with the original by identity. |
+| `clone` | Copy. The mutant shows when code later changes the copy or the original, or compares the result with the original by identity. |
 | `freeze` | Returns the receiver. Only a later write shows the difference. |
 | `itself` | Returns the receiver. |
 | `to_set` | An array answers `include?` and `empty?` as a set does, so the mutant is most often equivalent. It keeps duplicates, so `size` and `each` can differ. |

@@ -36,13 +36,13 @@ module Mutineer
 
       # Method names whose last call is never replaced. A name is here when
       # its mutant is most often equivalent, or when almost any test that runs
-      # the line kills it. `freeze` and `itself` return the receiver. `dup` and
-      # `clone` return an equal copy, so the mutant differs only when code
-      # later changes the copy or the original. Dropping `to_set` most often
-      # leaves an Array, which answers `include?` and `empty?` as a Set does
-      # (it keeps duplicates, so `size` and `each` can differ). `new` leaves
-      # the class in place of an instance, which almost any test that runs
-      # the line kills.
+      # the line kills it. `freeze` and `itself` return the receiver. `dup`
+      # and `clone` return a copy, so the mutant shows when code later changes
+      # the copy or the original, or compares the result with the original by
+      # identity. Dropping `to_set` most often leaves an Array, which answers
+      # `include?` and `empty?` as a Set does (it keeps duplicates, so `size`
+      # and `each` can differ). `new` leaves the class in place of an
+      # instance, which almost any test that runs the line kills.
       SKIPPED = %i[new dup clone freeze itself to_set].freeze
 
       # Resets the per-subject record of calls that are links.

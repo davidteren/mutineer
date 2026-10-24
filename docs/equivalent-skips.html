@@ -83,8 +83,8 @@
     <table>
       <tr><th>Name</th><th>Why it is skipped</th></tr>
       <tr><td><code>new</code></td><td>The class takes the place of an instance, so almost any use raises.</td></tr>
-      <tr><td><code>dup</code></td><td>Copy. The copy is equal to the receiver. The mutant differs only when code later changes the copy or the original.</td></tr>
-      <tr><td><code>clone</code></td><td>Copy. The copy is equal to the receiver. The mutant differs only when code later changes the copy or the original.</td></tr>
+      <tr><td><code>dup</code></td><td>Copy. The mutant shows when code later changes the copy or the original, or compares the result with the original by identity.</td></tr>
+      <tr><td><code>clone</code></td><td>Copy. The mutant shows when code later changes the copy or the original, or compares the result with the original by identity.</td></tr>
       <tr><td><code>freeze</code></td><td>Returns the receiver. Only a later write shows the difference.</td></tr>
       <tr><td><code>itself</code></td><td>Returns the receiver.</td></tr>
       <tr><td><code>to_set</code></td><td>An array answers <code>include?</code> and <code>empty?</code> as a set does, so the mutant is most often equivalent. It keeps duplicates, so <code>size</code> and <code>each</code> can differ.</td></tr>
