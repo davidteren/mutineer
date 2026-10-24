@@ -110,7 +110,7 @@ module Mutineer
       # index modules by method name if a large app makes it slow.
       modules = ObjectSpace.each_object(Module).to_a
       found = owners(modules, source_file: source_file, line: line, name: name, singleton: singleton)
-      mod, other = aliases(modules, found, source_file: source_file, line: line, name: name, singleton: singleton).first
+      mod, other = aliases(modules, source_file: source_file, line: line, name: name, singleton: singleton).first
       if mod
         raise "#{where}: #{mod.inspect}#{singleton ? "." : "#"}#{other} is an alias of it and keeps the " \
               "original method, so the mutant scores error."
@@ -144,22 +144,20 @@ module Mutineer
       modules.select { |mod| own_method_at?(singleton ? mod.singleton_class : mod, name, path, line) }
     end
 
-    # Each other name an owner, or a module with an owner among its ancestors,
-    # has for the original def: an alias made outside the block. The alias keeps
-    # the original body, so the mutant could falsely survive.
+    # Each other name any module has for the original def: an alias made
+    # outside the block. Check independently of {.owners}: a wrapper can replace
+    # the original name while its alias keeps the original body, so the mutant
+    # could falsely survive even when no current-name owner remains.
     #
     # @param modules [Array<Module>] every module, including singleton classes.
-    # @param owners [Array<Module>] the owners {.owners} found.
     # @param source_file [String] the file the mutant replaces.
     # @param line [Integer] the original def's first line.
     # @param name [Symbol] the method name.
     # @param singleton [Boolean] true for a class method.
     # @return [Array<Array(Module, Symbol)>] each module and its alias name.
-    def self.aliases(modules, owners, source_file:, line:, name:, singleton:)
-      return [] if owners.empty?
-
+    def self.aliases(modules, source_file:, line:, name:, singleton:)
       path = real_path(source_file)
-      modules.select { |mod| owners.any? { |owner| mod <= owner } }.flat_map do |mod|
+      modules.flat_map do |mod|
         target = singleton ? mod.singleton_class : mod
         (target.instance_methods(false) + target.private_instance_methods(false)).filter_map do |other|
           [mod, other] if other != name && own_method_at?(target, other, path, line)

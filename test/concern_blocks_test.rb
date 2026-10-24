@@ -238,6 +238,76 @@ class ConcernBlocksTest < Minitest::Test
     end
   end
 
+  # A wrapper can replace the current name while an alias keeps the original.
+  # Check this before changing any ordinary owner, even when there are none.
+  def assert_aliased_wrapper_rejected(singleton:, ordinary:)
+    definition = singleton ? "def self.tag = :original" : "def tag = :original"
+    with_hook_concern(definition) do |source, line|
+      wrapped = Class.new { include HookPlaced }
+      target = singleton ? wrapped.singleton_class : wrapped
+      target.class_eval do
+        alias_method :old_tag, :tag
+        private :old_tag
+        def tag = old_tag
+      end
+      plain = Class.new { include HookPlaced } if ordinary
+      if singleton
+        Mutineer::ConcernBlocks.store_hook_def { def self.tag = :mutant }
+      else
+        Mutineer::ConcernBlocks.store_hook_def { def tag = :mutant }
+      end
+
+      error = assert_raises(RuntimeError) { place(source, line, :tag, singleton: singleton) }
+      assert_includes error.message, "old_tag is an alias of it"
+      assert_equal :original, singleton ? wrapped.tag : wrapped.new.tag
+      assert_equal :original, singleton ? plain.tag : plain.new.tag if plain
+    end
+  end
+
+  def test_place_hook_def_rejects_an_aliased_wrapper_without_an_owner
+    assert_aliased_wrapper_rejected(singleton: false, ordinary: false)
+  end
+
+  def test_place_hook_def_rejects_an_aliased_wrapper_beside_an_owner
+    assert_aliased_wrapper_rejected(singleton: false, ordinary: true)
+  end
+
+  def test_place_hook_def_rejects_a_singleton_aliased_wrapper_without_an_owner
+    assert_aliased_wrapper_rejected(singleton: true, ordinary: false)
+  end
+
+  def test_place_hook_def_rejects_a_singleton_aliased_wrapper_beside_an_owner
+    assert_aliased_wrapper_rejected(singleton: true, ordinary: true)
+  end
+
+  def test_reload_scores_an_aliased_wrapper_as_error
+    with_hook_concern("def tag\n  :original\nend") do |source, _line|
+      Object.const_set(:HookPlacedHost, Class.new do
+        include HookPlaced
+        alias_method :old_tag, :tag
+        def tag = old_tag
+      end)
+      test_file = File.join(File.dirname(source), "hook_placed_test.rb")
+      File.write(test_file, <<~RUBY)
+        require "minitest/autorun"
+        class HookAliasedWrapperTest < Minitest::Test
+          def test_tag
+            assert_equal :original, HookPlacedHost.new.tag
+          end
+        end
+      RUBY
+      subject = Mutineer::Project.discover([source]).first
+      body = subject.body_loc
+      mutation = Mutineer::Mutation.new(start_offset: body.start_offset, end_offset: body.end_offset,
+                                        replacement: ":mutant", operator: "test")
+      map = Mutineer::CoverageMap.from_data(map: { "hook_placed.rb:#{body.start_line}" => ["hook_placed_test.rb"] },
+                                           failed_test_files: [], project_root: File.dirname(source))
+      result = Mutineer::Runner.run(mutation, source_file: source, subject: subject,
+                                             strategy: "reload", coverage_map: map)
+      assert_predicate result, :error?, "a wrapper that keeps the original must not score survived"
+    end
+  end
+
   def test_place_hook_def_with_no_owner_is_a_no_op
     with_hook_concern("def tag = :original") do |source, line|
       Mutineer::ConcernBlocks.store_hook_def { def tag = :mutant }

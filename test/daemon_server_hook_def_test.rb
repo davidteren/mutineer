@@ -76,4 +76,18 @@ class DaemonServerHookDefTest < Minitest::Test
     end
     assert_predicate result, :survived?, "the object must dispatch to its singleton class's mutated method"
   end
+
+  def test_apply_payload_scores_an_aliased_wrapper_as_error
+    sent = payload("x * 5")
+    result = Mutineer::Isolation.run do
+      require FIXTURE
+      ConcernProduct.class_eval do
+        alias_method :old_doubled, :doubled
+        def doubled(x) = old_doubled(x)
+      end
+      Mutineer::DaemonServer.send(:apply_payload, sent)
+      ConcernProduct.new.doubled(2) == 4 ? 0 : 1
+    end
+    assert_predicate result, :error?, "the original body retained by an alias must not score survived"
+  end
 end

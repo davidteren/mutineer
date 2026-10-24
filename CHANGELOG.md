@@ -9,10 +9,13 @@ All notable changes to this project are documented here. The format is based on
 ### Added
 
 - **Included and prepended block methods under reload.** After you upgrade,
-  write a new baseline with `--format json`: a `--baseline` check against an
-  older report lists the new survivors as regressions. This applies to GitHub
-  Action users too: the Action runs `--strategy reload` by default (a Rails app
-  without a daemon uses redefine).
+  follow the [full baseline refresh recipe](docs/agentic-coding.md#ci-gate-fail-a-pr-only-when-it-makes-things-worse)
+  with `--no-since --format json --output .mutineer/refreshed-baseline.json` and your
+  existing source and test options. Review the report and replace the stored
+  baseline. GitHub Action users must replace the file passed to the `baseline`
+  input too: the Action runs `--strategy reload` by default (a Rails app
+  without a daemon uses redefine). A check against an older report lists the
+  new survivors as regressions.
   Under `--strategy reload`, in-process and on the daemon, a method in a
   concern's `included` or `prepended` block is now mutated and scored (#297).
   Mutineer loads the mutated method into each class that already has it. A
@@ -26,12 +29,14 @@ All notable changes to this project are documented here. The format is based on
   block, a method inside another method or block, a method with an explicit
   receiver other than `self` (such as `def base.tag` in `included do |base|`),
   every method in a block that uses `alias` or `alias_method`, a method the
-  block itself calls, and every
-  method in a block whose `included do` call is not a plain line of the module
+  block itself calls, and every method in a block whose `included do` call is
+  not a plain line of the module
   body (for example inside `if`, `unless`, or `x = included do`). The full list
   is in `docs/json-schema.md`. If a class aliases a method that Mutineer does
   run (one not in that list) outside the block, the mutant scores `error`,
-  because the alias keeps the original method. `--strategy redefine` still
+  because the alias keeps the original method. This also applies when a
+  wrapper replaces the original name and calls the saved alias.
+  `--strategy redefine` still
   reports all of these methods `unplaceable`.
 
 ### Changed

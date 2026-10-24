@@ -117,8 +117,10 @@ mutant's method is one of these:
 - every method in a file with a `return` outside any method or block;
 - a method that `module_function` makes a module function.
 
-If a class keeps such a method under another name (an `alias` made outside the block), the mutant scores `error`,
-because the alias keeps the original method. `--test-command` runs every kind. `ran_at_load` (schema `1.7`) means the mutant's
+For an otherwise placeable hook-block method, an `alias` made outside the block keeps the original body and
+makes the mutant score `error`. This includes a wrapper that replaces the original name and calls the saved
+alias, even when no host keeps the original at its current name. The methods listed as `unplaceable` above
+keep that verdict and are not run. `--test-command` runs every kind. `ran_at_load` (schema `1.7`) means the mutant's
 line ran while the app booted or its class loaded (for example a class body that calls the method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.
