@@ -42,6 +42,8 @@ inputs:
     description: >-
       Path to a prior `--format json` report. Fail (exit 1) on NEW survivors or
       a score drop versus this baseline, or an incomplete run.
+      With JSON output, a gem that omits `baseline.incomplete` is rejected
+      with exit 2; upgrade the selected gem to verify the completeness gate.
     required: false
     default: ""
   baseline-epsilon:
@@ -374,6 +376,17 @@ runs:
         "${runner[@]}" "${args[@]}"
         code=$?
         set -e
+        # Older gems can pass a broken baseline run without reporting whether
+        # it was complete. Do not interpret the missing field as success.
+        # Ruby is present even on self-hosted runners without jq.
+        if [ "$FORMAT" = "json" ] && report_ok && ruby -rjson -e '
+          doc = JSON.parse(File.read(ARGV[0]))
+          baseline = doc["baseline"]
+          exit(baseline.is_a?(Hash) && ![true, false].include?(baseline["incomplete"]) ? 0 : 1)
+        ' "$TMP_REPORT"; then
+          echo "::error::mutineer: this gem did not report a boolean baseline.incomplete, so the action cannot verify the baseline completeness gate. Upgrade the Gemfile pin or the version input. The report is preserved."
+          code=2
+        fi
         # Deliver the caller's requested output file only from a written report,
         # and keep an auto-routed report visible in the log. cp/cat must not
         # abort under `set -e`: a copy failure would drop $code and skip the
@@ -421,10 +434,14 @@ runs:
                       + (if ((.baseline.unverified_survivors // []) | length) > 0 then
                            "; \((.baseline.unverified_survivors // []) | length) unverified survivor(s) (see baseline.unverified_survivors in the report)"
                          else "" end)
+                       + (if (.baseline.incomplete | type) != "boolean" then
+                            "; completeness unavailable (upgrade the gem)"
+                          else "" end)
                       + (if .baseline.regressed then
                            (if (.baseline.incomplete // false) then "; incomplete run (read no_verdict[] first)" else "" end) + ": REGRESSED."
                          elif (.baseline.incomplete // false) then
-                           ": INCOMPLETE (too many mutants produced no verdict; see no_verdict[])."
+                           (if .summary.score == null then ": INCOMPLETE (nothing could be scored; see no_verdict[])."
+                            else ": INCOMPLETE (too many mutants produced no verdict; see no_verdict[])." end)
                          else "." end))
                else empty end),
               (if ((.summary.scoped // false) and .summary.total == 0) then

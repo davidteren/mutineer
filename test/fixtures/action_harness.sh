@@ -12,13 +12,16 @@ ruby -ryaml -e 'puts YAML.load_file("'"$ROOT"'/action.yml").dig("runs","steps",1
 
 # Fixture: newline token, comma+colon in a path (escaping checks).
 cat > "$SCRATCH/report.json" <<'JSON'
-{"schema_version":"1.2","summary":{"total":10,"killed":6,"survived":2,"no_coverage":1,"uncapturable":0,"skipped_invalid":0,"errored":0,"timeout":0,"ignored":1,"attempted":8,"no_verdict":0,"score":75.0,"scoped":false},"survivors":[{"subject":"Calc#add","file":"lib/we,ird:name.rb","line":12,"operator":"arithmetic","id":"abc123def456","token":"+","diff":"d"},{"subject":"Calc#sub","file":"lib/calc.rb","line":20,"operator":"comparison","id":"fff000111222","token":"<\n100%","diff":"d"}],"baseline":{"regressed":true,"score_before":80.0,"score_after":75.0,"score_dropped":true,"score_comparable":true,"new_survivors":[{"subject":"Calc#add","file":"lib/calc.rb","line":12,"operator":"arithmetic","id":"abc123def456","token":"+"}],"fixed_survivors":[]}}
+{"schema_version":"2.0","summary":{"total":10,"killed":6,"survived":2,"no_coverage":1,"uncapturable":0,"skipped_invalid":0,"errored":0,"timeout":0,"ignored":1,"attempted":8,"no_verdict":0,"score":75.0,"scoped":false},"survivors":[{"subject":"Calc#add","file":"lib/we,ird:name.rb","line":12,"operator":"arithmetic","id":"abc123def456","token":"+","diff":"d"},{"subject":"Calc#sub","file":"lib/calc.rb","line":20,"operator":"comparison","id":"fff000111222","token":"<\n100%","diff":"d"}],"baseline":{"regressed":true,"incomplete":false,"score_before":80.0,"score_after":75.0,"score_dropped":true,"score_comparable":true,"new_survivors":[{"subject":"Calc#add","file":"lib/calc.rb","line":12,"operator":"arithmetic","id":"abc123def456","token":"+"}],"fixed_survivors":[]}}
 JSON
 sed 's/"scoped":false/"scoped":true/; s/"score_comparable":true/"score_comparable":false/' "$SCRATCH/report.json" > "$SCRATCH/report-scoped.json"
 sed 's/"scoped":false/"scoped":false,"id_format":2,"legacy_id_matches":{"ignore":2,"baseline":3}/' "$SCRATCH/report.json" > "$SCRATCH/report-legacy.json"
 # #283: an incomplete run with one unverified baseline survivor and no regression.
-sed 's/"regressed":true,/"regressed":false,"incomplete":true,"unverified_survivors":[{"subject":"Calc#mul","file":"lib\/calc.rb","line":30,"operator":"arithmetic","id":"aaa111bbb222","status":"error"}],/' "$SCRATCH/report.json" > "$SCRATCH/report-incomplete.json"
-sed 's/"regressed":true,/"regressed":true,"incomplete":true,/' "$SCRATCH/report.json" > "$SCRATCH/report-regressed-incomplete.json"
+jq '.baseline.regressed = false | .baseline.incomplete = true | .baseline.unverified_survivors = [{subject: "Calc#mul", file: "lib/calc.rb", line: 30, operator: "arithmetic", id: "aaa111bbb222", status: "error"}]' "$SCRATCH/report.json" > "$SCRATCH/report-incomplete.json"
+jq '.baseline.incomplete = true' "$SCRATCH/report.json" > "$SCRATCH/report-regressed-incomplete.json"
+jq '.summary.score = null | .baseline.regressed = false | .baseline.incomplete = true' "$SCRATCH/report.json" > "$SCRATCH/report-nil-incomplete.json"
+jq '.schema_version = "1.8" | del(.baseline.incomplete) | .baseline.regressed = false' "$SCRATCH/report.json" > "$SCRATCH/report-old-baseline.json"
+jq 'del(.baseline)' "$SCRATCH/report-old-baseline.json" > "$SCRATCH/report-old-no-baseline.json"
 
 mkdir -p "$SCRATCH/bin"
 cat > "$SCRATCH/bin/mutineer" <<STUB
@@ -215,3 +218,16 @@ echo "  case18 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case18/summary.
 echo; echo "== 19: regressed and incomplete baseline run (expects both on the baseline line) =="
 run_step case19 STUB_REPORT="$SCRATCH/report-regressed-incomplete.json"
 echo "  case19 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case19/summary.md")"
+
+echo; echo "== 20: incomplete baseline run with no score (expects the nothing-scored line) =="
+run_step case20 STUB_REPORT="$SCRATCH/report-nil-incomplete.json"
+echo "  case20 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case20/summary.md")"
+
+echo; echo "== 21: old gem omitted baseline completeness (expects exit 2, report preserved) =="
+run_step case21 STUB_EXIT=0 STUB_REPORT="$SCRATCH/report-old-baseline.json" OUTPUT="$SCRATCH/case21/out.json"
+grep -q 'baseline.incomplete' "$SCRATCH/case21/stdout.txt" && echo "  OK: old baseline report needs an upgrade" || echo "  FAIL: missing completeness silently accepted"
+cmp -s "$SCRATCH/report-old-baseline.json" "$SCRATCH/case21/out.json" && echo "  OK: old baseline report delivered" || echo "  FAIL: old report changed or lost"
+echo "  case21 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case21/summary.md")"
+
+echo; echo "== 22: old gem report without a baseline (expects exit 0) =="
+run_step case22 STUB_EXIT=0 STUB_REPORT="$SCRATCH/report-old-no-baseline.json"
