@@ -233,8 +233,10 @@ module Mutineer
     end
 
     # True when Minitest started its tests and the process then ended with no
-    # summary line: code under test called `exit 1` or `abort` mid-run. A load
-    # crash ends before Minitest prints {MINITEST_RUNNING}, so it stays false.
+    # summary line after that start: code under test called `exit 1` or
+    # `abort` mid-run. Only the last start counts, so a wrapper whose earlier
+    # suite printed a summary still kills. A load crash ends before Minitest
+    # prints {MINITEST_RUNNING}, so it stays false.
     # Only the default Minitest reporter prints that line: under RSpec or
     # minitest-reporters, such an exit scores error, not killed. Ceiling: an
     # exception that escapes Minitest.run itself (a reporter plugin bug) also
@@ -244,7 +246,11 @@ module Mutineer
     # @param text [String] output from {summary_text}.
     # @return [Boolean]
     def self.exited_during_tests?(text)
-      text.include?(MINITEST_RUNNING) && !summary_line?(text)
+      running_at = text.rindex(MINITEST_RUNNING)
+      return false unless running_at
+
+      summary_at = [text.rindex(MINITEST_SUMMARY), text.rindex(RSPEC_SUMMARY)].compact.max
+      summary_at.nil? || summary_at < running_at
     end
 
     # True when a recognized summary line is present and none shows a failing

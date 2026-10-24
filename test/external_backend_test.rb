@@ -83,6 +83,8 @@ class ExternalBackendTest < Minitest::Test
       "2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n4 examples, 1 failure\n",
       # Minitest started its tests, then code under test called exit or abort.
       "Run options: --seed 1\n\n# Running:\n\n",
+      # A wrapper's first suite passed, then its second one stopped mid-test.
+      "# Running:\n\n2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n# Running:\n\n",
       "\e[31m5 tests, 5 assertions, \e[0m\e[31m1 failures\e[0m, 0 errors, 0 skips\n",
       "café ✓\n1 runs, 1 assertions, 1 failures, 0 errors, 0 skips\n\xFF\n"
     ].each do |output|
@@ -98,6 +100,7 @@ class ExternalBackendTest < Minitest::Test
       # RSpec prints this when code under test calls exit 1 mid-example.
       "2 examples, 0 failures\n",
       "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n",
+      "# Running:\n\n3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n",
       "2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n" \
         "0 examples, 0 failures, 1 error occurred outside of examples\n"
     ].each do |output|

@@ -92,10 +92,12 @@ An app on an older Ruby uses `--test-command`.
 Mutineer still runs on Ruby 3.4 or later.
 That path is serial.
 It does not narrow tests by coverage.
-Only exit 1 counts as a kill.
+Normally only exit 1 counts as a kill; a SimpleCov gate exit with a
+failing test is also a kill.
 Another exit code scores `error`, and a crash before any test fails can
 also score `error`. A mutant that only fails a SimpleCov coverage gate
-scores `survived`
+scores `survived` when SimpleCov prints its gate message and the run prints
+a passing summary line
 (details under [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34)).
 
 What a release will not break is in

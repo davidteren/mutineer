@@ -17,9 +17,11 @@ All notable changes to this project are documented here. The format is based on
   scores `survived`, which also lowers the score. A `--baseline` made before
   this change can report new survivors and errors: make a new baseline after
   the upgrade.
-- **A crash of `--test-command` no longer counts as a kill (#292).** Only exit 1
-  scores `killed`, the same rule as the in-process backend. Any other non-zero
-  exit scores `error`, such as a wrapper's 137 after an out-of-memory kill.
+- **A `--test-command` exit other than 1 no longer counts as a kill (#292).**
+  Only exit 1 scores `killed`, the same rule as the in-process backend. One
+  exception: a SimpleCov gate exit whose summary reports a failing test also
+  scores `killed`. Any other non-zero exit scores `error`, such as a wrapper's
+  137 after an out-of-memory kill.
 - **A load crash under `--test-command` scores `error` (#292).** When the clean
   run prints a Minitest or RSpec summary line, an exit 1 also needs a failing
   test in that line. Code under test that calls `exit 1` or `abort` while the

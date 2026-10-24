@@ -696,8 +696,8 @@ module Mutineer
       if config.test_command
         warn "[mutineer] --test-command score is an upper bound, not comparable to an " \
              "in-process run: no coverage narrowing (uncovered mutants count as survivors). " \
-             "Only exit 1 counts as a kill (an RSpec --failure-exit-code other than 1 makes " \
-             "every kill an error). When the clean run printed a Minitest or RSpec summary line, " \
+             "Only exit 1 counts as a kill, or a SimpleCov gate exit whose summary shows a failing " \
+             "test (an RSpec --failure-exit-code other than 1 makes every kill an error). When the clean run printed a Minitest or RSpec summary line, " \
              "Mutineer also reads it to tell a crash from a kill. See README: Apps on Ruby < 3.4."
       end
 
