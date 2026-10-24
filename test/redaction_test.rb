@@ -122,6 +122,15 @@ class RedactionTest < Minitest::Test
     assert_equal "pw [REDACTED] rejected", redact("pw a rejected", "postgres://u:a@host/db")
   end
 
+  def test_short_punctuation_passwords_keep_other_tokens_readable
+    { "!" => "word!word", "!a" => "word!aword", "a!" => "worda!word" }.each do |password, token|
+      url = "postgres://u:#{password}@host/db"
+
+      assert_equal token, redact(token, url)
+      assert_equal "pw [REDACTED] rejected", redact("pw #{password} rejected", url)
+    end
+  end
+
   # A percent-encoded password that decodes to invalid UTF-8 must not make
   # every message the fail-closed placeholder.
   def test_handles_a_password_that_decodes_to_invalid_utf8

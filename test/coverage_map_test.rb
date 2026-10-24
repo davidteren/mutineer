@@ -51,6 +51,72 @@ class CoverageMapTest < Minitest::Test
                  map.tests_for(CALC, line_of("a + b"))
   end
 
+  def test_capture_load_error_hides_the_password_and_keeps_verbose_causes
+    Dir.mktmpdir("mutineer-redaction") do |dir|
+      test = File.join(dir, "boom_test.rb")
+      File.write(test, <<~RUBY)
+        begin
+          raise "database postgres://u:s3cret@host/db unavailable"
+        rescue RuntimeError
+          raise "outer load failure"
+        end
+      RUBY
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [test], project_root: dir, verbose: true)
+      status = nil
+
+      _, err = capture_subprocess_io { status, = map.send(:spawn_script, map.send(:subprocess_script, test)) }
+
+      assert_equal 1, status.exitstatus
+      assert_includes err, "[mutineer] load failed: RuntimeError: outer load failure"
+      assert_includes err, "caused by: RuntimeError: database postgres://u:[REDACTED]@host/db unavailable"
+      refute_includes err, "s3cret"
+    end
+  end
+
+  def test_rspec_clean_check_load_error_hides_the_password_and_keeps_verbose_causes
+    Dir.mktmpdir("mutineer-redaction") do |dir|
+      preload = File.join(dir, "boot.rb")
+      File.write(preload, <<~RUBY)
+        begin
+          raise "database postgres://u:s3cret@host/db unavailable"
+        rescue RuntimeError
+          raise "outer load failure"
+        end
+      RUBY
+      map = Mutineer::CoverageMap.new(source_paths: [preload], test_paths: [], project_root: dir,
+                                      framework: "rspec", verbose: true)
+      status = nil
+
+      _, err = capture_subprocess_io { status, = map.send(:spawn_script, map.send(:clean_check_script, []), result: false) }
+
+      assert_equal 1, status.exitstatus
+      assert_includes err, "[mutineer] load failed: RuntimeError: outer load failure"
+      assert_includes err, "caused by: RuntimeError: database postgres://u:[REDACTED]@host/db unavailable"
+      refute_includes err, "s3cret"
+    end
+  end
+
+  def test_rspec_clean_check_failure_report_hides_the_password
+    Dir.mktmpdir("mutineer-redaction") do |dir|
+      spec = File.join(dir, "failing_spec.rb")
+      File.write(spec, <<~RUBY)
+        RSpec.describe "database" do
+          it("connects") { raise "database postgres://u:s3cret@host/db unavailable" }
+        end
+      RUBY
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [spec], project_root: dir, framework: "rspec")
+      status = nil
+
+      _, err = capture_subprocess_io do
+        status, = map.send(:spawn_script, map.send(:clean_check_script, [spec]), result: false)
+      end
+
+      assert_equal 1, status.exitstatus
+      assert_includes err, "database postgres://u:[REDACTED]@host/db unavailable"
+      refute_includes err, "s3cret"
+    end
+  end
+
   def test_uncovered_line_returns_empty
     map = build([ADD_ONLY_TEST]) # add-only suite never calls #modulo
     assert_empty map.tests_for(CALC, line_of("a % b"))

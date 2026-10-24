@@ -6,7 +6,7 @@ module Mutineer
   # Hides database credentials in text bound for a terminal: an error reply,
   # a log line, a warning. Rails parses DATABASE_URL itself, so an error about
   # a malformed one can quote the whole URL. Outside a URL a password of 3
-  # characters or fewer is hidden only as a whole word, so it cannot blank
+  # characters or fewer is hidden only as a whole token, so it cannot blank
   # letters inside other words. A password that exactly equals the username is
   # left visible outside a URL, so `role "postgres"` stays readable.
   #
@@ -22,9 +22,9 @@ module Mutineer
     # What {text} returns when it fails: never the input, which may hold the
     # password.
     FAILED = "[message hidden: redaction failed]"
-    # An ASCII word character, the edge a whole-word match must not touch.
+    # An ASCII word character, the edge a whole-token match must not touch.
     WORD_CHAR = "[A-Za-z0-9_]"
-    # The longest password form hidden only as a whole word. A longer form is
+    # The longest password form hidden only as a whole token. A longer form is
     # hidden wherever it appears, even glued to an escape such as `%40` or
     # `\x41`: failing toward hiding too much is safer for a long secret.
     SHORT_FORM = 3
@@ -34,7 +34,7 @@ module Mutineer
     # Hide the password in any URL, and the DATABASE_URL password wherever it
     # appears: whole, percent-decoded, `inspect` escaped, or cut short after
     # its `scheme://user:` prefix. Outside a URL a form of {SHORT_FORM}
-    # characters or fewer is hidden only as a whole word. Never raises: text in
+    # characters or fewer is hidden only as a whole token. Never raises: text in
     # any encoding comes back as UTF-8, and an internal error returns {FAILED}.
     #
     # @param text [#to_s]
@@ -83,16 +83,14 @@ module Mutineer
       str.encode(Encoding::UTF_8, invalid: :replace, undef: :replace)
     end
 
-    # Replace `form` in `text` only where it is a whole word: no ASCII word
-    # character touches an edge of `form` that is itself a word character.
+    # Replace `form` in `text` only where it is a whole token: no ASCII word
+    # character touches either edge, including a punctuation edge.
     #
     # @param text [String]
     # @param form [String] one form of the password.
     # @return [String]
     def redact_word(text, form)
-      pattern = Regexp.escape(form)
-      pattern = "(?<!#{WORD_CHAR})#{pattern}" if form.match?(/\A#{WORD_CHAR}/o)
-      pattern = "#{pattern}(?!#{WORD_CHAR})" if form.match?(/#{WORD_CHAR}\z/o)
+      pattern = "(?<!#{WORD_CHAR})#{Regexp.escape(form)}(?!#{WORD_CHAR})"
       text.gsub(Regexp.new(pattern), REDACTED)
     end
 

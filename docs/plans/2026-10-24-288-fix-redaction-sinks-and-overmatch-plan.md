@@ -16,7 +16,7 @@ size: M
 
 **Issue:** #288.
 
-**Goal:** no message that mutineer prints, and no daemon stderr line, shows the `DATABASE_URL` password. Two cases stay visible by design: a password equal to the username (the redacted URL already shows that value), and a password glued inside a longer word outside a URL. A password that equals the username no longer blanks unrelated text, and a short password no longer blanks a longer word that contains it.
+**Goal:** no message that mutineer prints, and no daemon stderr line, shows the `DATABASE_URL` password. Two cases stay visible by design outside a URL: a raw password equal to the username (the redacted URL already shows that value), and a password form of 3 characters or fewer glued to an ASCII word character. The drain also cannot identify a bare password loaded only into the app environment after boot. A password that equals the username no longer blanks unrelated text, and a short password no longer blanks a longer word that contains it.
 
 **Authority:** this plan, then `AGENTS.md`, then the issue comment. Where the plan and the comment differ, the plan wins. The differences are listed under "Corrections to the issue comment".
 
@@ -37,7 +37,7 @@ Redaction (PR #266) covers the daemon replies and one coverage warning. Other pr
 
 Redaction also over-matches. Its last pass replaces every substring equal to the password. With `postgres://postgres:postgres@...` the message `role "postgres" does not exist` becomes `role "[REDACTED]" does not exist`. With password `a`, `ActiveRecord::NoDatabaseError` becomes `ActiveRecord::NoD[REDACTED]t[REDACTED]b[REDACTED]seError`.
 
-This plan routes every sink above through `Redaction.text`, turns a load failure into a clean exit 1, and limits the blanket pass to whole tokens that do not equal the username.
+This plan routes every sink above through `Redaction.text` and turns a load failure into a clean exit 1. Password forms of 3 characters or fewer use whole-token matching. Longer forms keep substring matching. A raw password that exactly equals the username stays visible outside a URL.
 
 ---
 
@@ -66,7 +66,7 @@ Reproduced on `main`: `bin/mutineer run a.rb --test a_test.rb --boot boot.rb` wi
 - R3. The fork child line at `isolation.rb:69` prints a redacted `Class: message`.
 - R4. Each line the daemon client drains from the daemon's stderr goes through `Redaction.text` before it reaches the tool's stderr.
 - R5. The `--verbose` test command output in `ExternalBackend.run`, and the `worker crashed` text in `WorkerPool`, go through `Redaction.text`.
-- R6. The blanket pass in `Redaction.text` replaces a password form only as a whole token. It skips a form that equals a form of the `DATABASE_URL` username. The URL-position passes (`redact_prefixes` and `URL_PASSWORD`) still hide every password, whatever its length or value.
+- R6. The blanket pass in `Redaction.text` replaces a password form of 3 characters or fewer only as a whole token, with no ASCII letter, digit or underscore touching either edge. Longer forms remain substring matches. It skips the blanket pass only when the raw password exactly equals the `DATABASE_URL` username. The URL-position passes (`redact_prefixes` and `URL_PASSWORD`) still hide every password, whatever its length or value.
 - R7. `Redaction.text` never raises on its input. A valid UTF-8 or ASCII-only string stays as it is. A binary string, or one whose bytes are not valid in its own encoding, is read as UTF-8 with its invalid bytes replaced (`String#scrub`). A valid string in another encoding is converted to UTF-8, with any character that does not convert replaced. The `DATABASE_URL` value gets the same treatment. As a last guard, any internal error in `Redaction.text` returns the fixed text `[message hidden: redaction failed]`, never the input.
 - R8. CHANGELOG `## [Unreleased]` gets one `### Fixed` entry for #288 that names the user-visible changes (see U5).
 
@@ -78,7 +78,7 @@ Reproduced on `main`: `bin/mutineer run a.rb --test a_test.rb --boot boot.rb` wi
 - **The name is `ProjectLoadError`, not `BootError`.** The class covers the boot file, standalone sources and `--require` files. `BootError` would suggest the first only, and it sits close to `DaemonBootError`, which means something else. Define it in `lib/mutineer/runner.rb`, as `file_swap.rb` defines `ConcurrentRunError` and `daemon_client.rb` defines `DaemonBootError`.
 - **Redacted message, original backtrace, no cause.** The helper raises with the redacted message, the original exception's backtrace, and `cause: nil`. Ruby's default handler prints the `cause` chain, so a library caller of `Runner.execute` that does not rescue would otherwise still see the raw message. Backtrace frames hold file paths and method names, not the password; `--verbose` still passes each frame through `Redaction.text`. The `cause` chain is the real reason for many Rails boot failures (for example a `PG::ConnectionBad` inside an ActiveRecord error), so the helper keeps it as a list of redacted `Class: message` strings on the `ProjectLoadError` (a reader method with a YARD doc), and `--verbose` prints them.
 - **Exit 1 for `ProjectLoadError`.** A failed load is a runtime failure, the same class as `DaemonBootError` and `SyntaxError` today. `README.md` and `docs/fragments/contract.yml` define exit 1 as including "a runtime error" and exit 2 as usage. `CLI.run` rescues it next to `DaemonBootError`, prints the message, prints the redacted backtrace under `config.verbose`, and exits 1.
-- **One helper for all three sites, so one exit code changes.** An `ArgumentError` or `SystemCallError` raised while the boot file, a source or a `--require` file loads was exit 2 (usage) and is now exit 1 (runtime). Every other load failure already exited 1 (as an uncaught exception or through the `SyntaxError` rescue). The CHANGELOG names the change. A missing source or test is still exit 2, because `validate_paths!` runs first. A missing `--boot` or `--require` file was a raw `LoadError` backtrace with exit 1; it is now `cannot load <path>: LoadError: cannot load such file -- <absolute path>` with exit 1.
+- **One helper for all three sites, so one exit code changes.** An `ArgumentError` or `SystemCallError` raised while the boot file, a source or a `--require` file loads was exit 2 (usage) and is now exit 1 (runtime). Every other load failure already exited 1 (as an uncaught exception or through the `SyntaxError` rescue). The CHANGELOG names the change. A missing source or test is still exit 2, because `validate_paths!` runs first. A missing `--boot` or `--require` file is checked before the load rescue and exits 2 with a missing-path message. A dependency missing inside an existing file remains a runtime load failure (exit 1). Extensionless Ruby and native-extension paths remain supported.
 - **`SyntaxError` joins the helper.** Every load failure then has one message shape. `test_syntax_error_source_is_handled_cleanly` asserts only a non-zero exit and no `cli.rb:` frame, so it stays green. The `SyntaxError` rescue in `CLI.run` stays for any other path, redacted by R2. `NotImplementedError` and other `ScriptError` classes keep today's behaviour.
 - **`LoadError` output repeats "cannot load".** The result reads `mutineer: cannot load boot.rb: LoadError: cannot load such file -- /abs/path/boot.rb`. This is accepted: one fixed shape is easier to grep than a special case.
 - **Redact every `CLI.run` message (R2).** Eight one-call edits, plus the new `ProjectLoadError` rescue, which prints an already redacted message. `SmokeCheckError` really carries app output; the others are a cheap guard on a security path.
@@ -110,11 +110,11 @@ Units are in dependency order.
 
 **Approach:**
 - At the start of `text`, normalise the input and the `DATABASE_URL` value by the R7 rule. A prototype of the rule handled a binary UTF-8 string, a US-ASCII pipe string with a stray byte, and a non-ASCII password.
-- Take the username from the `head` that `database_url_parts` already returns (`scheme://user:`): the part between `://` and the trailing colon. Build its forms with the existing `password_forms(user)`, so there is one decode rule.
-- In the last pass, skip each secret form that is in the username forms. Replace the other forms with the whole-token pattern. Keep the longest-first order.
+- Take the raw username from the `head` that `database_url_parts` already returns (`scheme://user:`): the part between `://` and the trailing colon. Compare it with the raw password; a shared decoded form is not enough to skip redaction.
+- In the last pass, skip the blanket pass only when the raw password exactly equals the username. Replace forms of 3 characters or fewer with the whole-token pattern, including forms with punctuation edges. Replace longer forms as substrings. Keep the longest-first order.
 - Do not change the prefix pass or the `URL_PASSWORD` pass.
 - Wrap the body in `rescue StandardError` that returns `[message hidden: redaction failed]`.
-- Update the module YARD text and the `text` docstring to say "as a whole word, unless it equals the username".
+- Update the module YARD text and the `text` docstring to describe the per-form length rule and the exact raw username match.
 
 **Patterns to follow:** `Redaction.password_forms`; the existing `redact(text, url)` test helper.
 
@@ -274,11 +274,11 @@ Manual check: repeat the reproduction from "Problem Frame". Stderr is exactly `m
 
 ## Risks
 
-- **Whole-token matching hides less.** A password glued to a word character (`xs3cret`) is no longer hidden outside a URL. The URL passes still hide it in any URL. A message that prints a password inside a longer word is rare.
+- **Whole-token matching hides less for short forms.** A password form of 3 characters or fewer glued to an ASCII word character (`xab` for password `ab`) stays visible outside a URL. Longer forms still use substring matching, and URL passes still hide every password. Frequency is not measured: this repository has no representative sample of app error messages from which to estimate it. This is the deliberate cost of keeping ordinary words readable when a password is short.
 - **Exit code change for loads.** A CI script that expects exit 2 when the boot file, a source or a `--require` file raises `ArgumentError` or `SystemCallError` at load now sees exit 1. Exit 1 is the documented class for a runtime error, and the CHANGELOG names it.
 - **Multi-line messages.** "One message" can span lines when the app's exception message has newlines. Each line is still redacted. The tests do not assert a line count.
 - **Drain changes the bytes.** Daemon stderr is no longer copied byte for byte. Each line is read as UTF-8 and invalid bytes show as U+FFFD (R7). The CHANGELOG names it.
-- **Drain buffering.** Output without a newline appears only at the next newline or at EOF. `close_io` (daemon_client.rb:428) kills the drain thread before it closes the pipe, so a partial last line still in the read buffer can be lost on quit or respawn. `IO.copy_stream` would have written it. Daemon, app and Ruby crash output end in a newline, so this loss is unlikely. The implementer runs a check first: a daemon that fails to boot and prints a last line with no newline, then look at the tool's stderr. If the line is lost, `close_io` joins `@drain` with a short timeout (1 second) after it kills the daemon and before it kills the thread, so the drain reads to EOF.
+- **Drain buffering.** Output without a newline appears only at the next newline or EOF. This is deliberate: credentials can span writes, and a malformed URL password can contain spaces or an unescaped `@`. Redacting separate chunks could reveal part of the password. `close_io` joins `@drain` for up to 1 second after stopping the daemon and before stopping the drain, so EOF flushes a partial last line. The pipe tests check that final flush. A stream parser is outside this change; no immediate delivery of partial lines is promised.
 - **Drain knows only the tool's `DATABASE_URL`.** When the app loads `DATABASE_URL` itself during boot, the drain still hides the password inside any URL, but not as a bare token. The daemon's own replies stay safe: `daemon_server.rb` redacts with its own environment.
 - **Username-equal password next to a label.** A text like `PGPASSWORD=postgres` with user `postgres` keeps `postgres` visible. This is the deliberate cost of the username skip: the URL already shows that value.
 - **Drain thread death.** If `Redaction.text` raised, the drain thread would end and the daemon could block on a full pipe. U1 (R7) and `test_daemon_stderr_drain_survives_invalid_bytes` guard this.
@@ -300,7 +300,7 @@ Manual check: repeat the reproduction from "Problem Frame". Stderr is exactly `m
 None blocks implementation.
 
 - **Skip more URL parts?** Default: skip only the username, as the issue comment recommends. Alternative: also skip a form that equals the host or the database name, since the redacted URL shows those too.
-- **Minimum length for the blanket pass?** Default: none; whole-token matching fixes the reported cases. Alternative from the issue body: skip the blanket pass for forms shorter than some length (for example 4), and rely on the URL passes alone for them.
+- **Length rule for the blanket pass.** The implementation uses whole-token matching for each form of 3 characters or fewer and substring matching for longer forms. It does not skip short forms completely, so a short password still disappears when printed as a separate token.
 - **A last-resort handler?** Default: no. Alternative: a rescue in `CLI.start` for any unrescued exception that prints `Redaction.text(e.full_message)` and exits 1. It keeps the backtrace and the cause chain, and it would cover sinks this plan does not list. It also changes how every mutineer bug looks, so it is a separate decision.
 - **Scope of the `ProjectLoadError` rescue.** Default: all three require sites, including standalone sources. Alternative: wrap only the boot file and `--require` paths, and keep today's exit 2 for an `ArgumentError` in a standalone source.
 

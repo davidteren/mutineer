@@ -1092,7 +1092,14 @@ module Mutineer
     def load_failure_rescue
       detail =
         if @verbose
-          '(_e.backtrace || []).each { |_f| $stderr.puts("\t" + Mutineer::Redaction.text(_f)) }'
+          <<~RUBY.chomp
+            (_e.backtrace || []).each { |_f| $stderr.puts("\t" + Mutineer::Redaction.text(_f)) }
+            _cause = _e.cause
+            while _cause
+              $stderr.puts("[mutineer] caused by: " + Mutineer::Redaction.describe(_cause))
+              _cause = _cause.cause
+            end
+          RUBY
         else
           '$stderr.puts("[mutineer] re-run with --verbose for the backtrace")'
         end

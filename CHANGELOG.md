@@ -21,19 +21,25 @@ All notable changes to this project are documented here. The format is based on
   in-process `--boot` or `--rails` run, a source file, or a `require:`
   file) no longer prints the raw password or a backtrace. The run prints a
   `mutineer: cannot load <path>: ...` message (a `SyntaxError` keeps its code
-  excerpt) and a hint to re-run with `--verbose`, and exits 1. `--verbose`
-  adds a redacted backtrace and the redacted cause chain. CLI error messages, the
+  excerpt) and exits 1. Missing boot and `require:` files remain usage errors
+  (exit 2). By default, a load error adds a hint to re-run with `--verbose`;
+  verbose output gives a redacted backtrace and cause chain. CLI error messages, the
   fork child's error line, the worker crash text in the report, the daemon's
-  stderr lines, the failing test report and any load error from the
+  stderr lines (except bare passwords known only to the app after boot),
+  the failing test report and any load error from the
   clean-suite and coverage checks, and the `--verbose` test command output
   are redacted too. Output that app code or a test writes straight to
   stderr in a fork or subprocess is not filtered.
   Daemon stderr is now copied line by line as UTF-8, so an invalid byte
-  shows as U+FFFD. A password that equals the username no longer blanks the
-  same text elsewhere (for example `role "postgres"`). A password of 3
-  characters or fewer no longer blanks words that contain it, but it still
-  blanks the same word when it stands alone. A longer password is still
-  hidden wherever it appears, and the password inside a URL is always
+  shows as U+FFFD. Output without a newline waits for a newline or EOF, so
+  credentials split across writes can be redacted together. A password that
+  equals the username no longer blanks the same text elsewhere (for example
+  `role "postgres"`). Each password form of 3 characters or fewer is hidden
+  only when no ASCII letter, digit or underscore touches either edge.
+  The limit applies separately to raw, decoded and escaped forms: `%61%62`
+  is still replaced inside longer text, while its decoded `ab` is matched
+  only as a whole token. A longer form is hidden wherever it appears,
+  and the password inside a URL is always
   hidden.
 
 ## [1.7.0] - 2026-10-23

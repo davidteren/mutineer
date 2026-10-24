@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "pathname"
+require "rbconfig"
 require_relative "parser"
 require_relative "project"
 require_relative "result"
@@ -442,12 +443,16 @@ module Mutineer
     # @api private
     # @param root [String] the project root.
     # @param path [String] the path as the user gave it.
+    # @raise [Errno::ENOENT] when the requested file does not exist.
     # @raise [ProjectLoadError] when the file raises while it loads.
     # @return [void]
     def self.require_project_file(root, path)
       # Outside the rescue: a path Ruby cannot expand (`~nosuchuser/boot.rb`)
       # stays a usage error (exit 2), not a load failure.
       file = File.expand_path(path, root)
+      suffixes = ["", ".rb", ".#{RbConfig::CONFIG.fetch('DLEXT')}"]
+      raise Errno::ENOENT, path unless suffixes.any? { |suffix| File.file?("#{file}#{suffix}") }
+
       begin
         require file
       rescue StandardError, ScriptError => e
