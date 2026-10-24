@@ -554,13 +554,14 @@ class RailsWorkerDbTest < Minitest::Test
   # pools get a round-trip; shared pools do not, so the shared check stays clean.
   def test_verify_routing_raises_for_an_unrouted_pool_and_skips_shared_ones
     saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
-    pool = Struct.new(:db_config, :trips) do
+    pool = Struct.new(:db_config, :trips, :opened) do
       def with_connection
         self.trips += 1
-        yield Object.new.tap { |c| c.define_singleton_method(:execute) { |_sql| nil } }
+        file = opened
+        yield Object.new.tap { |c| c.define_singleton_method(:select_value) { |_sql| file } }
       end
     end
-    routed = pool.new(SqliteConfig.new("primary", "/app/test-0.sqlite3", "sqlite3"), 0)
+    routed = pool.new(SqliteConfig.new("primary", "/app/test-0.sqlite3", "sqlite3"), 0, "/app/test-0.sqlite3")
     shared = pool.new(SqliteConfig.new("queue", "/app/queue.sqlite3", "sqlite3"), 0)
     inline = pool.new(SqliteConfig.new("primary", "/tmp/inline.sqlite3", "sqlite3"), 0)
     pools = [routed, shared]
@@ -571,12 +572,20 @@ class RailsWorkerDbTest < Minitest::Test
     Object.const_set(:ActiveRecord, Module.new.tap { |m| m.const_set(:Base, base) })
     db = Mutineer::RailsWorkerDb
 
-    db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3])
-    assert_equal [1, 0], [routed.trips, shared.trips]
+    File.stub(:identical?, ->(a, b) { a == b }) do
+      db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3])
+      assert_equal [1, 0], [routed.trips, shared.trips]
 
-    pools << inline
-    error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
-    assert_includes error.message, "primary still uses /tmp/inline.sqlite3, which every worker shares."
+      # A connection opened before the rewrite is still on the base file.
+      routed.opened = "/app/test.sqlite3"
+      error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
+      assert_includes error.message, "primary is connected to /app/test.sqlite3, not its worker file /app/test-0.sqlite3"
+
+      routed.opened = "/app/test-0.sqlite3"
+      pools << inline
+      error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
+      assert_includes error.message, "primary still uses /tmp/inline.sqlite3, which every worker shares."
+    end
   ensure
     Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
     Object.const_set(:ActiveRecord, saved) if saved

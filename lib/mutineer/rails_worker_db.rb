@@ -424,7 +424,7 @@ module Mutineer
 
       @routing = route_sqlite_configs(worker, seed: seed, shared: shared, primary: sqlite_file(primary))
       load_schema(schema_path) if schema_path && !schema_current?(schema_path)
-      load_other_schemas(primary) if seed
+      load_other_schemas(primary, routed: @routing.first) if seed
       verify_routing!(*@routing)
       verify_connection!
     end
@@ -495,19 +495,22 @@ module Mutineer
     # Load the schema file of each SQLite database other than the primary
     # when its worker copy is out of date. Rails' DatabaseTasks picks each
     # config's own file (`db/<name>_schema.rb` by default) and skips a config
-    # with no file. No purge: the schema loads over the copy, so tables a
-    # --require file wrote at boot survive (#222). Rails 7.0 has no temporary
+    # with no file. Shared base files are never loaded. No purge: the schema
+    # loads over the copy, so tables a --require file wrote at boot survive
+    # (#222). Rails 7.0 has no temporary
     # pool helper, so there the copy is used as it is.
     #
     # @param primary [ActiveRecord::DatabaseConfigurations::DatabaseConfig] the
     #   config `ActiveRecord::Base` uses. {load_schema} covers it.
+    # @param routed [Array<String>] the worker files, excluding shared bases.
     # @return [void]
-    def self.load_other_schemas(primary)
+    def self.load_other_schemas(primary, routed:)
       tasks = ActiveRecord::Tasks::DatabaseTasks
       return unless tasks.respond_to?(:with_temporary_pool_for_each)
 
       test_configs.each do |config|
         next if config.equal?(primary) || config.replica? || !config.database_tasks? || !sqlite_file_config?(config)
+        next unless routed.include?(sqlite_file(config))
 
         tasks.with_temporary_pool_for_each(env: config.env_name, name: config.name) do
           tasks.load_schema(config) unless tasks.schema_up_to_date?(config)
@@ -515,9 +518,10 @@ module Mutineer
       end
     end
 
-    # Check every pool on a SQLite file, then make a round-trip on each routed
-    # one. A pool built from an inline `establish_connection` hash is not in
-    # `configurations`, so {route_sqlite_configs} cannot rewrite it: it would
+    # Check every pool on a SQLite file, then confirm each routed pool's
+    # connection really opened the worker file. A pool built from an inline
+    # `establish_connection` hash is not in `configurations`, so
+    # {route_sqlite_configs} cannot rewrite it: it would
     # still use the base file that every worker shares. That raises here, and
     # the mutant scores `error`. Shared pools get no round-trip, so the
     # `shared_databases` check does not see a connection the tool opened.
@@ -538,7 +542,10 @@ module Mutineer
                 "Mutineer copies only databases in config/database.yml, not an inline establish_connection hash."
         end
 
-        pool.with_connection { |conn| conn.execute("SELECT 1") }
+        # Ask SQLite which file the connection opened: a connection opened
+        # before the config was rewritten would still be on the base file.
+        opened = pool.with_connection { |conn| conn.select_value("SELECT file FROM pragma_database_list WHERE name = 'main'") }
+        raise "#{config.name} is connected to #{opened}, not its worker file #{file}" unless File.identical?(opened.to_s, file)
       end
     end
 

@@ -133,6 +133,43 @@ class DaemonWorkerDbTest < Minitest::Test
     assert_includes out, { no_sha1: 0, old_version: 0, old_sha1: 0, same_sha1: 1 }.inspect
   end
 
+  # A shared database must keep its rows even when its schema is out of date.
+  # Schema loading belongs only to the worker copies, never the shared base.
+  SHARED_SCHEMA_CHECK = <<~RUBY
+    require "./config/environment"
+    require #{File.expand_path("../lib/mutineer/rails_worker_db", __dir__).inspect}
+    require "tmpdir"
+    ActiveRecord::Migration.verbose = false
+    Dir.mktmpdir do |dir|
+      shared = File.join(dir, "shared.sqlite3")
+      ActiveRecord::Base.configurations = {
+        "test" => {
+          "primary" => { "adapter" => "sqlite3", "database" => File.join(dir, "primary.sqlite3") },
+          "extra" => { "adapter" => "sqlite3", "database" => shared }
+        }
+      }
+      ActiveRecord::Base.establish_connection(:primary)
+      load File.expand_path("db/schema.rb")
+      SQLite3::Database.new(shared) do |db|
+        db.execute("CREATE TABLE extra_notes (id INTEGER PRIMARY KEY, body TEXT)")
+        db.execute("INSERT INTO extra_notes (body) VALUES ('keep this row')")
+      end
+      ActiveRecord::Base.connection_pool.disconnect!
+      Mutineer::RailsWorkerDb.after_fork(0, seed: true, shared: %w[extra])
+      SQLite3::Database.new(shared) do |db|
+        puts "shared_rows=\#{db.get_first_value('SELECT COUNT(*) FROM extra_notes')}"
+      end
+    end
+  RUBY
+
+  def test_a_shared_database_is_not_changed_by_schema_loading
+    env = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+    out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", SHARED_SCHEMA_CHECK,
+                                  chdir: APP, unsetenv_others: true)
+    assert status.success?, out
+    assert_includes out, "shared_rows=1"
+  end
+
   # A pool from an inline establish_connection hash is not in database.yml, so
   # Mutineer cannot give the worker its own copy. The routing check raises,
   # and the daemon scores the mutant `error`, never a false verdict.
