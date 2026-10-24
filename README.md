@@ -407,7 +407,8 @@ This makes each mutant boot slower.
 The variable works through `require "bootsnap/setup"`, which Rails puts in `config/boot.rb`.
 If your app calls `Bootsnap.setup` itself, set `compile_cache_iseq: false` there for mutant runs.
 Bootsnap checks only that the variable is set, so `DISABLE_BOOTSNAP_COMPILE_CACHE=0` still turns the cache off.
-A wrapper that unsets the variable turns the cache on again.
+To keep the cache, run the suite through a wrapper script that runs `unset DISABLE_BOOTSNAP_COMPILE_CACHE` first.
+Boots are then faster, but a mutant can again load the previous mutant's cached code.
 Bootsnap keeps its cache in `tmp/cache/bootsnap`, or under `$BOOTSNAP_CACHE_DIR` when that is set.
 If a run uses code that no longer matches your files, delete that folder and run again.
 
