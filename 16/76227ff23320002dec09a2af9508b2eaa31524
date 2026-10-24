@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_04fd8c79e6fa52::t_2ccd0962711f00 15-21
+README.md
+  s_04fd8c79e6fa52::t_b1d8e628cdac5c 80,465,473-475
+lib/mutineer/rails_worker_db.rb
+  s_04fd8c79e6fa52::t_c715f79c5e14f3 360-361,368-369
+test/rails_worker_db_test.rb
+  s_04fd8c79e6fa52::t_60cab8a192443b 419,422-427,429-431,437
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1676227ff23320002dec09a2af9508b2eaa31524",
+  "prompts": {},
+  "sessions": {
+    "s_04fd8c79e6fa52": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16cbd-26a2-7b61-8d84-799333c245e9",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_6d24b032f9a785::t_063c057a6dc6f3 9-18
+README.md
+  s_6d24b032f9a785::t_13ab53c61f99c4 755-759
+mutineer.gemspec
+  s_6d24b032f9a785::t_73d763b6027d8e 24-29,33-34
+test/gemspec_test.rb
+  s_6d24b032f9a785::t_04b045c3fb74c0 1-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a69f2e9c34398f25ae6afdfca61fc79339b15ce5",
+  "prompts": {},
+  "sessions": {
+    "s_6d24b032f9a785": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7bd4428-eee5-448d-a552-f3e6a2071f68",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
