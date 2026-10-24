@@ -392,6 +392,29 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # An extracted def does not retain a receiver bound by the original block.
+  def test_discover_leaves_hook_local_receivers_unplaceable
+    src = <<~RUBY
+      module BoundHooks
+        extend ActiveSupport::Concern
+        included do |base|
+          def base.tag = 1
+          receiver = self
+          def receiver.other = 2
+          def self.safe = 3
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      %i[tag other].each do |name|
+        assert subjects.fetch(name).unplaceable?("reload"), name
+        assert_nil subjects.fetch(name).reload_hook_call, name
+      end
+      refute subjects.fetch(:safe).unplaceable?("reload")
+    end
+  end
+
   # #297: an alias keeps the original body, so a block that aliases anything
   # keeps every def in it unplaceable.
   def test_an_alias_in_the_hook_block_makes_every_def_unplaceable

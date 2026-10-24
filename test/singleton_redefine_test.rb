@@ -212,7 +212,8 @@ class SingletonRedefineTest < Minitest::Test
     assert_killed(agg, "hook block, every includer")
     agg.results.select(&:killed?).each do |result|
       names = result.kills.killed_by.map { |entry| entry[1].split("#").last }
-      assert_empty %w[test_named_host test_anonymous_host test_mixin_host test_lazy_host] - names,
+      assert_empty %w[test_named_host test_anonymous_host test_mixin_host test_lazy_host
+                      test_wrapped_host test_singleton_class_host] - names,
                    "#{result.mutation.operator}: #{names.inspect}"
     end
   end
@@ -220,8 +221,14 @@ class SingletonRedefineTest < Minitest::Test
   # #297: a `def self.`, a `class << self` def and a private def are placed too.
   def test_hook_block_singleton_and_private_defs_are_killed_under_reload
     %w[HookEdges.made HookEdges.tagged HookEdges#secret].each do |name|
-      assert_killed(run_redefine("hook_edges.rb", "hook_edges_test.rb", strategy: "reload", only: name,
-                                                                         require_paths: ["hook_edges_hosts.rb"]), name)
+      agg = run_redefine("hook_edges.rb", "hook_edges_test.rb", strategy: "reload", only: name,
+                                                              require_paths: ["hook_edges_hosts.rb"], matrix: true)
+      assert_killed(agg, name)
+      expected = name == "HookEdges#secret" ? "test_wrapped_private_def" : "test_wrapped_singleton_defs"
+      agg.results.select(&:killed?).each do |result|
+        names = result.kills.killed_by.map { |entry| entry[1].split("#").last }
+        assert_includes names, expected, name
+      end
     end
   end
 

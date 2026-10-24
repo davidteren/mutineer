@@ -108,7 +108,7 @@ module Mutineer
 
       # ponytail: one ObjectSpace walk per mutant (about 11 ms with Rails loaded);
       # index modules by method name if a large app makes it slow.
-      modules = ObjectSpace.each_object(Module).reject(&:singleton_class?)
+      modules = ObjectSpace.each_object(Module).to_a
       found = owners(modules, source_file: source_file, line: line, name: name, singleton: singleton)
       mod, other = aliases(modules, found, source_file: source_file, line: line, name: name, singleton: singleton).first
       if mod
@@ -132,7 +132,8 @@ module Mutineer
     # block defined it. A subclass that overrides the method, or a class that
     # only inherits it, is not one.
     #
-    # @param modules [Array<Module>] every module but singleton classes.
+    # @param modules [Array<Module>] every module, including singleton classes
+    #   into which a concern can be included.
     # @param source_file [String] the file the mutant replaces.
     # @param line [Integer] the original def's first line.
     # @param name [Symbol] the method name.
@@ -147,7 +148,7 @@ module Mutineer
     # has for the original def: an alias made outside the block. The alias keeps
     # the original body, so the mutant could falsely survive.
     #
-    # @param modules [Array<Module>] every module but singleton classes.
+    # @param modules [Array<Module>] every module, including singleton classes.
     # @param owners [Array<Module>] the owners {.owners} found.
     # @param source_file [String] the file the mutant replaces.
     # @param line [Integer] the original def's first line.
@@ -167,6 +168,8 @@ module Mutineer
     end
 
     # True when the module's own method `name` starts at this file and line.
+    # A prepended method can hide it from `instance_method`, so follow `super`
+    # until the lookup reaches the method whose owner is the module itself.
     #
     # @param target [Module] the module or singleton class to read.
     # @param name [Symbol] the method name.
@@ -176,7 +179,11 @@ module Mutineer
     def self.own_method_at?(target, name, path, line)
       return false unless target.method_defined?(name, false) || target.private_method_defined?(name, false)
 
-      file, def_line = target.instance_method(name).source_location
+      method = target.instance_method(name)
+      method = method.super_method while method && !method.owner.equal?(target)
+      return false unless method
+
+      file, def_line = method.source_location
       def_line == line && !file.nil? && real_path(file) == path
     end
 

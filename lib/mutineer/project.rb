@@ -612,12 +612,14 @@ module Mutineer
       # in its `class << self` without a receiver: not in a def, a nested class
       # or module, or another block. `module_function` gives the def a second,
       # private copy, and a name the block itself uses kept the original's
-      # result, so neither is placeable.
+      # result, so neither is placeable. An explicit receiver other than `self`
+      # can be bound only inside the hook, which the extracted def does not keep.
       #
       # @param node [Prism::DefNode] the def being recorded.
       # @return [Prism::CallNode, nil]
       def reload_hook_call_for(node)
         return unless @hook_call && @self_scope.equal?(@hook_call.block) && !@module_function_active
+        return if node.receiver && !node.receiver.is_a?(Prism::SelfNode)
         return if @singleton_depth > 1 || (@singleton_depth == 1 && node.receiver)
         return if @hook_uses.include?(node.name)
 

@@ -32,6 +32,28 @@ class HookEdgesTest < Minitest::Test
     assert_equal 4, host.new.bumped(3)
   end
 
+  def test_wrapped_host
+    assert_equal 3, HookEdgesWrappedHost.new.bumped(2)
+    assert_equal 4, HookEdgesWrappedHost.new.bumped(3)
+  end
+
+  def test_singleton_class_host
+    assert_equal 3, HOOK_EDGES_OBJECT.bumped(2)
+    assert_equal 4, HOOK_EDGES_OBJECT.bumped(3)
+  end
+
+  def test_wrapped_singleton_defs
+    assert_equal 7, HookEdgesWrappedHost.made
+    assert_equal 6, HookEdgesWrappedHost.tagged(3)
+    assert_equal 8, HookEdgesWrappedHost.tagged(4)
+  end
+
+  def test_wrapped_private_def
+    assert_equal 4, HookEdgesWrappedHost.new.revealed(5)
+    assert_equal 6, HookEdgesWrappedHost.new.revealed(7)
+    assert HookEdgesWrappedHost.private_method_defined?(:secret, false)
+  end
+
   def test_singleton_defs
     assert_equal 7, HookEdgesHost.made
     assert_equal 6, HookEdgesHost.tagged(3)

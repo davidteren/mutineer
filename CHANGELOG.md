@@ -16,13 +16,17 @@ All notable changes to this project are documented here. The format is based on
   Under `--strategy reload`, in-process and on the daemon, a method in a
   concern's `included` or `prepended` block is now mutated and scored (#297).
   Mutineer loads the mutated method into each class that already has it. A
-  class that includes the concern later gets it from the reloaded block. The
+  prepended wrapper that calls `super` reaches that mutated method too. A
+  concern included into an object's singleton class is supported. A class
+  that includes the concern later gets it from the reloaded block. The
   rest of the block does not run again, so validators and callbacks are not
   added twice. These mutants used to be `unplaceable`, so a reload score can go
   down and a `--threshold` gate can start to fail. Some methods stay
   `unplaceable`: a method in a class, module or `Struct.new` block inside the
-  block, a method inside another method or block, every method in a block that
-  uses `alias` or `alias_method`, a method the block itself calls, and every
+  block, a method inside another method or block, a method with an explicit
+  receiver other than `self` (such as `def base.tag` in `included do |base|`),
+  every method in a block that uses `alias` or `alias_method`, a method the
+  block itself calls, and every
   method in a block whose `included do` call is not a plain line of the module
   body (for example inside `if`, `unless`, or `x = included do`). The full list
   is in `docs/json-schema.md`. If a class aliases a method that Mutineer does

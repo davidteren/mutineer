@@ -160,6 +160,17 @@ class ConcernBlocksTest < Minitest::Test
     end
   end
 
+  def test_place_hook_def_keeps_protected_visibility
+    with_hook_concern("protected\ndef secret = :original") do |source, _line|
+      host = Class.new { include HookPlaced }
+      Mutineer::ConcernBlocks.store_hook_def { def secret = :mutant }
+
+      assert_equal 1, place(source, 5, :secret)
+      assert host.protected_method_defined?(:secret, false)
+      assert_equal :mutant, host.new.send(:secret)
+    end
+  end
+
   def test_place_hook_def_targets_singleton_defs
     with_hook_concern("def self.made = :original\nclass << self\ndef tagged = :original\nend") do |source, line|
       hosts = [Class.new { include HookPlaced }, Class.new { include HookPlaced }]

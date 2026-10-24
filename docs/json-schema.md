@@ -106,6 +106,8 @@ mutant's method is one of these:
 
 - a method in a class, module, `Struct.new`, `Class.new` or `Data.define` block inside the block;
 - a method inside another method, or inside a block that does not build a class (such as `[1].each do`);
+- a method with an explicit receiver other than `self` (such as `def base.tag` in `included do |base|`),
+  because extracting the definition does not keep a receiver bound inside the hook;
 - every method in a block that uses `alias` or `alias_method`;
 - a method the block itself calls outside a method body (a bare call, `self.name`, `method(:name)` or
   `instance_method(:name)`, also inside a nested block or lambda); a symbol such as `before_save :name` is fine;
