@@ -1,0 +1,25 @@
+docs/rails.md
+  s_4caa099c6c87f9::t_0b0e43de4defc3 86-90
+docs/rails.html
+  s_4caa099c6c87f9::t_7ff96b5875644e 110
+docs/agentic-coding.html
+  s_4caa099c6c87f9::t_4dfba7aa33df55 136
+docs/agentic-coding.md
+  s_4caa099c6c87f9::t_3a73ee66104589 125-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "68245f5e3256dba93f12a061baed0217d7999f8f",
+  "prompts": {},
+  "sessions": {
+    "s_4caa099c6c87f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a16a26-cbd9-75b0-9a60-c1027763da8b",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
