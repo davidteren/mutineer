@@ -4,7 +4,9 @@ module Mutineer
   # Immutable outcome of running one mutant. Ten distinct states:
   #   killed       - a test failed/errored, so the mutation was caught.
   #   survived     - every test passed, so the mutation went undetected.
-  #   error        - the child crashed (unhandled exception): exit status 2.
+  #   error        - the child crashed (unhandled exception), or a Minitest
+  #                  run's first failure was a database connection or lock
+  #                  error (#296): exit status 2.
   #   timeout      - the parent SIGKILLed a child that overran its wall clock.
   #   skipped      - the mutated source failed to re-parse (invalid); no fork.
   #   no_coverage  - no test exercises the mutated line; not run, not scored.

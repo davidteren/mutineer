@@ -14,6 +14,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **An in-test database error scores `error`, not `killed` (#296).** When
+  the first failing test of a Minitest mutant run failed with an Active
+  Record connection or lock error (`ConnectionNotEstablished`, including pool
+  timeouts, `ConnectionFailed`, `Deadlocked`, `LockWaitTimeout`), the mutant
+  now scores `error` on `--daemon` and in-process. This includes an error in
+  `setup`. Errors are out of the score, so a lost database connection during
+  a run no longer raises it. A stderr line names the error. More `error`
+  verdicts can fail a `--threshold` run through the existing no-verdict gate.
+  A mutant that really causes a deadlock, or that breaks connection-handling
+  code, now also scores `error`. Other database errors, such as a bad SQL
+  statement, still score `killed`.
 - **The Minitest clean check now runs the tests in the order the mutant runs
   use (#282).** Since 1.1.0, each mutant run used seed `1`, but coverage
   capture, the clean checks and the `--daemon` mutant runs used a random

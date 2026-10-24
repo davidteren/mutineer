@@ -45,10 +45,9 @@ module Mutineer
   #
   # Verdict mapping: child exit 0=survived (suite passed), 1=killed (suite
   # failed), 2=error (child raised AROUND the test: load, boot, or worker-DB
-  # routing failure); parent-detected timeout. Tagging an in-test DB error (one
-  # fired inside a test body, vs at routing time) as `error` rather than
-  # `killed` is only observable under the concurrent gate and is not yet
-  # implemented.
+  # routing failure); parent-detected timeout. Exit 2 also covers a run whose
+  # first failing test failed with an Active Record connection or lock error
+  # inside the test (#296): {MinitestIntegration::InTestDatabaseError} decides.
   module DaemonServer
     # Poll interval (seconds) for the per-fork deadline wait loop.
     POLL = 0.02
@@ -445,7 +444,8 @@ module Mutineer
       end
 
       # Load the covering test files and run them; 0 = all passed (survived),
-      # 1 = a failure/error (killed). Minitest only; rspec is not yet on this path.
+      # 1 = a failure/error (killed), 2 = the first failure was an in-test
+      # database error (error, #296). Minitest only; rspec is not yet on this path.
       # {MinitestIntegration.run} is the method the daemon's clean check uses,
       # so each mutant fork gets the same seed and class list (#282). It loads
       # only stdlib, so the daemon still needs no Prism. The fork requires

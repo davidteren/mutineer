@@ -56,6 +56,26 @@ class DaemonClientTest < Minitest::Test
     end
   end
 
+  # #296: an Active Record connection error inside a test is `error`, not
+  # `killed`. Any other database error still kills: a mutant can cause bad SQL.
+  def test_in_test_database_error_is_error_not_killed
+    with_client do |client|
+      lost = ORIGINAL.sub("quantity * unit_price_cents",
+                          "ActiveRecord::Base.remove_connection; Order.count")
+      refute_equal ORIGINAL, lost, "mutation anchor must exist"
+      assert_equal "error", run_payload(client, 1, lost)
+
+      raised = ORIGINAL.sub("quantity * unit_price_cents",
+                            'raise ActiveRecord::ConnectionNotEstablished, "gone"')
+      assert_equal "error", run_payload(client, 2, raised)
+
+      bad_sql = ORIGINAL.sub("quantity * unit_price_cents", 'raise ActiveRecord::StatementInvalid, "bad SQL"')
+      assert_equal "killed", run_payload(client, 3, bad_sql)
+
+      assert_equal "survived", run_payload(client, 4, ORIGINAL)
+    end
+  end
+
   # A payload that hangs on load is SIGKILLed at the deadline → timeout (fast).
   def test_hung_payload_times_out_and_daemon_recovers
     with_client do |client|

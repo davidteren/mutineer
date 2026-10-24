@@ -27,6 +27,7 @@ class TestRunnersMinitestTest < Minitest::Test
   CLEANUP  = File.join(FIX, "stop_at_first_failure_cleanup_test.rb")
   LATER    = File.join(FIX, "stop_at_first_failure_later_class_test.rb")
   NESTED   = File.join(FIX, "stop_at_first_failure_nested_run_test.rb")
+  DB_ERROR = File.join(FIX, "in_test_db_error_test.rb")
 
   # Wraps each assertion in capture_subprocess_io, which reopens $stdout.
   SUBPROCESS_IO = File.join(FIX, "calculator_subprocess_io_test.rb")
@@ -483,6 +484,82 @@ class TestRunnersMinitestTest < Minitest::Test
       7
     end
     assert_equal 7, code
+  end
+
+  # --- #296: an in-test database error is `error`, not `killed` -------------
+
+  # Runs DB_ERROR with the fixture variables in `env` (keys without the
+  # MUTINEER_FIXTURE_ prefix). Returns [exit status, child stderr]. The stderr
+  # line tells the new exit 2 apart from a crash, which fork_status also
+  # turns into 2.
+  def db_error_run(env, **kwargs)
+    Dir.mktmpdir("mutineer-db-error") do |dir|
+      err = File.join(dir, "stderr")
+      code = fork_status do
+        STDERR.reopen(err, "w")
+        env.each { |key, value| ENV["MUTINEER_FIXTURE_#{key}"] = value }
+        Mutineer::TestRunners::Minitest.run([DB_ERROR], **kwargs)
+      end
+      [code, File.read(err)]
+    end
+  end
+
+  DB_ERROR_LINE = "[mutineer-child] in-test database error, not a test failure: "
+
+  def assert_db_error(klass, result)
+    code, err = result
+    assert_equal 2, code, err
+    assert_includes err, "#{DB_ERROR_LINE}ActiveRecord::#{klass}: "
+  end
+
+  def test_each_listed_database_error_returns_two
+    { "connection" => "ConnectionNotEstablished", "pool_timeout" => "ConnectionTimeoutError",
+      "connection_failed" => "ConnectionFailed", "deadlock" => "Deadlocked",
+      "lock_wait" => "LockWaitTimeout" }.each do |kind, klass|
+      assert_db_error klass, db_error_run({ "FIRST" => kind })
+    end
+  end
+
+  # Minitest keeps a copy of the same class when it cannot marshal the error.
+  def test_unmarshalable_database_error_returns_two
+    assert_db_error "ConnectionNotEstablished", db_error_run({ "FIRST" => "connection_unmarshalable" })
+  end
+
+  def test_first_database_error_decides_on_every_path
+    env = { "FIRST" => "deadlock", "SECOND" => "fail" }
+    assert_db_error "Deadlocked", db_error_run(env, stop_at_first_failure: true)
+    assert_db_error "Deadlocked", db_error_run(env)
+    IO.pipe do |_rd, wr|
+      assert_db_error "Deadlocked", db_error_run(env, record_to: wr)
+    end
+  end
+
+  # Minitest records the setup error before the teardown error.
+  def test_setup_database_error_with_failing_teardown_returns_two
+    assert_db_error "ConnectionTimeoutError", db_error_run({ "SETUP" => "pool_timeout", "TEARDOWN" => "runtime" })
+  end
+
+  def test_assertion_then_teardown_database_error_returns_one
+    assert_equal 1, db_error_run({ "FIRST" => "fail", "TEARDOWN" => "connection" }).first
+  end
+
+  def test_first_assertion_failure_decides
+    assert_equal 1, db_error_run({ "FIRST" => "fail", "SECOND" => "connection" }).first
+  end
+
+  # A mutant can cause bad SQL, so other database errors still kill.
+  def test_statement_invalid_in_test_returns_one
+    assert_equal 1, db_error_run({ "FIRST" => "statement_invalid" }).first
+  end
+
+  def test_passing_run_with_the_hook_returns_zero
+    assert_equal 0, db_error_run({}).first
+  end
+
+  def test_database_error_line_is_redacted
+    result = db_error_run({ "FIRST" => "connection", "MESSAGE" => "could not connect to postgres://user:secret@db/app" })
+    assert_db_error "ConnectionNotEstablished", result
+    refute_includes result.last, "secret"
   end
 
 end
