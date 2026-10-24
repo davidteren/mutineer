@@ -13,8 +13,8 @@ class CliTest < Minitest::Test
   BIN      = File.join(ROOT, "bin", "mutineer")
   FIXTURES = File.expand_path("fixtures", __dir__)
 
-  def mutineer(*args, chdir: Dir.tmpdir)
-    Open3.capture3(RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", BIN, *args, chdir: chdir)
+  def mutineer(*args, chdir: Dir.tmpdir, env: {})
+    Open3.capture3(env, RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", BIN, *args, chdir: chdir)
   end
 
   # An isolated project dir with the calculator fixtures copied in, so the run is
@@ -755,6 +755,79 @@ class CliTest < Minitest::Test
       _, err, status = mutineer("run", "broken.rb", "--test", "calculator_strong_test.rb", chdir: proj)
       refute_equal 0, status.exitstatus
       refute_includes err, "cli.rb:", "no internal backtrace should leak"
+    end
+  end
+
+  # #288: a load error in the tool process can quote DATABASE_URL. The run
+  # prints one redacted line and exits 1, with no backtrace unless --verbose.
+  BAD_DATABASE_URL = "postgres://u:s3cret@ho st/db"
+  # A boot file that fails the way Rails does on a malformed DATABASE_URL.
+  URI_BOOT = %(require "uri"\nURI.parse(ENV.fetch("DATABASE_URL"))\n)
+
+  def run_with_boot(boot_source, *flags)
+    with_project do |proj|
+      File.write(File.join(proj, "boot.rb"), boot_source)
+      return mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--boot", "boot.rb",
+                      *flags, chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+    end
+  end
+
+  def backtrace_lines(err)
+    err.lines.grep(/\A\s/)
+  end
+
+  def test_boot_error_hides_the_database_password
+    _, err, status = run_with_boot(URI_BOOT)
+
+    assert_equal 1, status.exitstatus, err
+    assert_includes err, "mutineer: cannot load boot.rb: URI::InvalidURIError"
+    assert_includes err, "[REDACTED]"
+    refute_includes err, "s3cret"
+    assert_empty backtrace_lines(err)
+  end
+
+  def test_boot_error_prints_a_redacted_backtrace_under_verbose
+    _, err, status = run_with_boot(URI_BOOT, "--verbose")
+
+    assert_equal 1, status.exitstatus, err
+    assert_includes err, "boot.rb:2"
+    refute_includes err, "s3cret"
+  end
+
+  def test_boot_error_prints_a_redacted_cause_under_verbose
+    boot = <<~RUBY
+      require "uri"
+      begin
+        URI.parse(ENV.fetch("DATABASE_URL"))
+      rescue URI::InvalidURIError
+        raise "boot failed"
+      end
+    RUBY
+    _, err, status = run_with_boot(boot, "--verbose")
+
+    assert_equal 1, status.exitstatus, err
+    assert_includes err, "mutineer: caused by: URI::InvalidURIError"
+    assert_includes err, "[REDACTED]"
+    refute_includes err, "s3cret"
+  end
+
+  def test_boot_load_error_exits_one_cleanly
+    _, err, status = run_with_boot(%(require "no_such_gem_288"\n))
+
+    assert_equal 1, status.exitstatus, err
+    assert_includes err, "mutineer: cannot load boot.rb: LoadError"
+    assert_empty backtrace_lines(err)
+  end
+
+  def test_source_argument_error_at_load_exits_one
+    with_project do |proj|
+      File.write(File.join(proj, "bad.rb"), %(def one = 1\nraise ArgumentError, "bad #{BAD_DATABASE_URL}"\n))
+      _, err, status = mutineer("run", "bad.rb", "--test", "calculator_strong_test.rb",
+                                chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "cannot load"
+      refute_includes err, "s3cret"
     end
   end
 

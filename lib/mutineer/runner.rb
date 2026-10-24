@@ -17,8 +17,27 @@ require_relative "external_backend"
 require_relative "daemon_backend"
 require_relative "job_plan"
 require_relative "rails_run_env"
+require_relative "redaction"
 
 module Mutineer
+  # Raised when the tool process cannot load a project file: the boot file, a
+  # standalone source, or a `--require` path. The message is redacted and the
+  # original exception is not kept as `cause`, so neither can show the
+  # DATABASE_URL password. The CLI maps it to a runtime error (exit 1).
+  class ProjectLoadError < StandardError
+    # @return [Array<String>] the redacted `Class: message` of each exception
+    #   in the original `cause` chain, outermost first.
+    attr_reader :causes
+
+    # @param message [String] the redacted message.
+    # @param causes [Array<String>] see {#causes}.
+    # @return [ProjectLoadError]
+    def initialize(message, causes: [])
+      super(message)
+      @causes = causes
+    end
+  end
+
   # Orchestrates one mutation end-to-end: apply it textually, validate the
   # result, select its covering test files from the coverage map, then run only
   # those against the mutated source in an isolated child process (strategy
@@ -92,11 +111,11 @@ module Mutineer
         when :idle then Coverage.start(lines: true, methods: true)
         when :suspended then Coverage.resume
         end
-        require File.expand_path(config.boot, config.project_root)
+        require_project_file(config.project_root, config.boot)
       else
-        config.sources.each { |f| require File.expand_path(f, config.project_root) }
+        config.sources.each { |f| require_project_file(config.project_root, f) }
       end
-      config.require_paths.each { |f| require File.expand_path(f, config.project_root) }
+      config.require_paths.each { |f| require_project_file(config.project_root, f) }
       preload_owners(config) if config.boot && config.strategy == "redefine"
 
       if config.boot
@@ -414,6 +433,31 @@ module Mutineer
       nil
     end
     private_class_method :reconnect_active_record
+
+    # Require one project file in the tool process. A failure becomes a
+    # {ProjectLoadError} whose message, and each cause in its list, is
+    # redacted. The original backtrace is kept; the cause is not, because
+    # Ruby would print its raw message.
+    #
+    # @api private
+    # @param root [String] the project root.
+    # @param path [String] the path as the user gave it.
+    # @raise [ProjectLoadError] when the file raises while it loads.
+    # @return [void]
+    def self.require_project_file(root, path)
+      require File.expand_path(path, root)
+    rescue StandardError, LoadError, SyntaxError => e
+      causes = []
+      cause = e.cause
+      while cause
+        causes << Redaction.text("#{cause.class}: #{cause.message}")
+        cause = cause.cause
+      end
+      error = ProjectLoadError.new(Redaction.text("cannot load #{path}: #{e.class}: #{e.message}"), causes: causes)
+      error.set_backtrace(e.backtrace)
+      raise error, cause: nil
+    end
+    private_class_method :require_project_file
 
     # Pure, injectable predicate: true when a transactional-fixture transaction is
     # already open on the connection. Keys off open_transactions so it is correct

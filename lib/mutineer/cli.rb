@@ -369,6 +369,15 @@ module Mutineer
       # against it. A deliberate stop deserves a message, not a raw backtrace.
       warn "mutineer: #{e.message}"
       exit 1
+    rescue Mutineer::ProjectLoadError => e
+      # A boot file, source or --require file failed to load. The message is
+      # already redacted; --verbose adds the backtrace and the cause chain.
+      warn "mutineer: #{e.message}"
+      if config.verbose
+        (e.backtrace || []).each { |frame| warn "\t#{Redaction.text(frame)}" }
+        e.causes.each { |cause| warn "mutineer: caused by: #{cause}" }
+      end
+      exit 1
     end
 
     # Flag validation: every flag/usage failure exits 2, consistent with the
