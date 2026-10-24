@@ -107,8 +107,7 @@ jobs:
       - uses: davidteren/mutineer@v1
         with:
           sources: app/
-          # since: defaults to the PR's base commit SHA from the event
-          # payload (falls back to fetching the base tip); `none` = full scan.
+          since: none
           baseline: .mutineer/baseline.json
           threshold: "90"
           output: .mutineer/pr.json
@@ -119,12 +118,9 @@ jobs:
           path: .mutineer/pr.json
 ```
 
-When tests change, set `since: none` on the PR's Mutineer step to run the full
-scan described above:
-
-```yaml
-          since: none
-```
+This workflow runs a full scan on every pull request, so it checks test changes
+without a workflow edit for each PR. A full scan can take longer than a scan of
+changed source lines.
 
 For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the app's own bundle):
 
@@ -134,8 +130,7 @@ For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the 
           sources: app/models/order.rb
           rails: true
           use-bundler: true
-          # since: defaults to the PR's base commit SHA (falls back to
-          # fetching the base tip); `none` = full scan.
+          since: none
 ```
 
 See `action.yml` for all inputs (`operators`, `framework`, `strategy`, `jobs`, `extra-args`, …) and the

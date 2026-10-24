@@ -88,7 +88,7 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/models/o
       <p>Set <code>--threshold</code> on the folders whose score you trust, such as <code>app/models</code>. Leave a new folder at report-only until its score is stable. Raise the threshold only after the report stays green.</p>
 
       <h2 id="github-actions">GitHub Actions</h2>
-      <p>This workflow runs Mutineer on a Rails app. It uses the app’s bundle and checks the source lines changed by the pull request.</p>
+      <p>This workflow runs Mutineer on a Rails app. It uses the app’s bundle and scans all chosen sources on every pull request.</p>
       <pre><code>name: Mutation testing
 "on": pull_request
 jobs:
@@ -103,9 +103,10 @@ jobs:
       - uses: davidteren/mutineer@v1
         with:
           sources: app/models
+          since: none
           rails: true
           use-bundler: true</code></pre>
-      <p>For report-only CI, leave <code>threshold</code> at 0 and <code>baseline</code> unset in both the workflow and <code>.mutineer.yml</code>. To reject new survivors, first save a full run from the default branch as <code>.mutineer/baseline.json</code> and make that file available in CI. Then set <code>baseline: .mutineer/baseline.json</code>. Leave <code>since</code> unset: the Action fetches the pull request’s base commit. When tests change, set <code>since: none</code> to run the full scan on the pull request's commit. Add a <code>threshold</code> when the chosen folders are ready.</p>
+      <p>For report-only CI, leave <code>threshold</code> at 0 and <code>baseline</code> unset in both the workflow and <code>.mutineer.yml</code>. To reject new survivors, first save a full run from the default branch as <code>.mutineer/baseline.json</code> and make that file available in CI. Then set <code>baseline: .mutineer/baseline.json</code>. Keep <code>since: none</code> to scan all chosen sources on every pull request, including when only tests change. This avoids a workflow edit for each PR, but can take longer than a scan of changed source lines. Add a <code>threshold</code> when the chosen folders are ready.</p>
 
       <h2 id="gitlab-ci">GitLab CI</h2>
       <p>This GitLab job reports on Rails models paired with conventionally named tests. Use a Linux or macOS runner with Ruby 3.4 or later, and prepare the test database as you do for the test suite.</p>

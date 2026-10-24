@@ -9,8 +9,9 @@ For an equivalent mutant that does appear, use `# mutineer:disable-line` or an
 optional `reason`; it requires Mutineer 1.7 or later everywhere the configuration
 is read. Older versions do not apply mappings and do not warn, so the named mutant
 is not ignored. `mutineer triage` prints these entries using survivor ids from a
-JSON report and the reason you supply with the required `--reason TEXT` argument.
-It does not edit files. See
+JSON report. Select survivors with `--id ID` (repeat it for more than one), or
+use `--all` for every survivor. Supply the reason with the required `--reason TEXT`
+argument. The command does not edit files. See
 [Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants).
 
 ## Chain link

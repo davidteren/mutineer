@@ -53,7 +53,7 @@ Raise the threshold only after the report stays green.
 ## GitHub Actions
 
 This workflow runs Mutineer on a Rails app. It uses the app’s bundle and
-checks the source lines changed by the pull request.
+scans all chosen sources on every pull request.
 
 ```yaml
 name: Mutation testing
@@ -70,6 +70,7 @@ jobs:
       - uses: davidteren/mutineer@v1
         with:
           sources: app/models
+          since: none
           rails: true
           use-bundler: true
 ```
@@ -77,9 +78,10 @@ jobs:
 For report-only CI, leave `threshold` at 0 and `baseline` unset in both the workflow
 and `.mutineer.yml`. To reject new survivors, first save a full run from the default
 branch as `.mutineer/baseline.json` and make that file available in CI. Then set
-`baseline: .mutineer/baseline.json`. Leave `since` unset: the Action fetches the pull
-request’s base commit. When tests change, set `since: none` to run the full scan
-on the pull request's commit. Add a `threshold` when the chosen folders are ready.
+`baseline: .mutineer/baseline.json`. Keep `since: none` to scan all chosen sources
+on every pull request, including when only tests change. This avoids a workflow
+edit for each PR, but can take longer than a scan of changed source lines. Add a
+`threshold` when the chosen folders are ready.
 
 ## GitLab CI
 
