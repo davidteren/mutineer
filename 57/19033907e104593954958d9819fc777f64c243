@@ -1,0 +1,29 @@
+CHANGELOG.md
+  s_d164a58b33b1a3::t_8c6fc49dbe2e4f 15-22
+lib/mutineer/isolation.rb
+  s_d164a58b33b1a3::t_58e559db1a07b5 270-277
+test/fixtures/path_relative.rb
+  s_d164a58b33b1a3::t_6c4d56b963699d 1-11
+test/fixtures/path_relative.txt
+  s_d164a58b33b1a3::t_378a70c0fb5de3 1
+test/fixtures/path_relative_test.rb
+  s_d164a58b33b1a3::t_17f6de5c9742d4 1-12
+test/parallel_strategy_test.rb
+  s_d164a58b33b1a3::t_121e8698a2689a 69-99,149,155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5719033907e104593954958d9819fc777f64c243",
+  "prompts": {},
+  "sessions": {
+    "s_d164a58b33b1a3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c762a0aa-a2bc-48ef-8521-6cf8d063f61e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
