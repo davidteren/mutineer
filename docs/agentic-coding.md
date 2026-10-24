@@ -32,7 +32,8 @@ oracle, closing the loop with a concrete stopping condition:
    > Write or strengthen a test so it fails under this change.
 
 4. Re-run. Accept the result only when this run exits `0`, `summary.score` is not `null`,
-   and `summary.score >= 90`.
+   and `summary.score >= 90`. Mutineer 1.7.0 and earlier compare the rounded score, so on those
+   versions also require `summary.survived == 0` when every scored mutant must be killed.
 
 Keep `fail_fast` disabled (the default). If the active `.mutineer.yml` sets it to
 `true`, temporarily change that value to `false` for the loop. Restore the original

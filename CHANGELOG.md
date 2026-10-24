@@ -8,7 +8,7 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- **`--threshold` compares the exact score, not the rounded one** (#280). The
+- **`--threshold` compares the exact score, not the rounded one (#280).** The
   score is rounded to one decimal for display, and the gate used to compare that
   rounded value. A run with 1999 of 2000 mutants killed showed 100.0% and passed
   `--threshold 100` with a survivor. The exit code, the Action, and the PASSED or
