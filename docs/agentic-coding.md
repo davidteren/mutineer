@@ -122,6 +122,11 @@ This workflow runs a full scan on every pull request, so it checks test changes
 without a workflow edit for each PR. A full scan can take longer than a scan of
 changed source lines.
 
+On `pull_request` events, omitting `since:` normally scans changed source lines
+against the PR's base commit. The Action tries the base branch tip if needed. If
+neither base resolves, it warns and supplies no `--since` override; any `since:`
+setting in `.mutineer.yml` can still apply. `since: none` forces a full scan.
+
 For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the app's own bundle):
 
 ```yaml
