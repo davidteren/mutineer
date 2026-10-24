@@ -1,0 +1,26 @@
+docs/plans/2026-10-24-001-fix-shared-minitest-seed-plan.md
+  s_533ed13f8f67ea::t_5868d3973e9791 159-161,230-231,260-263
+  s_533ed13f8f67ea::t_e00863c408b3bd 93-94
+CHANGELOG.md
+  s_533ed13f8f67ea::t_05110afb7cd30b 25-29
+lib/mutineer/coverage_map.rb
+  s_533ed13f8f67ea::t_a81707dc0644ea 470,1360-1361
+test/coverage_map_test.rb
+  s_533ed13f8f67ea::t_b5863990dcace7 463,639-656
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dd4eb5e4d58a31175ddb9572216b2871bf27a5fd",
+  "prompts": {},
+  "sessions": {
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
