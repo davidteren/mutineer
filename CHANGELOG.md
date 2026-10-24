@@ -12,6 +12,19 @@ All notable changes to this project are documented here. The format is based on
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.
 
+### Fixed
+
+- **A mutant on a later line of a call inside a one-line block can be killed
+  (#289).** For a call split across lines, such as
+  `users.map { |u| format("%s",` with arguments on the next lines, Mutineer
+  used to pick no tests, so the mutant was always `no_coverage`. Now, when the
+  lines of a mutant's statement give no tests, it runs the tests that ran the
+  statement's first or last line, never the `def` line. A kill counts. A
+  survivor stays `no_coverage` (or `ran_at_load`), because those tests may not
+  have run it. A score can rise with no test change. Such a mutant can now
+  also end as `error` or `timeout`, which counts toward the `--threshold`
+  completeness check.
+
 ## [1.7.0] - 2026-10-23
 
 ### Added
