@@ -60,6 +60,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
 | `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically; under either strategy, a method in a concern's `included` or `prepended` block. The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
+| `ran_at_load_tested` | int | The `ran_at_load` mutants whose covering tests ran and passed: each was a survivor before it got this status, so it can hide a test gap. The rest of `ran_at_load` had no test run them. Additive key (schema `1.9`). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). |
 | `errored` | int | Mutants whose run raised (excluded). |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
@@ -102,7 +103,7 @@ runs that block only when a class first includes or prepends the concern, so loa
 a class that already has it, and the mutant would falsely survive. `--test-command` runs both kinds. `ran_at_load` (schema `1.7`) means the mutant's
 line ran while the app booted or its class loaded (for example a class body that calls the method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
-file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.
+file's class body again, but not an initializer or another file's code); run `--test-command` to verify these. Each `ran_at_load[]` entry has a `tested` boolean (schema `1.9`): true when the mutant's covering tests ran and passed, so it may hide a test gap; false when no test ran it.
 A one-line or endless `def` keeps its body on the `def` line, which counts when the method is defined, so its method call
 count at load is used instead.
 
