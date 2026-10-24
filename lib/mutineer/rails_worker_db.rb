@@ -399,7 +399,8 @@ module Mutineer
     # @param shared [Array<String>] SQLite config names the workers share
     #   (`shared_databases`). They keep the base file.
     # @return [void]
-    # @raise [NotImplementedError] when the primary is an in-memory or unnamed database.
+    # @raise [NotImplementedError] when the primary is not a SQLite file (in memory,
+    #   a `file:` URI, or blank): {route_sqlite_configs} could not copy it.
     # @raise [RuntimeError] when a pool still points at a base file (see {verify_routing!}).
     def self.after_fork(worker, schema_path = nil, seed: false, shared: [])
       return unless available?
@@ -411,8 +412,12 @@ module Mutineer
         return
       end
 
-      worker_db_config(worker) # raises for an in-memory or unnamed primary
       primary = ActiveRecord::Base.connection_db_config
+      unless sqlite_file_config?(primary)
+        raise NotImplementedError,
+              "worker-DB isolation needs a SQLite database file (got #{primary.database.inspect})."
+      end
+
       routed, kept = route_sqlite_configs(worker, seed: seed, shared: shared)
       load_schema(schema_path) if schema_path && !schema_current?(schema_path)
       load_other_schemas(primary) if seed

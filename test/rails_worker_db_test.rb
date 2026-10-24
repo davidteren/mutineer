@@ -497,6 +497,27 @@ class RailsWorkerDbTest < Minitest::Test
     assert_equal %w[/app/queue.sqlite3], kept
   end
 
+  # A primary Mutineer cannot copy (in memory, a `file:` URI) fails the fork
+  # with `error` rather than running every worker on one shared database.
+  def test_after_fork_refuses_a_sqlite_primary_it_cannot_copy
+    saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    db = Mutineer::RailsWorkerDb
+    [":memory:", "file:test.sqlite3?mode=rwc", ""].each do |database|
+      primary = SqliteConfig.new("primary", database, "sqlite3")
+      base = Class.new
+      base.define_singleton_method(:connection_db_config) { primary }
+      Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+      Object.const_set(:ActiveRecord, Module.new.tap { |m| m.const_set(:Base, base) })
+      db.stub(:current_adapter, "sqlite3") do
+        error = assert_raises(NotImplementedError) { db.after_fork(0) }
+        assert_includes error.message, "needs a SQLite database file (got #{database.inspect})"
+      end
+    end
+  ensure
+    Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    Object.const_set(:ActiveRecord, saved) if saved
+  end
+
   # The routing check: a pool on a SQLite file that is neither a worker file
   # nor a shared base (an inline establish_connection hash) raises. Routed
   # pools get a round-trip; shared pools do not, so the shared check stays clean.
