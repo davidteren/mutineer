@@ -274,7 +274,13 @@ module Mutineer
       # every mutant of the method dies whatever it changes. The hidden
       # `.mutineer_mutant` name keeps Zeitwerk away (#253) and lets the parent
       # sweep an orphan after a timeout kill.
-      Tempfile.create([".mutineer_mutant", ".rb"], File.dirname(File.expand_path(subject.file))) do |f|
+      #
+      # A read-only source dir keeps the 1.x system-temp location, so redefine
+      # still runs there (only path-relative methods mis-score, as before).
+      dir = File.dirname(File.expand_path(subject.file))
+      dir = Dir.tmpdir unless File.writable?(dir)
+      Tempfile.create([".mutineer_mutant", ".rb"], dir) do |f|
+        f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
         f.write(wrapped)
         f.flush
         load f.path
