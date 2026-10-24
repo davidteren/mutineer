@@ -14,7 +14,7 @@ origin: GitHub issue #274 (davidteren/mutineer) and its Claude analysis comment
 ## Goal Capsule
 
 - Issue: #274.
-- Goal: the `call_to_receiver` operator replaces a last call to a scalar conversion (`to_s`, `to_i`, `to_f`, `to_sym`, `to_a`, `to_h` and the other conversions) with its receiver. It still skips `new`, `dup`, `clone`, `freeze`, `itself` and `to_set`. The `chain_link` operator does not change.
+- Goal (the `to_s` part is provisional until the U1 measurement gate runs): the `call_to_receiver` operator replaces a last call to a conversion other than `to_set` (`to_s`, `to_i`, `to_f`, `to_sym`, `to_a`, `to_h` and the other conversions) with its receiver. It still skips `new`, `dup`, `clone`, `freeze`, `itself` and `to_set`. The `chain_link` operator does not change.
 - Authority: this plan, then `AGENTS.md`, then the issue comment. Where the plan and the issue comment disagree, the plan wins (see "Corrections to the issue comment").
 - Stop conditions: stop and ask if the change needs a new runtime gem, `eval`, a change to `ChainLink::SKIPPED`, or a change to an operator other than `call_to_receiver`. None of these is expected.
 - Size: S. One new constant, one changed line, one removed `require`, comment edits in two mutator files, one new short section on two twin docs pages, one CHANGELOG entry, two new tests, three changed tests, and one measurement run before merge.
@@ -54,7 +54,7 @@ origin: GitHub issue #274 (davidteren/mutineer) and its Claude analysis comment
 - A run that names `call_to_receiver` gets more mutants. It can get new survivors, new mutant ids and a different score. The default operator set does not include `call_to_receiver`, so a default run does not change.
 - No change to exit codes, CLI flags, config keys or JSON fields.
 - CHANGELOG, under `## [Unreleased]` and the existing `### Changed` heading, add one entry with a bold lead, as the 1.7.0 entries have. Suggested text:
-  "**`call_to_receiver` replaces a last conversion call.** `m[1].to_i` now gives the mutant `m[1]`. Before, the operator skipped the same names as `chain_link`. Now it skips only `new`, `dup`, `clone`, `freeze`, `itself` and `to_set`. `chain_link` does not change. A run that names `call_to_receiver` gets more mutants (113 more on Mutineer's own `lib/`). If you gate on it with `--threshold` or a baseline, expect new survivors and refresh the baseline. A `to_s` mutant on a value that is already a String is equivalent: suppress it with `# mutineer:disable-line` or an `ignore:` entry. (#274)"
+  "**`call_to_receiver` replaces a last conversion call other than `to_set`.** `m[1].to_i` now gives the mutant `m[1]`. Before, the operator skipped the same names as `chain_link`. Now it skips only `new`, `dup`, `clone`, `freeze`, `itself` and `to_set`. `chain_link` does not change. A run that names `call_to_receiver` gets more mutants (113 more on Mutineer's own `lib/`). Only runs that list `call_to_receiver` in `--operators` (or `operators:`) change. If you gate such a run with `--threshold` or `--baseline`, expect new survivors: write a new baseline with the same `mutineer run ... --format json` command that made the old one. A `to_s` mutant on a value that is already a String is equivalent: suppress it with `# mutineer:disable-line` or an `ignore:` entry. (#274)"
 - The released 1.7.0 CHANGELOG entry ("It skips the same names as `chain_link`") stays as it is. It was true for 1.7.0. The new entry says what changed.
 - Commit type: `feat:`. AGENTS.md says a new feature is a minor bump, and the weekly release PR picks up `feat:` commits.
 
@@ -77,7 +77,7 @@ origin: GitHub issue #274 (davidteren/mutineer) and its Claude analysis comment
 ### Key Technical Decisions
 
 - KTD1. Add a new constant `CallToReceiver::SKIPPED = %i[new dup clone freeze itself to_set].freeze` and use it at line 115. Rationale: the issue comment recommends this list, and a constant on the class is the pattern `ChainLink` already uses. A subtraction from `ChainLink::SKIPPED` would tie the two lists together again, which is the root cause.
-- KTD2. The rule for the list: skip a name when its last-call mutant is most often equivalent, or when every test that runs the line kills it. Both kinds say nothing about the tests. `dup`, `clone`, `freeze`, `itself` and `to_set` are the first kind. `new` is the second kind. Keep `to_set` for this reason: an Array answers `include?`, `each`, `size` and `empty?` the same way as a Set, and Mutineer's own `to_set` last calls feed `include?` lookups (`lib/mutineer/job_plan.rb` line 58, `lib/mutineer/project.rb` line 98). So the mutant is most often equivalent, only slower. The other conversions differ: a String in place of an Integer, or nil in place of `""`, changes the value a test can check. The issue's first count had 15 `to_set` mutants.
+- KTD2. The rule for the list: skip a name when its last-call mutant is most often equivalent, or when every test that runs the line kills it. Both kinds say nothing about the tests. `dup`, `clone`, `freeze`, `itself` and `to_set` are the first kind. `new` is the second kind. Keep `to_set` for this reason: an Array answers `include?` and `empty?` the same way as a Set (it keeps duplicates, so `size` and `each` can differ), and Mutineer's own `to_set` last calls feed only `include?` lookups (`lib/mutineer/job_plan.rb` line 58, `lib/mutineer/project.rb` line 98). So the mutant is most often equivalent, only slower. The other conversions differ: a String in place of an Integer, or nil in place of `""`, changes the value a test can check. The issue's first count had 15 `to_set` mutants.
 - KTD3. Do not add the implicit conversions (`to_str to_int to_ary to_hash to_proc`) or `to_r`/`to_c` to the list. Rationale: the issue comment keeps them "out of scope". Some of them may meet the KTD2 rule (an object that defines `to_str` is often used where Ruby converts it anyway), but `lib/` has none on a last call, so there is no case to measure. With the proposed list they get mutants, which matches R1. See Open Questions.
 - KTD4. Remove `require_relative "chain_link"` at `call_to_receiver.rb` line 4. After KTD1, no Ruby code in the file refers to `ChainLink`. The remaining `{ChainLink}` references are YARD links in comments, which need no `require`. `lib/mutineer/mutator_registry.rb` lines 18 and 19 and `lib/mutineer.rb` line 32 still load both files. `chain_link.rb` requires only `base` in the same way.
 - KTD5. The equivalent-skips pages get a new short section, `## Call to receiver`, after the `chain_link` table, with its own six-row table. The `## Chain link` section then speaks only of `chain_link`. Rationale: the table reasons for `dup`, `clone` and `freeze` describe a middle link ("when the next call does not mutate the receiver"). On the last call there is no next call, so one shared table with a sentence beside it would give `call_to_receiver` users the wrong reasons. A "Skipped by" column was the other choice. It needs a cell in all 19 rows of both twin files, and it still leaves the reasons wrong for the last call.
@@ -111,7 +111,7 @@ U1 (code and its unit tests) first. U2 (docs, docs test and CHANGELOG) next. Bot
 - `test/mutators/call_to_receiver_test.rb`
 
 **Approach:**
-- Add `SKIPPED` after `WORD_NAME` (line 34), with a `#` comment for `yard:strict`. The comment says what the list holds and why. It states the KTD2 rule. `new` gives a mutant that any test that runs the line kills (the class in place of an instance). `dup`, `clone`, `freeze` and `itself` return the receiver or an equal copy, and an Array answers `include?` and `each` as a Set does, so those mutants are most often equivalent.
+- Add `SKIPPED` after `WORD_NAME` (line 34), with a `#` comment for `yard:strict`. The comment says what the list holds and why. It states the KTD2 rule. `new` gives a mutant that any test that runs the line kills (the class in place of an instance). `dup`, `clone`, `freeze` and `itself` return the receiver or an equal copy, and an Array answers `include?` and `empty?` as a Set does, so those mutants are most often equivalent.
 - Line 115: use `SKIPPED` instead of `ChainLink::SKIPPED`.
 - Lines 26 to 28 (class comment): say that calls in {SKIPPED} are never replaced, and that a conversion such as `to_s` is replaced because on the last call it decides the type of the returned value. Keep the `Foo.new` sentence.
 - Lines 106 and 107 (`replace` comment): `{ChainLink::SKIPPED}` becomes `{SKIPPED}`.
@@ -129,7 +129,18 @@ U1 (code and its unit tests) first. U2 (docs, docs test and CHANGELOG) next. Bot
 
 **Verification:** the new and changed tests pass. `chain_link_test.rb` and `test/integration_test.rb` `test_call_to_receiver_survivor` (line 91, fixture `test/fixtures/slug.rb` has no conversion) pass unchanged. `yard:strict` reports 100%.
 
-**Execution note (measurement gate for `to_s`):** `to_s` gives 86 of the 113 new mutants, and the only evidence for allowing it is the issue comment's sample of 25. After U1 passes its tests, run a real (not dry) `call_to_receiver` run on `lib/mutineer/reporter.rb` (23 new `to_s` mutants), `lib/mutineer/project.rb` (6) and `lib/mutineer/config.rb` (5) with `--test` pointing at their test files (for example `test/reporter_test.rb`, `test/project_test.rb`, `test/config_test.rb`) and `--format json`. Do not use `lib/mutineer/rails_worker_db.rb` (36), because its tests need Rails. Sort each new `to_s` mutant as killed, survived as a real test gap, or survived as equivalent (for example `node.name.to_s` where the next call is one that a Symbol also answers, or a value that `join` converts anyway). Put the three counts in the pull request description. If the equivalents are more than half of these `to_s` mutants, add `to_s` to `CallToReceiver::SKIPPED` (the Open Questions alternative), and change the docs, the CHANGELOG entry and the U1 tests to match. Otherwise keep the default.
+**Execution note (measurement gate for `to_s`):** `to_s` gives 86 of the 113 new mutants, and the only evidence for allowing it is the issue comment's sample of 25. After U1 passes its tests, run a real (not dry) `call_to_receiver` run with `--matrix --format json` (the matrix JSON lists every mutant with its status, so the killed ones are visible) on:
+- `lib/mutineer/reporter.rb` (23 new `to_s` mutants) with `--test test/reporter_test.rb --test test/json_reporter_test.rb --test test/html_reporter_test.rb --test test/baseline_test.rb`;
+- `lib/mutineer/project.rb` (6) with `--test test/project_test.rb`;
+- `lib/mutineer/config.rb` (5) with `--test test/config_test.rb --test test/cli_test.rb`.
+
+Pick out the new `to_s` mutants (the source of the mutated call ends in `.to_s`). Count them as killed, survived as a real test gap, or survived as equivalent. Rules:
+- The denominator is the `to_s` mutants with a verdict (killed plus survived), as in the AGENTS.md score model. Report `no_coverage`, timeout and errored `to_s` mutants as a separate count, outside the rule.
+- A survivor is equivalent only when no input the code can receive tells it apart from the original (for example `node.name.to_s` followed by a call that a Symbol also answers, or a value that `join` converts anyway). A nil guard (`x.to_s` where `x` can be nil) is a test gap. Report the nil-guard survivors as their own count too.
+- Before you count a survivor as a test gap, check that no other test file covers that line.
+- `lib/mutineer/rails_worker_db.rb` (36) is not run, because its tests need Rails. Classify its `to_s` mutants by reading the code with the same equivalent rule, and report that count beside the others.
+
+Put the counts in the pull request description. If the equivalents are more than half of the run `to_s` mutants with a verdict, add `to_s` to `CallToReceiver::SKIPPED` (the Open Questions alternative). Then also change R1, R2 and AE1 (so `x.to_s` gives no mutant), the Goal Capsule, the counts (113 and 3,216) in the Problem Frame, the CHANGELOG entry and the Verification Contract, the docs and the U1 tests. Otherwise keep the default.
 
 ### U2. Docs, docs test and CHANGELOG
 
@@ -146,12 +157,12 @@ U1 (code and its unit tests) first. U2 (docs, docs test and CHANGELOG) next. Bot
 - `CHANGELOG.md` (`## [Unreleased]`, `### Changed`)
 
 **Approach:**
-- `## Chain link` section: it speaks only of `chain_link`. Remove "The `call_to_receiver` operator removes the last call.", change "Both skip the names below" to "It skips the names below", and remove "Removing a final `new` leaves the class in place of an instance." Keep its table as it is.
+- `## Chain link` section: it speaks only of `chain_link`. Remove "The `call_to_receiver` operator removes the last call.", change "Both skip the names below" to "It skips the names below", and remove "Removing a final `new` leaves the class in place of an instance." Add one sentence that points to the new section: "The `call_to_receiver` operator has its own, shorter list: see [Call to receiver](#call-to-receiver)." Keep its table as it is.
 - New `## Call to receiver` section between the `chain_link` table and `## Endless range` (HTML id `call-to-receiver`). Content, in short sentences:
-  - The `call_to_receiver` operator replaces the last call of a chain with its receiver. It skips only the names below, by name only.
+  - The `call_to_receiver` operator replaces the last call of a chain with its receiver. It does not use the `chain_link` list. It skips only the names below, by name only.
   - It replaces the other conversions, such as `to_s` and `to_i`. On the last call, a conversion decides the type of the value that the expression returns, so a test can check it.
-  - Some of those mutants are equivalent, for example `to_s` on a value that is already a String, or inside string interpolation. Suppress them as the top of the page says.
-  - A table with six rows in the `KTD1` order, with last-call reasons: `new` (the class takes the place of an instance, so almost any use raises), `dup` and `clone` (the copy is equal to the receiver), `freeze` (returns the receiver; only a later write shows the difference), `itself` (returns the receiver), `to_set` (an Array answers `include?`, `each` and `size` as a Set does, so the mutant is most often equivalent).
+  - Some of those mutants are equivalent, for example `to_s` on a value that is already a String, or inside string interpolation. Suppress them with `# mutineer:disable-line` or an `ignore:` entry, as the top of the page says.
+  - A table with six rows, one per name, in the `KTD1` order, with last-call reasons: `new` (the class takes the place of an instance, so almost any use raises), `dup` and `clone` (one row each, same reason: the copy is equal to the receiver), `freeze` (returns the receiver; only a later write shows the difference), `itself` (returns the receiver), `to_set` (an Array answers `include?` and `empty?` as a Set does, so the mutant is most often equivalent; it keeps duplicates, so `size` and `each` can differ).
 - Keep the two files in step: the same words, with `<code>`, `<table>` and `<tr><td>` markup in the HTML as in the `chain_link` table.
 - CHANGELOG: add the entry from "User-visible change" under the existing `### Changed` heading in `## [Unreleased]`.
 
@@ -200,7 +211,7 @@ AGENTS.md rules that apply: zero runtime dependencies (none added), no `eval` (n
 - `CallToReceiver::SKIPPED` exists with a comment, and line 115 uses it.
 - `ChainLink::SKIPPED` is byte-for-byte the same as on `main`.
 - `require_relative "chain_link"` is gone from `call_to_receiver.rb`, and the load smoke passes.
-- The four comments state the two lists. Both equivalent-skips pages have the `## Call to receiver` section, and the `## Chain link` section speaks only of `chain_link`.
+- The four comments state the two lists: the new `SKIPPED` constant comment, the `CallToReceiver` class comment, the `replace` comment, and the `ChainLink::SKIPPED` comment. Both equivalent-skips pages have the `## Call to receiver` section, and the `## Chain link` section speaks only of `chain_link`.
 - The CHANGELOG entry is under `## [Unreleased]`.
 - The two new tests fail on `main` and pass with the change. The changed tests pass.
 - The pull request description has the `to_s` counts from the U1 measurement gate, and the skip list matches its decision rule.
@@ -212,7 +223,7 @@ AGENTS.md rules that apply: zero runtime dependencies (none added), no `eval` (n
 
 - CHANGELOG conflicts. Open PRs #304, #305, #306, #307, #308, #244 and #245 all add lines under `## [Unreleased]`. Expect a text conflict there. Resolve it by keeping every entry.
 - `docs/equivalent-skips.*`: #302 (merged) last changed both pages, and this plan starts from that state. No open PR in the list (#304 to #308, #202, #244, #245, #301) touches these pages. #299 (endless range, an open issue with no PR) may later change the "Endless range" section of the same pages. That is a different section, so a conflict is unlikely.
-- This plan file. `rake site:build` copies `docs/` to `_site/` and leaves out only `UNPUBLISHED = %w[release-review]` (`rake/site_build.rb` line 30). So a `docs/plans/` file that reaches `main` is published on the website. Do not include this plan file in the implementation pull request, unless a separate change has added `plans` to `UNPUBLISHED` first.
+- This plan file. Since #309, `rake/site_build.rb` lists `UNPUBLISHED = %w[release-review plans]`, so `docs/plans/` is not published. The plan file ships in the implementation pull request as its first commit.
 - `lib/mutineer/mutators/`: no open PR in the list touches `call_to_receiver.rb` or `chain_link.rb`.
 - #275 (cross-operator duplicates) and #291 (count the silently excluded mutants) are related open issues. This change makes fewer mutants silently excluded, and it adds no duplicate with `chain_link`. It does not block either issue.
 - Score change for users. A user who runs `--operators call_to_receiver` with `--threshold` or a baseline can see new survivors after upgrade. The CHANGELOG entry says so. The default operator set does not change, so the GitHub Action defaults do not change, and this is not a major bump.
