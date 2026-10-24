@@ -8,11 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- Mutineer reads its files and pipes as UTF-8 when `LANG` is unset (#303).
-  Before, a non-ASCII character in a source file, a baseline, a coverage
-  cache, a triage report, `.mutineer.yml` (for `migrate`), a `--since` diff,
-  test-command output, or a daemon message stopped the run with "invalid byte
-  sequence in US-ASCII" (exit 2) or a backtrace (exit 1).
+- Mutineer reads its files and pipes as UTF-8 when `LANG` and `LC_ALL` are
+  unset (#303). Before, a non-ASCII character in a source file, a baseline, a
+  coverage cache, a triage report, `.mutineer.yml` (for `migrate`),
+  `db/schema.rb`, a `--since` diff, test-command output, or a daemon message
+  stopped the run with "invalid byte sequence in US-ASCII" (exit 2) or a
+  backtrace (exit 1). An invalid byte in test-command output now shows as
+  `\xNN`. Non-ASCII file and folder names are not covered yet.
 
 ### Changed
 

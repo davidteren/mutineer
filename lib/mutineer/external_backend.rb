@@ -245,9 +245,12 @@ module Mutineer
       kind, code = wait_with_timeout(pid, timeout)
       elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
       out.rewind
-      # Test output is arbitrary bytes. Read it as UTF-8 whatever the locale (#303),
-      # with invalid bytes replaced, so the smoke-failure checks can match on it.
-      [kind, code, out.read.force_encoding(Encoding::UTF_8).scrub, elapsed]
+      # Test output is arbitrary bytes. Read it as UTF-8 whatever the locale (#303).
+      # Each invalid byte becomes `\xNN`, as in Reporter#printable, so the
+      # smoke-failure checks can match on the text and nothing is lost.
+      output = out.read.force_encoding(Encoding::UTF_8)
+                  .scrub { |bytes| bytes.unpack("C*").map { |b| format("\\x%02X", b) }.join }
+      [kind, code, output, elapsed]
     ensure
       if out
         out.close

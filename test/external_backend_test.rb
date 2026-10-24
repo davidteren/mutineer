@@ -196,13 +196,13 @@ class ExternalBackendTest < Minitest::Test
   end
 
   # Test output need not be valid UTF-8 (a Latin-1 message, say). The smoke
-  # error still carries the readable text, with the bad byte replaced.
+  # error still carries the text, with the bad byte shown as \xNN.
   def test_smoke_check_invalid_utf8_output_is_replaced_not_raised
     with_script(%(STDOUT.binmode\nSTDOUT.write("bad \\xFF byte\\n")\nexit 1\n)) do |path|
       err = assert_raises(Mutineer::SmokeCheckError) do
         Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
       end
-      assert_includes err.message, "bad \uFFFD byte"
+      assert_includes err.message, "bad \\xFF byte"
     end
   end
 
