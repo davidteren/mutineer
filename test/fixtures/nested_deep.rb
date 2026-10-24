@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class Deep
+class NestedRedefineDepthFixture
   def a
     def b
       def c
@@ -12,4 +12,4 @@ class Deep
   end
 end
 
-Deep.new.a
+NestedRedefineDepthFixture.new.a

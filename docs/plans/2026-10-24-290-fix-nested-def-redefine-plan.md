@@ -138,7 +138,7 @@ run the covering tests
 
 **Test scenarios:**
 - `test_redefine_kills_the_nested_mutant` replaces `test_redefine_lets_the_nested_mutant_survive` (`test/nested_redefine_test.rb:29-32`). It asserts `[1, 0]` for `test/fixtures/nested.rb`, the same as `test_reload_kills_the_nested_mutant`. It fails before the fix with `[0, 1]`. Verified by a prototype on this branch.
-- `test_redefine_and_reload_agree_on_a_deeply_nested_mutant` in the same file. Fixture `test/fixtures/nested_deep.rb`: `class Deep` with `def a` holding `def b` holding `def c` with `1 + 1`. `b` calls `c`, and `a` returns `:a`. The file ends with `Deep.new.a`, so `b` exists before the fork. `test/fixtures/nested_deep_test.rb` asserts `Deep.new.b == 2` and does not call `a`. The test asserts `[1, 0]` for both strategies. It fails before the fix with `[0, 1]` under redefine. It also fails with the outermost-only variant (KTD1). Verified by a prototype.
+- `test_redefine_and_reload_agree_on_a_deeply_nested_mutant` in the same file. Fixture `test/fixtures/nested_deep.rb`: `class NestedRedefineDepthFixture` with `def a` holding `def b` holding `def c` with `1 + 1`. `b` calls `c`, and `a` returns `:a`. The file ends with `NestedRedefineDepthFixture.new.a`, so `b` exists before the fork. `test/fixtures/nested_deep_test.rb` asserts `NestedRedefineDepthFixture.new.b == 2` and does not call `a`. The test asserts `[1, 0]` for both strategies. It fails before the fix with `[0, 1]` under redefine. It also fails with the outermost-only variant (KTD1). Verified by a prototype.
 
 **Verification:** both tests pass. The rest of `test/nested_redefine_test.rb` and `test/parallel_strategy_test.rb` stay green.
 

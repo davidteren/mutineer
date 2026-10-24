@@ -5,6 +5,6 @@ require_relative "nested_deep"
 
 class NestedDeepTest < Minitest::Test
   def test_b
-    assert_equal 2, Deep.new.b
+    assert_equal 2, NestedRedefineDepthFixture.new.b
   end
 end
