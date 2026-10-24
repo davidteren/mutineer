@@ -4,7 +4,7 @@ require_relative "project_path"
 
 module Mutineer
   # Source -> test pairing by path convention (#11). Pure stdlib path logic:
-  # no Rails, no class loading, no process. Two jobs:
+  # no Rails, no class loading, no process. Three jobs:
   #   * expand_sources — a directory argument becomes its sorted **/*.rb files;
   #                     a file inside the root becomes its root-relative path.
   #   * infer_tests    — a source's test files by convention (app/ and lib/
@@ -13,6 +13,9 @@ module Mutineer
   #                     namespaced subdirectories. The first EXISTING exact
   #                     candidate stays first. Split Minitest files join a
   #                     Minitest match. A matched spec is left as that one file.
+  #   * test_given_as_source? — whether a positional argument is a test file
+  #                     by these same names, given as a source by mistake
+  #                     after `--test` (#293).
   #
   # Independently unit-testable: every method is pure in/out over the
   # filesystem, so the pairing contract is exercised with plain fixtures, no
@@ -142,6 +145,43 @@ module Mutineer
       rspec = ["spec/#{base}_spec.rb"]
       rspec << "spec/lib/#{base}_spec.rb" if lib
       prefer == "rspec" ? rspec + minitest : minitest + rspec
+    end
+
+    # Basenames that pair as tests in {candidates}: `*_test.rb`, `*_spec.rb`
+    # and Minitest's `test_*.rb`, but not its `test_helper.rb` support file.
+    TEST_NAME = /\A(?!test_helper\.rb\z)(?:.+_(?:test|spec)|test_.+)\.rb\z/
+
+    # Whether the `run` guard rejects a positional argument as a test file
+    # given as a source (#293). A test-named path is flagged when it has a
+    # `test/` or `spec/` segment as typed (the guard's original rule), or when
+    # it is a `*_test.rb` / `*_spec.rb` in the same directory as a given test,
+    # which catches root-level tests. The `test_` prefix is left out of the
+    # same-directory rule because real sources use it (`test_runners.rb`). A
+    # source whose own test (`<stem>_test.rb`, `test_<stem>.rb`,
+    # `<stem>_spec.rb` or a split `<stem>_*_test.rb`) sits beside it in the
+    # test set is not flagged. Directories compare as paths expanded against
+    # the root, so `./a_test.rb` and `a_test.rb` match. No file is read.
+    #
+    # @param path [String] positional argument as typed.
+    # @param project_root [String] repository root for relative expansion.
+    # @param tests [Array<String>] the explicit test files.
+    # @return [Boolean] true when the argument looks like a misplaced test.
+    def test_given_as_source?(path, project_root:, tests:)
+      name = File.basename(path)
+      return false unless name.match?(TEST_NAME)
+      return true if path.match?(%r{(\A|/)(test|spec)/})
+      return false unless name.match?(/_(test|spec)\.rb\z/)
+
+      root = File.expand_path(project_root)
+      dir = File.dirname(File.expand_path(path, root))
+      beside = Array(tests).map { |t| File.expand_path(t, root) }
+                           .select { |t| File.dirname(t) == dir }
+                           .map { |t| File.basename(t) }
+      stem = File.basename(name, ".rb")
+      own = ["#{stem}_test.rb", "test_#{stem}.rb", "#{stem}_spec.rb"]
+      return false if beside.any? { |t| own.include?(t) || (t.start_with?("#{stem}_") && t.end_with?("_test.rb")) }
+
+      beside.any?
     end
 
     # `<basename>_*_test.rb` files in each mirrored test directory (#87). The
