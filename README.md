@@ -77,6 +77,7 @@ MySQL 5.7 is not supported.
 A `:memory:` database is serial only.
 An app with more than one database runs one worker.
 When `shared_databases` lists every database except the primary, `--daemon` runs in parallel.
+CI tests that row on SQLite.
 `--daemon` isolates only the primary connection.
 `--rails` without `--daemon` is serial on every row.
 A Postgres worker database is copied once, at the start of the run.
@@ -461,6 +462,7 @@ A `:memory:` database is not supported on `--daemon`.
 
 Each worker copies only the primary database, the one `ActiveRecord::Base` uses.
 An app with a second test database therefore runs one worker.
+A database with `database_tasks: false` counts too. A replica does not.
 If your tests never use the other databases, list them in `.mutineer.yml`:
 
 ```yaml
@@ -468,8 +470,9 @@ shared_databases: [cable, queue]
 ```
 
 The workers then share those databases, and `--jobs N` runs in parallel.
-After each mutant, a worker checks the shared databases.
-If a test used one, the mutant scores `error`, never a false kill or survive.
+After each mutant, a worker checks whether a shared database holds an Active Record connection.
+If one does, the mutant scores `error`, never a false kill or survive.
+The check does not see a connection that a test closes or removes before it ends, or a database reached without Active Record.
 One worker shares nothing, so it skips the check.
 Do not list the primary database: the run stops with exit 2.
 A name that matches no test database warns and lifts nothing.

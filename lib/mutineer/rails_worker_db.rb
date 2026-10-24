@@ -357,13 +357,16 @@ module Mutineer
     # counts the names that `shared_databases` does not list: more than one
     # means the run must use a single worker.
     #
+    # A config with `database_tasks: false` counts: workers would share it like
+    # any other. A replica does not, as before: it reads another config's database.
     # No rescue: a failure must reach the tool, which then keeps one worker.
     #
     # @return [Hash{String => Object}] "names" (Array<String>) and "primary" (String).
     def self.database_names
       env = ENV["RAILS_ENV"].to_s
       env = "test" if env.empty?
-      names = ActiveRecord::Base.configurations.configs_for(env_name: env).map(&:name)
+      configs = ActiveRecord::Base.configurations.configs_for(env_name: env, include_hidden: true)
+      names = configs.reject(&:replica?).map(&:name)
       { "names" => names, "primary" => ActiveRecord::Base.connection_db_config.name }
     end
 

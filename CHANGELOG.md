@@ -12,11 +12,13 @@ All notable changes to this project are documented here. The format is based on
   database ran one worker under `--daemon`. List the databases your tests
   never use (`shared_databases: [cable]`), and the workers share them and run
   in parallel. After each mutant, a parallel worker checks those databases: if
-  a test used one, the mutant scores `error`. Listing the primary database
-  stops the run with exit 2. A name that matches no test database warns. If
-  the app's databases cannot be listed, the run now keeps one worker; before,
-  that failure lifted the one-worker limit. See "More than one database" in
-  the README for the transactional-tests caveat.
+  one holds an Active Record connection, the mutant scores `error`. Listing
+  the primary database stops the run with exit 2. A name that matches no test
+  database warns. Two safety changes come with it: a test database with
+  `database_tasks: false` now counts toward the one-worker limit, and if the
+  app's databases cannot be listed, the run keeps one worker (before, both
+  cases could lift the limit). See "More than one database" in the README for
+  the transactional-tests caveat.
 
 ### Changed
 

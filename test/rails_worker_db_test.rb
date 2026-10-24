@@ -416,17 +416,25 @@ class RailsWorkerDbTest < Minitest::Test
   end
 
   # The tool counts these names; the primary is the config each worker copies.
+  # Hidden configs count, replicas do not.
   def test_database_names_lists_the_test_configs_and_the_primary
     saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
-    config = Struct.new(:name)
+    config = Struct.new(:name, :replica) do
+      def replica? = replica
+    end
+    # `legacy` stands for a `database_tasks: false` config: Rails hides it
+    # unless include_hidden is set, and workers would still share it.
+    all = [config.new("primary"), config.new("primary_replica", true), config.new("cable"), config.new("legacy")]
     configs = Object.new
-    configs.define_singleton_method(:configs_for) { |env_name:| %w[primary cable queue].map { |n| config.new(n) } }
+    configs.define_singleton_method(:configs_for) do |env_name:, include_hidden: false|
+      include_hidden ? all : all.first(1) + all[2, 1]
+    end
     base = Class.new
     base.define_singleton_method(:configurations) { configs }
     base.define_singleton_method(:connection_db_config) { config.new("primary") }
     Object.const_set(:ActiveRecord, Module.new.tap { |m| m.const_set(:Base, base) })
 
-    assert_equal({ "names" => %w[primary cable queue], "primary" => "primary" },
+    assert_equal({ "names" => %w[primary cable legacy], "primary" => "primary" },
                  Mutineer::RailsWorkerDb.database_names)
   ensure
     Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
