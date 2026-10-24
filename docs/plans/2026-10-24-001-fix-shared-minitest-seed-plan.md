@@ -90,7 +90,8 @@ about the order the mutant runs use.
 - **Seed hint in the abort message.** The fix turns a silent false kill into a
   `SmokeCheckError`. A user whose `rake test` passes in a random order would
   not know why. For Minitest, the "not green" message names the seed and how
-  to reproduce it (`SEED=1`) or pick another (`SEED=<n>`).
+  to reproduce it (`SEED=1` by default, or the active `SEED`) or pick another
+  (`SEED=<n>`).
 
 ## Scope Boundaries
 
@@ -155,8 +156,9 @@ AGENTS.md local gate passes (`rake test`, load smoke, `yard:strict`).
 **Files:** `lib/mutineer/coverage_map.rb`, `test/runner_test.rb`
 
 **Approach:** In each script, pass `seed_args` to `Minitest.run` and add
-`Minitest::Runnable.reset` before the test `load` lines. No other edit to
-`coverage_map.rb` (draft PR #202 also edits this file).
+`Minitest::Runnable.reset` before the test `load` lines. Include the effective
+Minitest seed in the coverage-cache digest. Name the seed in a rejected
+`--coverage-from` capture's validation message. Draft PR #202 also edits this file.
 
 **Test scenarios:**
 - Covers R5. Fixture (written in a tmpdir, like the sibling runner tests):
@@ -225,7 +227,8 @@ set. `seed_args` is built on `seed`, so both use one rule. Both callers pass
 **Test scenarios:**
 - Minitest: the U2 fixture's `SmokeCheckError` message includes the seed
   hint.
-- No framework given: the message is unchanged (existing tests still pass).
+- Default Minitest (`framework: nil`): the message includes the seed hint.
+  Other frameworks keep today's text (existing tests still pass).
 
 **Verification:** `test/daemon_backend_contract_test.rb` still passes
 (`abort_if_unclean!` stays public).
@@ -254,8 +257,10 @@ in `(#282)`, as the existing Fixed entries do. Body: the shared seed, the
   how to pick another seed (`SEED=<n>`).
 - Coverage capture now runs in a fixed order. State that leaks between tests
   can change which branches run, so a map can differ from one built under a
-  random seed. Pinning makes the map more deterministic; a cache hit still
-  re-runs the clean checks, so an old cache cannot hide the new abort.
+  random seed. The digest includes the effective Minitest seed, so existing
+  coverage caches are captured again and a changed seed invalidates the cache.
+  An older `--coverage-from` capture, or one from another seed, exits 2.
+  A cache hit still re-runs the clean checks.
 - The daemon change routes the Rails mutant run through
   `MinitestIntegration.run`. Run `rake test:daemon` where the machine allows,
   and say in the PR body if it could not run.
