@@ -12,6 +12,17 @@ All notable changes to this project are documented here. The format is based on
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.
 
+### Fixed
+
+- **`--strategy redefine` and path-relative methods.** Redefine now loads
+  the mutated method from a hidden file beside the source, as reload does.
+  It used the system temp directory before, so `__dir__` and
+  `require_relative` in the method pointed there, and every mutant of such
+  a method was falsely killed (#279). Redefine is also the default under
+  `--rails` without `--daemon`. When a source directory is not writable,
+  redefine still uses the system temp directory there, as before, and
+  the run warns that path-relative methods there can be falsely killed.
+
 ## [1.7.0] - 2026-10-23
 
 ### Added

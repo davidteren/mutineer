@@ -336,11 +336,14 @@ RAILS_ENV=test bundle exec mutineer run \
 
 `--rails` boots `config/environment` once in the parent process (every mutant
 then forks and inherits it), defaults `--strategy` to `redefine` without `--daemon`
-(surgical — it avoids reloading files into the app tree; `--daemon` keeps `reload`), and reconnects ActiveRecord in each
+(surgical: it reloads only the mutated method, not the whole file. Like `reload`, it writes a hidden `.mutineer_mutant*.rb` beside the source. In a read-only source directory it uses the system temp directory instead. `--daemon` keeps `reload`), and reconnects ActiveRecord in each
 fork so the database connection is fork-safe. Use `--boot FILE` to boot a
 different entry point. Boot mode requires at least one `--test` file and is
 coverage-guided — each mutant runs only the test files that exercise its line
 (coverage is captured by forking the booted app, then cached).
+
+When redefine uses the system temp directory, the run warns that methods using
+`__dir__` or `require_relative` can be falsely killed. The score can then be too high.
 
 Some code runs while the app boots or a class loads, for example a class body
 that calls a method to build a constant, a `to_prepare` initializer, or a
