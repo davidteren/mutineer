@@ -1029,8 +1029,9 @@ module Mutineer
         Minitest.extensions << "mutineer_report"
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         #{abs_preload_paths.inspect}.each { |f| require f }
+        Minitest::Runnable.reset
         #{loads}
-        _passed = Minitest.run([])
+        _passed = Minitest.run(#{MinitestIntegration.seed_args.inspect})
         $stderr.write(_report.string) unless _passed
         exit(_passed ? 0 : 1)
       RUBY
@@ -1090,8 +1091,9 @@ module Mutineer
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         #{abs_preload_paths.inspect}.each { |f| require f }
         _load = #{load_coverage_expression}
+        Minitest::Runnable.reset
         load #{absolute(test_path).inspect}
-        _passed = Minitest.run([])
+        _passed = Minitest.run(#{MinitestIntegration.seed_args.inspect})
         $stderr.write(_report.string) unless _passed
         _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => _coverage,

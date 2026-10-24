@@ -11,6 +11,7 @@ require_relative "mutator_registry"
 require_relative "mutant_id"
 require_relative "project_path"
 require_relative "external_backend"
+require_relative "test_runners"
 require_relative "orphan_guard"
 
 module Mutineer
@@ -130,10 +131,14 @@ module Mutineer
     # those results would treat existing assertion failures as killed mutants.
     #
     # @param coverage_map [Mutineer::CoverageMap] the built or loaded map.
+    # @param framework [String, nil] the run's framework (nil is Minitest, as in
+    #   {TestRunners.for}). For Minitest, the message names the seed: an
+    #   order-dependent suite can pass in a random order and fail in the
+    #   pinned one (#282).
     # @return [void]
     # @raise [Mutineer::SmokeCheckError] when any captured test failed clean,
     #   or when no test recorded coverage and a capture failed.
-    def self.abort_if_unclean!(coverage_map)
+    def self.abort_if_unclean!(coverage_map, framework: nil)
       if coverage_map.map.empty? && coverage_map.failed_test_files.any?
         raise SmokeCheckError, "no test recorded coverage, and capture failed for #{coverage_map.failed_test_files.join(', ')}"
       end
@@ -143,7 +148,17 @@ module Mutineer
 
       raise SmokeCheckError,
             "the unmutated suite is not green (#{files.join(', ')}) — " \
-            "#{ExternalBackend.generic_env_hint}."
+            "#{ExternalBackend.generic_env_hint}.#{minitest_seed_hint if TestRunners.for(framework) == TestRunners::Minitest}"
+    end
+
+    # Says which seed the Minitest runs use, and how to reproduce or change it.
+    #
+    # @api private
+    # @return [String]
+    def self.minitest_seed_hint
+      seed = MinitestIntegration::PINNED_SEED
+      " Mutineer runs Minitest with seed #{seed} unless SEED is set. Run the suite with " \
+        "SEED=#{seed} to reproduce the failure, or set SEED to choose another order."
     end
 
     # Coverage-based test selection, shared by the in-process ({Runner.run}) and daemon

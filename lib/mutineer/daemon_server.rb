@@ -446,13 +446,16 @@ module Mutineer
 
       # Load the covering test files and run them; 0 = all passed (survived),
       # 1 = a failure/error (killed). Minitest only; rspec is not yet on this path.
+      # {MinitestIntegration.run} is the method the daemon's clean check uses,
+      # so each mutant fork gets the same seed and class list (#282). It loads
+      # only stdlib, so the daemon still needs no Prism.
       def run_tests(tests)
         raise "unsupported framework #{@framework.inspect}" unless @framework == "minitest"
 
+        require_relative "minitest_integration"
         require "minitest"
         require "rails/test_help" if defined?(Rails)
-        tests.each { |t| load File.expand_path(t) }
-        Minitest.run([]) ? 0 : 1
+        MinitestIntegration.run(tests.map { |t| File.expand_path(t) })
       end
     end
   end
