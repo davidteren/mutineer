@@ -1,0 +1,31 @@
+docs/plans/2026-10-24-298-fix-mysql-version-check-plan.md
+  s_d164a58b33b1a3::t_8e057058c9dfb5 142-143
+  s_d164a58b33b1a3::t_2bc8321ab6dfe5 125-128
+  s_d164a58b33b1a3::t_3c4025a1d2b50e 145-146,148
+  s_d164a58b33b1a3::t_5d455579ac723f 137,139
+  s_d164a58b33b1a3::t_5dc8b03df2f373 1-27,29-42,46-55,57-63,65-69,73-93,97-100,102-124,129-136,138,140-141,144,147,149-246
+  s_d164a58b33b1a3::t_7ee9408cfc1894 28
+  s_d164a58b33b1a3::t_675fe98ec805f3 101
+  s_d164a58b33b1a3::t_e0ecb22d36eaee 94-96
+  s_d164a58b33b1a3::t_08ffe305ae70ee 43-45
+  s_d164a58b33b1a3::t_0c2d05807fac6a 70-72
+  s_d164a58b33b1a3::t_f29d3a640ce66b 56
+  s_d164a58b33b1a3::t_66c84fd86de96c 64
+  s_d164a58b33b1a3::t_1f47f2a6ee620c 247-254
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "49fdc14e7d0760ee445d19860aa02a25e437fb81",
+  "prompts": {},
+  "sessions": {
+    "s_d164a58b33b1a3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c762a0aa-a2bc-48ef-8521-6cf8d063f61e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
