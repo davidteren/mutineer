@@ -26,15 +26,20 @@ All notable changes to this project are documented here. The format is based on
     in reports. Runs that use only one of these operators keep the same
     mutants and ids.
   - If you combine these operators, the mutant count and the score can move
-    with no code change, so a `--threshold` gate can change its result.
-    Regenerate a `--baseline` file with `--format json` after upgrading. In a
-    full (unscoped) comparison, a dropped copy that survived is listed as
-    fixed.
-  - An ignore entry for one copy's id still ignores only that copy. Keep the
-    entry: a run with that operator alone still uses it, and
-    `mutineer migrate` keeps it as a current id. This also fixes the #159
+    with no code change, so a `--threshold` or `--baseline` gate can change
+    its result. Regenerate a `--baseline` file with `--format json` after
+    upgrading. In a full (unscoped) comparison, a dropped copy that survived
+    is listed as fixed.
+  - An ignore entry for one copy's id still ignores only that copy, as for
+    the #159 copies. So if you ignore the copy a report shows, the other copy
+    then runs and is reported, and it needs its own entry. Keep both entries:
+    a run with one operator alone still uses its entry, and
+    `mutineer migrate` keeps both as current ids. This also fixes the #159
     copies: an `ignore:` list that names both copies of a repeated edit no
     longer makes `mutineer migrate` exit 1.
+  - An old-format ignore entry that matches only a dropped copy still gets
+    the old-id-format warning and still counts in
+    `summary.legacy_id_matches.ignore`, so `mutineer migrate` updates it.
   - Within a method, mutants now run and list in the `--list-operators`
     order. This applies to any run whose `--operators` or `operators:` list
     is in another order, so `--dry-run` lists and `--fail-fast` can differ.
