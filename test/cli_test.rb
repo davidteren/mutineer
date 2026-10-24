@@ -888,6 +888,18 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_test_file_load_error_in_the_clean_suite_hides_the_password
+    with_project do |proj|
+      File.write(File.join(proj, "boom_test.rb"), %(raise "cannot connect: \#{ENV.fetch("DATABASE_URL")}"\n))
+      _, err, status = mutineer("run", "calculator.rb", "--test", "boom_test.rb",
+                                chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "[mutineer] load failed: RuntimeError: cannot connect: postgres://u:[REDACTED]@ho st/db"
+      refute_includes err, "s3cret"
+    end
+  end
+
   def test_source_argument_error_at_load_exits_one
     with_project do |proj|
       File.write(File.join(proj, "bad.rb"), %(def one = 1\nraise ArgumentError, "bad #{BAD_DATABASE_URL}"\n))

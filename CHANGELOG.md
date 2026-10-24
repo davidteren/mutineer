@@ -24,8 +24,9 @@ All notable changes to this project are documented here. The format is based on
   excerpt) and a hint to re-run with `--verbose`, and exits 1. `--verbose`
   adds a redacted backtrace and the redacted cause chain. CLI error messages, the
   fork child's error line, the worker crash text in the report, the daemon's
-  stderr lines, the failing test report from the clean-suite and coverage
-  checks, and the `--verbose` test command output are redacted too.
+  stderr lines, the failing test report and any load error from the
+  clean-suite and coverage checks, and the `--verbose` test command output
+  are redacted too.
   Daemon stderr is now copied line by line as UTF-8, so an invalid byte
   shows as U+FFFD. A password that equals the username no longer blanks the
   same text elsewhere (for example `role "postgres"`). A password of 3
