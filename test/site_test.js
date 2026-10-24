@@ -100,10 +100,15 @@ test('index.md landing twin exists and sitemap lists the same Pages URLs as llms
   }
 });
 
-// docs/plans/ and docs/release-review/ are maintainer notes kept in git.
-// rake site:build must leave them out of the published tree.
+// SiteBuild::UNPUBLISHED (docs/plans/, docs/release-review/) holds maintainer
+// notes kept in git. rake site:build must leave them out of the published tree.
 test('maintainer notes under docs/ are not published', () => {
-  for (const dir of ['plans', 'release-review']) {
+  const source = fs.readFileSync('rake/site_build.rb', 'utf8');
+  const list = source.match(/^\s*UNPUBLISHED = %w\[([^\]]*)\]/m);
+  assert.ok(list, 'rake/site_build.rb must define UNPUBLISHED = %w[...]');
+  const dirs = list[1].trim().split(/\s+/);
+  assert.ok(dirs.includes('plans'), 'docs/plans/ must stay unpublished');
+  for (const dir of dirs) {
     assert.ok(!fs.existsSync(`${SITE}/${dir}`), `${SITE}/${dir} must not be published`);
   }
 });
