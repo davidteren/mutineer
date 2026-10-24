@@ -68,6 +68,10 @@ mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --forma
 ```
 
 `--baseline` exits `1` if it finds a new survivor or a lower score, or if the run is incomplete.
+`baseline.regressed` and `baseline.incomplete` in the JSON report say which. For an incomplete run, read
+`no_verdict[]`, fix the harness, and re-run; do not change the tests. `baseline.unverified_survivors[]`
+lists baseline survivors this run did not decide (each with its `status`). They are not fixed, and they do
+not fail the run on their own, so a run that exits `0` can still list them.
 It matches survivors by `id`; file moves and renames can change ids.
 `--baseline-epsilon` allows a small score difference. With `--since`, only new
 survivors fail the baseline check: a score for changed lines is not comparable
@@ -165,7 +169,7 @@ unresolved survivors. Failed attempts alone do not prove that a mutant is equiva
 <!-- contract:exit-codes -->
 | Code | Meaning |
 |------|---------|
-| `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
+| `0` | Score ≥ threshold (or no gate) **and** no baseline regression or incomplete `--baseline` run. |
 | `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error. |
 | `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
 <!-- /contract:exit-codes -->

@@ -181,7 +181,9 @@ module Mutineer
 
     # A share alone gives a small run no tolerance at all: on a `--since` PR that
     # yields 8 mutants, one timeout is 12.5%. README recommends exactly that
-    # workflow, so one bad mutant never fails the gate on its own, at any size.
+    # workflow, so one bad mutant never fails the share rule on its own, at any
+    # size. The nil-score rule has no floor: with nothing scored, one broken
+    # mutant is enough (see #broken_nil_score?).
     BROKEN_FLOOR = 1
 
     attr_reader :results

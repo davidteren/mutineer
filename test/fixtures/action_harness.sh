@@ -18,6 +18,7 @@ sed 's/"scoped":false/"scoped":true/; s/"score_comparable":true/"score_comparabl
 sed 's/"scoped":false/"scoped":false,"id_format":2,"legacy_id_matches":{"ignore":2,"baseline":3}/' "$SCRATCH/report.json" > "$SCRATCH/report-legacy.json"
 # #283: an incomplete run with one unverified baseline survivor and no regression.
 sed 's/"regressed":true,/"regressed":false,"incomplete":true,"unverified_survivors":[{"subject":"Calc#mul","file":"lib\/calc.rb","line":30,"operator":"arithmetic","id":"aaa111bbb222","status":"error"}],/' "$SCRATCH/report.json" > "$SCRATCH/report-incomplete.json"
+sed 's/"regressed":true,/"regressed":true,"incomplete":true,/' "$SCRATCH/report.json" > "$SCRATCH/report-regressed-incomplete.json"
 
 mkdir -p "$SCRATCH/bin"
 cat > "$SCRATCH/bin/mutineer" <<STUB
@@ -210,3 +211,7 @@ grep '::error::' "$SCRATCH/case17/stdout.txt"
 echo; echo "== 18: incomplete baseline run (expects the INCOMPLETE baseline line) =="
 run_step case18 STUB_REPORT="$SCRATCH/report-incomplete.json"
 echo "  case18 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case18/summary.md")"
+
+echo; echo "== 19: regressed and incomplete baseline run (expects both on the baseline line) =="
+run_step case19 STUB_REPORT="$SCRATCH/report-regressed-incomplete.json"
+echo "  case19 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case19/summary.md")"

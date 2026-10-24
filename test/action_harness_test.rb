@@ -26,7 +26,7 @@ class ActionHarnessTest < Minitest::Test
       "case5" => 1, "case6" => 2, "case7" => 1, "case8" => 2, "case8b" => 2, "case9" => 0,
       "case10" => 1, "case11" => 2, "case11b" => 2, "case12" => 1,
       "case13" => 2, "case14" => 2, "case14b" => 2, "case15" => 1,
-      "case16" => 2, "case17" => 2, "case18" => 1 }.each do |c, code|
+      "case16" => 2, "case17" => 2, "case18" => 1, "case19" => 1 }.each do |c, code|
       assert_includes out, "#{c}: exit=#{code}", "#{c} exit code drifted:\n#{out}"
     end
     assert_includes out, "OK: abbreviation rejected"
@@ -60,7 +60,9 @@ class ActionHarnessTest < Minitest::Test
     assert_includes out, "OK: escaped path rejected before running"
     assert_includes out, "a%25b%0Ac.json"
     incomplete = out[/case18 baseline line: .*/].to_s
-    assert_includes incomplete, "; 1 unverified survivor(s)", "unverified count missing:\n#{out}"
+    assert_includes incomplete, "; 1 unverified survivor(s) (see baseline.unverified_survivors in the report)",
+                    "unverified count missing:\n#{out}"
+    assert_includes out[/case19 baseline line: .*/].to_s, "; incomplete run: REGRESSED.", "regressed+incomplete drifted"
     assert_includes incomplete, ": INCOMPLETE (the run did not finish; see no_verdict[]).", "incomplete marker missing"
     refute_includes out[/case3 baseline line: .*/].to_s, "unverified", "older report must render as before"
     assert_includes out, "Old ignore entries matched: 2.", "old-format ignore count missing"

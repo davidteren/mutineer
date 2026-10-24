@@ -14,7 +14,7 @@ exit_code_action: >-
   below-threshold/incomplete-run/regressed, 2 usage).
 exit_codes:
   - code: "0"
-    meaning: Score ≥ threshold (or no gate) **and** no baseline regression.
+    meaning: Score ≥ threshold (or no gate) **and** no baseline regression or incomplete `--baseline` run.
   - code: "1"
     meaning: >-
       Score below `--threshold`, OR nothing could be scored and something

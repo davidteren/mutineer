@@ -190,7 +190,7 @@ The delta versus the prior `--format json` report, matched by `id`. A baseline w
 | Key | Type | Meaning |
 |-----|------|---------|
 | `regressed` | bool | True if there are new survivors OR a score drop. **Drives exit 1.** An incomplete run also exits 1; read `incomplete`. |
-| `incomplete` | bool | True when the run fails the completeness rule: nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted. Only the no-verdict rule: false for a `--fail-fast` or `--only` run. **Drives exit 1** under `--baseline`, without `--threshold`. Additive key (schema `1.9`). |
+| `incomplete` | bool | True when the run fails the completeness rule: nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted. It is the no-verdict rule only: a run that is partial by design (`--fail-fast`, `--only`) is not incomplete for that reason, and its absent survivors still read as fixed. **Drives exit 1** under `--baseline`, without `--threshold`. Additive key (schema `1.9`). |
 | `score_before` | float \| null | Baseline score. |
 | `score_after` | float \| null | This run's score. |
 | `score_dropped` | bool | True if `score_after < score_before - epsilon`. |
@@ -204,7 +204,7 @@ The delta versus the prior `--format json` report, matched by `id`. A baseline w
 <!-- contract:exit-codes -->
 | Code | Meaning |
 |------|---------|
-| `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
+| `0` | Score ≥ threshold (or no gate) **and** no baseline regression or incomplete `--baseline` run. |
 | `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error. |
 | `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
 <!-- /contract:exit-codes -->

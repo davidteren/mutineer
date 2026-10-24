@@ -15,12 +15,22 @@ All notable changes to this project are documented here. The format is based on
   exits 1 without `--threshold`. A baseline survivor counts as fixed only
   when this run killed it, ignored it, or no longer has it. Other baseline
   survivors go into the new `baseline.unverified_survivors[]` with their
-  status, and the human report and the Action summary name them. If CI turns
-  red after the upgrade, read `no_verdict[]` in the JSON report: the run did
-  not finish, and the tests did not get weaker. Schema `1.9`.
+  status. The human report names them and the Action summary counts them.
+  Under a diff-scoped (`--since`) side, `fixed_survivors` stays empty, as
+  before. If CI turns red after the upgrade, read `no_verdict[]` in the JSON
+  report: the run did not finish, and the tests did not get weaker. If the
+  same mutants time out on every run, a retry does not help: raise
+  `--timeout` or ignore those mutants.
 - **A baseline survivor that is now `ran_at_load` is not listed as fixed
   (#286).** 1.7.0 listed it as fixed. It is now in
   `baseline.unverified_survivors[]`.
+
+### Added
+
+- **`baseline.incomplete` and `baseline.unverified_survivors[]` in the JSON
+  report (#283).** `incomplete` says the run fails the completeness rule;
+  each `unverified_survivors[]` entry is a baseline survivor this run did not
+  decide, with its current `status`. Schema `1.9`.
 
 ### Changed
 

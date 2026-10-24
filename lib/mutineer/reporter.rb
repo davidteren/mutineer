@@ -131,17 +131,14 @@ module Mutineer
     def exit_code(threshold:)
       return 0 if threshold.nil? || threshold <= 0
 
+      # An incomplete run fails first. A score computed over a small slice of
+      # what was attempted is not this suite's score: without this, 90 errored
+      # mutants and 10 that ran (9 killed) reports 90% and exits 0, so CI cannot
+      # tell a complete run from a broken one.
+      return 1 if @agg.incomplete?
+
       score = @agg.mutation_score
-      if score.nil?
-        return 1 if @agg.broken_nil_score?
-
-        return 0 # pure no_coverage / ignored / empty — gate skipped
-      end
-
-      # A score computed over a small slice of what was attempted is not this
-      # suite's score. Without this, 90 errored mutants and 10 that ran (9 killed)
-      # reports 90% and exits 0, so CI cannot tell a complete run from a broken one.
-      return 1 if @agg.broken_share_exceeded?
+      return 0 if score.nil? # pure no_coverage / ignored / empty — gate skipped
 
       score >= threshold ? 0 : 1
     end

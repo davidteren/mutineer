@@ -419,7 +419,7 @@ runs:
                            "; score-drop check skipped (\(.baseline.score_after // "N/A" | oneline) now vs \(.baseline.score_before // "N/A" | oneline) baseline: the two scores do not share a comparable denominator)"
                          end)
                       + (if ((.baseline.unverified_survivors // []) | length) > 0 then
-                           "; \((.baseline.unverified_survivors // []) | length) unverified survivor(s)"
+                           "; \((.baseline.unverified_survivors // []) | length) unverified survivor(s) (see baseline.unverified_survivors in the report)"
                          else "" end)
                       + (if .baseline.regressed then
                            (if (.baseline.incomplete // false) then "; incomplete run" else "" end) + ": REGRESSED."
