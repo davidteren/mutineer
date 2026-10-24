@@ -1,0 +1,37 @@
+CHANGELOG.md
+  s_533ed13f8f67ea::t_f904341df4bf58 11-15,23,27
+docs/fragments/contract.yml
+  s_533ed13f8f67ea::t_f904341df4bf58 13-16,24-25,27-29
+README.md
+  s_533ed13f8f67ea::t_2ec3bb1a22f763 313-314
+STABILITY.md
+  s_533ed13f8f67ea::t_c50b0c848d1ef3 36-37
+action.yml
+  s_533ed13f8f67ea::t_6caa7d99d7b247 117
+docs/agentic-coding.html
+  s_533ed13f8f67ea::t_ba9fe501566ff3 164-165
+docs/agentic-coding.md
+  s_533ed13f8f67ea::t_bd10c255519ab1 169-170
+docs/index.md
+  s_533ed13f8f67ea::t_674e128d626fa4 83-84
+docs/json-schema.md
+  s_533ed13f8f67ea::t_09dcefcb1a2621 205-206
+skills/mutineer/SKILL.md
+  s_533ed13f8f67ea::t_27100fcd5636f9 72-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "50f04a5d4f8e7a172ae4ef06dd5d2157957fd135",
+  "prompts": {},
+  "sessions": {
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

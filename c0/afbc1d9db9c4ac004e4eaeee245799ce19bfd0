@@ -1,0 +1,19 @@
+docs/plans/2026-10-24-001-fix-shared-minitest-seed-plan.md
+  s_d164a58b33b1a3::t_8d0873368fcd7f 216-222
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c0afbc1d9db9c4ac004e4eaeee245799ce19bfd0",
+  "prompts": {},
+  "sessions": {
+    "s_d164a58b33b1a3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c762a0aa-a2bc-48ef-8521-6cf8d063f61e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

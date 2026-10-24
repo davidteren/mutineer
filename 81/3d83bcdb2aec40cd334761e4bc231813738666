@@ -1,0 +1,105 @@
+test/action_harness_test.rb
+  s_533ed13f8f67ea::t_1e9a5abb6c5113 75
+  s_533ed13f8f67ea::t_b4fd4e2945c1df 29-30,69-74
+  s_04fd8c79e6fa52::t_0dca98d6ccd008 69-70
+test/baseline_test.rb
+  s_533ed13f8f67ea::t_1e9a5abb6c5113 273
+  s_533ed13f8f67ea::t_94c0ed32927ab1 83-104,501
+  s_533ed13f8f67ea::t_b4fd4e2945c1df 72-82,437-446,494-500
+  s_04fd8c79e6fa52::t_531cfa279c3e91 502
+  s_04fd8c79e6fa52::t_1d0da4ec3dd7a4 437-446,494-502
+test/fixtures/action_harness.sh
+  s_533ed13f8f67ea::t_b4fd4e2945c1df 20-22,24,221-233
+  s_533ed13f8f67ea::t_45ff267a9dae5b 15,23
+  s_04fd8c79e6fa52::t_2880f7487c0346 221-224
+lib/mutineer/cli.rb
+  s_533ed13f8f67ea::t_5e223b73bab274 677
+action.yml
+  s_533ed13f8f67ea::t_feaf0726a01401 45-46,379-389,437-439,443-444
+  s_04fd8c79e6fa52::t_47a965baf9bf3e 443-444
+docs/json-schema.md
+  s_533ed13f8f67ea::t_0aefb0dd30c892 15,24-29,43,206,213
+  s_533ed13f8f67ea::t_5e223b73bab274 199,205
+  s_04fd8c79e6fa52::t_4f9fb103caf042 213
+lib/mutineer/baseline.rb
+  s_533ed13f8f67ea::t_1e9a5abb6c5113 21-23
+  s_533ed13f8f67ea::t_5e223b73bab274 24,119-120,143,147,173,184
+  s_533ed13f8f67ea::t_feaf0726a01401 117-118
+test/json_reporter_test.rb
+  s_533ed13f8f67ea::t_1e9a5abb6c5113 61
+STABILITY.md
+  s_533ed13f8f67ea::t_1e9a5abb6c5113 16,30-34,40
+  s_04fd8c79e6fa52::t_32136c69b48ec3 40
+CHANGELOG.md
+  s_533ed13f8f67ea::t_0aefb0dd30c892 14,18-27,42,46-49
+  s_533ed13f8f67ea::t_5e223b73bab274 43-44
+  s_04fd8c79e6fa52::t_ddd45d774d9fdb 46-49
+test/cli_test.rb
+  s_533ed13f8f67ea::t_7d2d7e2ccb8a11 1151
+  s_533ed13f8f67ea::t_94c0ed32927ab1 1115-1150,1152-1159
+  s_24062c4e57a38e::t_45f5f5b4601456 738,877
+README.md
+  s_533ed13f8f67ea::t_d8900ca8cf4e34 312
+  s_04fd8c79e6fa52::t_590432f02e0c98 312
+docs/agentic-coding.html
+  s_533ed13f8f67ea::t_d79bb6f25360be 163
+  s_04fd8c79e6fa52::t_990b7264521028 163
+docs/agentic-coding.md
+  s_533ed13f8f67ea::t_fcd830ff66b02e 172
+  s_04fd8c79e6fa52::t_a26cea71fda94a 172
+docs/fragments/contract.yml
+  s_533ed13f8f67ea::t_dce752ce8d0a1f 17
+  s_04fd8c79e6fa52::t_2b0b981b9908dc 17
+docs/index.md
+  s_533ed13f8f67ea::t_e2ff9fcbf7ca5f 61,82
+  s_04fd8c79e6fa52::t_76958e7b065a96 61,82
+docs/plans/2026-10-24-283-286-fix-baseline-unverified-survivors-plan.md
+  s_533ed13f8f67ea::t_d4ff38eabf21be 17,21,58,71,97,101,114,116-118,214-216,242,244,256,297-298,302,305,315,319,328-329,343,360,369,374
+  s_04fd8c79e6fa52::t_fc132b9ae07077 328
+docs/rails.html
+  s_533ed13f8f67ea::t_67467f2e2195e3 85
+  s_04fd8c79e6fa52::t_5b5ef8219c12cb 85
+docs/rails.md
+  s_533ed13f8f67ea::t_e326a1128a76e7 38
+  s_04fd8c79e6fa52::t_b3f4435d9da43e 38
+lib/mutineer/reporter.rb
+  s_533ed13f8f67ea::t_fc5c6c3c80497e 18,564,579,875
+  s_04fd8c79e6fa52::t_2652effac455d4 875
+skills/mutineer/SKILL.md
+  s_533ed13f8f67ea::t_2bcc9b21073ec3 65,76
+  s_04fd8c79e6fa52::t_af9b06c860cfc1 65,76
+test/equivalent_mutant_test.rb
+  s_533ed13f8f67ea::t_2a3453a1ab4336 308
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "813d83bcdb2aec40cd334761e4bc231813738666",
+  "prompts": {},
+  "sessions": {
+    "s_04fd8c79e6fa52": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16cbd-26a2-7b61-8d84-799333c245e9",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_24062c4e57a38e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a16cbd-26a2-7b61-8d84-799333c245e9",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

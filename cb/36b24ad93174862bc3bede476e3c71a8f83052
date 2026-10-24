@@ -1,0 +1,45 @@
+CHANGELOG.md
+  s_d164a58b33b1a3::t_c8915278a83c71 18-23,28-34
+README.md
+  s_d164a58b33b1a3::t_99e3323f6ca792 312
+STABILITY.md
+  s_d164a58b33b1a3::t_d882e3bab01f9f 35
+action.yml
+  s_d164a58b33b1a3::t_c75ca1512fbe24 422
+docs/agentic-coding.html
+  s_d164a58b33b1a3::t_af2cf906a6c729 103,163
+docs/agentic-coding.md
+  s_d164a58b33b1a3::t_cdd6579a01c2bc 71-74,172
+docs/fragments/contract.yml
+  s_d164a58b33b1a3::t_210d4b94c56b69 17
+docs/index.md
+  s_d164a58b33b1a3::t_dc2562e129382a 82
+docs/json-schema.md
+  s_d164a58b33b1a3::t_3eabd474d9c393 193,207
+lib/mutineer/reporter.rb
+  s_d164a58b33b1a3::t_d3bc188eb06022 134-138,140-141
+lib/mutineer/result.rb
+  s_d164a58b33b1a3::t_0d516035cca862 184-186
+skills/mutineer/SKILL.md
+  s_d164a58b33b1a3::t_eb779631e7a114 63-67,76
+test/action_harness_test.rb
+  s_d164a58b33b1a3::t_f52ee2623dbe13 29,63-65
+test/fixtures/action_harness.sh
+  s_d164a58b33b1a3::t_d85cd4cff603a9 21,214-217
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cb36b24ad93174862bc3bede476e3c71a8f83052",
+  "prompts": {},
+  "sessions": {
+    "s_d164a58b33b1a3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c762a0aa-a2bc-48ef-8521-6cf8d063f61e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

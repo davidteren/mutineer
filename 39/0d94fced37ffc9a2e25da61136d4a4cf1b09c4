@@ -1,0 +1,38 @@
+README.md
+  s_d2b7b963e307a9::t_9736c989a8f25f 475
+lib/mutineer/rails_worker_db.rb
+  s_d2b7b963e307a9::t_b9e50406097e37 469
+  s_d2b7b963e307a9::t_7ec9cc4c1ae5a6 690-692,694,698
+  s_d2b7b963e307a9::t_9736c989a8f25f 371,425,453,464-468,470-475,477-480,483-513,570
+CHANGELOG.md
+  s_d2b7b963e307a9::t_a83162eb80dcf5 31-33
+test/daemon_worker_db_test.rb
+  s_d2b7b963e307a9::t_a83162eb80dcf5 6
+  s_d2b7b963e307a9::t_71d3e79ce85613 183-185,189,199,203-246
+  s_d2b7b963e307a9::t_a9673120d7ade2 247,249-321
+  s_d2b7b963e307a9::t_460098e2e4a41c 248
+test/rails_worker_db_test.rb
+  s_d2b7b963e307a9::t_ccd545d37d3016 6,559-573
+  s_d2b7b963e307a9::t_ce437c02396b7b 510-511,515-518
+  s_d2b7b963e307a9::t_9736c989a8f25f 471
+  s_d2b7b963e307a9::t_71d3e79ce85613 614-615
+  s_d2b7b963e307a9::t_07a3b9630150c6 521-543
+  s_d2b7b963e307a9::t_ca65af826eb2e2 644,648-651,673-674
+  s_d2b7b963e307a9::t_a32802bcaaa2a5 519-520,574-575,675
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "390d94fced37ffc9a2e25da61136d4a4cf1b09c4",
+  "prompts": {},
+  "sessions": {
+    "s_d2b7b963e307a9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16dd5-7b15-7ab0-b4e0-7d7830b052e7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
