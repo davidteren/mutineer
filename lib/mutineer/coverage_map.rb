@@ -467,7 +467,7 @@ module Mutineer
         return "it has no source fingerprints; capture it again with this version and --rails/--boot"
       end
       return "its entries are not the shape a coverage cache saves; capture it again" unless well_formed_capture?(cached)
-      return "its tests, --require files, boot file, load paths or framework differ" unless cached["inputs"] == compute_digest(inputs_only: true)
+      return "its tests, --require files, boot file, load paths, framework or Minitest seed differ" unless cached["inputs"] == compute_digest(inputs_only: true)
 
       fingerprints = source_fingerprints
       missing = fingerprints.keys - cached["sources"].keys
@@ -1029,8 +1029,9 @@ module Mutineer
         Minitest.extensions << "mutineer_report"
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         #{abs_preload_paths.inspect}.each { |f| require f }
+        Minitest::Runnable.reset
         #{loads}
-        _passed = Minitest.run([])
+        _passed = Minitest.run(#{MinitestIntegration.seed_args.inspect})
         $stderr.write(_report.string) unless _passed
         exit(_passed ? 0 : 1)
       RUBY
@@ -1090,8 +1091,9 @@ module Mutineer
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         #{abs_preload_paths.inspect}.each { |f| require f }
         _load = #{load_coverage_expression}
+        Minitest::Runnable.reset
         load #{absolute(test_path).inspect}
-        _passed = Minitest.run([])
+        _passed = Minitest.run(#{MinitestIntegration.seed_args.inspect})
         $stderr.write(_report.string) unless _passed
         _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => _coverage,
@@ -1355,6 +1357,8 @@ module Mutineer
       end
       @load_paths.sort.each { |lp| d.update("loadpath\0#{lp}\0") }
       d.update("framework\0#{@framework}\0")
+      # The seed sets the test order, and the order can change which lines run (#282).
+      d.update("seed\0#{MinitestIntegration.seed}\0") unless @framework == "rspec"
       d.hexdigest
     end
 

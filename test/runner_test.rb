@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "minitest/mock"
+require "rbconfig"
 require "tmpdir"
 # Pre-require the fixture (R5/KTD4): with it already in $LOADED_FEATURES, the
 # test files' `require_relative "calculator"` is a no-op in the child, so the
@@ -79,7 +80,7 @@ class RunnerTest < Minitest::Test
 
       assert_predicate result, :killed?, "expected killed, got #{result.status} (#{result.details})"
       refute_path_exists marker, "the mutant run must stop at the first failing test"
-      pinned = ENV["SEED"] ? ENV["SEED"].to_i % 0xFFFF : Mutineer::MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED
+      pinned = ENV["SEED"] ? ENV["SEED"].to_i % 0xFFFF : Mutineer::MinitestIntegration::PINNED_SEED
       assert_equal pinned.to_s, File.read(seed)
     end
   end
@@ -433,6 +434,117 @@ class RunnerTest < Minitest::Test
     map = Mutineer::CoverageMap.from_data(map: { "lib/calc.rb:2" => ["test/ok_test.rb"] },
                                           failed_test_files: ["test/calc_test.rb"], project_root: ROOT)
     assert_nil Mutineer::JobPlan.abort_if_unclean!(map)
+  end
+
+  def test_abort_if_unclean_names_the_minitest_seed
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], failed_clean_tests: ["test/a_test.rb"],
+                                          project_root: ROOT)
+    without_seed_env do
+      minitest = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+      assert_includes minitest.message, "SEED=#{Mutineer::MinitestIntegration::PINNED_SEED}"
+      ENV["SEED"] = "4242"
+      own = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+      assert_includes own.message, "SEED=4242"
+      rspec = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map, framework: "rspec") }
+      refute_includes rspec.message, "SEED="
+    end
+  end
+
+  # #282: `test_a` needs a global that `test_b` sets. The pinned seed runs
+  # `test_a` first (Minitest 5 and 6), so the suite is red in the order every
+  # mutant run uses. With `classes: true`, the reader, the writer and a filler
+  # are three classes instead.
+  def write_order_dependent_suite(dir, classes: false)
+    src  = File.join(dir, "order_dep_calc.rb")
+    test = File.join(dir, "order_dep_calc_test.rb")
+    File.write(src, "class OrderDependentCalculator\n  def add(a, b)\n    a + b\n  end\nend\n")
+    body =
+      if classes
+        <<~RUBY
+          class OrderDependentReaderTest < Minitest::Test
+            def test_reads_the_global = assert_equal(5, $mutineer_order_dep)
+          end
+          class OrderDependentWriterTest < Minitest::Test
+            def test_sets_the_global = $mutineer_order_dep = OrderDependentCalculator.new.add(2, 3)
+          end
+          class OrderDependentFillerTest < Minitest::Test
+            def test_passes = pass
+          end
+        RUBY
+      else
+        <<~RUBY
+          class OrderDependentCalculatorTest < Minitest::Test
+            def test_a_reads_the_global = assert_equal(5, $mutineer_order_dep)
+            def test_b_sets_the_global = $mutineer_order_dep = OrderDependentCalculator.new.add(2, 3)
+          end
+        RUBY
+      end
+    File.write(test, "require \"minitest/autorun\"\nrequire_relative \"order_dep_calc\"\n#{body}")
+    [src, test]
+  end
+
+  # Runs the block with SEED unset, so the pinned seed applies.
+  def without_seed_env
+    saved = ENV.delete("SEED")
+    yield
+  ensure
+    saved ? ENV["SEED"] = saved : ENV.delete("SEED")
+  end
+
+  # #282: with a random clean check, this suite aborted on some runs and scored
+  # the `a + b` mutant killed on the others.
+  def test_order_dependent_suite_aborts_on_every_run
+    without_seed_env do
+      3.times do
+        Dir.mktmpdir("mutineer-order-dep") do |dir|
+          src, test = write_order_dependent_suite(dir)
+          config = Mutineer::Config.new(sources: [src], tests: [test], operators: ["arithmetic"], jobs: 1,
+                                        cache_dir: File.join(dir, "cache"), project_root: dir)
+          err = nil
+          capture_subprocess_io { err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::Runner.execute(config) } }
+          assert_includes err.message, "SEED="
+        end
+      end
+    end
+  end
+
+  def test_subprocess_clean_check_uses_the_pinned_seed
+    without_seed_env do
+      Dir.mktmpdir("mutineer-order-dep") do |dir|
+        src, test = write_order_dependent_suite(dir)
+        map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir)
+        capture_subprocess_io do
+          3.times { refute map.send(:subprocess_clean_pass?, [test]), "the clean check must fail under the pinned seed" }
+        end
+      end
+    end
+  end
+
+  # The subprocess clean check and the in-process run (the mutant path) shuffle
+  # the same class list, so order-dependent classes in one file agree. Without
+  # the reset, the script's list also holds Minitest::Test, and seed 1 then
+  # runs the reader class before the writer (#282). The
+  # in-process run starts in a fresh `ruby`, as the CLI does: this suite has
+  # already loaded minitest/spec, which changes the class list a fork sees.
+  def test_subprocess_clean_check_orders_classes_like_the_in_process_run
+    without_seed_env do
+      Dir.mktmpdir("mutineer-order-dep") do |dir|
+        src, test = write_order_dependent_suite(dir, classes: true)
+        map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir)
+        subprocess = capture = nil
+        capture_subprocess_io do
+          subprocess = map.send(:subprocess_clean_pass?, [test])
+          capture = map.send(:capture, test)&.fetch("passed")
+        end
+        script = "require 'mutineer'; Mutineer::ChildStdout.silence; exit Mutineer::TestRunners::Minitest.run([#{test.dump}], stop_at_first_failure: true)"
+        in_process = system(RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", "-e", script, out: File::NULL, err: File::NULL)
+        assert in_process, "the fixture must pass in the in-process order, or this proves nothing"
+        assert_equal in_process, subprocess, "the clean check and the mutant run must order classes the same way"
+        assert_equal in_process, capture, "coverage capture and the mutant run must order classes the same way"
+      end
+    end
   end
 
   # #159: an operator that emits one edit twice runs it once, and every kept
