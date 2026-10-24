@@ -12,7 +12,8 @@ All notable changes to this project are documented here. The format is based on
   the mutated method from a hidden file beside the source, as reload does.
   It used the system temp directory before, so `__dir__` and
   `require_relative` in the method pointed there, and every mutant of such
-  a method was falsely killed (#279).
+  a method was falsely killed (#279). Redefine now needs write access to
+  each source directory, as reload already does.
 
 ## [1.7.0] - 2026-10-23
 
