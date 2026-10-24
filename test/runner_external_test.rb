@@ -4,6 +4,7 @@ require_relative "test_helper"
 require "open3"
 require "tmpdir"
 require "fileutils"
+require "shellwords"
 
 # #27 (U4/U5): end-to-end for the external --test-command backend. Drives the real
 # bin against copied fixtures, using `ruby <test_file>` as the app's suite (the
@@ -152,5 +153,21 @@ class RunnerExternalTest < Minitest::Test
       assert_equal 0, status.exitstatus
       assert_match(/forcing --jobs 1/, err)
     end
+  end
+
+  # #288: --verbose prints the test command's output, which can quote
+  # DATABASE_URL.
+  def test_verbose_output_hides_the_password
+    url = "postgres://u:s3cret@ho st/db"
+    saved = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = url
+    command = "#{RUBY} -e #{Shellwords.escape('puts ENV.fetch("DATABASE_URL"); exit 1')} %{files}"
+
+    _, err = capture_io { Mutineer::ExternalBackend.run(command, [], timeout: 30, verbose: true) }
+
+    assert_includes err, "[REDACTED]"
+    refute_includes err, "s3cret"
+  ensure
+    ENV["DATABASE_URL"] = saved
   end
 end

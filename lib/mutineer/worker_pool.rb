@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "result"
+require_relative "redaction"
 
 module Mutineer
   # Fixed-size fork pool. `run` forks up to `size` children at once; each child
@@ -74,7 +75,7 @@ module Mutineer
               begin
                 yield(*items[idx])
               rescue Exception => e # rubocop:disable Lint/RescueException
-                Result.error("worker crashed: #{e.class}: #{e.message}")
+                Result.error(Redaction.text("worker crashed: #{e.class}: #{e.message}"))
               end
             begin
               wr.write(Marshal.dump(payload))

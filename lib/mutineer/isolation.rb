@@ -7,6 +7,7 @@ require_relative "child_stdout"
 require_relative "child_coverage"
 require_relative "kill_channel"
 require_relative "concern_blocks"
+require_relative "redaction"
 
 module Mutineer
   # Fork-based isolation for running one mutant. The block runs in a child
@@ -66,7 +67,7 @@ module Mutineer
           code = e.status
         rescue Exception => e # rubocop:disable Lint/RescueException
           # STDERR, not `warn`: a test may have left `$stderr` as a StringIO.
-          STDERR.puts "[mutineer-child] #{e.class}: #{e.message}"
+          STDERR.puts "[mutineer-child] #{Redaction.text("#{e.class}: #{e.message}")}"
           code = 2
         end
         STDERR.flush

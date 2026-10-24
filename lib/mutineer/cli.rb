@@ -17,6 +17,7 @@ require_relative "migrate"
 require_relative "mutator_registry"
 require_relative "triage"
 require_relative "init"
+require_relative "redaction"
 
 module Mutineer
   # Command-line entry point. `start` is the single public method called by
@@ -336,38 +337,38 @@ module Mutineer
       config.dry_run ? dry_run(config) : execute(config)
     rescue ArgumentError => e
       # Unknown --operators value surfaces here; no backtrace reaches the user.
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 2
     rescue SystemCallError => e
       # A missing/unreadable path reaches here as Errno::ENOENT etc. A plain
       # message and usage exit, never a raw backtrace.
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 2
     rescue SyntaxError => e
       # A syntactically invalid source file surfaces when `require`d; report it
       # cleanly rather than dumping a backtrace.
-      warn "mutineer: cannot load source: #{e.message}"
+      warn "mutineer: cannot load source: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::ParseError => e
-      warn "mutineer: error reading: #{e.message}"
+      warn "mutineer: error reading: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::SmokeCheckError => e
       # The unmutated suite is not green under --test-command: a broken
       # environment, not weak tests. Runtime error (exit 1), not usage (exit 2).
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::ConcurrentRunError => e
       # Another process owns a source file. Runtime error (exit 1), not a
       # backtrace: the working tree is still the other run's responsibility.
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::CoverageFromError => e
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 2
     rescue Mutineer::DaemonBootError => e
       # The daemon is gone for good, so the run ended rather than scoring the rest
       # against it. A deliberate stop deserves a message, not a raw backtrace.
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::ProjectLoadError => e
       # A boot file, source or --require file failed to load. The message is

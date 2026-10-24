@@ -4,6 +4,7 @@ require "minitest/mock"
 require_relative "test_helper"
 require "mutineer/redaction"
 require "mutineer/coverage_map"
+require "mutineer/cli"
 
 # Error text can quote a credentialed DATABASE_URL in more than one shape:
 # whole, `inspect` escaped, or cut short. None may show the password.
@@ -138,6 +139,29 @@ class RedactionTest < Minitest::Test
     # Only an exact raw match skips: `a%62cd` decodes to `abcd`, the username,
     # but the raw values differ, so the decoded form is still hidden.
     assert_equal "user [REDACTED]", redact("user abcd", "postgres://abcd:a%62cd@host/db")
+  end
+
+  def test_cli_run_error_hides_the_password
+    url = "postgres://u:s3cret@ho st/db"
+    saved = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = url
+    config = Mutineer::Config.new
+    config.sources = ["a.rb"]
+    exit_error = nil
+
+    _, err = capture_io do
+      Mutineer::CLI.stub(:validate!, nil) do
+        Mutineer::CLI.stub(:execute, ->(_) { raise ArgumentError, "bad #{url}" }) do
+          exit_error = assert_raises(SystemExit) { Mutineer::CLI.run(config) }
+        end
+      end
+    end
+
+    assert_equal 2, exit_error.status
+    assert_includes err, "[REDACTED]"
+    refute_includes err, "s3cret"
+  ensure
+    ENV["DATABASE_URL"] = saved
   end
 
   def test_coverage_warning_hides_the_password
