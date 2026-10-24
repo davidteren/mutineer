@@ -99,12 +99,15 @@ module Mutineer
     # An exception as `Class: message`, redacted. Each part is redacted on its
     # own, so the join cannot raise on mixed encodings (a non-ASCII class name
     # next to, say, a Latin-1 message): a raise inside a rescue would make the
-    # raw error the cause of the new one.
+    # raw error the cause of the new one. For the same reason an exception
+    # whose own `message` raises gives {FAILED}.
     #
     # @param error [Exception]
     # @return [String]
     def describe(error)
       "#{text(error.class)}: #{text(error.message)}"
+    rescue StandardError
+      FAILED
     end
 
     # Split DATABASE_URL into its `scheme://user:` head and its raw password.

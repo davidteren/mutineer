@@ -145,6 +145,13 @@ class RedactionTest < Minitest::Test
     ENV["DATABASE_URL"] = saved
   end
 
+  def test_describe_fails_closed_when_the_message_raises
+    error = RuntimeError.new("x")
+    def error.message = raise("boom")
+
+    assert_equal Mutineer::Redaction::FAILED, Mutineer::Redaction.describe(error)
+  end
+
   def test_still_hides_a_bare_password_token
     assert_equal "password [REDACTED] rejected", redact("password s3cret rejected", "postgres://u:s3cret@host/db")
   end

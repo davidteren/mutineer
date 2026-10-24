@@ -14,7 +14,7 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- **No `DATABASE_URL` password in load errors and other output (#288).**
+- **No `DATABASE_URL` password in load errors and mutineer's own messages (#288).**
   **Exit code change:** an `ArgumentError` or `SystemCallError` raised while
   the boot file, a source file or a `.mutineer.yml` `require:` file loads now exits 1
   (runtime error), not 2 (usage error). A load error in the tool process (an
@@ -26,7 +26,8 @@ All notable changes to this project are documented here. The format is based on
   fork child's error line, the worker crash text in the report, the daemon's
   stderr lines, the failing test report and any load error from the
   clean-suite and coverage checks, and the `--verbose` test command output
-  are redacted too.
+  are redacted too. Output that app code or a test writes straight to
+  stderr in a fork or subprocess is not filtered.
   Daemon stderr is now copied line by line as UTF-8, so an invalid byte
   shows as U+FFFD. A password that equals the username no longer blanks the
   same text elsewhere (for example `role "postgres"`). A password of 3
