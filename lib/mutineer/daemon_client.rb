@@ -5,6 +5,7 @@ require "io/wait"
 require "open3"
 require_relative "external_backend"
 require_relative "rails_run_env"
+require_relative "redaction"
 
 module Mutineer
   # Raised when the daemon cannot be booted or is gone for good: a bad boot path, an
@@ -43,6 +44,9 @@ module Mutineer
     # Seconds the daemon gets to boot the app and answer the handshake. A boot
     # that never returns ends the run instead of hanging it (#101).
     BOOT_TIMEOUT = 600
+    # Seconds close_io waits for the stderr drain to reach EOF before it stops
+    # the thread, so a last line without a newline is not lost.
+    DRAIN_GRACE = 1
     # Bundler's marker for a variable that was unset before it activated.
     BUNDLER_UNSET = "BUNDLER_ENVIRONMENT_PRESERVER_INTENTIONALLY_NIL"
 
@@ -346,12 +350,13 @@ module Mutineer
             "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run",
             unsetenv_others: true, chdir: @app_root
           )
-          # Drain daemon stderr to the tool's stderr so child/boot errors are visible.
+          # Drain daemon stderr to the tool's stderr so child/boot errors are visible,
+          # redacted line by line (#288: the app's output goes through here too).
           # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn;
           # the rescue swallows the benign EBADF/IOError raised when close_io closes
-          # the pipe out from under an in-flight copy_stream.
+          # the pipe out from under an in-flight read.
           @drain = Thread.new do # rubocop:disable ThreadSafety/NewThread
-            IO.copy_stream(@stderr, @errio)
+            drain_stderr(@stderr)
           rescue IOError, Errno::EBADF
             nil
           end
@@ -413,6 +418,16 @@ module Mutineer
       nil
     end
 
+    # Copy each line of the daemon's stderr to the tool's stderr, redacted.
+    # A line is the unit the daemon and the app write, so a password is never
+    # split across two redaction calls.
+    #
+    # @param io [IO] the daemon's stderr pipe.
+    # @return [void]
+    def drain_stderr(io)
+      io.each_line { |line| @errio.write(Redaction.text(line)) }
+    end
+
     # Close the IPC pipes, stop the stderr-drain thread, and reap the daemon so a
     # respawn or quit leaves no leaked fd, thread, or zombie.
     #
@@ -425,7 +440,11 @@ module Mutineer
       rescue Errno::ESRCH
         nil # it exited between the check and the kill
       end
-      @drain&.kill # stop the drain BEFORE closing its fd (avoids a copy_stream EBADF)
+      # The drain holds a partial last line until EOF. Give it a moment to reach
+      # EOF now the daemon is dead, so a boot error with no final newline still
+      # prints; then stop it BEFORE closing its fd (avoids an EBADF mid-read).
+      @drain&.join(DRAIN_GRACE)
+      @drain&.kill
       [@stdin, @stdout, @stderr].each { |io| io&.close rescue nil } # rubocop:disable Style/RescueModifier
       @wait_thr&.join # reap the exited daemon so respawn/quit leaves no zombie
       @stdin = @stdout = @stderr = @drain = @wait_thr = nil

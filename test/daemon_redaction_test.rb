@@ -8,6 +8,7 @@ require "tempfile"
 require_relative "test_helper"
 require "mutineer/daemon_server"
 require "mutineer/coverage_map"
+require "mutineer/daemon_client"
 
 # Rails parses DATABASE_URL itself, so a malformed one raises a URI error that
 # quotes the whole URL. No daemon reply or stderr line may echo the password.
@@ -131,5 +132,39 @@ class DaemonRedactionTest < Minitest::Test
     text = "PG::ConnectionBad: could not connect to http://host:5432/db"
 
     assert_equal text, Mutineer::DaemonServer.send(:redact, text)
+  end
+
+  # #288: the daemon's stderr (which also carries the app's stdout) reaches the
+  # tool's stderr through the client's drain, one redacted line at a time.
+  def drain(bytes)
+    errio = StringIO.new
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe
+    wr.binmode
+    wr.write(bytes)
+    wr.close
+    client.send(:drain_stderr, rd)
+    errio.string
+  ensure
+    rd&.close
+  end
+
+  def test_daemon_stderr_drain_hides_the_password
+    out = drain("boot failed: #{BAD_URL}\nsecond line\n")
+
+    assert_includes out, "postgres://u:[REDACTED]@ho st/db"
+    assert_includes out, "second line"
+    refute_includes out, "s3cret"
+  end
+
+  def test_daemon_stderr_drain_survives_invalid_bytes
+    out = drain("bad \xFF byte #{BAD_URL}\n".b)
+
+    assert_includes out, "[REDACTED]"
+    refute_includes out, "s3cret"
+  end
+
+  def test_daemon_stderr_drain_keeps_a_last_partial_line
+    assert drain("first\ntail without newline").end_with?("tail without newline")
   end
 end
