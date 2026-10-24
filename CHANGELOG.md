@@ -8,8 +8,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **`call_to_receiver` replaces a last conversion call other than `to_set`.**
-  `m[1].to_i` now gives the mutant `m[1]`. Before, the operator skipped the
+- **`call_to_receiver` now mutates last-call conversions such as `to_s` and
+  `to_i`.** `m[1].to_i` now gives the mutant `m[1]`. Before, the operator skipped the
   same names as `chain_link`. Now it skips only `new`, `dup`, `clone`,
   `freeze`, `itself` and `to_set`. `chain_link` does not change. Only runs
   that list `call_to_receiver` in `--operators` (or `operators:`) change: they
