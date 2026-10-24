@@ -351,6 +351,9 @@ left out of the score and does not fail `--threshold`; a kill still counts.
 This holds under both strategies: `reload` runs the mutated file's class body
 again, but not an initializer or another file's code, so a survivor on such a
 line is not trusted there either.
+The JSON report marks each `ran_at_load` mutant whose covering tests ran and
+passed (`tested: true`; counted in `summary.ran_at_load_tested`): those can hide a
+test gap.
 Run those mutants with `--test-command`, which boots a fresh process per mutant,
 to get a verdict.
 

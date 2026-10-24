@@ -400,6 +400,24 @@ class ReporterTest < Minitest::Test
     assert_includes s, "Mutation score: 50.0%"
   end
 
+  def test_ran_at_load_tested_count_prints_only_when_positive
+    tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true)
+    out = StringIO.new
+    reporter([Mutineer::Result.killed, tested]).report(out: out, err: StringIO.new)
+    assert_includes out.string, "of which 1 ran in their covering tests and passed (may hide a test gap; not in the score)"
+
+    out = StringIO.new
+    reporter([Mutineer::Result.killed, Mutineer::Result.ran_at_load]).report(out: out, err: StringIO.new)
+    refute_includes out.string, "of which"
+  end
+
+  def test_html_counts_tested_ran_at_load
+    tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true)
+    out = StringIO.new
+    reporter([Mutineer::Result.killed, tested]).report(out: out, err: StringIO.new, format: "html")
+    assert_includes out.string, "<span><strong>1</strong> ran_at_load (tested)</span>"
+  end
+
   def test_na_score_warns_on_stderr
     out = StringIO.new
     err = StringIO.new

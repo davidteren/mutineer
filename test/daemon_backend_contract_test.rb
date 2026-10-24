@@ -214,6 +214,8 @@ class DaemonBackendContractTest < Minitest::Test
 
       assert_equal %i[ran_at_load killed], results.map(&:status)
       assert_equal %w[id-0 id-1], results.map(&:id)
+      # #286: its covering test ran and passed, as in-process.
+      assert_predicate results.first, :tested_at_load?
     end
   end
 
