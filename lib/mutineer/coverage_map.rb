@@ -1083,16 +1083,24 @@ module Mutineer
 
     # Ruby source, for a subprocess script, that closes a `begin` around the
     # project and test file loads. A load error then prints one redacted line
-    # with no backtrace (Ruby's own printer would show DATABASE_URL raw), and
-    # the child still exits 1, as it did when the error went uncaught.
+    # (Ruby's own printer would show DATABASE_URL raw), and the child still
+    # exits 1, as it did when the error went uncaught. Under --verbose the
+    # redacted backtrace follows; otherwise a hint says how to get it.
     #
     # @api private
     # @return [String] Ruby script text.
     def load_failure_rescue
+      detail =
+        if @verbose
+          '(_e.backtrace || []).each { |_f| $stderr.puts("\t" + Mutineer::Redaction.text(_f)) }'
+        else
+          '$stderr.puts("[mutineer] re-run with --verbose for the backtrace")'
+        end
       <<~RUBY.chomp
         rescue ScriptError, StandardError => _e
           require #{REDACTION_PATH.inspect}
           $stderr.puts("[mutineer] load failed: " + Mutineer::Redaction.describe(_e))
+          #{detail}
           exit 1
       RUBY
     end

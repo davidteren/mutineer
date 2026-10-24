@@ -896,6 +896,13 @@ class CliTest < Minitest::Test
 
       assert_equal 1, status.exitstatus, err
       assert_includes err, "[mutineer] load failed: RuntimeError: cannot connect: postgres://u:[REDACTED]@ho st/db"
+      assert_includes err, "[mutineer] re-run with --verbose for the backtrace"
+      refute_includes err, "s3cret"
+
+      _, err, = mutineer("run", "calculator.rb", "--test", "boom_test.rb", "--verbose",
+                         chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+
+      assert_includes err, "boom_test.rb:1"
       refute_includes err, "s3cret"
     end
   end
