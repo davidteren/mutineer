@@ -125,7 +125,7 @@ class RunnerExternalTest < Minitest::Test
   # The child sees PARALLEL_WORKERS=1, DISABLE_SPRING=1 and
   # DISABLE_BOOTSNAP_COMPILE_CACHE=1 on every spawn.
   # A user value is replaced once, not once per mutant.
-  def test_test_command_replaces_parallel_workers_and_disables_spring
+  def test_test_command_replaces_parallel_workers_and_disables_spring_and_bootsnap_cache
     with_project("calculator_strong_test.rb") do |proj|
       log = File.join(proj, "child-env.log")
       probe = File.join(proj, "probe.rb")

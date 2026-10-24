@@ -406,7 +406,8 @@ So `--test-command` also sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1`, and Bootsnap c
 This makes each mutant boot slower.
 The variable works through `require "bootsnap/setup"`, which Rails puts in `config/boot.rb`.
 If your app calls `Bootsnap.setup` itself, set `compile_cache_iseq: false` there for mutant runs.
-A wrapper that sets `DISABLE_BOOTSNAP_COMPILE_CACHE` again wins, same as `DISABLE_SPRING`.
+Bootsnap checks only that the variable is set, so `DISABLE_BOOTSNAP_COMPILE_CACHE=0` still turns the cache off.
+A wrapper that unsets the variable turns the cache on again.
 Bootsnap keeps its cache in `tmp/cache/bootsnap`, or under `$BOOTSNAP_CACHE_DIR` when that is set.
 If a run uses code that no longer matches your files, delete that folder and run again.
 
@@ -494,8 +495,8 @@ RAILS_ENV=test mutineer run app/models/order.rb \
   `RBENV_VERSION=…` on the Mutineer command for the suite; use `.ruby-version`
   or a wrapper. Don't put `KEY=val` prefixes *inside* `--test-command` (no shell;
   that would be treated as the program name). Mutineer also sets
-  `PARALLEL_WORKERS=1` and `DISABLE_SPRING=1` in the child and replaces a value
-  you set (see [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis)).
+  `PARALLEL_WORKERS=1`, `DISABLE_SPRING=1` and `DISABLE_BOOTSNAP_COMPILE_CACHE=1`
+  in the child and replaces a value you set (see [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis)).
 
 #### Under a version manager (rbenv / asdf / chruby)
 

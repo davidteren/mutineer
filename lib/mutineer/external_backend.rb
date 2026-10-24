@@ -74,8 +74,8 @@ module Mutineer
     # injection and version-manager PATH pins so shims / `.ruby-version` can win.
     # Keeps other vars (e.g. `RAILS_ENV`) so setting them on the Mutineer command
     # still reaches the suite. Also sets +PARALLEL_WORKERS+, +DISABLE_SPRING+ and
-    # +DISABLE_BOOTSNAP_COMPILE_CACHE+ to 1. A wrapper that sets one of them again
-    # wins. The Bootsnap pin is here, not in {RailsRunEnv.pin_child!}: this
+    # +DISABLE_BOOTSNAP_COMPILE_CACHE+ to 1. A wrapper that sets or unsets one of
+    # them again wins. The Bootsnap pin is here, not in {RailsRunEnv.pin_child!}: this
     # backend rewrites each source file in place, and Bootsnap keys its compile
     # cache on path, size and whole-second mtime, so a same-size mutant written in
     # the same second can load the previous mutant's cached code (#285). The
