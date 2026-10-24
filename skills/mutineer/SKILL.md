@@ -39,8 +39,10 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
    change ids; see [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). For each, write/strengthen a
    test that fails under that change.
 4. Re-run. Accept the result only when this run exits `0`, `summary.score` is not `null`,
-   and `summary.score >= 90`. Mutineer 1.7.0 and earlier compare the rounded score, so on those
-   versions also require `summary.survived == 0` when every scored mutant must be killed.
+   and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`.
+   Mutineer 1.7.0 and earlier gate on the rounded score, so a run just below the threshold can
+   still exit `0`. On those versions, also require
+   `summary.killed * 100 >= 90 * (summary.killed + summary.survived)`.
 
 A survivor you cannot kill after a few attempts may be equivalent: no test can
 tell it from the original. Do not loop on it. Report it for human review. To
