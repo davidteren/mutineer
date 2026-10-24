@@ -1,0 +1,21 @@
+docs/plans/2026-10-24-297-feat-included-block-methods-plan.md
+  s_d164a58b33b1a3::t_2c72c0d5d2f5ac 1-54,56-342
+  s_d164a58b33b1a3::t_7f7808894cbadf 55
+  s_d164a58b33b1a3::t_004d6de8226963 343-372
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d4b7e7838a657f2da3754792693cb61d80166204",
+  "prompts": {},
+  "sessions": {
+    "s_d164a58b33b1a3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c762a0aa-a2bc-48ef-8521-6cf8d063f61e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
