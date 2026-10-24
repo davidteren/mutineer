@@ -71,8 +71,10 @@ RSpec on that file is serial only.
 PostgreSQL with Minitest can use `--daemon`.
 PostgreSQL with RSpec is serial only.
 MySQL 8 with Minitest can use `--daemon`.
-MariaDB is not tested.
-MySQL 5.7 is not supported.
+MySQL 5.7 is not supported. `--daemon` stops the run with `could not provision <base>: MySQL <version> is not supported` before it copies any database.
+To run on MySQL 5.7, pass `--no-daemon` (or set `daemon: false`). The run is then serial.
+MariaDB and MySQL 9 are not tested. `--daemon` prints a warning and runs.
+If Mutineer cannot read the server version, it prints a warning and runs.
 A `:memory:` database is serial only.
 An app with more than one database runs one worker.
 `--daemon` isolates only the primary connection.

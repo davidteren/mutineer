@@ -384,6 +384,72 @@ class RailsWorkerDbTest < Minitest::Test
     assert_equal "/tmp/mysql.sock", cfg[:socket]
   end
 
+  def test_mysql_version_support_accepts_mysql_8
+    %w[8.0.36 8.0.36-0ubuntu0.22.04.1 8.4.0].each do |version|
+      assert_equal :supported, Mutineer::RailsWorkerDb.mysql_version_support(version), version
+    end
+  end
+
+  def test_mysql_version_support_refuses_mysql_before_8
+    %w[5.7.44 5.7.44-log 5.6.51].each do |version|
+      assert_equal :not_supported, Mutineer::RailsWorkerDb.mysql_version_support(version), version
+    end
+  end
+
+  # MariaDB reports 10.x or 11.x, and some builds prefix 5.5.5-, so the name check runs first.
+  def test_mysql_version_support_marks_mariadb_and_mysql_9_not_tested
+    %w[10.11.6-MariaDB 11.4.2-MariaDB-log 5.5.5-10.6.12-MariaDB 9.1.0].each do |version|
+      assert_equal :not_tested, Mutineer::RailsWorkerDb.mysql_version_support(version), version
+    end
+  end
+
+  def test_mysql_version_support_marks_an_unreadable_version
+    [nil, "", "unknown"].each do |version|
+      assert_equal :unreadable, Mutineer::RailsWorkerDb.mysql_version_support(version), version.inspect
+    end
+  end
+
+  def test_provision_mysql_refuses_mysql_5_7_before_it_takes_a_lock
+    conn = VersionMysql.new("5.7.44")
+    error = provision_mysql_against(conn)
+    assert_equal "could not provision app_test: MySQL 5.7.44 is not supported. " \
+                 "--daemon needs MySQL 8.0 or later. Pass --no-daemon (or daemon: false) to stay serial.",
+                 error.message
+    assert conn.closed?
+    assert(conn.queries.none? { |sql| sql.match?(/GET_LOCK|DROP DATABASE|CREATE DATABASE/) })
+  end
+
+  def test_provision_mysql_warns_once_on_mariadb
+    error = nil
+    _out, err = capture_io { error = provision_mysql_against(VersionMysql.new("10.11.6-MariaDB")) }
+    assert_equal "another Mutineer run is using app_test", error.message
+    assert_equal 1, err.scan("10.11.6-MariaDB is not tested with --daemon").size
+  end
+
+  def test_provision_mysql_warns_when_the_version_query_fails
+    error = nil
+    _out, err = capture_io { error = provision_mysql_against(VersionMysql.new(RuntimeError.new("boom"))) }
+    assert_equal "another Mutineer run is using app_test", error.message
+    assert_equal 1, err.scan("could not read the MySQL server version (got nothing)").size
+  end
+
+  def test_provision_mysql_accepts_mysql_8_without_a_warning
+    error = nil
+    _out, err = capture_io { error = provision_mysql_against(VersionMysql.new("8.0.36")) }
+    assert_equal "another Mutineer run is using app_test", error.message
+    assert_empty err
+  end
+
+  # Run provision_mysql(1) against `conn` and return the RuntimeError it raises.
+  def provision_mysql_against(conn)
+    db = Mutineer::RailsWorkerDb
+    db.stub(:routing_config_hash, { adapter: "trilogy", database: "app_test" }) do
+      db.stub(:open_mysql_connection, conn) do
+        assert_raises(RuntimeError) { db.provision_mysql(1) }
+      end
+    end
+  end
+
   def test_load_mysql_schema_restores_the_base_connection
     saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
     calls = []
@@ -757,6 +823,42 @@ class RailsWorkerDbTest < Minitest::Test
 
     def escape(value)
       value.to_s.gsub("'", "''")
+    end
+  end
+  # Answers SELECT VERSION() with a fixed text, or raises a given error, and
+  # refuses every GET_LOCK. Records each query and whether it was closed.
+  class VersionMysql
+    attr_reader :queries
+
+    def initialize(version)
+      @version = version
+      @queries = []
+      @closed = false
+    end
+
+    def query(sql)
+      @queries << sql
+      if sql.include?("VERSION()")
+        raise @version if @version.is_a?(Exception)
+
+        HashRows.new([{ "version" => @version }])
+      elsif sql.include?("GET_LOCK")
+        HashRows.new([{ "got" => "0" }])
+      else
+        HashRows.new([])
+      end
+    end
+
+    def escape(value)
+      value.to_s.gsub("'", "''")
+    end
+
+    def close
+      @closed = true
+    end
+
+    def closed?
+      @closed
     end
   end
 end

@@ -12,6 +12,15 @@ All notable changes to this project are documented here. The format is based on
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.
 
+### Fixed
+
+- **`--daemon` stops on MySQL older than 8.0 (#298).** The support matrix said
+  MySQL 5.7 is not supported, but `--daemon` ran on it. Mutineer now reads the
+  server version before it copies any worker database. MySQL older than 8.0
+  stops the run with `could not provision <base>: MySQL <version> is not
+  supported`. Pass `--no-daemon` (or set `daemon: false`) to stay serial.
+  MariaDB and MySQL 9 print one warning and run.
+
 ## [1.7.0] - 2026-10-23
 
 ### Added
