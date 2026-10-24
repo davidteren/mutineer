@@ -43,6 +43,9 @@ pull request's commit before merging. Use `--no-since` with `--baseline` to chec
 for new survivors and a score drop, including in code whose source did not change.
 A scheduled scan on the default branch refreshes the baseline; it does not check
 the pull request's tests before merge.
+For the first baseline and each refresh, follow the [baseline recipe](agentic-coding.md#ci-gate-fail-a-pr-only-when-it-makes-things-worse).
+Temporarily remove `baseline:` from `.mutineer.yml`, write a separate candidate,
+and review it before replacing the saved report. Restore the setting afterward.
 
 ## A threshold on chosen folders
 

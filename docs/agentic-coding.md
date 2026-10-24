@@ -57,29 +57,31 @@ in **Avoiding infinite loops** below.
 ## CI gate: fail a PR only when it makes things worse
 
 Save a full JSON report from the default branch as a baseline. Compare pull
-requests with that report to catch new survivors while you improve existing tests:
+requests with that report to catch new survivors while you improve existing tests.
+For both the first baseline and each refresh, temporarily remove `baseline:` from
+`.mutineer.yml` before this command. Keep the source, test, and operator settings.
+The refresh must describe main without comparing it with the old baseline:
 
 ```sh
 # On main, write a candidate without replacing the saved baseline:
 mutineer run app/ --no-since --format json --output .mutineer/baseline-candidate.json
 ```
 
-Use a separate output path even when `.mutineer.yml` sets
-`baseline: .mutineer/baseline.json`. For the first baseline, leave that key unset
-until the saved file exists. An output path that names the baseline exits `2`
-before a real run.
+Use a separate output path to preserve the saved report for review. An output
+path that names a baseline being compared exits `2` before a real run.
 
 Keep the saved baseline if the command exits `1` or `2`. Before replacing it,
 require exit `0`, a non-null `summary.score`, and no `no_verdict[]` entries.
-Confirm the full intended scope ran, with `fail_fast` disabled and no `--only`
-filter. Review the candidate's survivors, then copy it and commit or cache the
+Confirm the full intended scope ran, with `fail_fast` disabled and neither
+`--only` nor an `only:` configuration filter. Review the candidate's survivors, then copy it and commit or cache the
 saved baseline:
 
 ```sh
 cp .mutineer/baseline-candidate.json .mutineer/baseline.json
 ```
 
-On a pull request, compare against the saved file:
+Restore any `baseline:` setting after the saved report is in place. On a pull
+request, compare against that file:
 
 ```sh
 mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json
