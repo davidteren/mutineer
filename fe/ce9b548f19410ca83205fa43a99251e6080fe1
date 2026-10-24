@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_533ed13f8f67ea::t_1c300c3a3fe4a6 15-17
+test/cli_test.rb
+  s_533ed13f8f67ea::t_1c300c3a3fe4a6 1119,1127-1130,1132-1133,1138,1146-1148,1150-1151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fece9b548f19410ca83205fa43a99251e6080fe1",
+  "prompts": {},
+  "sessions": {
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

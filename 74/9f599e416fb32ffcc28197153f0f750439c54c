@@ -1,0 +1,53 @@
+lib/mutineer/runner.rb
+  s_533ed13f8f67ea::t_575d4f82376b24 77
+  s_b1f7ddfe9bccdd::t_365235e730ad53 65-67,74-76,78-79
+  s_d164a58b33b1a3::t_d803c8c2c8464a 65-67,74-76,78-79
+test/parallel_strategy_test.rb
+  s_533ed13f8f67ea::t_372add343e6fbd 89,98,107,112-113,134,141,145-146,148-174
+  s_b1f7ddfe9bccdd::t_e0c6187f7a6be3 85-88,90-97,99-106,108-111,114,130-133,135-140,142-144,147
+  s_d164a58b33b1a3::t_746e7ed4609747 130-147
+  s_d164a58b33b1a3::t_65a12c161e6d5c 85-114
+lib/mutineer/isolation.rb
+  s_533ed13f8f67ea::t_575d4f82376b24 283
+  s_b1f7ddfe9bccdd::t_e2d19b7c7b9f91 277-282
+  s_d164a58b33b1a3::t_81e2f21f3b2753 277-282
+CHANGELOG.md
+  s_533ed13f8f67ea::t_1f63bc0be2f74c 21-24
+  s_d164a58b33b1a3::t_f5d8cbf9a1f496 21-22
+  s_d164a58b33b1a3::t_254294a7aab25c 23-24
+README.md
+  s_533ed13f8f67ea::t_b8dea8f3159887 339
+  s_d164a58b33b1a3::t_17555d8ae4257d 339
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "749f599e416fb32ffcc28197153f0f750439c54c",
+  "prompts": {},
+  "sessions": {
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_b1f7ddfe9bccdd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16a26-cbd9-75b0-9a60-c1027763da8b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_d164a58b33b1a3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c762a0aa-a2bc-48ef-8521-6cf8d063f61e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
