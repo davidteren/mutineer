@@ -138,9 +138,10 @@ module Mutineer
     #
     # The verdict matches a run without `--matrix`, which skips everything after
     # the first failing serial test except the code around it (see
-    # {KillChannel}). So when a serial test has named a kill and the child then
+    # {KillChannel}). So when a serial test has named a failure and the child then
     # ended inside a region that run would skip (an exit, a crash or the
-    # timeout in a later test, class or group), the mutant is `killed`: the
+    # timeout in a later test, class or group), its first failure decides:
+    # `error` for an unavailable database outcome, otherwise `killed`. The
     # plain run never reached that point. An end anywhere else keeps the exit
     # status, because the plain run reaches that code too: the rest of the
     # failing test's class wrapper or group hooks, or the suite hooks. A kill in
@@ -167,6 +168,7 @@ module Mutineer
       return result.with(kills: Kills.new(killed_by: [], ran: [], complete: false)) if report.invalid
 
       result = Result.killed if report.started && report.serial_kill && report.skipping.positive?
+      result = Result.error if report.started && report.serial_error && report.skipping.positive?
       agrees = result.killed? ? report.killed.any? : result.survived? && report.killed.empty?
       complete = finished && report.started && report.finished && report.lost.zero? && agrees
       result.with(kills: Kills.new(killed_by: report.killed, ran: report.ran, complete: complete))
