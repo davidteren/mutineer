@@ -1,0 +1,67 @@
+CHANGELOG.md
+  s_b1f7ddfe9bccdd::t_2b31975fd34186 9-16,1406
+README.md
+  s_b1f7ddfe9bccdd::t_919d99eb48a410 9-11,110-111,822-823
+docs/agentic-coding.html
+  s_b1f7ddfe9bccdd::t_424575dec08986 7,14,22,36,70,72,75,77,94,97,103-106,109,126,135-136,143,147,149,152-153,156,181
+docs/agentic-coding.md
+  s_b1f7ddfe9bccdd::t_9d498e7f3b9d9d 3-5,7-9,13-14,16,54-55,59-60,70-74,76-85,89-91,110,121-129,138,146-147,149,154-155,158-166
+docs/equivalent-skips.html
+  s_b1f7ddfe9bccdd::t_e42f2f12c3aad4 36,53-54,57,89
+docs/equivalent-skips.md
+  s_b1f7ddfe9bccdd::t_9840aade3a772f 3-5,7-15,19-24
+docs/humans.txt
+  s_b1f7ddfe9bccdd::t_3a730d2f0ab78c 8
+docs/index.html
+  s_b1f7ddfe9bccdd::t_6095efa50119a2 7,14,22,36,55,59-60,62-63,65,80-82,99-101,106-107,111,116-117,120-121,124-125,133,137-168,175,181,213,215,218,271,298,302-305
+docs/index.md
+  s_b1f7ddfe9bccdd::t_192d64106864cd 3-5,7-9,11-13,15-17,19-20,22,24-25,28-29,32-35,37-43,45,48,51-52,73-76,101
+docs/json-schema.md
+  s_b1f7ddfe9bccdd::t_684a774b685a0d 4-7,38,57
+docs/learn.html
+  s_b1f7ddfe9bccdd::t_0b4e391973ce6d 1-161
+docs/learn.md
+  s_b1f7ddfe9bccdd::t_2737d0e23c6c3b 1-187
+docs/llms.txt
+  s_b1f7ddfe9bccdd::t_c36eca35ee703a 3-6,8-9,12,25,27,30,46
+docs/rails.html
+  s_b1f7ddfe9bccdd::t_df85110560216a 7,14,22,36,69,72,75,78,85,91,106,109-110,113,117-121,135
+docs/rails.md
+  s_b1f7ddfe9bccdd::t_dee4b4b33c7262 3-4,10-11,15-16,23-24,41-45,55-56,73,78-89,93-95,101-109,112-118
+docs/sample-report.html
+  s_b1f7ddfe9bccdd::t_b7c0444edf1ad6 29,45,61
+lib/mutineer/version.rb
+  s_b1f7ddfe9bccdd::t_ccda2ab2446f8c 5
+rake/docs_contract.rb
+  s_b1f7ddfe9bccdd::t_69269184b6e4ff 516,555
+rake/site_build.rb
+  s_b1f7ddfe9bccdd::t_8c2b9b41d984aa 29-31
+rake/site_docs.rb
+  s_b1f7ddfe9bccdd::t_2e2d29ef07e766 20-21,25,31,40-41,59
+skills/mutineer/SKILL.md
+  s_b1f7ddfe9bccdd::t_cba168cbc29342 3,32,39-41,46-47
+test/browser/site.spec.js
+  s_b1f7ddfe9bccdd::t_24c91b3b59ca8b 16,25,29,41,55,59-63
+test/docs_contract_test.rb
+  s_b1f7ddfe9bccdd::t_f7f668d1a85386 172
+test/site_build_test.rb
+  s_b1f7ddfe9bccdd::t_506f90fc867177 66-68,70-71,78
+test/site_test.js
+  s_b1f7ddfe9bccdd::t_1e0914448f8187 71,103-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bdcafa96704bf61e1b228e4b6a14065a915877ce",
+  "prompts": {},
+  "sessions": {
+    "s_b1f7ddfe9bccdd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16a26-cbd9-75b0-9a60-c1027763da8b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
