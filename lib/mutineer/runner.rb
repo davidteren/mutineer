@@ -74,7 +74,8 @@ module Mutineer
       if config.strategy == "redefine"
         dirs.reject { |d| File.writable?(d) }.each do |d|
           warn "[mutineer] #{d} is not writable: redefine loads its mutants from the system temp dir, " \
-               "so a method there that uses __dir__ or require_relative can be falsely killed."
+               "so a method there that uses __dir__ or require_relative can be falsely killed. " \
+               "Make the directory writable to avoid this (#339)."
         end
       end
 
