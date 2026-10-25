@@ -275,8 +275,10 @@ module Mutineer
       lines.any? { |l| l != def_line && body.cover?(l) && coverage_map.ran_at_load?(source_file, l) }
     end
 
-    # A survivor whose line ran at load becomes `ran_at_load` ({ran_at_load?});
-    # any other result comes back unchanged. A `--matrix` row is kept.
+    # A survivor whose line ran at load becomes `ran_at_load` ({ran_at_load?}),
+    # marked `tested_at_load`: its covering tests ran and passed, so it may hide
+    # a test gap (#286). Any other result comes back unchanged. A `--matrix`
+    # row is kept.
     #
     # @param result [Mutineer::Result] the mutant's verdict.
     # @param source_file [String] the mutated source file path.
@@ -288,7 +290,7 @@ module Mutineer
     def self.load_verdict(result, source_file, mutation, subject, source, coverage_map)
       return result unless result.survived? && ran_at_load?(source_file, mutation, subject, source, coverage_map)
 
-      result.with(status: :ran_at_load)
+      result.with(status: :ran_at_load, tested_at_load: true)
     end
 
     # Map each line number to `{ ops:, reason: }`, using inline

@@ -311,7 +311,7 @@ class BaselineTest < Minitest::Test
     results = [Mutineer::Result.killed, survivor("ccc")]
     doc = JSON.parse(render(results, base.diff(agg(*results)), format: "json"))
 
-    assert_equal "2.0", doc["schema_version"] # 2.0 corrects fixed_survivors and adds baseline completeness.
+    assert_equal "2.0", doc["schema_version"] # 2.0 corrects baseline semantics and includes ran_at_load_tested.
     assert doc["baseline"]["regressed"]
     assert_equal 1, doc["baseline"]["new_survivors"].size
     assert_equal "ccc", doc["baseline"]["new_survivors"].first["id"]
