@@ -21,7 +21,9 @@ All notable changes to this project are documented here. The format is based on
 - **`--output .mutineer/run.json` on a fresh checkout.** The documented
   report path no longer exits 2 when `.mutineer/` does not exist yet. The
   output check now creates the cache directory (`cache_dir`) when it is the
-  missing parent. Any other missing directory still exits 2 (#270).
+  missing parent. Any other missing directory still exits 2. This is a CLI
+  fix: the GitHub Action's `output` input still needs an existing directory
+  (#270, #340).
 
 - **`--output` can no longer replace its own baseline.** When `--output`
   and `--baseline` or `baseline:` in `.mutineer.yml` name the same file

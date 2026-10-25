@@ -321,6 +321,33 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #270: the created dir is the configured cache dir, not a literal `.mutineer`.
+  def test_output_in_missing_custom_cache_dir_is_created
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--cache-dir", "mcache",
+                                "--format", "json", "--output", "mcache/run.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert File.file?(File.join(proj, "mcache", "run.json"))
+
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--cache-dir", "mcache",
+                                "--output", ".mutineer/run.json", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "no such directory"
+    end
+  end
+
+  # #270: a cache dir that cannot be created is a usage error before the run.
+  def test_output_in_uncreatable_cache_dir_exits_two
+    with_project do |proj|
+      File.write(File.join(proj, "blocker"), "")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--cache-dir", "blocker/cache",
+                                "--output", "blocker/cache/run.json", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "cannot write to blocker/cache/run.json"
+      refute_includes err, "no such directory", "the mkdir_p failure must be reported, not the fallback check"
+    end
+  end
+
   # #27: --test-command usage errors — all exit 2 (usage), never a backtrace.
   def test_test_command_empty_exits_two
     _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--test-command", "   ")

@@ -644,6 +644,7 @@ module Mutineer
     # output is expanded the way Reporter#report writes it, so `x/../b.json`
     # with a missing `x/` still matches `b.json`. File.identical? is false when
     # either file is missing, so a new output path never matches.
+    # Unlike the Action's guard, a dry run skips this check: it writes no report.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration (output and baseline set).
@@ -661,8 +662,9 @@ module Mutineer
     # Preflights an output path. A missing parent is a usage error (exit 2),
     # except the cache directory: the documented `--output .mutineer/run.json`
     # must work on a fresh checkout. It is created here, before the run, so a
-    # failure to create it exits 2 up front. A dry run writes no report, so it
-    # creates nothing.
+    # failure to create it exits 2 up front. A later failed check can leave the
+    # empty cache directory behind (a real run creates it anyway). A dry run
+    # writes no report, so it creates nothing.
     #
     # @api private
     # @param path [String] output file path.
