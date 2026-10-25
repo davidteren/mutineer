@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- Explain mutation testing before setup, with a runnable beginner guide and a
+  first run on one file. Simplify wording across the website and clarify Rails
+  setup, CI baselines, and reasons for ignoring a mutant.
+
 ### Fixed
 
 - `--test-command` now sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1` for the test

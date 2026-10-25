@@ -26,8 +26,9 @@ module SiteBuild
   GENERATED = %w[api llms-full.txt json-schema.html sitemap.xml].freeze
 
   # docs/ entries kept in the repository but never published: internal
-  # review notes for maintainers, not pages for users of the gem.
-  UNPUBLISHED = %w[release-review].freeze
+  # review notes and implementation plans for maintainers, not pages for
+  # users of the gem. Each name skips that entry and everything under it.
+  UNPUBLISHED = %w[release-review plans].freeze
 
   # The agent skill, in the Agent Skills layout that `gh skill` and
   # `npx skills` install from. The site serves the same file as skill.md.

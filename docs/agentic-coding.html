@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mutineer for AI agents &amp; CI pipelines</title>
-<meta name="description" content="How to wire Mutineer into an AI coding agent's inner loop and into CI: the agent loop, --baseline PR gating, the GitHub Action, and avoiding infinite loops on equivalent mutants.">
+<meta name="description" content="Use Mutineer with AI coding agents and CI. Read JSON reports, compare pull requests with a baseline, and review equivalent mutants.">
 <meta name="color-scheme" content="dark light">
 <link rel="canonical" href="https://davidteren.github.io/mutineer/agentic-coding.html">
 <link rel="alternate" type="text/markdown" href="https://davidteren.github.io/mutineer/agentic-coding.md" title="Markdown">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="Mutineer">
 <meta property="og:title" content="Mutineer for AI agents &amp; CI pipelines">
-<meta property="og:description" content="How to wire Mutineer into an AI coding agent's inner loop and into CI: the agent loop, --baseline PR gating, the GitHub Action, and avoiding infinite loops on equivalent mutants.">
+<meta property="og:description" content="Use Mutineer with AI coding agents and CI. Read JSON reports, compare pull requests with a baseline, and review equivalent mutants.">
 <meta property="og:url" content="https://davidteren.github.io/mutineer/agentic-coding.html">
 <meta property="og:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
 <meta property="og:image:width" content="1200">
@@ -19,7 +19,7 @@
 <meta property="og:image:alt" content="Mutineer — Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Mutineer for AI agents &amp; CI pipelines">
-<meta name="twitter:description" content="How to wire Mutineer into an AI coding agent's inner loop and into CI: the agent loop, --baseline PR gating, the GitHub Action, and avoiding infinite loops on equivalent mutants.">
+<meta name="twitter:description" content="Use Mutineer with AI coding agents and CI. Read JSON reports, compare pull requests with a baseline, and review equivalent mutants.">
 <meta name="twitter:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
 <meta name="twitter:image:alt" content="Mutineer — Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='1' fill='%2367286a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
@@ -33,6 +33,7 @@
   <div class="wrap nav">
     <a class="brand" href="index.html"><span class="mark" aria-hidden="true">M↗</span> mutineer<span class="brand-note">/ Ruby mutation testing</span></a>
     <nav aria-label="Primary">
+      <a href="learn.html">Learn</a>
       <a href="index.html#install">Install</a>
       <a href="agentic-coding.html" aria-current="page">Agent &amp; CI</a>
       <a href="equivalent-skips.html">Skips</a>
@@ -66,14 +67,14 @@
     <article class="prose">
       <span class="eyebrow"><span class="dot" aria-hidden="true"></span> Guide</span>
       <h1>Mutineer for AI agents &amp; CI pipelines</h1>
-      <p class="doc-lede">Line coverage tells you which code <em>ran</em> under test. It says nothing about whether your tests would <em>notice if that code broke</em> — and that gap is where AI-generated code and tests are weakest: tests that execute and pass, but assert nothing meaningful ("coverage theater").</p>
+      <p class="doc-lede">Line coverage shows which code ran. Mutation testing checks whether tests catch a change to that code. Use Mutineer to give an AI coding agent concrete test gaps to review, or to check test quality in CI.</p>
 
-      <p>Mutineer is built for programmatic use: a versioned JSON contract (<a href="json-schema.html">schema</a>), structured exit codes, diff-scoped runs (<code>--since</code>), a hard gate (<code>--threshold</code>), and delta gating (<code>--baseline</code>). This page shows how to wire it into an agent loop and into CI.</p>
+      <p>Mutineer provides <a href="json-schema.html">JSON reports</a>, exit codes, checks on changed lines (<code>--since</code>), a minimum score (<code>--threshold</code>), and comparison with a saved report (<code>--baseline</code>). This guide shows how to use them with agents and CI.</p>
 
       <h2 id="inner-loop">The agent inner loop</h2>
-      <p>A coding agent that writes code <em>and</em> tests can use Mutineer as an objective "are these tests any good?" oracle, closing the loop with a concrete stopping condition:</p>
+      <p>An agent can use surviving mutants to find tests that need work. Review each change against the intended behaviour before asking the agent to add a test:</p>
       <ol>
-        <li>Agent edits code + tests on a branch.</li>
+        <li>Edit code and tests on a branch. Fetch <code>origin/main</code> before using it below.</li>
         <li>Run Mutineer on the diff, as JSON:
           <pre><code><span class="p">$</span> mutineer run app/ --since origin/main --threshold 90 --format json --output .mutineer/run.json</code></pre>
         </li>
@@ -90,19 +91,22 @@
       <p>Zero survivors alone is not success: an empty or fully suppressed scope, or a run with no usable verdicts, also has zero survivors. If the score is null, stop and report “no score”. Check <code>no_coverage[]</code> for test gaps and <code>no_verdict[]</code> for harness failures, and fix them before starting a new run. A positive threshold fails when nothing can be scored and something broke, or when more than one mutant has no verdict and they exceed 10% of those attempted; it does not require zero errors. Keep the threshold in the command equal to your target.</p>
       <p>An empty run (<code>summary.total</code> is 0) exits 0 in 1.x and prints a warning on stderr. Treat it as “no score”. Pass <code>--allow-empty</code> only when an empty run is expected. A <code>--since</code> run whose changes hold no mutable code says “nothing to test in the changes since REF”; that is a valid success. Warnings that start with <code>mutineer:</code> or <code>[mutineer]</code> also go to stderr: the empty-run warning, “did you mean” hints, notes about Mutineer 2.0, the count of errored mutants, and a notice that a <code>PARALLEL_WORKERS</code> value you set was replaced with 1.</p>
       <p>Progress lines go to <strong>stderr</strong>; do not merge streams (<code>2&gt;&amp;1</code>) when parsing JSON from stdout. Prefer <code>--output FILE</code> and read the file.</p>
-      <p><code>--since</code> keeps each iteration fast by mutating only the lines the agent just touched. Genuinely equivalent mutants (which can never be killed) should be suppressed so the loop terminates — see <a href="#equivalent">Avoiding infinite loops</a> below.</p>
+      <p><code>--since</code> limits each run to changed lines. Review equivalent mutants as described in <a href="#equivalent">Avoiding infinite loops</a> below.</p>
 
       <h2 id="ci-gate">CI gate: fail a PR only when it makes things worse</h2>
-      <p>Store a JSON run as a baseline, then gate PRs on regressions rather than an absolute bar (which lets a team adopt Mutineer on a legacy suite without fixing everything first):</p>
+      <p>Save a full JSON report from the default branch as a baseline. Compare pull requests with that report to catch new survivors while you improve existing tests:</p>
       <pre><code><span class="c"># On main, refresh the baseline (e.g. nightly) and commit/cache it:</span>
 <span class="p">$</span> mutineer run app/ --no-since --format json --output .mutineer/baseline.json
 
 <span class="c"># On a PR:</span>
 <span class="p">$</span> mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json</code></pre>
-      <p><code>--baseline</code> exits <code>1</code> on any <strong>new</strong> survivor (matched by <code>id</code>; file moves and renames change it — see <a href="https://github.com/davidteren/mutineer#mutant-ids">Mutant ids</a>) or a <strong>score drop</strong> (<code>--baseline-epsilon</code> tolerates float jitter); under <code>--since</code> the score-drop half is skipped, because a diff-scoped score covers a different denominator — new-survivor detection still gates. Combine with <code>--threshold</code> to enforce an absolute floor too — the worse of the two gates wins. Keep the full-scan baseline refresh on main as the backstop: a PR with no changed source lines scores zero mutants and passes the scoped gate vacuously.</p>
+      <p><code>--baseline</code> exits <code>1</code> if it finds a new survivor or a lower score. It matches survivors by <code>id</code>; file moves and renames can change ids. <code>--baseline-epsilon</code> allows a small score difference. With <code>--since</code>, only new survivors fail the baseline check: a score for changed lines is not comparable to a full-run score. Add <code>--threshold</code> to enforce a minimum score as well.</p>
+      <p>Run a full scan on the pull request whenever tests change, including when source code changes too. A scoped check cannot detect weaker tests for unchanged source lines. Compare the PR's full run with the full baseline:</p>
+      <pre><code>mutineer run app/ --no-since --baseline .mutineer/baseline.json --format json</code></pre>
+      <p>Keep a full scan on the default branch to refresh the baseline. That scan does not check a pull request's changed tests before merge.</p>
 
       <h3 id="action">GitHub Action</h3>
-      <p>This repo ships a composite action (<code>action.yml</code>). Minimal PR gate:</p>
+      <p>The GitHub Action runs Mutineer and reports the result. This example requires <code>.mutineer/baseline.json</code> from a full run on the default branch. Commit that file or restore it before the Mutineer step. Omit <code>baseline</code> until it exists.</p>
       <pre><code><span class="c"># .github/workflows/mutation.yml</span>
 name: Mutation testing
 on: pull_request
@@ -119,7 +123,7 @@ jobs:
       - uses: davidteren/mutineer@v1
         with:
           sources: app/
-          <span class="c"># since: defaults to the PR's base commit SHA (falls back to fetching the base tip); `none` = full scan</span>
+          since: none
           baseline: .mutineer/baseline.json
           threshold: "90"
           output: .mutineer/pr.json
@@ -128,25 +132,28 @@ jobs:
         with:
           name: mutineer-report
           path: .mutineer/pr.json</code></pre>
+      <p>This workflow runs a full scan on every pull request, so it checks test changes without a workflow edit for each PR. A full scan can take longer than a scan of changed source lines.</p>
+      <p>On <code>pull_request</code> events, omitting <code>since:</code> normally scans changed source lines against the PR's base commit. The Action tries the base branch tip if needed. If neither base resolves, it warns and supplies no <code>--since</code> override; any <code>since:</code> setting in <code>.mutineer.yml</code> can still apply. <code>since: none</code> forces a full scan.</p>
       <p>For a Rails app, add <code>rails: true</code> and <code>use-bundler: true</code> (boot mode needs the app's own bundle):</p>
       <pre><code>      - uses: davidteren/mutineer@v1
         with:
           sources: app/models/order.rb
           rails: true
           use-bundler: true
-          <span class="c"># since: defaults to the PR's base commit SHA (falls back to fetching the base tip); `none` = full scan</span></code></pre>
+          since: none</code></pre>
       <p>See <code>action.yml</code> for all inputs (<code>operators</code>, <code>framework</code>, <code>strategy</code>, <code>jobs</code>, <code>extra-args</code>, …) and the <code>exit-code</code> / <code>report</code> outputs.</p>
 
       <h2 id="equivalent">Avoiding infinite loops: equivalent mutants</h2>
-      <p>Some mutants are semantically identical to the original and can <strong>never</strong> be killed by any test. In an unattended agent loop these would never clear, so suppress them explicitly:</p>
+      <p>An equivalent mutant has the same behaviour as the original for all valid inputs. No test can catch it. After review, ignore it and record the reason:</p>
       <ul>
-        <li><strong>Inline:</strong> <code>#&nbsp;mutineer:disable-line [operators]</code> on the offending source line.</li>
+        <li><strong>Inline:</strong> <code># mutineer:disable-line arithmetic -- count is an integer</code> suppresses every arithmetic mutant on that source line. Review all of them before adding the marker. To ignore only one reviewed mutant, use its <code>id</code> in the configuration instead.</li>
         <li><strong>Config:</strong> add the survivor's <code>id</code> (printed in the JSON report; it includes the file path) to <code>.mutineer.yml</code>:
           <pre><code>ignore:
-  - 9f2a1c4b7e0d   <span class="c"># Calculator#scale — equivalent under `comparison`</span></code></pre>
+  - id: 9f2a1c4b7e0d
+    reason: "count * 1 and count / 1 are equal for integer counts"</code></pre>
         </li>
       </ul>
-      <p>Suppressed mutants leave the score entirely (so 100% stays reachable) and appear under the JSON <code>ignored[]</code> key for auditing. An agent should treat a survivor it cannot kill after N attempts as a candidate for human review / suppression rather than looping forever.</p>
+      <p>Replace the required <code>id</code> with the survivor's id from your report. The <code>reason</code> is optional; write your own explanation or omit that field. Ignore mappings and <code>mutineer triage</code> require Mutineer 1.7 or later in every environment that reads the configuration. For the GitHub Action, check the resolved gem version selected by <code>version:</code>. With <code>use-bundler: true</code>, check Mutineer in <code>Gemfile.lock</code> instead. Older versions do not apply mapping entries and do not warn, so the named mutant is not ignored. Ignored mutants are excluded from the score and listed in <code>ignored[]</code>. Set an attempt limit for the agent, then ask a person to review unresolved survivors. Failed attempts alone do not prove that a mutant is equivalent.</p>
 
       <h2 id="exit-codes">Reading exit codes in a pipeline</h2>
       <!-- contract:exit-codes-html -->
@@ -171,7 +178,7 @@ jobs:
 <footer>
   <div class="wrap foot">
     <div>
-      <strong>Mutineer</strong> — clean-room mutation testing for Ruby.
+      <strong>Mutineer</strong> — mutation testing for Ruby.
       <div class="note">MIT licensed · Prism + stdlib only · © David Teren</div>
     </div>
     <nav aria-label="Footer">
