@@ -43,7 +43,7 @@ Verdicts
 
 - R1. Under redefine, a mutant in a nested `def` is killed when a test kills it under reload, if every level between the `def` and the outermost `def` is a `def` (no block between them). This holds when the test calls the outer method by its own name (not through an alias).
 - R2. This holds at any nesting depth. A `def c` in `def b` in `def a` is covered when a test calls `b` directly and `b` already exists.
-- R3. A test that calls the inner method directly still kills the mutant, as today. KTD4 keeps this path. No new test covers R3: it rests on KTD4 (the innermost load runs first, as today).
+- R3. A test that calls the inner method directly still kills the mutant, as today. KTD4 keeps this path. `test_redefine_and_reload_agree_when_the_test_calls_the_inner_method` covers R3 (the innermost load runs first, as today).
 
 Contract
 
@@ -57,7 +57,7 @@ Contract
 
 #### Deferred to Follow-Up Work
 
-- A `def` inside a non-builder block (`define_method`, a stored proc, a lambda) can still falsely survive, with or without an enclosing `def`. If the block ran before the fork and a test calls the method the block defined, the original block defines the original `def` again. Example: `def a; define_method(:x) { def b; 1 + 1; end; b }; end` with a load-time `K.new.a`. The chain loads `b` and `a`, but not the block. See OQ2.
+- A `def` inside a non-builder block (`define_method`, a stored proc, a lambda) can still falsely survive, with or without an enclosing `def`. If the block ran before the fork and a test calls the method the block defined, the original block defines the original `def` again. Example: `def self.a; define_method(:x) { def b; 1 + 1; end; b }; end` with a load-time `K.a`. The chain loads `b` and `a`, but not the block. See OQ2.
 - A `def` nested in a `module_function` method or in `class << self` inside a method has a wrong owner in discovery (see Risks). Not in scope.
 
 ---
@@ -130,6 +130,8 @@ run the covering tests
 - `test/nested_redefine_test.rb`
 - `test/fixtures/nested_deep.rb` (new)
 - `test/fixtures/nested_deep_test.rb` (new)
+- `test/fixtures/nested_deep_outer_test.rb` (new)
+- `test/fixtures/nested_deep_inner_test.rb` (new)
 
 **Approach:**
 - Replace the single `Isolation.apply_surgical` call with the walk in the High-Level Technical Design. Add a short comment that names #290 and the reason: the outer body holds the original inner `def`.
@@ -139,6 +141,8 @@ run the covering tests
 **Test scenarios:**
 - `test_redefine_kills_the_nested_mutant` replaces `test_redefine_lets_the_nested_mutant_survive` (`test/nested_redefine_test.rb:29-32`). It asserts `[1, 0]` for `test/fixtures/nested.rb`, the same as `test_reload_kills_the_nested_mutant`. It fails before the fix with `[0, 1]`. Verified by a prototype on this branch.
 - `test_redefine_and_reload_agree_on_a_deeply_nested_mutant` in the same file. Fixture `test/fixtures/nested_deep.rb`: `class NestedRedefineDepthFixture` with `def a` holding `def b` holding `def c` with `1 + 1`. `b` calls `c`, and `a` returns `:a`. The file ends with `NestedRedefineDepthFixture.new.a`, so `b` exists before the fork. `test/fixtures/nested_deep_test.rb` asserts `NestedRedefineDepthFixture.new.b == 2` and does not call `a`. The test asserts `[1, 0]` for both strategies. It fails before the fix with `[0, 1]` under redefine. It also fails with the outermost-only variant (KTD1). Verified by a prototype.
+- `test_redefine_and_reload_agree_when_the_test_calls_the_outermost_method`. `test/fixtures/nested_deep_outer_test.rb` calls `a` first, which defines `b` again from `a`'s body, then asserts `b == 2`. Both strategies give `[1, 0]`. It fails when only the immediate enclosing level loads.
+- `test_redefine_and_reload_agree_when_the_test_calls_the_inner_method`. `test/fixtures/nested_deep_inner_test.rb` calls `b` once at load, so `c` exists, then asserts `c == 2` without calling `a` or `b`. Both strategies give `[1, 0]` (R3).
 
 **Verification:** both tests pass. The rest of `test/nested_redefine_test.rb` and `test/parallel_strategy_test.rb` stay green.
 
@@ -170,7 +174,7 @@ run the covering tests
   `--strategy reload` for those cases.
 ```
 
-In `README.md:346` (the `--rails` paragraph, as #304 left it), change "it reloads only the mutated method, not the whole file" to "it reloads only the mutated method and each method that encloses it, not the whole file".
+In `README.md:346` (the `--rails` paragraph, as #304 left it), change "it reloads only the mutated method, not the whole file" to "it reloads only the mutated method and each method that directly encloses it, not the whole file; a method nested in a block such as `define_method` can still falsely survive, so use `--strategy reload` for it".
 
 Do not edit the 1.5.0 entry. Released entries stay as they were.
 

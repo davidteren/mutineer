@@ -48,4 +48,13 @@ class NestedRedefineTest < Minitest::Test
       assert_equal [1, 0], [agg.killed_count, agg.survived_count], strategy
     end
   end
+
+  # The test calls `c` itself, without `a` or `b`. The innermost load replaces
+  # `c` directly, so both strategies still kill the mutant.
+  def test_redefine_and_reload_agree_when_the_test_calls_the_inner_method
+    %w[reload redefine].each do |strategy|
+      agg = run_strategy(strategy, "nested_deep", "nested_deep_inner_test")
+      assert_equal [1, 0], [agg.killed_count, agg.survived_count], strategy
+    end
+  end
 end
