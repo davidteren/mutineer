@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "optparse"
 require "open3"
 require_relative "version"
@@ -398,8 +399,9 @@ module Mutineer
       validate_test_command!(config) if config.test_command
 
       validate_since!(config) if config.since
-      preflight_output!(config.output) if config.output
+      preflight_output!(config.output, config) if config.output
       preflight_baseline!(config.baseline) if config.baseline
+      preflight_same_file!(config) if config.output && config.baseline && !config.dry_run
 
       # When --test is omitted, infer each source's test by convention. Autopair
       # also re-detects framework from inferred tests when --framework was not set.
@@ -651,13 +653,50 @@ module Mutineer
       exit 2
     end
 
-    # Preflights an output path.
+    # #281: a report written over its own baseline turns a failed gate into the
+    # next baseline. Same check as the Action's guard (action.yml); the message
+    # is that guard's text adapted for the CLI, so keep the two in step. The
+    # output is expanded the way Reporter#report writes it, so `x/../b.json`
+    # with a missing `x/` still matches `b.json`. File.identical? is false when
+    # either file is missing, so a new output path never matches.
+    # Unlike the Action's guard, a dry run skips this check: it writes no report.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration (output and baseline set).
+    # @return [void]
+    def self.preflight_same_file!(config)
+      output = File.expand_path(config.output)
+      return unless File.identical?(output, config.baseline)
+
+      warn "mutineer: --output and #{config.origin(:baseline)} are the same file ('#{File.realpath(output)}'). " \
+           "A failing run would replace the baseline. Write the report to a separate path. " \
+           "Copy that file onto the baseline only when the run exits 0."
+      exit 2
+    end
+
+    # Preflights an output path. A missing parent is a usage error (exit 2),
+    # except the cache directory: the documented `--output .mutineer/run.json`
+    # must work on a fresh checkout. It is created here, before the run, so a
+    # failure to create it exits 2 up front. A later failed check can leave the
+    # empty cache directory behind (a real run creates it anyway). A dry run
+    # writes no report, so it creates nothing.
     #
     # @api private
     # @param path [String] output file path.
+    # @param config [Mutineer::Config] run configuration (for the cache directory).
     # @return [void]
-    def self.preflight_output!(path)
+    def self.preflight_output!(path, config)
       dir = File.dirname(File.expand_path(path))
+      if !File.exist?(dir) && dir == File.expand_path(config.cache_dir, config.project_root)
+        return if config.dry_run
+
+        begin
+          FileUtils.mkdir_p(dir)
+        rescue SystemCallError => e
+          warn "mutineer: cannot write to #{path}: #{e.message}"
+          exit 2
+        end
+      end
       return if File.directory?(dir) && File.writable?(dir)
 
       reason = File.directory?(dir) ? "directory is not writable" : "no such directory"
