@@ -31,8 +31,9 @@ module Mutineer
 
     module_function
 
-    # Hide the password in any URL, and the DATABASE_URL password wherever it
-    # appears: whole, percent-decoded, `inspect` escaped, or cut short after
+    # Hide the password in any URL, and the DATABASE_URL password (from its
+    # `user:password@` pair, or else its `password=` query parameter) wherever
+    # it appears: whole, percent-decoded, `inspect` escaped, or cut short after
     # its `scheme://user:` prefix. Outside a URL a form of {SHORT_FORM}
     # characters or fewer is hidden only as a whole token. Never raises: text in
     # any encoding comes back as UTF-8, and an internal error returns {FAILED}.
@@ -42,7 +43,9 @@ module Mutineer
     # @return [String]
     def text(text, env: ENV)
       out = utf8(text.to_s)
-      head, raw = database_url_parts(utf8(env["DATABASE_URL"].to_s))
+      url = utf8(env["DATABASE_URL"].to_s)
+      head, raw = database_url_parts(url)
+      raw ||= query_password(url)
       secrets = raw ? password_forms(raw) : []
       # Prefixes first, on the caller's text, so no replacement made here can
       # be mistaken for part of a password.
@@ -125,6 +128,15 @@ module Mutineer
 
       raw = url[(colon + 1)...at]
       [url[0..colon], raw] unless raw.empty?
+    end
+
+    # The raw value of a `password=` query parameter, which Rails and libpq
+    # both accept in place of a `user:password@` pair.
+    #
+    # @param url [String]
+    # @return [String, nil]
+    def query_password(url)
+      url[/[?&]password=([^&#]+)/, 1]
     end
 
     # The password as it may appear in a message: raw, percent-decoded, and

@@ -161,6 +161,11 @@ class RedactionTest < Minitest::Test
     assert_equal Mutineer::Redaction::FAILED, Mutineer::Redaction.describe(error)
   end
 
+  def test_hides_a_password_from_the_query_string
+    assert_equal "conn failed for [REDACTED]",
+                 redact("conn failed for hunter22", "postgres://u@h/db?sslmode=off&password=hunter22")
+  end
+
   def test_still_hides_a_bare_password_token
     assert_equal "password [REDACTED] rejected", redact("password s3cret rejected", "postgres://u:s3cret@host/db")
   end

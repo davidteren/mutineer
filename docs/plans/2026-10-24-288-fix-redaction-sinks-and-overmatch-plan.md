@@ -267,6 +267,8 @@ Manual check: repeat the reproduction from "Problem Frame". Stderr is exactly `m
 
 ### Deferred to Follow-Up Work
 
+Issue #341 tracks every item below, the direct-stderr and app-only `DATABASE_URL` gaps in Scope Boundaries and Risks, and the last-resort handler in Open Questions.
+
 - A password equal to the host or the database name, or a one-letter password, still blanks that word. See Open Questions.
 - A password that is a common word (for example `password`) still blanks that word as a whole token, as in `FATAL: [REDACTED] authentication failed`. No option here fixes that without hiding less.
 
@@ -274,7 +276,7 @@ Manual check: repeat the reproduction from "Problem Frame". Stderr is exactly `m
 
 ## Risks
 
-- **Whole-token matching hides less for short forms.** A password form of 3 characters or fewer glued to an ASCII word character (`xab` for password `ab`) stays visible outside a URL. Longer forms still use substring matching, and URL passes still hide every password. Frequency is not measured: this repository has no representative sample of app error messages from which to estimate it. This is the deliberate cost of keeping ordinary words readable when a password is short.
+- **Whole-token matching hides less for short forms.** A password form of 3 characters or fewer glued to an ASCII word character (`xab` for password `ab`) stays visible outside a URL. Longer forms still use substring matching, and URL passes still hide every password. Frequency is not measured: this repository has no representative sample of app error messages from which to estimate it. A rough bound: a password of 3 characters or fewer is rare outside local development setups, and #341 tracks the trade-off. This is the deliberate cost of keeping ordinary words readable when a password is short.
 - **Exit code change for loads.** A CI script that expects exit 2 when the boot file, a source or a `--require` file raises `ArgumentError` or `SystemCallError` at load now sees exit 1. Exit 1 is the documented class for a runtime error, and the CHANGELOG names it.
 - **Multi-line messages.** "One message" can span lines when the app's exception message has newlines. Each line is still redacted. The tests do not assert a line count.
 - **Drain changes the bytes.** Daemon stderr is no longer copied byte for byte. Each line is read as UTF-8 and invalid bytes show as U+FFFD (R7). The CHANGELOG names it.

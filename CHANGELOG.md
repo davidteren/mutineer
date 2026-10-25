@@ -72,7 +72,9 @@ All notable changes to this project are documented here. The format is based on
   the failing test report and any load error from the
   clean-suite and coverage checks, and the `--verbose` test command output
   are redacted too. Output that app code or a test writes straight to
-  stderr in a fork or subprocess is not filtered.
+  stderr in a fork or subprocess is not filtered (#341 tracks this and the
+  other known gaps). A `password=` query parameter in DATABASE_URL is now
+  hidden too.
   Daemon stderr is now copied line by line as UTF-8, so an invalid byte
   shows as U+FFFD. Output without a newline waits for a newline or EOF, so
   credentials split across writes can be redacted together. A password that

@@ -127,6 +127,13 @@ class DaemonRedactionTest < Minitest::Test
     assert_equal "auth failed: [REDACTED] ([REDACTED])", text
   end
 
+  def test_describe_error_fails_closed_when_the_message_raises
+    error = RuntimeError.new("x")
+    def error.message = raise("boom")
+
+    assert_equal Mutineer::Redaction::FAILED, Mutineer::DaemonServer.send(:describe_error, error)
+  end
+
   def test_redact_leaves_text_without_credentials_alone
     ENV.delete("DATABASE_URL")
     text = "PG::ConnectionBad: could not connect to http://host:5432/db"

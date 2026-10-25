@@ -270,11 +270,13 @@ module Mutineer
 
       # `Class: message` for an error the daemon reports, with credentials hidden.
       # Rails parses DATABASE_URL itself, so its URI error can carry the password.
+      # {Redaction.describe} never raises, so a rescue that calls this cannot
+      # make the raw error the cause of a new one.
       #
       # @param error [Exception]
       # @return [String]
       def describe_error(error)
-        redact("#{error.class}: #{error.message}")
+        Redaction.describe(error)
       end
 
       # Hide database credentials in text bound for the client or stderr.
