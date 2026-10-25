@@ -82,6 +82,8 @@ class DaemonClientTest < Minitest::Test
     line = "[mutineer-child] a test failed with a database error, so the run has no verdict: " \
            "ActiveRecord::ConnectionNotEstablished: gone."
     assert_includes errio.string, line
+    # Both connection-error mutants took this path, the removed pool included.
+    assert_equal 2, errio.string.scan("[mutineer-child] a test failed with a database error").size
   end
 
   # A payload that hangs on load is SIGKILLed at the deadline → timeout (fast).

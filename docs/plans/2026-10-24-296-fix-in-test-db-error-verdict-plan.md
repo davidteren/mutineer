@@ -72,8 +72,8 @@ Contract text
 
 ### Deferred to Follow-Up Work
 
-- RSpec in-process path: the same rule for an RSpec example that fails with a connection error. File an issue when this plan lands.
-- Carry the cause into `no_verdict[].details`. Today every in-process error has the generic detail `child exited with status 2`. A cause there needs a channel from the child (in process) or a new verdict field (daemon protocol), so it is a separate change. File an issue.
+- RSpec in-process path: the same rule for an RSpec example that fails with a connection error. Tracked in #347.
+- Carry the cause into `no_verdict[].details`. Today every in-process error has the generic detail `child exited with status 2`. A cause there needs a channel from the child (in process) or a new verdict field (daemon protocol), so it is a separate change. Tracked in #347.
 - SQLite "database is locked" (`SQLite3::BusyException`). Active Record 7.2 translates it to plain `StatementInvalid`, so it stays `killed` under R2. Worker databases are separate files, so a lock is unlikely. See Open Questions.
 
 ## Planning Contract
