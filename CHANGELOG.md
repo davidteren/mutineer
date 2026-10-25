@@ -25,8 +25,10 @@ All notable changes to this project are documented here. The format is based on
   SQLite with a plain file path, each worker copies every file except those shared through
   `shared_databases` (`storage/cable.sqlite3` becomes `storage/cable-0.sqlite3`).
   Such an app runs `--jobs N` in parallel with no `shared_databases` entry.
-  A copy loads its database's schema file when it is out of date. Physical
-  aliases use one schema. Conflicting secondary alias dumps raise before any
+  Secondary copies load their configured schema dumps when out of date.
+  The primary copy keeps its existing `db/schema.rb` refresh path; configured
+  primary schema selection is tracked in #317. Physical aliases use one
+  schema. Conflicting secondary alias dumps raise before any
   secondary schema loads, so configuration order cannot delete copied rows.
   Postgres and MySQL keep the one-worker limit unless
   `shared_databases` lists the other databases. A SQLite database listed in

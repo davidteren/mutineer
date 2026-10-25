@@ -469,7 +469,9 @@ A `:memory:` database is not supported on `--daemon`.
 
 On Rails 7.1 or later, when every test database in `config/database.yml` uses SQLite with a plain file path, each worker copies every file except those shared through `shared_databases`.
 `storage/cable.sqlite3` becomes `storage/cable-0.sqlite3` for worker 0, and so on.
-Each copy starts from the base file. When a copy's schema is out of date, Mutineer loads that database's schema file (`db/cable_schema.rb`).
+Each copy starts from the base file. When a secondary copy's schema is out of date, Mutineer loads its configured schema dump (`db/cable_schema.rb`, for example).
+The primary copy refreshes from `db/schema.rb` when that file is available and stale. It does not refresh from `structure.sql`.
+Following the app's configured primary schema is tracked in [issue #317](https://github.com/davidteren/mutineer/issues/317) and [PR #325](https://github.com/davidteren/mutineer/pull/325).
 A replica on the same file uses the same copy.
 Aliases of a secondary file must use matching schema dumps. Conflicting dumps produce an error before any secondary schema loads.
 So an app whose test databases are all SQLite files runs in parallel with no extra config.
