@@ -229,17 +229,14 @@ module Mutineer
     # @param project_root [String] root for stored project-relative paths.
     # @return [Boolean] whether the stored id was outside the selected scope.
     def outside_selection?(stored, sources, operators, project_root)
+      path = stored["file"]
+      key = path && ProjectPath.relative(path, ProjectPath.root_real(project_root))
+      # A source file removed from this checkout is a fix whatever was selected.
+      return false if key && !File.absolute_path?(key) && !File.exist?(ProjectPath.absolute(path, project_root))
       return true if operators && !operators.include?(stored["operator"].to_s)
       return false unless sources
 
-      path = stored["file"]
-      return true unless path
-
-      key = ProjectPath.relative(path, ProjectPath.root_real(project_root))
-      return false if sources.include?(key)
-      return true if File.absolute_path?(key)
-
-      File.exist?(ProjectPath.absolute(path, project_root))
+      !key || !sources.include?(key)
     end
 
     # Indexes results by the three keys a stored survivor can match on: the

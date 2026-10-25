@@ -109,18 +109,19 @@ class BaselineTest < Minitest::Test
     Dir.mktmpdir do |root|
       File.write(File.join(root, FILE), SRC)
       File.write(File.join(root, "other.rb"), SRC)
-      doc = baseline_doc(%w[killed ignored omitted_source omitted_operator removed_id removed_file foreign])
+      doc = baseline_doc(%w[killed ignored omitted_source omitted_operator removed_id removed_file removed_file_other_op foreign])
       doc["survivors"].each do |entry|
         entry["file"] = "other.rb" if %w[killed ignored omitted_source].include?(entry["id"])
         entry["operator"] = "arithmetic" if %w[killed ignored omitted_operator].include?(entry["id"])
-        entry["file"] = "removed.rb" if entry["id"] == "removed_file"
+        entry["file"] = "removed.rb" if %w[removed_file removed_file_other_op].include?(entry["id"])
+        entry["operator"] = "arithmetic" if entry["id"] == "removed_file_other_op"
         entry["file"] = "/other/checkout/pricing.rb" if entry["id"] == "foreign"
       end
       base = Mutineer::Baseline.new(doc)
       delta = base.diff(agg(as_status(:killed, "killed"), as_status(:ignored, "ignored")),
                         sources: [File.join(root, ".", FILE)], operators: %w[comparison], project_root: root)
 
-      assert_equal %w[killed ignored removed_id removed_file], delta.fixed_survivors.map { |h| h["id"] }
+      assert_equal %w[killed ignored removed_id removed_file removed_file_other_op], delta.fixed_survivors.map { |h| h["id"] }
       assert_equal [%w[omitted_source not_run], %w[omitted_operator not_run], %w[foreign not_run]], unverified(delta)
     end
   end
