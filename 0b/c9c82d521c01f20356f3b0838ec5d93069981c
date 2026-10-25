@@ -1,0 +1,19 @@
+lib/mutineer/pairing.rb
+  s_d60e2454db2056::t_2a19ec8a21814f 164-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0bc9c82d521c01f20356f3b0838ec5d93069981c",
+  "prompts": {},
+  "sessions": {
+    "s_d60e2454db2056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1d5efb-2691-4a0a-8a10-c060a7b2a92e",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
