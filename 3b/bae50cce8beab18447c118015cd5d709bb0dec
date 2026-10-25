@@ -1,0 +1,119 @@
+CHANGELOG.md
+  s_605d39446b5912::t_f7756872cce26e 21-27,122-131,135-145
+README.md
+  s_605d39446b5912::t_c698716b4d45ea 409-418,510-511
+docs/equivalent-skips.html
+  s_605d39446b5912::t_2abdf102a2d55e 7,14,22,53,57,81-92,94-98
+docs/equivalent-skips.md
+  s_605d39446b5912::t_1a38d1c0789147 4-5,19-24,48-70,73-81
+docs/json-schema.md
+  s_605d39446b5912::t_bbe73570b91461 39,58,66,90
+docs/plans/2026-10-24-274-feat-call-to-receiver-skip-list-plan.md
+  s_605d39446b5912::t_de763181259b39 1-235
+docs/plans/2026-10-24-289-fix-continuation-line-coverage-plan.md
+  s_605d39446b5912::t_c3d2de28a96666 1-233
+docs/plans/2026-10-24-293-fix-tests-as-sources-guard-plan.md
+  s_605d39446b5912::t_d3f3b2105351bc 1-245
+docs/plans/2026-10-24-299-fix-endless-range-skip-plan.md
+  s_605d39446b5912::t_14bb916d9a05f8 1-245
+lib/mutineer/baseline.rb
+  s_605d39446b5912::t_ac27b3b0b4c30e 53
+lib/mutineer/changed_lines.rb
+  s_605d39446b5912::t_3737ad0065d6f0 76-77
+lib/mutineer/cli.rb
+  s_605d39446b5912::t_b5466374b85db7 211-213,254
+lib/mutineer/coverage_map.rb
+  s_605d39446b5912::t_2f70228b061d24 450,1469
+lib/mutineer/daemon_client.rb
+  s_605d39446b5912::t_13df8725efd04e 349-350
+lib/mutineer/daemon_server.rb
+  s_605d39446b5912::t_12515213432d6c 85-86
+lib/mutineer/external_backend.rb
+  s_605d39446b5912::t_9b72e3de002f85 31-32,98-106,130,375-380
+lib/mutineer/job_plan.rb
+  s_605d39446b5912::t_ba0ffd9a13d4d5 66,174-181,207-208,210
+lib/mutineer/mutators/call_to_receiver.rb
+  s_605d39446b5912::t_220a244e8b4367 25-29,37-47,119,127
+lib/mutineer/mutators/chain_link.rb
+  s_605d39446b5912::t_d9ba1542f6f8d5 28
+lib/mutineer/mutators/range_literal.rb
+  s_605d39446b5912::t_e5764a46684c30 13-19,24-86,92,98-126
+lib/mutineer/pairing.rb
+  s_605d39446b5912::t_e8b3cf6f37ac91 7,16-18,150-207
+lib/mutineer/rails_worker_db.rb
+  s_605d39446b5912::t_1a55cc35bd8f0b 439
+lib/mutineer/reporter.rb
+  s_605d39446b5912::t_b7e5c8ed197375 524,611,692,893,930,939-946
+lib/mutineer/result.rb
+  s_605d39446b5912::t_82ab3b49e277b4 14-16
+lib/mutineer/runner.rb
+  s_605d39446b5912::t_d64866b3d2ea14 278,336
+lib/mutineer/statement_lines.rb
+  s_605d39446b5912::t_14b248f25ccbbc 15-22,25-28,49-50
+lib/mutineer/triage.rb
+  s_605d39446b5912::t_0d3bd0eccd18b0 95
+test/baseline_test.rb
+  s_605d39446b5912::t_0634ab431e919e 172-185
+test/changed_lines_test.rb
+  s_605d39446b5912::t_3eae3eb093ec87 157-166
+test/cli_test.rb
+  s_605d39446b5912::t_8f988d0a001ba4 99-119,238-276
+test/config_test.rb
+  s_605d39446b5912::t_a8198f2f960f47 11-21
+test/coverage_map_test.rb
+  s_605d39446b5912::t_6c34c32d6bd4d3 542-556
+test/daemon_redaction_test.rb
+  s_605d39446b5912::t_4e3174d151974d 56-73
+test/external_backend_test.rb
+  s_605d39446b5912::t_bb179ab1d78f07 174-175,181,280-303
+test/fixtures/continuation.rb
+  s_605d39446b5912::t_abab8d16bcf0ef 4-5,52-57
+test/fixtures/continuation_test.rb
+  s_605d39446b5912::t_c0a797afbbb118 36-39
+test/fixtures/continuation_weak_test.rb
+  s_605d39446b5912::t_f2b9f054ddefcc 6-7,12-15
+test/fixtures/singleton/concern_class_methods.rb
+  s_605d39446b5912::t_545d58e96ac102 19-21
+test/fixtures/singleton/concern_class_methods_test.rb
+  s_605d39446b5912::t_df8c0173b5c65a 12-15
+test/migrate_test.rb
+  s_605d39446b5912::t_b0475928c4182a 35-53
+test/mutators/call_to_receiver_test.rb
+  s_605d39446b5912::t_ed0fdde40c6cef 98,104-117,140
+test/mutators/range_literal_test.rb
+  s_605d39446b5912::t_97f787ef6773dd 45-49,55-84,86
+test/pairing_test.rb
+  s_605d39446b5912::t_a5f173eda9d05d 319-403
+test/runner_external_test.rb
+  s_605d39446b5912::t_807d1473f5abfd 58-71,172-173,175,181,190
+test/runner_test.rb
+  s_605d39446b5912::t_52ae90af207ffd 284-320
+test/singleton_redefine_test.rb
+  s_605d39446b5912::t_5b6206b3973695 14,18,163-165,167-178
+test/site_docs_test.rb
+  s_605d39446b5912::t_63462d68a03dff 79,82,84,89-107
+test/statement_coverage_test.rb
+  s_605d39446b5912::t_d3336396d3084b 82-100
+test/statement_lines_test.rb
+  s_605d39446b5912::t_38052eece7feb0 40-63
+test/test_helper.rb
+  s_605d39446b5912::t_5158db8dfa6ac0 70-94
+test/triage_test.rb
+  s_605d39446b5912::t_13f7e18f7e7b6d 8,26-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3bbae50cce8beab18447c118015cd5d709bb0dec",
+  "prompts": {},
+  "sessions": {
+    "s_605d39446b5912": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_605d39446b5912",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
