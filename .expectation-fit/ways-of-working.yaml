@@ -23,8 +23,8 @@ conventions:
       nothing, report nothing, skip the case) records an estimate of how
       often real code hits the case.'
     - 'One seed contract: The clean check and the mutant runs share one
-      ordering and seed contract. (Known open gap: issue #282, the clean
-      check does not pin the seed that mutant runs use.)'
+      ordering and seed contract. (Known remaining gaps: issue #282,
+      RSpec random order and Minitest class order across selected files.)'
     - 'Assert the mechanism: A regression test asserts the mechanism
       (owner, arity, the named killing test), never only "killed",
       "passes", or an exit code.'

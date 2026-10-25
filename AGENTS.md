@@ -146,8 +146,8 @@ audit of every merged PR. They stop the defect patterns that reached users.
 The rule text lives in one place: `.expectation-fit/ways-of-working.yaml`.
 Reviewers who use the expectation-fit plugin apply it with `/fit-review`;
 every other reviewer, human or bot, applies the same file by hand. Score terms
-are defined in "Score-model discipline" below. Issue #282 tracks the
-seed-contract gap. The clean check does not pin the mutant runs' seed.
+are defined in "Score-model discipline" below. Issue #282 tracks the remaining
+ordering gaps: RSpec random order and Minitest class order across selected files.
 
 The eight rules, by title: **Track every limitation** - **Cover the
 siblings** - **Gate on unrounded values** - **Count what you exclude** -
