@@ -433,8 +433,8 @@ RAILS_ENV=test bundle exec mutineer run \
   rows from tables the file defines. Rails selects the test database's schema
   file: the `SCHEMA` environment variable when it is set, else `schema_dump:` in
   `config/database.yml`, else `db/schema.rb`.
-  A missing file, `schema_dump: false`, or `structure.sql` leaves the SQLite
-  copy unchanged.
+  A missing file or `structure.sql` leaves the SQLite copy unchanged. So does
+  `schema_dump: false`, unless `SCHEMA` is set.
 - **One backend at a time** — `--daemon` can't be combined with `--test-command`
   (choose one), and it needs an app to boot (`--rails` or `--boot`).
 
