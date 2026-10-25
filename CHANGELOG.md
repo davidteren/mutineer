@@ -112,14 +112,6 @@ All notable changes to this project are documented here. The format is based on
   the run warns that path-relative methods there can be falsely killed
   (tracked in #339).
 
-### Changed
-
-- Explain mutation testing before setup, with a runnable beginner guide and a
-  first run on one file. Simplify wording across the website and clarify Rails
-  setup, CI baselines, and reasons for ignoring a mutant.
-
-### Fixed
-
 - **`--strategy redefine` and path-relative methods.** Redefine now loads
   the mutated method from a hidden file beside the source, as reload does.
   It used the system temp directory before, so `__dir__` and
@@ -150,6 +142,12 @@ All notable changes to this project are documented here. The format is based on
   at the same time in the same checkout: it still writes temp files
   without the dot, and a newer run's mutants error when Zeitwerk finds
   one.
+
+### Changed
+
+- Explain mutation testing before setup, with a runnable beginner guide and a
+  first run on one file. Simplify wording across the website and clarify Rails
+  setup, CI baselines, and reasons for ignoring a mutant.
 
 ## [1.7.0] - 2026-10-23
 
