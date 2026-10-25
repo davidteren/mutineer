@@ -1,0 +1,41 @@
+CHANGELOG.md
+  s_905b1cba5d0ccf::t_714a46d18d2b03 45-59
+README.md
+  s_d60e2454db2056::t_096d929c456c76 716-718,721,746
+docs/agentic-coding.html
+  s_d60e2454db2056::t_3bebbdc3b9c834 97-104,107,130,146
+docs/agentic-coding.md
+  s_d60e2454db2056::t_30c659b2a1b95e 62-69,72-87,89-93,107,138,165
+docs/rails.html
+  s_d60e2454db2056::t_8c2c7762c1f9d7 84,86,109-111,119,121,123
+docs/rails.md
+  s_d60e2454db2056::t_c68d9bdaaab1fb 35,46-56,87,93-94,114,122,128
+lib/mutineer/cli.rb
+  s_d60e2454db2056::t_0919c133592e2c 3,387,389,641-667,671,673,675-684
+test/cli_test.rb
+  s_d60e2454db2056::t_32fb1370b20152 291-350,1146-1199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3bc05de3cb683c179b69bac6f3124f5bfad6590a",
+  "prompts": {},
+  "sessions": {
+    "s_905b1cba5d0ccf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a207aec-e3a1-4bb0-b356-e44b595e59c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_d60e2454db2056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1d5efb-2691-4a0a-8a10-c060a7b2a92e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
