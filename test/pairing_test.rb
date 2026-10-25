@@ -386,4 +386,19 @@ class PairingTest < Minitest::Test
   def test_given_as_source_keeps_a_test_named_source_outside_test_dirs
     refute flagged?("app/models/ab_test.rb", ["test/models/ab_test_test.rb"])
   end
+
+  def test_given_as_source_ignores_test_dirs_above_the_root_for_outside_paths
+    refute flagged?("/home/test/other/b_test.rb", ["a_test.rb"], root: "/home/test/proj")
+    assert flagged?("../test/b_test.rb", [], root: "/home/test/proj")
+  end
+
+  def test_given_as_source_flags_a_split_test_owned_by_a_longer_source
+    Dir.mktmpdir("mutineer-pair") do |root|
+      File.write(File.join(root, "user_test_session.rb"), "")
+      assert flagged?("user_test.rb", ["user_test_session_test.rb"], root: root)
+    end
+    Dir.mktmpdir("mutineer-pair") do |root|
+      refute flagged?("user_test.rb", ["user_test_session_test.rb"], root: root)
+    end
+  end
 end

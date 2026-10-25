@@ -161,8 +161,8 @@ module Mutineer
     # project's top-level `test/` or `spec/`, because real sources use the
     # prefix (`lib/mutineer/test_runners.rb`, `lib/foo/test/test_app.rb`). A
     # source whose own test (`<stem>_test.rb`, `test_<stem>.rb`,
-    # `<stem>_spec.rb` or a split `<stem>_*_test.rb`) sits beside it in the
-    # test set is not flagged. Paths compare relative to the root, as in
+    # `<stem>_spec.rb` or a split `<stem>_*_test.rb` that no longer source on
+    # disk claims) sits beside it in the test set is not flagged. Paths compare relative to the root, as in
     # {expand_sources} (the root's real path counts too, for macOS `/var` vs
     # `/private/var`), so `./a_test.rb` and `a_test.rb` match. No file content
     # is read.
@@ -182,8 +182,13 @@ module Mutineer
         root_relative(abs, roots) || abs
       end
       rel = relative.call(path)
-      return rel.match?(%r{\A(test|spec)/}) unless name.match?(/_(test|spec)\.rb\z/)
-      return true if rel.match?(%r{(\A|/)(test|spec)/})
+      # Outside the root, read segments from a relative path as typed
+      # (`../test/b_test.rb`) and not from an absolute one, so a `test/`
+      # folder above the root never counts.
+      segments = root_relative(File.expand_path(path, root), roots)
+      segments ||= path.start_with?(File::SEPARATOR) ? "" : path
+      return segments.match?(%r{\A(test|spec)/}) unless name.match?(/_(test|spec)\.rb\z/)
+      return true if segments.match?(%r{(\A|/)(test|spec)/})
 
       dir = File.dirname(rel)
       beside = Array(tests).map(&relative)
@@ -191,7 +196,10 @@ module Mutineer
                            .map { |t| File.basename(t) }
       stem = File.basename(name, ".rb")
       own = ["test_#{stem}.rb", "#{stem}_spec.rb"]
-      return false if beside.any? { |t| own.include?(t) || longer_owns_entry?(t, stem) }
+      base = rel.delete_suffix(".rb")
+      return false if beside.any? do |t|
+        own.include?(t) || (longer_owns_entry?(t, stem) && !claimed_by_longer_source?(root, base, t))
+      end
 
       beside.any?
     end
