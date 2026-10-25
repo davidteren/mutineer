@@ -158,7 +158,9 @@ class DaemonCoverageTest < Minitest::Test
         if ENV["MUTINEER_BOOT_INLINE_DB"]
           class BootInlineRecord < ActiveRecord::Base
             self.abstract_class = true
-            establish_connection(adapter: "sqlite3", database: ENV.fetch("MUTINEER_BOOT_INLINE_DB"))
+            database = ENV.fetch("MUTINEER_BOOT_INLINE_DB")
+            database = ActiveRecord::Base.connection_db_config.database if database == "primary"
+            establish_connection(adapter: "sqlite3", database: database)
           end
         end
       RUBY
@@ -168,13 +170,14 @@ class DaemonCoverageTest < Minitest::Test
       Mutineer::Runner.execute(config)
       cache = File.join(config.cache_dir, "coverage.json")
       before = File.binread(cache)
-      [File.join(dir, "inline.sqlite3"), "file:#{File.join(dir, 'inline.sqlite3')}"].each do |database|
+      ["primary", File.join(dir, "inline.sqlite3"), "file:#{File.join(dir, 'inline.sqlite3')}"].each do |database|
         ENV["MUTINEER_BOOT_INLINE_DB"] = database
         error = nil
         capture_subprocess_io do
           error = assert_raises(Mutineer::DaemonBootError) { Mutineer::Runner.execute(config) }
         end
         assert_includes error.message, "config/database.yml"
+        assert_includes error.message, database.start_with?("file:") ? "SQLite file: URI" : "inline SQLite database"
         refute_includes error.message, "unmutated suite is not green"
         assert_equal before, File.binread(cache)
       end

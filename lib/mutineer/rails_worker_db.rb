@@ -610,7 +610,7 @@ module Mutineer
     # @param routed [Array<String>] the worker files.
     # @param kept [Array<String>] the base files kept for shared or serial use.
     # @return [void]
-    # @raise [RuntimeError] when a pool points at a file that is neither.
+    # @raise [RuntimeError] when a SQLite pool is undeclared or points at a file that is neither.
     def self.verify_routing!(routed, kept)
       role = ActiveRecord.version < Gem::Version.new("7.1") ? nil : :all
       ActiveRecord::Base.connection_handler.connection_pool_list(role).each do |pool|
@@ -619,7 +619,7 @@ module Mutineer
           raise "#{config.name} uses a SQLite file: URI, which cannot be copied per worker. " \
                 "Use a plain database file path in config/database.yml."
         end
-        if sqlite_adapter?(config.adapter.to_s) && !sqlite_file_config?(config) && !test_configs.include?(config)
+        if sqlite_adapter?(config.adapter.to_s) && !test_configs.include?(config)
           raise "#{config.name} uses an inline SQLite database #{config.database.inspect}, which cannot be copied per worker. " \
                 "Use a plain database file path in config/database.yml."
         end

@@ -195,7 +195,7 @@ class DaemonWorkerDbTest < Minitest::Test
     out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", INLINE_CHECK,
                                   chdir: APP, unsetenv_others: true)
     assert status.success?, out
-    assert_match(/inline\.sqlite3, which every worker shares/, out)
+    assert_match(/uses an inline SQLite database .*inline\.sqlite3/, out)
     assert_includes out, "inline_rows=1"
     refute_includes out, "routed"
   end

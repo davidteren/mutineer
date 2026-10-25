@@ -668,13 +668,15 @@ class RailsWorkerDbTest < Minitest::Test
     %w[postgresql mysql2 trilogy].each do |adapter|
       db.stub(:current_adapter, adapter) do
         db.stub(:test_configs, [declared]) do
+          db.verify_configured_pools!
           db.stub(:connect, nil) do
             db.stub(:verify_connection!, nil) do
               db.instance_variable_set(:@routing, [["/old/worker.sqlite3"], []])
               db.after_fork(0)
               assert_equal [[], [declared.database]], db.instance_variable_get(:@routing)
-              ["/tmp/inline.sqlite3", "file:/tmp/inline.sqlite3", ":memory:", ""].each do |file|
+              [declared.database, "/tmp/inline.sqlite3", "file:/tmp/inline.sqlite3", ":memory:", ""].each do |file|
                 pools << pool.new(SqliteConfig.new("inline", file, "sqlite3"))
+                assert_raises(RuntimeError, "#{adapter} rejects #{file.inspect} before coverage") { db.verify_configured_pools! }
                 assert_raises(RuntimeError, "#{adapter} rejects #{file.inspect} after tests") { db.recheck_routing! }
                 assert_raises(RuntimeError, "#{adapter} rejects #{file.inspect} before tests") { db.after_fork(0) }
                 pools.pop
@@ -724,29 +726,37 @@ class RailsWorkerDbTest < Minitest::Test
     Object.const_set(:ActiveRecord, active_record)
     db = Mutineer::RailsWorkerDb
 
-    File.stub(:identical?, ->(a, b) { a == b }) do
-      db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3])
-      assert_equal [1, 0], [routed.trips, shared.trips]
+    db.stub(:test_configs, [routed.db_config, shared.db_config]) do
+      File.stub(:identical?, ->(a, b) { a == b }) do
+        db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3])
+        assert_equal [1, 0], [routed.trips, shared.trips]
 
-      # A connection opened before the rewrite is still on the base file.
-      routed.opened = "/app/test.sqlite3"
-      error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
-      assert_includes error.message, "primary is connected to /app/test.sqlite3, not its worker file /app/test-0.sqlite3"
-
-      routed.opened = "/app/test-0.sqlite3"
-      pools << inline
-      error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
-      assert_includes error.message, "primary still uses /tmp/inline.sqlite3, which every worker shares."
-
-      %w[7.1.5.1 7.2.3].each do |release|
-        version = Gem::Version.new(release)
+        # A connection opened before the rewrite is still on the base file.
+        routed.opened = "/app/test.sqlite3"
         error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
-        assert_includes error.message, "primary still uses /tmp/inline.sqlite3"
-      end
+        assert_includes error.message, "primary is connected to /app/test.sqlite3, not its worker file /app/test-0.sqlite3"
 
-      pools.replace([routed, shared, pool.new(SqliteConfig.new("inline", "file:/tmp/inline.sqlite3", "sqlite3"), 0)])
-      error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
-      assert_includes error.message, "SQLite file: URI"
+        routed.opened = "/app/test-0.sqlite3"
+        pools << inline
+        error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
+        assert_includes error.message, 'primary uses an inline SQLite database "/tmp/inline.sqlite3"'
+
+        %w[7.1.5.1 7.2.3].each do |release|
+          version = Gem::Version.new(release)
+          error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
+          assert_includes error.message, 'primary uses an inline SQLite database "/tmp/inline.sqlite3"'
+        end
+
+        [routed.db_config.database, shared.db_config.database].each do |database|
+          inline.db_config = SqliteConfig.new("inline", database, "sqlite3")
+          error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
+          assert_includes error.message, "inline uses an inline SQLite database #{database.inspect}"
+        end
+
+        pools.replace([routed, shared, pool.new(SqliteConfig.new("inline", "file:/tmp/inline.sqlite3", "sqlite3"), 0)])
+        error = assert_raises(RuntimeError) { db.verify_routing!(%w[/app/test-0.sqlite3], %w[/app/queue.sqlite3]) }
+        assert_includes error.message, "SQLite file: URI"
+      end
     end
   ensure
     Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
