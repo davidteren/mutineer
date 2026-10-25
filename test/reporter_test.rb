@@ -577,8 +577,8 @@ class ReporterTest < Minitest::Test
     refute_includes out.string, "not narrowed by --since"
 
     out = StringIO.new
-    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new, scoped: true)
-    assert_match(/Declined:\s+0 .*not narrowed by --since/, out.string)
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new, scoped: true, declined: { "range" => 2 })
+    assert_match(/Declined:\s+2 .*not narrowed by --since/, out.string)
   end
 
   private

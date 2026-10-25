@@ -184,10 +184,10 @@ class CallToReceiverTest < Minitest::Test
   end
 
   def test_skipped_name_counts_as_declined
-    %w[x.to_s x.dup Foo.new x.freeze x.itself x.to_a].each do |body|
+    %w[x.dup Foo.new x.freeze x.itself x.clone x.to_set].each do |body|
       assert_equal 1, declined(body), "for #{body.inspect}"
     end
-    ["a.+(1)", "a.b = 1", "x.to_s.strip"].each do |body|
+    ["a.+(1)", "a.b = 1", "x.to_s.strip", "x.to_s", "x.to_a"].each do |body|
       assert_equal 0, declined(body), "for #{body.inspect}"
     end
   end

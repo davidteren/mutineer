@@ -720,20 +720,28 @@ class CliTest < Minitest::Test
       out, err, status = mutineer("run", "notes.rb", "--dry-run", "--operators", "condition_true", chdir: proj)
       assert_equal 0, status.exitstatus, err
       assert_includes out, "1 declined (condition_true: 1)"
+
+      # A repeated operator name runs once, so its decline counts once.
+      out, err, status = mutineer("run", "notes.rb", "--dry-run", "--operators", "condition_true,condition_true", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "1 declined (condition_true: 1)"
     end
   end
 
   def test_dry_run_labels_declined_under_since
     with_project do |proj|
+      # The declined heredoc sits on a line the change does not touch.
+      File.write(File.join(proj, "notes.rb"), HEREDOC_CONDITION)
       [%w[init -q], %w[config user.email t@t], %w[config user.name t],
        %w[add .], %w[commit -qm base]].each do |args|
         assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
       end
       path = File.join(proj, "calculator.rb")
       File.write(path, File.read(path).sub("a + b", "a + b + 0"))
-      out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--since", "HEAD", chdir: proj)
+      out, err, status = mutineer("run", "calculator.rb", "notes.rb", "--dry-run", "--since", "HEAD",
+                                  "--operators", "arithmetic,condition_true", chdir: proj)
       assert_equal 0, status.exitstatus, err
-      assert_includes out, "0 declined in the scanned files (not narrowed by --since)"
+      assert_includes out, "1 declined in the scanned files (not narrowed by --since) (condition_true: 1)"
     end
   end
 

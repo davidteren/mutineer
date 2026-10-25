@@ -71,7 +71,8 @@ module Mutineer
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file, encoding: "UTF-8"))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
-        mutations = operator_classes.flat_map do |klass|
+        # A repeated operator name runs once, so its declines count once.
+        mutations = operator_classes.uniq.flat_map do |klass|
           operator = klass.new
           found = operator.mutations_for(subject, source)
           declined[MutatorRegistry::ALL.key(klass) || klass.to_s] += operator.declined

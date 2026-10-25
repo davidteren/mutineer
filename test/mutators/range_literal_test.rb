@@ -109,9 +109,9 @@ class RangeLiteralTest < Minitest::Test
   end
 
   def test_endless_range_counts_as_declined
-    ["(1..)", "(1...)", "list[1..]", "(1..nil)", "(1...nil)"].each do |body|
+    ["list[1..]", "list[1...]", "list[1..nil]", "s.slice(1..)", "list.values_at(2..)"].each do |body|
       assert_equal 1, declined(body), "for #{body.inspect}"
     end
-    assert_equal 0, declined("(1..10)")
+    ["(1..10)", "(1..)", "(1...nil)"].each { |body| assert_equal 0, declined(body), "for #{body.inspect}" }
   end
 end
