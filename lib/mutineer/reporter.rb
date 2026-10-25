@@ -147,7 +147,7 @@ module Mutineer
       score = @agg.mutation_score
       return 0 if score.nil? # pure no_coverage / ignored / empty — gate skipped
 
-      score >= threshold ? 0 : 1
+      @agg.meets_threshold?(threshold) ? 0 : 1
     end
 
     private
@@ -975,9 +975,14 @@ module Mutineer
 
       # Same rule as exit_code, or the report says PASSED on a run that exits 1 —
       # and with --output that wrong verdict is what gets archived.
+      passed = @agg.meets_threshold?(threshold)
       if @agg.broken_share_exceeded?
         out.puts "FAILED: #{no_verdict_ratio}; #{score}% covers only part of the run"
-      elsif score >= threshold
+      elsif passed != (score >= threshold)
+        # The rounded score points the other way, so give the exact counts.
+        out.puts "#{passed ? 'PASSED' : 'FAILED'}: #{@agg.killed_count} of #{@agg.covered_count} killed " \
+                 "#{passed ? 'meets' : 'is below'} threshold #{threshold}% (the #{score}% score is rounded)"
+      elsif passed
         out.puts "PASSED: #{score}% >= threshold #{threshold}%"
       else
         out.puts "FAILED: #{score}% < threshold #{threshold}%"

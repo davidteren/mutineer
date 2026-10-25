@@ -227,6 +227,9 @@ A run where *nothing* was scored and something broke already exits 1.
 `--threshold` and `--baseline` are independent gates OR'd together (the worse code wins); usage errors (2)
 always win. Exit 2 still means "you invoked me wrong". Exit 1 now covers three distinct situations —
 tests too weak, the run did not complete, or a baseline regression — and they are not distinguishable
-from the exit code alone. Tell them apart from the JSON: compare `summary.score` against your threshold,
-`summary.no_verdict / summary.attempted` against 10% (or read `baseline.incomplete`), and `baseline.regressed`. A run that failed only on
+from the exit code alone. Tell them apart from the JSON: compare the exact score against your
+threshold. When `summary.killed + summary.survived > 0`, check
+`summary.killed * 100 >= threshold * (summary.killed + summary.survived)`, with decimal or rational
+arithmetic for a fractional threshold (`summary.score` is rounded, and the gate does not use it). Compare
+`summary.no_verdict / summary.attempted` against 10% (or read `baseline.incomplete`), and check `baseline.regressed`. A run that failed only on
 completeness is the one worth retrying rather than blaming on the tests.
