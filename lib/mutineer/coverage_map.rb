@@ -467,7 +467,7 @@ module Mutineer
         return "it has no source fingerprints; capture it again with this version and --rails/--boot"
       end
       return "its entries are not the shape a coverage cache saves; capture it again" unless well_formed_capture?(cached)
-      return "its tests, --require files, boot file, load paths, framework or Minitest seed differ" unless cached["inputs"] == compute_digest(inputs_only: true)
+      return "its tests, --require files, boot file, load paths, framework or Minitest seed differ, or an older version made it; capture it again" unless cached["inputs"] == compute_digest(inputs_only: true)
 
       fingerprints = source_fingerprints
       missing = fingerprints.keys - cached["sources"].keys
@@ -1031,7 +1031,7 @@ module Mutineer
         #{abs_preload_paths.inspect}.each { |f| require f }
         Minitest::Runnable.reset
         #{loads}
-        _passed = Minitest.run(#{MinitestIntegration.seed_args.inspect})
+        _passed = Minitest.run(#{minitest_seed_args_expression})
         $stderr.write(_report.string) unless _passed
         exit(_passed ? 0 : 1)
       RUBY
@@ -1093,7 +1093,7 @@ module Mutineer
         _load = #{load_coverage_expression}
         Minitest::Runnable.reset
         load #{absolute(test_path).inspect}
-        _passed = Minitest.run(#{MinitestIntegration.seed_args.inspect})
+        _passed = Minitest.run(#{minitest_seed_args_expression})
         $stderr.write(_report.string) unless _passed
         _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => _coverage,
@@ -1101,6 +1101,18 @@ module Mutineer
                                     "loaded_files" => #{loaded_files_expression})
         _result.close
       RUBY
+    end
+
+    # Selects the seed inside the generated child, after its tests and helpers
+    # load. Choosing in the parent can ignore a helper's SEED assignment and
+    # let a clean check pass in an order the mutant run never uses (#282).
+    # The default comes from the same constant as the in-process runner; the
+    # child needs no Mutineer require and the parent's environment is unchanged.
+    #
+    # @api private
+    # @return [String] Ruby expression for the Minitest argument array.
+    def minitest_seed_args_expression
+      "ENV[\"SEED\"] ? [] : [\"--seed\", #{MinitestIntegration::PINNED_SEED.to_s.inspect}]"
     end
 
     # Same coverage-JSON contract as the minitest path, but driven by RSpec:
@@ -1358,6 +1370,8 @@ module Mutineer
       @load_paths.sort.each { |lp| d.update("loadpath\0#{lp}\0") }
       d.update("framework\0#{@framework}\0")
       # The seed sets the test order, and the order can change which lines run (#282).
+      # This is the configured seed. A test helper that changes SEED is not
+      # digested, like any other helper edit.
       d.update("seed\0#{MinitestIntegration.seed}\0") unless @framework == "rspec"
       d.hexdigest
     end

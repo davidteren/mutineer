@@ -28,7 +28,7 @@ module Mutineer
   #
   # Protocol (one JSON object per line, both directions):
   #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment","require_paths":[...],
-  #               "load_paths":["test"],"framework":"minitest","rails":true,"schema":"db/schema.rb"}
+  #               "load_paths":["test"],"framework":"minitest","rails":true}
   #   ready out: {"ready":true,"ruby":"3.3.6","database_count":1}
   #              (or {"ready":false,"error":"..."} then exit)
   #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
@@ -196,8 +196,8 @@ module Mutineer
       def setup_worker_db(cfg)
         require_relative "rails_worker_db"
         @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
-        schema = cfg["schema"] && File.expand_path(cfg["schema"])
-        @schema_path = schema if schema && File.exist?(schema)
+        # Only the booted app knows its schema file (`schema_dump:` can rename it).
+        @schema_path = @worker_db&.ruby_schema_path
         # Each SQLite slot is seeded once, on first use (not every mutant fork).
         # Postgres and MySQL slots are copied at provision time, so this flag is unused there.
         @slot_ready = {}

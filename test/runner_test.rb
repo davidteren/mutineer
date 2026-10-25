@@ -547,6 +547,90 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # The helper changes SEED only in children. Preserve the caller's environment.
+  def with_helper_seed_env(seed, mode, log)
+    names = %w[SEED MUTINEER_HELPER_SEED_MODE MUTINEER_HELPER_SEED_LOG]
+    saved = names.to_h { |name| [name, ENV[name]] }
+    seed ? ENV["SEED"] = seed : ENV.delete("SEED")
+    ENV["MUTINEER_HELPER_SEED_MODE"] = mode
+    ENV["MUTINEER_HELPER_SEED_LOG"] = log
+    yield
+  ensure
+    saved.each { |name, value| value.nil? ? ENV.delete(name) : ENV[name] = value }
+  end
+
+  # A helper's assignment, default or deletion must take effect at the same
+  # point in capture, clean checks and the armed mutant runner (#282).
+  def test_helper_seed_changes_match_across_subprocess_and_mutant_paths
+    root = File.join(ROOT, "test/fixtures/helper_seed")
+    src = File.join(root, "subject.rb")
+    test = File.join(root, "subject_test.rb")
+    [[nil, "assign", 99, false], [nil, "or", 99, false],
+     ["1", "or", 1, true], ["17", "clear", 1, true], [nil, "inherit", 1, true]].each do |seed, mode, expected, passed|
+      Dir.mktmpdir("mutineer-helper-seed") do |dir|
+        log = File.join(dir, "seed.jsonl")
+        with_helper_seed_env(seed, mode, log) do
+          map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test], project_root: root,
+                                          cache_dir: File.join(dir, "cache"))
+          outcomes = []
+          rows = []
+          capture_subprocess_io do
+            File.write(log, "")
+            outcomes << map.send(:capture, test).fetch("passed")
+            rows << File.readlines(log).map { |line| JSON.parse(line) }
+            File.write(log, "")
+            outcomes << map.send(:subprocess_clean_pass?, [test])
+            rows << File.readlines(log).map { |line| JSON.parse(line) }
+          end
+          File.write(log, "")
+          script = "require 'mutineer'; Mutineer::ChildStdout.silence; exit Mutineer::TestRunners::Minitest.run([#{test.dump}], stop_at_first_failure: true)"
+          outcomes << system(RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", "-e", script,
+                             out: File::NULL, err: File::NULL)
+          rows << File.readlines(log).map { |line| JSON.parse(line) }
+          assert_equal [passed] * 3, outcomes, "seed #{seed.inspect}, helper #{mode}"
+          rows.each do |entries|
+            refute_empty entries
+            assert_equal [expected], entries.map { |entry| entry.fetch("seed") }.uniq
+          end
+          labels = rows.map { |entries| entries.map { |entry| entry.fetch("label") } }
+          assert_equal labels[0], labels[1], "capture and clean check must use the same order"
+          assert_equal labels[0].take(labels[2].length), labels[2], "the armed run must keep that order"
+          if seed
+            assert_equal seed, ENV["SEED"], "the helper must not change the parent's environment"
+          else
+            assert_nil ENV["SEED"], "the helper must not change the parent's environment"
+          end
+        end
+      end
+    end
+  end
+
+  # The unasserted literal survives the matching-seed control. A helper-selected
+  # red order must abort before scoring, rather than manufacture a kill (#282).
+  def test_helper_seed_order_failure_aborts_before_false_kills
+    root = File.join(ROOT, "test/fixtures/helper_seed")
+    src = File.join(root, "subject.rb")
+    test = File.join(root, "subject_test.rb")
+    [[nil, "assign"], [nil, "or"], ["1", "or"]].each do |seed, mode|
+      Dir.mktmpdir("mutineer-helper-seed") do |dir|
+        log = File.join(dir, "seed.jsonl")
+        with_helper_seed_env(seed, mode, log) do
+          config = Mutineer::Config.new(sources: [src], tests: [test], operators: ["literal_mutation"],
+                                        jobs: 1, project_root: root, cache_dir: File.join(dir, "cache"))
+          capture_subprocess_io do
+            if seed
+              result = Mutineer::Runner.execute(config).first
+              assert_operator result.survived_count, :>, 0
+              assert_equal 0, result.killed_count
+            else
+              assert_raises(Mutineer::SmokeCheckError) { Mutineer::Runner.execute(config) }
+            end
+          end
+        end
+      end
+    end
+  end
+
   # #159: an operator that emits one edit twice runs it once, and every kept
   # mutant keeps the id it had before (ids are assigned before the drop, so a
   # dropped copy's id is never handed to the next twin).
