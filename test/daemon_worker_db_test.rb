@@ -349,6 +349,62 @@ class DaemonWorkerDbTest < Minitest::Test
     assert_includes out, "independent_rows=0"
   end
 
+  # Conflicting schemas for one secondary file must fail before either loads.
+  # Both config orders preserve copied rows; identical dumps remain supported.
+  SECONDARY_ALIAS_SCHEMA_CHECK = <<~RUBY
+    require "./config/environment"
+    require #{File.expand_path("../lib/mutineer/rails_worker_db", __dir__).inspect}
+    require "tmpdir"
+    require "sqlite3"
+    ActiveRecord::Migration.verbose = false
+    %w[conflicting reversed matching].each do |kind|
+      Dir.mktmpdir do |dir|
+        primary = File.join(dir, "primary.sqlite3")
+        archive = File.join(dir, "archive.sqlite3")
+        other = File.join(dir, "alias.sqlite3")
+        dump = "ActiveRecord::Schema.define(version: 2) { create_table(:orders, force: true) { |t| t.string :body } }"
+        File.write(File.join(dir, "archive_schema.rb"), dump)
+        File.write(File.join(dir, "alias_schema.rb"), kind == "matching" ? dump : dump.sub("version: 2", "version: 3"))
+        SQLite3::Database.new(primary) { |db| db.execute("CREATE TABLE markers (body TEXT)") }
+        ActiveRecord::Base.configurations = {"test" => {
+          "primary" => {"adapter" => "sqlite3", "database" => primary},
+          "archive" => {"adapter" => "sqlite3", "database" => archive, "schema_dump" => "archive_schema.rb"},
+          "alias" => {"adapter" => "sqlite3", "database" => other, "schema_dump" => "alias_schema.rb"}
+        }}
+        if kind == "reversed"
+          configs = ActiveRecord::Base.configurations.configs_for(env_name: "test")
+          ActiveRecord::Base.configurations = configs.reverse
+        end
+        ActiveRecord::Tasks::DatabaseTasks.db_dir = dir
+        archive_config = Mutineer::RailsWorkerDb.test_configs.find { |c| c.name == "archive" }
+        ActiveRecord::Base.establish_connection(:archive)
+        ActiveRecord::Tasks::DatabaseTasks.load_schema(archive_config)
+        SQLite3::Database.new(archive) { |db| db.execute("INSERT INTO orders VALUES (1, 'keep boot row')") }
+        File.symlink(archive, other)
+        ActiveRecord::Base.establish_connection(:primary)
+        ActiveRecord::Base.connection_handler.connection_pool_list.each(&:disconnect!)
+        begin
+          Mutineer::RailsWorkerDb.after_fork(0, seed: true)
+        rescue RuntimeError => e
+          puts "\#{kind}_error=\#{e.message}"
+        end
+        copied = Mutineer::RailsWorkerDb.test_configs.find { |c| c.name == "archive" }.database
+        SQLite3::Database.new(copied) { |db| puts "\#{kind}_rows=\#{db.get_first_value('SELECT COUNT(*) FROM orders')}" }
+      end
+    end
+  RUBY
+
+  def test_secondary_file_aliases_do_not_reload_another_schema_over_boot_rows
+    env = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+    out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", SECONDARY_ALIAS_SCHEMA_CHECK,
+                                  chdir: APP, unsetenv_others: true)
+    assert status.success?, out
+    %w[conflicting reversed matching].each { |kind| assert_includes out, "#{kind}_rows=1" }
+    assert_match(/conflicting_error=.*conflicting schema dumps/, out)
+    assert_match(/reversed_error=.*conflicting schema dumps/, out)
+    refute_includes out, "matching_error="
+  end
+
   # Exercise the Rails 7.0 version and helper seams in an isolated process
   # with real ActiveRecord pools and SQLite rows. Extra files stay on their
   # base path so no empty copy needs an unavailable per-config schema loader.

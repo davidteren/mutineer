@@ -25,7 +25,9 @@ All notable changes to this project are documented here. The format is based on
   SQLite with a plain file path, each worker copies every file except those shared through
   `shared_databases` (`storage/cable.sqlite3` becomes `storage/cable-0.sqlite3`).
   Such an app runs `--jobs N` in parallel with no `shared_databases` entry.
-  A copy loads its database's schema file when it is out of date.
+  A copy loads its database's schema file when it is out of date. Physical
+  aliases use one schema. Conflicting secondary alias dumps raise before any
+  secondary schema loads, so configuration order cannot delete copied rows.
   Postgres and MySQL keep the one-worker limit unless
   `shared_databases` lists the other databases. A SQLite database listed in
   `shared_databases` and all other names for the same file keep the base file,
@@ -39,12 +41,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **Breaking: `--daemon` on SQLite now fails a mutant with `error` when a connection
-  cannot be copied per worker** (#332). Before, the fork reconnected
+- **Breaking: `--daemon` refuses SQLite connections that cannot be copied
+  per worker** (#332). Before, the fork reconnected
   `ActiveRecord::Base` to a worker file whatever its config. Now Mutineer
   copies only databases in `config/database.yml`. A connection from an inline
-  `establish_connection` hash, or any SQLite pool given as a `file:` URI, scores
-  every mutant `error`, even with one worker. Move that database into
+  `establish_connection` hash, or any SQLite pool given as a `file:` URI, stops
+  the run with its routing error if registered at boot. A pool opened later
+  makes the mutant score `error`, even with one worker. Move that database into
   `config/database.yml` as a plain file path.
 - Explain mutation testing before setup, with a runnable beginner guide and a
   first run on one file. Simplify wording across the website and clarify Rails

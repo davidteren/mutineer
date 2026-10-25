@@ -148,6 +148,41 @@ class DaemonCoverageTest < Minitest::Test
                     "subtotal_cents mutants are still run (covered)"
   end
 
+  # A valid cached map cannot hide a routing failure from a newly registered
+  # boot pool. The configuration cause must survive before clean tests run.
+  def test_boot_inline_pool_reports_its_routing_error_with_a_cached_map
+    previous = ENV.delete("MUTINEER_BOOT_INLINE_DB")
+    Dir.mktmpdir("mutineer-boot-inline") do |dir|
+      setup = File.join(dir, "inline_setup.rb")
+      File.write(setup, <<~RUBY)
+        if ENV["MUTINEER_BOOT_INLINE_DB"]
+          class BootInlineRecord < ActiveRecord::Base
+            self.abstract_class = true
+            establish_connection(adapter: "sqlite3", database: ENV.fetch("MUTINEER_BOOT_INLINE_DB"))
+          end
+        end
+      RUBY
+      config = config_for("order_subtotal_only_test.rb")
+      config.cache_dir = File.join(dir, "cache")
+      config.require_paths = [setup]
+      Mutineer::Runner.execute(config)
+      cache = File.join(config.cache_dir, "coverage.json")
+      before = File.binread(cache)
+      [File.join(dir, "inline.sqlite3"), "file:#{File.join(dir, 'inline.sqlite3')}"].each do |database|
+        ENV["MUTINEER_BOOT_INLINE_DB"] = database
+        error = nil
+        capture_subprocess_io do
+          error = assert_raises(Mutineer::DaemonBootError) { Mutineer::Runner.execute(config) }
+        end
+        assert_includes error.message, "config/database.yml"
+        refute_includes error.message, "unmutated suite is not green"
+        assert_equal before, File.binread(cache)
+      end
+    end
+  ensure
+    previous ? ENV["MUTINEER_BOOT_INLINE_DB"] = previous : ENV.delete("MUTINEER_BOOT_INLINE_DB")
+  end
+
   def test_daemon_writes_the_coverage_cache_to_cache_dir
     Dir.mktmpdir("mutineer-daemon-cache") do |dir|
       config = config_for("order_subtotal_only_test.rb")

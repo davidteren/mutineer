@@ -286,7 +286,7 @@ module Mutineer
     end
 
     # Create each worker database before any worker daemon starts.
-    # SQLite is a no-op: the file is copied on first use. Postgres drops and
+    # SQLite checks configured pools; the file is copied on first use. Postgres drops and
     # recreates each exact slot name from the test database. MySQL creates each
     # slot, loads the schema, and copies rows. The caller must be the only
     # daemon connected to that test database.
@@ -300,6 +300,7 @@ module Mutineer
 
       count = Integer(slots)
       return if count < 1
+      verify_configured_pools!
       return if sqlite_adapter?(current_adapter)
 
       if postgres_adapter?(current_adapter)
@@ -445,6 +446,18 @@ module Mutineer
       verify_routing!(*@routing) if @routing
     end
 
+    # Check boot-registered SQLite pools before provisioning or coverage clean
+    # checks. Declared files may still use their base paths in this parent.
+    # An unsupported pool must report its routing cause before a cached clean
+    # check can mistake the setup exception for a test failure.
+    #
+    # @return [void]
+    # @raise [RuntimeError] when a SQLite pool cannot be isolated.
+    def self.verify_configured_pools!
+      files = test_configs.select { |config| sqlite_file_config?(config) }.map { |config| sqlite_file(config) }
+      verify_routing!([], files)
+    end
+
     # Point every SQLite file config of the test environment at this worker's
     # copy. Each DatabaseConfig is rewritten in place (`_database=`), so every
     # pool resolved from `configurations` follows: `ActiveRecord::Base` and each
@@ -542,10 +555,12 @@ module Mutineer
       end
     end
 
-    # Load the schema file of each SQLite database other than the primary file
+    # Load one schema for each SQLite file other than the primary file
     # when its worker copy is out of date. Rails' DatabaseTasks picks each
     # config's own file (`db/<name>_schema.rb` by default) and skips a config
-    # with no file. Shared base files are never loaded. No purge: the schema
+    # with no file. Physical aliases must agree on their existing schema dumps;
+    # conflicting dumps raise before any secondary schema loads. Shared base
+    # files are never loaded. No purge: the schema
     # loads over the copy, so tables a --require file wrote at boot survive
     # (#222). Rails 7.1 names its helper for connections, not pools. Older
     # versions with neither helper use the copy as it is.
@@ -553,18 +568,31 @@ module Mutineer
     # @param primary [ActiveRecord::DatabaseConfigurations::DatabaseConfig] the
     #   config `ActiveRecord::Base` uses. {load_schema} covers it.
     # @param routed [Array<String>] the worker files, excluding shared bases.
+    # @raise [RuntimeError] when physical aliases use conflicting schema dumps.
     # @return [void]
     def self.load_other_schemas(primary, routed:)
       tasks = ActiveRecord::Tasks::DatabaseTasks
       helper = %i[with_temporary_pool_for_each with_temporary_connection_for_each].find { |name| tasks.respond_to?(name) }
       return unless helper
 
-      primary_file = database_file_identity(sqlite_file(primary))
-      test_configs.each do |config|
-        next if config.equal?(primary) || config.replica? || !config.database_tasks? || !sqlite_file_config?(config)
-        next if database_file_identity(sqlite_file(config)) == primary_file
-        next unless routed.include?(sqlite_file(config))
-
+      groups = test_configs.select do |config|
+        !config.replica? && config.database_tasks? && sqlite_file_config?(config) && routed.include?(sqlite_file(config))
+      end.group_by { |config| database_file_identity(sqlite_file(config)) }
+      groups.delete(database_file_identity(sqlite_file(primary)))
+      # Validate all groups before loading any schema, so a later conflict
+      # cannot leave earlier secondary copies changed.
+      schemas = groups.values.filter_map do |configs|
+        dumps = configs.filter_map do |config|
+          path = tasks.schema_dump_path(config)
+          [config, path] if path && File.file?(path)
+        end
+        if dumps.map { |_config, path| Digest::SHA1.file(path).hexdigest }.uniq.size > 1
+          raise "SQLite aliases #{configs.map(&:name).join(', ')} use conflicting schema dumps; " \
+                "configure one schema for their shared file"
+        end
+        dumps.first&.first
+      end
+      schemas.each do |config|
         tasks.public_send(helper, env: config.env_name, name: config.name) do
           tasks.load_schema(config) unless tasks.schema_up_to_date?(config)
         end

@@ -471,11 +471,13 @@ On Rails 7.1 or later, when every test database in `config/database.yml` uses SQ
 `storage/cable.sqlite3` becomes `storage/cable-0.sqlite3` for worker 0, and so on.
 Each copy starts from the base file. When a copy's schema is out of date, Mutineer loads that database's schema file (`db/cable_schema.rb`).
 A replica on the same file uses the same copy.
+Aliases of a secondary file must use matching schema dumps. Conflicting dumps produce an error before any secondary schema loads.
 So an app whose test databases are all SQLite files runs in parallel with no extra config.
 
 A connection opened with an inline hash (`establish_connection(adapter: "sqlite3", database: ...)`) is not in `config/database.yml`.
-Mutineer cannot copy it, so every mutant scores `error`, even with one worker. Move that database into `config/database.yml`.
-A SQLite pool given as a `file:` URI also scores `error`. Use a plain file path.
+Mutineer cannot copy it. If the pool is registered at boot, the run stops with the routing error before coverage checks.
+If it opens later, the mutant scores `error`, even with one worker. Move that database into `config/database.yml`.
+A SQLite pool given as a `file:` URI is refused in the same way. Use a plain file path.
 On Rails 7.0, an extra database outside `shared_databases` means one worker, and only the primary database is copied.
 
 On Postgres and MySQL, each worker copies only the primary database, the one `ActiveRecord::Base` uses.
