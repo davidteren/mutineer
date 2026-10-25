@@ -112,14 +112,6 @@ All notable changes to this project are documented here. The format is based on
   the run warns that path-relative methods there can be falsely killed
   (tracked in #339).
 
-### Changed
-
-- Explain mutation testing before setup, with a runnable beginner guide and a
-  first run on one file. Simplify wording across the website and clarify Rails
-  setup, CI baselines, and reasons for ignoring a mutant.
-
-### Fixed
-
 - **The `range` operator swaps endless ranges outside slices.** Before, it
   skipped every endless range (`1..`, `1..nil`) as equivalent. But `(1..)`
   and `(1...)` differ on `==`, `hash`, `exclude_end?` and `to_s`, so a test
@@ -145,6 +137,12 @@ All notable changes to this project are documented here. The format is based on
   `include?`, or a range in an Active Record query such as
   `where(created_at: time..)`. Suppress them with `# mutineer:disable-line`
   or an `ignore:` entry. (#299)
+
+### Changed
+
+- Explain mutation testing before setup, with a runnable beginner guide and a
+  first run on one file. Simplify wording across the website and clarify Rails
+  setup, CI baselines, and reasons for ignoring a mutant.
 
 ## [1.7.0] - 2026-10-23
 
