@@ -12,8 +12,19 @@ module Mutineer
     POLL = 0.5
     # `Tempfile.create([".mutineer_daemon", ".rb"])` names the file
     # `.mutineer_daemon<YYYYMMDD>-<pid>-<rand>.rb` (without the dot before #253).
-    # The pid is the child that is loading the mutant.
-    DAEMON_TEMP_PID = /\A\.?mutineer_daemon\d{8}-(\d+)-/
+    # An in-process `.mutineer_mutant` file has the same shape (#295). The pid
+    # is the child that is loading the mutant. An undotted name is a leftover
+    # of a version before 1.7.0, so its pid is not read: a reused pid must not
+    # keep a file that stops the next boot. A held file lock still protects it.
+    TEMP_PID = /\A\.mutineer_(?:daemon|mutant)\d{8}-(\d+)-/
+    # Basename glob for the mutant files of both modes. Tempfile puts hyphens in
+    # the name, so it is not a constant name. The leading dot hides a new file
+    # from Zeitwerk (#253); a file an older version left behind has none, so the
+    # glob matches both. Each boot sweep removes an orphan of either mode, so an
+    # old file of the other mode does not stop the boot (#287). The date and
+    # hyphen after the prefix keep a project's own file, such as
+    # `mutineer_mutant_helper.rb`, out of the sweep.
+    TEMP_BASENAME = "{.,}mutineer_{mutant,daemon}#{"[0-9]" * 8}-*.rb"
 
     # Starts the watchdog in the current (child) process.
     #
@@ -29,7 +40,7 @@ module Mutineer
       end
     end
 
-    # True when a daemon mutant file still belongs to a live process. A boot
+    # True when a mutant file still belongs to a live process. A boot
     # sweep must leave it alone. The database lock is taken later, so the
     # sweep is the step that used to delete another run's file.
     #
@@ -37,19 +48,20 @@ module Mutineer
     # file lock counts too, even when that pid is already gone. A dead pid
     # and a free lock is an orphan a killed child left behind.
     #
-    # @param path [String] absolute path of a `.mutineer_daemon*.rb` file.
+    # @param path [String] absolute path of a `.mutineer_daemon*.rb` or
+    #   `.mutineer_mutant*.rb` file.
     # @return [Boolean]
     def self.mutant_file_in_use?(path)
       creator_alive?(path) || locked_by_another?(path)
     end
 
-    # True when the pid embedded in a daemon mutant file name is still running.
+    # True when the pid embedded in a mutant file name is still running.
     # Pid 0 is this process group, so it is never treated as an owner.
     #
     # @param path [String]
     # @return [Boolean]
     def self.creator_alive?(path)
-      pid_text = File.basename(path)[DAEMON_TEMP_PID, 1]
+      pid_text = File.basename(path)[TEMP_PID, 1]
       return false unless pid_text
 
       pid = Integer(pid_text, 10)

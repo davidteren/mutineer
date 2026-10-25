@@ -192,7 +192,7 @@ tests written in a hurry, and in tests written by AI coding agents.
 | Survived | Every test passed against the mutant. Look at it. | Yes |
 | No coverage | No test runs that line. Write a test for it first. | No |
 | Timeout | The tests ran past `--timeout`. | No |
-| Errored | The test run crashed, so there is no verdict. | No |
+| Errored | The test run crashed, or its first failed Minitest test had a database connection or lock error. There is no verdict. | No |
 | Ignored | You marked the mutant as equivalent (see below). | No |
 | Skipped | The change made invalid Ruby, so it did not run. | No |
 
@@ -666,7 +666,9 @@ recorded per test file, so that set also holds tests that never reach the
 mutated line; they pass and count as having run. A mutant's row is complete
 when its whole covering set ran and the suite returned normally (under
 Minitest, an `Interrupt` that cut the run short does not count as returning
-normally). The report
+normally). A database connection or lock failure in a Minitest test also leaves
+the row incomplete. It does not count as a kill, even when an earlier assertion
+already killed the mutant. The report
 names two kinds of test:
 
 - **Blind:** the test ran in at least one complete row and killed no mutant
@@ -685,8 +687,9 @@ call the test blind.
 The matrix changes no verdict, score or exit code: each mutant gets the
 verdict a run without `--matrix` gives. That run skips every later test,
 test class and example group after the first failure, so when a later one
-exits the process, crashes or runs into the time limit, the mutant is still
-`killed`. The run without `--matrix` still runs the code around the failing
+exits the process, crashes or runs into the time limit, the first failure still
+decides: `killed` for an ordinary test failure, or `error` for a Minitest database
+connection or lock failure. The run without `--matrix` still runs the code around the failing
 test (the rest of its Minitest class `run` wrapper, the `after(:all)` hooks of
 its RSpec groups) and the suite's own cleanup (RSpec's `after(:suite)`), so an
 end there keeps the exit status. A failure in a Minitest `parallelize_me!`
@@ -710,8 +713,8 @@ Each mutant runs its whole covering set, so every mutant costs what a survivor
 costs. In 1.4, stopping at the first failure cut a full run of rack's
 `lib/rack/utils.rb` from 86 to 89 seconds down to 35 to 41, so expect a matrix
 run to take 2.1 to 2.5 times as long as a normal one. A mutant that reaches the
-per-mutant time limit (`--timeout`, 10 seconds by default) after a test already failed stays `killed`
-with its row marked incomplete. The report names each incomplete row and warns
+per-mutant time limit (`--timeout`, 10 seconds by default) after a test already failed keeps
+that first failure's verdict, with its row marked incomplete. The report names each incomplete row and warns
 that a blind test may have killed one of those mutants, so do not delete a
 blind test until its rows are complete. Raise `--timeout` (or `timeout:` in
 `.mutineer.yml`) to get complete rows.
