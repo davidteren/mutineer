@@ -22,8 +22,10 @@ module Mutineer
   # mutated def just before that call, and the child loads it into each class
   # that has the method (#297). It is nil when reload cannot place the def, even
   # when `hook_block` is true (see docs/json-schema.md for the cases).
+  # `enclosing_subject` is the subject of the `def` whose body holds this one,
+  # or nil, so the redefine strategy can load each enclosing method too (#290).
   Subject = Struct.new(:file, :namespace, :name, :singleton, :def_node, :lexical, :block_owner, :owner_unknown,
-                       :hook_block, :reload_hook_call, keyword_init: true) do
+                       :hook_block, :reload_hook_call, :enclosing_subject, keyword_init: true) do
     # Returns the fully-qualified subject name.
     #
     # @return [String] namespaced method name like `Billing::Invoice#total`.

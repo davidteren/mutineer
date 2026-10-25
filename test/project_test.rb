@@ -161,6 +161,30 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # A nested def records the subject of the def whose body holds it, so the
+  # redefine strategy can load each enclosing method too (#290).
+  def test_discover_links_a_nested_def_to_its_enclosing_def
+    src = "class K\n  def a\n    def b\n      def c; end\n    end\n    def d; end\n  end\n  def e; end\nend\n"
+    with_source(src) do |path|
+      a, b, c, d, e = Mutineer::Project.discover([path]).sort_by(&:name)
+      assert_same b, c.enclosing_subject
+      assert_same a, b.enclosing_subject
+      assert_same a, d.enclosing_subject
+      assert_nil a.enclosing_subject
+      assert_nil e.enclosing_subject
+    end
+  end
+
+  # A def in a builder block inside a method still links to that method, and
+  # its owner is unknown, so redefine never reaches the enclosing load (#290).
+  def test_discover_links_a_def_in_a_builder_block_to_its_enclosing_def
+    with_source("class K\n  def a\n    Class.new do\n      def b; end\n    end\n  end\nend\n") do |path|
+      a, b = Mutineer::Project.discover([path]).sort_by(&:name)
+      assert_same a, b.enclosing_subject
+      assert b.unplaceable?("redefine")
+    end
+  end
+
   # `module ::X` inside another module reopens the top-level X, so its namespace
   # restarts at X — for subject names and for module_function scoping alike.
   def test_discover_root_anchored_reopen_restarts_the_namespace

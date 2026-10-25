@@ -342,7 +342,7 @@ RAILS_ENV=test bundle exec mutineer run \
 
 `--rails` boots `config/environment` once in the parent process (every mutant
 then forks and inherits it), defaults `--strategy` to `redefine` without `--daemon`
-(surgical: it reloads only the mutated method, not the whole file; `--daemon` keeps `reload`), and reconnects ActiveRecord in each
+(surgical: it reloads only the mutated method and each method that directly encloses it, not the whole file; a method nested in a block such as `define_method` can still falsely survive, so use `--strategy reload` for it; `--daemon` keeps `reload`), and reconnects ActiveRecord in each
 fork so the database connection is fork-safe. Use `--boot FILE` to boot a
 different entry point. Boot mode requires at least one `--test` file and is
 coverage-guided — each mutant runs only the test files that exercise its line

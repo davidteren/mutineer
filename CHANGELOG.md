@@ -280,6 +280,22 @@ All notable changes to this project are documented here. The format is based on
   `compile_cache_iseq: ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"].nil?`, so only
   mutant runs lose the cache. The `--daemon` path is unchanged (#285).
 
+- **A nested method's mutant under `--strategy redefine`.** Redefine now
+  also loads the mutated method into each method that encloses it. Before,
+  a call to the outer method defined the original inner method again, so
+  the mutant could falsely survive (#290). For a method nested in other
+  methods, redefine now gives the same verdict as reload when a test calls
+  an enclosing method by its own name. Mutant ids do not change, so
+  baselines and `ignore:` entries stay valid. Scores under redefine can
+  rise, and an `ignore:` entry added only to hide such a survivor can now
+  be removed. A method defined inside a non-builder block (for example
+  inside `define_method`), inside a `module_function` method, inside
+  `class << self` in a method, or called through an alias of the outer
+  method can still falsely survive under redefine. An enclosing method
+  that a memoizer or decorator wraps after its `def` loses that wrapper
+  when redefine loads it, so its verdict can differ from reload. Use
+  `--strategy reload` for those cases.
+
 ### Changed
 
 - **Load failures now use the runtime-error exit code (#288).** An

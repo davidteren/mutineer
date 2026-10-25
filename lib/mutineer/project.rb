@@ -226,6 +226,7 @@ module Mutineer
         @singleton_uncertain = false # the open `class << self` was inside a def or a non-builder block
         @concern_modules = Set.new   # the {#module_key} of each module that ran `extend ActiveSupport::Concern`
         @hook_block = false          # inside a concern's `included` or `prepended` block (see {#hook_block?})
+        @enclosing_subject = nil     # the subject of the def being visited, for a nested def (#290)
         @hook_call = nil             # that block's call node, when reload can place its defs (see {#placeable_hook})
         @hook_uses = Set.new         # the names that block calls outside its def bodies
         super()
@@ -395,7 +396,7 @@ module Mutineer
       # @param node [Prism::DefNode] method definition node.
       # @return [void]
       def visit_def_node(node)
-        @subjects << Subject.new(
+        subject = Subject.new(
           file: @file,
           namespace: (@block_namespace || @namespace_stack).dup,
           lexical: @lexical_stack.dup,
@@ -405,16 +406,19 @@ module Mutineer
           reload_hook_call: reload_hook_call_for(node),
           name: node.name,
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
-          def_node: node
+          def_node: node,
+          enclosing_subject: @enclosing_subject
         )
+        @subjects << subject
         @subject_keys << module_key
         saved_active = @module_function_active
-        saved_self = [@self_unknown, @self_scope]
+        saved_self = [@self_unknown, @self_scope, @enclosing_subject]
         @self_unknown = true # `self` in a method body is the receiver it is called on
         @self_scope = node
+        @enclosing_subject = subject
         super
         @module_function_active = saved_active # a visibility call in a method body runs only when it is called
-        @self_unknown, @self_scope = saved_self
+        @self_unknown, @self_scope, @enclosing_subject = saved_self
       end
 
       private
