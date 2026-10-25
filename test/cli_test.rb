@@ -96,6 +96,27 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #303: with LC_ALL=C Ruby reads files as US-ASCII. A source line with a
+  # non-ASCII character must still run, report, and gate on a baseline.
+  def test_non_ascii_source_runs_and_gates_under_an_ascii_locale
+    with_project do |proj|
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub("    a + b\n", "    a + b # caf\u00e9\n"))
+      env = { "LC_ALL" => "C", "LANG" => nil }
+      run = ["run", "calculator.rb", "--test", "calculator_weak_test.rb", "--operators", "arithmetic", "--jobs", "1"]
+      ruby = [RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", BIN]
+
+      # binmode: this test process may run under an ASCII locale too.
+      out, err, status = Open3.capture3(env, *ruby, *run, "--format", "json", chdir: proj, binmode: true)
+      assert_equal 0, status.exitstatus, err
+      File.write(File.join(proj, "base.json"), out)
+      assert_includes JSON.parse(out)["survivors"].map { |s| s["diff"] }.join, "caf\u00e9"
+
+      _, err, status = Open3.capture3(env, *ruby, *run, "--baseline", "base.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+    end
+  end
+
   def test_triage_without_a_reason_is_usage_not_an_unknown_command
     _, err, status = mutineer("triage", "report.json", "--all")
     assert_equal 2, status.exitstatus
@@ -214,6 +235,45 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_a_test_prefixed_file_given_as_a_source_after_test_exits_two
+    with_project do |proj|
+      FileUtils.mkdir_p(File.join(proj, "test"))
+      %w[test_a.rb test_b.rb].each { |f| FileUtils.touch(File.join(proj, "test", f)) }
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", "--test", "test/test_a.rb",
+                                "test/test_b.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "test/test_b.rb looks like a test file, not a source"
+    end
+  end
+
+  def test_a_root_level_test_file_given_as_a_source_after_test_exits_two
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "calculator_weak_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "calculator_weak_test.rb looks like a test file, not a source"
+    end
+  end
+
+  def test_a_stray_test_file_with_json_format_exits_two_before_any_output
+    with_project do |proj|
+      out, err, status = mutineer("run", "--format", "json", "calculator.rb", "--test",
+                                  "calculator_strong_test.rb", "calculator_weak_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_empty out
+    end
+  end
+
+  def test_a_root_level_source_named_like_a_test_still_runs
+    Dir.mktmpdir("mutineer-ab") do |proj|
+      File.write(File.join(proj, "ab_test.rb"), "class AbTest\n  def n = 1 + 1\nend\n")
+      File.write(File.join(proj, "ab_test_test.rb"), "")
+      out, err, status = mutineer("run", "--dry-run", "ab_test.rb", "--test", "ab_test_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "AbTest#n"
+    end
+  end
+
   def test_a_source_named_like_a_test_outside_test_dirs_still_runs
     Dir.mktmpdir("mutineer-ab") do |proj|
       FileUtils.mkdir_p(File.join(proj, "app/models"))
@@ -286,6 +346,66 @@ class CliTest < Minitest::Test
     _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--output", "/no-such-dir/out.json")
     assert_equal 2, status.exitstatus
     assert_includes err, "cannot write to"
+  end
+
+  # #270: the documented --output .mutineer/run.json works on a fresh checkout.
+  # The cache dir is the one missing parent the preflight creates.
+  def test_output_in_missing_cache_dir_is_created
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--format", "json", "--output", ".mutineer/run.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert File.file?(File.join(proj, ".mutineer", "run.json"))
+    end
+  end
+
+  # A dry run writes no report, so it does not create the cache dir.
+  def test_dry_run_output_in_missing_cache_dir_creates_nothing
+    with_project do |proj|
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", "--output", ".mutineer/run.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute File.exist?(File.join(proj, ".mutineer"))
+    end
+  end
+
+  # #270: only the cache dir itself is created. A missing child of it, or any
+  # other missing relative parent, is still a usage error.
+  def test_output_in_other_missing_dir_exits_two
+    with_project do |proj|
+      %w[reports/run.json .mutineer/sub/run.json].each do |output|
+        _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--output", output, chdir: proj)
+        assert_equal 2, status.exitstatus, output
+        assert_includes err, "no such directory"
+      end
+    end
+  end
+
+  # #270: the created dir is the configured cache dir, not a literal `.mutineer`.
+  def test_output_in_missing_custom_cache_dir_is_created
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--cache-dir", "mcache",
+                                "--format", "json", "--output", "mcache/run.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert File.file?(File.join(proj, "mcache", "run.json"))
+
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--cache-dir", "mcache",
+                                "--output", ".mutineer/run.json", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "no such directory"
+    end
+  end
+
+  # #270: a cache dir that cannot be created is a usage error before the run.
+  def test_output_in_uncreatable_cache_dir_exits_two
+    with_project do |proj|
+      File.write(File.join(proj, "blocker"), "")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--cache-dir", "blocker/cache",
+                                "--output", "blocker/cache/run.json", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "cannot write to blocker/cache/run.json"
+      refute_includes err, "no such directory", "the mkdir_p failure must be reported, not the fallback check"
+    end
   end
 
   # #27: --test-command usage errors — all exit 2 (usage), never a backtrace.
@@ -1081,6 +1201,60 @@ class CliTest < Minitest::Test
     _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--baseline", "/no/such.json")
     assert_equal 2, status.exitstatus
     assert_includes err, "mutineer:"
+  end
+
+  def test_dry_run_allows_output_same_file_as_baseline_without_writing_it
+    with_project do |proj|
+      baseline = File.join(proj, "base.json")
+      before = JSON.generate("schema_version" => "1.8", "survivors" => [])
+      File.write(baseline, before)
+      File.write(File.join(proj, ".mutineer.yml"), "baseline: base.json\n")
+
+      [[], ["--baseline", "base.json"]].each do |flags|
+        out, err, status = mutineer("run", "calculator.rb", "--dry-run",
+                                   "--output", "base.json", *flags, chdir: proj)
+        assert_equal 0, status.exitstatus, err
+        assert_includes out, "mutations (dry run, not executed)"
+        assert_equal before, File.read(baseline)
+      end
+    end
+  end
+
+  # #281: --output naming the baseline file (directly or via a link) is a
+  # usage error, so a failing run cannot replace its own baseline.
+  def test_output_same_file_as_baseline_exits_two
+    with_project do |proj|
+      _, _, s1 = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                          "--format", "json", "--output", "base.json", chdir: proj)
+      assert_equal 0, s1.exitstatus
+      before = File.read(File.join(proj, "base.json"))
+      marker = File.join(proj, "tests-loaded")
+      File.open(File.join(proj, "calculator_weak_test.rb"), "a") do |file|
+        file.puts "File.write(#{marker.dump}, 'loaded')"
+      end
+      File.symlink("base.json", File.join(proj, "link.json"))
+      File.link(File.join(proj, "base.json"), File.join(proj, "hardlink.json"))
+      %w[base.json ./base.json link.json hardlink.json nosuch/../base.json].each do |output|
+        _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                  "--baseline", "base.json", "--output", output, chdir: proj)
+        assert_equal 2, status.exitstatus, output
+        assert_includes err, "--output and --baseline are the same file"
+        refute_path_exists marker, "same-file rejection must happen before tests load (#{output})"
+      end
+      # A baseline from .mutineer.yml is named as such.
+      File.write(File.join(proj, ".mutineer.yml"), "baseline: base.json\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                "--output", "base.json", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "--output and baseline in .mutineer.yml are the same file"
+      refute_path_exists marker, "a configured baseline must be checked before tests load"
+      # A separate report path runs the tests without replacing the baseline.
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                "--baseline", "base.json", "--format", "json", "--output", "pr.json", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      assert_path_exists marker, "the marker must detect a run that loads the tests"
+      assert_equal before, File.read(File.join(proj, "base.json"))
+    end
   end
 
   # NEW survivors vs a clean (100%) baseline regress -> exit 1, named on stdout.

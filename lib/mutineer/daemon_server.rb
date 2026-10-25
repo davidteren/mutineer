@@ -28,7 +28,7 @@ module Mutineer
   #
   # Protocol (one JSON object per line, both directions):
   #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment","require_paths":[...],
-  #               "load_paths":["test"],"framework":"minitest","rails":true,"schema":"db/schema.rb"}
+  #               "load_paths":["test"],"framework":"minitest","rails":true}
   #   ready out: {"ready":true,"ruby":"3.3.6","database_count":1}
   #              (or {"ready":false,"error":"..."} then exit)
   #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
@@ -52,22 +52,17 @@ module Mutineer
   module DaemonServer
     # Poll interval (seconds) for the per-fork deadline wait loop.
     POLL = 0.02
-    # Basename glob for a mutant file written beside a source file.
-    # Tempfile puts hyphens in the name, so it is not a constant name. The
-    # leading dot hides a new file from Zeitwerk (#253); a file an older
-    # version left behind has none, so the glob matches both.
-    DAEMON_TEMP_BASENAME = "{.,}mutineer_daemon*.rb"
-
-    # Skips daemon mutant files when Zeitwerk scans an autoload directory.
-    # The boot sweep keeps a file another process still holds. Zeitwerk skips a
-    # hidden one (#253), but one an older version wrote has no dot, and it would
-    # stop the next boot, because its name is not a constant.
+    # Skips mutant files of both modes ({OrphanGuard::TEMP_BASENAME}) when
+    # Zeitwerk scans an autoload directory. The boot sweep keeps a file another
+    # process still holds. Zeitwerk skips a hidden one (#253), but one an older
+    # version wrote has no dot, and it would stop the next boot, because its
+    # name is not a constant.
     module DaemonTempIgnore
       # @return [void]
       def setup
         dirs = Array(Mutineer::DaemonServer.instance_variable_get(:@source_dirs))
         dirs.each do |dir|
-          ignore(File.join(dir, Mutineer::DaemonServer::DAEMON_TEMP_BASENAME))
+          ignore(File.join(dir, Mutineer::OrphanGuard::TEMP_BASENAME))
         end
         super
       end
@@ -87,6 +82,8 @@ module Mutineer
         output ||= @protocol
         @errio = errio
         @output = output
+        # The client sends UTF-8 JSON; with LANG unset the pipe would read as US-ASCII (#303).
+        input.set_encoding(Encoding::UTF_8)
         boot_line = input.gets
         return if boot_line.nil? # client vanished before boot
 
@@ -197,8 +194,8 @@ module Mutineer
       def setup_worker_db(cfg)
         require_relative "rails_worker_db"
         @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
-        schema = cfg["schema"] && File.expand_path(cfg["schema"])
-        @schema_path = schema if schema && File.exist?(schema)
+        # Only the booted app knows its schema file (`schema_dump:` can rename it).
+        @schema_path = @worker_db&.ruby_schema_path
         # Each SQLite slot is seeded once, on first use (not every mutant fork).
         # Postgres and MySQL slots are copied at provision time, so this flag is unused there.
         @slot_ready = {}
@@ -371,12 +368,13 @@ module Mutineer
         Zeitwerk::Loader.prepend(DaemonTempIgnore)
       end
 
-      # Remove orphaned mutant tempfiles from the source dirs (parent-side; the
-      # SIGKILL path cannot run the child's ensure). Mirrors JobPlan.sweep_orphans.
-      # Skips a file another process still owns ({OrphanGuard.mutant_file_in_use?}).
+      # Remove orphaned mutant tempfiles of both modes from the source dirs
+      # (parent-side; the SIGKILL path cannot run the child's ensure). Mirrors
+      # JobPlan.sweep_orphans. Skips a file another process still owns
+      # ({OrphanGuard.mutant_file_in_use?}).
       def sweep_temps
         @source_dirs.to_a.each do |dir|
-          Dir.glob(File.join(dir, DAEMON_TEMP_BASENAME)).each do |path|
+          Dir.glob(File.join(dir, OrphanGuard::TEMP_BASENAME)).each do |path|
             next if OrphanGuard.mutant_file_in_use?(path)
 
             File.unlink(path) rescue nil # rubocop:disable Style/RescueModifier
@@ -446,13 +444,16 @@ module Mutineer
 
       # Load the covering test files and run them; 0 = all passed (survived),
       # 1 = a failure/error (killed). Minitest only; rspec is not yet on this path.
+      # {MinitestIntegration.run} is the method the daemon's clean check uses,
+      # so each mutant fork gets the same seed and class list (#282). It loads
+      # only stdlib, so the daemon still needs no Prism. The fork requires
+      # nothing else first: the test files' `require "test_helper"` loads
+      # rails/test_help after the class list is reset, as in the clean check.
       def run_tests(tests)
         raise "unsupported framework #{@framework.inspect}" unless @framework == "minitest"
 
-        require "minitest"
-        require "rails/test_help" if defined?(Rails)
-        tests.each { |t| load File.expand_path(t) }
-        Minitest.run([]) ? 0 : 1
+        require_relative "minitest_integration"
+        MinitestIntegration.run(tests.map { |t| File.expand_path(t) })
       end
     end
   end

@@ -460,7 +460,7 @@ class CoverageMapTest < Minitest::Test
     cases = {
       "an unchanged project" => [->(_root, _cache) {}, nil],
       "a changed test" => [->(root, _cache) { File.write(File.join(root, "beta_test.rb"), "\n", mode: "a") },
-                           /tests, --require files, boot file, load paths or framework differ/],
+                           /tests, --require files, boot file, load paths, framework or Minitest seed differ/],
       "a changed source" => [->(root, _cache) { File.write(File.join(root, "alpha.rb"), "\n", mode: "a") },
                              /alpha\.rb changed since the capture/],
       "a source outside the capture" => [->(_root, _cache) {}, /not captured over beta\.rb/, %w[alpha.rb]],
@@ -536,6 +536,21 @@ class CoverageMapTest < Minitest::Test
         shared_map(%w[alpha.rb], dir, coverage_from: File.join(dir, "coverage.json"))
       end
       assert_match(/this run's own cache/, err.message)
+    end
+  end
+
+  # #303: with LANG unset Ruby reads files as US-ASCII. A cache or a
+  # --coverage-from capture with a non-ASCII path must still parse.
+  def test_reads_a_non_ascii_cache_and_capture_under_an_ascii_locale
+    Dir.mktmpdir do |dir|
+      capture = File.join(dir, "capture.json")
+      [File.join(dir, "coverage.json"), capture].each { |f| File.write(f, JSON.generate("caf\u00e9.rb" => [1])) }
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, coverage_from: capture)
+      with_ascii_default_external do
+        assert_equal [1], map.send(:read_cache)["caf\u00e9.rb"]
+        err = assert_raises(Mutineer::CoverageFromError) { map.send(:accepted_capture) }
+        assert_match(/cannot be reused/, err.message, "the capture parsed, then failed the fit check")
+      end
     end
   end
 
@@ -633,6 +648,24 @@ class CoverageMapTest < Minitest::Test
                                   require_paths: reqs)
       end
       refute_equal mk.call(%w[a b]).send(:compute_digest), mk.call(%w[b a]).send(:compute_digest)
+    end
+  end
+
+  # The seed sets the Minitest test order, so a map captured under another
+  # seed is not reused (#282). RSpec does not use it.
+  def test_digest_is_minitest_seed_sensitive
+    Dir.mktmpdir do |dir|
+      digest = lambda do |seed, framework|
+        prior = ENV.fetch("SEED", nil)
+        seed ? ENV["SEED"] = seed : ENV.delete("SEED")
+        Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
+                                  framework: framework).send(:compute_digest)
+      ensure
+        prior ? ENV["SEED"] = prior : ENV.delete("SEED")
+      end
+      refute_equal digest.call(nil, "minitest"), digest.call("2", "minitest")
+      assert_equal digest.call(nil, "minitest"), digest.call("1", "minitest")
+      assert_equal digest.call(nil, "rspec"), digest.call("2", "rspec")
     end
   end
 

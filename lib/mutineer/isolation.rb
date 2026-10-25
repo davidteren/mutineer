@@ -196,10 +196,34 @@ module Mutineer
     # @param source_file [String] original source file path.
     # @return [Object] whatever `load` returns.
     def self.apply_whole_file(mutated, source_file)
-      Tempfile.create([".mutineer_mutant", ".rb"], File.dirname(File.expand_path(source_file))) do |f|
-        f.write(mutated)
+      write_beside(mutated, source_file) { |path| ConcernBlocks.replace(source_file) { load path } }
+    end
+
+    # Writes `code` to a hidden `.mutineer_mutant` file beside `source_file`,
+    # yields its path, and removes it after the block. Both strategies write
+    # through here. Only redefine enables the system-temp fallback when the
+    # source directory is not writable.
+    #
+    # The file is locked until the block ends, as the daemon locks its own file
+    # (#295). A SIGKILL drops the lock too. The pid in the name and the lock
+    # tell another run's sweep that the file is in use, so the sweep does not
+    # delete it between the write and the `load`.
+    #
+    # @api private
+    # @param code [String] the Ruby source to write.
+    # @param source_file [String] the source file the code replaces.
+    # @param fallback [Boolean] use the system temp directory when the source
+    #   directory is not writable; redefine only.
+    # @yieldparam path [String] absolute path of the written file.
+    # @return [Object] whatever the block returns.
+    def self.write_beside(code, source_file, fallback: false)
+      dir = File.dirname(File.expand_path(source_file))
+      dir = Dir.tmpdir if fallback && !File.writable?(dir)
+      Tempfile.create([".mutineer_mutant", ".rb"], dir) do |f|
+        f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
+        f.write(code)
         f.flush
-        ConcernBlocks.replace(source_file) { load f.path }
+        yield f.path
       end
     end
 
@@ -267,11 +291,17 @@ module Mutineer
       # Module.nesting identically, with no dynamic string execution for
       # scanners to flag. The input is the project's OWN source (the enclosing
       # method, textually mutated), loaded only in this forked child.
-      Tempfile.create(["mutineer_surgical", ".rb"]) do |f|
-        f.write(wrapped)
-        f.flush
-        load f.path
-      end
+      #
+      # The file sits beside the source, as in apply_whole_file, so `__dir__`
+      # and `require_relative` in the method resolve against its real
+      # neighbours (#279). In the temp dir they raise ENOENT or LoadError, and
+      # every mutant of the method dies whatever it changes. The hidden
+      # `.mutineer_mutant` name keeps Zeitwerk away (#253) and lets the parent
+      # sweep an orphan after a timeout kill.
+      #
+      # A read-only source dir keeps the 1.x system-temp location, so redefine
+      # still runs there (only path-relative methods mis-score, as before: #339).
+      write_beside(wrapped, subject.file, fallback: true) { |path| load path }
 
       target.send(vis, subject.name) if vis && vis != :public
     end

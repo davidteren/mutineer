@@ -73,7 +73,8 @@ module Mutineer
     # @return [String] diff text, or `""` on failure (after a stderr warning).
     def git_diff(ref, abs_file, project_root)
       out, _err, status = Open3.capture3(
-        "git", "--literal-pathspecs", "-C", project_root, "diff", "--unified=0", ref, "--", abs_file
+        "git", "--literal-pathspecs", "-C", project_root, "diff", "--unified=0", ref, "--", abs_file,
+        binmode: true # the hunk regex must not trip on a changed line's non-ASCII bytes
       )
       if status.success?
         return out if indexed?(abs_file, project_root)

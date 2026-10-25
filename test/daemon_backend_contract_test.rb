@@ -92,7 +92,7 @@ class DaemonBackendContractTest < Minitest::Test
                       "the test_helper root must reach the daemon so `require \"test_helper\"` resolves in each fork"
       assert_equal [File.join(root, "app/models")], boot[:source_dirs]
       assert_equal File.join(root, ".mutineer"), boot[:cache_dir]
-      assert_nil boot[:schema], "no db/schema.rb in this app, so the daemon skips worker-DB schema loading"
+      refute boot.key?(:schema), "#317: the booted daemon asks Rails for the schema file; the tool does not guess"
       assert boot[:rails]
       refute boot[:coverage], "worker daemons boot with Coverage off; only the map-building daemon enables it"
       assert_nil boot[:capture_timeout], "no --capture-timeout: the daemon uses the default"
@@ -384,7 +384,7 @@ class DaemonBackendContractTest < Minitest::Test
         exit!(0)
       end
       Process.detach(child)
-      orphan = File.join(config.project_root, "app/mutineer_daemon20260101-#{child}-abcdef.rb")
+      orphan = File.join(config.project_root, "app/.mutineer_daemon20260101-#{child}-abcdef.rb")
       aborting_run = lambda do |*|
         File.binwrite(orphan, "class Order; end\n")
         raise Mutineer::DaemonBootError, "daemon gave up"
@@ -702,7 +702,7 @@ class DaemonBackendContractTest < Minitest::Test
       FileUtils.mkdir_p(File.join(root, "app"))
       source = File.join(root, "app/order.rb")
       File.binwrite(source, SOURCE)
-      live = File.join(root, "app/mutineer_daemon20260101-#{Process.pid}-abcdef.rb")
+      live = File.join(root, "app/.mutineer_daemon20260101-#{Process.pid}-abcdef.rb")
       File.binwrite(live, "class Order; end\n")
       config = Mutineer::Config.new(sources: [source], tests: [], project_root: root,
                                     framework: "minitest", only: ["NoSuchMethod"])

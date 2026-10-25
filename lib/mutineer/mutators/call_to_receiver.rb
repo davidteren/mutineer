@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "base"
-require_relative "chain_link"
 
 module Mutineer
   module Mutators
@@ -24,15 +23,28 @@ module Mutineer
     # `node.name.name`. When both edits start on the same line, the job plan
     # runs one copy, the `chain_link` one (#275).
     #
-    # Calls in {ChainLink::SKIPPED} are never replaced. On the last call,
-    # `x.to_s` is the same as `x` for the same reason as on a link. `Foo.new`
-    # becomes the class, and almost any use of the class raises.
+    # Calls in {SKIPPED} are never replaced. The list is shorter than
+    # {ChainLink::SKIPPED}: on the last call, a conversion such as `to_s` or
+    # `to_i` decides the type of the value that the expression returns, so
+    # `m[1].to_i` becomes `m[1]`. `Foo.new` becomes the class, and almost any
+    # use of the class raises.
     #
     # A call is not replaced when its name is an operator (`a.+(1)`), or a
     # setter (`a.b = 1`). A call with no dot (`a + b`, `a[0]`) is not replaced.
     class CallToReceiver < Base
       # Matches the name of a call written as a word, not as an operator.
       WORD_NAME = /\A[[:alpha:]_]/
+
+      # Method names whose last call is never replaced. A name is here when
+      # its mutant is most often equivalent, or when almost any test that runs
+      # the line kills it. `freeze` and `itself` return the receiver. `dup`
+      # and `clone` return a copy, so the mutant shows when code later changes
+      # the copy or the original, or compares the result with the original by
+      # identity. Dropping `to_set` most often leaves an Array, which answers
+      # `include?` and `empty?` as a Set does (it keeps duplicates, so `size`
+      # and `each` can differ). `new` leaves the class in place of an
+      # instance, which almost any test that runs the line kills.
+      SKIPPED = %i[new dup clone freeze itself to_set].freeze
 
       # Resets the per-subject record of calls that are links.
       #
@@ -105,7 +117,7 @@ module Mutineer
       end
 
       # Emits the replacement of a call by its receiver, unless the name is an
-      # operator, a setter, or in {ChainLink::SKIPPED}.
+      # operator, a setter, or in {SKIPPED}.
       #
       # @param node [Prism::CallNode] the dotted call to replace.
       # @return [void]
@@ -113,7 +125,7 @@ module Mutineer
         name = node.name.to_s
         return unless name.match?(WORD_NAME)
         return if name.end_with?("=")
-        return if ChainLink::SKIPPED.include?(node.name)
+        return if SKIPPED.include?(node.name)
 
         receiver = node.receiver.location
         @mutations << Mutation.new(

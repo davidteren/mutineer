@@ -92,7 +92,13 @@ An app on an older Ruby uses `--test-command`.
 Mutineer still runs on Ruby 3.4 or later.
 That path is serial.
 It does not narrow tests by coverage.
-A crash in the command can count as a kill.
+Normally only exit 1 counts as a kill; a SimpleCov gate exit with a
+failing test is also a kill.
+Another exit code scores `error`, and a crash before any test fails can
+also score `error`. A mutant that only fails a SimpleCov coverage gate
+scores `survived` when SimpleCov prints its gate message and the run prints
+a passing summary line
+(details under [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34)).
 
 What a release will not break is in
 [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md).
@@ -292,7 +298,7 @@ no tests. It does not rewrite a baseline. Generate a new baseline with
 | `--timeout SECONDS` | Per-mutant time limit for in-process runs, in whole seconds (default: 10). A mutant whose tests run longer is a `timeout`; see [Timeouts and the score](https://github.com/davidteren/mutineer#timeouts-and-the-score). `--daemon` and `--test-command` keep their own limits |
 | `--capture-timeout SECONDS` | Time limit for each in-process coverage-capture subprocess and for the clean run of the unmutated tests, in whole seconds (default: 120). A suite slower than this stops the run as not green. `--daemon` uses it for its coverage capture; `--test-command` ignores it and says so |
 | `--cache-dir DIR` | Directory for the coverage cache (default: `.mutineer`). Give two runs from the same project root different directories so they do not share `coverage.json`. `--test-command` builds no cache, so it ignores it and says so |
-| `--coverage-from FILE` | Reuse the `coverage.json` of an earlier `--rails`/`--boot` run with the same tests over these sources or more, so parallel shards capture coverage once. The run skips the capture. It runs each test that covers one of its sources alone, because a mutant runs only those tests, then all tests once together, and writes its own cache to `--cache-dir`. A test that covers none of its sources does not run alone. A capture that does not fit (changed tests or sources, an owner file added or removed, a source it did not cover, a failed capture, another `PARALLEL_WORKERS`, a cache from before this flag) stops the run (exit 2). Under `--strategy redefine`, eager-load in both runs. It has no effect, and says so, without `--rails`/`--boot` or with `--daemon`, `--test-command` or `--dry-run` |
+| `--coverage-from FILE` | Reuse the `coverage.json` of an earlier `--rails`/`--boot` run with the same tests over these sources or more, so parallel shards capture coverage once. The run skips the capture. It runs each test that covers one of its sources alone, because a mutant runs only those tests, then all tests once together, and writes its own cache to `--cache-dir`. A test that covers none of its sources does not run alone. A capture that does not fit (changed tests or sources, an owner file added or removed, a source it did not cover, a failed capture, another `PARALLEL_WORKERS`, another Minitest `SEED`, a cache from before this flag or a Minitest capture from an older version) stops the run (exit 2). Under `--strategy redefine`, eager-load in both runs. It has no effect, and says so, without `--rails`/`--boot` or with `--daemon`, `--test-command` or `--dry-run` |
 | `--test-command CMD` | Run the suite as a subprocess in the app's own runtime (for apps on Ruby < 3.4); `CMD` must contain `%{files}`. See [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34) |
 | `--daemon` | Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so `--jobs N` is safe under Rails (needs `--rails`/`--boot`; not with `--test-command`). See [the daemon backend](https://github.com/davidteren/mutineer#faster-parallel-safe-rails-the---daemon-backend). `--no-daemon` beats a `.mutineer.yml` `daemon:` key. It keeps `--rails` serial, which is the 1.x default, and in 2.0 it opts out of the parallel default |
 | `--format human\|json\|html` | Report format (default: human; `html` is a self-contained file) |
@@ -336,11 +342,17 @@ RAILS_ENV=test bundle exec mutineer run \
 
 `--rails` boots `config/environment` once in the parent process (every mutant
 then forks and inherits it), defaults `--strategy` to `redefine` without `--daemon`
-(surgical — it avoids reloading files into the app tree; `--daemon` keeps `reload`), and reconnects ActiveRecord in each
+(surgical: it reloads only the mutated method, not the whole file; `--daemon` keeps `reload`), and reconnects ActiveRecord in each
 fork so the database connection is fork-safe. Use `--boot FILE` to boot a
 different entry point. Boot mode requires at least one `--test` file and is
 coverage-guided — each mutant runs only the test files that exercise its line
 (coverage is captured by forking the booted app, then cached).
+
+Like `reload`, redefine writes a hidden `.mutineer_mutant*.rb` beside the source.
+In a read-only source directory it uses the system temp directory instead. The
+run then warns that methods using `__dir__` or `require_relative` can be falsely
+killed, so the score can be too high. Make the directory writable to avoid
+this (#339).
 
 Some code runs while the app boots or a class loads, for example a class body
 that calls a method to build a constant, a `to_prepare` initializer, or a
@@ -394,8 +406,16 @@ Bootsnap checks its compile cache by file path, size, and modification time in w
 When the size and the time match, it uses the cached code without reading the file content.
 The in-process and `--daemon` paths load each mutant from a new file, so the cache cannot mix them up.
 `--test-command` rewrites the source file in place.
-Two mutants of the same size, written in the same second, can then load the first one's cached code.
-To rule that out, set `DISABLE_BOOTSNAP_COMPILE_CACHE=1` on the Mutineer command.
+Two mutants of the same size, written in the same second, could then load the first one's cached code.
+So `--test-command` also sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1`, and Bootsnap compiles each file again on every boot.
+This makes each mutant boot slower.
+The variable works through `require "bootsnap/setup"`, which Rails puts in `config/boot.rb`.
+It needs Bootsnap 1.7.0 or later. Older versions ignore it, so upgrade Bootsnap first.
+If your app calls `Bootsnap.setup` itself, pass `compile_cache_iseq: ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"].nil?` there.
+This turns the cache off only when the variable is set, so other boots keep it.
+Bootsnap checks only that the variable is set, so `DISABLE_BOOTSNAP_COMPILE_CACHE=0` still turns the cache off.
+To keep the cache, run the suite through a wrapper script that runs `unset DISABLE_BOOTSNAP_COMPILE_CACHE` first.
+Boots are then faster, but a mutant can again load the previous mutant's cached code.
 Bootsnap keeps its cache in `tmp/cache/bootsnap`, or under `$BOOTSNAP_CACHE_DIR` when that is set.
 If a run uses code that no longer matches your files, delete that folder and run again.
 
@@ -425,12 +445,16 @@ RAILS_ENV=test bundle exec mutineer run \
 - **Safe `--jobs N`** — each worker routes to its own copy of the test database, so
   parallel verdicts equal serial (no fixture cross-talk). On first use, a
   worker's database is a copy of the test database after the app boots, so rows
-  written by initializers or `--require` files are there, as in-process. When
-  the copy's schema differs from `db/schema.rb` (another schema version or
-  `schema_sha1` checksum, or no stored checksum, as in an empty or out-of-date
-  test database, or one set up with a plain `load "db/schema.rb"`), the
-  worker loads `db/schema.rb` over it, which drops the copied rows of the
-  tables it defines.
+  written by initializers or `--require` files are there, as in-process. For
+  SQLite, when the copy's schema differs from the app's Ruby schema file (another schema
+  version or `schema_sha1` checksum, or no stored checksum, as in an empty or
+  out-of-date test database, or one set up with a plain `load "db/schema.rb"`),
+  the worker loads that file over it if the file exists. Loading drops copied
+  rows from tables the file defines. Rails selects the test database's schema
+  file: the `SCHEMA` environment variable when it is set, else `schema_dump:` in
+  `config/database.yml`, else `db/schema.rb`.
+  A missing file or `structure.sql` leaves the SQLite copy unchanged. So does
+  `schema_dump: false`, unless `SCHEMA` is set.
 - **One backend at a time** — `--daemon` can't be combined with `--test-command`
   (choose one), and it needs an app to boot (`--rails` or `--boot`).
 
@@ -483,8 +507,8 @@ RAILS_ENV=test mutineer run app/models/order.rb \
   `RBENV_VERSION=…` on the Mutineer command for the suite; use `.ruby-version`
   or a wrapper. Don't put `KEY=val` prefixes *inside* `--test-command` (no shell;
   that would be treated as the program name). Mutineer also sets
-  `PARALLEL_WORKERS=1` and `DISABLE_SPRING=1` in the child and replaces a value
-  you set (see [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis)).
+  `PARALLEL_WORKERS=1`, `DISABLE_SPRING=1` and `DISABLE_BOOTSNAP_COMPILE_CACHE=1`
+  in the child and replaces a value you set (see [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis)).
 
 #### Under a version manager (rbenv / asdf / chruby)
 
@@ -520,10 +544,21 @@ Tradeoffs — this path is correct but not free:
 - **Slower:** your app re-boots for every mutant (no shared boot yet).
 - **No coverage narrowing:** every mutant runs the full `--test` set.
   The run is serial.
-  A crash in the command can count as a kill.
+  Only exit 1 counts as a kill.
+  Other exit codes and signals score `error`.
+  An RSpec `--failure-exit-code` other than 1 turns every kill into `error`.
+  When the clean run prints a Minitest or RSpec summary line
+  (`3 runs, 3 assertions, 0 failures, 0 errors` or `3 examples, 0 failures`),
+  an exit 1 also needs a failing test in that line, or a Minitest run that
+  stopped during a test. Otherwise it scores `error`, such as a crash at load.
+  When a SimpleCov `minimum_coverage` gate fails the run, the summary line
+  decides: a failing test is a kill, and every test passing is `survived`.
+  With no recognized summary line, or with SimpleCov's
+  `print_error_status = false`, the gate's exit scores `error`.
+  When the clean run prints no summary line, Mutineer warns once and counts
+  every exit 1 as a kill.
   Uncovered mutants count as survivors.
   Do not compare a `--test-command` score with an in-process score.
-  Exit codes 126 and 127 (the command could not start) are scored `error`.
   Mutineer prints this caveat on every run and aborts up
   front (a "smoke check") if your unmutated suite isn't green.
 - **Reload strategy only** (`--strategy redefine` is rejected on this path) and
@@ -686,10 +721,12 @@ with `fail_fast: true` in the file, pass `--no-fail-fast`.
 ## CI gating
 
 Store a JSON run as a baseline, then fail the build only when a PR makes things
-worse:
+worse. Keep `only:` unset for these full-baseline checks. Create and refresh the
+saved report with the [full-run baseline recipe](https://davidteren.github.io/mutineer/agentic-coding.html#ci-gate),
+using the same sources, test files and operators as the gate:
 
 ```sh
-mutineer run app/ --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
+mutineer run app/ --no-since --no-fail-fast --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
 ```
 
 `--baseline` reports which survivors are new (by [mutant id](https://github.com/davidteren/mutineer#mutant-ids)) and any score drop. It
@@ -714,6 +751,7 @@ This repo ships a composite action (`action.yml`) that wraps the CLI for CI:
   with:
     sources: app/
     baseline: .mutineer/baseline.json
+    extra-args: "--no-fail-fast"
     threshold: "90"
 ```
 
@@ -752,7 +790,11 @@ structured exit codes, and diff-scoped runs. See:
 - **Agent skill** ([`skills/mutineer/SKILL.md`](https://github.com/davidteren/mutineer/blob/main/skills/mutineer/SKILL.md)): a short
   card for coding agents with install, the agent loop, and exit codes. Install it
   with `gh skill install davidteren/mutineer mutineer` or
-  `npx skills add davidteren/mutineer --skill mutineer`.
+  `npx skills add davidteren/mutineer --skill mutineer`. Releases after 1.7.0
+  also ship the skill inside the gem and opt in as a
+  [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive)
+  companion, so in a Rails app that bundles mutineer, `bin/rails hyperdrive:init`
+  installs it to `.claude/skills/mutineer/SKILL.md`.
 
 ## Configuration
 
