@@ -1,0 +1,29 @@
+CHANGELOG.md
+  s_d60e2454db2056::t_f85deb5575be40 75-77
+docs/plans/2026-10-24-288-fix-redaction-sinks-and-overmatch-plan.md
+  s_d60e2454db2056::t_4408d58b6cc2d2 270-271,279
+lib/mutineer/daemon_server.rb
+  s_d60e2454db2056::t_479c0e9d1027b9 273-274,279
+lib/mutineer/redaction.rb
+  s_d60e2454db2056::t_c5bb427eab7db8 34-36,46-48,133-141
+test/daemon_redaction_test.rb
+  s_d60e2454db2056::t_eb605a73546e23 130-136
+test/redaction_test.rb
+  s_d60e2454db2056::t_6a78801cd4252f 164-168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "57bc071569884f1c420bab942eaadb0a550a151b",
+  "prompts": {},
+  "sessions": {
+    "s_d60e2454db2056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1d5efb-2691-4a0a-8a10-c060a7b2a92e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
