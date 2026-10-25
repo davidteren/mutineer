@@ -1,0 +1,169 @@
+AGENTS.md
+  s_d60e2454db2056::t_93855a1da67e1b 162-166
+CHANGELOG.md
+  s_d60e2454db2056::t_c0b57d98ee978a 11-63,253-279,337-351,355-363
+README.md
+  s_d60e2454db2056::t_5c24e1cf9edf50 296,319-320,345
+STABILITY.md
+  s_d60e2454db2056::t_8650c11c1fd904 16,36-37
+action.yml
+  s_d60e2454db2056::t_e0d9c659bdd6b5 117
+docs/agentic-coding.html
+  s_d60e2454db2056::t_5957cf6ec1b828 169-170
+docs/agentic-coding.md
+  s_d60e2454db2056::t_4ffc670f0d4214 202-203
+docs/equivalent-skips.html
+  s_d60e2454db2056::t_1364cd5d55dc9f 53
+docs/equivalent-skips.md
+  s_d60e2454db2056::t_73fffbc121a7f1 6-9
+docs/fragments/contract.yml
+  s_d60e2454db2056::t_a9ecb152055b4e 13-16,24-25,27-29
+docs/index.md
+  s_d60e2454db2056::t_1be2d37f3456ef 83-84
+docs/json-schema.md
+  s_d60e2454db2056::t_3c6899a8d85f73 14,36,60,62-64,100-139,245-246
+docs/plans/2026-10-24-288-fix-redaction-sinks-and-overmatch-plan.md
+  s_d60e2454db2056::t_cf9fcbc3942d02 1-318
+docs/plans/2026-10-24-290-fix-nested-def-redefine-plan.md
+  s_d60e2454db2056::t_e670352a07a474 1-256
+docs/plans/2026-10-24-291-feat-excluded-mutant-counts-plan.md
+  s_d60e2454db2056::t_42d3faca39203d 1-327
+docs/plans/2026-10-24-297-feat-included-block-methods-plan.md
+  s_d60e2454db2056::t_a4e9a78cb1de13 1-379
+lib/mutineer/cli.rb
+  s_d60e2454db2056::t_cdcfb4b8d18ac4 21,102-104,345,350,353-356,359,364,369,372,377-381,383-388,742-743,782,789-796,908-909,912-927
+lib/mutineer/concern_blocks.rb
+  s_d60e2454db2056::t_66e601cda13284 13-21,24-25,75-231
+lib/mutineer/coverage_map.rb
+  s_d60e2454db2056::t_33c97a51cc155b 40-43,1035-1040,1042,1064-1067,1070,1075-1115,1143-1149,1151,1193-1197,1200
+lib/mutineer/daemon_backend.rb
+  s_d60e2454db2056::t_ff99bfb6bf8ac9 390-395,398
+lib/mutineer/daemon_client.rb
+  s_d60e2454db2056::t_8165d8d17878f4 8,47-49,353-354,356-360,419-445,458-462
+lib/mutineer/daemon_server.rb
+  s_d60e2454db2056::t_edc2db09ad4dcd 37-38,271-272,277,437-439,450-453
+lib/mutineer/external_backend.rb
+  s_d60e2454db2056::t_2df5c8ba1130be 7,178,185,189
+lib/mutineer/isolation.rb
+  s_d60e2454db2056::t_dc5a05141235d7 10,70,195-197,265,302-320
+lib/mutineer/job_plan.rb
+  s_d60e2454db2056::t_2e0a48903cc11e 14,43-49,65,87,91-97,134,136,204-227
+lib/mutineer/mutators/array_literal.rb
+  s_d60e2454db2056::t_fc5facccb6feef 28-29,34-35
+lib/mutineer/mutators/base.rb
+  s_d60e2454db2056::t_31c39f61a3124a 23,54-63,66-73,83,87,89
+lib/mutineer/mutators/call_to_receiver.rb
+  s_d60e2454db2056::t_368b7cfa775dbb 26-30,128
+lib/mutineer/mutators/chain_link.rb
+  s_d60e2454db2056::t_27bd37725acfa5 19-22,103
+lib/mutineer/mutators/condition_forcing.rb
+  s_d60e2454db2056::t_27e7d8859c66a6 57-58,64-65
+lib/mutineer/mutators/operand_removal.rb
+  s_d60e2454db2056::t_6004a9cf4852d9 40-41,47-48
+lib/mutineer/mutators/range_literal.rb
+  s_d60e2454db2056::t_2cb43f16a7329a 16-20,93-97
+lib/mutineer/mutators/return_nil.rb
+  s_d60e2454db2056::t_e5cfd3907763c3 19
+lib/mutineer/project.rb
+  s_d60e2454db2056::t_ba0ae48f23342e 20,23,29-164,174-176,204-206,208,229-231,245-250,310,399,406,409-410,412,415,418,421,506,520,671-674,682-738
+lib/mutineer/redaction.rb
+  s_d60e2454db2056::t_3b81611d4c5d43 8-11,22-30,34-39,45-50,53-57,60-117,139-160,169-170
+lib/mutineer/reporter.rb
+  s_d60e2454db2056::t_6b3f4be6db2b3e 28-32,34,60-61,63,66,71,84,116-146,152-153,155,162,210-213,246-250,793-795,797,807-808,814-816,882-883,891-900
+lib/mutineer/result.rb
+  s_d60e2454db2056::t_65e833f6800b2c 28-32,214-218
+lib/mutineer/runner.rb
+  s_d60e2454db2056::t_596aac64df62a8 4,21,24-41,56,82-88,132,134,136,173,353-354,386-387,389-395,474-525
+lib/mutineer/subject.rb
+  s_d60e2454db2056::t_2e8caf4a7adbfe 18-26,28,48-49,54
+lib/mutineer/worker_pool.rb
+  s_d60e2454db2056::t_b6afa5bc3c3be5 4,78
+skills/mutineer/SKILL.md
+  s_d60e2454db2056::t_46b7d0d489597f 74-75
+test/baseline_test.rb
+  s_d60e2454db2056::t_ff91583a5d4c60 254
+test/cli_test.rb
+  s_d60e2454db2056::t_8a360c59969d07 16-17,711-769,917,935-936,941-1133,1250
+test/concern_blocks_test.rb
+  s_d60e2454db2056::t_68abd10e9b329a 13,103-435
+test/coverage_map_test.rb
+  s_d60e2454db2056::t_3498ea8b880a78 54-119
+test/daemon_backend_contract_test.rb
+  s_d60e2454db2056::t_c61e87e3944521 189-214
+test/daemon_redaction_test.rb
+  s_d60e2454db2056::t_f5c431cba285b2 11,148-154,161-232
+test/daemon_server_hook_def_test.rb
+  s_d60e2454db2056::t_549cc6e4eeacc5 1-105
+test/equivalent_mutant_test.rb
+  s_d60e2454db2056::t_6c987bd8347c5f 308
+test/fixtures/nested_deep.rb
+  s_d60e2454db2056::t_71b4daeaa082a3 1-15
+test/fixtures/nested_deep_inner_test.rb
+  s_d60e2454db2056::t_f3875961a1dc07 1-13
+test/fixtures/nested_deep_outer_test.rb
+  s_d60e2454db2056::t_ea5381d4f1ed93 1-12
+test/fixtures/nested_deep_test.rb
+  s_d60e2454db2056::t_fe5b0044cc247c 1-10
+test/fixtures/singleton/hook_edges.rb
+  s_d60e2454db2056::t_34b5098a43afcf 1-42
+test/fixtures/singleton/hook_edges_hosts.rb
+  s_d60e2454db2056::t_34b66232f8e353 1-61
+test/fixtures/singleton/hook_edges_test.rb
+  s_d60e2454db2056::t_2f25b228269c2f 1-72
+test/isolation_test.rb
+  s_d60e2454db2056::t_9aa84e350fc190 152,517-532
+test/json_reporter_test.rb
+  s_d60e2454db2056::t_b7c7ae1a1c8793 61,450-464
+test/mutators/array_literal_test.rb
+  s_d60e2454db2056::t_9c26a825cce7fe 66-77
+test/mutators/call_to_receiver_test.rb
+  s_d60e2454db2056::t_12b055066c66e3 179-193
+test/mutators/chain_link_test.rb
+  s_d60e2454db2056::t_4beacba284a523 105-116
+test/mutators/condition_forcing_test.rb
+  s_d60e2454db2056::t_732d9d189a547f 129-151
+test/mutators/operand_removal_test.rb
+  s_d60e2454db2056::t_9e6d6c959c3bfe 107-121
+test/mutators/range_literal_test.rb
+  s_d60e2454db2056::t_463db9ba50e5a3 104-116
+test/mutators/return_nil_test.rb
+  s_d60e2454db2056::t_88b24a69ea4401 83-89
+test/nested_redefine_test.rb
+  s_d60e2454db2056::t_d9777ea1592759 6-9,13,16,29,31-58
+test/project_test.rb
+  s_d60e2454db2056::t_435b666a5dc494 164-187,356-795
+test/rails_run_env_test.rb
+  s_d60e2454db2056::t_dd2573ef76beb5 21,66
+test/redaction_test.rb
+  s_d60e2454db2056::t_dc024b605f5893 3,7,65-246
+test/reporter_test.rb
+  s_d60e2454db2056::t_a867360e13fe29 531-596
+test/result_test.rb
+  s_d60e2454db2056::t_b7862fa49192ca 113-118
+test/runner_external_test.rb
+  s_d60e2454db2056::t_4c396c6df25652 8,205-220
+test/runner_test.rb
+  s_d60e2454db2056::t_550f02cb25e751 901-936
+test/singleton_redefine_test.rb
+  s_d60e2454db2056::t_4178e736918c63 14,18,201-206,209-210,213-272
+test/subject_test.rb
+  s_d60e2454db2056::t_09c8d246658ce6 50-54
+test/worker_pool_test.rb
+  s_d60e2454db2056::t_5563c7cd4a1641 141-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fa3f3ac33dd3a8704f42f1a4be6fd0a1db95ce54",
+  "prompts": {},
+  "sessions": {
+    "s_d60e2454db2056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1d5efb-2691-4a0a-8a10-c060a7b2a92e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
