@@ -112,7 +112,7 @@ class BootModeTest < Minitest::Test
   # #253: a mutant file an older version left without the dot is swept before the
   # boot. In an autoload directory it would stop Zeitwerk during the boot.
   def test_an_orphan_mutant_file_is_swept_before_the_boot
-    orphan = File.join(BOOT, "mutineer_mutant20200101-#{unused_pid}-orphan.rb")
+    orphan = File.join(BOOT, "mutineer_mutant20200101-1-orphan.rb")
     File.write(orphan, "raise 'an orphan was loaded'\n")
     Dir.mktmpdir("mutineer-boot") do |cache|
       boot = File.join(cache, "boot.rb")
