@@ -214,6 +214,45 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_a_test_prefixed_file_given_as_a_source_after_test_exits_two
+    with_project do |proj|
+      FileUtils.mkdir_p(File.join(proj, "test"))
+      %w[test_a.rb test_b.rb].each { |f| FileUtils.touch(File.join(proj, "test", f)) }
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", "--test", "test/test_a.rb",
+                                "test/test_b.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "test/test_b.rb looks like a test file, not a source"
+    end
+  end
+
+  def test_a_root_level_test_file_given_as_a_source_after_test_exits_two
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "calculator_weak_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "calculator_weak_test.rb looks like a test file, not a source"
+    end
+  end
+
+  def test_a_stray_test_file_with_json_format_exits_two_before_any_output
+    with_project do |proj|
+      out, err, status = mutineer("run", "--format", "json", "calculator.rb", "--test",
+                                  "calculator_strong_test.rb", "calculator_weak_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_empty out
+    end
+  end
+
+  def test_a_root_level_source_named_like_a_test_still_runs
+    Dir.mktmpdir("mutineer-ab") do |proj|
+      File.write(File.join(proj, "ab_test.rb"), "class AbTest\n  def n = 1 + 1\nend\n")
+      File.write(File.join(proj, "ab_test_test.rb"), "")
+      out, err, status = mutineer("run", "--dry-run", "ab_test.rb", "--test", "ab_test_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "AbTest#n"
+    end
+  end
+
   def test_a_source_named_like_a_test_outside_test_dirs_still_runs
     Dir.mktmpdir("mutineer-ab") do |proj|
       FileUtils.mkdir_p(File.join(proj, "app/models"))
