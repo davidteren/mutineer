@@ -872,7 +872,7 @@ module Mutineer
       remember_mysql_base_config(hash)
       base = hash[:database].to_s
       conn = open_mysql_connection(hash, base)
-      if (refusal = check_mysql_server(conn))
+      if (refusal = check_mysql_server(conn, password: hash[:password]))
         conn.close
         raise "could not provision #{base}: #{refusal}"
       end
@@ -910,20 +910,30 @@ module Mutineer
 
     # Read the server version and print a warning when the matrix does not
     # test it. Does not close `conn` or raise: the caller does both. A failed
-    # version query only warns, with its cause and credentials hidden.
+    # version query only warns, with its cause shown. URL passwords, the
+    # DATABASE_URL password and the configured `password` are hidden in the
+    # cause and in the version text.
     #
     # @param conn [Mysql2::Client, Trilogy]
+    # @param password [String, nil] the configured password, hidden when it appears.
     # @return [String, nil] the refusal text for MySQL older than 8.0, else nil.
-    def self.check_mysql_server(conn)
+    def self.check_mysql_server(conn, password: nil)
+      secret = password.to_s
+      hide = lambda do |text|
+        out = Redaction.text(text)
+        secret.empty? ? out : out.gsub(secret, Redaction::REDACTED)
+      end
       failure = nil
-      version = begin
+      raw = begin
         mysql_rows(conn, "SELECT VERSION() AS version").first&.fetch("version", nil)
       rescue StandardError => e
-        failure = Redaction.text("#{e.class}: #{e.message.lines.first.to_s.strip}")
+        failure = hide.call("#{e.class}: #{e.message.lines.first.to_s.strip}")
         nil
       end
+      support = mysql_version_support(raw)
+      version = raw.nil? ? nil : hide.call(raw)
 
-      case mysql_version_support(version)
+      case support
       when :not_supported
         "MySQL #{version} is not supported. --daemon needs MySQL 8.0 or later. " \
           "Pass --no-daemon (or daemon: false) to stay serial."

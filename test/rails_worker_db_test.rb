@@ -564,6 +564,19 @@ class RailsWorkerDbTest < Minitest::Test
     refute_includes err, "s3cret"
   end
 
+  def test_provision_mysql_hides_the_configured_password_in_the_version_query_error
+    failure = RuntimeError.new("Access denied (password: s3cret)")
+    _out, err = capture_io { provision_mysql_against(VersionMysql.new(failure), password: "s3cret") }
+    assert_includes err, "(password: [REDACTED])"
+    refute_includes err, "s3cret"
+  end
+
+  def test_provision_mysql_hides_a_password_in_the_server_version
+    _out, err = capture_io { provision_mysql_against(VersionMysql.new("10.11.6-MariaDB mysql2://app:s3cret@db")) }
+    assert_includes err, "mysql2://app:[REDACTED]@db"
+    refute_includes err, "s3cret"
+  end
+
   def test_provision_mysql_accepts_mysql_8_without_a_warning
     error = nil
     _out, err = capture_io { error = provision_mysql_against(VersionMysql.new("8.0.36")) }
@@ -572,9 +585,9 @@ class RailsWorkerDbTest < Minitest::Test
   end
 
   # Run provision_mysql(1) against `conn` and return the RuntimeError it raises.
-  def provision_mysql_against(conn)
+  def provision_mysql_against(conn, password: nil)
     db = Mutineer::RailsWorkerDb
-    db.stub(:routing_config_hash, { adapter: "trilogy", database: "app_test" }) do
+    db.stub(:routing_config_hash, { adapter: "trilogy", database: "app_test", password: password }.compact) do
       db.stub(:open_mysql_connection, conn) do
         assert_raises(RuntimeError) { db.provision_mysql(1) }
       end

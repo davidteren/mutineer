@@ -125,7 +125,8 @@ All notable changes to this project are documented here. The format is based on
   server version before it copies any worker database. MySQL older than 8.0
   stops the run with `could not provision <base>: MySQL <version> is not
   supported`. Pass `--no-daemon` (or set `daemon: false`) to stay serial.
-  MariaDB and MySQL 9 print one warning and run.
+  MariaDB, MySQL 9 or later, and a server version Mutineer cannot read print
+  one warning and run.
 
 ## [1.7.0] - 2026-10-23
 
