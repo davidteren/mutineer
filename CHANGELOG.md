@@ -26,7 +26,8 @@ All notable changes to this project are documented here. The format is based on
   check. A mutant that only trips a SimpleCov `minimum_coverage` gate now
   scores `survived` when the output has SimpleCov's gate message and a
   passing Minitest or RSpec summary line. Without a summary line that
-  Mutineer recognizes, the gate's exit scores `error`. Both lower the score. A `--baseline` made before
+  Mutineer recognizes, the gate's exit scores `error`, which leaves the
+  score. Either way the old false kill is gone, so the score can drop. A `--baseline` made before
   this change can report new survivors and errors: make a new baseline after
   the upgrade.
 - **A `--test-command` exit other than 1 no longer counts as a kill (#292).**
