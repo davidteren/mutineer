@@ -387,10 +387,15 @@ module Mutineer
           # A :maybe mutant that cannot be placed stays no_coverage, as in-process.
           sel && sel[0] == :maybe ? Result.no_coverage : Result.unplaceable
         else
+          payload = { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) }
+          if subject.reload_hook_call
+            # #297: the daemon child places the hook-block def, as in-process (Runner.run).
+            payload["code"], hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source)
+            payload["hook_def"] = hook_def.to_h { |key, value| [key.to_s, key == :name ? value.to_s : value] }
+          end
           verdict = client.request(
             id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,
-            payload: { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) },
-            tests: sel ? sel[1] : abs_tests
+            payload: payload, tests: sel ? sel[1] : abs_tests
           )
           # A survivor whose line ran at load, as in-process (Runner.run).
           loaded = JobPlan.load_verdict(result_for(verdict), subject.file, mutation, subject, source, coverage_map)

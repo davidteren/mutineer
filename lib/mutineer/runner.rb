@@ -382,6 +382,11 @@ module Mutineer
         reconnect_active_record if rails
         if strategy == "redefine"
           Isolation.apply_surgical(mutation, subject, source)
+        elsif subject&.reload_hook_call
+          # #297: a def in a concern's hook block reaches each class that has it.
+          code, hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source)
+          Isolation.apply_whole_file(code, source_file)
+          ConcernBlocks.place_hook_def(source_file: source_file, **hook_def)
         else
           Isolation.apply_whole_file(mutated, source_file)
         end

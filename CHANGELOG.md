@@ -8,6 +8,41 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Included and prepended block methods under reload.** After you upgrade,
+  follow the [full baseline refresh recipe](https://davidteren.github.io/mutineer/agentic-coding.html#ci-gate)
+  with `--no-since --format json --output .mutineer/refreshed-baseline.json` and your
+  existing source and test options. Review the report and replace the stored
+  baseline. This applies only to runs that use `--strategy reload`: under
+  redefine these methods stay `unplaceable`. GitHub Action users on reload,
+  the Action's default (a Rails app without a daemon uses redefine), must
+  replace the file passed to the `baseline` input too. A check against an older
+  report lists the new survivors as regressions.
+  Under `--strategy reload`, in-process and on the daemon, a method in a
+  concern's `included` or `prepended` block is now mutated and scored (#297).
+  Mutineer loads the mutated method into each class that already has it. A
+  prepended wrapper that calls `super` reaches that mutated method too. A
+  concern included into an object's singleton class is supported. A class
+  that includes the concern later gets it from the reloaded block. The
+  rest of the block does not run again, so validators and callbacks are not
+  added twice. These mutants used to be `unplaceable`, so a reload score can go
+  down and a `--threshold` gate can start to fail. Some methods stay
+  `unplaceable`: a method in a class, module or `Struct.new` block inside the
+  block, a method inside another method or block, a method with an explicit
+  receiver other than `self` (such as `def base.tag` in `included do |base|`),
+  a hook-block method whose source line conflicts with another `def` or an
+  explicit Ruby method creator (the full rule is in `docs/json-schema.md`),
+  every method in a block that uses `alias` or `alias_method`, a method the
+  block itself calls, and every method in a block whose `included do` call is
+  not a plain line of the module
+  body (for example inside `if`, `unless`, or `x = included do`). The full list
+  is in `docs/json-schema.md`. If a class aliases a method that Mutineer does
+  run (one not in that list) outside the block, the mutant scores `error`,
+  because the alias keeps the original method. This also applies when a
+  wrapper replaces the original name and calls the saved alias. A retained
+  `Method` or `UnboundMethod` for the original also makes the mutant score
+  `error`: a wrapper can call that handle without testing the mutated method.
+  `--strategy redefine` still
+  reports all of these methods `unplaceable`.
 - **The gem ships the agent skill.** `skills/mutineer/SKILL.md` is now
   packaged in the gem, and the gemspec opts in as a
   [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive)

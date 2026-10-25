@@ -57,7 +57,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `survived` | int | Mutants no test caught. Review each for a missing test or equivalent behaviour. |
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant in code that runs only sometimes on a later line of a multi-line statement, such as the right side of `a &&` on its own line, when the tests that ran the statement did not kill it: the run cannot tell whether they reached it. Also a mutant on a later line of a multi-line statement whose first or last line holds other code, such as a call inside a one-line block. Mutineer ran the tests that ran that first or last line (never the `def` line); they did not kill it, and they may not have run the mutant. |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
-| `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically; under either strategy, a method in a concern's `included` or `prepended` block. The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). |
+| `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically, or any method in a concern's `included` or `prepended` block; under `--strategy reload`, some methods in such a block. The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). |
 | `errored` | int | Mutants whose run crashed, or whose first failed Minitest test had a database connection or lock error (excluded). |
@@ -95,10 +95,46 @@ a class or module opened or assigned in `class << self`, a `self::X` opened in a
 that does not build a class, a method in an `included` or `prepended` block, which ActiveSupport runs in each
 includer, or a method in a `class_methods` block that is not in the body of a module known as a concern (see
 `subject` above), such as one inside Rails' `concerning` or an unassigned `Module.new`); `--strategy reload`
-runs these, except a method in an `included` or `prepended` block. Under `--strategy reload`, `unplaceable`
-means the mutant's method is anywhere inside a concern's `included` or `prepended` block (#256): ActiveSupport
-runs that block only when a class first includes or prepends the concern, so loading the file again never reaches
-a class that already has it, and the mutant would falsely survive. `--test-command` runs both kinds. `ran_at_load` (schema `1.7`) means the mutant's
+runs these, except some methods in an `included` or `prepended` block.
+
+Under `--strategy reload`, ActiveSupport runs a concern's `included` or `prepended` block only when a class first
+includes or prepends the concern, so loading the file again does not reach a class that already has it (#256).
+For a method directly in the block, Mutineer loads the mutated method into each host that already has it, and a
+host that includes the concern later gets it from the reloaded block (#297). Nothing else in the block runs
+again. Two methods in one block can therefore get different verdicts. `unplaceable` under reload means the
+mutant's method is one of these:
+
+- a method in a class, module, `Module.new`, `Struct.new`, `Class.new` or `Data.define` block inside the block;
+- a method inside another method, or inside a block that does not build a class (such as `[1].each do`);
+- a method with an explicit receiver other than `self` (such as `def base.tag` in `included do |base|`),
+  because extracting the definition does not keep a receiver bound inside the hook;
+- a hook-block method whose name and first line match another definition in the same file, including a
+  collision between an instance and a singleton definition. The check reads all parsed `def`s, even when
+  they are not selected as subjects, and explicit `define_method`, `define_singleton_method`, `attr_reader`,
+  `attr_writer`, `attr_accessor` and `attr` calls. A positional lambda uses its own source line. When a
+  callable body comes through a variable or another expression, the check includes possible block and
+  lambda source lines in that file, including stored hook blocks. A matching-name or unknown-name
+  indirect creator can therefore conservatively exclude a one-line hook. A dynamic name blocks only those
+  possible body lines; a dynamic attribute name or writer flag blocks the attribute creation line.
+  Ruby's source location cannot distinguish which definition an existing host has;
+- every method in a block that uses `alias` or `alias_method`;
+- a method the block itself calls outside a method body (a bare call, `self.name`, `method(:name)`,
+  `instance_method(:name)` or `send(:name)`, `public_send` and `__send__` too, also inside a nested block or
+  lambda); a symbol such as `before_save :name` is fine;
+- every method in a block that passes a name computed at runtime to one of those calls (such as `send(pick)`);
+- every method in a block whose `included` or `prepended` call is not a plain statement of the module body, for
+  example `x = included do`, a call inside `if`, `unless` or `case`, a module under `unless defined?`, or a call
+  inside `class << self`, a method or a block;
+- every method in a file with a `return` outside any method or block;
+- a method that `module_function` makes a module function.
+
+For an otherwise placeable hook-block method, an `alias` made outside the block keeps the original body and
+makes the mutant score `error`. This includes a wrapper that replaces the original name and calls the saved
+alias, even when no host keeps the original at its current name. The methods listed as `unplaceable` above
+keep that verdict and are not run. A live `Method` or `UnboundMethod` for the original definition also makes
+an otherwise placeable mutant score `error`: a wrapper can keep and call that handle after the method was
+redefined. A discarded reflection result does not trigger this error. `--test-command` runs every kind.
+`ran_at_load` (schema `1.7`) means the mutant's
 line ran while the app booted or its class loaded (for example a class body that calls the method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.
