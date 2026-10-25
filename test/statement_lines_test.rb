@@ -37,6 +37,30 @@ class StatementLinesTest < Minitest::Test
     refute_empty Mutineer::StatementLines.for(def_node, source, offset, loose: true)
   end
 
+  # #289: Ruby counts only the block opener of a call split across lines in a
+  # one-line block. Strict mode drops that line, because the block opener
+  # comes before the call on it; loose mode keeps it.
+  def test_a_continuation_line_in_a_one_line_block_has_its_edge_lines_only_when_loose
+    { "u + 1" => "def f(users)\n  users.map { |u| format(\"%s %s\",\n    u + 1,\n    u - 1) }\nend\n",
+      "r + 1" => "def f(r)\n  pick = ->(r) { format(\"%d %d\",\n    r + 1,\n    r - 1) }\nend\n" }.each do |snippet, source|
+      def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+      offset = source.index(snippet)
+
+      assert_equal [3], Mutineer::StatementLines.for(def_node, source, offset), snippet
+      assert_equal [2, 3, 4], Mutineer::StatementLines.for(def_node, source, offset, loose: true), snippet
+    end
+  end
+
+  # #289: the def line counts when the file loads, so loose mode never gives it.
+  def test_the_loose_lines_never_include_the_def_line
+    source = "def f; [:a,\n  :b]; end\n"
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    offset = source.index(":b")
+
+    assert_empty Mutineer::StatementLines.for(def_node, source, offset)
+    assert_equal [2], Mutineer::StatementLines.for(def_node, source, offset, loose: true)
+  end
+
   def test_a_later_entry_of_a_hash_belongs_to_the_hash
     source = <<~'RUBY'
       def f
