@@ -139,6 +139,21 @@ Safety nets:
 on <https://rubygems.org/gems/mutineer> → owner `davidteren`, repo `mutineer`,
 workflow `release.yml`, no environment. Without it, `release.yml`'s `gem push` fails.
 
+## Shift-left rules (from the 2026-10 PR audit)
+
+These rules come from a postmortem of issues #252, #253, and #254 and an
+audit of every merged PR. They stop the defect patterns that reached users.
+The rule text lives in one place: `.expectation-fit/ways-of-working.yaml`.
+Reviewers who use the expectation-fit plugin apply it with `/fit-review`;
+every other reviewer, human or bot, applies the same file by hand. Score terms are defined in "Score-model discipline" below. Two rules
+have known open gaps: the threshold gate rounds (#280) and the clean check
+pins no seed (#282).
+
+The eight rules, by title: **Track every limitation** - **Cover the
+siblings** - **Gate on unrounded values** - **Count what you exclude** -
+**Estimate exclusion frequency** - **One seed contract** - **Assert the
+mechanism** - **Repro becomes fixture**.
+
 ## Score-model discipline (don't regress this)
 
 `score = killed / (killed + survived)`. `no_coverage`, `uncapturable`, `unplaceable`, `ran_at_load`, `ignored`,
