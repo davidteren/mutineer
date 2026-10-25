@@ -60,14 +60,24 @@ module Mutineer
       # payloads (Prism), so branch before any in-process boot.
       return DaemonBackend.execute(config, operator_classes) if config.daemon
 
-      # Whole-file reload writes .mutineer_mutant*.rb into each source dir (so
-      # require_relative resolves). A SIGKILL'd child skips the tempfile's
+      # Both strategies (whole-file reload and redefine, #279) write
+      # .mutineer_mutant*.rb into each source dir (so require_relative and
+      # __dir__ resolve). Redefine falls back to the system temp dir for a
+      # read-only source dir, which this sweep does not reach; the OS cleans
+      # it, as in 1.x. A SIGKILL'd child skips the tempfile's
       # ensure-unlink, orphaning it. `ensure` is unreliable vs SIGKILL, so the
       # PARENT sweeps each source dir before and after the run. Orphans are
       # impossible after a normal run. The first sweep runs before the boot: a
       # file an older version left without the dot would stop Zeitwerk (#253).
       dirs = JobPlan.source_dirs(config)
       JobPlan.sweep_orphans(dirs)
+      if config.strategy == "redefine"
+        dirs.reject { |d| File.writable?(d) }.each do |d|
+          warn "[mutineer] #{d} is not writable: redefine loads its mutants from the system temp dir, " \
+               "so a method there that uses __dir__ or require_relative can be falsely killed. " \
+               "Make the directory writable to avoid this (#339)."
+        end
+      end
 
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
@@ -137,7 +147,7 @@ module Mutineer
           capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_or_load
       end
-      JobPlan.abort_if_unclean!(coverage_map)
+      JobPlan.abort_if_unclean!(coverage_map, framework: config.framework)
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
@@ -227,15 +237,23 @@ module Mutineer
         # 3x the clean run, floor 30s, ceiling 300s: a heuristic. The floor covers
         # a fast suite; the ceiling bounds a hung mutant (infinite loop) so a
         # handful cannot stall a serial run for ~45min on a slow suite.
-        smoke_elapsed = ExternalBackend.smoke_check!(config.test_command, abs_tests)
+        smoke_elapsed, check_summary = ExternalBackend.smoke_check!(config.test_command, abs_tests)
         timeout = [[smoke_elapsed * 3, 30].max, 300].min.ceil
+        # #292: the summary check needs a summary line to look for. Without one
+        # on the clean run, keep the exit-code rule and say what that costs.
+        unless check_summary
+          warn "[mutineer] the clean run of --test-command printed no Minitest or RSpec summary line " \
+               "(such as \"3 runs, 3 assertions, 0 failures, 0 errors\" or \"3 examples, 0 failures\"), " \
+               "so the crash check is off: an exit 1 counts as a kill even when the suite crashed " \
+               "before its tests ran. Use the default Minitest or RSpec progress output to turn it on."
+        end
 
         results = []
         progress = Progress.new(jobs.size)
         begin
           jobs.each do |subject, mutation, id|
             r = run_external(subject, mutation, config.test_command, abs_tests,
-                             timeout: timeout, verbose: config.verbose)
+                             timeout: timeout, verbose: config.verbose, check_summary: check_summary)
             results << r.with(subject: subject, mutation: mutation, id: id)
             progress.tick
             break if config.fail_fast && r.survived? # stop at the first survivor
@@ -250,18 +268,19 @@ module Mutineer
 
     # Runs one mutant through the external backend: apply the whole-file mutation
     # on disk, run the command, restore. An invalid (non-reparsing) mutant would
-    # fail to load and score a false `killed`, so skip it tool-side (Prism, already
-    # cheap) and never write the file, preserving the `skipped` verdict the
+    # fail to load (scored `error`, or a false `killed` without the summary
+    # check), so skip it tool-side (Prism, already cheap) and never write the file, preserving the `skipped` verdict the
     # in-process path gives at the pre-fork check.
     #
+    # @param check_summary [Boolean] passed to {ExternalBackend.run}.
     # @return [Mutineer::Result] verdict for this mutant.
-    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:)
+    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:)
       source  = File.read(subject.file)
       mutated = mutation.apply(source)
       return Result.skipped if Parser.parse_string(mutated).errors.any?
 
       FileSwap.with(subject.file, mutated) do
-        ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose)
+        ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose, check_summary: check_summary)
       end
     end
 

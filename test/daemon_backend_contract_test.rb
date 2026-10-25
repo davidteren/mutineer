@@ -92,7 +92,7 @@ class DaemonBackendContractTest < Minitest::Test
                       "the test_helper root must reach the daemon so `require \"test_helper\"` resolves in each fork"
       assert_equal [File.join(root, "app/models")], boot[:source_dirs]
       assert_equal File.join(root, ".mutineer"), boot[:cache_dir]
-      assert_nil boot[:schema], "no db/schema.rb in this app, so the daemon skips worker-DB schema loading"
+      refute boot.key?(:schema), "#317: the booted daemon asks Rails for the schema file; the tool does not guess"
       assert boot[:rails]
       refute boot[:coverage], "worker daemons boot with Coverage off; only the map-building daemon enables it"
       assert_nil boot[:capture_timeout], "no --capture-timeout: the daemon uses the default"
@@ -208,7 +208,7 @@ class DaemonBackendContractTest < Minitest::Test
 
     assert_equal %i[killed], results.map(&:status)
     assert_includes sent.first["code"], "::Mutineer::ConcernBlocks.store_hook_def do"
-    assert_equal({ "line" => 20, "name" => "doubled", "singleton" => false }, sent.first["hook_def"])
+    assert_equal({ "line" => 23, "name" => "doubled", "singleton" => false }, sent.first["hook_def"])
   end
 
   # #187: the daemon's map ships the lines that ran at boot, and a survivor on
