@@ -23,11 +23,11 @@ module Mutineer
     # `node.name.name`. When both edits start on the same line, the job plan
     # runs one copy, the `chain_link` one (#275).
     #
-    # Calls in {SKIPPED} are never replaced. The list is shorter than
-    # {ChainLink::SKIPPED}: on the last call, a conversion such as `to_s` or
-    # `to_i` decides the type of the value that the expression returns, so
-    # `m[1].to_i` becomes `m[1]`. `Foo.new` becomes the class, and almost any
-    # use of the class raises.
+    # Calls in {SKIPPED} are never replaced; each one counts as declined. The
+    # list is shorter than {ChainLink::SKIPPED}: on the last call, a conversion
+    # such as `to_s` or `to_i` decides the type of the value that the
+    # expression returns, so `m[1].to_i` becomes `m[1]`. `Foo.new` becomes the
+    # class, and almost any use of the class raises.
     #
     # A call is not replaced when its name is an operator (`a.+(1)`), or a
     # setter (`a.b = 1`). A call with no dot (`a + b`, `a[0]`) is not replaced.
@@ -125,7 +125,7 @@ module Mutineer
         name = node.name.to_s
         return unless name.match?(WORD_NAME)
         return if name.end_with?("=")
-        return if SKIPPED.include?(node.name)
+        return decline if SKIPPED.include?(node.name)
 
         receiver = node.receiver.location
         @mutations << Mutation.new(

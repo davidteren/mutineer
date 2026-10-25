@@ -186,6 +186,32 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # #297: a def in a concern's hook block that reload can place goes to the
+  # daemon with the stored def in its code and the hook-def values to place it.
+  def test_a_placeable_hook_def_sends_the_stored_def
+    path = File.expand_path("fixtures/singleton/concern_class_methods.rb", __dir__)
+    source = File.binread(path)
+    subject = Mutineer::Project.discover([path], only: "ConcernPricing#doubled").first
+    mutation = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source).first
+    config = Mutineer::Config.new(sources: [path], tests: [], project_root: File.dirname(path), framework: "minitest")
+    sent = []
+    client = Object.new
+    def client.start = self
+    def client.quit = nil
+    client.define_singleton_method(:request) do |payload:, **|
+      sent << payload
+      "killed"
+    end
+    results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+      Mutineer::DaemonBackend.send(:run_serial, [[subject, mutation, "id-0"]], config, [], nil, { path => source })
+    end
+
+    assert_equal %i[killed], results.map(&:status)
+    assert_includes sent.first["code"], "::Mutineer::ConcernBlocks.store_hook_def do"
+    assert_match(%r{store_hook_def do\n\s*def doubled\(x\)\s+x / 2\s+end\nend}, sent.first["code"])
+    assert_equal({ "line" => 23, "name" => "doubled", "singleton" => false }, sent.first["hook_def"])
+  end
+
   # #187: the daemon's map ships the lines that ran at boot, and a survivor on
   # one of them is ran_at_load, as in-process. --fail-fast stops on a survivor
   # only, so it runs on past these.

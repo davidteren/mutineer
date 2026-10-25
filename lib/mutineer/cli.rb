@@ -18,6 +18,7 @@ require_relative "migrate"
 require_relative "mutator_registry"
 require_relative "triage"
 require_relative "init"
+require_relative "redaction"
 
 module Mutineer
   # Command-line entry point. `start` is the single public method called by
@@ -98,7 +99,9 @@ module Mutineer
                              matrix:)
         --allow-empty        A run with no mutants is expected; do not warn (--no-allow-empty
                              beats a .mutineer.yml allow_empty:)
-        --verbose            Surface the real error when a fork capture fails (alias: --debug)
+        --verbose            Show full error details: the backtrace and causes of a load
+                             failure, the real error of a failed fork capture, and the
+                             --test-command output (alias: --debug)
 
       Options:
         --list-operators  List available operators (default vs optional) and exit
@@ -339,38 +342,50 @@ module Mutineer
       config.dry_run ? dry_run(config) : execute(config)
     rescue ArgumentError => e
       # Unknown --operators value surfaces here; no backtrace reaches the user.
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 2
     rescue SystemCallError => e
       # A missing/unreadable path reaches here as Errno::ENOENT etc. A plain
       # message and usage exit, never a raw backtrace.
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 2
     rescue SyntaxError => e
-      # A syntactically invalid source file surfaces when `require`d; report it
-      # cleanly rather than dumping a backtrace.
-      warn "mutineer: cannot load source: #{e.message}"
+      # Boot, source and require files report a SyntaxError as ProjectLoadError
+      # below. This covers a file loaded on any other path; report it cleanly
+      # rather than dumping a backtrace.
+      warn "mutineer: cannot load source: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::ParseError => e
-      warn "mutineer: error reading: #{e.message}"
+      warn "mutineer: error reading: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::SmokeCheckError => e
       # The unmutated suite is not green under --test-command: a broken
       # environment, not weak tests. Runtime error (exit 1), not usage (exit 2).
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::ConcurrentRunError => e
       # Another process owns a source file. Runtime error (exit 1), not a
       # backtrace: the working tree is still the other run's responsibility.
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::CoverageFromError => e
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 2
     rescue Mutineer::DaemonBootError => e
       # The daemon is gone for good, so the run ended rather than scoring the rest
       # against it. A deliberate stop deserves a message, not a raw backtrace.
+      warn "mutineer: #{Redaction.text(e.message)}"
+      exit 1
+    rescue Mutineer::ProjectLoadError => e
+      # A boot file, source or --require file failed to load. The message is
+      # already redacted; --verbose adds the backtrace and the cause chain.
       warn "mutineer: #{e.message}"
+      if config.verbose
+        (e.backtrace || []).each { |frame| warn "\t#{Redaction.text(frame)}" }
+        e.causes.each { |cause| warn "mutineer: caused by: #{cause}" }
+      else
+        warn "mutineer: re-run with --verbose for the backtrace and causes"
+      end
       exit 1
     end
 
@@ -724,7 +739,8 @@ module Mutineer
                             baseline: delta ? delta.legacy_matches : 0 }
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
-                      scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches)
+                      scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches,
+                      declined: extras.fetch(:declined, {}))
       warn_empty_run(config, extras) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
@@ -763,15 +779,21 @@ module Mutineer
     #
     # @param config [Mutineer::Config] run configuration.
     # @param extras [Hash] the run extras; `:unscoped_mutants` counts the mutants (run and
-    #   suppressed) before --since.
+    #   suppressed) before --since, and `:declined` the candidates each operator did not mutate.
     # @return [void]
     def self.warn_empty_run(config, extras)
       # Mutants existed before --since narrowed them: the changes held none.
       if config.since && extras[:unscoped_mutants].to_i.positive?
         warn "mutineer: nothing to test in the changes since #{config.since}"
       elsif !config.allow_empty
-        warn "mutineer: no mutants were generated. Check that the sources contain code the " \
-             "operators mutate. The run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
+        declined = extras.fetch(:declined, {}).values.sum
+        cause = if declined.positive?
+                  "#{declined} #{declined == 1 ? 'candidate was' : 'candidates were'} declined " \
+                    "(--dry-run shows the count per operator)."
+                else
+                  "Check that the sources contain code the operators mutate."
+                end
+        warn "mutineer: no mutants were generated. #{cause} The run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
              "Pass --allow-empty (or allow_empty: true) if an empty run is expected."
       end
     end
@@ -883,8 +905,25 @@ module Mutineer
       breakdown = per_operator.map { |op, n| "#{op}: #{n}" }.join(", ")
       summary = breakdown.empty? ? "" : "#{breakdown} — "
       puts "#{summary}#{total} mutations (dry run, not executed); " \
-           "#{skipped} skipped (invalid); #{ignored} ignored (suppressed)"
+           "#{skipped} skipped (invalid); #{ignored} ignored (suppressed); " \
+           "#{declined_summary(extras[:declined], since: config.since)}"
       exit 0
+    end
+
+    # Formats the dry run's declined count: the total, then each operator's
+    # count when the total is above zero. `--since` does not narrow the count,
+    # so under `--since` the text says so.
+    #
+    # @param declined [Hash{String => Integer}] operator name => declined count.
+    # @param since [String, nil] the `--since` ref, when set.
+    # @return [String] e.g. `2 declined (range: 2)`.
+    def self.declined_summary(declined, since:)
+      total = declined.values.sum
+      text = "#{total} declined"
+      text += " in the scanned files (not narrowed by --since)" if since
+      return text if total.zero?
+
+      "#{text} (#{declined.map { |op, n| "#{op}: #{n}" }.join(', ')})"
     end
   end
 end

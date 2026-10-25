@@ -58,7 +58,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.8", doc["schema_version"] # 1.8 adds reason on ignored[]; 1.7 added unplaceable and ran_at_load
+    assert_equal "1.9", doc["schema_version"] # 1.9 adds summary.declined and declined_by_operator; 1.8 added reason on ignored[]
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
@@ -447,4 +447,19 @@ class JsonReporterTest < Minitest::Test
     assert_empty m["blind"]
   end
 
+  def test_summary_reports_declined_per_operator
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              declined: { "array_literal" => 1, "range" => 2 })
+    summary = JSON.parse(out.string)["summary"]
+    assert_equal 3, summary["declined"]
+    assert_equal({ "array_literal" => 1, "range" => 2 }, summary["declined_by_operator"])
+  end
+
+  def test_summary_declined_defaults_to_zero
+    summary = render([Mutineer::Result.killed])["summary"]
+    assert_equal 0, summary["declined"]
+    assert_equal({}, summary["declined_by_operator"])
+  end
 end

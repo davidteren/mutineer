@@ -54,13 +54,15 @@ module Mutineer
       private
 
       # Emits the forced condition unless the condition is a literal or holds a
-      # heredoc, whose body would stay behind as code.
+      # heredoc, whose body would stay behind as code. The heredoc skip counts
+      # as declined; the literal skip does not.
       #
       # @param node [Prism::IfNode, Prism::UnlessNode] the conditional.
       # @return [void]
       def force(node)
         predicate = node.predicate
-        return if LITERALS.include?(unwrap(predicate).class) || heredoc?(predicate)
+        return if LITERALS.include?(unwrap(predicate).class)
+        return decline if heredoc?(predicate)
 
         loc = predicate.location
         @mutations << Mutation.new(

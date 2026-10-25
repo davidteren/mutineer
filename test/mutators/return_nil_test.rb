@@ -80,4 +80,11 @@ class ReturnNilTest < Minitest::Test
     RUBY
     assert_empty call
   end
+
+  def test_dangling_heredoc_drop_counts_as_declined
+    source = "def f\n  return <<~X\n    hi\n  X\n  1\nend\n"
+    op = Mutineer::Mutators::ReturnNil.new
+    op.mutations_for(subject_for(source), source)
+    assert_equal 1, op.declined
+  end
 end

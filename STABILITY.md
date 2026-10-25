@@ -13,7 +13,7 @@ The latest published version is on [RubyGems](https://rubygems.org/gems/mutineer
 | Commands | `run`, `init`, `triage`, `migrate` | the command and its meaning |
 | CLI flags | the flags in `mutineer --help` | the flag and its meaning |
 | Exit codes | `0`, `1`, and `2` | which result uses which code |
-| JSON schema | `schema_version` `1.8` | existing keys and their meaning |
+| JSON schema | `schema_version` `1.9` (unreleased; 1.7.0 reports `1.8`) | existing keys and their meaning |
 | Mutant ids | `summary.id_format` `2` | the same id for the same mutant |
 | Config keys | the `.mutineer.yml` keys below | the key and what a value means |
 | Action inputs | the `action.yml` inputs below | the input and its meaning |
@@ -33,8 +33,8 @@ Each number moves on its own.
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
-| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading. |
+| `2` | Usage / invalid-flag error, including a mistyped flag, a bad path (such as a missing `--boot` or `require:` file), or an unreadable baseline. |
 <!-- /contract:exit-codes -->
 
 Exit code 3 does not exist in 1.x.

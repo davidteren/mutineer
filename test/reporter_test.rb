@@ -528,6 +528,72 @@ class ReporterTest < Minitest::Test
     refute_includes out.string, "Kill matrix"
   end
 
+  # --- unrun share (#291) ---
+
+  # stderr after a report of `results`, with the given report options.
+  def unrun_err(results, **opts)
+    err = StringIO.new
+    reporter(results).report(out: StringIO.new, err: err, **opts)
+    err.string
+  end
+
+  def killed_and_unplaceable(killed, unplaceable)
+    Array.new(killed) { Mutineer::Result.killed } + Array.new(unplaceable) { Mutineer::Result.unplaceable }
+  end
+
+  def test_warns_when_the_unplaceable_share_is_over_the_limit
+    err = unrun_err(killed_and_unplaceable(2, 3))
+    assert_includes err, "3 of the 5 mutants mutineer tried to score were not run"
+    assert_includes err, "(3 unplaceable; 60.0%, limit 10%)"
+    assert_includes err, "does not change the exit code"
+    assert_includes err, "unplaceable[]"
+    refute_includes err, "re-parse"
+  end
+
+  def test_unrun_share_leaves_no_coverage_out_of_the_denominator
+    results = killed_and_unplaceable(2, 3) + Array.new(10) { Mutineer::Result.no_coverage }
+    assert_includes unrun_err(results), "3 of the 5 mutants"
+  end
+
+  def test_unrun_warning_names_skipped_invalid
+    err = unrun_err(Array.new(2) { Mutineer::Result.killed } + Array.new(2) { Mutineer::Result.skipped })
+    assert_includes err, "(2 skipped (invalid); 50.0%"
+    assert_includes err, "did not re-parse"
+    assert_includes err, "https://github.com/davidteren/mutineer/issues"
+    refute_includes err, "unplaceable"
+  end
+
+  def test_unrun_warning_prints_on_json_and_under_threshold
+    out = StringIO.new
+    err = StringIO.new
+    results = Array.new(2) { Mutineer::Result.killed } + Array.new(3) { Mutineer::Result.skipped }
+    reporter(results).report(out: out, err: err, format: "json", threshold: 80.0)
+    assert_includes err.string, "were not run"
+    assert_equal 3, JSON.parse(out.string)["summary"]["skipped_invalid"]
+  end
+
+  def test_no_unrun_warning_under_the_limit_or_the_floor
+    refute_includes unrun_err(killed_and_unplaceable(20, 2)), "were not run"
+    refute_includes unrun_err(killed_and_unplaceable(1, 1)), "were not run"
+  end
+
+  def test_unrun_warning_keeps_the_exit_code
+    assert_equal 0, reporter(killed_and_unplaceable(2, 3)).exit_code(threshold: 80.0)
+  end
+
+  # --- declined candidates (#291) ---
+
+  def test_human_summary_has_a_declined_line
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new, declined: { "range" => 2 })
+    assert_match(/Declined:\s+2\s+\(candidates an operator did not mutate/, out.string)
+    refute_includes out.string, "not narrowed by --since"
+
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new, scoped: true, declined: { "range" => 2 })
+    assert_match(/Declined:\s+2 .*not narrowed by --since/, out.string)
+  end
+
   private
 
   def matrix_report(results)
@@ -544,5 +610,4 @@ class ReporterTest < Minitest::Test
   def reporter(results)
     Mutineer::Reporter.new(aggregate(results), { FILE => SRC })
   end
-
 end

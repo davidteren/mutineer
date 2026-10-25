@@ -11,6 +11,7 @@ require_relative "mutator_registry"
 require_relative "mutant_id"
 require_relative "project_path"
 require_relative "external_backend"
+require_relative "isolation"
 require_relative "test_runners"
 require_relative "orphan_guard"
 
@@ -39,8 +40,13 @@ module Mutineer
     # new id, its project-relative file and its subject's qualified name;
     # recorded even when a new id is also listed, since the old entry still
     # over-matches other files), `id_map` (every reported mutant's new id =>
-    # its old-format id) and `dropped_id_map` (the same for each dropped
-    # repeat of an edit: its id is still current for `mutineer migrate`).
+    # its old-format id), `dropped_id_map` (the same for each dropped repeat of
+    # an edit: its id is still current for `mutineer migrate`) and `declined`
+    # (operator name => count of candidates that operator found and did not
+    # mutate, {Mutators::Base#declined}; only counts above zero, keys sorted).
+    # The name is the {MutatorRegistry::ALL} key, or the class's `to_s` for an
+    # operator outside the registry. `--only` narrows `declined`, and `--since`
+    # does not: a declined candidate has no mutation to place on a line.
     #
     # Mutations are collected in {MutatorRegistry::ALL} order, whatever the
     # order of `operator_classes`. Two operators can give the same mutated
@@ -56,7 +62,7 @@ module Mutineer
     # @param operator_classes [Array<Class>] resolved operators.
     # @return [Array(Array, Array<Result>, Hash<String,String>, Hash{Symbol => Hash})]
     #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`,
-    #   `:id_map`, `:dropped_id_map`).
+    #   `:id_map`, `:dropped_id_map`, `:declined`).
     def self.collect_jobs(config, operator_classes)
       # Registry order, so a repeat across operators keeps the registry-first
       # copy (#275). A class outside ALL goes last; ties keep the input order.
@@ -78,10 +84,17 @@ module Mutineer
       legacy_ignore_matches = {}
       id_map = {}
       dropped_id_map = {}
+      declined = Hash.new(0)
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file, encoding: "UTF-8"))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
-        mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
+        # A repeated operator name runs once, so its declines count once.
+        mutations = operator_classes.uniq.flat_map do |klass|
+          operator = klass.new
+          found = operator.mutations_for(subject, source)
+          declined[MutatorRegistry::ALL.key(klass) || klass.to_s] += operator.declined
+          found
+        end
         id_path = (id_paths[subject.file] ||= ProjectPath.relative(subject.file, config.project_root))
         decls = name_decls[[id_path, subject.qualified_name]]
         ordinal = (decls[subject.def_node.location.start_offset] ||= decls.size)
@@ -118,8 +131,9 @@ module Mutineer
           end
         end
       end
+      declined = declined.select { |_, count| count.positive? }.sort.to_h
       [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map,
-                                            dropped_id_map: dropped_id_map }]
+                                            dropped_id_map: dropped_id_map, declined: declined }]
     end
 
     # One key per mutation; two mutations share a key exactly when they are on
@@ -185,6 +199,30 @@ module Mutineer
         "Check the listed test files with the same seed and helpers " \
         "(for \"combined suite\", all of them together). " \
         "Change SEED, including helper settings, to choose another order."
+    end
+
+    # The reload mutant text for a def in a concern's `included` or `prepended`
+    # block (#297): the mutated file with one statement added just before the
+    # hook call, `::Mutineer::ConcernBlocks.store_hook_def do <mutated def> end`.
+    # The statement sits in the same body as the hook call, so the stored def has
+    # the block's constant scope. After the load, the child passes the hook-def
+    # values to {ConcernBlocks.place_hook_def}. Shared by {Runner.run} and
+    # {DaemonBackend.job_result}, so both build the same text. The hook call starts
+    # before the def, so the mutation does not move its offset. A bad insert is
+    # not checked here: the child's `load` raises `SyntaxError` before any test
+    # runs, so the mutant scores `error`.
+    #
+    # @param mutated [String] the mutated source text.
+    # @param mutation [Mutineer::Mutation] the mutation.
+    # @param subject [Mutineer::Subject] a subject with a {Subject#reload_hook_call}.
+    # @param source [String] the original source text.
+    # @return [Array(String, Hash{Symbol => Object})] the mutant text, and the
+    #   original def's `line`, `name` and `singleton`.
+    def self.hook_mutant(mutated, mutation, subject, source)
+      at = subject.reload_hook_call.location.start_offset
+      stored = "::Mutineer::ConcernBlocks.store_hook_def do\n#{Isolation.mutated_def(mutation, subject, source)}\nend; "
+      [mutated.byteslice(0...at) + stored + mutated.byteslice(at..),
+       { line: subject.def_node.location.start_line, name: subject.name, singleton: subject.singleton }]
     end
 
     # Coverage-based test selection, shared by the in-process ({Runner.run}) and daemon

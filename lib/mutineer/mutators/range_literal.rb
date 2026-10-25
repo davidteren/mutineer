@@ -13,10 +13,11 @@ module Mutineer
     # An endless range (`1..`, `1..nil`) is skipped only when it is a direct
     # index argument of a call in {SLICE_CALLS} or of an index write
     # (`a[1..] += x`). There `(1..)` and `(1...)` select the same elements, so
-    # the mutant is equivalent. Every other endless range is swapped, because
-    # the two ranges differ on `==`, `hash`, `exclude_end?` and `to_s`, so a
-    # test can kill it. This includes the value of `h[:k] = 1..` and a call on
-    # a class, such as `Array[1..]`, which builds a value and does not slice.
+    # the mutant is equivalent, and each skipped range counts as declined.
+    # Every other endless range is swapped, because the two ranges differ on
+    # `==`, `hash`, `exclude_end?` and `to_s`, so a test can kill it. This
+    # includes the value of `h[:k] = 1..` and a call on a class, such as
+    # `Array[1..]`, which builds a value and does not slice.
     class RangeLiteral < Base
       # Maps each range operator to its opposite.
       SWAPS = { ".." => "...", "..." => ".." }.freeze
@@ -89,7 +90,11 @@ module Mutineer
       # @param node [Prism::RangeNode] range node to inspect.
       # @return [void]
       def visit_range_node(node)
-        emit(node) unless endless?(node) && @slice_args.key?(node)
+        if endless?(node) && @slice_args.key?(node)
+          decline
+        else
+          emit(node)
+        end
         super # nested ranges ((1..2)...(3..4)) each get their own mutation
       end
 

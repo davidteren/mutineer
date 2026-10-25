@@ -3,6 +3,10 @@
 Mutineer skips some code changes to reduce results that rarely help improve tests.
 These built-in skips cannot be turned off. Chain-call skips and the endless-range
 skip use the method name only, so they are not always equivalent.
+Mutineer counts every skip on this page when its operator runs. The chain-link,
+call-to-receiver and range operators are not in the default set, so their skips
+are counted only when `--operators` selects them. The dry run prints the count,
+and the JSON report gives it in `summary.declined_by_operator`.
 
 For an equivalent mutant that does appear, use `# mutineer:disable-line` or an
 `ignore:` entry and record a reason. An ignore mapping contains an `id` and an
