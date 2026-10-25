@@ -1,0 +1,35 @@
+CHANGELOG.md
+  s_d60e2454db2056::t_c923260937f8b1 14-24
+STABILITY.md
+  s_d60e2454db2056::t_39e8fab5c33174 16
+docs/equivalent-skips.html
+  s_d60e2454db2056::t_bbcae50b536015 53
+docs/equivalent-skips.md
+  s_d60e2454db2056::t_2a8df1e12dadb5 6-9
+lib/mutineer/job_plan.rb
+  s_d60e2454db2056::t_3e3c699e6c6e17 74-75
+test/cli_test.rb
+  s_d60e2454db2056::t_87a7231e8973ce 723-727,733-734,741-742,744
+test/mutators/call_to_receiver_test.rb
+  s_d60e2454db2056::t_c813c03b486a2f 187,190
+test/mutators/range_literal_test.rb
+  s_d60e2454db2056::t_9ef14a231c6f51 112,115
+test/reporter_test.rb
+  s_d60e2454db2056::t_6b05bd5fcad710 580-581
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d73dcf0892fd85b21316b3082c0f41924852b99a",
+  "prompts": {},
+  "sessions": {
+    "s_d60e2454db2056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1d5efb-2691-4a0a-8a10-c060a7b2a92e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
