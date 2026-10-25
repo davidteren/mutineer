@@ -47,29 +47,23 @@ module Mutineer
   #
   # Verdict mapping: child exit 0=survived (suite passed), 1=killed (suite
   # failed), 2=error (child raised AROUND the test: load, boot, or worker-DB
-  # routing failure); parent-detected timeout. Tagging an in-test DB error (one
-  # fired inside a test body, vs at routing time) as `error` rather than
-  # `killed` is only observable under the concurrent gate and is not yet
-  # implemented.
+  # routing failure); parent-detected timeout. Exit 2 also covers a run whose
+  # first failing test failed with an Active Record connection or lock error
+  # inside the test (#296): {MinitestIntegration::InTestDatabaseError} decides.
   module DaemonServer
     # Poll interval (seconds) for the per-fork deadline wait loop.
     POLL = 0.02
-    # Basename glob for a mutant file written beside a source file.
-    # Tempfile puts hyphens in the name, so it is not a constant name. The
-    # leading dot hides a new file from Zeitwerk (#253); a file an older
-    # version left behind has none, so the glob matches both.
-    DAEMON_TEMP_BASENAME = "{.,}mutineer_daemon*.rb"
-
-    # Skips daemon mutant files when Zeitwerk scans an autoload directory.
-    # The boot sweep keeps a file another process still holds. Zeitwerk skips a
-    # hidden one (#253), but one an older version wrote has no dot, and it would
-    # stop the next boot, because its name is not a constant.
+    # Skips mutant files of both modes ({OrphanGuard::TEMP_BASENAME}) when
+    # Zeitwerk scans an autoload directory. The boot sweep keeps a file another
+    # process still holds. Zeitwerk skips a hidden one (#253), but one an older
+    # version wrote has no dot, and it would stop the next boot, because its
+    # name is not a constant.
     module DaemonTempIgnore
       # @return [void]
       def setup
         dirs = Array(Mutineer::DaemonServer.instance_variable_get(:@source_dirs))
         dirs.each do |dir|
-          ignore(File.join(dir, Mutineer::DaemonServer::DAEMON_TEMP_BASENAME))
+          ignore(File.join(dir, Mutineer::OrphanGuard::TEMP_BASENAME))
         end
         super
       end
@@ -89,6 +83,8 @@ module Mutineer
         output ||= @protocol
         @errio = errio
         @output = output
+        # The client sends UTF-8 JSON; with LANG unset the pipe would read as US-ASCII (#303).
+        input.set_encoding(Encoding::UTF_8)
         boot_line = input.gets
         return if boot_line.nil? # client vanished before boot
 
@@ -338,8 +334,9 @@ module Mutineer
         end
         verdict = wait_verdict(pid, timeout)
         # Mark ready only when the child finished cleanly after seeding
-        # (killed/survived). Timeout can interrupt mid-copy; error is a routing
-        # failure. Both leave the slot unready so the next fork seeds again.
+        # (killed/survived). Timeout can interrupt mid-copy; error can be a
+        # routing failure or a database error inside a test (#296). Both leave
+        # the slot unready so the next fork seeds again.
         @slot_ready[worker] = true if first_use && %w[killed survived].include?(verdict)
         # A SIGKILLed timeout child skipped its Tempfile unlink. Sweep the orphan
         # so it cannot outlive the run.
@@ -373,12 +370,13 @@ module Mutineer
         Zeitwerk::Loader.prepend(DaemonTempIgnore)
       end
 
-      # Remove orphaned mutant tempfiles from the source dirs (parent-side; the
-      # SIGKILL path cannot run the child's ensure). Mirrors JobPlan.sweep_orphans.
-      # Skips a file another process still owns ({OrphanGuard.mutant_file_in_use?}).
+      # Remove orphaned mutant tempfiles of both modes from the source dirs
+      # (parent-side; the SIGKILL path cannot run the child's ensure). Mirrors
+      # JobPlan.sweep_orphans. Skips a file another process still owns
+      # ({OrphanGuard.mutant_file_in_use?}).
       def sweep_temps
         @source_dirs.to_a.each do |dir|
-          Dir.glob(File.join(dir, DAEMON_TEMP_BASENAME)).each do |path|
+          Dir.glob(File.join(dir, OrphanGuard::TEMP_BASENAME)).each do |path|
             next if OrphanGuard.mutant_file_in_use?(path)
 
             File.unlink(path) rescue nil # rubocop:disable Style/RescueModifier
@@ -454,7 +452,8 @@ module Mutineer
       end
 
       # Load the covering test files and run them; 0 = all passed (survived),
-      # 1 = a failure/error (killed). Minitest only; rspec is not yet on this path.
+      # 1 = a failure/error (killed), 2 = the first failure was an in-test
+      # database error (error, #296). Minitest only; rspec is not yet on this path.
       # {MinitestIntegration.run} is the method the daemon's clean check uses,
       # so each mutant fork gets the same seed and class list (#282). It loads
       # only stdlib, so the daemon still needs no Prism. The fork requires
