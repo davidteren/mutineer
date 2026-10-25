@@ -32,7 +32,7 @@ A red test suite still fails. A surviving mutant does not.
 ## A pull request gate
 
 Scope the run to the pull request and fail when it adds a survivor.
-Use `--since origin/main` and `--baseline`.
+Use `--since origin/main`, `--baseline`, and `--no-fail-fast`.
 
 `--since` checks the lines the pull request changed.
 With `--since`, `--baseline` fails the job only when a new survivor appears.
@@ -43,6 +43,17 @@ pull request's commit before merging. Use `--no-since` with `--baseline` to chec
 for new survivors and a score drop, including in code whose source did not change.
 A scheduled scan on the default branch refreshes the baseline; it does not check
 the pull request's tests before merge.
+For the first baseline and each refresh, follow the [baseline recipe](agentic-coding.md#ci-gate-fail-a-pr-only-when-it-makes-things-worse).
+Leave `baseline:` and `only:` unset in `.mutineer.yml` for this workflow.
+Pass the baseline in the PR command or Action input, and use `--no-fail-fast`.
+Write a separate candidate and review it before replacing the saved report.
+Use the same sources as your CI gate (`app/models` in the workflow below), with
+the same test files, operators, Rails mode, strategy, daemon setting, and
+environment. Run the Rails refresh with
+`RAILS_ENV=test bundle exec mutineer run app/models --rails` plus the recipe's
+remaining flags for the workflow shown below. Pass the same strategy or daemon
+options if your workflow changes those defaults. Replace `.mutineer` in the
+recipe paths if your `cache_dir` differs. Keep `only:` unset for the PR checks too.
 
 ## A threshold on chosen folders
 
@@ -73,12 +84,14 @@ jobs:
           since: none
           rails: true
           use-bundler: true
+          extra-args: "--no-fail-fast"
 ```
 
 For report-only CI, leave `threshold` at 0 and `baseline` unset in both the workflow
 and `.mutineer.yml`. To reject new survivors, first save a full run from the default
 branch as `.mutineer/baseline.json` and make that file available in CI. Then set
-`baseline: .mutineer/baseline.json`. Keep `since: none` to scan all chosen sources
+`baseline: .mutineer/baseline.json` in the Action's `with:` inputs. Keep the key
+unset in `.mutineer.yml`. Keep `since: none` to scan all chosen sources
 on every pull request, including when only tests change. This avoids a workflow
 edit for each PR, but can take longer than a scan of changed source lines. Add a
 `threshold` when the chosen folders are ready.
@@ -98,7 +111,7 @@ as you do for the test suite.
 mutineer:
   stage: test
   script:
-    - RAILS_ENV=test bundle exec mutineer run app/models --rails --no-since --threshold 0 --format json
+    - RAILS_ENV=test bundle exec mutineer run app/models --rails --no-since --no-fail-fast --threshold 0 --format json
 ```
 
 Models without a conventionally named test are skipped with a warning, even if
@@ -106,13 +119,13 @@ other tests cover them. To include a model covered by differently named tests,
 pass the relevant test files explicitly. For example:
 
 ```sh
-RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/integration/checkout_test.rb --test test/integration/refunds_test.rb --rails --no-since --threshold 0 --format json
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/integration/checkout_test.rb --test test/integration/refunds_test.rb --rails --no-since --no-fail-fast --threshold 0 --format json
 ```
 
 Replace these paths with the model and tests in your app.
 
 Leave `baseline` unset in `.mutineer.yml` for report-only CI. For a pull request
-check, fetch the target branch before adding `--since origin/main` (replace `main`
+check, keep `--no-fail-fast` and fetch the target branch before adding `--since origin/main` (replace `main`
 with that branch’s name), and supply a baseline from a full run on that branch.
 When tests change, keep `--no-since` to check the pull request's full source scope.
 Add `--threshold 90` when the chosen folders are ready.
