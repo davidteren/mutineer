@@ -46,17 +46,21 @@ about the order the mutant runs use.
   `Minitest.run` arguments as `Array<String>`: empty when `ENV["SEED"]` is set
   (Minitest reads it itself and applies its own `% 0xFFFF`), else
   `["--seed", PINNED_SEED.to_s]`. Marked `@api private` (cross-file internal,
-  like `keep_file_order`). All four call sites use it. Rationale: one source of
-  truth, smallest diff at each site. Rejected: `ENV["SEED"] ||= "1"` in the
+  like `keep_file_order`). In-process and daemon runs call it after test load.
+  Both generated scripts use `CoverageMap#minitest_seed_args_expression` to
+  check `SEED` at that same point and serialize only the shared default.
+  Rejected: `ENV["SEED"] ||= "1"` in the
   parent, because a library that writes the user's environment is a hidden
   side effect.
 - **Rename the constant** `STOP_AT_FIRST_FAILURE_SEED` to `PINNED_SEED`. It is
   no longer tied to the stop. No alias: the class is documented as
   child-process-only, and its readers are the seed expression in
   `minitest_integration.rb` (replaced by `seed_args`) and this repo's tests.
-- **Subprocess scripts interpolate the helper result** at build time
-  (`Minitest.run(<args>.inspect)`). The child inherits the parent's
-  environment, so the build-time `SEED` check gives the same answer.
+- **Subprocess scripts select arguments after test load.** A helper can set
+  or clear `SEED`. Interpolating the parent's argument array ignored that
+  change and could give capture and clean checks a different seed from the
+  mutant run. The generated expression reads the child's environment after
+  the tests load, without requiring Mutineer into the tested app.
 - **Every Minitest entry point starts from an empty class list.** Minitest
   shuffles `Minitest::Runnable.runnables` with the seed before it runs a
   class. `MinitestIntegration.run` resets that list, but the two subprocess
@@ -89,9 +93,9 @@ about the order the mutant runs use.
   claim the whole 1.1.0 caveat is gone.
 - **Seed hint in the abort message.** The fix turns a silent false kill into a
   `SmokeCheckError`. A user whose `rake test` passes in a random order would
-  not know why. For Minitest, the "not green" message names the seed and how
-  to reproduce it (`SEED=1` by default, or the active `SEED`) or pick another
-  (`SEED=<n>`).
+  not know why. The message names the configured seed or default and notes
+  that helpers can change it. It directs users to check the same seed and
+  helpers, or change those settings to choose another order.
 
 ## Scope Boundaries
 
@@ -155,7 +159,8 @@ AGENTS.md local gate passes (`rake test`, load smoke, `yard:strict`).
 
 **Files:** `lib/mutineer/coverage_map.rb`, `test/runner_test.rb`
 
-**Approach:** In each script, pass `seed_args` to `Minitest.run` and add
+**Approach:** In each script, evaluate `minitest_seed_args_expression` after
+test load and pass its result to `Minitest.run`. Add
 `Minitest::Runnable.reset` before the test `load` lines. Include the effective
 Minitest seed in the coverage-cache digest. Name the seed in a rejected
 `--coverage-from` capture's validation message. Draft PR #202 also edits this file.
@@ -215,13 +220,11 @@ still passes where the machine can run it.
 `lib/mutineer/daemon_backend.rb`, `test/runner_test.rb`
 
 **Approach:** `JobPlan.abort_if_unclean!` takes an optional `framework:`
-keyword. For `"minitest"`, the message appends a hint that names the seed
-the runs used (`MinitestIntegration.seed`: `SEED` when set, else
-`PINNED_SEED`). It tells the user to run the listed test files with that
-seed to look for the order-dependent test (all of them together for
-"combined suite"), or to set `SEED` to pick another order. Changed in
-review: the first draft always named seed 1, which was wrong when `SEED` is
-set. `seed_args` is built on `seed`, so both use one rule. Both callers pass
+keyword. For `"minitest"`, the hint names the configured seed or default
+(`MinitestIntegration.seed`) and notes that test helpers can change `SEED`.
+It directs users to check the same seed and helpers with the listed files
+(all of them together for "combined suite"), or change those settings.
+Both callers pass
 `config.framework`. Other frameworks keep today's text.
 
 **Test scenarios:**

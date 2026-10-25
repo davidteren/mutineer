@@ -152,15 +152,17 @@ module Mutineer
             "#{ExternalBackend.generic_env_hint}.#{seed_hint}"
     end
 
-    # Says which seed the Minitest runs used, and how to reproduce or change it.
+    # Names the configured seed or default, and accounts for helper overrides.
     #
     # @api private
     # @return [String]
     def self.minitest_seed_hint
       seed = MinitestIntegration.seed
-      " Mutineer runs Minitest with SEED=#{seed}, so an order-dependent test can fail here " \
-        "and pass in a random run. Run the listed test files with SEED=#{seed} to look for it " \
-        "(for \"combined suite\", all of them together), or set SEED to choose another order."
+      " Minitest defaults to SEED=#{seed}, unless a test helper changes SEED. " \
+        "An order-dependent test can fail here and pass in another order. " \
+        "Check the listed test files with the same seed and helpers " \
+        "(for \"combined suite\", all of them together). " \
+        "Change SEED, including helper settings, to choose another order."
     end
 
     # Coverage-based test selection, shared by the in-process ({Runner.run}) and daemon
