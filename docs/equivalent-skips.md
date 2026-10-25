@@ -49,9 +49,9 @@ Removing a final `new` leaves the class in place of an instance.
 
 The `range` operator is not in the default set. Add it to the `operators:` list in `.mutineer.yml`, or pass `--operators`. The `--operators` list replaces the default set, so name the default operators too.
 
-The `range` operator swaps `..` and `...`. It skips an endless range (`1..` or `1..nil`) only when the range is a direct argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`, `bytesplice` or `values_at`, as in `argv[1..]` or `text.byteslice(offset..)`. Index writes such as `list[1..] += x` count too.
+The `range` operator swaps `..` and `...`. It skips an endless range (`1..` or `1..nil`) only when the range is a direct argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`, `bytesplice` or `values_at`, as in `argv[1..]` or `text.byteslice(offset..)`. Index writes such as `list[1..] += x` are skipped too.
 
-There, `(1..)` and `(1...)` select the same elements, so the mutant is equivalent. The check uses the method name only. A call on a class, such as `Array[1..]` or `Set[1..]`, builds a value, so it is not skipped. A constant in capitals only, such as `ARGV[1..]`, is skipped. A Hash with range keys tells `h[1..]` from `h[1...]`, a Proc called with `fn[1..]` gets the range itself, and a class of your own can define `[]` or `slice` to treat the two ranges differently. In those cases the skip hides a mutant a test can kill.
+For a slice of an Array or String, `(1..)` and `(1...)` select the same elements, so the mutant is equivalent. The check uses the method name and the receiver. A call on a class, such as `Array[1..]` or `Set[1..]`, builds a value, so it is not skipped. A constant in capitals only, such as `ARGV[1..]`, is skipped. A Hash with range keys tells `h[1..]` from `h[1...]`, a Proc called with `fn[1..]` gets the range itself, and a class of your own can define `[]` or `slice` to treat the two ranges differently. In those cases the skip hides a mutant a test can kill.
 
 Every other endless range is swapped. This includes the assigned value in `h[:k] = 1..nil` and a range in parentheses, as in `list[(1..)]`. `(1..)` and `(1...)` differ on `==`, `eql?`, `hash`, `exclude_end?`, `to_s`, `inspect` and `cover?(1..)`, so a test that compares, stores or prints the range can kill the mutant.
 

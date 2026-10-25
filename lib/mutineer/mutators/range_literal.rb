@@ -23,7 +23,8 @@ module Mutineer
 
       # Calls whose direct endless-range index arguments are not mutated. They
       # select the same elements for `(1..)` and `(1...)`. The check uses the
-      # name only. The assigned value of `[]=` is not an index, so it is mutated.
+      # name, and a class receiver is not skipped. The assigned value of `[]=`
+      # is not an index, so it is mutated.
       SLICE_CALLS = %i[[] []= slice slice! byteslice bytesplice values_at].freeze
 
       # Resets the per-subject record of endless ranges that are slice arguments.
@@ -42,7 +43,7 @@ module Mutineer
       # @param node [Prism::CallNode] call node to inspect.
       # @return [void]
       def visit_call_node(node)
-        record_slice_args(node) if SLICE_CALLS.include?(node.name) && !class_receiver?(node)
+        record_slice_args(node) if SLICE_CALLS.include?(node.name)
         super
       end
 
@@ -96,22 +97,25 @@ module Mutineer
 
       # Records each range that is a direct argument of the node. For a `[]=`
       # call the last argument is the assigned value, not an index, so it is
-      # left out.
+      # left out. Nothing is recorded when the receiver is a class, as in
+      # `Array[1..]` or `Registry[1..] ||= x`.
       #
       # @param node [Prism::Node] call or index node that responds to `arguments`.
       # @return [void]
       def record_slice_args(node)
+        return if class_receiver?(node)
+
         args = node.arguments&.arguments || []
         args = args[0...-1] if node.is_a?(Prism::CallNode) && node.name == :[]=
         args.each { |arg| @slice_args[arg] = true if arg.is_a?(Prism::RangeNode) }
       end
 
-      # Whether the receiver of a call names a class or module, as in
+      # Whether the receiver of a call or index write names a class or module, as in
       # `Array[1..]` or `Foo::Bar[1..]`. Such a call builds a value, so it is not
       # a slice. A constant in capitals only, as in `ARGV[1..]`, holds a value
       # that is sliced, so it does not count.
       #
-      # @param node [Prism::CallNode] call node to inspect.
+      # @param node [Prism::Node] call or index node that responds to `receiver`.
       # @return [Boolean]
       def class_receiver?(node)
         receiver = node.receiver

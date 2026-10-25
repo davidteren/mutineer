@@ -126,7 +126,8 @@ All notable changes to this project are documented here. The format is based on
   can kill that mutant. Now the operator skips an endless range only when it
   is a direct index argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`,
   `bytesplice`, `values_at` or an index write, and the receiver is not a
-  class (`Array[1..]` is swapped). See
+  class (`Array[1..]` is swapped). A Hash, Proc, or custom `[]`/`slice` can
+  still tell `1..` from `1...`, so those skips can hide a killable mutant. See
   [Equivalent skips](https://davidteren.github.io/mutineer/equivalent-skips.html#endless-range).
   A run that names `range` can get new mutants, new survivors and new mutant
   ids. A new mutant can take the id of an older `range` mutant in the same

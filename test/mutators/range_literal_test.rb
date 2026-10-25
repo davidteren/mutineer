@@ -56,7 +56,8 @@ class RangeLiteralTest < Minitest::Test
     { "(1..)" => "...", "(1...)" => "..", "(1..nil)" => "...", "(1...nil)" => "..",
       "r = (1..)" => "...", "list.fetch(1..)" => "...", "h[:k] = 1..nil" => "...",
       "list[(1..)]" => "...", "list[1..] = (2..)" => "...", "Array[1..]" => "...", "::Set[1...]" => "..",
-      "Foo::Bar[1..]" => "..." }.each do |body, replacement|
+      "Foo::Bar[1..]" => "...", "Registry[1..] ||= x" => "...", "Registry[1..] += x" => "...",
+      "Registry[1..] &&= x" => "...", "Registry[1..], b = x, y" => "..." }.each do |body, replacement|
       mutations, source = run_mutator(body)
       assert_equal 1, mutations.size, "expected 1 mutation for #{body.inspect}"
       m = mutations.first
@@ -65,6 +66,12 @@ class RangeLiteralTest < Minitest::Test
       assert_equal :range, m.operator
       assert m.valid?(source), "mutated #{body.inspect} should re-parse"
     end
+  end
+
+  def test_index_write_mutates_the_assigned_range_not_the_index
+    mutations, source = run_mutator("list[1..] = (2..)")
+    assert_equal 1, mutations.size
+    assert_equal source.index("(2..)") + 2, mutations.first.start_offset
   end
 
   def test_endless_def_body_is_swapped
