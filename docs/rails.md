@@ -35,7 +35,7 @@ Scope the run to the pull request and fail when it adds a survivor.
 Use `--since origin/main`, `--baseline`, and `--no-fail-fast`.
 
 `--since` checks the lines the pull request changed.
-With `--since`, `--baseline` fails the job only when a new survivor appears.
+With `--since`, the `--baseline` gate fails the job only when a new survivor appears or the run is incomplete.
 That run does not check a score drop.
 The score drop check is for a full run.
 When a pull request changes tests, run a full scan of the chosen sources on that

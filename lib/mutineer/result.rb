@@ -173,6 +173,19 @@ module Mutineer
   # nil score (rendered "N/A"), never 0.0, distinguishing "no testable mutants"
   # from "0% killed".
   class AggregateResult
+    # Share of attempted mutants that may produce no verdict before a gate
+    # (`--threshold` or `--baseline`) stops trusting the run. A handful of flaky
+    # mutants in a large run is noise; a mostly-broken run is not a score.
+    # Deliberately not a flag: no one has needed a different number yet.
+    BROKEN_SHARE_LIMIT = 0.10
+
+    # A share alone gives a small run no tolerance at all: on a `--since` PR that
+    # yields 8 mutants, one timeout is 12.5%. README recommends exactly that
+    # workflow, so one bad mutant never fails the share rule on its own, at any
+    # size. The nil-score rule has no floor: with nothing scored, one broken
+    # mutant is enough (see #broken_nil_score?).
+    BROKEN_FLOOR = 1
+
     attr_reader :results
 
     # Builds an aggregate from results.
@@ -222,6 +235,49 @@ module Mutineer
 
       (killed_count.to_f / covered_count * 100).round(1)
     end
+
+    # Mutants that were attempted and produced no verdict, whatever the reason.
+    #
+    # @return [Integer] errored + timed out + uncapturable.
+    def no_verdict_count = errored_count + timeout_count + uncapturable_count
+
+    # Mutants that were actually run. Deliberately not `total`: no_coverage,
+    # skipped-invalid and ignored mutants are not counted (a #254 no_coverage
+    # mutant ran its statement's tests but is not a verdict), so counting them
+    # would dilute the share and let a broken run slip under the limit.
+    #
+    # skipped-invalid is excluded from both sides: it means a mutant did not
+    # re-parse and was correctly never run, which is a validity outcome rather
+    # than a broken harness. Cost: an overwhelmingly-skipped run still scores on
+    # what little ran; that is our operator misbehaving and wants its own signal.
+    #
+    # @return [Integer] killed + survived + no-verdict.
+    def attempted_count = killed_count + survived_count + no_verdict_count
+
+    # True when nothing could be scored and something broke: the score is nil
+    # and some mutant errored, timed out or was uncapturable. A nil score from
+    # pure no_coverage / ignored / an empty run is not broken.
+    #
+    # @return [Boolean]
+    def broken_nil_score? = mutation_score.nil? && total.positive? && no_verdict_count.positive?
+
+    # Mutants that were attempted but produced no verdict, over everything
+    # attempted. Above the limit the score describes too small a slice of the run
+    # to gate on. A few flaky mutants in a large run stay under it.
+    #
+    # @return [Boolean] true when too much of the run failed to produce a verdict.
+    def broken_share_exceeded?
+      attempted = attempted_count
+      attempted.positive? && no_verdict_count > BROKEN_FLOOR &&
+        no_verdict_count > attempted * BROKEN_SHARE_LIMIT
+    end
+
+    # The completeness rule (#78) that both `--threshold` and `--baseline`
+    # gate on: the run cannot be trusted when nothing could be scored and
+    # something broke, or when too much of it produced no verdict.
+    #
+    # @return [Boolean] true when the run is incomplete.
+    def incomplete? = broken_nil_score? || broken_share_exceeded?
 
     # Checks the unrounded score against a threshold. `mutation_score` is
     # rounded for display, so 1999 of 2000 killed reads 100.0; a gate that

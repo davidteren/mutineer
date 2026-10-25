@@ -13,7 +13,7 @@ The latest published version is on [RubyGems](https://rubygems.org/gems/mutineer
 | Commands | `run`, `init`, `triage`, `migrate` | the command and its meaning |
 | CLI flags | the flags in `mutineer --help` | the flag and its meaning |
 | Exit codes | `0`, `1`, and `2` | which result uses which code |
-| JSON schema | `schema_version` `1.8` | existing keys and their meaning |
+| JSON schema | `schema_version` `2.0` | existing keys and their meaning |
 | Mutant ids | `summary.id_format` `2` | the same id for the same mutant |
 | Config keys | the `.mutineer.yml` keys below | the key and what a value means |
 | Action inputs | the `action.yml` inputs below | the input and its meaning |
@@ -27,13 +27,19 @@ The JSON rules are in [docs/json-schema.md](docs/json-schema.md).
 The JSON `schema_version` is not the gem version.
 Each number moves on its own.
 
+The unreleased report uses JSON schema `2.0` because `baseline.fixed_survivors`
+now excludes undecided survivors. Consumers must support the new schema major;
+saved full-run `1.x` reports remain valid baseline inputs. Reports written with
+`--since` remain invalid as baselines and exit 2. This does not enable the
+planned gem `2.0` changes below. Published gem `1.7.0` reports schema `1.8`.
+
 ### Exit codes
 
 <!-- contract:exit-codes -->
 | Code | Meaning |
 |------|---------|
-| `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
+| `0` | Score ≥ threshold (or no gate) **and** no baseline regression, **and** no incomplete run under an active `--threshold` or `--baseline` gate. |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error. |
 | `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
 <!-- /contract:exit-codes -->
 
@@ -100,10 +106,6 @@ Where it prints no warning, the item says documented only.
   In 2.0 those old ids stop matching.
   Run `mutineer migrate` to rewrite old `ignore:` entries.
   Regenerate a baseline with `--format json`.
-- **JSON `schema_version` 2.0.** Documented only.
-  No run warns about this bump.
-  The schema page already says a breaking change bumps the major version.
-  1.7.0 reports `schema_version` `1.8`.
 - **Parallel `--rails` by default, with the `reload` strategy.** 1.7.0 warns.
   Today `--rails` without `--daemon` is serial and uses `redefine`.
   A Minitest `--rails` run with no `daemon` value prints a notice.

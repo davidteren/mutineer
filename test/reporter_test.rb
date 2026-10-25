@@ -218,13 +218,15 @@ class ReporterTest < Minitest::Test
 
   # --- rendering / streams ---
 
-  # Errors are out of the score, so a run without --threshold exits 0 however
-  # many mutants errored. Say so, and name the flag that fails CI on them.
+  # Errors are out of the score, so a run that no gate fails on completeness
+  # exits 0 however many mutants errored. Say so, and name the flags
+  # (--threshold, --baseline) that fail CI on them.
   def test_errors_without_a_threshold_point_at_the_threshold_flag
     results = [Mutineer::Result.error("boom"), Mutineer::Result.error("boom"), Mutineer::Result.killed]
     err = StringIO.new
     reporter(results).report(out: StringIO.new, err: err)
-    assert_includes err.string, "2 mutants errored. Errors are not in the score, so they do not fail a run without a positive --threshold."
+    assert_includes err.string, "2 mutants errored. Errors are not in the score, so they do not fail a run on their own. " \
+                                "With a positive --threshold, or with --baseline, the run fails"
     assert_includes err.string, "more than one mutant has no verdict and they exceed 10% of those attempted"
 
     err = StringIO.new
@@ -238,6 +240,48 @@ class ReporterTest < Minitest::Test
     err = StringIO.new
     reporter([Mutineer::Result.killed]).report(out: StringIO.new, err: err)
     refute_includes err.string, "errored"
+  end
+
+  # A Baseline::Delta for the stderr-note tests; only `incomplete` matters to them.
+  def delta(incomplete:)
+    Mutineer::Baseline::Delta.new(new_survivors: [], fixed_survivors: [], score_before: nil, score_after: nil,
+                                  score_drop: false, score_comparable: false, regressed: false,
+                                  incomplete: incomplete)
+  end
+
+  def half_errored = [Mutineer::Result.error("boom"), Mutineer::Result.error("boom"),
+                      Mutineer::Result.killed, Mutineer::Result.killed]
+
+  # #283: --baseline alone fails an incomplete run, so stderr must say which gate.
+  def test_baseline_without_threshold_explains_an_incomplete_run
+    err = StringIO.new
+    reporter(half_errored).report(out: StringIO.new, err: err, threshold: 0, baseline: delta(incomplete: true))
+    assert_includes err.string, "2 of 4 attempted mutants produced no verdict"
+    assert_includes err.string, "so the --baseline gate fails"
+    refute_includes err.string, "do not fail a run on their own"
+  end
+
+  def test_threshold_and_baseline_name_both_gates
+    err = StringIO.new
+    reporter(half_errored).report(out: StringIO.new, err: err, threshold: 80, baseline: delta(incomplete: true))
+    assert_includes err.string, "so the --threshold and --baseline gates fail"
+  end
+
+  def test_baseline_names_its_gate_when_nothing_could_be_scored
+    err = StringIO.new
+    reporter([Mutineer::Result.error("boom")])
+      .report(out: StringIO.new, err: err, threshold: 0, baseline: delta(incomplete: true))
+    assert_includes err.string, "nothing could be scored (1 errored), so the --baseline gate fails"
+  end
+
+  # AE4: a complete --baseline run still gets the errored-count note.
+  def test_baseline_on_a_complete_run_keeps_the_errored_count_note
+    results = [Mutineer::Result.error("boom"), *Array.new(50) { Mutineer::Result.killed }]
+    err = StringIO.new
+    reporter(results).report(out: StringIO.new, err: err, threshold: 0, baseline: delta(incomplete: false))
+    assert_includes err.string, "1 mutant errored."
+    assert_includes err.string, "With a positive --threshold, or with --baseline"
+    refute_includes err.string, "gate fails"
   end
 
   # The CLI explains an empty run (see CLI.warn_empty_run), once, for every
