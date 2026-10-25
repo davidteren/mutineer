@@ -298,7 +298,7 @@ no tests. It does not rewrite a baseline. Generate a new baseline with
 | `--timeout SECONDS` | Per-mutant time limit for in-process runs, in whole seconds (default: 10). A mutant whose tests run longer is a `timeout`; see [Timeouts and the score](https://github.com/davidteren/mutineer#timeouts-and-the-score). `--daemon` and `--test-command` keep their own limits |
 | `--capture-timeout SECONDS` | Time limit for each in-process coverage-capture subprocess and for the clean run of the unmutated tests, in whole seconds (default: 120). A suite slower than this stops the run as not green. `--daemon` uses it for its coverage capture; `--test-command` ignores it and says so |
 | `--cache-dir DIR` | Directory for the coverage cache (default: `.mutineer`). Give two runs from the same project root different directories so they do not share `coverage.json`. `--test-command` builds no cache, so it ignores it and says so |
-| `--coverage-from FILE` | Reuse the `coverage.json` of an earlier `--rails`/`--boot` run with the same tests over these sources or more, so parallel shards capture coverage once. The run skips the capture. It runs each test that covers one of its sources alone, because a mutant runs only those tests, then all tests once together, and writes its own cache to `--cache-dir`. A test that covers none of its sources does not run alone. A capture that does not fit (changed tests or sources, an owner file added or removed, a source it did not cover, a failed capture, another `PARALLEL_WORKERS`, a cache from before this flag) stops the run (exit 2). Under `--strategy redefine`, eager-load in both runs. It has no effect, and says so, without `--rails`/`--boot` or with `--daemon`, `--test-command` or `--dry-run` |
+| `--coverage-from FILE` | Reuse the `coverage.json` of an earlier `--rails`/`--boot` run with the same tests over these sources or more, so parallel shards capture coverage once. The run skips the capture. It runs each test that covers one of its sources alone, because a mutant runs only those tests, then all tests once together, and writes its own cache to `--cache-dir`. A test that covers none of its sources does not run alone. A capture that does not fit (changed tests or sources, an owner file added or removed, a source it did not cover, a failed capture, another `PARALLEL_WORKERS`, another Minitest `SEED`, a cache from before this flag or a Minitest capture from an older version) stops the run (exit 2). Under `--strategy redefine`, eager-load in both runs. It has no effect, and says so, without `--rails`/`--boot` or with `--daemon`, `--test-command` or `--dry-run` |
 | `--test-command CMD` | Run the suite as a subprocess in the app's own runtime (for apps on Ruby < 3.4); `CMD` must contain `%{files}`. See [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34) |
 | `--daemon` | Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so `--jobs N` is safe under Rails (needs `--rails`/`--boot`; not with `--test-command`). See [the daemon backend](https://github.com/davidteren/mutineer#faster-parallel-safe-rails-the---daemon-backend). `--no-daemon` beats a `.mutineer.yml` `daemon:` key. It keeps `--rails` serial, which is the 1.x default, and in 2.0 it opts out of the parallel default |
 | `--format human\|json\|html` | Report format (default: human; `html` is a self-contained file) |
@@ -431,12 +431,16 @@ RAILS_ENV=test bundle exec mutineer run \
 - **Safe `--jobs N`** — each worker routes to its own copy of the test database, so
   parallel verdicts equal serial (no fixture cross-talk). On first use, a
   worker's database is a copy of the test database after the app boots, so rows
-  written by initializers or `--require` files are there, as in-process. When
-  the copy's schema differs from `db/schema.rb` (another schema version or
-  `schema_sha1` checksum, or no stored checksum, as in an empty or out-of-date
-  test database, or one set up with a plain `load "db/schema.rb"`), the
-  worker loads `db/schema.rb` over it, which drops the copied rows of the
-  tables it defines.
+  written by initializers or `--require` files are there, as in-process. For
+  SQLite, when the copy's schema differs from the app's Ruby schema file (another schema
+  version or `schema_sha1` checksum, or no stored checksum, as in an empty or
+  out-of-date test database, or one set up with a plain `load "db/schema.rb"`),
+  the worker loads that file over it if the file exists. Loading drops copied
+  rows from tables the file defines. Rails selects the test database's schema
+  file: the `SCHEMA` environment variable when it is set, else `schema_dump:` in
+  `config/database.yml`, else `db/schema.rb`.
+  A missing file or `structure.sql` leaves the SQLite copy unchanged. So does
+  `schema_dump: false`, unless `SCHEMA` is set.
 - **One backend at a time** — `--daemon` can't be combined with `--test-command`
   (choose one), and it needs an app to boot (`--rails` or `--boot`).
 
@@ -769,7 +773,11 @@ structured exit codes, and diff-scoped runs. See:
 - **Agent skill** ([`skills/mutineer/SKILL.md`](https://github.com/davidteren/mutineer/blob/main/skills/mutineer/SKILL.md)): a short
   card for coding agents with install, the agent loop, and exit codes. Install it
   with `gh skill install davidteren/mutineer mutineer` or
-  `npx skills add davidteren/mutineer --skill mutineer`.
+  `npx skills add davidteren/mutineer --skill mutineer`. Releases after 1.7.0
+  also ship the skill inside the gem and opt in as a
+  [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive)
+  companion, so in a Rails app that bundles mutineer, `bin/rails hyperdrive:init`
+  installs it to `.claude/skills/mutineer/SKILL.md`.
 
 ## Configuration
 
