@@ -226,15 +226,18 @@ All notable changes to this project are documented here. The format is based on
   `mutineer --list-operators`, whatever the `--operators` order. Only the
   same text counts: a single-quoted `'hi'` still gives two mutants (`""` and
   `''`). Both edits must also start on the same line: in a chain with one
-  call per line, the two copies start on different lines, and both still
-  run, so a line-based filter such as `--since` never loses the edit.
+  call per line, the two copies start on different lines, so both are kept,
+  and `--since` filters each copy by its own start line.
   - Every kept mutant keeps its id. The dropped copy's id no longer appears
     in reports. Runs that use only one of these operators keep the same
     mutants and ids.
   - If you combine these operators, the mutant count and the score can move
     with no code change, so a `--threshold` or `--baseline` gate can change
-    its result. Regenerate a `--baseline` file with `--format json` after
-    upgrading. In a full (unscoped) comparison, a dropped copy that survived
+    its result. Regenerate a `--baseline` file after upgrading, from a full
+    `--format json` run with no `--since`, `--only` or `--fail-fast` (pass
+    `--no-since` and `--no-fail-fast` when `.mutineer.yml` sets them). A
+    scoped report is refused as a baseline, and a partial one misses
+    mutants. In a full (unscoped) comparison, a dropped copy that survived
     is listed as fixed.
   - An ignore entry for one copy's id still ignores only that copy, as for
     the #159 copies. So if you ignore the copy a report shows, the other copy

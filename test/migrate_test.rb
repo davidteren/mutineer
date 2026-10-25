@@ -44,6 +44,12 @@ class MigrateTest < Minitest::Test
       new_id, old_id = extras[:id_map].first
       config = Mutineer::Config.new(sources: [path], project_root: root,
                                     operators: %w[literal_mutation string_literal])
+      jobs, _ignored, _source_map, combined = Mutineer::JobPlan.collect_jobs(
+        config, Mutineer::MutatorRegistry.resolve(%w[literal_mutation string_literal])
+      )
+      assert_equal 1, jobs.size
+      assert_equal 1, combined[:id_map].size
+      assert_equal [new_id], combined[:dropped_id_map].keys
       current, old_to_new = Mutineer::Migrate.id_maps(config)
       assert_includes current, new_id
       assert_equal [new_id], old_to_new[old_id]

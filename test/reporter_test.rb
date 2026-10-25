@@ -20,6 +20,19 @@ class ReporterTest < Minitest::Test
 
   def aggregate(results) = Mutineer::AggregateResult.new(results)
 
+  # #275: mutants at one offset list in the same order whatever order they ran in.
+  def test_same_offset_survivors_list_in_a_fixed_order
+    base = survivor_result
+    other = base.with(mutation: base.mutation.with(replacement: "<", operator: :arithmetic))
+    outs = [[base, other], [other, base]].map do |results|
+      out = StringIO.new
+      Mutineer::Reporter.new(aggregate(results), { FILE => SRC }).report(out: out, err: StringIO.new)
+      out.string
+    end
+    assert_equal outs[0], outs[1]
+    assert_operator outs[0].index("arithmetic"), :<, outs[0].index("comparison")
+  end
+
   # --- AggregateResult contract ---
 
   def test_empty_score_is_nil
