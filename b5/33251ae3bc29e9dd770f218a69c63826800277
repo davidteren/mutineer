@@ -1,0 +1,113 @@
+.expectation-fit/ways-of-working.yaml
+  s_d60e2454db2056::t_5ada140181cf3d 1-32
+AGENTS.md
+  s_d60e2454db2056::t_8fd1b9e069823f 142-156
+CHANGELOG.md
+  s_d60e2454db2056::t_6ec42d035f5dba 11-113
+CLAUDE.md
+  s_d60e2454db2056::t_f06aab05731acd 1-7
+README.md
+  s_d60e2454db2056::t_4073bf10a04c58 95-101,301,345,351-356,440-449,539-551,716-718,721,746,785-789
+docs/agentic-coding.html
+  s_d60e2454db2056::t_e2c371a2d1f4e4 88,97-104,107,130,139,146
+docs/agentic-coding.md
+  s_d60e2454db2056::t_3c76073817611c 33-36,62-69,72-83,85-93,107,138,152-156,165
+docs/json-schema.md
+  s_d60e2454db2056::t_9ee389ac14f28a 254-258
+docs/plans/2026-10-24-001-fix-shared-minitest-seed-plan.md
+  s_d60e2454db2056::t_5edcd0aa7bf080 1-271
+docs/plans/2026-10-24-001-fix-test-command-crash-scored-killed-plan.md
+  s_d60e2454db2056::t_ee80dfe3ccf177 1-146
+docs/rails.html
+  s_d60e2454db2056::t_94977fbc6400c2 84,86,109-112,119,121,123
+docs/rails.md
+  s_d60e2454db2056::t_977559b5007db9 35,46-56,87,93-94,99-103,114,122,128
+lib/mutineer/cli.rb
+  s_d60e2454db2056::t_38da4d1b09bfbe 3,387,389,641-667,671,673,675-684,730-735,738-741
+lib/mutineer/coverage_map.rb
+  s_d60e2454db2056::t_4ba28a6863b2f1 470,1032,1034,1094,1096,1106-1117,1372-1375
+lib/mutineer/daemon_backend.rb
+  s_d60e2454db2056::t_d7fa7b668b6eef 207,463
+lib/mutineer/daemon_server.rb
+  s_d60e2454db2056::t_3f50fb32c9d826 31,202-203,458-462,466-467
+lib/mutineer/external_backend.rb
+  s_d60e2454db2056::t_ca1c22b5d49b99 21-26,42-61,157-159,161,184-207,212-278,280-283,288,292
+lib/mutineer/isolation.rb
+  s_d60e2454db2056::t_27ec46e746266f 260-273
+lib/mutineer/job_plan.rb
+  s_d60e2454db2056::t_5fcaf4dffaf4f5 15,135-138,142,150,153-166
+lib/mutineer/minitest_integration.rb
+  s_d60e2454db2056::t_ad1206bee40dd8 20-26,28-47,100-101,105
+lib/mutineer/rails_worker_db.rb
+  s_d60e2454db2056::t_7935bc2efeddf0 381,436,462-481,485,1134,1165-1175
+lib/mutineer/reporter.rb
+  s_d60e2454db2056::t_f582f5297731c0 152,972,975-979
+lib/mutineer/result.rb
+  s_d60e2454db2056::t_c6e7088e2d60b6 228-242
+lib/mutineer/runner.rb
+  s_d60e2454db2056::t_5ee38bbaf2f1ae 63-67,74-80,150,240,242-249,256,271-272,275,277,283
+mutineer.gemspec
+  s_d60e2454db2056::t_297ea93c14f160 24-29,33-34
+skills/mutineer/SKILL.md
+  s_d60e2454db2056::t_894eaeb75656c0 43-46
+test/cli_test.rb
+  s_d60e2454db2056::t_9323dd1d8505c3 291-350,1146-1199
+test/coverage_map_test.rb
+  s_d60e2454db2056::t_7ae576f3c77edd 463,639-656
+test/daemon_backend_contract_test.rb
+  s_d60e2454db2056::t_8885959e3912c4 95,211
+test/daemon_seed_test.rb
+  s_d60e2454db2056::t_6e63d4d52cb45e 1-31
+test/daemon_worker_db_test.rb
+  s_d60e2454db2056::t_50d189123201c0 26,103-169
+test/external_backend_test.rb
+  s_d60e2454db2056::t_400a67295ec1b6 46-132,254-255,257-266
+test/fixtures/helper_seed/subject.rb
+  s_d60e2454db2056::t_db0ded4a3624c9 1-6
+test/fixtures/helper_seed/subject_test.rb
+  s_d60e2454db2056::t_f2676a82d9b1d1 1-22
+test/fixtures/helper_seed/test_helper.rb
+  s_d60e2454db2056::t_55d5d332a49389 1-12
+test/fixtures/path_relative.rb
+  s_d60e2454db2056::t_6dace769dd5419 1-11
+test/fixtures/path_relative.txt
+  s_d60e2454db2056::t_2fc3d70b33d987 1
+test/fixtures/path_relative_test.rb
+  s_d60e2454db2056::t_aea8b72991f4cc 1-12
+test/fixtures/singleton/concern_class_methods.rb
+  s_d60e2454db2056::t_40e81fa4f6edb6 19-21
+test/fixtures/singleton/concern_class_methods_test.rb
+  s_d60e2454db2056::t_6b79c3f3fda3ad 12-15
+test/gemspec_test.rb
+  s_d60e2454db2056::t_ebb2c99e81edba 1-20
+test/parallel_strategy_test.rb
+  s_d60e2454db2056::t_035028f132cdb3 69-174,202,223-225,231
+test/rails_worker_db_test.rb
+  s_d60e2454db2056::t_e83a93ba1eda65 292-415
+test/reporter_test.rb
+  s_d60e2454db2056::t_c705fdb12ea4d3 79-111
+test/runner_external_test.rb
+  s_d60e2454db2056::t_63c45a2748a8ee 7,40-41,112-141
+test/runner_test.rb
+  s_d60e2454db2056::t_aa3446717b3aae 5,83,439-633,789
+test/singleton_redefine_test.rb
+  s_d60e2454db2056::t_38fa572388d6c3 164-166,168-179
+test/test_runners/minitest_test.rb
+  s_d60e2454db2056::t_b6c5622303a3e3 175,183-192,401
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b533251ae3bc29e9dd770f218a69c63826800277",
+  "prompts": {},
+  "sessions": {
+    "s_d60e2454db2056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1d5efb-2691-4a0a-8a10-c060a7b2a92e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
