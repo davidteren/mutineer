@@ -152,13 +152,13 @@ module Mutineer
             "#{ExternalBackend.generic_env_hint}.#{seed_hint}"
     end
 
-    # Names the configured seed or default, and accounts for helper overrides.
+    # Names the configured seed, and accounts for helper overrides.
     #
     # @api private
     # @return [String]
     def self.minitest_seed_hint
       seed = MinitestIntegration.seed
-      " Minitest defaults to SEED=#{seed}, unless a test helper changes SEED. " \
+      " Mutineer runs Minitest with SEED=#{seed}, unless a test helper changes SEED. " \
         "An order-dependent test can fail here and pass in another order. " \
         "Check the listed test files with the same seed and helpers " \
         "(for \"combined suite\", all of them together). " \

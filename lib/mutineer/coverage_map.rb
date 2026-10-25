@@ -467,7 +467,7 @@ module Mutineer
         return "it has no source fingerprints; capture it again with this version and --rails/--boot"
       end
       return "its entries are not the shape a coverage cache saves; capture it again" unless well_formed_capture?(cached)
-      return "its tests, --require files, boot file, load paths, framework or Minitest seed differ" unless cached["inputs"] == compute_digest(inputs_only: true)
+      return "its tests, --require files, boot file, load paths, framework or Minitest seed differ, or an older version made it; capture it again" unless cached["inputs"] == compute_digest(inputs_only: true)
 
       fingerprints = source_fingerprints
       missing = fingerprints.keys - cached["sources"].keys
@@ -1370,6 +1370,8 @@ module Mutineer
       @load_paths.sort.each { |lp| d.update("loadpath\0#{lp}\0") }
       d.update("framework\0#{@framework}\0")
       # The seed sets the test order, and the order can change which lines run (#282).
+      # This is the configured seed. A test helper that changes SEED is not
+      # digested, like any other helper edit.
       d.update("seed\0#{MinitestIntegration.seed}\0") unless @framework == "rspec"
       d.hexdigest
     end

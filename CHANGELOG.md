@@ -31,16 +31,16 @@ All notable changes to this project are documented here. The format is based on
   capture, the clean checks and the `--daemon` mutant runs used a random
   seed. An order-dependent suite could pass the clean check and then fail in
   every mutant run, so each mutant scored a false `killed`. Every Minitest
-  run that Mutineer starts itself (not `--test-command`) now uses seed `1`,
+  run that Mutineer starts itself (not `--test-command`, see #338) now uses seed `1`,
   or `SEED` when the environment sets it. Such a suite now stops the run
   with "the unmutated suite is not green". The message names the configured
   seed or default and notes that test helpers can change it. Capture, clean
   checks and mutant runs all read `SEED` after loading the tests and helpers.
   Check the listed test files with the same seed and helpers to investigate
   the order-dependent test. A coverage cache from another
-  seed or an older version is captured again. A `--coverage-from` capture
-  from another seed or an older version is rejected with exit 2: capture it
-  again with this version. The internal constant
+  `SEED` in Mutineer's environment or an older version is captured again. A
+  `--coverage-from` capture from another `SEED` or an older version is
+  rejected with exit 2: capture it again with this version. The internal constant
   `MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED` is now `PINNED_SEED`.
   One gap stays: when a mutant runs several covering test files, their test
   classes can still run in a different order than in the combined clean
