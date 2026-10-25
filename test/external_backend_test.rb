@@ -119,6 +119,8 @@ class ExternalBackendTest < Minitest::Test
       "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n#{gate}" => :survived?,
       "4 examples, 0 failures\n#{gate}" => :survived?,
       "3 runs, 3 assertions, 1 failures, 0 errors, 0 skips\n#{gate}" => :killed?,
+      "4 examples, 1 failure\n#{gate}" => :killed?,
+      "0 examples, 0 failures, 1 error occurred outside of examples\n#{gate}" => :error?,
       gate => :error?, # no recognized summary line: a failing run cannot be ruled out
       "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n" => :error?
     }.each do |output, verdict|
