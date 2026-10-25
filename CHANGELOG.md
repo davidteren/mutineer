@@ -18,6 +18,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **An in-test database error scores `error`, not `killed` (#296).** When
+  the first failing test of a Minitest mutant run failed with an Active
+  Record connection or lock error (`ConnectionNotEstablished`, including pool
+  timeouts, `ConnectionFailed`, `Deadlocked`, `LockWaitTimeout`), the mutant
+  now scores `error` on `--daemon` and in-process. This includes an error in
+  `setup`. Errors are out of the score, so a lost database connection during
+  a run no longer raises the score. A stderr line names the error. A mutant
+  that really causes a deadlock, or that breaks connection-handling code, now
+  also scores `error`. More `error` verdicts can fail a `--threshold` run
+  through the existing no-verdict gate. Other database errors, such as a bad
+  SQL statement, still score `killed`. So does `ConnectionNotDefined`, which
+  Rails 8 raises for an unknown role or shard. Rails 7.2 raises a plain
+  `ConnectionNotEstablished` there, so such a mutant scores `error` on 7.2.
+  With `--matrix`, a database-failed test is never a killer and leaves its
+  row incomplete, even if an earlier assertion already killed the mutant.
 - **An old temp file of the other mode no longer stops the boot (#287).**
   Before the app boots, each mode sweeps the source directories. In 1.7.0
   an in-process run removed only old `mutineer_mutant*.rb` files and the
