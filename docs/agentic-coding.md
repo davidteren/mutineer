@@ -30,8 +30,10 @@ change against the intended behaviour before asking the agent to add a test:
    > Write or strengthen a test so it fails under this change.
 
 4. Re-run. Accept the result only when this run exits `0`, `summary.score` is not `null`,
-   and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`;
-   the score is rounded, so `--threshold 100` alone can still pass with a survivor.
+   and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`.
+   Mutineer 1.7.0 and earlier gate on the rounded score, so a run just below the threshold can
+   still exit `0`. On those versions, also require
+   `summary.killed * 100 >= 90 * (summary.killed + summary.survived)`.
 
 Keep `fail_fast` disabled (the default). If the active `.mutineer.yml` sets it to
 `true`, temporarily change that value to `false` for the loop. Restore the original
