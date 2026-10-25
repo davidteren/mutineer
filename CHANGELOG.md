@@ -18,6 +18,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`--daemon` stops on MySQL older than 8.0 (#298).** The support matrix said
+  MySQL 5.7 is not supported, but `--daemon` ran on it. Mutineer now reads the
+  server version before it copies any worker database. MySQL older than 8.0
+  stops the run with `could not provision <base>: MySQL <version> is not
+  supported`. Pass `--no-daemon` (or set `daemon: false`) to stay serial.
+  MariaDB, MySQL 9 or later, and a server version Mutineer cannot read print
+  one warning and run.
 - Mutineer reads its files and pipes as UTF-8 when `LANG` and `LC_ALL` are
   unset (#303). Before, a non-ASCII character in a source file, a baseline, a
   coverage cache, a triage report, `.mutineer.yml` (for `migrate`),
