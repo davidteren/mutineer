@@ -166,6 +166,22 @@ class RedactionTest < Minitest::Test
                  redact("conn failed for hunter22", "postgres://u@h/db?sslmode=off&password=hunter22")
   end
 
+  def test_hides_a_query_password_next_to_a_userinfo_password
+    assert_equal "failed: [REDACTED] [REDACTED]",
+                 redact("failed: dummypw realsecret", "postgres://u:dummypw@host/db?password=realsecret")
+  end
+
+  def test_hides_a_query_password_when_the_userinfo_password_equals_the_username
+    assert_equal "x [REDACTED]", redact("x realsecret", "postgres://postgres:postgres@host/db?password=realsecret")
+  end
+
+  def test_hides_the_password_when_a_query_value_holds_an_at_sign
+    url = "postgres://app:s3cretpw@db:5432/app?application_name=ci@corp"
+
+    assert_equal "FATAL: password [REDACTED] rejected", redact("FATAL: password s3cretpw rejected", url)
+    assert_equal "x [REDACTED]", redact("x s3cr@tpw", "postgres://db:5432/app?password=s3cr@tpw")
+  end
+
   def test_still_hides_a_bare_password_token
     assert_equal "password [REDACTED] rejected", redact("password s3cret rejected", "postgres://u:s3cret@host/db")
   end

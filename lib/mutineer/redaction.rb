@@ -32,7 +32,7 @@ module Mutineer
     module_function
 
     # Hide the password in any URL, and the DATABASE_URL password (from its
-    # `user:password@` pair, or else its `password=` query parameter) wherever
+    # `user:password@` pair and from its `password=` query parameter) wherever
     # it appears: whole, percent-decoded, `inspect` escaped, or cut short after
     # its `scheme://user:` prefix. Outside a URL a form of {SHORT_FORM}
     # characters or fewer is hidden only as a whole token. Never raises: text in
@@ -44,13 +44,17 @@ module Mutineer
     def text(text, env: ENV)
       out = utf8(text.to_s)
       url = utf8(env["DATABASE_URL"].to_s)
-      head, raw = database_url_parts(url)
-      raw ||= query_password(url)
-      secrets = raw ? password_forms(raw) : []
+      # Two readings of the userinfo: up to the last `@` (a malformed password
+      # may hold any character) and up to the last `@` before the path (a
+      # query value may hold an `@`). Both are hidden: hiding too much is safe.
+      parts = [database_url_parts(url), database_url_parts(authority(url))].compact.uniq
       # Prefixes first, on the caller's text, so no replacement made here can
       # be mistaken for part of a password.
-      [head, head&.inspect&.[](1...-1)].compact.uniq.each do |prefix|
-        out = secrets.reduce(out) { |acc, secret| redact_prefixes(acc, prefix, secret) }
+      parts.each do |head, raw|
+        forms = password_forms(raw)
+        [head, head.inspect[1...-1]].uniq.each do |prefix|
+          out = forms.reduce(out) { |acc, secret| redact_prefixes(acc, prefix, secret) }
+        end
       end
       out = out.gsub(URL_PASSWORD) { "#{Regexp.last_match(1)}:#{REDACTED}@" }
       # A password that exactly equals the username is left visible outside a
@@ -58,9 +62,11 @@ module Mutineer
       # redacted URL, so the value is already shown, and blanking it would
       # hide every role and database name in a `postgres:postgres` setup. The
       # skip needs an exact raw match: a password that only shares a form or a
-      # prefix with the username is a separate secret and stays hidden.
-      return out if head && raw == head[(head.index("://") + 3)...-1]
-
+      # prefix with the username is a separate secret and stays hidden. A
+      # `password=` query parameter, which Rails prefers, is always hidden.
+      raws = parts.reject { |head, raw| raw == head[(head.index("://") + 3)...-1] }.map(&:last)
+      raws << query_password(url)
+      secrets = raws.compact.uniq.flat_map { |raw| password_forms(raw) }.uniq.sort_by { |form| -form.length }
       secrets.reduce(out) do |acc, secret|
         secret.length > SHORT_FORM ? acc.gsub(secret, REDACTED) : redact_word(acc, secret)
       end
@@ -128,6 +134,18 @@ module Mutineer
 
       raw = url[(colon + 1)...at]
       [url[0..colon], raw] unless raw.empty?
+    end
+
+    # `url` cut before the first `/`, `?` or `#` after `scheme://`: the part
+    # that holds the userinfo of a well-formed URL.
+    #
+    # @param url [String]
+    # @return [String]
+    def authority(url)
+      start = url.index("://")
+      return url unless start
+
+      url[0...(url.index(%r{[/?#]}, start + 3) || url.length)]
     end
 
     # The raw value of a `password=` query parameter, which Rails and libpq
