@@ -92,7 +92,13 @@ An app on an older Ruby uses `--test-command`.
 Mutineer still runs on Ruby 3.4 or later.
 That path is serial.
 It does not narrow tests by coverage.
-A crash in the command can count as a kill.
+Normally only exit 1 counts as a kill; a SimpleCov gate exit with a
+failing test is also a kill.
+Another exit code scores `error`, and a crash before any test fails can
+also score `error`. A mutant that only fails a SimpleCov coverage gate
+scores `survived` when SimpleCov prints its gate message and the run prints
+a passing summary line
+(details under [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34)).
 
 What a release will not break is in
 [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md).
@@ -530,10 +536,21 @@ Tradeoffs — this path is correct but not free:
 - **Slower:** your app re-boots for every mutant (no shared boot yet).
 - **No coverage narrowing:** every mutant runs the full `--test` set.
   The run is serial.
-  A crash in the command can count as a kill.
+  Only exit 1 counts as a kill.
+  Other exit codes and signals score `error`.
+  An RSpec `--failure-exit-code` other than 1 turns every kill into `error`.
+  When the clean run prints a Minitest or RSpec summary line
+  (`3 runs, 3 assertions, 0 failures, 0 errors` or `3 examples, 0 failures`),
+  an exit 1 also needs a failing test in that line, or a Minitest run that
+  stopped during a test. Otherwise it scores `error`, such as a crash at load.
+  When a SimpleCov `minimum_coverage` gate fails the run, the summary line
+  decides: a failing test is a kill, and every test passing is `survived`.
+  With no recognized summary line, or with SimpleCov's
+  `print_error_status = false`, the gate's exit scores `error`.
+  When the clean run prints no summary line, Mutineer warns once and counts
+  every exit 1 as a kill.
   Uncovered mutants count as survivors.
   Do not compare a `--test-command` score with an in-process score.
-  Exit codes 126 and 127 (the command could not start) are scored `error`.
   Mutineer prints this caveat on every run and aborts up
   front (a "smoke check") if your unmutated suite isn't green.
 - **Reload strategy only** (`--strategy redefine` is rejected on this path) and
