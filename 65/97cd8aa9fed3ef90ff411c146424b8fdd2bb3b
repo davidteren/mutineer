@@ -1,0 +1,33 @@
+CHANGELOG.md
+  s_d60e2454db2056::t_75d8aca9b34b17 26-40
+README.md
+  s_d60e2454db2056::t_4132769ad7a605 699-701,704,731
+docs/agentic-coding.html
+  s_d60e2454db2056::t_f8328f5392063d 97-104,107,130,146
+docs/agentic-coding.md
+  s_d60e2454db2056::t_3972ab46c21b4c 62-69,72-87,89-93,111,142,169
+docs/rails.html
+  s_d60e2454db2056::t_dcf2bc58c7d06b 84,86,109-111,119,121,123
+docs/rails.md
+  s_d60e2454db2056::t_1fb735395d6057 35,46-56,87,93-94,114,122,128
+lib/mutineer/cli.rb
+  s_d60e2454db2056::t_96e3eafcb6351a 3,388,390,642-668,672,674,676-685
+test/cli_test.rb
+  s_d60e2454db2056::t_2a8210ba2b0aa5 291-350,1146-1199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6597cd8aa9fed3ef90ff411c146424b8fdd2bb3b",
+  "prompts": {},
+  "sessions": {
+    "s_d60e2454db2056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1d5efb-2691-4a0a-8a10-c060a7b2a92e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
