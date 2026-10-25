@@ -114,7 +114,7 @@ inputs:
 
 outputs:
   exit-code:
-    description: "The exit code returned by mutineer (0 pass, 1 below-threshold/incomplete-run/regressed, 2 usage)."
+    description: "The exit code returned by mutineer: 0 for a pass; 1 for a below-threshold score, incomplete run, baseline regression or runtime error (including a file load failure); 2 for a usage error, including a missing --boot or require: file."
     value: ${{ steps.run.outputs.exit-code }}
   report:
     description: >-
