@@ -204,8 +204,8 @@ The delta versus the prior `--format json` report, matched by `id`. A baseline w
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
-| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading. |
+| `2` | Usage / invalid-flag error, including a mistyped flag, a bad path (such as a missing `--boot` or `require:` file), or an unreadable baseline. |
 <!-- /contract:exit-codes -->
 
 Under a positive `--threshold`, a run is gated on being complete as well as on its score. Mutants with no
