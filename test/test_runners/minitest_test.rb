@@ -172,12 +172,22 @@ class TestRunnersMinitestTest < Minitest::Test
   end
 
   def test_stop_at_first_failure_pins_the_seed
-    expected = Mutineer::MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED.to_s
+    expected = Mutineer::MinitestIntegration::PINNED_SEED.to_s
     assert_equal expected, seed_of_run(nil, stop_at_first_failure: true)
   end
 
   def test_an_explicit_seed_env_wins_over_the_pinned_seed
     assert_equal "4242", seed_of_run("4242", stop_at_first_failure: true)
+  end
+
+  # #282: coverage capture and the clean checks run with no hook. They pin the
+  # same seed, so a green clean check holds for the order the mutant runs use.
+  def test_a_plain_run_pins_the_seed_too
+    assert_equal Mutineer::MinitestIntegration::PINNED_SEED.to_s, seed_of_run(nil)
+  end
+
+  def test_an_explicit_seed_env_wins_on_a_plain_run
+    assert_equal "4242", seed_of_run("4242")
   end
 
   # The prepends stay in the process after a run. A reloaded class does not
@@ -388,7 +398,7 @@ class TestRunnersMinitestTest < Minitest::Test
   end
 
   def test_record_to_pins_the_seed
-    expected = Mutineer::MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED.to_s
+    expected = Mutineer::MinitestIntegration::PINNED_SEED.to_s
     rd, wr = IO.pipe
     assert_equal expected, seed_of_run(nil, record_to: wr)
   ensure

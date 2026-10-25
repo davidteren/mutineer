@@ -40,8 +40,10 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
    against the intended behaviour. If review finds a test gap, write or strengthen
    a test that fails under that change.
 4. Re-run. Accept the result only when this run exits `0`, `summary.score` is not `null`,
-   and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`;
-   the score is rounded, so `--threshold 100` alone can still pass with a survivor.
+   and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`.
+   Mutineer 1.7.0 and earlier gate on the rounded score, so a run just below the threshold can
+   still exit `0`. On those versions, also require
+   `summary.killed * 100 >= 90 * (summary.killed + summary.survived)`.
 
 Stop after a few unsuccessful attempts and ask a person to review the survivor.
 Failed attempts do not prove that a mutant is equivalent. To

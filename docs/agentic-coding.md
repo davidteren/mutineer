@@ -30,8 +30,10 @@ change against the intended behaviour before asking the agent to add a test:
    > Write or strengthen a test so it fails under this change.
 
 4. Re-run. Accept the result only when this run exits `0`, `summary.score` is not `null`,
-   and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`;
-   the score is rounded, so `--threshold 100` alone can still pass with a survivor.
+   and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`.
+   Mutineer 1.7.0 and earlier gate on the rounded score, so a run just below the threshold can
+   still exit `0`. On those versions, also require
+   `summary.killed * 100 >= 90 * (summary.killed + summary.survived)`.
 
 Keep `fail_fast` disabled (the default). If the active `.mutineer.yml` sets it to
 `true`, temporarily change that value to `false` for the loop. Restore the original
@@ -121,6 +123,11 @@ jobs:
 This workflow runs a full scan on every pull request, so it checks test changes
 without a workflow edit for each PR. A full scan can take longer than a scan of
 changed source lines.
+
+On `pull_request` events, omitting `since:` normally scans changed source lines
+against the PR's base commit. The Action tries the base branch tip if needed. If
+neither base resolves, it warns and supplies no `--since` override; any `since:`
+setting in `.mutineer.yml` can still apply. `since: none` forces a full scan.
 
 For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the app's own bundle):
 
