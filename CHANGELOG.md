@@ -112,17 +112,16 @@ All notable changes to this project are documented here. The format is based on
   the run warns that path-relative methods there can be falsely killed
   (tracked in #339).
 
-- **A mutant on a later line of a call inside a one-line block can be killed
-  (#289).** A call can span several lines, such as
-  `users.map { |u| format("%s",` with arguments on the next lines. Mutineer
-  used to pick no tests for a mutant on a later line, so it was always
-  `no_coverage`. Now, when the lines of the statement give no tests, Mutineer
-  retries. It runs the tests that ran the first or last line of the
-  statement, never the `def` line. A kill counts. A survivor stays
-  `no_coverage` (or `ran_at_load`), because those tests may not have run it. A
-  score can rise with no test change. Such a mutant can now also end as
-  `error` or `timeout`. That counts toward the `--threshold` completeness
-  check.
+- `--test-command` now sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1` for the test
+  command. Mutineer writes each mutant over the source file, and Bootsnap keys
+  its compile cache on path, size and whole-second mtime. Two same-size mutants
+  written in the same second could load the first one's cached code, so a
+  mutant could be scored on code that was not the mutant. Each mutant boot now
+  compiles the app again, which is slower. The variable works through
+  `require "bootsnap/setup"` on Bootsnap 1.7.0 or later; an app that calls
+  `Bootsnap.setup` itself must pass
+  `compile_cache_iseq: ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"].nil?`, so only
+  mutant runs lose the cache. The `--daemon` path is unchanged (#285).
 
 ### Changed
 
