@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mutineer equivalent skips</title>
-<meta name="description" content="Built-in chain-link names and endless ranges Mutineer does not mutate, and why each is equivalent.">
+<meta name="description" content="Built-in chain-link names, call_to_receiver last-call names and endless ranges Mutineer does not mutate, and why each is skipped.">
 <meta name="color-scheme" content="dark light">
 <link rel="canonical" href="https://davidteren.github.io/mutineer/equivalent-skips.html">
 <link rel="alternate" type="text/markdown" href="https://davidteren.github.io/mutineer/equivalent-skips.md" title="Markdown">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="Mutineer">
 <meta property="og:title" content="Mutineer equivalent skips">
-<meta property="og:description" content="Built-in chain-link names and endless ranges Mutineer does not mutate, and why each is equivalent.">
+<meta property="og:description" content="Built-in chain-link names, call_to_receiver last-call names and endless ranges Mutineer does not mutate, and why each is skipped.">
 <meta property="og:url" content="https://davidteren.github.io/mutineer/equivalent-skips.html">
 <meta property="og:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
 <meta property="og:image:width" content="1200">
@@ -19,7 +19,7 @@
 <meta property="og:image:alt" content="Mutineer. Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Mutineer equivalent skips">
-<meta name="twitter:description" content="Built-in chain-link names and endless ranges Mutineer does not mutate, and why each is equivalent.">
+<meta name="twitter:description" content="Built-in chain-link names, call_to_receiver last-call names and endless ranges Mutineer does not mutate, and why each is skipped.">
 <meta name="twitter:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
 <meta name="twitter:image:alt" content="Mutineer. Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='1' fill='%2367286a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
@@ -79,15 +79,15 @@
     </table>
 
     <h2 id="call-to-receiver">Call to receiver</h2>
-    <p>The <code>call_to_receiver</code> operator replaces the last call of a chain with its receiver. It does not use the <code>chain_link</code> list. It skips only the names below, by name only. It replaces the other conversions, such as <code>to_s</code> and <code>to_i</code>. On the last call, a conversion decides the type of the value that the expression returns, so a test can check it. Some of those mutants are equivalent, for example <code>to_s</code> on a value that is already a string, or inside string interpolation. Suppress them with <code># mutineer:disable-line</code> or an <code>ignore:</code> entry, as the top of the page says.</p>
+    <p>The <code>call_to_receiver</code> operator replaces the last call of a chain with its receiver. It does not use the <code>chain_link</code> list. It skips only the names below, by name only. It replaces the other conversions, such as <code>to_s</code> and <code>to_i</code>. On the last call, a conversion decides the type of the value that the expression returns, so a test can check it. Some of those mutants are equivalent, for example <code>to_s</code> on a value that is already a string, or inside string interpolation. Suppress them with <code># mutineer:disable-line call_to_receiver</code> or an <code>ignore:</code> entry, as the top of the page says. Scope the marker to the operator, as in <code># mutineer:disable-line call_to_receiver -- already a String</code>, so it does not hide other mutants on the line. An <code>ignore:</code> entry with the survivor <code>id</code> suppresses only that one mutant.</p>
     <table>
       <tr><th>Name</th><th>Why it is skipped</th></tr>
       <tr><td><code>new</code></td><td>The class takes the place of an instance, so almost any use raises.</td></tr>
       <tr><td><code>dup</code></td><td>Copy. The mutant shows when code later changes the copy or the original, or compares the result with the original by identity.</td></tr>
       <tr><td><code>clone</code></td><td>Copy. The mutant shows when code later changes the copy or the original, or compares the result with the original by identity.</td></tr>
-      <tr><td><code>freeze</code></td><td>Returns the receiver. Only a later write shows the difference.</td></tr>
+      <tr><td><code>freeze</code></td><td>Returns the receiver, now frozen. A <code>frozen?</code> check or a later write shows the difference.</td></tr>
       <tr><td><code>itself</code></td><td>Returns the receiver.</td></tr>
-      <tr><td><code>to_set</code></td><td>An array answers <code>include?</code> and <code>empty?</code> as a set does, so the mutant is most often equivalent. It keeps duplicates, so <code>size</code> and <code>each</code> can differ.</td></tr>
+      <tr><td><code>to_set</code></td><td>For common uses of <code>include?</code> and <code>empty?</code>, an array answers as a set does, so the mutant is often equivalent. Membership can differ: an array compares with <code>==</code> and a set with <code>eql?</code>, so <code>[1].include?(1.0)</code> is true and <code>Set[1].include?(1.0)</code> is false. The array keeps duplicates, so <code>size</code> and <code>each</code> can differ.</td></tr>
     </table>
 
     <h2 id="endless-range">Endless range</h2>

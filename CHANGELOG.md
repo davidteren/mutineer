@@ -121,9 +121,10 @@ All notable changes to this project are documented here. The format is based on
   that list `call_to_receiver` in `--operators` (or `operators:`) change: they
   get more mutants (113 more on Mutineer's own `lib/`). If you gate such a run
   with `--threshold` or `--baseline`, expect new survivors: write a new
-  baseline with the same `mutineer run ... --format json` command that made the
-  old one. A `to_s` mutant on a value that is already a String is equivalent:
-  suppress it with `# mutineer:disable-line` or an `ignore:` entry. (#274)
+  full-scope baseline with `mutineer run ... --no-since --no-fail-fast
+  --format json`, with no `--only`. A `to_s` mutant on a value that is already
+  a String is equivalent: suppress it with
+  `# mutineer:disable-line call_to_receiver` or an `ignore:` entry. (#274)
 - Explain mutation testing before setup, with a runnable beginner guide and a
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.
