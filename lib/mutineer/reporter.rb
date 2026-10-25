@@ -952,7 +952,7 @@ module Mutineer
       out.puts "-------------------"
       out.puts "killed #{@agg.killed_count}, #{delta.new_survivors.size} new survivors vs baseline"
       delta.new_survivors
-           .sort_by { |r| [r.subject.file, r.mutation.start_offset] }
+           .sort_by { |r| [r.subject.file, *tie_key(r)] }
            .each do |r|
         file = r.subject.file
         source = source_for(file)
@@ -964,6 +964,16 @@ module Mutineer
       # comparison was skipped (a diff-scoped side or a nil score).
       out.puts "score-drop check skipped (scores not comparable)" unless delta.score_comparable
       out.puts(delta.regressed ? "REGRESSION vs baseline" : "OK: no regression vs baseline")
+    end
+
+    # Orders mutants in one file: by offset, then operator and replacement, so
+    # mutants at the same offset list the same way whatever order they ran in.
+    #
+    # @param result [Mutineer::Result] a result with a mutation.
+    # @return [Array] the sort key.
+    def tie_key(result)
+      m = result.mutation
+      [m.start_offset, m.operator.to_s, m.replacement.to_s]
     end
 
     # Writes the survivors block.
@@ -980,7 +990,7 @@ module Mutineer
       mutants.group_by { |r| r.subject.file }.sort.each do |file, group|
         out.puts
         out.puts printable(file)
-        group.sort_by { |r| r.mutation.start_offset }.each { |r| survivor(out, file, r) }
+        group.sort_by { |r| tie_key(r) }.each { |r| survivor(out, file, r) }
       end
     end
 

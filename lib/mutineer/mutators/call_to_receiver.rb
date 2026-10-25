@@ -20,7 +20,8 @@ module Mutineer
     # that is the receiver of a dotted call, or of a call write or a call
     # target, is a link, so it gets no mutant here. The two operators give the
     # same source only when the last call repeats the link before it, as in
-    # `node.name.name`.
+    # `node.name.name`. When both edits start on the same line, the job plan
+    # runs one copy, the `chain_link` one (#275).
     #
     # Calls in {SKIPPED} are never replaced; each one counts as declined. The
     # list is shorter than {ChainLink::SKIPPED}: on the last call, a conversion

@@ -39,12 +39,20 @@ module Mutineer
     # `{id:, file:, subject:}` hash per matched mutant, in collection order: its
     # new id, its project-relative file and its subject's qualified name;
     # recorded even when a new id is also listed, since the old entry still
-    # over-matches other files), `id_map` (every new id => its old-format id)
-    # and `declined` (operator name => count of candidates that operator found
-    # and did not mutate, {Mutators::Base#declined}; only counts above zero, keys
-    # sorted). The name is the {MutatorRegistry::ALL} key, or the class's `to_s`
-    # for an operator outside the registry. `--only` narrows `declined`, and
-    # `--since` does not: a declined candidate has no mutation to place on a line.
+    # over-matches other files), `id_map` (every reported mutant's new id =>
+    # its old-format id), `dropped_id_map` (the same for each dropped repeat of
+    # an edit: its id is still current for `mutineer migrate`) and `declined`
+    # (operator name => count of candidates that operator found and did not
+    # mutate, {Mutators::Base#declined}; only counts above zero, keys sorted).
+    # The name is the {MutatorRegistry::ALL} key, or the class's `to_s` for an
+    # operator outside the registry. `--only` narrows `declined`, and `--since`
+    # does not: a declined candidate has no mutation to place on a line.
+    #
+    # Mutations are collected in {MutatorRegistry::ALL} order, whatever the
+    # order of `operator_classes`. Two operators can give the same mutated
+    # source (#275), and the copy of the registry-first operator is the one
+    # that runs, so the kept copy and the run order do not depend on the
+    # `--operators` order.
     #
     # Subjects sharing a qualified name in one file (two owner-less `def index`
     # in two DSL blocks) get a per-file ordinal in discovery order, so their ids
@@ -53,8 +61,15 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @param operator_classes [Array<Class>] resolved operators.
     # @return [Array(Array, Array<Result>, Hash<String,String>, Hash{Symbol => Hash})]
-    #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`, `:id_map`, `:declined`).
+    #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`,
+    #   `:id_map`, `:dropped_id_map`, `:declined`).
     def self.collect_jobs(config, operator_classes)
+      # Registry order, so a repeat across operators keeps the registry-first
+      # copy (#275). A class outside ALL goes last; ties keep the input order.
+      rank = MutatorRegistry::ALL.values
+      operator_classes = operator_classes.each_with_index
+                                         .sort_by { |klass, i| [rank.index(klass) || rank.size, i] }
+                                         .map(&:first)
       source_map = {}
       disabled_map = {}
       id_paths = {}
@@ -68,6 +83,7 @@ module Mutineer
       ignored_results = []
       legacy_ignore_matches = {}
       id_map = {}
+      dropped_id_map = {}
       declined = Hash.new(0)
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file, encoding: "UTF-8"))
@@ -86,22 +102,27 @@ module Mutineer
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
         lines = mutations.map { |m| source.byteslice(0, m.start_offset).count("\n") + 1 }
         keys = result_keys(mutations, source, lines)
-        # A repeat of an earlier edit on the same line is dropped (#159),
-        # separately among the run and the ignored mutants, so an ignored copy
-        # never hides a copy that should run. A dropped copy records nothing.
+        # A repeat of an earlier edit on the same line, from any operator, is
+        # dropped (#159, #275), separately among the run and the ignored
+        # mutants, so an ignored copy never hides a copy that should run. A
+        # dropped copy is not reported, but its id stays current for migrate.
         seen = { run: Set.new, ignored: Set.new }
         mutations.each_with_index do |mutation, i|
           id = ids[i]
           legacy = legacy_ids[i]
           ignored = suppressed?(mutation.operator, lines[i], [id, legacy], disabled, ignore_set)
-          next unless seen[ignored ? :ignored : :run].add?(keys[i])
-
-          id_map[id] = legacy
           # An old entry still over-matches other files even when the new id is
-          # listed too, so every old-entry match is reported for migration.
+          # listed too, so every old-entry match is reported for migration,
+          # including a dropped copy's.
           if ignore_set.include?(legacy)
             (legacy_ignore_matches[legacy] ||= []) << { id: id, file: id_path, subject: subject.qualified_name }
           end
+          unless seen[ignored ? :ignored : :run].add?(keys[i])
+            dropped_id_map[id] = legacy
+            next
+          end
+
+          id_map[id] = legacy
           if ignored
             reason = suppression_reason(mutation.operator, lines[i], [id, legacy], disabled, ignore_reasons)
             ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id, reason: reason)
@@ -111,14 +132,14 @@ module Mutineer
         end
       end
       declined = declined.select { |_, count| count.positive? }.sort.to_h
-      [jobs, ignored_results, source_map,
-       { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map, declined: declined }]
+      [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map,
+                                            dropped_id_map: dropped_id_map, declined: declined }]
     end
 
-    # One key per mutation; two mutations share a key exactly when they are
-    # the same operator on the same line and give the same mutated source (one
-    # edit, #159). The caller drops a repeat after ids are assigned. Only a
-    # group of same-operator, same-line mutations can repeat, so only those
+    # One key per mutation; two mutations share a key exactly when they are on
+    # the same line and give the same mutated source (one edit), from one
+    # operator (#159) or two (#275). The caller drops a repeat after ids are
+    # assigned. Only a group of same-line mutations can repeat, so only those
     # build a key from their text: the span from the group's earliest start to
     # its latest end, digested. Every other mutation gets a key of its own.
     #
@@ -128,7 +149,7 @@ module Mutineer
     # @return [Array<Object>] one key per mutation, in order.
     def self.result_keys(mutations, source, lines)
       keys = Array.new(mutations.size) { |i| i }
-      mutations.each_index.group_by { |i| [mutations[i].operator, lines[i]] }.each_value do |group|
+      mutations.each_index.group_by { |i| lines[i] }.each_value do |group|
         next if group.size < 2
 
         from = group.map { |i| mutations[i].start_offset }.min
@@ -136,7 +157,7 @@ module Mutineer
         group.each do |i|
           m = mutations[i]
           span = "#{source.byteslice(from...m.start_offset)}#{m.replacement}#{source.byteslice(m.end_offset...to)}"
-          keys[i] = [m.operator, lines[i], Digest::SHA256.digest(span)]
+          keys[i] = [lines[i], Digest::SHA256.digest(span)]
         end
       end
       keys

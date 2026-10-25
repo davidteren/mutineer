@@ -298,6 +298,42 @@ All notable changes to this project are documented here. The format is based on
   `compile_cache_iseq: ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"].nil?`, so only
   mutant runs lose the cache. The `--daemon` path is unchanged (#285).
 
+- **A mutant that two operators make is scored once** (#275).
+  `literal_mutation` and `string_literal` both turn `"hi"` into `""`, and
+  `chain_link` and `call_to_receiver` both turn `node.name.name` into
+  `node.name`. Each copy had its own id, so one surviving edit counted twice.
+  Now one copy runs: the copy of the operator that comes first in
+  `mutineer --list-operators`, whatever the `--operators` order. Only the
+  same text counts: a single-quoted `'hi'` still gives two mutants (`""` and
+  `''`). Both edits must also start on the same line: in a chain with one
+  call per line, the two copies start on different lines, so both are kept,
+  and `--since` filters each copy by its own start line.
+  - Every kept mutant keeps its id. The dropped copy's id no longer appears
+    in reports. Runs that use only one of these operators keep the same
+    mutants and ids.
+  - If you combine these operators, the mutant count and the score can move
+    with no code change, so a `--threshold` or `--baseline` gate can change
+    its result. Regenerate a `--baseline` file after upgrading, from a full
+    `--format json` run with no `--since`, `--only` or `--fail-fast` (pass
+    `--no-since` and `--no-fail-fast` when `.mutineer.yml` sets them). A
+    scoped report is refused as a baseline, and a partial one misses
+    mutants. In a full (unscoped) comparison, a dropped copy that survived
+    is listed as fixed.
+  - An ignore entry for one copy's id still ignores only that copy, as for
+    the #159 copies. So if you ignore the copy a report shows, the other copy
+    then runs and is reported, and it needs its own entry. Keep both entries:
+    a run with one operator alone still uses its entry, and
+    `mutineer migrate` keeps both as current ids. This also fixes the #159
+    copies: an `ignore:` list that names both copies of a repeated edit no
+    longer makes `mutineer migrate` exit 1.
+  - An old-format ignore entry that matches only a dropped copy gets the
+    old-id-format warning and counts in `summary.legacy_id_matches.ignore`,
+    so `mutineer migrate` updates it. For the #159 copies this is new: such
+    an entry was not counted before, so with one operator the count can go
+    up, and the warning can name an id that no report shows.
+  - Within a method, mutants now run and list in the `--list-operators`
+    order. This applies to any run whose `--operators` or `operators:` list
+    is in another order, so `--dry-run` lists and `--fail-fast` can differ.
 - **A nested method's mutant under `--strategy redefine`.** Redefine now
   also loads the mutated method into each method that encloses it. Before,
   a call to the outer method defined the original inner method again, so

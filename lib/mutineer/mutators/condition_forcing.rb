@@ -22,7 +22,8 @@ module Mutineer
     # as the `nil` that `statement_removal` or `return_nil` puts in place of the
     # whole conditional. It is still made: dropping it would make the mutants
     # of one operator depend on which other operators run, and on what the user
-    # suppressed for them. The two then get the same verdict.
+    # suppressed for them. The two then get the same verdict. Their text
+    # differs, so the job plan's drop of a repeated edit (#275) keeps both.
     #
     # `condition_negation` wraps the condition in `!( ... )`, which neither
     # forced value is.

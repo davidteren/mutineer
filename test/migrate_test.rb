@@ -32,6 +32,47 @@ class MigrateTest < Minitest::Test
     assert_equal found, old_to_new.size
   end
 
+  # #275: literal_mutation and string_literal both turn "hi" into "", so the
+  # string_literal copy is dropped. Its id stays current, so migrate keeps an
+  # ignore entry for it and maps its old-format id to it.
+  def test_a_dropped_copy_id_is_still_current
+    Dir.mktmpdir("mutineer-migrate") do |root|
+      path = File.join(root, "str.rb")
+      File.write(path, "class Str\n  def a\n    \"hi\"\n  end\nend\n")
+      only = Mutineer::Config.new(sources: [path], project_root: root)
+      extras = Mutineer::JobPlan.collect_jobs(only, Mutineer::MutatorRegistry.resolve(%w[string_literal])).last
+      new_id, old_id = extras[:id_map].first
+      config = Mutineer::Config.new(sources: [path], project_root: root,
+                                    operators: %w[literal_mutation string_literal])
+      jobs, _ignored, _source_map, combined = Mutineer::JobPlan.collect_jobs(
+        config, Mutineer::MutatorRegistry.resolve(%w[literal_mutation string_literal])
+      )
+      assert_equal 1, jobs.size
+      assert_equal 1, combined[:id_map].size
+      assert_equal [new_id], combined[:dropped_id_map].keys
+      current, old_to_new = Mutineer::Migrate.id_maps(config)
+      assert_includes current, new_id
+      assert_equal [new_id], old_to_new[old_id]
+      assert_empty Mutineer::Migrate.rewrite("ignore:\n  - #{new_id}\n", current, old_to_new).unmapped
+    end
+  end
+
+  # #159, #275: literal_mutation turns `0` into `1` twice, and one copy is
+  # dropped. An ignore list that names both copies' ids maps with no leftovers.
+  def test_both_copies_of_a_repeated_edit_stay_current
+    Dir.mktmpdir("mutineer-migrate") do |root|
+      path = File.join(root, "zero.rb")
+      File.write(path, "class Zero\n  def a\n    0\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: root, operators: %w[literal_mutation])
+      extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[literal_mutation])).last
+      ids = extras[:id_map].keys + extras[:dropped_id_map].keys
+      assert_equal 2, ids.uniq.size
+      current, old_to_new = Mutineer::Migrate.id_maps(config)
+      text = "ignore:\n#{ids.map { |id| "  - #{id}\n" }.join}"
+      assert_empty Mutineer::Migrate.rewrite(text, current, old_to_new).unmapped
+    end
+  end
+
   # #303: with LANG unset Ruby reads files as US-ASCII. migrate must still
   # rewrite a .mutineer.yml that holds a non-ASCII reason.
   def test_migrate_rewrites_a_non_ascii_config_under_an_ascii_locale
