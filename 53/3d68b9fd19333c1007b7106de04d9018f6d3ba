@@ -1,0 +1,33 @@
+CHANGELOG.md
+  s_587ea4eb636352::t_13a8d25bc14491 115-124
+README.md
+  s_587ea4eb636352::t_6431648d755d8f 409-418,510-511
+lib/mutineer/external_backend.rb
+  s_587ea4eb636352::t_4e94ffc23889e0 31-32,98-106,130
+test/external_backend_test.rb
+  s_587ea4eb636352::t_71ee5ca7d4e2ab 174-175,181
+test/fixtures/singleton/concern_class_methods.rb
+  s_587ea4eb636352::t_7f048d4010e7a3 19-21
+test/fixtures/singleton/concern_class_methods_test.rb
+  s_587ea4eb636352::t_eeda7e15f56f70 12-15
+test/runner_external_test.rb
+  s_587ea4eb636352::t_803ee2ca54e979 158-159,161,167,176
+test/singleton_redefine_test.rb
+  s_587ea4eb636352::t_0680d81456e576 14,18,163-165,167-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "533d68b9fd19333c1007b7106de04d9018f6d3ba",
+  "prompts": {},
+  "sessions": {
+    "s_587ea4eb636352": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_587ea4eb636352",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
