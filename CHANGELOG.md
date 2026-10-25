@@ -46,14 +46,6 @@ All notable changes to this project are documented here. The format is based on
   classes can still run in a different order than in the combined clean
   check. RSpec does not change.
 
-### Changed
-
-- Explain mutation testing before setup, with a runnable beginner guide and a
-  first run on one file. Simplify wording across the website and clarify Rails
-  setup, CI baselines, and reasons for ignoring a mutant.
-
-### Fixed
-
 - **`--strategy redefine` and path-relative methods.** Redefine now loads
   the mutated method from a hidden file beside the source, as reload does.
   It used the system temp directory before, so `__dir__` and
@@ -62,6 +54,12 @@ All notable changes to this project are documented here. The format is based on
   `--rails` without `--daemon`. When a source directory is not writable,
   redefine still uses the system temp directory there, as before, and
   the run warns that path-relative methods there can be falsely killed.
+
+### Changed
+
+- Explain mutation testing before setup, with a runnable beginner guide and a
+  first run on one file. Simplify wording across the website and clarify Rails
+  setup, CI baselines, and reasons for ignoring a mutant.
 
 ## [1.7.0] - 2026-10-23
 
