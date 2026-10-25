@@ -11,6 +11,7 @@ require_relative "mutator_registry"
 require_relative "mutant_id"
 require_relative "project_path"
 require_relative "external_backend"
+require_relative "isolation"
 require_relative "test_runners"
 require_relative "orphan_guard"
 
@@ -177,6 +178,30 @@ module Mutineer
         "Check the listed test files with the same seed and helpers " \
         "(for \"combined suite\", all of them together). " \
         "Change SEED, including helper settings, to choose another order."
+    end
+
+    # The reload mutant text for a def in a concern's `included` or `prepended`
+    # block (#297): the mutated file with one statement added just before the
+    # hook call, `::Mutineer::ConcernBlocks.store_hook_def do <mutated def> end`.
+    # The statement sits in the same body as the hook call, so the stored def has
+    # the block's constant scope. After the load, the child passes the hook-def
+    # values to {ConcernBlocks.place_hook_def}. Shared by {Runner.run} and
+    # {DaemonBackend.job_result}, so both build the same text. The hook call starts
+    # before the def, so the mutation does not move its offset. A bad insert is
+    # not checked here: the child's `load` raises `SyntaxError` before any test
+    # runs, so the mutant scores `error`.
+    #
+    # @param mutated [String] the mutated source text.
+    # @param mutation [Mutineer::Mutation] the mutation.
+    # @param subject [Mutineer::Subject] a subject with a {Subject#reload_hook_call}.
+    # @param source [String] the original source text.
+    # @return [Array(String, Hash{Symbol => Object})] the mutant text, and the
+    #   original def's `line`, `name` and `singleton`.
+    def self.hook_mutant(mutated, mutation, subject, source)
+      at = subject.reload_hook_call.location.start_offset
+      stored = "::Mutineer::ConcernBlocks.store_hook_def do\n#{Isolation.mutated_def(mutation, subject, source)}\nend; "
+      [mutated.byteslice(0...at) + stored + mutated.byteslice(at..),
+       { line: subject.def_node.location.start_line, name: subject.name, singleton: subject.singleton }]
     end
 
     # Coverage-based test selection, shared by the in-process ({Runner.run}) and daemon

@@ -824,6 +824,25 @@ class RunnerTest < Minitest::Test
     assert_equal({}, extras[:declined])
   end
 
+  # #297: the reload mutant of a hook-block def stores the mutated def just
+  # before the hook call, in the same module body, and still parses.
+  def test_hook_mutant_inserts_the_stored_def_before_the_hook_call
+    path = File.expand_path("fixtures/singleton/concern_class_methods.rb", __dir__)
+    source = File.read(path)
+    subject = Mutineer::Project.discover([path], only: "ConcernPricing#doubled").first
+    body = subject.body_loc
+    mutation = Mutineer::Mutation.new(start_offset: body.start_offset, end_offset: body.end_offset,
+                                      replacement: "x - 2", operator: "test")
+    code, hook_def = Mutineer::JobPlan.hook_mutant(mutation.apply(source), mutation, subject, source)
+
+    assert_empty Mutineer::Parser.parse_string(code).errors
+    assert_equal 1, code.scan("::Mutineer::ConcernBlocks.store_hook_def do").size
+    stored = code.index("store_hook_def do\ndef doubled(x)\n      x - 2\n    end\nend; included do")
+    refute_nil stored, code
+    assert_operator stored, :<, code.index("included do\n    def doubled(x)\n      x - 2")
+    assert_equal({ line: 23, name: :doubled, singleton: false }, hook_def)
+  end
+
   private
 
   def with_rails_env(value)

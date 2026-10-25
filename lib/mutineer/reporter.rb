@@ -804,7 +804,8 @@ module Mutineer
       # A broken harness, not a coverage gap: report it distinctly from No coverage.
       out.puts format("Uncapturable: %-6d  (tests failed to run)", @agg.uncapturable_count)
       # Not broken: the strategy cannot load these where the tests call them (no
-      # named class under redefine, or a concern's `included` or `prepended` block).
+      # named class under redefine, or some methods in a concern's `included` or
+      # `prepended` block; see docs/json-schema.md).
       out.puts format("Unplaceable:  %-6d  (not loadable where the tests call it; verify with --test-command)",
                       @agg.unplaceable_count)
       # Not a verdict: the line ran before the mutant was applied (#187).

@@ -293,7 +293,7 @@ no tests. It does not rewrite a baseline. Generate a new baseline with
 | `--jobs N` | Parallel worker count (default: processor count); forced to `1` by `--test-command`, `--fail-fast`, or `--rails` without `--daemon` |
 | `--boot FILE` | Require an app entry point once before forking; select at least one test file |
 | `--rails` | Boot `config/environment` and reconnect ActiveRecord per fork; without `--daemon`, defaults to `redefine` and runs serially |
-| `--verbose` | Surface the real error when a fork capture fails (alias `--debug`) |
+| `--verbose` | Show full error details: the backtrace and causes of a load failure, the real error of a failed fork capture, and the `--test-command` output (alias `--debug`) |
 | `--strategy NAME` | Mutation application: `reload` whole-file (default) or `redefine` surgical (`7a`/`7b` accepted as deprecated aliases) |
 | `--timeout SECONDS` | Per-mutant time limit for in-process runs, in whole seconds (default: 10). A mutant whose tests run longer is a `timeout`; see [Timeouts and the score](https://github.com/davidteren/mutineer#timeouts-and-the-score). `--daemon` and `--test-command` keep their own limits |
 | `--capture-timeout SECONDS` | Time limit for each in-process coverage-capture subprocess and for the clean run of the unmutated tests, in whole seconds (default: 120). A suite slower than this stops the run as not green. `--daemon` uses it for its coverage capture; `--test-command` ignores it and says so |
@@ -316,8 +316,8 @@ no tests. It does not rewrite a baseline. Generate a new baseline with
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
-| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading. |
+| `2` | Usage / invalid-flag error, including a mistyped flag, a bad path (such as a missing `--boot` or `require:` file), or an unreadable baseline. |
 <!-- /contract:exit-codes -->
 
 ### Operators
@@ -342,7 +342,7 @@ RAILS_ENV=test bundle exec mutineer run \
 
 `--rails` boots `config/environment` once in the parent process (every mutant
 then forks and inherits it), defaults `--strategy` to `redefine` without `--daemon`
-(surgical: it reloads only the mutated method, not the whole file; `--daemon` keeps `reload`), and reconnects ActiveRecord in each
+(surgical: it reloads only the mutated method and each method that directly encloses it, not the whole file; a method nested in a block such as `define_method` can still falsely survive, so use `--strategy reload` for it; `--daemon` keeps `reload`), and reconnects ActiveRecord in each
 fork so the database connection is fork-safe. Use `--boot FILE` to boot a
 different entry point. Boot mode requires at least one `--test` file and is
 coverage-guided — each mutant runs only the test files that exercise its line
@@ -475,8 +475,12 @@ Drop one with ``DROP DATABASE `myapp_test-mutineer-0`;`` (MySQL quotes the name 
 A second run on the same test database stops with `another Mutineer run is using <base>` until the first run ends.
 MySQL runs at most 256 workers.
 `mysql2` and `trilogy` are supported.
-MariaDB is not tested.
-MySQL 5.7 is not supported.
+MySQL older than 8.0 (such as 5.7) is not supported.
+On MySQL older than 8.0, `--daemon` stops the run with `could not provision <base>: MySQL <version> is not supported` before it copies any database.
+To run on MySQL older than 8.0, pass `--no-daemon` (or set `daemon: false`), and the run is serial.
+MariaDB and MySQL 9 or later are not tested.
+On them, `--daemon` prints a warning and runs.
+If Mutineer cannot read the server version, it prints a warning and runs.
 A `:memory:` database is not supported on `--daemon`.
 
 ### Apps on Ruby < 3.4

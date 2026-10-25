@@ -25,9 +25,11 @@ module Mutineer
   #                  it, so it is not run. Under `--strategy redefine` the
   #                  method belongs to a class or module that cannot be named
   #                  statically (for example each class that includes a
-  #                  concern). Under either strategy the method is in a
-  #                  concern's `included` or `prepended` block, which does not
-  #                  run again in a class that already includes it (#256).
+  #                  concern), and every method in a concern's `included` or
+  #                  `prepended` block is one (#256). Under `--strategy reload`
+  #                  only some methods in such a block are: those it cannot
+  #                  load into each class that has them (#297; the cases are
+  #                  listed in docs/json-schema.md).
   #                  Excluded from the denominator and, unlike uncapturable,
   #                  from the no-verdict gate: nothing is broken.
   #                  `--test-command` runs these mutants.
