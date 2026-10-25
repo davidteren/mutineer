@@ -1,0 +1,75 @@
+CHANGELOG.md
+  s_b46252bd90b793::t_e070262567c77b 115-124,128-138
+README.md
+  s_b46252bd90b793::t_aa5a2253e90726 409-418,510-511
+docs/equivalent-skips.html
+  s_b46252bd90b793::t_e7c73c50983d57 7,14,22,53,57,81-92,94-98
+docs/equivalent-skips.md
+  s_b46252bd90b793::t_29bde00304b68f 4-5,19-24,48-70,73-81
+docs/json-schema.md
+  s_b46252bd90b793::t_b096186b0c64df 39,58,66,90
+docs/plans/2026-10-24-274-feat-call-to-receiver-skip-list-plan.md
+  s_b46252bd90b793::t_26f65ecbfb8973 1-235
+docs/plans/2026-10-24-289-fix-continuation-line-coverage-plan.md
+  s_b46252bd90b793::t_3b96c3bb38019f 1-233
+docs/plans/2026-10-24-299-fix-endless-range-skip-plan.md
+  s_b46252bd90b793::t_2c1e719d2bca7d 1-245
+lib/mutineer/external_backend.rb
+  s_b46252bd90b793::t_a1ea2f693a9dc8 31-32,98-106,130
+lib/mutineer/job_plan.rb
+  s_b46252bd90b793::t_bd183d7153e960 174-181,207-208,210
+lib/mutineer/mutators/call_to_receiver.rb
+  s_b46252bd90b793::t_ae8bb9f4e56815 25-29,37-47,119,127
+lib/mutineer/mutators/chain_link.rb
+  s_b46252bd90b793::t_fb1d8bf489f272 28
+lib/mutineer/mutators/range_literal.rb
+  s_b46252bd90b793::t_0fc2836d96daa0 13-19,24-86,92,98-126
+lib/mutineer/result.rb
+  s_b46252bd90b793::t_0d6fa9c02afabd 14-16
+lib/mutineer/statement_lines.rb
+  s_b46252bd90b793::t_992c5afea5cdff 15-22,25-28,49-50
+test/external_backend_test.rb
+  s_b46252bd90b793::t_6dd3f5137cb903 174-175,181
+test/fixtures/continuation.rb
+  s_b46252bd90b793::t_37b5982d803647 4-5,52-57
+test/fixtures/continuation_test.rb
+  s_b46252bd90b793::t_7acfb80ba64003 36-39
+test/fixtures/continuation_weak_test.rb
+  s_b46252bd90b793::t_9cb2e001bb2894 6-7,12-15
+test/fixtures/singleton/concern_class_methods.rb
+  s_b46252bd90b793::t_ec142f235f2eb0 19-21
+test/fixtures/singleton/concern_class_methods_test.rb
+  s_b46252bd90b793::t_3893c8a080ef6b 12-15
+test/mutators/call_to_receiver_test.rb
+  s_b46252bd90b793::t_f359c6945b53a5 98,104-117,140
+test/mutators/range_literal_test.rb
+  s_b46252bd90b793::t_959666b1f8534f 45-49,55-84,86
+test/runner_external_test.rb
+  s_b46252bd90b793::t_d828a777dfc8e3 158-159,161,167,176
+test/runner_test.rb
+  s_b46252bd90b793::t_ff1b33540768cf 284-320
+test/singleton_redefine_test.rb
+  s_b46252bd90b793::t_9f81a86fa2b8c0 14,18,163-165,167-178
+test/site_docs_test.rb
+  s_b46252bd90b793::t_c6e437be1b979b 79,82,84,89-107
+test/statement_coverage_test.rb
+  s_b46252bd90b793::t_1af70a605b988f 82-100
+test/statement_lines_test.rb
+  s_b46252bd90b793::t_7f5ff44741e319 40-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "71ac62819a6ac329bf4dc6ff24ea324ce5036af5",
+  "prompts": {},
+  "sessions": {
+    "s_b46252bd90b793": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_b46252bd90b793",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
