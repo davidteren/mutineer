@@ -277,6 +277,30 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
+  # #303: with LANG unset the captured output reads as US-ASCII. Non-ASCII
+  # output from a failing suite must reach the smoke error, not crash it.
+  def test_smoke_check_non_ascii_output_under_an_ascii_locale
+    with_script(%(STDOUT.puts "caf\\u00e9 down"\nexit 1\n)) do |path|
+      err = with_ascii_default_external do
+        assert_raises(Mutineer::SmokeCheckError) do
+          Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
+        end
+      end
+      assert_includes err.message, "caf\u00e9 down"
+    end
+  end
+
+  # Test output need not be valid UTF-8 (a Latin-1 message, say). The smoke
+  # error still carries the text, with the bad byte shown as \xNN.
+  def test_smoke_check_invalid_utf8_output_is_replaced_not_raised
+    with_script(%(STDOUT.binmode\nSTDOUT.write("bad \\xFF byte\\n")\nexit 1\n)) do |path|
+      err = assert_raises(Mutineer::SmokeCheckError) do
+        Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
+      end
+      assert_includes err.message, "bad \\xFF byte"
+    end
+  end
+
   def test_smoke_check_ruby_version_mismatch_gives_targeted_hint
     msg = "Bundler::RubyVersionMismatch: Your Ruby version is 3.4.9, " \
           "but your Gemfile specified 3.1.6"

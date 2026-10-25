@@ -96,6 +96,27 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #303: with LC_ALL=C Ruby reads files as US-ASCII. A source line with a
+  # non-ASCII character must still run, report, and gate on a baseline.
+  def test_non_ascii_source_runs_and_gates_under_an_ascii_locale
+    with_project do |proj|
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub("    a + b\n", "    a + b # caf\u00e9\n"))
+      env = { "LC_ALL" => "C", "LANG" => nil }
+      run = ["run", "calculator.rb", "--test", "calculator_weak_test.rb", "--operators", "arithmetic", "--jobs", "1"]
+      ruby = [RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", BIN]
+
+      # binmode: this test process may run under an ASCII locale too.
+      out, err, status = Open3.capture3(env, *ruby, *run, "--format", "json", chdir: proj, binmode: true)
+      assert_equal 0, status.exitstatus, err
+      File.write(File.join(proj, "base.json"), out)
+      assert_includes JSON.parse(out)["survivors"].map { |s| s["diff"] }.join, "caf\u00e9"
+
+      _, err, status = Open3.capture3(env, *ruby, *run, "--baseline", "base.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+    end
+  end
+
   def test_triage_without_a_reason_is_usage_not_an_unknown_command
     _, err, status = mutineer("triage", "report.json", "--all")
     assert_equal 2, status.exitstatus
