@@ -1,0 +1,29 @@
+CHANGELOG.md
+  s_d60e2454db2056::t_cb5b792e299615 129-130
+docs/equivalent-skips.html
+  s_d60e2454db2056::t_54380cafa987e9 53,83-84
+docs/equivalent-skips.md
+  s_d60e2454db2056::t_1681affab6c50d 52,54
+docs/plans/2026-10-24-299-fix-endless-range-skip-plan.md
+  s_d60e2454db2056::t_ef62e2f704be3f 41,83
+lib/mutineer/mutators/range_literal.rb
+  s_d60e2454db2056::t_59fe099bedc8dc 26-27,46,100-101,106-107,113,118
+test/mutators/range_literal_test.rb
+  s_d60e2454db2056::t_042d814122a2b3 59-60,71-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4c681abb65e963790cca0ec2ccf82d5e6b8c6118",
+  "prompts": {},
+  "sessions": {
+    "s_d60e2454db2056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1d5efb-2691-4a0a-8a10-c060a7b2a92e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
