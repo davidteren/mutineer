@@ -125,6 +125,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **`call_to_receiver` now mutates last-call conversions such as `to_s` and
+  `to_i`.** `m[1].to_i` now gives the mutant `m[1]`. Before, the operator skipped the
+  same names as `chain_link`. Now it skips only `new`, `dup`, `clone`,
+  `freeze`, `itself` and `to_set`. `chain_link` does not change. Only runs
+  that list `call_to_receiver` in `--operators` (or `operators:`) change: they
+  get more mutants (113 more on Mutineer's own `lib/`). If you gate such a run
+  with `--threshold` or `--baseline`, expect new survivors: write a new
+  full-scope baseline with `mutineer run ... --no-since --no-fail-fast
+  --format json`, with no `--only`. A `to_s` mutant on a value that is already
+  a String is equivalent: suppress it with
+  `# mutineer:disable-line call_to_receiver` or an `ignore:` entry. (#274)
 - Explain mutation testing before setup, with a runnable beginner guide and a
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.

@@ -16,12 +16,12 @@ argument. The command does not edit files. See
 
 ## Chain link
 
-The `chain_link` operator removes a call from the middle of a chain.
-The `call_to_receiver` operator removes the last call. Both skip the names below
-without checking the receiver or next call. Conversions and copies often leave
-the result unchanged. Removing a middle `new` sends the next call to the class.
-That can raise an error or reach a class method that builds the instance itself.
-Removing a final `new` leaves the class in place of an instance.
+The `chain_link` operator removes a call from the middle of a chain. It skips
+the names below without checking the receiver or next call. Conversions and
+copies often leave the result unchanged. Removing a middle `new` sends the next
+call to the class. That can raise an error or reach a class method that builds
+the instance itself. The `call_to_receiver` operator has its own, shorter list:
+see [Call to receiver](#call-to-receiver).
 
 | Name | Why it is skipped |
 |------|-------------------|
@@ -44,6 +44,29 @@ Removing a final `new` leaves the class in place of an instance.
 | `freeze` | A freeze that nothing later mutates changes nothing a test can see. |
 | `itself` | Returns the receiver. Dropping it changes nothing. |
 | `new` | The next call goes to the class. That raises, or it is a class method. |
+
+## Call to receiver
+
+The `call_to_receiver` operator replaces the last call of a chain with its
+receiver. It does not use the `chain_link` list. It skips only the names below,
+by name only. It replaces the other conversions, such as `to_s` and `to_i`. On
+the last call, a conversion decides the type of the value that the expression
+returns, so a test can check it. Some of those mutants are equivalent, for
+example `to_s` on a value that is already a string, or inside string
+interpolation. Suppress them with `# mutineer:disable-line call_to_receiver` or an `ignore:`
+entry, as the top of the page says. Scope the marker to the operator,
+as in `# mutineer:disable-line call_to_receiver -- already a String`, so it
+does not hide other mutants on the line. An `ignore:` entry with the
+survivor `id` suppresses only that one mutant.
+
+| Name | Why it is skipped |
+|------|-------------------|
+| `new` | The class takes the place of an instance, so almost any use raises. |
+| `dup` | Copy. The mutant shows when code later changes the copy or the original, or compares the result with the original by identity. |
+| `clone` | Copy. The mutant shows when code later changes the copy or the original, or compares the result with the original by identity. |
+| `freeze` | Returns the receiver, now frozen. A `frozen?` check or a later write shows the difference. |
+| `itself` | Returns the receiver. |
+| `to_set` | For common uses of `include?` and `empty?`, an array answers as a set does, so the mutant is often equivalent. Membership can differ: an array compares with `==` and a set with `eql?`, so `[1].include?(1.0)` is true and `Set[1].include?(1.0)` is false. The array keeps duplicates, so `size` and `each` can differ. |
 
 ## Endless range
 
