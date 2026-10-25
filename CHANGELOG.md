@@ -112,14 +112,6 @@ All notable changes to this project are documented here. The format is based on
   the run warns that path-relative methods there can be falsely killed
   (tracked in #339).
 
-### Changed
-
-- Explain mutation testing before setup, with a runnable beginner guide and a
-  first run on one file. Simplify wording across the website and clarify Rails
-  setup, CI baselines, and reasons for ignoring a mutant.
-
-### Fixed
-
 - **`--daemon` stops on MySQL older than 8.0 (#298).** The support matrix said
   MySQL 5.7 is not supported, but `--daemon` ran on it. Mutineer now reads the
   server version before it copies any worker database. MySQL older than 8.0
@@ -127,6 +119,12 @@ All notable changes to this project are documented here. The format is based on
   supported`. Pass `--no-daemon` (or set `daemon: false`) to stay serial.
   MariaDB, MySQL 9 or later, and a server version Mutineer cannot read print
   one warning and run.
+
+### Changed
+
+- Explain mutation testing before setup, with a runnable beginner guide and a
+  first run on one file. Simplify wording across the website and clarify Rails
+  setup, CI baselines, and reasons for ignoring a mutant.
 
 ## [1.7.0] - 2026-10-23
 
