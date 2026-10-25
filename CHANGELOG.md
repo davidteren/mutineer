@@ -82,7 +82,7 @@ All notable changes to this project are documented here. The format is based on
   Selecting fewer source files or operators also lists omitted survivors as
   `not_run`. A removed mutant within the selected scope, or a source file
   actually removed from the project, still counts as fixed. A foreign stored
-  path whose removal cannot be checked stays unverified.
+  path whose removal cannot be checked stays unverified (tracked in #343).
   Under a diff-scoped (`--since`) side, `fixed_survivors` stays empty, as
   before. If CI turns red after the upgrade and `baseline.incomplete` is
   true, read `no_verdict[]` in the JSON report: the run is incomplete, and
@@ -93,6 +93,16 @@ All notable changes to this project are documented here. The format is based on
 - **A baseline survivor that is now `ran_at_load` is not listed as fixed
   (#286).** 1.7.0 listed it as fixed. It is now in
   `baseline.unverified_survivors[]`.
+
+- **`--strategy redefine` and path-relative methods.** Redefine now loads
+  the mutated method from a hidden file beside the source, as reload does.
+  It used the system temp directory before, so `__dir__` and
+  `require_relative` in the method pointed there, and every mutant of such
+  a method was falsely killed (#279). Redefine is also the default under
+  `--rails` without `--daemon`. When a source directory is not writable,
+  redefine still uses the system temp directory there, as before, and
+  the run warns that path-relative methods there can be falsely killed
+  (tracked in #339).
 
 ### Changed
 
