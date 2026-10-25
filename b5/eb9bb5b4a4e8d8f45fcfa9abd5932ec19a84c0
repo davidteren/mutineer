@@ -1,0 +1,64 @@
+docs/rails.html
+  s_4caa099c6c87f9::t_92da6f23a620fa 110
+lib/mutineer/reporter.rb
+  s_4caa099c6c87f9::t_92da6f23a620fa 152,971,974-978
+mutineer.gemspec
+  s_4caa099c6c87f9::t_92da6f23a620fa 24-29,33-34
+docs/json-schema.md
+  s_4caa099c6c87f9::t_92da6f23a620fa 220-224
+CHANGELOG.md
+  s_4caa099c6c87f9::t_92da6f23a620fa 9,11-17,21-28
+  s_b1f7ddfe9bccdd::t_abe864dbbcd703 47-51
+  s_b1f7ddfe9bccdd::t_19ff016ade5b42 52
+docs/plans/2026-10-24-001-fix-shared-minitest-seed-plan.md
+  s_b1f7ddfe9bccdd::t_0b5620f695a762 103-104,115,267-268
+test/reporter_test.rb
+  s_4caa099c6c87f9::t_92da6f23a620fa 79-111
+.expectation-fit/ways-of-working.yaml
+  s_4caa099c6c87f9::t_92da6f23a620fa 1-25,28-32
+  s_b1f7ddfe9bccdd::t_0b5620f695a762 26-27
+docs/agentic-coding.md
+  s_4caa099c6c87f9::t_92da6f23a620fa 33-36,127-130
+  s_b1f7ddfe9bccdd::t_109cde8b8a3022 131
+README.md
+  s_4caa099c6c87f9::t_92da6f23a620fa 755-759
+skills/mutineer/SKILL.md
+  s_4caa099c6c87f9::t_92da6f23a620fa 43-46
+docs/agentic-coding.html
+  s_4caa099c6c87f9::t_92da6f23a620fa 88,136
+docs/rails.md
+  s_4caa099c6c87f9::t_92da6f23a620fa 86-90
+lib/mutineer/result.rb
+  s_4caa099c6c87f9::t_92da6f23a620fa 226-240
+AGENTS.md
+  s_4caa099c6c87f9::t_92da6f23a620fa 142-148,151-156
+  s_b1f7ddfe9bccdd::t_0b5620f695a762 149-150
+test/gemspec_test.rb
+  s_4caa099c6c87f9::t_92da6f23a620fa 1-20
+CLAUDE.md
+  s_4caa099c6c87f9::t_92da6f23a620fa 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b5eb9bb5b4a4e8d8f45fcfa9abd5932ec19a84c0",
+  "prompts": {},
+  "sessions": {
+    "s_4caa099c6c87f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a16a26-cbd9-75b0-9a60-c1027763da8b",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_b1f7ddfe9bccdd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16a26-cbd9-75b0-9a60-c1027763da8b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
