@@ -1,0 +1,19 @@
+test/rails_run_env_test.rb
+  s_338caee2cdbd57::t_65bddb125f6edc 21,66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dd341a77edc8987ac95ec0f58c117c297d7d3e6b",
+  "prompts": {},
+  "sessions": {
+    "s_338caee2cdbd57": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c933d58c-b8f6-485b-87fc-de1fcd8e4c45",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
