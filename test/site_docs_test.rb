@@ -76,13 +76,33 @@ class SiteDocsTest < Minitest::Test
     assert_empty MutineerSiteDocs.stale_files
   end
 
-  # Every built-in chain-link skip is named on the published page.
+  # Every built-in chain-link skip is named in the chain-link section.
   def test_equivalent_skips_page_names_every_chain_link_skip
     page = File.read("docs/equivalent-skips.html")
+    section = page[/<h2 id="chain-link">.*?(?=<h2)/m]
     Mutineer::Mutators::ChainLink::SKIPPED.each do |name|
-      assert_includes page, ">#{name}<", "equivalent-skips.html is missing #{name}"
+      assert_includes section, ">#{name}<", "equivalent-skips.html chain link is missing #{name}"
     end
     assert_includes page, "endless"
+  end
+
+  # Both twin pages list exactly the call-to-receiver skips.
+  def test_equivalent_skips_page_lists_exactly_the_call_to_receiver_skips
+    expected = Mutineer::Mutators::CallToReceiver::SKIPPED.map(&:to_s).sort
+    html = File.read("docs/equivalent-skips.html")[/<h2 id="call-to-receiver">.*?(?=<h2)/m]
+    assert_equal expected, html.scan(%r{<tr><td><code>(\w+)</code>}).flatten.sort
+    markdown = File.read("docs/equivalent-skips.md")[/^## Call to receiver$.*?(?=^## )/m]
+    assert_equal expected, markdown.scan(/^\| `(\w+)`/).flatten.sort
+  end
+
+  # Every call whose endless-range arguments are skipped is named on both pages.
+  def test_equivalent_skips_page_names_every_range_slice_call
+    html = File.read("docs/equivalent-skips.html")
+    md = File.read("docs/equivalent-skips.md")
+    Mutineer::Mutators::RangeLiteral::SLICE_CALLS.each do |name|
+      assert_includes html, "<code>#{name}</code>", "equivalent-skips.html is missing #{name}"
+      assert_includes md, "`#{name}`", "equivalent-skips.md is missing #{name}"
+    end
   end
 
   # The Rails guide is in the primary nav, and every YAML recipe parses.

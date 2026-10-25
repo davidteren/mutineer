@@ -112,17 +112,30 @@ All notable changes to this project are documented here. The format is based on
   the run warns that path-relative methods there can be falsely killed
   (tracked in #339).
 
-- **A test file given as a source after `--test` now exits 2 in more layouts
-  (#293).** The check missed Minitest `test_*.rb` files under `test/` or
-  `spec/`, and `*_test.rb` or `*_spec.rb` files in the same directory as a
-  `--test` file, such as the project root. Mutineer then mutated that file as
-  a source and never ran it as a test. With `--format json`, the stray file's
-  Minitest output also made the report invalid JSON. A support file with a
-  `test_` name under the top-level `test/` or `spec/` (other than
-  `test_helper.rb`) now also exits 2 when given as a source with `--test`.
+- `--test-command` now sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1` for the test
+  command. Mutineer writes each mutant over the source file, and Bootsnap keys
+  its compile cache on path, size and whole-second mtime. Two same-size mutants
+  written in the same second could load the first one's cached code, so a
+  mutant could be scored on code that was not the mutant. Each mutant boot now
+  compiles the app again, which is slower. The variable works through
+  `require "bootsnap/setup"` on Bootsnap 1.7.0 or later; an app that calls
+  `Bootsnap.setup` itself must pass
+  `compile_cache_iseq: ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"].nil?`, so only
+  mutant runs lose the cache. The `--daemon` path is unchanged (#285).
 
 ### Changed
 
+- **`call_to_receiver` now mutates last-call conversions such as `to_s` and
+  `to_i`.** `m[1].to_i` now gives the mutant `m[1]`. Before, the operator skipped the
+  same names as `chain_link`. Now it skips only `new`, `dup`, `clone`,
+  `freeze`, `itself` and `to_set`. `chain_link` does not change. Only runs
+  that list `call_to_receiver` in `--operators` (or `operators:`) change: they
+  get more mutants (113 more on Mutineer's own `lib/`). If you gate such a run
+  with `--threshold` or `--baseline`, expect new survivors: write a new
+  full-scope baseline with `mutineer run ... --no-since --no-fail-fast
+  --format json`, with no `--only`. A `to_s` mutant on a value that is already
+  a String is equivalent: suppress it with
+  `# mutineer:disable-line call_to_receiver` or an `ignore:` entry. (#274)
 - Explain mutation testing before setup, with a runnable beginner guide and a
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.

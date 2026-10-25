@@ -95,10 +95,24 @@ class CallToReceiverTest < Minitest::Test
   end
 
   def test_skipped_names_yield_none
-    %w[x.to_s x.dup Foo.new x.freeze x.itself x.to_a].each do |body|
+    %w[x.dup x.clone Foo.new x.freeze x.itself x.to_set].each do |body|
       assert_empty mutated(body), "for #{body.inspect}"
     end
     assert_equal ["x.to_s"], mutated("x.to_s.strip")
+  end
+
+  def test_conversions_on_the_last_call_are_replaced
+    conversions = %i[to_s to_str to_sym to_i to_int to_f to_r to_c to_a to_ary to_h to_hash to_proc]
+    # The two lists differ by exactly these names, and chain_link keeps them all.
+    assert_equal conversions, Mutineer::Mutators::ChainLink::SKIPPED - Mutineer::Mutators::CallToReceiver::SKIPPED
+    assert_empty Mutineer::Mutators::CallToReceiver::SKIPPED - Mutineer::Mutators::ChainLink::SKIPPED
+    conversions.each do |name|
+      assert_equal ["x"], mutated("x.#{name}"), "for x.#{name}"
+    end
+    assert_equal ["m[1]"], mutated("m[1].to_i")
+    assert_equal ["a.b"], mutated("a.b.to_s")
+    # A known equivalent (interpolation calls to_s anyway). Skips are by name only.
+    assert_equal ['"#{a}"'], mutated('"#{a.to_s}"')
   end
 
   def test_nested_def_is_its_own_subject
@@ -123,7 +137,7 @@ class CallToReceiverTest < Minitest::Test
 
   def test_never_gives_the_same_source_as_chain_link
     ["a.b.c", "a.b.c.d", "a&.b&.c", "a.b(c.d).e", "a\n    .b\n    .c", "a.b[0].c.d",
-     "x.map { |y| y.z.w }", "a.b.c += 1", "a.b + c.d.e"].each do |body|
+     "x.map { |y| y.z.w }", "a.b.c += 1", "a.b + c.d.e", "a.b.to_s", "a.to_s.to_i"].each do |body|
       ours, source = run_mutator(body)
       theirs, = run_mutator(body, Mutineer::Mutators::ChainLink)
       common = ours.map { |m| m.apply(source) } & theirs.map { |m| m.apply(source) }

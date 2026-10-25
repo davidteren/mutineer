@@ -12,16 +12,20 @@ module Mutineer
     # @param def_node [Prism::DefNode] the method that holds the position.
     # @param source [String] the source text of the file.
     # @param offset [Integer] byte offset of the position.
-    # @param loose [Boolean] also return the lines when the position is in
-    #   code that runs only sometimes when the statement runs (the right side of
-    #   `a && b`, a branch, the body of `x if c`). The tests that ran the
-    #   statement then include every test that ran the position, but may not
-    #   have run it (#254).
+    # @param loose [Boolean] return the lines also when their tests may not
+    #   have run the position: when it is in code that runs only sometimes
+    #   when the statement runs (the right side of `a && b`, a branch, the body
+    #   of `x if c`, #254), and with a first or last line that holds other code
+    #   (the opener of a one-line block, #289). The `def` line is never
+    #   given, because it counts when the file loads. So every test that ran
+    #   the position is among the tests of these lines, unless the statement
+    #   starts on the `def` line.
     # @return [Array<Integer>] the lines of the statement, with the body of each
     #   heredoc in it. Empty when no statement in the body holds the position.
-    #   A first or last line that holds other code is left out, because Ruby
-    #   can count that line without the statement: the `def` line counts when
-    #   the file loads, and `x if done; y(` counts when `y` does not run.
+    #   Unless `loose`, a first or last line that holds other code is left out,
+    #   because Ruby can count that line without the statement: the `def` line
+    #   counts when the file loads, and `x if done; y(` counts when `y` does
+    #   not run.
     def self.for(def_node, source, offset, loose: false)
       return [] unless def_node.body
 
@@ -42,6 +46,8 @@ module Mutineer
 
       location = statement.location
       lines = (location.start_line..last_line(statement)).to_a
+      return lines - [def_node.location.start_line] if loose
+
       lines.delete(location.start_line) unless before(source, location).strip.empty?
       after = after(source, location).strip
       lines.delete(location.end_line) unless after.empty? || after.start_with?("#")
