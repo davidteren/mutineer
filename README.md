@@ -411,7 +411,8 @@ So `--test-command` also sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1`, and Bootsnap c
 This makes each mutant boot slower.
 The variable works through `require "bootsnap/setup"`, which Rails puts in `config/boot.rb`.
 It needs Bootsnap 1.7.0 or later. Older versions ignore it, so upgrade Bootsnap first.
-If your app calls `Bootsnap.setup` itself, set `compile_cache_iseq: false` there for mutant runs.
+If your app calls `Bootsnap.setup` itself, pass `compile_cache_iseq: ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"].nil?` there.
+This turns the cache off only when the variable is set, so other boots keep it.
 Bootsnap checks only that the variable is set, so `DISABLE_BOOTSNAP_COMPILE_CACHE=0` still turns the cache off.
 To keep the cache, run the suite through a wrapper script that runs `unset DISABLE_BOOTSNAP_COMPILE_CACHE` first.
 Boots are then faster, but a mutant can again load the previous mutant's cached code.
