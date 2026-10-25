@@ -136,6 +136,7 @@ jobs:
           name: mutineer-report
           path: .mutineer/pr.json</code></pre>
       <p>This workflow runs a full scan on every pull request, so it checks test changes without a workflow edit for each PR. A full scan can take longer than a scan of changed source lines.</p>
+      <p>On <code>pull_request</code> events, omitting <code>since:</code> normally scans changed source lines against the PR's base commit. The Action tries the base branch tip if needed. If neither base resolves, it warns and supplies no <code>--since</code> override; any <code>since:</code> setting in <code>.mutineer.yml</code> can still apply. <code>since: none</code> forces a full scan.</p>
       <p>For a Rails app, add <code>rails: true</code> and <code>use-bundler: true</code> (boot mode needs the app's own bundle):</p>
       <pre><code>      - uses: davidteren/mutineer@v1
         with:

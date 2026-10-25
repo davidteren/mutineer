@@ -109,6 +109,7 @@ jobs:
           use-bundler: true
           extra-args: "--no-fail-fast"</code></pre>
       <p>For report-only CI, leave <code>threshold</code> at 0 and <code>baseline</code> unset in both the workflow and <code>.mutineer.yml</code>. To reject new survivors, first save a full run from the default branch as <code>.mutineer/baseline.json</code> and make that file available in CI. Then set <code>baseline: .mutineer/baseline.json</code> in the Action's <code>with:</code> inputs. Keep the key unset in <code>.mutineer.yml</code>. Keep <code>since: none</code> to scan all chosen sources on every pull request, including when only tests change. This avoids a workflow edit for each PR, but can take longer than a scan of changed source lines. Add a <code>threshold</code> when the chosen folders are ready.</p>
+      <p>On <code>pull_request</code> events, omitting <code>since:</code> normally scans changed source lines against the PR's base commit. The Action tries the base branch tip if needed. If neither base resolves, it warns and supplies no <code>--since</code> override; any <code>since:</code> setting in <code>.mutineer.yml</code> can still apply. <code>since: none</code> forces a full scan.</p>
 
       <h2 id="gitlab-ci">GitLab CI</h2>
       <p>This GitLab job reports on Rails models paired with conventionally named tests. Use a Linux or macOS runner with Ruby 3.4 or later, and prepare the test database as you do for the test suite.</p>

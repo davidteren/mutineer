@@ -96,6 +96,11 @@ on every pull request, including when only tests change. This avoids a workflow
 edit for each PR, but can take longer than a scan of changed source lines. Add a
 `threshold` when the chosen folders are ready.
 
+On `pull_request` events, omitting `since:` normally scans changed source lines
+against the PR's base commit. The Action tries the base branch tip if needed. If
+neither base resolves, it warns and supplies no `--since` override; any `since:`
+setting in `.mutineer.yml` can still apply. `since: none` forces a full scan.
+
 ## GitLab CI
 
 This GitLab job reports on Rails models paired with conventionally named tests.
