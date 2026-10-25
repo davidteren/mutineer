@@ -46,6 +46,20 @@ All notable changes to this project are documented here. The format is based on
   classes can still run in a different order than in the combined clean
   check. RSpec does not change.
 
+- **`--daemon` SQLite workers load the schema file the app names (#317).**
+  The daemon always loaded `db/schema.rb` over an out-of-date worker copy,
+  even when `config/database.yml` sets `schema_dump:` to another file. An
+  app that keeps its SQLite schema in `db/schema_sqlite.rb` beside a MySQL
+  `db/schema.rb` errored every mutant. The booted daemon now asks Rails for
+  the file: `SCHEMA` when it is set, else `schema_dump:`, else
+  `db/schema.rb`. With `structure.sql`, a missing file, or
+  `schema_dump: false` (unless `SCHEMA` is set) it loads no schema, even
+  when a `db/schema.rb` exists: the worker keeps its copy of the test
+  database. A Postgres worker is a copy of the test database, so it was not
+  affected. MySQL already asked Rails for the file. It now also reads the
+  database's own `schema_format:` (Rails 8.1) and a string format such as
+  `"sql"`, the same as SQLite.
+
 - **`--strategy redefine` and path-relative methods.** Redefine now loads
   the mutated method from a hidden file beside the source, as reload does.
   It used the system temp directory before, so `__dir__` and
