@@ -1,0 +1,43 @@
+docs/plans/2026-10-24-001-fix-shared-minitest-seed-plan.md
+  s_b1f7ddfe9bccdd::t_1ae72384888bf8 49-52,59-63,96-98,162-163,223-227
+test/fixtures/helper_seed/subject.rb
+  s_b1f7ddfe9bccdd::t_5e881bedd32186 1-6
+test/fixtures/helper_seed/subject_test.rb
+  s_b1f7ddfe9bccdd::t_5e881bedd32186 1-22
+test/runner_test.rb
+  s_b1f7ddfe9bccdd::t_a903b578b605b2 598-602,622
+  s_b1f7ddfe9bccdd::t_5e881bedd32186 550-597,603-621,623-633
+lib/mutineer/job_plan.rb
+  s_b1f7ddfe9bccdd::t_1ae72384888bf8 155,161-165
+lib/mutineer/coverage_map.rb
+  s_b1f7ddfe9bccdd::t_1ae72384888bf8 1034,1096,1106-1115
+  s_04fd8c79e6fa52::t_7977f0e1c730e5 1116-1117
+CHANGELOG.md
+  s_b1f7ddfe9bccdd::t_1ae72384888bf8 36-40
+test/fixtures/helper_seed/test_helper.rb
+  s_b1f7ddfe9bccdd::t_5e881bedd32186 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0e2ad6dd3555f65d5276e347ac121959657b9789",
+  "prompts": {},
+  "sessions": {
+    "s_04fd8c79e6fa52": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16cbd-26a2-7b61-8d84-799333c245e9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_b1f7ddfe9bccdd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16a26-cbd9-75b0-9a60-c1027763da8b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
