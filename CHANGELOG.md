@@ -51,8 +51,10 @@ All notable changes to this project are documented here. The format is based on
   even when `config/database.yml` sets `schema_dump:` to another file. An
   app that keeps its SQLite schema in `db/schema_sqlite.rb` beside a MySQL
   `db/schema.rb` errored every mutant. The booted daemon now asks Rails for
-  the file. With `schema_dump: false` or `structure.sql` it loads no schema,
-  even when a `db/schema.rb` exists: the worker keeps its copy of the test
+  the file: `SCHEMA` when it is set, else `schema_dump:`, else
+  `db/schema.rb`. With `structure.sql`, a missing file, or
+  `schema_dump: false` (unless `SCHEMA` is set) it loads no schema, even
+  when a `db/schema.rb` exists: the worker keeps its copy of the test
   database. A Postgres worker is a copy of the test database, so it was not
   affected. MySQL already asked Rails for the file. It now also reads the
   database's own `schema_format:` (Rails 8.1) and a string format such as
