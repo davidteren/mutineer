@@ -46,14 +46,6 @@ All notable changes to this project are documented here. The format is based on
   classes can still run in a different order than in the combined clean
   check. RSpec does not change.
 
-### Changed
-
-- Explain mutation testing before setup, with a runnable beginner guide and a
-  first run on one file. Simplify wording across the website and clarify Rails
-  setup, CI baselines, and reasons for ignoring a mutant.
-
-### Fixed
-
 - **`--daemon` SQLite workers load the schema file the app names (#317).**
   The daemon always loaded `db/schema.rb` over an out-of-date worker copy,
   even when `config/database.yml` sets `schema_dump:` to another file. An
@@ -63,6 +55,12 @@ All notable changes to this project are documented here. The format is based on
   even when a `db/schema.rb` exists: the worker keeps its copy of the test
   database. Postgres and MySQL were not affected: a Postgres worker is a
   copy of the test database, and MySQL already asked Rails for the file.
+
+### Changed
+
+- Explain mutation testing before setup, with a runnable beginner guide and a
+  first run on one file. Simplify wording across the website and clarify Rails
+  setup, CI baselines, and reasons for ignoring a mutant.
 
 ## [1.7.0] - 2026-10-23
 
