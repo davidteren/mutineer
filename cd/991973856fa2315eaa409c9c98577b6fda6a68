@@ -1,0 +1,42 @@
+test/gemspec_test.rb
+  s_b1f7ddfe9bccdd::t_430e0a96bdc509 1-20
+AGENTS.md
+  s_b1f7ddfe9bccdd::t_9fe2d5723d2ed4 148-150
+  s_b1f7ddfe9bccdd::t_430e0a96bdc509 142-147,151-156
+CHANGELOG.md
+  s_b1f7ddfe9bccdd::t_430e0a96bdc509 9-17
+  s_b1f7ddfe9bccdd::t_9fe2d5723d2ed4 18
+.expectation-fit/ways-of-working.yaml
+  s_b1f7ddfe9bccdd::t_430e0a96bdc509 1-17,19-32
+  s_b1f7ddfe9bccdd::t_9fe2d5723d2ed4 18
+docs/rails.md
+  s_b1f7ddfe9bccdd::t_430e0a96bdc509 86-90
+docs/rails.html
+  s_b1f7ddfe9bccdd::t_430e0a96bdc509 110
+CLAUDE.md
+  s_b1f7ddfe9bccdd::t_430e0a96bdc509 1-7
+README.md
+  s_b1f7ddfe9bccdd::t_430e0a96bdc509 755-759
+docs/agentic-coding.html
+  s_b1f7ddfe9bccdd::t_430e0a96bdc509 136
+mutineer.gemspec
+  s_b1f7ddfe9bccdd::t_430e0a96bdc509 24-29,33-34
+docs/agentic-coding.md
+  s_b1f7ddfe9bccdd::t_430e0a96bdc509 127-131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cd991973856fa2315eaa409c9c98577b6fda6a68",
+  "prompts": {},
+  "sessions": {
+    "s_b1f7ddfe9bccdd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16a26-cbd9-75b0-9a60-c1027763da8b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
