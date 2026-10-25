@@ -112,14 +112,6 @@ All notable changes to this project are documented here. The format is based on
   the run warns that path-relative methods there can be falsely killed
   (tracked in #339).
 
-### Changed
-
-- Explain mutation testing before setup, with a runnable beginner guide and a
-  first run on one file. Simplify wording across the website and clarify Rails
-  setup, CI baselines, and reasons for ignoring a mutant.
-
-### Fixed
-
 - `--test-command` now sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1` for the test
   command. Mutineer writes each mutant over the source file, and Bootsnap keys
   its compile cache on path, size and whole-second mtime. Two same-size mutants
@@ -130,6 +122,12 @@ All notable changes to this project are documented here. The format is based on
   `Bootsnap.setup` itself must pass
   `compile_cache_iseq: ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"].nil?`, so only
   mutant runs lose the cache. The `--daemon` path is unchanged (#285).
+
+### Changed
+
+- Explain mutation testing before setup, with a runnable beginner guide and a
+  first run on one file. Simplify wording across the website and clarify Rails
+  setup, CI baselines, and reasons for ignoring a mutant.
 
 ## [1.7.0] - 2026-10-23
 
