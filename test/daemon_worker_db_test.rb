@@ -3,6 +3,7 @@
 require_relative "test_helper"
 require "mutineer/daemon_client"
 require "open3"
+require "stringio"
 require "tmpdir"
 
 # #26/U5 — per-worker DB routing, proven end-to-end against the bundled fixture app.
@@ -29,8 +30,8 @@ class DaemonWorkerDbTest < Minitest::Test
     }
   end
 
-  def with_client
-    client = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).start
+  def with_client(errio: $stderr)
+    client = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP, errio: errio).start
     yield client
   ensure
     client&.quit
@@ -498,10 +499,21 @@ class DaemonWorkerDbTest < Minitest::Test
           end
         end
       RUBY
-      with_client do |client|
+      diagnostics = StringIO.new
+      with_client(errio: diagnostics) do |client|
         assert_equal "error", client.request(id: 80, worker: 0, timeout: 60,
                                               payload: { "code" => File.read(ORDER), "source_file" => ORDER },
                                               tests: [test])
+        # The verdict can arrive before the client's stderr thread copies the
+        # diagnostic. Read a full line before quit stops that thread.
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
+        until diagnostics.string.match?(/^\[daemon-child\].*\n/) || Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+          sleep 0.01
+        end
+        cause = uri ? "uses a SQLite file: URI" : "uses an inline SQLite database #{database.inspect}"
+        assert_includes diagnostics.string, "[daemon-child] RuntimeError: primary #{cause}"
+        assert_includes diagnostics.string, "config/database.yml"
+        assert_includes diagnostics.string, "establish_connection(:name)"
       end
     end
   end

@@ -617,11 +617,11 @@ module Mutineer
         config = pool.db_config
         if sqlite_adapter?(config.adapter.to_s) && config.database.to_s.start_with?("file:")
           raise "#{config.name} uses a SQLite file: URI, which cannot be copied per worker. " \
-                "Use a plain database file path in config/database.yml."
+                "Declare a plain database file path in config/database.yml and use its name in establish_connection(:name)."
         end
         if sqlite_adapter?(config.adapter.to_s) && !test_configs.include?(config)
           raise "#{config.name} uses an inline SQLite database #{config.database.inspect}, which cannot be copied per worker. " \
-                "Use a plain database file path in config/database.yml."
+                "Declare a plain database file path in config/database.yml, then replace the inline hash with establish_connection(:name)."
         end
         next unless sqlite_file_config?(config)
 

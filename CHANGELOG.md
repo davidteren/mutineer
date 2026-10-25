@@ -47,8 +47,9 @@ All notable changes to this project are documented here. The format is based on
   copies only databases in `config/database.yml`. A connection from an inline
   `establish_connection` hash, or any SQLite pool given as a `file:` URI, stops
   the run with its routing error if registered at boot. A pool opened later
-  makes the mutant score `error`, even with one worker. Move that database into
-  `config/database.yml` as a plain file path.
+  makes the mutant score `error`, even with one worker. Declare a plain file
+  path in `config/database.yml`, then replace the connection hash with the
+  declared name in `establish_connection(:name)`.
 - Explain mutation testing before setup, with a runnable beginner guide and a
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.

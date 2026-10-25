@@ -474,10 +474,12 @@ A replica on the same file uses the same copy.
 Aliases of a secondary file must use matching schema dumps. Conflicting dumps produce an error before any secondary schema loads.
 So an app whose test databases are all SQLite files runs in parallel with no extra config.
 
-A connection opened with an inline hash (`establish_connection(adapter: "sqlite3", database: ...)`) is not in `config/database.yml`.
+A pool opened with an inline hash (`establish_connection(adapter: "sqlite3", database: ...)`) is separate from the named configs in `config/database.yml`, even when it uses the same file.
 Mutineer cannot copy it. If the pool is registered at boot, the run stops with the routing error before coverage checks.
-If it opens later, the mutant scores `error`, even with one worker. Move that database into `config/database.yml`.
-A SQLite pool given as a `file:` URI is refused in the same way. Use a plain file path.
+If it opens later, the mutant scores `error`, even with one worker.
+Declare the plain file path in `config/database.yml`, then replace the inline hash with its name, for example `establish_connection(:archive)` for a config named `archive`.
+Adding the YAML entry alone does not change the inline pool.
+A SQLite pool given as a `file:` URI is refused in the same way. Declare a plain file path and connect by its name with `establish_connection(:archive)`.
 On Rails 7.0, an extra database outside `shared_databases` means one worker, and only the primary database is copied.
 
 On Postgres and MySQL, each worker copies only the primary database, the one `ActiveRecord::Base` uses.
