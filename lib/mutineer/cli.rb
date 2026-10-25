@@ -742,13 +742,18 @@ module Mutineer
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
-      # mutants count as survivors), and an infra failure that still starts the
-      # suite is scored as a kill (exit 126/127 are scored error). Daemon coverage fallback warnings are emitted from the runner
-      # only when the map is unavailable, not on every --daemon run.
+      # mutants count as survivors), and an infra failure that exits 1 can still
+      # score as a kill (#292): with the summary check on, when its output names a
+      # failing test; with it off (the clean run printed no Minitest or RSpec
+      # summary line), on any exit 1, a load crash included. Daemon coverage
+      # fallback warnings are emitted from the runner only when the map is
+      # unavailable, not on every --daemon run.
       if config.test_command
         warn "[mutineer] --test-command score is an upper bound, not comparable to an " \
-             "in-process run: no coverage narrowing (uncovered mutants count as survivors) " \
-             "and an infra failure is scored as a kill (except exit 126 and 127, scored error)."
+             "in-process run: no coverage narrowing (uncovered mutants count as survivors). " \
+             "Only exit 1 counts as a kill, or a SimpleCov gate exit whose summary shows a failing " \
+             "test (an RSpec --failure-exit-code other than 1 makes every kill an error). When the clean run printed a Minitest or RSpec summary line, " \
+             "Mutineer also reads it to tell a crash from a kill. See README: Apps on Ruby < 3.4."
       end
 
       # Nudge toward the opt-in tier-2 operators (human report only: never

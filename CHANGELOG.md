@@ -18,6 +18,33 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Upgrade note for `--test-command` with a custom failure exit code (#292).**
+  An RSpec setup with `--failure-exit-code 3` now scores every kill as
+  `error`. Use the default exit code, or a wrapper that maps a failure to
+  exit 1. An `error` verdict leaves the score, so the score can drop, and more
+  `error` verdicts can fail a `--threshold` run through the existing no-verdict
+  check. A mutant that only trips a SimpleCov `minimum_coverage` gate now
+  scores `survived` when the output has SimpleCov's gate message and a
+  passing Minitest or RSpec summary line. Without a summary line that
+  Mutineer recognizes, the gate's exit scores `error`, which leaves the
+  score. Either way the old false kill is gone, so the score can drop. A `--baseline` made before
+  this change can report new survivors and errors: make a new baseline after
+  the upgrade.
+- **A `--test-command` exit other than 1 no longer counts as a kill (#292).**
+  Only exit 1 scores `killed`, the same rule as the in-process backend. One
+  exception: a SimpleCov gate exit whose summary reports a failing test also
+  scores `killed`. Any other non-zero exit scores `error`, such as a wrapper's
+  137 after an out-of-memory kill.
+- **A load crash under `--test-command` scores `error` (#292).** When the clean
+  run prints a Minitest or RSpec summary line, an exit 1 also needs a failing
+  test in that line. Code under test that calls `exit 1` or `abort` while the
+  default Minitest reporter runs its tests still scores `killed`, as in
+  process. Under RSpec or minitest-reporters, that case now scores `error`.
+  When a SimpleCov `minimum_coverage` gate replaces the exit code, the summary
+  line decides: a failing test is a kill, and a passing run is `survived`, as
+  in process. When the clean run
+  prints no summary line, Mutineer warns once and keeps the exit-code rule.
+
 - **`--output .mutineer/run.json` on a fresh checkout.** The documented
   report path no longer exits 2 when `.mutineer/` does not exist yet. The
   output check now creates the cache directory (`cache_dir`) when it is the
