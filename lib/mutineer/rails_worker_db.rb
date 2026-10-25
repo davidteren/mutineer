@@ -470,14 +470,10 @@ module Mutineer
     # @return [String, nil] absolute path of an existing file, or nil.
     def self.ruby_schema_path
       db_config = ActiveRecord::Base.connection_db_config
-      # Rails 8.1 lets each database config set its own schema_format.
-      format = db_config.respond_to?(:schema_format) ? db_config.schema_format : current_schema_format
-      format = format.to_sym if format.respond_to?(:to_sym)
+      format = schema_format_for(db_config)
       return unless format == :ruby
 
-      tasks = ActiveRecord::Tasks::DatabaseTasks
-      # Rails < 7.0 has no schema_dump_path (nor schema_dump:): its file is always db/schema.rb.
-      path = tasks.respond_to?(:schema_dump_path) ? tasks.schema_dump_path(db_config, format) : "db/schema.rb"
+      path = ActiveRecord::Tasks::DatabaseTasks.schema_dump_path(db_config, format)
       # Expanded so `load` never searches $LOAD_PATH for a relative SCHEMA value.
       path &&= File.expand_path(path)
       path if path && File.exist?(path)
@@ -1135,7 +1131,7 @@ module Mutineer
         ActiveRecord::Base.establish_connection(slot_hash)
         switched = true
         db_config = mysql_db_config(slot_hash)
-        format = current_schema_format
+        format = schema_format_for(db_config)
         file = mysql_schema_file(db_config, format)
         ActiveRecord::Tasks::DatabaseTasks.load_schema(db_config, format, file) if file
       rescue StandardError => e
@@ -1164,6 +1160,17 @@ module Mutineer
       env = ENV["RAILS_ENV"].to_s
       env = "test" if env.empty?
       ActiveRecord::DatabaseConfigurations::HashConfig.new(env, "primary", slot_hash)
+    end
+
+    # Schema format of one database config. Rails 8.1 lets each config set its
+    # own `schema_format:`; older Rails has only the app-wide setting. A string
+    # setting ("ruby") counts the same as the symbol.
+    #
+    # @param db_config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    # @return [Symbol]
+    def self.schema_format_for(db_config)
+      format = db_config.respond_to?(:schema_format) ? db_config.schema_format : current_schema_format
+      format.respond_to?(:to_sym) ? format.to_sym : format
     end
 
     # Schema format the booted app is using.

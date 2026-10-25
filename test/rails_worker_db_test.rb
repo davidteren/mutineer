@@ -291,6 +291,20 @@ class RailsWorkerDbTest < Minitest::Test
 
   # #317: a SQLite worker loads the schema file the app's config names, not a
   # fixed db/schema.rb. Runs in a temp app root with a stubbed ActiveRecord.
+  # SQLite and MySQL workers share this lookup, so both honour the same settings.
+  def test_schema_format_for_prefers_the_config_and_reads_strings
+    with_schema_config(dump: nil, global: "ruby") do
+      assert_equal :ruby, Mutineer::RailsWorkerDb.schema_format_for(Object.new),
+                   "a config without schema_format (Rails < 8.1) uses the app-wide setting, as a symbol"
+    end
+    with_schema_config(dump: nil) do
+      config = Object.new
+      config.define_singleton_method(:schema_format) { "sql" }
+      assert_equal :sql, Mutineer::RailsWorkerDb.schema_format_for(config),
+                   "the database's own schema_format wins over the app-wide :ruby"
+    end
+  end
+
   def test_ruby_schema_path_follows_the_configured_file
     in_app_root do |root|
       File.write("db/schema.rb", "# MySQL schema SQLite cannot load\n")
@@ -302,10 +316,6 @@ class RailsWorkerDbTest < Minitest::Test
       with_schema_config(dump: "db/schema_sqlite.rb") do
         assert_equal File.join(root, "db/schema_sqlite.rb"), Mutineer::RailsWorkerDb.ruby_schema_path,
                      "a relative SCHEMA value is expanded, so `load` never searches $LOAD_PATH"
-      end
-      with_schema_config(dump: nil, rails7: false) do
-        assert_equal File.join(root, "db/schema.rb"), Mutineer::RailsWorkerDb.ruby_schema_path,
-                     "Rails < 7.0 has no schema_dump_path: keep its fixed db/schema.rb"
       end
     end
   end
@@ -375,9 +385,9 @@ class RailsWorkerDbTest < Minitest::Test
   end
 
   # Stub the ActiveRecord surface {RailsWorkerDb.ruby_schema_path} reads.
-  # `dump` is what Rails' schema_dump_path returns; `rails7: false` drops that method.
+  # `dump` is what Rails' schema_dump_path returns.
   # Yields the formats it was asked for.
-  def with_schema_config(dump:, global: :ruby, per_config: nil, rails7: true)
+  def with_schema_config(dump:, global: :ruby, per_config: nil)
     saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
     asked = []
     db_config = Object.new
@@ -385,13 +395,11 @@ class RailsWorkerDbTest < Minitest::Test
     base = Module.new
     base.define_singleton_method(:connection_db_config) { db_config }
     tasks = Module.new
-    if rails7 # DatabaseTasks.schema_dump_path exists since Rails 7.0
-      tasks.define_singleton_method(:schema_dump_path) do |config, format|
-        raise "wrong db config" unless config.equal?(db_config)
+    tasks.define_singleton_method(:schema_dump_path) do |config, format|
+      raise "wrong db config" unless config.equal?(db_config)
 
-        asked << format
-        dump
-      end
+      asked << format
+      dump
     end
     active_record = Module.new
     active_record.define_singleton_method(:schema_format) { global }

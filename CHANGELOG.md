@@ -53,8 +53,10 @@ All notable changes to this project are documented here. The format is based on
   `db/schema.rb` errored every mutant. The booted daemon now asks Rails for
   the file. With `schema_dump: false` or `structure.sql` it loads no schema,
   even when a `db/schema.rb` exists: the worker keeps its copy of the test
-  database. Postgres and MySQL were not affected: a Postgres worker is a
-  copy of the test database, and MySQL already asked Rails for the file.
+  database. A Postgres worker is a copy of the test database, so it was not
+  affected. MySQL already asked Rails for the file. It now also reads the
+  database's own `schema_format:` (Rails 8.1) and a string format such as
+  `"sql"`, the same as SQLite.
 
 ### Changed
 
