@@ -18,6 +18,101 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`--daemon` stops on MySQL older than 8.0 (#298).** The support matrix said
+  MySQL 5.7 is not supported, but `--daemon` ran on it. Mutineer now reads the
+  server version before it copies any worker database. MySQL older than 8.0
+  stops the run with `could not provision <base>: MySQL <version> is not
+  supported`. Pass `--no-daemon` (or set `daemon: false`) to stay serial.
+  MariaDB, MySQL 9 or later, and a server version Mutineer cannot read print
+  one warning and run.
+- **An in-test database error scores `error`, not `killed` (#296).** When
+  the first failing test of a Minitest mutant run failed with an Active
+  Record connection or lock error (`ConnectionNotEstablished`, including pool
+  timeouts, `ConnectionFailed`, `Deadlocked`, `LockWaitTimeout`), the mutant
+  now scores `error` on `--daemon` and in-process. This includes an error in
+  `setup`. Errors are out of the score, so a lost database connection during
+  a run no longer raises the score. A stderr line names the error. A mutant
+  that really causes a deadlock, or that breaks connection-handling code, now
+  also scores `error`. More `error` verdicts can fail a `--threshold` run
+  through the existing no-verdict gate. Other database errors, such as a bad
+  SQL statement, still score `killed`. So does `ConnectionNotDefined`, which
+  Rails 8 raises for an unknown role or shard. Rails 7.2 raises a plain
+  `ConnectionNotEstablished` there, so such a mutant scores `error` on 7.2.
+  With `--matrix`, a database-failed test is never a killer and leaves its
+  row incomplete, even if an earlier assertion already killed the mutant.
+- **An old temp file of the other mode no longer stops the boot (#287).**
+  Before the app boots, each mode sweeps the source directories. In 1.7.0
+  an in-process run removed only old `mutineer_mutant*.rb` files and the
+  daemon removed only old `mutineer_daemon*.rb` files, so a file the other
+  mode left made Zeitwerk raise. Now both boot sweeps remove an orphan of
+  either mode, and the daemon tells Zeitwerk to skip both names. You no
+  longer delete such a file by hand. A file of your own whose name only
+  starts with `mutineer_mutant` or `mutineer_daemon`, such as
+  `mutineer_mutant_helper.rb`, is no longer removed: a sweep now matches
+  only the temp file shape. An unlocked old file is removed even when its
+  creator's pid has been reused; a held file lock still protects it.
+  Do not run Mutineer older than 1.7.0
+  at the same time in the same checkout: it still writes temp files
+  without the dot, and a newer run's mutants error when Zeitwerk finds
+  one.
+- **A second in-process run no longer deletes a live mutant file (#295).**
+  Each in-process run sweeps the source directories before its boot and
+  after its run. That sweep treated every `.mutineer_mutant*.rb` file as an
+  orphan, so it could delete another run's file between the write and the
+  load, and that mutant scored `errored`. Now the file is locked while it
+  loads, as the daemon's file is, and a sweep keeps a file whose creating
+  process still runs.
+- **The `range` operator swaps endless ranges outside slices.** Before, it
+  skipped every endless range (`1..`, `1..nil`) as equivalent. But `(1..)`
+  and `(1...)` differ on `==`, `hash`, `exclude_end?` and `to_s`, so a test
+  can kill that mutant. Now the operator skips an endless range only when it
+  is a direct index argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`,
+  `bytesplice`, `values_at` or an index write, and the receiver is not a
+  class (`Array[1..]` is swapped). A Hash, Proc, or custom `[]`/`slice` can
+  still tell `1..` from `1...`, so those skips can hide a killable mutant. See
+  [Equivalent skips](https://davidteren.github.io/mutineer/equivalent-skips.html#endless-range).
+  A run that names `range` can get new mutants, new survivors and new mutant
+  ids. A new mutant can take the id of an older `range` mutant in the same
+  method, so an old `ignore:` id can name a different mutant. If you use
+  `range`:
+  - Delete the `ignore:` entries for `range` mutants.
+  - Save a new report with the same operators you gate with:
+    `mutineer run <paths> --operators <list> --no-since --format json --output <file>`.
+    Use it as your new baseline.
+  - Print new entries with
+    `mutineer triage <file> --reason TEXT (--id ID ... | --all)` and paste
+    them under `ignore:`. The command does not edit files.
+
+  Some new mutants are equivalent, for example a range used only with
+  `include?`, or a range in an Active Record query such as
+  `where(created_at: time..)`. Suppress them with `# mutineer:disable-line`
+  or an `ignore:` entry. (#299)
+- **A test file given as a source after `--test` now exits 2 in more layouts
+  (#293).** The check missed Minitest `test_*.rb` files under `test/` or
+  `spec/`, and `*_test.rb` or `*_spec.rb` files in the same directory as a
+  `--test` file, such as the project root. Mutineer then mutated that file as
+  a source and never ran it as a test. With `--format json`, the stray file's
+  Minitest output also made the report invalid JSON. A support file with a
+  `test_` name under the top-level `test/` or `spec/` (other than
+  `test_helper.rb`) now also exits 2 when given as a source with `--test`.
+- **A mutant on a later line of a call inside a one-line block can be killed
+  (#289).** A call can span several lines, such as
+  `users.map { |u| format("%s",` with arguments on the next lines. Mutineer
+  used to pick no tests for a mutant on a later line, so it was always
+  `no_coverage`. Now, when the lines of the statement give no tests, Mutineer
+  retries. It runs the tests that ran the first or last line of the
+  statement, never the `def` line. A kill counts. A survivor stays
+  `no_coverage` (or `ran_at_load`), because those tests may not have run it. A
+  score can rise with no test change. Such a mutant can now also end as
+  `error` or `timeout`. That counts toward the `--threshold` completeness
+  check.
+- Mutineer reads its files and pipes as UTF-8 when `LANG` and `LC_ALL` are
+  unset (#303). Before, a non-ASCII character in a source file, a baseline, a
+  coverage cache, a triage report, `.mutineer.yml` (for `migrate`),
+  `db/schema.rb`, a `--since` diff, test-command output, or a daemon message
+  stopped the run with "invalid byte sequence in US-ASCII" (exit 2) or a
+  backtrace (exit 1). An invalid byte in test-command output now shows as
+  `\xNN`. Non-ASCII file and folder names are not covered yet (#346).
 - **Upgrade note for `--test-command` with a custom failure exit code (#292).**
   An RSpec setup with `--failure-exit-code 3` now scores every kill as
   `error`. Use the default exit code, or a wrapper that maps a failure to
@@ -139,6 +234,17 @@ All notable changes to this project are documented here. The format is based on
   the run warns that path-relative methods there can be falsely killed
   (tracked in #339).
 
+- `--test-command` now sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1` for the test
+  command. Mutineer writes each mutant over the source file, and Bootsnap keys
+  its compile cache on path, size and whole-second mtime. Two same-size mutants
+  written in the same second could load the first one's cached code, so a
+  mutant could be scored on code that was not the mutant. Each mutant boot now
+  compiles the app again, which is slower. The variable works through
+  `require "bootsnap/setup"` on Bootsnap 1.7.0 or later; an app that calls
+  `Bootsnap.setup` itself must pass
+  `compile_cache_iseq: ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"].nil?`, so only
+  mutant runs lose the cache. The `--daemon` path is unchanged (#285).
+
 ### Changed
 
 - **Load failures now use the runtime-error exit code (#288).** An
@@ -150,6 +256,17 @@ All notable changes to this project are documented here. The format is based on
   checked before the daemon starts, so it exits 2 there too. Both moves bring
   the code in line with the exit-code table in STABILITY.md, which already
   lists a bad path as 2 and a runtime error as 1.
+- **`call_to_receiver` now mutates last-call conversions such as `to_s` and
+  `to_i`.** `m[1].to_i` now gives the mutant `m[1]`. Before, the operator skipped the
+  same names as `chain_link`. Now it skips only `new`, `dup`, `clone`,
+  `freeze`, `itself` and `to_set`. `chain_link` does not change. Only runs
+  that list `call_to_receiver` in `--operators` (or `operators:`) change: they
+  get more mutants (113 more on Mutineer's own `lib/`). If you gate such a run
+  with `--threshold` or `--baseline`, expect new survivors: write a new
+  full-scope baseline with `mutineer run ... --no-since --no-fail-fast
+  --format json`, with no `--only`. A `to_s` mutant on a value that is already
+  a String is equivalent: suppress it with
+  `# mutineer:disable-line call_to_receiver` or an `ignore:` entry. (#274)
 - Explain mutation testing before setup, with a runnable beginner guide and a
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.

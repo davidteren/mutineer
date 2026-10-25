@@ -87,6 +87,7 @@ class DaemonMysqlTest < Minitest::Test
       _out, err = capture_subprocess_io { aggregate = Mutineer::Runner.execute(config).first }
       assert_equal 100.0, aggregate.mutation_score
       assert_includes err, "provisioned 1 mysql worker database(s) from #{BASE}"
+      refute_match(/is not tested with --daemon|is not supported\. --daemon needs MySQL 8\.0|could not read the MySQL server version/, err)
     end
   end
 

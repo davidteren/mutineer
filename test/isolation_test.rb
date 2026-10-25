@@ -170,6 +170,20 @@ class IsolationTest < Minitest::Test
     end
   end
 
+  # #295: another run's sweep can run while this mutant loads. The file is
+  # locked and named for a live pid, so the sweep leaves it in place.
+  def test_a_sweep_during_load_keeps_the_mutant_file
+    Dir.mktmpdir do |dir|
+      code = <<~RUBY
+        $kept = Mutineer::JobPlan.sweep_orphans([File.dirname(__FILE__)]).include?(__FILE__) && File.exist?(__FILE__)
+        $locked = File.open(__FILE__) { |f| f.flock(File::LOCK_EX | File::LOCK_NB) == false }
+      RUBY
+      Mutineer::Isolation.apply_whole_file(code, File.join(dir, "x.rb"))
+      assert $kept, "the sweep must not delete a file that is loading"
+      assert $locked, "the file is locked while it loads"
+    end
+  end
+
   # --- the --matrix channel ------------------------------------------------
   # With channel: true the block gets a pipe for KillChannel lines, and the
   # Result carries them as Kills. The verdict is the one a run without

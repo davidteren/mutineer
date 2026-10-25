@@ -79,4 +79,23 @@ class StatementCoverageTest < Minitest::Test
       assert_equal 0, agg.survived_count, File.basename(test)
     end
   end
+
+  # #289: Ruby counts only the block opener of a call split across lines in a
+  # one-line block, so its tests run as :maybe.
+  def test_a_continuation_line_in_a_one_line_block_runs_the_opener_tests_as_maybe
+    assert_equal :maybe, selection_for("u[0] + 1")
+  end
+
+  # #289: a test that runs the block kills both mutants. A test that runs the
+  # opener with no users never runs the block, so both are no_coverage.
+  def test_a_continuation_mutant_in_a_one_line_block_is_killed_or_no_coverage
+    { TEST => [2, 0], File.expand_path("fixtures/continuation_weak_test.rb", __dir__) => [0, 2] }.each do |test, want|
+      config = Mutineer::Config.new(sources: [SOURCE], tests: [test], only: "Continuation.names",
+                                    operators: ["arithmetic"], cache_dir: Dir.mktmpdir("mutineer-cache"),
+                                    project_root: ROOT)
+      agg, = Mutineer::Runner.execute(config)
+      assert_equal want, [agg.killed_count, agg.no_coverage_count], File.basename(test)
+      assert_equal 0, agg.survived_count, File.basename(test)
+    end
+  end
 end

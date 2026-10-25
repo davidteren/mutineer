@@ -605,6 +605,21 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # #303: with LANG unset Ruby reads files as US-ASCII. A cache or a
+  # --coverage-from capture with a non-ASCII path must still parse.
+  def test_reads_a_non_ascii_cache_and_capture_under_an_ascii_locale
+    Dir.mktmpdir do |dir|
+      capture = File.join(dir, "capture.json")
+      [File.join(dir, "coverage.json"), capture].each { |f| File.write(f, JSON.generate("caf\u00e9.rb" => [1])) }
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, coverage_from: capture)
+      with_ascii_default_external do
+        assert_equal [1], map.send(:read_cache)["caf\u00e9.rb"]
+        err = assert_raises(Mutineer::CoverageFromError) { map.send(:accepted_capture) }
+        assert_match(/cannot be reused/, err.message, "the capture parsed, then failed the fit check")
+      end
+    end
+  end
+
   # --- #187: lines that ran at load ---------------------------------------
 
   LOAD_ROOT = File.expand_path("fixtures/load_time", __dir__)

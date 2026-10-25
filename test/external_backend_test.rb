@@ -171,13 +171,14 @@ class ExternalBackendTest < Minitest::Test
     ENV.delete("MUTINEER_ENV_PROBE")
   end
 
-  # Rails parallelize and Spring read these in the test-command child.
-  def test_child_env_pins_parallel_workers_and_disables_spring
+  # Rails parallelize, Spring and Bootsnap read these in the test-command child.
+  def test_child_env_pins_parallel_workers_and_disables_spring_and_bootsnap_cache
     prior = ENV["PARALLEL_WORKERS"]
     ENV["PARALLEL_WORKERS"] = "8"
     env = Backend.child_env
     assert_equal "1", env["PARALLEL_WORKERS"]
     assert_equal "1", env["DISABLE_SPRING"]
+    assert_equal "1", env["DISABLE_BOOTSNAP_COMPILE_CACHE"]
     assert_equal "8", ENV["PARALLEL_WORKERS"]
   ensure
     prior.nil? ? ENV.delete("PARALLEL_WORKERS") : ENV["PARALLEL_WORKERS"] = prior
@@ -273,6 +274,30 @@ class ExternalBackendTest < Minitest::Test
       end
       assert_match(/unmutated suite is not green/, err.message)
       assert_match(/db down/, err.message)
+    end
+  end
+
+  # #303: with LANG unset the captured output reads as US-ASCII. Non-ASCII
+  # output from a failing suite must reach the smoke error, not crash it.
+  def test_smoke_check_non_ascii_output_under_an_ascii_locale
+    with_script(%(STDOUT.puts "caf\\u00e9 down"\nexit 1\n)) do |path|
+      err = with_ascii_default_external do
+        assert_raises(Mutineer::SmokeCheckError) do
+          Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
+        end
+      end
+      assert_includes err.message, "caf\u00e9 down"
+    end
+  end
+
+  # Test output need not be valid UTF-8 (a Latin-1 message, say). The smoke
+  # error still carries the text, with the bad byte shown as \xNN.
+  def test_smoke_check_invalid_utf8_output_is_replaced_not_raised
+    with_script(%(STDOUT.binmode\nSTDOUT.write("bad \\xFF byte\\n")\nexit 1\n)) do |path|
+      err = assert_raises(Mutineer::SmokeCheckError) do
+        Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
+      end
+      assert_includes err.message, "bad \\xFF byte"
     end
   end
 

@@ -451,7 +451,7 @@ module Mutineer
         raise CoverageFromError, "--coverage-from #{@coverage_from} is this run's own cache; give the run another --cache-dir"
       end
 
-      cached = JSON.parse(File.read(@coverage_from))
+      cached = JSON.parse(File.read(@coverage_from, encoding: "UTF-8"))
       reason = capture_mismatch(cached)
       raise CoverageFromError, "--coverage-from #{@coverage_from} cannot be reused: #{reason}" if reason
 
@@ -1523,7 +1523,7 @@ module Mutineer
     def read_cache
       return nil unless File.exist?(cache_path)
 
-      JSON.parse(File.read(cache_path))
+      JSON.parse(File.read(cache_path, encoding: "UTF-8"))
     rescue JSON::ParserError
       nil # corrupt cache: rebuild from scratch
     end
