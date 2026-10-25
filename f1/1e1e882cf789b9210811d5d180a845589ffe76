@@ -1,0 +1,31 @@
+docs/rails.md
+  s_4caa099c6c87f9::t_32341ef755e345 86-90
+.expectation-fit/ways-of-working.yaml
+  s_4caa099c6c87f9::t_32341ef755e345 1-33
+CLAUDE.md
+  s_4caa099c6c87f9::t_32341ef755e345 1-7
+docs/agentic-coding.html
+  s_4caa099c6c87f9::t_32341ef755e345 136
+docs/agentic-coding.md
+  s_4caa099c6c87f9::t_32341ef755e345 125-129
+docs/rails.html
+  s_4caa099c6c87f9::t_32341ef755e345 110
+AGENTS.md
+  s_4caa099c6c87f9::t_32341ef755e345 142-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f11e1e882cf789b9210811d5d180a845589ffe76",
+  "prompts": {},
+  "sessions": {
+    "s_4caa099c6c87f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a16a26-cbd9-75b0-9a60-c1027763da8b",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
