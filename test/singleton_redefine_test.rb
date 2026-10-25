@@ -11,11 +11,11 @@ require "tmpdir"
 class SingletonRedefineTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
-  def run_redefine(source, test, strategy: "redefine", only: nil)
+  def run_redefine(source, test, strategy: "redefine", only: nil, matrix: false)
     config = Mutineer::Config.new(
       sources: ["test/fixtures/singleton/#{source}"],
       tests: ["test/fixtures/singleton/#{test}"],
-      strategy: strategy, only: only,
+      strategy: strategy, only: only, matrix: matrix,
       cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
     )
     Mutineer::Runner.execute(config).first
@@ -160,11 +160,22 @@ class SingletonRedefineTest < Minitest::Test
   # #252: a def in an ActiveSupport::Concern `class_methods` block belongs to the
   # concern's ClassMethods. Before the fix, redefine loaded the mutant onto the
   # concern itself, the test called the includer's class method, and every
-  # mutant falsely survived.
+  # mutant falsely survived. #300: the concern body also defines `scaled(x, y)`,
+  # so a mutant loaded onto the concern breaks `test_instance_scaled` and is
+  # killed by the wrong test. The kill matrix shows which test killed each mutant.
   def test_class_methods_block_methods_are_mutated
-    agg = run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
-                       only: "ConcernPricing::ClassMethods#scaled")
-    assert_killed(agg, "class_methods block")
+    %w[redefine reload].each do |strategy|
+      agg = run_redefine("concern_class_methods.rb", "concern_class_methods_test.rb",
+                         strategy: strategy, only: "ConcernPricing::ClassMethods#scaled", matrix: true)
+      assert_killed(agg, "class_methods block (#{strategy})")
+      agg.results.each do |r|
+        assert r.kills.complete, "#{strategy}: the matrix row must run every covering test"
+        assert_includes r.kills.ran.map { |_file, name, _id| name }, "ConcernClassMethodsTest#test_instance_scaled",
+                        "#{strategy}: the instance twin must run against the mutant"
+        assert_equal ["ConcernClassMethodsTest#test_scaled"], r.kills.killed_by.map { |_file, name, _id| name },
+                     "#{strategy}: only the class method test may kill a class_methods mutant"
+      end
+    end
   end
 
   # An `included` block runs in each includer, so no constant names the owner of
