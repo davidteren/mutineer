@@ -727,9 +727,10 @@ module Mutineer
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
-      # mutants count as survivors), and an infra failure that exits 1 with a
-      # failing test in its output still scores as a kill (#292). The text holds
-      # whether or not the runner turned on the summary check. Daemon coverage
+      # mutants count as survivors), and an infra failure that exits 1 can still
+      # score as a kill (#292): with the summary check on, when its output names a
+      # failing test; with it off (the clean run printed no Minitest or RSpec
+      # summary line), on any exit 1, a load crash included. Daemon coverage
       # fallback warnings are emitted from the runner only when the map is
       # unavailable, not on every --daemon run.
       if config.test_command
