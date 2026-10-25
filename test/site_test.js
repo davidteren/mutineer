@@ -68,6 +68,7 @@ test('link checker rejects a missing file, fragment or site URL, and a duplicate
 test('HTML pages with markdown twins advertise rel=alternate', () => {
   const twins = {
     [`${SITE}/index.html`]: `${BASE}/index.md`,
+    [`${SITE}/learn.html`]: `${BASE}/learn.md`,
     [`${SITE}/agentic-coding.html`]: `${BASE}/agentic-coding.md`,
     [`${SITE}/equivalent-skips.html`]: `${BASE}/equivalent-skips.md`,
     [`${SITE}/rails.html`]: `${BASE}/rails.md`,
@@ -96,6 +97,19 @@ test('index.md landing twin exists and sitemap lists the same Pages URLs as llms
   assert.ok(unique.length >= 8, 'llms.txt should list the docs + optional Pages URLs');
   for (const url of unique) {
     assert.match(sitemap, new RegExp(`<loc>${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</loc>`));
+  }
+});
+
+// SiteBuild::UNPUBLISHED (docs/plans/, docs/release-review/) holds maintainer
+// notes kept in git. rake site:build must leave them out of the published tree.
+test('maintainer notes under docs/ are not published', () => {
+  const source = fs.readFileSync('rake/site_build.rb', 'utf8');
+  const list = source.match(/^\s*UNPUBLISHED = %w\[([^\]]*)\]/m);
+  assert.ok(list, 'rake/site_build.rb must define UNPUBLISHED = %w[...]');
+  const dirs = list[1].trim().split(/\s+/);
+  assert.ok(dirs.includes('plans'), 'docs/plans/ must stay unpublished');
+  for (const dir of dirs) {
+    assert.ok(!fs.existsSync(`${SITE}/${dir}`), `${SITE}/${dir} must not be published`);
   }
 });
 

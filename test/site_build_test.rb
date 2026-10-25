@@ -63,17 +63,19 @@ class SiteBuildTest < Minitest::Test
     end
   end
 
-  # docs/release-review/ holds maintainer notes. It stays in git but is not
-  # published, while a page beside it is.
+  # docs/release-review/ and docs/plans/ hold maintainer notes. They stay in
+  # git but are not published, nested files included, while a page beside
+  # them is.
   def test_unpublished_docs_are_not_copied_to_the_site
-    paths = ["index.md", "release-review/README.md", "release-review-notes.md"]
+    paths = ["index.md", "release-review/README.md", "release-review-notes.md",
+             "plans/2026-10-24-001-fix-plan.md", "plans/archive/old-plan.md", "plans-overview.md"]
     copied = []
     SiteBuild.stub(:tracked_docs_paths, paths) do
       FileUtils.stub(:cp, ->(_src, target) { copied << target }) do
         Dir.mktmpdir { |dest| SiteBuild.send(:copy_docs_tree!, dest); copied.map! { |t| t.delete_prefix("#{dest}/") } }
       end
     end
-    assert_equal ["index.md", "release-review-notes.md"], copied
+    assert_equal ["index.md", "release-review-notes.md", "plans-overview.md"], copied
   end
 
   def test_tracked_docs_paths_raises_outside_a_checkout

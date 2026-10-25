@@ -13,7 +13,7 @@ test('theme, keyboard disclosure, copy and mobile navigation work together', asy
   await summary.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('.boundary-test')).toHaveAttribute('open', '');
-  await expect(page.getByText('assert_equal 0, calculator.discount(10)')).toBeVisible();
+  await expect(page.getByText('assert_equal 0.1, Discount.new.rate(10)')).toBeVisible();
   await page.getByRole('button', { name: 'Dark theme. Switch to light mode' }).click();
   await page.reload();
   await expect(root).toHaveAttribute('data-theme', 'light');
@@ -22,11 +22,11 @@ test('theme, keyboard disclosure, copy and mobile navigation work together', asy
   await expect(page.locator('.copy').first()).toHaveText('Copied ✓');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('gem install mutineer');
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ['/', '/agentic-coding.html', '/rails.html', '/json-schema.html', '/sample-report.html']) {
+  for (const path of ['/', '/learn.html', '/agentic-coding.html', '/rails.html', '/json-schema.html', '/sample-report.html']) {
     await page.goto(path);
     await expect(root).toHaveAttribute('data-theme', 'light');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    for (const label of ['Install', 'Agent & CI', 'JSON schema', 'Sample report', 'GitHub ↗']) {
+    for (const label of ['Learn', 'Install', 'Agent & CI', 'JSON schema', 'Sample report', 'GitHub ↗']) {
       await expect(page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('link', { name: label, exact: true })).toBeVisible();
     }
   }
@@ -38,7 +38,7 @@ test('theme, keyboard disclosure, copy and mobile navigation work together', asy
 });
 
 test('markdown twins and agent entrypoints are served', async ({ request }) => {
-  for (const path of ['/index.md', '/agentic-coding.md', '/rails.md', '/json-schema.md', '/llms.txt', '/llms-full.txt', '/skill.md', '/agents.txt', '/sitemap.xml', '/api/']) {
+  for (const path of ['/index.md', '/learn.md', '/agentic-coding.md', '/rails.md', '/json-schema.md', '/llms.txt', '/llms-full.txt', '/skill.md', '/agents.txt', '/sitemap.xml', '/api/']) {
     const res = await request.get(path);
     expect(res.ok(), `${path} should be 200`).toBeTruthy();
   }
@@ -52,10 +52,15 @@ test('content and disclosure remain usable without JavaScript', async ({ browser
     const page = await context.newPage();
     await page.goto('http://127.0.0.1:8766/');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Make yourtests prove it.');
-    await page.locator('.boundary-test summary').click();
+    await page.locator('.boundary-test summary').press('Enter');
     await expect(page.locator('.boundary-test')).toHaveAttribute('open', '');
     await expect(page.locator('#theme')).toBeHidden();
     await expect(page.locator('.copy').first()).toBeHidden();
+    await page.getByRole('link', { name: 'New to mutation testing? Start here' }).press('Enter');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Mutation testing, explained');
+    await page.getByRole('link', { name: 'Try the example', exact: true }).press('Enter');
+    await expect(page).toHaveURL(/learn.html#try-the-example$/);
+    await expect(page.getByText('bundle exec ruby test/discount_test.rb', { exact: false }).first()).toBeVisible();
   } finally {
     await context.close();
   }

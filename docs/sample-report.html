@@ -26,6 +26,7 @@
   <div class="wrap nav">
     <a class="brand" href="index.html"><span class="mark" aria-hidden="true">M↗</span> mutineer<span class="brand-note">/ Ruby mutation testing</span></a>
     <nav aria-label="Primary">
+      <a href="learn.html">Learn</a>
       <a href="index.html#install">Install</a>
       <a href="agentic-coding.html">Agent &amp; CI</a>
       <a href="equivalent-skips.html">Skips</a>
@@ -41,7 +42,7 @@
 <main id="main" class="wrap report-page">
 <div class="eyebrow">Report example / Calculator</div>
 <h1>Two changes.<br>No test caught them.</h1>
-<p class="doc-lede">Start with the survivors. Each diff shows a change that passed the test suite.</p>
+<p class="doc-lede">The tests caught four changes and missed two. Each diff below shows a missed change. Review it for a missing test or behaviour that stays the same.</p>
 <p class="note">Sample data in the website theme. The CLI’s self-contained HTML report has its own presentation.</p>
 <div class="score">66.7% <span>mutation score · 4 / (4 + 2)</span></div>
 <div class="counts">
@@ -57,7 +58,7 @@
   <span><strong>0</strong> errored</span>
   <span><strong>0</strong> timeout</span>
 </div>
-<h2>Per-source</h2>
+<h2>Results by file</h2>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Per-source results"><table>
 <tr><th scope="col">File</th><th scope="col">Score</th><th scope="col">Killed</th><th scope="col">Survived</th><th scope="col">No coverage</th></tr>
   <tr><td>test/fixtures/calculator.rb</td><td class="num">66.7%</td><td class="num">4</td><td class="num">2</td><td class="num">0</td></tr>

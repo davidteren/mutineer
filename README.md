@@ -6,16 +6,9 @@
 [![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Mutineer%20Ruby-2da44e?logo=githubactions&logoColor=white)](https://github.com/marketplace/actions/mutineer-ruby)
 [![Socket](https://img.shields.io/badge/Socket-security%20report-0a66c2?logo=socket&logoColor=white)](https://socket.dev/rubygems/package/mutineer)
 
-A clean-room mutation-testing tool for Ruby. Mutineer mutates your source one
-change at a time, runs your test suite (Minitest or RSpec) against each mutant, and reports the
-ones your tests failed to catch — the gaps where your suite isn't actually
-testing anything.
-
-"Clean-room" means Mutineer was written from scratch. It contains no code from
-[Mutant](https://github.com/mbj/mutant) or any other mutation-testing tool.
-Mutineer's own code is licensed under MIT. See
-[Mutineer and Mutant](https://github.com/davidteren/mutineer#mutineer-and-mutant)
-for how the two tools differ.
+Would your tests catch a bug? Mutineer makes small changes to your Ruby code
+and runs your Minitest or RSpec tests against each change. If the tests still
+pass, it shows you what they missed. This is **mutation testing**.
 
 - **Prism + stdlib only** — zero runtime dependencies (Ruby ≥ 3.4).
 - **One mutation per mutant**, validity-checked by re-parsing.
@@ -114,8 +107,8 @@ Each change is small, such as `>=` to `>` or `&&` to `||`. One changed copy of
 your code is a **mutant**. Mutineer runs your tests against each mutant:
 
 - When a test fails, the tests **killed** the mutant. Good: they noticed.
-- When every test still passes, the mutant **survived**. Your tests ran that
-  code but did not check what it does.
+- When every test still passes, the mutant **survived**. The tests did not distinguish the
+  changed code from the original. Read the change to see whether it exposes a gap.
 
 ### A small example
 
@@ -826,7 +819,8 @@ the directory you set with `--cache-dir` if it is inside the project. Keep
 [Mutant](https://github.com/mbj/mutant), by Markus Schirp, is the established
 mutation-testing tool for Ruby. It has been in development since 2012 and is
 the subject of published research. Mutineer is a separate tool, and it shares
-no code with Mutant.
+no code with Mutant or any other mutation-testing tool. Mutineer was written
+from scratch and is MIT licensed.
 
 | Aspect | Mutineer | Mutant |
 |---|---|---|

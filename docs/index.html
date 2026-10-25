@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mutineer — Mutation testing for Ruby, Prism + stdlib only</title>
-<meta name="description" content="Mutineer is a clean-room mutation-testing tool for Ruby. It mutates your source one change at a time, runs your suite against each mutant, and reports the gaps your tests fail to catch. Zero runtime dependencies, JSON contract, and CI/agent gating.">
+<meta name="description" content="Would your tests catch a bug? Mutineer makes small changes to your Ruby code and checks whether your tests fail. Find missing tests with Minitest or RSpec.">
 <meta name="color-scheme" content="dark light">
 <link rel="canonical" href="https://davidteren.github.io/mutineer/">
 <link rel="alternate" type="text/markdown" href="https://davidteren.github.io/mutineer/index.md" title="Markdown">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Mutineer">
 <meta property="og:title" content="Mutineer — Mutation testing for Ruby">
-<meta property="og:description" content="Mutate your source, run your tests, find the gaps your suite doesn't catch. Prism + stdlib only, zero runtime dependencies. Built for CI gates and AI coding agents.">
+<meta property="og:description" content="Your tests pass. Would they catch a bug? Mutineer changes your Ruby code to help you find missing tests. Start with one file.">
 <meta property="og:url" content="https://davidteren.github.io/mutineer/">
 <meta property="og:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
 <meta property="og:image:width" content="1200">
@@ -19,7 +19,7 @@
 <meta property="og:image:alt" content="Mutineer — Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Mutineer — Mutation testing for Ruby">
-<meta name="twitter:description" content="Mutate your source, run your tests, find the gaps your suite doesn't catch. Prism + stdlib only, zero runtime dependencies. Built for CI gates and AI coding agents.">
+<meta name="twitter:description" content="Your tests pass. Would they catch a bug? Mutineer changes your Ruby code to help you find missing tests. Start with one file.">
 <meta name="twitter:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
 <meta name="twitter:image:alt" content="Mutineer — Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='1' fill='%2367286a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
@@ -33,6 +33,7 @@
   <div class="wrap nav">
     <a class="brand" href="index.html"><span class="mark" aria-hidden="true">M↗</span> mutineer<span class="brand-note">/ Ruby mutation testing</span></a>
     <nav aria-label="Primary">
+      <a href="learn.html">Learn</a>
       <a href="#install">Install</a>
       <a href="agentic-coding.html">Agent &amp; CI</a>
       <a href="equivalent-skips.html">Skips</a>
@@ -51,17 +52,17 @@
   <!-- The changed operator is both the visual identity and the product explanation. -->
   <section class="hero">
     <div class="wrap">
-      <div class="eyebrow">Independent test inspection / Ruby ≥ 3.4</div>
+      <div class="eyebrow">Check your Ruby tests / Minitest &amp; RSpec</div>
       <div class="hero-grid">
         <div class="hero-copy">
           <h1>Make your<br>tests prove it.</h1>
-          <p class="lede">A passing test is a claim. Change the code and see if that claim holds.</p>
-          <p class="hero-description">Mutineer breaks your Ruby code one change at a time. Your tests should catch it. When they don’t, you get the exact line they missed.</p>
+          <p class="lede">Your tests pass. Would they catch a bug?</p>
+          <p class="hero-description">Mutineer makes small changes to your Ruby code, then runs your tests. If they still pass, it shows you the change they missed. This is called <strong>mutation testing</strong>.</p>
           <div class="cta">
-            <a class="btn btn-primary" href="#install">Install Mutineer <span aria-hidden="true">↗</span></a>
-            <a class="text-link" href="#how">See how it works ↓</a>
+            <a class="btn btn-primary" href="#install">Try it on one file <span aria-hidden="true">↗</span></a>
+            <a class="text-link" href="learn.html">New to mutation testing? Start here →</a>
           </div>
-          <p class="note">Open source. MIT licensed. Prism + stdlib only.</p>
+          <p class="note">Works with your existing Minitest or RSpec tests. Free under the MIT license.</p>
         </div>
         <figure class="explainer">
           <video playsinline loop preload="none" width="1920" height="1080"
@@ -76,9 +77,9 @@
       </div>
       <div class="badges" aria-label="Tool facts">
         <span class="badge"><b>00</b> runtime dependencies</span>
-        <span class="badge"><b class="odo" data-from="0">21</b> mutation operators</span>
-        <span class="badge"><b class="odo" data-from="0">01</b> change per mutant</span>
-        <span class="badge"><b>JSON</b> evidence for your pipeline</span>
+        <span class="badge"><b class="odo" data-from="0">21</b> types of code change</span>
+        <span class="badge"><b class="odo" data-from="0">01</b> change at a time</span>
+        <span class="badge"><b>JSON</b> reports for CI and agents</span>
       </div>
       <div class="hero-proof">
         <span class="kicker">In practice</span>
@@ -90,40 +91,38 @@
     </div>
   </section>
 
-  <!-- site:production-ready -->
-  <!-- /site:production-ready -->
-
   <!-- HOW -->
   <section id="how">
     <div class="wrap">
       <div class="sec-head">
         <div class="kicker">How it works</div>
-        <h2>Mutate. Run. Report.</h2>
-        <p>A surviving mutant shows a change your tests did not catch. Inspect it, strengthen the test, and run again. Some changes are equivalent and need no new test.</p>
+        <h2>Find a bug your tests would miss.</h2>
+        <p>Each changed version of your code is called a <strong>mutant</strong>. For example, a discount should start at 10 items. Tests for 1 and 50 items can pass even when the rule is wrong at exactly 10.</p>
+        <p>Line coverage tells you which lines ran. Mutation testing checks whether your tests notice a change to those lines.</p>
       </div>
       <figure class="specimen">
           <figcaption><span>One change. One missed boundary.</span><span>COMPARISON</span></figcaption>
           <div class="mutation-glyph" aria-hidden="true"><span>≥</span><span class="glyph-arrow">→</span><span>&gt;</span></div>
-          <div class="specimen-code"><span class="specimen-label">ORIGINAL</span><code>return 0 if qty &gt;= 10</code></div>
-          <div class="specimen-code mutant"><span class="specimen-label">MUTANT</span><code>return 0 if qty &gt; 10</code></div>
+          <div class="specimen-code"><span class="specimen-label">ORIGINAL</span><code>return 0.1 if qty &gt;= 10</code></div>
+          <div class="specimen-code mutant"><span class="specimen-label">MUTANT</span><code>return 0.1 if qty &gt; 10</code></div>
           <p class="specimen-verdict"><span aria-hidden="true">↳</span> Still passes? Your tests missed <strong>qty = 10</strong>.</p>
           <details class="boundary-test">
             <summary>Show the test that catches it</summary>
-            <div><code>assert_equal 0, calculator.discount(10)</code><p>The original returns 0 at 10. If the changed method returns a different value, this assertion fails and kills the mutant.</p><p class="note">Illustrative example; no Ruby runs in this page.</p></div>
+            <div><code>assert_equal 0.1, Discount.new.rate(10)</code><p>The original returns 0.1 at 10. The changed method returns 0. This test catches the missing discount. The report calls that a killed mutant.</p><p class="note">No Ruby runs in this page. <a href="learn.html#try-the-example">Run the complete example yourself.</a></p></div>
           </details>
         </figure>
       <div class="steps">
         <div class="step">
-          <h3>Mutate</h3>
-          <p>Mutineer parses your source with Prism and applies one change per mutant — flip a <code>&lt;</code> to <code>&lt;=</code>, swap <code>&amp;&amp;</code> for <code>||</code>, delete a statement. Each mutant is re-parsed to confirm it's still valid Ruby.</p>
+          <h3>Change one thing</h3>
+          <p>Mutineer changes a comparison, swaps an operator, or removes a statement. Each change must still be valid Ruby before Mutineer tests it.</p>
         </div>
         <div class="step">
-          <h3>Run</h3>
-          <p>Every mutant runs your suite in a forked, isolated process — across all your cores. A coverage map means each mutant only runs the test files that actually reach it.</p>
+          <h3>Run your tests</h3>
+          <p>Mutineer runs the tests that cover the changed line. A test should fail when the change breaks a rule your code must follow.</p>
         </div>
         <div class="step">
-          <h3>Report</h3>
-          <p>Killed = your tests caught it. Survived = they didn't. You get a mutation score and a unified diff for every survivor, pinned to the exact line. Set a <code>--threshold</code> to fail CI, or <code>--format html</code> for a shareable report. <a href="sample-report.html">Inspect example report data →</a> in the website theme.</p>
+          <h3>Read what they missed</h3>
+          <p><strong>Killed</strong> means a test caught the change. <strong>Survived</strong> means the tests still passed. Read the changed line and add a test if it exposes a gap. Some changes leave the behaviour the same; <a href="learn.html#what-to-do-with-a-survivor">record why you ignore those</a>.</p>
         </div>
       </div>
     </div>
@@ -131,9 +130,41 @@
 
   <div class="wrap evidence-strip">
     <div><span class="kicker">Reading a result</span><strong><span class="odo" data-from="0">24</span> caught. 1 missed.</strong></div>
-    <p><b>96% mutation score.</b> 24 ÷ (24 + 1). An uncovered mutant is excluded from this score.</p>
+    <p><b>96% mutation score.</b> 24 killed ÷ (24 killed + 1 survived). Uncovered and unscored changes are excluded. The score does not prove that the code has no bugs.</p>
     <a href="sample-report.html">Inspect a sample report <span aria-hidden="true">↗</span></a>
   </div>
+
+  <!-- INSTALL -->
+  <section id="install">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="kicker">Your first run</div>
+        <h2>Start with one file.</h2>
+        <p>Use Ruby 3.4 or later on Linux or macOS. Choose a small file with tests that already pass. Mutation testing runs tests repeatedly, so it takes longer than a normal test run.</p>
+      </div>
+      <div class="two-col">
+        <div>
+          <p class="sub">Install Mutineer</p>
+          <div class="codeblock"><button hidden class="copy" data-copy="gem install mutineer">Copy</button><span class="p">$</span> <span class="typed-text">gem install mutineer</span></div>
+          <p class="note">In a Bundler project, add <code>gem "mutineer", group: :test</code> to your Gemfile, run <code>bundle install</code>, and prefix the commands below with <code>bundle exec</code>.</p>
+          <p class="sub" style="margin-top:1.4rem">Run it against your file and its test</p>
+          <div class="codeblock"><button hidden class="copy" data-copy="mutineer run lib/discount.rb --test test/discount_test.rb">Copy</button><span class="p">$</span> mutineer run lib/discount.rb \
+  <span class="c">--test</span> test/discount_test.rb</div>
+          <p class="note">Replace both paths with files in your project. For RSpec, use a spec file with <code>--test</code>. For Rails, follow the <a href="rails.html#one-model">one-model guide</a>.</p>
+        </div>
+        <div>
+          <p class="sub">Read one surviving change</p>
+          <p>Find <strong>Surviving Mutants</strong> in the report. Read the changed line. Add a test that passes with the original code and fails with the change, then run Mutineer again.</p>
+          <p>Some changes have the same result as the original. Those are called <strong>equivalent mutants</strong>. Review them and record a reason before you ignore them.</p>
+          <p><a class="text-link" href="learn.html#try-the-example">No file in mind? Run the complete example →</a></p>
+          <p class="note">You do not need a score target for your first run. After you understand the results, <a href="agentic-coding.html">add a CI check</a> or <a href="https://github.com/davidteren/mutineer#configuration">save settings with <code>mutineer init</code></a> (1.7+).</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- site:production-ready -->
+  <!-- /site:production-ready -->
 
   <!-- AI AGENTS & CI -->
   <section id="agents">
@@ -141,13 +172,13 @@
       <div class="sec-head">
         <div class="kicker">AI agents &amp; CI</div>
         <h2>Give your pipeline evidence.</h2>
-        <p>Line coverage tells you which code <em>ran</em> under test. It can't tell you whether a test would <em>notice</em> if that code broke — exactly where AI-generated tests are weakest. Mutineer answers that, programmatically: versioned JSON, mutant ids that survive unrelated edits, structured exit codes, and diff-scoped runs.</p>
+        <p>Once you understand your first report, use Mutineer to check code changes in CI or give an AI coding agent a specific test gap to fix. JSON reports describe each missed change. You can limit runs to changed lines and compare results with an earlier run.</p>
       </div>
       <div class="usecases">
         <div class="usecase">
           <span class="tag">Agent inner loop</span>
           <h3>Close the loop on test quality</h3>
-          <p>An agent writes code and tests, then runs Mutineer on just the diff. Each survivor ships a ready-made diff to feed back: <em>"write a test that fails under this change."</em> Stop when survivors hit zero.</p>
+          <p>An agent writes code and tests, then runs Mutineer on just the diff. Each survivor ships a ready-made diff to feed back: <em>"write a test that fails under this change."</em> Ask for a human review when a survivor cannot be caught; it may leave the behaviour unchanged.</p>
           <p><code class="flag">--since origin/main</code> <code class="flag">--format json</code></p>
         </div>
         <div class="usecase">
@@ -179,12 +210,12 @@
         <p>Prism and the standard library provide the runtime. Test-framework changes stay in disposable child processes; Rails apps can use the optional <code>--rails</code> or <code>--boot</code> entry point.</p>
       </div>
       <div class="grid">
-        <div class="card"><h3>Zero runtime deps</h3><p>Prism ships with Ruby ≥ 3.4 and everything else is stdlib. Nothing to pin, nothing to break on upgrade.</p></div>
+        <div class="card"><h3>Zero runtime deps</h3><p>Mutineer uses the parser and standard library included with Ruby 3.4 or later. It adds no runtime gems.</p></div>
         <div class="card"><h3>Valid mutants only</h3><p>Every mutation is re-parsed before it runs. Syntactically broken mutants are skipped, not counted against your score.</p></div>
-        <div class="card"><h3>Fork isolation</h3><p>Each mutant runs in its own forked process on Linux &amp; macOS — no state bleed between runs, parallel by default.</p></div>
+        <div class="card"><h3>Fork isolation</h3><p>Each mutant runs in a separate process on Linux or macOS. Plain Ruby runs use multiple workers. Rails runs need <code>--daemon</code> for multiple workers. <code>--test-command</code> forces one Mutineer worker. It also sets <code>PARALLEL_WORKERS=1</code> for Rails tests. A script that sets this variable again can start Rails test workers.</p></div>
         <div class="card"><h3>Coverage-mapped</h3><p>A per-mutant coverage map runs only the test files that reach the mutated line. Digest-keyed cache skips unchanged work.</p></div>
         <div class="card"><h3>CI &amp; agent ready</h3><p>Stable, sorted <code>--format json</code> with a versioned schema and mutant ids that survive unrelated edits. <code>--threshold</code> and <code>--baseline</code> gate the build.</p></div>
-        <div class="card"><h3>Rails-aware</h3><p><code>--rails</code> boots <code>config/environment</code> once, then forks per mutant with fork-safe ActiveRecord — dogfooded against a real Rails app.</p></div>
+        <div class="card"><h3>Rails-aware</h3><p>Use <code>--rails</code> to load your app. Minitest apps can add <code>--daemon</code> for worker test databases on SQLite files, PostgreSQL, or MySQL 8. <a href="rails.html">Start with one model.</a></p></div>
       </div>
     </div>
   </section>
@@ -237,7 +268,7 @@
     <div class="wrap">
       <div class="sec-head">
         <div class="kicker">Mutineer and Mutant</div>
-        <h2>Clean-room, not a fork.</h2>
+        <h2>Written from scratch. MIT licensed.</h2>
         <p>Mutineer was written from scratch. It contains no code from <a href="https://github.com/mbj/mutant" rel="noopener">Mutant</a> or any other mutation-testing tool. Mutineer’s own code is licensed under MIT.</p>
       </div>
       <div class="table-wrap" tabindex="0" role="region" aria-label="Mutineer and Mutant compared">
@@ -259,58 +290,19 @@
     </div>
   </section>
 
-  <!-- INSTALL -->
-  <section id="install">
-    <div class="wrap">
-      <div class="sec-head">
-        <div class="kicker">Get started</div>
-        <h2>Put your tests to the test.</h2>
-        <p>Ruby ≥ 3.4 is the only requirement. Point Mutineer at your source and the tests that cover it.</p>
-      </div>
-      <div class="two-col">
-        <div>
-          <p class="sub">Install</p>
-          <div class="codeblock"><button hidden class="copy" data-copy="gem install mutineer">Copy</button><span class="p">$</span> <span class="typed-text">gem install mutineer</span></div>
-
-          <p class="sub" style="margin-top:1.4rem">Run against a file and its test</p>
-          <div class="codeblock"><button hidden class="copy" data-copy="mutineer run lib/foo.rb --test test/foo_test.rb --threshold 90">Copy</button><span class="p">$</span> mutineer run lib/foo.rb \
-  <span class="c">--test</span> test/foo_test.rb \
-  <span class="c">--threshold</span> 90</div>
-
-          <p class="sub" style="margin-top:1.4rem">Gate a PR against a baseline</p>
-          <div class="codeblock"><button hidden class="copy" data-copy="mutineer run app/ --since origin/main --baseline .mutineer/baseline.json">Copy</button><span class="p">$</span> mutineer run app/ \
-  <span class="c">--since</span> origin/main \
-  <span class="c">--baseline</span> .mutineer/baseline.json</div>
-        </div>
-        <div>
-          <p class="sub">Preview mutations without running tests</p>
-          <div class="codeblock"><button hidden class="copy" data-copy="mutineer run --dry-run lib/foo.rb">Copy</button><span class="p">$</span> mutineer run <span class="c">--dry-run</span> lib/foo.rb</div>
-
-          <p class="sub" style="margin-top:1.4rem">Configure once in <code>.mutineer.yml</code></p>
-          <div class="codeblock"><span class="c"># .mutineer.yml</span>
-operators:
-  - comparison
-  - arithmetic
-  - return_nil
-threshold: 85
-jobs: 8</div>
-          <p class="note">Select JSON output on the command line:</p>
-          <div class="codeblock"><button hidden class="copy" data-copy="mutineer run lib/foo.rb --test test/foo_test.rb --format json">Copy</button><span class="p">$</span> mutineer run lib/foo.rb <span class="c">--test</span> test/foo_test.rb <span class="c">--format</span> json</div>
-        </div>
-      </div>
-      <p class="note">Key flags: <code>--test FILE</code>, <code>--threshold</code>, <code>--since</code>, <code>--baseline</code>, <code>--format human|json|html</code>, <code>--output FILE</code>, <code>--jobs</code>, <code>--rails</code>, <code>--daemon</code>, <code>--timeout SECONDS</code>, <code>--dry-run</code>, <code>--matrix</code>. Typed flags override <code>.mutineer.yml</code>. Full list: <code>mutineer --help</code> or the <a href="https://github.com/davidteren/mutineer#options">README</a>.</p>
-    </div>
-  </section>
-
 </main>
 
 <footer>
   <div class="wrap foot">
     <div>
-      <strong>Mutineer</strong> — clean-room mutation testing for Ruby.
+      <strong>Mutineer</strong> — mutation testing for Ruby.
       <div class="note">MIT licensed · Prism + stdlib only · © David Teren</div>
     </div>
     <nav aria-label="Footer">
+      <a href="learn.html">Learn mutation testing</a>
+      <a href="rails.html">Rails</a>
+      <a href="https://github.com/davidteren/mutineer/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/davidteren/mutineer/blob/main/STABILITY.md">Stability</a>
       <a href="agentic-coding.html">AI &amp; CI recipes</a>
       <a href="json-schema.html">JSON schema</a>
       <a href="api/">API</a>

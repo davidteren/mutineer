@@ -513,6 +513,7 @@ module DocsContract
           <div class="wrap nav">
             <a class="brand" href="index.html"><span class="mark" aria-hidden="true">M↗</span> mutineer<span class="brand-note">/ Ruby mutation testing</span></a>
             <nav aria-label="Primary">
+              <a href="learn.html">Learn</a>
               <a href="index.html#install">Install</a>
               <a href="agentic-coding.html">Agent &amp; CI</a>
               <a href="equivalent-skips.html">Skips</a>
@@ -551,7 +552,7 @@ module DocsContract
         <footer>
           <div class="wrap foot">
             <div>
-              <strong>Mutineer</strong> — clean-room mutation testing for Ruby.
+              <strong>Mutineer</strong> — mutation testing for Ruby.
               <div class="note">MIT licensed · Prism + stdlib only · © David Teren</div>
             </div>
             <nav aria-label="Footer">
