@@ -53,7 +53,8 @@ All notable changes to this project are documented here. The format is based on
   a method was falsely killed (#279). Redefine is also the default under
   `--rails` without `--daemon`. When a source directory is not writable,
   redefine still uses the system temp directory there, as before, and
-  the run warns that path-relative methods there can be falsely killed.
+  the run warns that path-relative methods there can be falsely killed
+  (tracked in #339).
 
 ### Changed
 

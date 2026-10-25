@@ -276,7 +276,7 @@ module Mutineer
       # sweep an orphan after a timeout kill.
       #
       # A read-only source dir keeps the 1.x system-temp location, so redefine
-      # still runs there (only path-relative methods mis-score, as before).
+      # still runs there (only path-relative methods mis-score, as before: #339).
       dir = File.dirname(File.expand_path(subject.file))
       dir = Dir.tmpdir unless File.writable?(dir)
       Tempfile.create([".mutineer_mutant", ".rb"], dir) do |f|
