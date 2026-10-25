@@ -16,6 +16,16 @@ All notable changes to this project are documented here. The format is based on
   skill to `.claude/skills/mutineer/SKILL.md`. A test in the default suite
   fails if the gemspec stops shipping the skill or drops the opt-in (#315).
 
+### Fixed
+
+- **`--threshold` compares the exact score, not the rounded one (#280).** The
+  score is rounded to one decimal for display, and the gate used to compare that
+  rounded value. A run with 1999 of 2000 mutants killed showed 100.0% and passed
+  `--threshold 100` with a survivor. The exit code, the Action, and the PASSED or
+  FAILED line now use the exact counts. When the rounded score points the other
+  way, the PASSED or FAILED line gives the counts and says that the score is
+  rounded.
+
 ### Changed
 
 - Explain mutation testing before setup, with a runnable beginner guide and a
