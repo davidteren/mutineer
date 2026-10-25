@@ -742,13 +742,30 @@ class ProjectTest < Minitest::Test
           before_save { normalize }
           def saved; end
           before_save :saved
+          def sent = 1
+          register send(:sent)
+          def pub = 1
+          register public_send("pub")
+          def raw = 1
+          register __send__(:raw)
         end
       end
     RUBY
     with_source(src) do |path|
       subjects = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
-      %i[columns cb compute normalize].each { |name| assert_nil subjects.fetch(name).reload_hook_call, name }
+      %i[columns cb compute normalize sent pub raw].each do |name|
+        assert_nil subjects.fetch(name).reload_hook_call, name
+      end
       refute_nil subjects.fetch(:saved).reload_hook_call
+    end
+  end
+
+  # #297: a name `send` computes at runtime may be any def in the block, so
+  # the block places nothing.
+  def test_a_runtime_send_name_leaves_the_block_unplaceable
+    src = "module Billing; extend ActiveSupport::Concern; included do; def a = 1; register send(pick); end; end\n"
+    with_source(src) do |path|
+      assert_nil Mutineer::Project.discover([path]).first.reload_hook_call
     end
   end
 

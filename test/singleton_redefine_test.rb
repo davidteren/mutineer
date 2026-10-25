@@ -235,10 +235,14 @@ class SingletonRedefineTest < Minitest::Test
       agg = run_redefine("hook_edges.rb", "hook_edges_test.rb", strategy: "reload", only: name,
                                                               require_paths: ["hook_edges_hosts.rb"], matrix: true)
       assert_killed(agg, name)
-      expected = name == "HookEdges#secret" ? "test_wrapped_private_def" : "test_wrapped_singleton_defs"
+      expected = if name == "HookEdges#secret"
+                   %w[test_wrapped_private_def test_private_def]
+                 else
+                   %w[test_wrapped_singleton_defs test_singleton_defs]
+                 end
       agg.results.select(&:killed?).each do |result|
         names = result.kills.killed_by.map { |entry| entry[1].split("#").last }
-        assert_includes names, expected, name
+        assert_empty expected - names, "#{name} #{result.mutation.operator}: #{names.inspect}"
       end
     end
   end

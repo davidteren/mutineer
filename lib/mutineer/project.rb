@@ -171,6 +171,9 @@ module Mutineer
       # ActiveSupport::Concern calls whose block another module or class runs (see {#concern_block}).
       CONCERN_BLOCKS = %i[class_methods included prepended].freeze
 
+      # Calls whose first argument names a method they reach (see {#placeable_hook}).
+      NAME_TAKERS = %i[method instance_method send public_send __send__].freeze
+
       # A constant name, or a path of them; Ruby allows Unicode in both.
       CONSTANT_PATH = /\A[[:upper:]][[:word:]]*(?:::[[:upper:]][[:word:]]*)*\z/
 
@@ -678,9 +681,10 @@ module Mutineer
       # the mutant file adds before it runs exactly when the call runs. An alias in
       # the block keeps the original body, so a block with any `alias` or
       # `alias_method` places nothing. The names come from bare calls, `self.`
-      # calls and the symbol given to `method` or `instance_method`, in every
-      # nested block and lambda too: discovery cannot tell a block that runs at
-      # once from one that runs later.
+      # calls and the name given to `method`, `instance_method`, `send`,
+      # `public_send` or `__send__`, in every nested block and lambda too:
+      # discovery cannot tell a block that runs at once from one that runs
+      # later. A name such a call computes at runtime places nothing.
       #
       # @param node [Prism::CallNode] the hook call.
       # @return [Array(Prism::CallNode, Set<Symbol>), Array(nil, Set<Symbol>)]
@@ -697,8 +701,11 @@ module Mutineer
             return [nil, Set.new] if current.name == :alias_method
 
             uses << current.name
-            if %i[method instance_method].include?(current.name)
-              current.arguments&.arguments&.each { |arg| uses << arg.value.to_sym if arg.is_a?(Prism::SymbolNode) }
+            if NAME_TAKERS.include?(current.name) && (name_arg = current.arguments&.arguments&.first)
+              # A runtime name may be any def in the block.
+              return [nil, Set.new] unless name_arg.is_a?(Prism::SymbolNode) || name_arg.is_a?(Prism::StringNode)
+
+              uses << name_arg.unescaped.to_sym
             end
           end
           nodes.concat(current.compact_child_nodes)

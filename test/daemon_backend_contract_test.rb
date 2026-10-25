@@ -208,6 +208,7 @@ class DaemonBackendContractTest < Minitest::Test
 
     assert_equal %i[killed], results.map(&:status)
     assert_includes sent.first["code"], "::Mutineer::ConcernBlocks.store_hook_def do"
+    assert_match(%r{store_hook_def do\n\s*def doubled\(x\)\s+x / 2\s+end\nend}, sent.first["code"])
     assert_equal({ "line" => 23, "name" => "doubled", "singleton" => false }, sent.first["hook_def"])
   end
 

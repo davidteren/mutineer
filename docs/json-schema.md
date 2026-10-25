@@ -99,12 +99,12 @@ runs these, except some methods in an `included` or `prepended` block.
 
 Under `--strategy reload`, ActiveSupport runs a concern's `included` or `prepended` block only when a class first
 includes or prepends the concern, so loading the file again does not reach a class that already has it (#256).
-For a method directly in the block, Mutineer loads the mutated method into each class that already has it, and a
-class that includes the concern later gets it from the reloaded block (#297). Nothing else in the block runs
+For a method directly in the block, Mutineer loads the mutated method into each host that already has it, and a
+host that includes the concern later gets it from the reloaded block (#297). Nothing else in the block runs
 again. Two methods in one block can therefore get different verdicts. `unplaceable` under reload means the
 mutant's method is one of these:
 
-- a method in a class, module, `Struct.new`, `Class.new` or `Data.define` block inside the block;
+- a method in a class, module, `Module.new`, `Struct.new`, `Class.new` or `Data.define` block inside the block;
 - a method inside another method, or inside a block that does not build a class (such as `[1].each do`);
 - a method with an explicit receiver other than `self` (such as `def base.tag` in `included do |base|`),
   because extracting the definition does not keep a receiver bound inside the hook;
@@ -118,8 +118,10 @@ mutant's method is one of these:
   possible body lines; a dynamic attribute name or writer flag blocks the attribute creation line.
   Ruby's source location cannot distinguish which definition an existing host has;
 - every method in a block that uses `alias` or `alias_method`;
-- a method the block itself calls outside a method body (a bare call, `self.name`, `method(:name)` or
-  `instance_method(:name)`, also inside a nested block or lambda); a symbol such as `before_save :name` is fine;
+- a method the block itself calls outside a method body (a bare call, `self.name`, `method(:name)`,
+  `instance_method(:name)` or `send(:name)`, `public_send` and `__send__` too, also inside a nested block or
+  lambda); a symbol such as `before_save :name` is fine;
+- every method in a block that passes a name computed at runtime to one of those calls (such as `send(pick)`);
 - every method in a block whose `included` or `prepended` call is not a plain statement of the module body, for
   example `x = included do`, a call inside `if`, `unless` or `case`, a module under `unless defined?`, or a call
   inside `class << self`, a method or a block;

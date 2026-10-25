@@ -12,10 +12,11 @@ All notable changes to this project are documented here. The format is based on
   follow the [full baseline refresh recipe](https://davidteren.github.io/mutineer/agentic-coding.html#ci-gate)
   with `--no-since --format json --output .mutineer/refreshed-baseline.json` and your
   existing source and test options. Review the report and replace the stored
-  baseline. GitHub Action users must replace the file passed to the `baseline`
-  input too: the Action runs `--strategy reload` by default (a Rails app
-  without a daemon uses redefine). A check against an older report lists the
-  new survivors as regressions.
+  baseline. This applies only to runs that use `--strategy reload`: under
+  redefine these methods stay `unplaceable`. GitHub Action users on reload,
+  the Action's default (a Rails app without a daemon uses redefine), must
+  replace the file passed to the `baseline` input too. A check against an older
+  report lists the new survivors as regressions.
   Under `--strategy reload`, in-process and on the daemon, a method in a
   concern's `included` or `prepended` block is now mutated and scored (#297).
   Mutineer loads the mutated method into each class that already has it. A

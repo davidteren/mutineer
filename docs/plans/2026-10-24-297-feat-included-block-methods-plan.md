@@ -60,10 +60,10 @@ ActiveSupport runs an `included` or `prepended` block once in each class, when t
 - R7. `def x`, `def self.x` and `def x` inside `class << self` in the block are all placeable.
 - R8. These defs stay `unplaceable` under reload, as today:
   - a def with an explicit receiver other than `self`, whose binding the extracted def does not retain;
-  - a def in a class, module, `Struct.new`, `Class.new` or `Data.define` block inside the hook block;
+  - a def in a class, module, `Module.new`, `Struct.new`, `Class.new` or `Data.define` block inside the hook block;
   - a def inside another method, or inside a block that does not build a class (`[1].each do`);
   - every def in a hook block that contains any `alias` or `alias_method`;
-  - a def whose name the hook block uses outside any def body: a bare call, `self.<name>`, `method(:<name>)` or `instance_method(:<name>)` (the block computed a value from the original def once, and nothing computes it again). The walk goes into every nested block and lambda of the hook block (such as `%i[a].each { register(compute) }` or `before_save { normalize }`), but not into def bodies, because discovery cannot tell a block that runs at once from one that runs later. A symbol argument such as `before_save :<name>` stays placeable, because it calls by name;
+  - a def whose name the hook block uses outside any def body: a bare call, `self.<name>`, `method(:<name>)`, `instance_method(:<name>)`, `send(:<name>)`, `public_send(:<name>)` or `__send__(:<name>)` (the block computed a value from the original def once, and nothing computes it again). The walk goes into every nested block and lambda of the hook block (such as `%i[a].each { register(compute) }` or `before_save { normalize }`), but not into def bodies, because discovery cannot tell a block that runs at once from one that runs later. A symbol argument such as `before_save :<name>` stays placeable, because it calls by name. A name one of those calls computes at runtime (`send(pick)`) makes every def in the block unplaceable;
   - every def in a hook call that is not on a plain path from the top of the file: each node between the file and the call must be a statement list, a `module` or a `class`. This excludes `x = included do`, `foo(included do ... end)`, any `if`, `unless`, `case`, `&&`, `||`, `rescue` or loop around the call or around its module (this covers `module X ... end unless defined?(X)`), and a call inside a def or a block;
   - every def in a file that has a top-level `return` statement;
   - every def in a hook call inside `class << self`;
