@@ -18,6 +18,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Mutineer reads its files and pipes as UTF-8 when `LANG` and `LC_ALL` are
+  unset (#303). Before, a non-ASCII character in a source file, a baseline, a
+  coverage cache, a triage report, `.mutineer.yml` (for `migrate`),
+  `db/schema.rb`, a `--since` diff, test-command output, or a daemon message
+  stopped the run with "invalid byte sequence in US-ASCII" (exit 2) or a
+  backtrace (exit 1). An invalid byte in test-command output now shows as
+  `\xNN`. Non-ASCII file and folder names are not covered yet (#346).
 - **Upgrade note for `--test-command` with a custom failure exit code (#292).**
   An RSpec setup with `--failure-exit-code 3` now scores every kill as
   `error`. Use the default exit code, or a wrapper that maps a failure to
@@ -112,39 +119,30 @@ All notable changes to this project are documented here. The format is based on
   the run warns that path-relative methods there can be falsely killed
   (tracked in #339).
 
-- **`--strategy redefine` and path-relative methods.** Redefine now loads
-  the mutated method from a hidden file beside the source, as reload does.
-  It used the system temp directory before, so `__dir__` and
-  `require_relative` in the method pointed there, and every mutant of such
-  a method was falsely killed (#279). Redefine is also the default under
-  `--rails` without `--daemon`. When a source directory is not writable,
-  redefine still uses the system temp directory there, as before, and
-  the run warns that path-relative methods there can be falsely killed.
-- **A second in-process run no longer deletes a live mutant file (#295).**
-  Each in-process run sweeps the source directories before its boot and
-  after its run. That sweep treated every `.mutineer_mutant*.rb` file as an
-  orphan, so it could delete another run's file between the write and the
-  load, and that mutant scored `errored`. Now the file is locked while it
-  loads, as the daemon's file is, and a sweep keeps a file whose creating
-  process still runs.
-- **An old temp file of the other mode no longer stops the boot (#287).**
-  Before the app boots, each mode sweeps the source directories. In 1.7.0
-  an in-process run removed only old `mutineer_mutant*.rb` files and the
-  daemon removed only old `mutineer_daemon*.rb` files, so a file the other
-  mode left made Zeitwerk raise. Now both boot sweeps remove an orphan of
-  either mode, and the daemon tells Zeitwerk to skip both names. You no
-  longer delete such a file by hand. A file of your own whose name only
-  starts with `mutineer_mutant` or `mutineer_daemon`, such as
-  `mutineer_mutant_helper.rb`, is no longer removed: a sweep now matches
-  only the temp file shape. An unlocked old file is removed even when its
-  creator's pid has been reused; a held file lock still protects it.
-  Do not run Mutineer older than 1.7.0
-  at the same time in the same checkout: it still writes temp files
-  without the dot, and a newer run's mutants error when Zeitwerk finds
-  one.
+- `--test-command` now sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1` for the test
+  command. Mutineer writes each mutant over the source file, and Bootsnap keys
+  its compile cache on path, size and whole-second mtime. Two same-size mutants
+  written in the same second could load the first one's cached code, so a
+  mutant could be scored on code that was not the mutant. Each mutant boot now
+  compiles the app again, which is slower. The variable works through
+  `require "bootsnap/setup"` on Bootsnap 1.7.0 or later; an app that calls
+  `Bootsnap.setup` itself must pass
+  `compile_cache_iseq: ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"].nil?`, so only
+  mutant runs lose the cache. The `--daemon` path is unchanged (#285).
 
 ### Changed
 
+- **`call_to_receiver` now mutates last-call conversions such as `to_s` and
+  `to_i`.** `m[1].to_i` now gives the mutant `m[1]`. Before, the operator skipped the
+  same names as `chain_link`. Now it skips only `new`, `dup`, `clone`,
+  `freeze`, `itself` and `to_set`. `chain_link` does not change. Only runs
+  that list `call_to_receiver` in `--operators` (or `operators:`) change: they
+  get more mutants (113 more on Mutineer's own `lib/`). If you gate such a run
+  with `--threshold` or `--baseline`, expect new survivors: write a new
+  full-scope baseline with `mutineer run ... --no-since --no-fail-fast
+  --format json`, with no `--only`. A `to_s` mutant on a value that is already
+  a String is equivalent: suppress it with
+  `# mutineer:disable-line call_to_receiver` or an `ignore:` entry. (#274)
 - Explain mutation testing before setup, with a runnable beginner guide and a
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.

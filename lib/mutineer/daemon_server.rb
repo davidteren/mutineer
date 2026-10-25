@@ -82,6 +82,8 @@ module Mutineer
         output ||= @protocol
         @errio = errio
         @output = output
+        # The client sends UTF-8 JSON; with LANG unset the pipe would read as US-ASCII (#303).
+        input.set_encoding(Encoding::UTF_8)
         boot_line = input.gets
         return if boot_line.nil? # client vanished before boot
 

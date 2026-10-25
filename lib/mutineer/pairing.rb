@@ -4,7 +4,7 @@ require_relative "project_path"
 
 module Mutineer
   # Source -> test pairing by path convention (#11). Pure stdlib path logic:
-  # no Rails, no class loading, no process. Two jobs:
+  # no Rails, no class loading, no process. Three jobs:
   #   * expand_sources — a directory argument becomes its sorted **/*.rb files;
   #                     a file inside the root becomes its root-relative path.
   #   * infer_tests    — a source's test files by convention (app/ and lib/
@@ -13,6 +13,9 @@ module Mutineer
   #                     namespaced subdirectories. The first EXISTING exact
   #                     candidate stays first. Split Minitest files join a
   #                     Minitest match. A matched spec is left as that one file.
+  #   * test_given_as_source? — whether a positional argument is a test file
+  #                     by these same names, given as a source by mistake
+  #                     after `--test` (#293).
   #
   # Independently unit-testable: every method is pure in/out over the
   # filesystem, so the pairing contract is exercised with plain fixtures, no
@@ -142,6 +145,64 @@ module Mutineer
       rspec = ["spec/#{base}_spec.rb"]
       rspec << "spec/lib/#{base}_spec.rb" if lib
       prefer == "rspec" ? rspec + minitest : minitest + rspec
+    end
+
+    # Basenames that pair as tests in {candidates}: `*_test.rb`, `*_spec.rb`
+    # and Minitest's `test_*.rb`, but not its `test_helper.rb` support file.
+    TEST_NAME = /\A(?!test_helper\.rb\z)(?:.+_(?:test|spec)|test_.+)\.rb\z/
+
+    # Whether the `run` guard rejects a positional argument as a test file
+    # given as a source (#293). Segments are read from the path relative to
+    # the root, so a `test/` folder above the project never counts. A
+    # `*_test.rb` / `*_spec.rb` path is flagged when it has a `test/` or
+    # `spec/` segment (the guard's original rule), or when it sits in the same
+    # directory as a given test, which catches root-level tests. A
+    # `test_*.rb` path is flagged only under the
+    # project's top-level `test/` or `spec/`, because real sources use the
+    # prefix (`lib/mutineer/test_runners.rb`, `lib/foo/test/test_app.rb`). A
+    # source whose own test (`<stem>_test.rb`, `test_<stem>.rb`,
+    # `<stem>_spec.rb`, or a split `<stem>_*_test.rb` not claimed by a longer
+    # source on disk) sits beside it in the test set is not flagged. Paths
+    # compare relative to the root, as in
+    # {expand_sources} (the root's real path counts too, for macOS `/var` vs
+    # `/private/var`), so `./a_test.rb` and `a_test.rb` match. No file content
+    # is read.
+    #
+    # @param path [String] positional argument as typed.
+    # @param project_root [String] repository root for relative expansion.
+    # @param tests [Array<String>] the explicit test files.
+    # @return [Boolean] true when the argument looks like a misplaced test.
+    def test_given_as_source?(path, project_root:, tests:)
+      name = File.basename(path)
+      return false unless name.match?(TEST_NAME)
+
+      root = File.expand_path(project_root)
+      roots = [root, ProjectPath.root_real(root)].uniq
+      relative = lambda do |p|
+        abs = File.expand_path(p, root)
+        root_relative(abs, roots) || abs
+      end
+      rel = relative.call(path)
+      # Outside the root, read segments from a relative path as typed
+      # (`../test/b_test.rb`) and not from an absolute one, so a `test/`
+      # folder above the root never counts.
+      segments = root_relative(File.expand_path(path, root), roots)
+      segments ||= path.start_with?(File::SEPARATOR) ? "" : path
+      return segments.match?(%r{\A(test|spec)/}) unless name.match?(/_(test|spec)\.rb\z/)
+      return true if segments.match?(%r{(\A|/)(test|spec)/})
+
+      dir = File.dirname(rel)
+      beside = Array(tests).map(&relative)
+                           .select { |t| File.dirname(t) == dir }
+                           .map { |t| File.basename(t) }
+      stem = File.basename(name, ".rb")
+      own = ["test_#{stem}.rb", "#{stem}_spec.rb"]
+      base = rel.delete_suffix(".rb")
+      return false if beside.any? do |t|
+        own.include?(t) || (longer_owns_entry?(t, stem) && !claimed_by_longer_source?(root, base, t))
+      end
+
+      beside.any?
     end
 
     # `<basename>_*_test.rb` files in each mirrored test directory (#87). The
