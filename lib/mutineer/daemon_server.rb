@@ -28,7 +28,7 @@ module Mutineer
   #
   # Protocol (one JSON object per line, both directions):
   #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment","require_paths":[...],
-  #               "load_paths":["test"],"framework":"minitest","rails":true,"schema":"db/schema.rb"}
+  #               "load_paths":["test"],"framework":"minitest","rails":true}
   #   ready out: {"ready":true,"ruby":"3.3.6","database_count":1}
   #              (or {"ready":false,"error":"..."} then exit)
   #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
@@ -192,8 +192,8 @@ module Mutineer
       def setup_worker_db(cfg)
         require_relative "rails_worker_db"
         @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
-        schema = cfg["schema"] && File.expand_path(cfg["schema"])
-        @schema_path = schema if schema && File.exist?(schema)
+        # Only the booted app knows its schema file (`schema_dump:` can rename it).
+        @schema_path = @worker_db&.ruby_schema_path
         # Each SQLite slot is seeded once, on first use (not every mutant fork).
         # Postgres and MySQL slots are copied at provision time, so this flag is unused there.
         @slot_ready = {}
@@ -442,13 +442,16 @@ module Mutineer
 
       # Load the covering test files and run them; 0 = all passed (survived),
       # 1 = a failure/error (killed). Minitest only; rspec is not yet on this path.
+      # {MinitestIntegration.run} is the method the daemon's clean check uses,
+      # so each mutant fork gets the same seed and class list (#282). It loads
+      # only stdlib, so the daemon still needs no Prism. The fork requires
+      # nothing else first: the test files' `require "test_helper"` loads
+      # rails/test_help after the class list is reset, as in the clean check.
       def run_tests(tests)
         raise "unsupported framework #{@framework.inspect}" unless @framework == "minitest"
 
-        require "minitest"
-        require "rails/test_help" if defined?(Rails)
-        tests.each { |t| load File.expand_path(t) }
-        Minitest.run([]) ? 0 : 1
+        require_relative "minitest_integration"
+        MinitestIntegration.run(tests.map { |t| File.expand_path(t) })
       end
     end
   end

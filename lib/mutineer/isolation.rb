@@ -300,7 +300,7 @@ module Mutineer
       # sweep an orphan after a timeout kill.
       #
       # A read-only source dir keeps the 1.x system-temp location, so redefine
-      # still runs there (only path-relative methods mis-score, as before).
+      # still runs there (only path-relative methods mis-score, as before: #339).
       write_beside(wrapped, subject.file, fallback: true) { |path| load path }
 
       target.send(vis, subject.name) if vis && vis != :public

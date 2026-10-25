@@ -76,6 +76,39 @@ class ReporterTest < Minitest::Test
     assert_equal 0, r.exit_code(threshold: 80.0) # 80.0 >= 80.0
   end
 
+  # The score is rounded for display. The gate must not read it: 1999 of 2000
+  # shows 100.0 and used to pass --threshold 100 with a survivor (#280).
+  def test_the_gate_compares_the_unrounded_score
+    {
+      [1999, 1, 100.0] => 1, # shows 100.0
+      [1599, 400, 80.0] => 1, # shows 80.0
+      [57, 43, 57.0] => 0, # 57.0 / 100 * 100 is 56.99999999999999 as a float
+      [161, 89, 64.4] => 0, # 64.4 * 250 is 16100.000000000002 as a float
+      [2, 1, 66.66666666666667] => 1 # rationalize would read this as 200/3
+    }.each do |(killed, survived, threshold), expected|
+      r = reporter(Array.new(killed) { Mutineer::Result.killed } + Array.new(survived) { Mutineer::Result.survived })
+
+      assert_equal expected, r.exit_code(threshold: threshold), "#{killed} killed, #{survived} survived at #{threshold}"
+    end
+  end
+
+  # When the rounded score points the other way, the verdict line must give the
+  # exact counts, or it states a false inequality.
+  def test_verdict_names_the_exact_counts_when_the_rounded_score_disagrees
+    out = StringIO.new
+    reporter(Array.new(1999) { Mutineer::Result.killed } + [survivor_result]).human_report(out, StringIO.new, 100.0)
+
+    refute_match(/PASSED/, out.string)
+    assert_match(/FAILED: 1999 of 2000 killed is below threshold 100.0% \(the 100.0% score is rounded\)/, out.string)
+
+    out = StringIO.new
+    r = reporter(Array.new(2001) { Mutineer::Result.killed } + Array.new(499) { survivor_result })
+    r.human_report(out, StringIO.new, 80.04) # exactly 80.04, shows 80.0
+
+    assert_equal 0, r.exit_code(threshold: 80.04)
+    assert_match(/PASSED: 2001 of 2500 killed meets threshold 80.04% \(the 80.0% score is rounded\)/, out.string)
+  end
+
   # A score over a slice of the run is not this suite's score: 90 errored and 10
   # run (9 killed) reads 90% and used to exit 0, so CI could not tell a complete
   # run from a broken one.
