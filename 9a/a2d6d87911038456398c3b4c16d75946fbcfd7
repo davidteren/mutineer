@@ -1,0 +1,19 @@
+README.md
+  s_d60e2454db2056::t_005f35ae98e35b 429,434-435
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9aa2d6d87911038456398c3b4c16d75946fbcfd7",
+  "prompts": {},
+  "sessions": {
+    "s_d60e2454db2056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1d5efb-2691-4a0a-8a10-c060a7b2a92e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
