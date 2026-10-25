@@ -80,14 +80,24 @@ module Mutineer
       # payloads (Prism), so branch before any in-process boot.
       return DaemonBackend.execute(config, operator_classes) if config.daemon
 
-      # Whole-file reload writes .mutineer_mutant*.rb into each source dir (so
-      # require_relative resolves). A SIGKILL'd child skips the tempfile's
+      # Both strategies (whole-file reload and redefine, #279) write
+      # .mutineer_mutant*.rb into each source dir (so require_relative and
+      # __dir__ resolve). Redefine falls back to the system temp dir for a
+      # read-only source dir, which this sweep does not reach; the OS cleans
+      # it, as in 1.x. A SIGKILL'd child skips the tempfile's
       # ensure-unlink, orphaning it. `ensure` is unreliable vs SIGKILL, so the
       # PARENT sweeps each source dir before and after the run. Orphans are
       # impossible after a normal run. The first sweep runs before the boot: a
       # file an older version left without the dot would stop Zeitwerk (#253).
       dirs = JobPlan.source_dirs(config)
       JobPlan.sweep_orphans(dirs)
+      if config.strategy == "redefine"
+        dirs.reject { |d| File.writable?(d) }.each do |d|
+          warn "[mutineer] #{d} is not writable: redefine loads its mutants from the system temp dir, " \
+               "so a method there that uses __dir__ or require_relative can be falsely killed. " \
+               "Make the directory writable to avoid this (#339)."
+        end
+      end
 
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
