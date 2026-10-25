@@ -16,6 +16,9 @@ module ConcernPricing
     x / 2
   end
 
+  # Same name as the class_methods def, different arity (#300).
+  def scaled(x, y) = x + y
+
   included do
     def doubled(x)
       x * 2

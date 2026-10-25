@@ -171,13 +171,14 @@ class ExternalBackendTest < Minitest::Test
     ENV.delete("MUTINEER_ENV_PROBE")
   end
 
-  # Rails parallelize and Spring read these in the test-command child.
-  def test_child_env_pins_parallel_workers_and_disables_spring
+  # Rails parallelize, Spring and Bootsnap read these in the test-command child.
+  def test_child_env_pins_parallel_workers_and_disables_spring_and_bootsnap_cache
     prior = ENV["PARALLEL_WORKERS"]
     ENV["PARALLEL_WORKERS"] = "8"
     env = Backend.child_env
     assert_equal "1", env["PARALLEL_WORKERS"]
     assert_equal "1", env["DISABLE_SPRING"]
+    assert_equal "1", env["DISABLE_BOOTSNAP_COMPILE_CACHE"]
     assert_equal "8", ENV["PARALLEL_WORKERS"]
   ensure
     prior.nil? ? ENV.delete("PARALLEL_WORKERS") : ENV["PARALLEL_WORKERS"] = prior

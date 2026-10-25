@@ -169,15 +169,16 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
-  # The child sees PARALLEL_WORKERS=1 and DISABLE_SPRING=1 on every spawn.
+  # The child sees PARALLEL_WORKERS=1, DISABLE_SPRING=1 and
+  # DISABLE_BOOTSNAP_COMPILE_CACHE=1 on every spawn.
   # A user value is replaced once, not once per mutant.
-  def test_test_command_replaces_parallel_workers_and_disables_spring
+  def test_test_command_replaces_parallel_workers_and_disables_spring_and_bootsnap_cache
     with_project("calculator_strong_test.rb") do |proj|
       log = File.join(proj, "child-env.log")
       probe = File.join(proj, "probe.rb")
       File.write(probe, <<~RUBY)
         File.open(#{log.dump}, "a") do |file|
-          file.puts([ENV["PARALLEL_WORKERS"], ENV["DISABLE_SPRING"]].inspect)
+          file.puts([ENV["PARALLEL_WORKERS"], ENV["DISABLE_SPRING"], ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"]].inspect)
         end
       RUBY
       _out, err, status = mutineer(
@@ -186,7 +187,7 @@ class RunnerExternalTest < Minitest::Test
         chdir: proj, env: { "PARALLEL_WORKERS" => "8" }
       )
       assert_equal 0, status.exitstatus, "stdout:#{_out}\nstderr:#{err}"
-      assert_equal ['["1", "1"]'], File.readlines(log).map(&:strip).uniq
+      assert_equal ['["1", "1", "1"]'], File.readlines(log).map(&:strip).uniq
       assert_equal 1, err.scan('PARALLEL_WORKERS was "8"').size
     end
   end
