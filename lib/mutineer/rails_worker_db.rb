@@ -921,7 +921,10 @@ module Mutineer
       secret = password.to_s
       hide = lambda do |text|
         out = Redaction.text(text)
-        secret.empty? ? out : out.gsub(secret, Redaction::REDACTED)
+        next out if secret.empty?
+        # A short password would match inside ordinary words, so hide it only as a whole word.
+        pattern = secret.length >= 4 ? secret : /(?<![[:alnum:]])#{Regexp.escape(secret)}(?![[:alnum:]])/
+        out.gsub(pattern, Redaction::REDACTED)
       end
       failure = nil
       raw = begin

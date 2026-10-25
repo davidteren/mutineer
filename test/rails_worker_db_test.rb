@@ -571,6 +571,12 @@ class RailsWorkerDbTest < Minitest::Test
     refute_includes err, "s3cret"
   end
 
+  def test_provision_mysql_hides_a_short_configured_password_only_as_a_word
+    failure = RuntimeError.new("Access denied for app (using a)")
+    _out, err = capture_io { provision_mysql_against(VersionMysql.new(failure), password: "a") }
+    assert_includes err, "Access denied for app (using [REDACTED])"
+  end
+
   def test_provision_mysql_hides_a_password_in_the_server_version
     _out, err = capture_io { provision_mysql_against(VersionMysql.new("10.11.6-MariaDB mysql2://app:s3cret@db")) }
     assert_includes err, "mysql2://app:[REDACTED]@db"
