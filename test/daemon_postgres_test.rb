@@ -37,7 +37,6 @@ class DaemonPostgresTest < Minitest::Test
       source_dirs: [File.join(APP, "app/models")],
       framework: "minitest",
       rails: true,
-      schema: File.join(APP, "db/schema.rb"),
       require_paths: [File.join(APP, "test/support/seed_setup")],
       slots: slots
     }
