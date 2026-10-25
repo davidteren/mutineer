@@ -39,7 +39,12 @@ module Mutineer
     # `{id:, file:, subject:}` hash per matched mutant, in collection order: its
     # new id, its project-relative file and its subject's qualified name;
     # recorded even when a new id is also listed, since the old entry still
-    # over-matches other files) and `id_map` (every new id => its old-format id).
+    # over-matches other files), `id_map` (every new id => its old-format id)
+    # and `declined` (operator name => count of candidates that operator found
+    # and did not mutate, {Mutators::Base#declined}; only counts above zero, keys
+    # sorted). The name is the {MutatorRegistry::ALL} key, or the class's `to_s`
+    # for an operator outside the registry. `--only` narrows `declined`, and
+    # `--since` does not: a declined candidate has no mutation to place on a line.
     #
     # Subjects sharing a qualified name in one file (two owner-less `def index`
     # in two DSL blocks) get a per-file ordinal in discovery order, so their ids
@@ -48,7 +53,7 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @param operator_classes [Array<Class>] resolved operators.
     # @return [Array(Array, Array<Result>, Hash<String,String>, Hash{Symbol => Hash})]
-    #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`, `:id_map`).
+    #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`, `:id_map`, `:declined`).
     def self.collect_jobs(config, operator_classes)
       source_map = {}
       disabled_map = {}
@@ -63,10 +68,17 @@ module Mutineer
       ignored_results = []
       legacy_ignore_matches = {}
       id_map = {}
+      declined = Hash.new(0)
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file, encoding: "UTF-8"))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
-        mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
+        # A repeated operator name runs once, so its declines count once.
+        mutations = operator_classes.uniq.flat_map do |klass|
+          operator = klass.new
+          found = operator.mutations_for(subject, source)
+          declined[MutatorRegistry::ALL.key(klass) || klass.to_s] += operator.declined
+          found
+        end
         id_path = (id_paths[subject.file] ||= ProjectPath.relative(subject.file, config.project_root))
         decls = name_decls[[id_path, subject.qualified_name]]
         ordinal = (decls[subject.def_node.location.start_offset] ||= decls.size)
@@ -98,7 +110,9 @@ module Mutineer
           end
         end
       end
-      [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map }]
+      declined = declined.select { |_, count| count.positive? }.sort.to_h
+      [jobs, ignored_results, source_map,
+       { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map, declined: declined }]
     end
 
     # One key per mutation; two mutations share a key exactly when they are

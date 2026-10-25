@@ -807,6 +807,23 @@ class RunnerTest < Minitest::Test
     assert_same kept, Mutineer::Runner.unreported_row(Mutineer::Result.survived.with(kills: kept)).kills
   end
 
+  def test_collect_jobs_reports_declined_counts_per_operator
+    Dir.mktmpdir do |root|
+      path = File.join(root, "declines.rb")
+      File.write(path, "class Declines\n  def m(a, b)\n    if foo(<<~X)\n      hi\n    X\n      a + b\n    end\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: root)
+      _jobs, _ignored, _map, extras =
+        Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[condition_true arithmetic]))
+      assert_equal({ "condition_true" => 1 }, extras[:declined])
+    end
+  end
+
+  def test_collect_jobs_reports_no_declined_when_none
+    config = Mutineer::Config.new(sources: [CALC], project_root: File.dirname(CALC))
+    _jobs, _ignored, _map, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic]))
+    assert_equal({}, extras[:declined])
+  end
+
   # #297: the reload mutant of a hook-block def stores the mutated def just
   # before the hook call, in the same module body, and still parses.
   def test_hook_mutant_inserts_the_stored_def_before_the_hook_call

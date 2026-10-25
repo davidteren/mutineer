@@ -8,6 +8,24 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Counts of mutants that were not scored (#291).** Operators now count the
+  candidates they decline: a heredoc they cannot mutate safely, or an
+  equivalent skip such as an endless range or a skipped chain-link name. The
+  dry run prints the count. The human report prints it when the run has
+  mutants; when every candidate was declined, the empty-run warning names the
+  count instead (that warning is off under `--allow-empty`). The JSON report
+  adds `summary.declined` and `summary.declined_by_operator` (schema `1.9`).
+  A new stderr warning fires when unplaceable and skipped-invalid mutants are
+  more than one and more than 10% of the mutants a run tried to score. The
+  warning does not change the exit code. Measured on commit caa9e1a (this
+  change merged with main) with every operator: the dry run on `lib/`
+  declines 195 candidates beside 17,374 mutations (call_to_receiver 122,
+  chain_link 45, range 12, statement_removal 10, return_nil 6); the dry run
+  on the Rails fixture app declines 0 beside 69 mutations. A
+  `--strategy redefine --rails` run on the fixture app models (order,
+  price_list, billing/fee) has 0 unplaceable and 0 skipped-invalid of 12
+  attempted, so no warning. The fixture has no concerns, so it cannot tune
+  the 10% limit.
 - **Included and prepended block methods under reload.** After you upgrade,
   follow the [full baseline refresh recipe](https://davidteren.github.io/mutineer/agentic-coding.html#ci-gate)
   with `--no-since --format json --output .mutineer/refreshed-baseline.json` and your

@@ -25,8 +25,13 @@ module Mutineer
     # workflow, so one bad mutant never fails the gate on its own, at any size.
     BROKEN_FLOOR = 1
 
+    # Share of the mutants a run tried to score that may go unrun (unplaceable or
+    # skipped invalid) before stderr warns. A warning only: it never changes the
+    # exit code. {BROKEN_FLOOR} also applies, so one unrun mutant never warns.
+    UNRUN_SHARE_LIMIT = 0.10
+
     # The JSON report's `schema_version` (see docs/json-schema.md).
-    SCHEMA_VERSION = "1.8"
+    SCHEMA_VERSION = "1.9"
 
     # The warning both matrix renderers give under the redundant tests.
     MATRIX_REDUNDANT_NOTE = "Delete redundant tests one at a time: two of them can be the only killers of one mutant."
@@ -52,16 +57,18 @@ module Mutineer
     # `--baseline` load) knows the score covers only the changed-line mutants.
     # `legacy_id_matches` (`{ignore:, baseline:}`) counts stored ids still in the
     # old format (#126); only the JSON report records it (`summary.legacy_id_matches`).
+    # `declined` (operator name => count, from {JobPlan.collect_jobs}) counts the
+    # candidates the operators did not mutate; the JSON and human reports show it.
     def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil,
-               baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 })
+               baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 }, declined: {})
       rendered =
         if format == "json"
-          json_report(baseline, scoped: scoped, legacy_id_matches: legacy_id_matches)
+          json_report(baseline, scoped: scoped, legacy_id_matches: legacy_id_matches, declined: declined)
         elsif format == "html"
           html_report
         else
           sio = StringIO.new
-          human_report(sio, err, threshold)
+          human_report(sio, err, threshold, declined: declined, scoped: scoped)
           baseline_section(sio, baseline) if baseline
           sio.string
         end
@@ -74,6 +81,7 @@ module Mutineer
         out.print rendered
       end
 
+      warn_unrun_share(err)
       return warn_errors_without_gate(err) unless threshold&.positive?
 
       # Both ways a run can fail the gate on completeness, said here rather than in
@@ -105,20 +113,53 @@ module Mutineer
                "#{(BROKEN_SHARE_LIMIT * 100).round}% of those attempted (no_verdict[] in --format json)."
     end
 
+    # Warns when the unrun mutants (unplaceable plus skipped invalid) are more
+    # than {UNRUN_SHARE_LIMIT} of the mutants the run tried to score, and more
+    # than {BROKEN_FLOOR}. Every format, with or without --threshold; the exit
+    # code does not change.
+    #
+    # @api private
+    # @param err [IO] error stream.
+    # @return [void]
+    def warn_unrun_share(err)
+      return unless unrun_share_exceeded?
+
+      unrun = @agg.unrun_count
+      tried = attempted_count + unrun
+      parts = []
+      parts << "#{@agg.unplaceable_count} unplaceable" if @agg.unplaceable_count.positive?
+      parts << "#{@agg.skipped_invalid_count} skipped (invalid)" if @agg.skipped_invalid_count.positive?
+      pct = (unrun * 100.0 / tried).round(1)
+      message = +"[mutineer] #{unrun} of the #{tried} mutants mutineer tried to score were not run " \
+                 "(#{parts.join(', ')}; #{pct}%, limit #{(UNRUN_SHARE_LIMIT * 100).round}%). " \
+                 "The score leaves them out. This warning does not change the exit code."
+      if @agg.unplaceable_count.positive?
+        message << " See unplaceable[] in --format json; --test-command runs them."
+      end
+      if @agg.skipped_invalid_count.positive?
+        message << " A mutant skipped (invalid) did not re-parse after mutation. If its source file " \
+                   "parses on its own, that is a mutineer bug: please report it at " \
+                   "https://github.com/davidteren/mutineer/issues."
+      end
+      err.puts message
+    end
+
     # Renders the human report.
     #
     # @param out [IO] output stream.
     # @param err [IO] error stream.
     # @param threshold [Float] score threshold.
+    # @param declined [Hash{String => Integer}] operator name => declined count.
+    # @param scoped [Boolean] the run was diff-scoped (`--since`).
     # @return [void]
-    def human_report(out, err, threshold)
+    def human_report(out, err, threshold, declined: {}, scoped: false)
       # The CLI explains an empty run for every format (CLI.warn_empty_run).
       return if @agg.total.zero?
 
       out.puts "Mutineer — Mutation Results"
       out.puts "========================="
       out.puts
-      summary(out)
+      summary(out, declined: declined, scoped: scoped)
       out.puts
       score_line(out, err)
       per_source(out)
@@ -166,7 +207,10 @@ module Mutineer
     #   old-format ignore entries that matched, and survivors matched in an
     #   old-format baseline only through their old id (#126).
     # @return [String] JSON text.
-    def json_report(baseline = nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 })
+    # @param declined [Hash{String => Integer}] operator name => count of
+    #   candidates that operator did not mutate (additive `summary.declined`
+    #   and `summary.declined_by_operator` keys).
+    def json_report(baseline = nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 }, declined: {})
       killed = @agg.killed_count
       survived = @agg.survived_count
       # null (not 0.0) on an empty denominator, matching the nil-vs-0.0
@@ -199,7 +243,11 @@ module Mutineer
           # Additive (1.4, #126): stored ids still in the old format. `ignore` is
           # the number of old-format ignore entries that matched; `baseline` the
           # survivors matched in the baseline only through their old id.
-          legacy_id_matches: legacy_id_matches
+          legacy_id_matches: legacy_id_matches,
+          # Additive (1.9, #291): candidates the operators found and did not
+          # mutate (a heredoc split or an equivalent skip), so not in `total`.
+          declined: declined.values.sum,
+          declined_by_operator: declined
         },
         survivors: @agg.surviving_mutants.map { |r| survivor_json(r) }
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },
@@ -742,8 +790,11 @@ module Mutineer
     # Writes the summary block.
     #
     # @param out [IO] output stream.
+    # @param declined [Hash{String => Integer}] operator name => declined count.
+    # @param scoped [Boolean] the run was diff-scoped (`--since`), which does not
+    #   narrow the declined count.
     # @return [void]
-    def summary(out)
+    def summary(out, declined: {}, scoped: false)
       out.puts "Summary"
       out.puts "-------"
       out.puts format("Total:        %-6d  Killed:        %d", @agg.total, @agg.killed_count)
@@ -760,6 +811,9 @@ module Mutineer
       # Not a verdict: the line ran before the mutant was applied (#187).
       out.puts format("Ran at load:  %-6d  (ran while the app or class loaded; mutineer cannot re-run that; " \
                       "verify with --test-command)", @agg.ran_at_load_count)
+      # Not mutants: candidates an operator chose not to mutate (#291).
+      out.puts format("Declined:     %-6d  (candidates an operator did not mutate; --dry-run shows the count " \
+                      "per operator%s)", declined.values.sum, scoped ? "; not narrowed by --since" : "")
       # Equivalent mutants the user suppressed; excluded from the denominator.
       out.puts format("Ignored:      %-6d  (equivalent, suppressed)", @agg.ignored_count)
     end
@@ -825,13 +879,23 @@ module Mutineer
     #
     # skipped-invalid is excluded from both sides: it means a mutant did not
     # re-parse and was correctly never run, which is a validity outcome rather
-    # than a broken harness. Cost: an overwhelmingly-skipped run still scores on
-    # what little ran; that is our operator misbehaving and wants its own signal.
+    # than a broken harness. Its own signal is the unrun-share warning
+    # ({#warn_unrun_share}), together with unplaceable.
     #
     # @api private
     # @return [Integer] killed + survived + no-verdict.
     def attempted_count
       @agg.killed_count + @agg.survived_count + no_verdict_count
+    end
+
+    # Whether the unrun mutants (unplaceable plus skipped invalid) are more than
+    # {BROKEN_FLOOR} and more than {UNRUN_SHARE_LIMIT} of attempted plus unrun.
+    #
+    # @api private
+    # @return [Boolean] true when the unrun-share warning applies.
+    def unrun_share_exceeded?
+      unrun = @agg.unrun_count
+      unrun > BROKEN_FLOOR && unrun > UNRUN_SHARE_LIMIT * (attempted_count + unrun)
     end
 
     # The sentence both the verdict line and the stderr note are built from, so a

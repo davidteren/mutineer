@@ -708,6 +708,65 @@ class CliTest < Minitest::Test
       assert_equal 0, status.exitstatus
       assert_includes out, "mutations (dry run, not executed)"
       assert_includes out, "arithmetic:"
+      assert_includes out, "0 declined"
+    end
+  end
+
+  HEREDOC_CONDITION = "class Notes\n  def note(x)\n    if x == <<~S\n      hi\n    S\n      1\n    end\n  end\nend\n"
+
+  def test_dry_run_prints_declined_counts
+    with_project do |proj|
+      File.write(File.join(proj, "notes.rb"), HEREDOC_CONDITION)
+      out, err, status = mutineer("run", "notes.rb", "--dry-run", "--operators", "condition_true", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "1 declined (condition_true: 1)"
+
+      # A repeated operator name runs once, so its decline counts once.
+      out, err, status = mutineer("run", "notes.rb", "--dry-run", "--operators", "condition_true,condition_true", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "1 declined (condition_true: 1)"
+    end
+  end
+
+  def test_dry_run_labels_declined_under_since
+    with_project do |proj|
+      # The declined heredoc sits on a line the change does not touch.
+      File.write(File.join(proj, "notes.rb"), HEREDOC_CONDITION)
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub("a + b", "a + b + 0"))
+      out, err, status = mutineer("run", "calculator.rb", "notes.rb", "--dry-run", "--since", "HEAD",
+                                  "--operators", "arithmetic,condition_true", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "1 declined in the scanned files (not narrowed by --since) (condition_true: 1)"
+    end
+  end
+
+  def test_empty_run_names_declined_candidates
+    with_project do |proj|
+      File.write(File.join(proj, "notes.rb"), HEREDOC_CONDITION)
+      _, err, status = mutineer("run", "notes.rb", "--test", "calculator_strong_test.rb",
+                                "--operators", "condition_true", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "no mutants were generated. 1 candidate was declined (--dry-run shows the count per operator)."
+      refute_includes err, "Check that the sources contain code"
+    end
+  end
+
+  def test_json_report_carries_declined_counts
+    with_project do |proj|
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub(/end\s*\z/, "  def note(x)\n    if x == <<~S\n      hi\n    S\n      1\n    end\n  end\nend\n"))
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--operators", "condition_true,arithmetic", "--format", "json",
+                                "--output", "r.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      summary = JSON.parse(File.read(File.join(proj, "r.json")))["summary"]
+      assert_equal({ "condition_true" => 1 }, summary["declined_by_operator"])
+      assert_equal 1, summary["declined"]
     end
   end
 
@@ -855,7 +914,7 @@ class CliTest < Minitest::Test
                               "--format", "json", "--output", "report.json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(File.read(File.join(proj, "report.json")))
-      assert_equal "1.8", doc["schema_version"]
+      assert_equal "1.9", doc["schema_version"]
       assert_equal 100.0, doc["summary"]["score"]
     end
   end
@@ -1188,7 +1247,7 @@ class CliTest < Minitest::Test
       out, _, status = mutineer("run", "lib", "--format", "json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(out)
-      assert_equal "1.8", doc["schema_version"]
+      assert_equal "1.9", doc["schema_version"]
       per = doc["per_source"].sort_by { |h| h["file"] }
       assert_equal ["lib/calc.rb", "lib/greeter.rb"], per.map { |h| h["file"] }
       assert_equal 100.0, per.find { |h| h["file"] == "lib/greeter.rb" }["score"]

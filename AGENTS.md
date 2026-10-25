@@ -159,3 +159,8 @@ mechanism** - **Repro becomes fixture**.
 `score = killed / (killed + survived)`. `no_coverage`, `uncapturable`, `unplaceable`, `ran_at_load`, `ignored`,
 `skipped`, `errored` are ALL excluded from the denominator. Empty denominator → `nil`,
 never `0.0`. The exact-survivor integration oracle must stay green.
+
+A new status for a mutant that exists but could not run ships with a count in the report and a
+place in the unrun share (`AggregateResult#unrun_count`, the stderr warning above 10%). A new place
+where an operator declines a candidate calls `decline` (`Mutators::Base`), so it is counted in
+`summary.declined_by_operator`.

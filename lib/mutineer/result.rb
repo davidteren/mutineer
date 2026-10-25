@@ -211,6 +211,11 @@ module Mutineer
     def timeout_count         = count(:timeout)
     # @return [Integer] ignored count.
     def ignored_count         = count(:ignored)
+    # Mutants that exist but did not run: unplaceable plus skipped invalid.
+    # Neither is in the score; the reporter warns when they pass a share of the run.
+    #
+    # @return [Integer] unplaceable plus skipped-invalid count.
+    def unrun_count           = unplaceable_count + skipped_invalid_count
 
     # Every generated, classified mutation. NOT the score denominator.
     #
