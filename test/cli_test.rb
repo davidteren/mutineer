@@ -931,6 +931,17 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_missing_boot_file_is_a_usage_error_under_daemon
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--boot", "missing_boot.rb", "--daemon", chdir: proj)
+
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "missing_boot.rb"
+      refute_includes err, "daemon"
+    end
+  end
+
   def test_missing_require_file_is_a_usage_error
     with_project do |proj|
       File.write(File.join(proj, ".mutineer.yml"), "require:\n  - missing_extra.rb\n")

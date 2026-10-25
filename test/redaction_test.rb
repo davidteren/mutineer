@@ -175,6 +175,12 @@ class RedactionTest < Minitest::Test
     assert_equal "x [REDACTED]", redact("x realsecret", "postgres://postgres:postgres@host/db?password=realsecret")
   end
 
+  def test_hides_every_duplicate_query_password
+    url = "postgres://u@h/db?password=changeme&password=Pr0dS3cret"
+
+    assert_equal "x [REDACTED] [REDACTED]", redact("x changeme Pr0dS3cret", url)
+  end
+
   def test_hides_the_password_when_a_query_value_holds_an_at_sign
     url = "postgres://app:s3cretpw@db:5432/app?application_name=ci@corp"
 

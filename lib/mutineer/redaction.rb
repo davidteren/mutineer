@@ -65,7 +65,7 @@ module Mutineer
       # prefix with the username is a separate secret and stays hidden. A
       # `password=` query parameter, which Rails prefers, is always hidden.
       raws = parts.reject { |head, raw| raw == head[(head.index("://") + 3)...-1] }.map(&:last)
-      raws << query_password(url)
+      raws.concat(query_passwords(url))
       secrets = raws.compact.uniq.flat_map { |raw| password_forms(raw) }.uniq.sort_by { |form| -form.length }
       secrets.reduce(out) do |acc, secret|
         secret.length > SHORT_FORM ? acc.gsub(secret, REDACTED) : redact_word(acc, secret)
@@ -148,13 +148,14 @@ module Mutineer
       url[0...(url.index(%r{[/?#]}, start + 3) || url.length)]
     end
 
-    # The raw value of a `password=` query parameter, which Rails and libpq
-    # both accept in place of a `user:password@` pair.
+    # The raw value of each `password=` query parameter, which Rails and libpq
+    # both accept in place of a `user:password@` pair. Every one, because
+    # Rails keeps the last duplicate.
     #
     # @param url [String]
-    # @return [String, nil]
-    def query_password(url)
-      url[/[?&]password=([^&#]+)/, 1]
+    # @return [Array<String>]
+    def query_passwords(url)
+      url.scan(/[?&]password=([^&#]+)/).flatten
     end
 
     # The password as it may appear in a message: raw, percent-decoded, and

@@ -119,7 +119,10 @@ All notable changes to this project are documented here. The format is based on
   file or a `.mutineer.yml` `require:` file loads now exits 1 (runtime
   error), instead of 2 (usage error). A missing boot or `require:` file now
   exits 2 (usage error) with a one-line message. Before, it crashed with a
-  raw `LoadError` and a backtrace, and exited 1.
+  raw `LoadError` and a backtrace, and exited 1. With `--daemon` it is
+  checked before the daemon starts, so it exits 2 there too. Both moves bring
+  the code in line with the exit-code table in STABILITY.md, which already
+  lists a bad path as 2 and a runtime error as 1.
 - Explain mutation testing before setup, with a runnable beginner guide and a
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.

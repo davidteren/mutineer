@@ -78,7 +78,13 @@ module Mutineer
       # Daemon backend: boot the app ONCE in a persistent subprocess under the
       # app's bundle and fork per mutant. Tool-side we only discover jobs + build
       # payloads (Prism), so branch before any in-process boot.
-      return DaemonBackend.execute(config, operator_classes) if config.daemon
+      if config.daemon
+        # The daemon loads these files itself and would report a missing one as
+        # a boot failure (exit 1). Check here so it stays a usage error (exit 2),
+        # as it is in process.
+        [config.boot, *config.require_paths].compact.each { |f| project_file!(config.project_root, f) }
+        return DaemonBackend.execute(config, operator_classes)
+      end
 
       # Both strategies (whole-file reload and redefine, #279) write
       # .mutineer_mutant*.rb into each source dir (so require_relative and
@@ -445,6 +451,24 @@ module Mutineer
     end
     private_class_method :reconnect_active_record
 
+    # The absolute path of a project file `require` can load: as given, or
+    # with `.rb` or the native-extension suffix.
+    #
+    # @api private
+    # @param root [String] the project root.
+    # @param path [String] the path as the user gave it.
+    # @raise [Errno::ENOENT] when the requested file does not exist.
+    # @raise [ArgumentError] when Ruby cannot expand the path.
+    # @return [String]
+    def self.project_file!(root, path)
+      file = File.expand_path(path, root)
+      suffixes = ["", ".rb", ".#{RbConfig::CONFIG.fetch('DLEXT')}"]
+      raise Errno::ENOENT, path unless suffixes.any? { |suffix| File.file?("#{file}#{suffix}") }
+
+      file
+    end
+    private_class_method :project_file!
+
     # Require one project file in the tool process. A failure becomes a
     # {ProjectLoadError} whose message, and each cause in its list, is
     # redacted. The original backtrace is kept; the cause is not, because
@@ -459,9 +483,7 @@ module Mutineer
     def self.require_project_file(root, path)
       # Outside the rescue: a path Ruby cannot expand (`~nosuchuser/boot.rb`)
       # stays a usage error (exit 2), not a load failure.
-      file = File.expand_path(path, root)
-      suffixes = ["", ".rb", ".#{RbConfig::CONFIG.fetch('DLEXT')}"]
-      raise Errno::ENOENT, path unless suffixes.any? { |suffix| File.file?("#{file}#{suffix}") }
+      file = project_file!(root, path)
 
       begin
         require file
