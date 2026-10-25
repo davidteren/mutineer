@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mutineer equivalent skips</title>
-<meta name="description" content="Built-in chain-link names, call_to_receiver last-call names and endless ranges Mutineer does not mutate, and why each is skipped.">
+<meta name="description" content="Built-in chain-link names, call_to_receiver last-call names and endless-range slice arguments that Mutineer does not mutate, and why each is skipped.">
 <meta name="color-scheme" content="dark light">
 <link rel="canonical" href="https://davidteren.github.io/mutineer/equivalent-skips.html">
 <link rel="alternate" type="text/markdown" href="https://davidteren.github.io/mutineer/equivalent-skips.md" title="Markdown">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="Mutineer">
 <meta property="og:title" content="Mutineer equivalent skips">
-<meta property="og:description" content="Built-in chain-link names, call_to_receiver last-call names and endless ranges Mutineer does not mutate, and why each is skipped.">
+<meta property="og:description" content="Built-in chain-link names, call_to_receiver last-call names and endless-range slice arguments that Mutineer does not mutate, and why each is skipped.">
 <meta property="og:url" content="https://davidteren.github.io/mutineer/equivalent-skips.html">
 <meta property="og:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
 <meta property="og:image:width" content="1200">
@@ -19,7 +19,7 @@
 <meta property="og:image:alt" content="Mutineer. Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Mutineer equivalent skips">
-<meta name="twitter:description" content="Built-in chain-link names, call_to_receiver last-call names and endless ranges Mutineer does not mutate, and why each is skipped.">
+<meta name="twitter:description" content="Built-in chain-link names, call_to_receiver last-call names and endless-range slice arguments that Mutineer does not mutate, and why each is skipped.">
 <meta name="twitter:image" content="https://davidteren.github.io/mutineer/assets/og-image-20260908.png">
 <meta name="twitter:image:alt" content="Mutineer. Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='1' fill='%2367286a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
@@ -50,7 +50,7 @@
 <main id="main" class="wrap">
   <article class="prose">
     <h1>Equivalent skips</h1>
-    <p>Mutineer skips some code changes to reduce results that rarely help improve tests. These built-in skips cannot be turned off. Chain-call skips use the method name only, so they are not always equivalent. Endless-range skips are equivalent.</p>
+    <p>Mutineer skips some code changes to reduce results that rarely help improve tests. These built-in skips cannot be turned off. Chain-call skips and the endless-range skip check the method name, not the type of the value, so they are not always equivalent.</p>
     <p>For an equivalent mutant that does appear, use <code># mutineer:disable-line</code> or an <code>ignore:</code> entry and record a reason. An ignore mapping contains an <code>id</code> and an optional <code>reason</code>; it requires Mutineer 1.7 or later everywhere the configuration is read. Older versions do not apply mappings and do not warn, so the named mutant is not ignored. <code>mutineer triage</code> prints these entries using survivor ids from a JSON report. Select survivors with <code>--id ID</code> (repeat it for more than one), or use <code>--all</code> for every survivor. Supply the reason with the required <code>--reason TEXT</code> argument. The command does not edit files. See <a href="https://github.com/davidteren/mutineer#suppressing-equivalent-mutants">Suppressing equivalent mutants</a>.</p>
 
     <h2 id="chain-link">Chain link</h2>
@@ -91,7 +91,11 @@
     </table>
 
     <h2 id="endless-range">Endless range</h2>
-    <p>The <code>range</code> operator swaps <code>..</code> and <code>...</code>. An endless range (<code>1..</code> or <code>1..nil</code>) is skipped. <code>(1..)</code> and <code>(1...)</code> give the same result for slicing, <code>include?</code>, <code>===</code>, <code>size</code>, and patterns, so the mutant is equivalent.</p>
+    <p>The <code>range</code> operator is not in the default set. Add it to the <code>operators:</code> list in <code>.mutineer.yml</code>, or pass <code>--operators</code>. The <code>--operators</code> list replaces the default set, so name the default operators too.</p>
+    <p>The <code>range</code> operator swaps <code>..</code> and <code>...</code>. It skips an endless range (<code>1..</code> or <code>1..nil</code>) only when the range is a direct argument of <code>[]</code>, <code>[]=</code>, <code>slice</code>, <code>slice!</code>, <code>byteslice</code>, <code>bytesplice</code> or <code>values_at</code>, as in <code>argv[1..]</code> or <code>text.byteslice(offset..)</code>. Index writes such as <code>list[1..] += x</code> are skipped too.</p>
+    <p>For a slice of an Array or String, <code>(1..)</code> and <code>(1...)</code> select the same elements, so the mutant is equivalent. The check uses the method name and the receiver. A call on a class, such as <code>Array[1..]</code> or <code>Set[1..]</code>, builds a value, so it is not skipped. A constant in capitals only, such as <code>ARGV[1..]</code>, is skipped. A Hash with range keys tells <code>h[1..]</code> from <code>h[1...]</code>, a Proc called with <code>fn[1..]</code> gets the range itself, and a class of your own can define <code>[]</code> or <code>slice</code> to treat the two ranges differently. In those cases the skip hides a mutant a test can kill.</p>
+    <p>Every other endless range is swapped. This includes the assigned value in <code>h[:k] = 1..nil</code> and a range in parentheses, as in <code>list[(1..)]</code>. <code>(1..)</code> and <code>(1...)</code> differ on <code>==</code>, <code>eql?</code>, <code>hash</code>, <code>exclude_end?</code>, <code>to_s</code>, <code>inspect</code> and <code>cover?(1..)</code>, so a test that compares, stores or prints the range can kill the mutant.</p>
+    <p>Some of these mutants are equivalent: a range in parentheses inside a slice, or a range used only with <code>include?</code>, <code>===</code>, <code>case</code>/<code>when</code>, a <code>case</code>/<code>in</code> pattern or <code>clamp</code>. In a Rails app, a range in an Active Record query, as in <code>where(created_at: time..)</code>, also gives an equivalent mutant, because both ranges become the same <code>&gt;=</code> SQL condition. So does <code>validates :age, inclusion: { in: 18.. }</code>. Suppress such a mutant with <code># mutineer:disable-line</code> or an <code>ignore:</code> entry, as described at the top of the page.</p>
   </article>
 </main>
 

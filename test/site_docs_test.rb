@@ -95,6 +95,16 @@ class SiteDocsTest < Minitest::Test
     assert_equal expected, markdown.scan(/^\| `(\w+)`/).flatten.sort
   end
 
+  # Every call whose endless-range arguments are skipped is named on both pages.
+  def test_equivalent_skips_page_names_every_range_slice_call
+    html = File.read("docs/equivalent-skips.html")
+    md = File.read("docs/equivalent-skips.md")
+    Mutineer::Mutators::RangeLiteral::SLICE_CALLS.each do |name|
+      assert_includes html, "<code>#{name}</code>", "equivalent-skips.html is missing #{name}"
+      assert_includes md, "`#{name}`", "equivalent-skips.md is missing #{name}"
+    end
+  end
+
   # The Rails guide is in the primary nav, and every YAML recipe parses.
   def test_rails_guide_is_linked_and_its_yaml_parses
     %w[docs/index.html docs/agentic-coding.html docs/sample-report.html docs/rails.html].each do |path|
