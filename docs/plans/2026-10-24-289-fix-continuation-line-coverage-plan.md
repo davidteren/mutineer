@@ -216,7 +216,7 @@ BUNDLE_GEMFILE=gemfiles/minitest6.gemfile bundle exec rake test
 - **#301 (expectation-fit conventions)** and **#302 (merged, website onboarding).** No overlap.
 - **Other fixture suites.** The wider retry can move exact counts in suites with multi-line statements whose first line holds other code (for example `test/load_time_test.rb`). The prototype run was green, but check any count change before you accept it.
 - **Runtime.** A retried mutant whose edge line is hot (a guard such as `return if p.nil?;`) now runs every test on that line. Expect a small rise in run time on such code.
-- **This plan file.** PR #193 removed `docs/plans/` from `main`, and `rake site:build` publishes every file under `docs/` except `GENERATED` and `UNPUBLISHED` (`rake/site_build.rb:30`). Keep this plan on its plan branch. Do not include it in the fix PR, or the plan becomes a public site page.
+- **This plan file.** `main` now keeps plans in `docs/plans/`, and `rake site:build` leaves that folder out of the site (`UNPUBLISHED` in `rake/site_build.rb`). So the fix PR can carry this plan without making it a public page.
 
 ## Open Questions
 

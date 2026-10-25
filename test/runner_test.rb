@@ -297,6 +297,16 @@ class RunnerTest < Minitest::Test
     source = "def f(xs)\n  x = 1; y = xs.map { |v|\n    v }.size + 1\nend\n"
 
     assert_equal [:maybe, ["/root/t_test.rb"]], selection(source, "+ 1", { 2 => ["t_test.rb"] }, load_lines: [3])
+
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
+    start = source.index("+ 1")
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + 1, replacement: "-", operator: :test)
+    map = FakeCoverageMap.new({ 2 => ["t_test.rb"] }, "/root", [3], false, [])
+    loaded = Mutineer::JobPlan.load_verdict(Mutineer::Result.new(status: :survived), "x.rb", mutation, subject,
+                                            source, map)
+
+    assert_equal :ran_at_load, Mutineer::JobPlan.selection_verdict(:maybe, loaded).status
   end
 
   # #289: a #254 :maybe selection also gets the tests of a first line that it
