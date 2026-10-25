@@ -59,14 +59,38 @@ in **Avoiding infinite loops** below.
 ## CI gate: fail a PR only when it makes things worse
 
 Save a full JSON report from the default branch as a baseline. Compare pull
-requests with that report to catch new survivors while you improve existing tests:
+requests with that report to catch new survivors while you improve existing tests.
+For this workflow, leave `baseline:` and `only:` unset in `.mutineer.yml`.
+Pass the baseline only in the pull request command or Action input. This keeps
+refreshes independent of the old report and prevents a hidden subject filter.
+Keep the source, test, and operator settings the same in both runs.
+The examples use `app/` and the default cache directory, `.mutineer`. Use the
+same sources, explicit test files, and operators as your CI gate. If `cache_dir`
+is different, replace `.mutineer` in every example path with that directory:
 
 ```sh
-# On main, refresh the baseline (e.g. nightly) and commit/cache it:
-mutineer run app/ --no-since --format json --output .mutineer/baseline.json
+# On main, write a candidate without replacing the saved baseline:
+mutineer run app/ --no-since --no-fail-fast --format json --output .mutineer/baseline-candidate.json
+```
 
-# On a PR:
-mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json
+Use a separate output path to preserve the saved report for review. An output
+path that names a baseline being compared exits `2` before a real run.
+
+Keep the saved baseline if the command exits `1` or `2`. Before replacing it,
+require exit `0`, a non-null `summary.score`, and no `no_verdict[]` entries.
+Confirm the full intended scope ran, with `fail_fast` disabled and neither
+`--only` nor an `only:` configuration filter. Review the candidate's survivors, then copy it and commit or cache the
+saved baseline:
+
+```sh
+cp .mutineer/baseline-candidate.json .mutineer/baseline.json
+```
+
+Leave `only:` unset throughout these checks. On a pull request, compare against
+the saved file:
+
+```sh
+mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --no-fail-fast --format json
 ```
 
 `--baseline` exits `1` if it finds a new survivor or a lower score, or if the run is incomplete.
@@ -84,7 +108,7 @@ code changes too. A scoped check cannot detect weaker tests for unchanged source
 lines. Compare the PR's full run with the full baseline:
 
 ```sh
-mutineer run app/ --no-since --baseline .mutineer/baseline.json --format json
+mutineer run app/ --no-since --baseline .mutineer/baseline.json --no-fail-fast --format json
 ```
 
 Keep a full scan on the default branch to refresh the baseline. That scan does
@@ -115,6 +139,7 @@ jobs:
           sources: app/
           since: none
           baseline: .mutineer/baseline.json
+          extra-args: "--no-fail-fast"
           threshold: "90"
           output: .mutineer/pr.json
       - uses: actions/upload-artifact@v4
@@ -141,6 +166,7 @@ For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the 
           sources: app/models/order.rb
           rails: true
           use-bundler: true
+          extra-args: "--no-fail-fast"
           since: none
 ```
 
