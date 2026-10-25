@@ -346,6 +346,8 @@ module Mutineer
             "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run",
             unsetenv_others: true, chdir: @app_root
           )
+          # Replies are UTF-8 JSON; with LANG unset the pipe would read as US-ASCII (#303).
+          @stdout.set_encoding(Encoding::UTF_8)
           # Drain daemon stderr to the tool's stderr so child/boot errors are visible.
           # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn;
           # the rescue swallows the benign EBADF/IOError raised when close_io closes

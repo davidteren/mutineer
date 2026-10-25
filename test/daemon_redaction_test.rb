@@ -53,6 +53,24 @@ class DaemonRedactionTest < Minitest::Test
     end
   end
 
+  # #303: with LC_ALL=C the daemon reads its stdin as US-ASCII. A boot line
+  # with a non-ASCII path must still parse, so the daemon replies.
+  def test_boot_line_with_a_non_ascii_path_parses_under_an_ascii_locale
+    Dir.mktmpdir do |dir|
+      root = File.join(dir, "caf\u00e9")
+      Dir.mkdir(root)
+      boot = File.join(root, "boot.rb")
+      File.write(boot, "raise \"boot ran\"\n")
+      lib = File.expand_path("../lib", __dir__)
+      script = "require \"mutineer/daemon_server\"; Mutineer::DaemonServer.run"
+      stdin = JSON.generate("cmd" => "boot", "project_root" => root, "boot" => boot)
+      out, err, = Open3.capture3({ "LC_ALL" => "C", "LANG" => nil }, RbConfig.ruby, "-I", lib, "-e", script,
+                                 stdin_data: "#{stdin}\n")
+      refute_empty out, err
+      assert_includes JSON.parse(out.lines.last)["error"], "boot ran"
+    end
+  end
+
   def test_provision_reply_hides_the_password
     Mutineer::DaemonServer.instance_variable_set(:@worker_db, LeakyWorkerDb)
 

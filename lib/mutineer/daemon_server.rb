@@ -51,22 +51,17 @@ module Mutineer
   module DaemonServer
     # Poll interval (seconds) for the per-fork deadline wait loop.
     POLL = 0.02
-    # Basename glob for a mutant file written beside a source file.
-    # Tempfile puts hyphens in the name, so it is not a constant name. The
-    # leading dot hides a new file from Zeitwerk (#253); a file an older
-    # version left behind has none, so the glob matches both.
-    DAEMON_TEMP_BASENAME = "{.,}mutineer_daemon*.rb"
-
-    # Skips daemon mutant files when Zeitwerk scans an autoload directory.
-    # The boot sweep keeps a file another process still holds. Zeitwerk skips a
-    # hidden one (#253), but one an older version wrote has no dot, and it would
-    # stop the next boot, because its name is not a constant.
+    # Skips mutant files of both modes ({OrphanGuard::TEMP_BASENAME}) when
+    # Zeitwerk scans an autoload directory. The boot sweep keeps a file another
+    # process still holds. Zeitwerk skips a hidden one (#253), but one an older
+    # version wrote has no dot, and it would stop the next boot, because its
+    # name is not a constant.
     module DaemonTempIgnore
       # @return [void]
       def setup
         dirs = Array(Mutineer::DaemonServer.instance_variable_get(:@source_dirs))
         dirs.each do |dir|
-          ignore(File.join(dir, Mutineer::DaemonServer::DAEMON_TEMP_BASENAME))
+          ignore(File.join(dir, Mutineer::OrphanGuard::TEMP_BASENAME))
         end
         super
       end
@@ -86,6 +81,8 @@ module Mutineer
         output ||= @protocol
         @errio = errio
         @output = output
+        # The client sends UTF-8 JSON; with LANG unset the pipe would read as US-ASCII (#303).
+        input.set_encoding(Encoding::UTF_8)
         boot_line = input.gets
         return if boot_line.nil? # client vanished before boot
 
@@ -371,12 +368,13 @@ module Mutineer
         Zeitwerk::Loader.prepend(DaemonTempIgnore)
       end
 
-      # Remove orphaned mutant tempfiles from the source dirs (parent-side; the
-      # SIGKILL path cannot run the child's ensure). Mirrors JobPlan.sweep_orphans.
-      # Skips a file another process still owns ({OrphanGuard.mutant_file_in_use?}).
+      # Remove orphaned mutant tempfiles of both modes from the source dirs
+      # (parent-side; the SIGKILL path cannot run the child's ensure). Mirrors
+      # JobPlan.sweep_orphans. Skips a file another process still owns
+      # ({OrphanGuard.mutant_file_in_use?}).
       def sweep_temps
         @source_dirs.to_a.each do |dir|
-          Dir.glob(File.join(dir, DAEMON_TEMP_BASENAME)).each do |path|
+          Dir.glob(File.join(dir, OrphanGuard::TEMP_BASENAME)).each do |path|
             next if OrphanGuard.mutant_file_in_use?(path)
 
             File.unlink(path) rescue nil # rubocop:disable Style/RescueModifier

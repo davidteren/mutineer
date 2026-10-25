@@ -154,6 +154,16 @@ class ChangedLinesTest < Minitest::Test
     end
   end
 
+  # #303: with LANG unset the diff text is US-ASCII. A changed non-ASCII line
+  # must not break the hunk parse.
+  def test_git_diff_of_a_non_ascii_line_parses_under_an_ascii_locale
+    in_repo do |root|
+      File.write(File.join(root, "old.rb"), "1\n2 caf\u00e9\n3\n")
+      lines = with_ascii_default_external { CL.parse(CL.git_diff("HEAD", File.join(root, "old.rb"), root)) }
+      assert_equal Set[2], lines
+    end
+  end
+
   # The ref still has the path, so git prints only a deletion hunk for the new file.
   def test_git_diff_rewritten_after_deletion_marks_every_line_changed
     in_repo do |root|

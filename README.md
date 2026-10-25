@@ -406,8 +406,16 @@ Bootsnap checks its compile cache by file path, size, and modification time in w
 When the size and the time match, it uses the cached code without reading the file content.
 The in-process and `--daemon` paths load each mutant from a new file, so the cache cannot mix them up.
 `--test-command` rewrites the source file in place.
-Two mutants of the same size, written in the same second, can then load the first one's cached code.
-To rule that out, set `DISABLE_BOOTSNAP_COMPILE_CACHE=1` on the Mutineer command.
+Two mutants of the same size, written in the same second, could then load the first one's cached code.
+So `--test-command` also sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1`, and Bootsnap compiles each file again on every boot.
+This makes each mutant boot slower.
+The variable works through `require "bootsnap/setup"`, which Rails puts in `config/boot.rb`.
+It needs Bootsnap 1.7.0 or later. Older versions ignore it, so upgrade Bootsnap first.
+If your app calls `Bootsnap.setup` itself, pass `compile_cache_iseq: ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"].nil?` there.
+This turns the cache off only when the variable is set, so other boots keep it.
+Bootsnap checks only that the variable is set, so `DISABLE_BOOTSNAP_COMPILE_CACHE=0` still turns the cache off.
+To keep the cache, run the suite through a wrapper script that runs `unset DISABLE_BOOTSNAP_COMPILE_CACHE` first.
+Boots are then faster, but a mutant can again load the previous mutant's cached code.
 Bootsnap keeps its cache in `tmp/cache/bootsnap`, or under `$BOOTSNAP_CACHE_DIR` when that is set.
 If a run uses code that no longer matches your files, delete that folder and run again.
 
@@ -499,8 +507,8 @@ RAILS_ENV=test mutineer run app/models/order.rb \
   `RBENV_VERSION=…` on the Mutineer command for the suite; use `.ruby-version`
   or a wrapper. Don't put `KEY=val` prefixes *inside* `--test-command` (no shell;
   that would be treated as the program name). Mutineer also sets
-  `PARALLEL_WORKERS=1` and `DISABLE_SPRING=1` in the child and replaces a value
-  you set (see [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis)).
+  `PARALLEL_WORKERS=1`, `DISABLE_SPRING=1` and `DISABLE_BOOTSNAP_COMPILE_CACHE=1`
+  in the child and replaces a value you set (see [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis)).
 
 #### Under a version manager (rbenv / asdf / chruby)
 

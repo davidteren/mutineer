@@ -50,7 +50,7 @@ module Mutineer
     # @return [Mutineer::Baseline] baseline object.
     # @raise [Mutineer::ConfigError] when the file is missing or invalid.
     def self.load(path)
-      doc = JSON.parse(File.read(path))
+      doc = JSON.parse(File.read(path, encoding: "UTF-8"))
       unless doc.is_a?(Hash) && doc["schema_version"] && doc["survivors"].is_a?(Array)
         raise ConfigError, "not a Mutineer JSON report: #{path}"
       end
