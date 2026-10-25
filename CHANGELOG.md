@@ -6,6 +6,46 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **The gem ships the agent skill.** `skills/mutineer/SKILL.md` is now
+  packaged in the gem, and the gemspec opts in as a
+  [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive)
+  companion (`hyperdrive_targets: "*"`, `hyperdrive_artifacts: "skill"`). In a
+  Rails app that bundles mutineer, `bin/rails hyperdrive:init` installs the
+  skill to `.claude/skills/mutineer/SKILL.md`. A test in the default suite
+  fails if the gemspec stops shipping the skill or drops the opt-in (#315).
+
+### Fixed
+
+- **`--threshold` compares the exact score, not the rounded one (#280).** The
+  score is rounded to one decimal for display, and the gate used to compare that
+  rounded value. A run with 1999 of 2000 mutants killed showed 100.0% and passed
+  `--threshold 100` with a survivor. The exit code, the Action, and the PASSED or
+  FAILED line now use the exact counts. When the rounded score points the other
+  way, the PASSED or FAILED line gives the counts and says that the score is
+  rounded.
+
+- **The Minitest clean check now runs the tests in the order the mutant runs
+  use (#282).** Since 1.1.0, each mutant run used seed `1`, but coverage
+  capture, the clean checks and the `--daemon` mutant runs used a random
+  seed. An order-dependent suite could pass the clean check and then fail in
+  every mutant run, so each mutant scored a false `killed`. Every Minitest
+  run that Mutineer starts itself (not `--test-command`, see #338) now uses seed `1`,
+  or `SEED` when the environment sets it. Such a suite now stops the run
+  with "the unmutated suite is not green". The message names the configured
+  seed or default and notes that test helpers can change it. Capture, clean
+  checks and mutant runs all read `SEED` after loading the tests and helpers.
+  Check the listed test files with the same seed and helpers to investigate
+  the order-dependent test. A coverage cache from another
+  `SEED` in Mutineer's environment or an older version is captured again. A
+  `--coverage-from` capture from another `SEED` or an older version is
+  rejected with exit 2: capture it again with this version. The internal constant
+  `MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED` is now `PINNED_SEED`.
+  One gap stays: when a mutant runs several covering test files, their test
+  classes can still run in a different order than in the combined clean
+  check. RSpec does not change.
+
 ### Changed
 
 - Explain mutation testing before setup, with a runnable beginner guide and a

@@ -204,7 +204,7 @@ module Mutineer
           failed_test_files: data["failed_test_files"] || [],
           project_root: config.project_root,
           failed_clean_tests: data["failed_clean_tests"]
-        ))
+        ), framework: config.framework)
       end
 
       unless data && !(data["map"] || {}).empty?
