@@ -1,0 +1,65 @@
+CHANGELOG.md
+  s_04c10f38d58c60::t_4a6a8a9748696b 28-108
+README.md
+  s_04c10f38d58c60::t_89570b72fae120 195,669-671,690-692,716-717
+docs/json-schema.md
+  s_04c10f38d58c60::t_1fbe2fb59e29c7 63,176-178
+docs/plans/2026-10-24-296-fix-in-test-db-error-verdict-plan.md
+  s_04c10f38d58c60::t_5ed8d60ebdbf6f 1-276
+lib/mutineer/daemon_backend.rb
+  s_04c10f38d58c60::t_f1a7f75564c25a 36-40
+lib/mutineer/daemon_server.rb
+  s_04c10f38d58c60::t_c7991ccbe11396 48-50,54-58,64,335-337,371-374,377,446-447
+lib/mutineer/isolation.rb
+  s_04c10f38d58c60::t_19acad66c7c1fa 141,143-144,171,201-226,228,306
+lib/mutineer/job_plan.rb
+  s_04c10f38d58c60::t_dabf34fdcafc94 461-466,471
+lib/mutineer/kill_channel.rb
+  s_04c10f38d58c60::t_7e22d81f703d99 12,31,37,44-46,67-69,96-99,101,107,179,221-227,251
+lib/mutineer/minitest_integration.rb
+  s_04c10f38d58c60::t_b392a890427cc9 5,10-11,19-22,65-66,108-109,118-119,123
+lib/mutineer/minitest_integration/in_test_database_error.rb
+  s_04c10f38d58c60::t_deb28bb3ea9562 1-184
+lib/mutineer/minitest_integration/kill_recorder.rb
+  s_04c10f38d58c60::t_8a09a8d19d93b1 4,26,39,50,63,74,118-119,122,153,190,210,218,226-229,256-263
+lib/mutineer/orphan_guard.rb
+  s_04c10f38d58c60::t_f6366a5ae10ebd 15-27,43,51-52,58,64
+lib/mutineer/result.rb
+  s_04c10f38d58c60::t_4490f5d848f387 7-9,170-171
+lib/mutineer/test_runners.rb
+  s_04c10f38d58c60::t_24760a7f1eb646 11-14
+lib/mutineer/test_runners/minitest.rb
+  s_04c10f38d58c60::t_d5a4b2e1691e49 16-17
+test/daemon_backend_contract_test.rb
+  s_04c10f38d58c60::t_1cf3e135e687d6 387,705
+test/daemon_client_test.rb
+  s_04c10f38d58c60::t_926d87b3b119fa 27-28,59-88
+test/daemon_temp_sweep_test.rb
+  s_04c10f38d58c60::t_846a11022c2fcc 128-151,162,190,196-213
+test/fixtures/in_test_db_error_test.rb
+  s_04c10f38d58c60::t_1768f9f592fdf2 1-91
+test/isolation_test.rb
+  s_04c10f38d58c60::t_cb74ac122672f1 173-186
+test/kill_channel_test.rb
+  s_04c10f38d58c60::t_3cfd5528744a55 55-92
+test/tempfile_leak_test.rb
+  s_04c10f38d58c60::t_391f42adaf9e18 33-34,37-39,46-93
+test/test_runners/minitest_test.rb
+  s_04c10f38d58c60::t_02666e65e22605 30-31,490-663
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cfc83f0c38c065a2adea700a54f78d5c2467a510",
+  "prompts": {},
+  "sessions": {
+    "s_04c10f38d58c60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3a63db2cb3eaa58a",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
