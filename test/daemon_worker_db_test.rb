@@ -103,23 +103,35 @@ class DaemonWorkerDbTest < Minitest::Test
   # #317: a worker loads the schema file the app's config names. A decoy
   # db/schema.rb that SQLite cannot load (like a MySQL schema) sits beside the
   # `schema_dump: schema_sqlite.rb` file whose checksum the base DB holds.
-  # Real Rails resolves each name, under the fixture bundle, in a temp db dir.
+  # Real Rails resolves each name through DaemonServer's worker setup, under the
+  # fixture bundle, in a temp db dir. The worker uses the daemon's stored path.
   SCHEMA_DUMP_CHECK = <<~RUBY
     require "./config/environment"
-    require #{File.expand_path("../lib/mutineer/rails_worker_db", __dir__).inspect}
+    require #{File.expand_path("../lib/mutineer/daemon_server", __dir__).inspect}
     require "digest"
     require "tmpdir"
     ActiveRecord::Migration.verbose = false
+    daemon = Mutineer::DaemonServer
+    daemon.send(:setup_worker_db, "db_role" => "prepare")
     db = Mutineer::RailsWorkerDb
-    found = { default: db.ruby_schema_path == File.expand_path("db/schema.rb") }
+    found = { default: daemon.instance_variable_get(:@schema_path) == File.expand_path("db/schema.rb") }
     Dir.mktmpdir do |dir|
       ActiveRecord::Tasks::DatabaseTasks.db_dir = dir
       File.write(File.join(dir, "schema.rb"), 'raise "loaded the decoy schema.rb"')
       sqlite_schema = File.join(dir, "schema_sqlite.rb")
       File.write(sqlite_schema, File.read("db/schema.rb"))
       base = { adapter: "sqlite3", database: File.join(dir, "base.sqlite3"), schema_dump: "schema_sqlite.rb" }
-      route = ->(extra = {}) { ActiveRecord::Base.establish_connection(base.merge(extra)); db.ruby_schema_path }
+      route = lambda do |extra = {}|
+        ActiveRecord::Base.establish_connection(base.merge(extra))
+        daemon.send(:setup_worker_db, "db_role" => "prepare")
+        daemon.instance_variable_get(:@schema_path)
+      end
       found[:renamed] = route.() == sqlite_schema
+      ActiveRecord.schema_format = "ruby"
+      config = ActiveRecord::Base.connection_db_config
+      found[:rails_string] = ActiveRecord::Tasks::DatabaseTasks.schema_dump_path(config, "ruby") == sqlite_schema
+      found[:daemon_string] = route.() == sqlite_schema
+      ActiveRecord.schema_format = :ruby
       found[:off] = route.(schema_dump: false)
       ActiveRecord.schema_format = :sql
       found[:sql] = route.()
@@ -129,7 +141,7 @@ class DaemonWorkerDbTest < Minitest::Test
       c = ActiveRecord::Base.connection
       c.execute("INSERT INTO orders (created_at, updated_at) VALUES (datetime(), datetime())")
       c.execute("INSERT OR REPLACE INTO ar_internal_metadata VALUES ('schema_sha1', \#{c.quote(Digest::SHA1.hexdigest(File.read(sqlite_schema)))}, datetime(), datetime())")
-      db.after_fork(0, db.ruby_schema_path, seed: true)
+      db.after_fork(0, daemon.instance_variable_get(:@schema_path), seed: true)
       found[:rows] = ActiveRecord::Base.connection.select_value("SELECT COUNT(*) FROM orders")
       route.()
       found[:decoy] = begin
@@ -146,10 +158,12 @@ class DaemonWorkerDbTest < Minitest::Test
     out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", SCHEMA_DUMP_CHECK,
                                   chdir: APP, unsetenv_others: true)
     assert status.success?, out
-    # default: the fixture's own db/schema.rb. off: schema_dump: false. sql: structure.sql.
+    # The daemon stores the fixture's default or renamed path, including Rails'
+    # accepted string format, or nil for schema_dump: false and SQL format.
     # rows: the copy is current against schema_sqlite.rb, so its row stays.
     # decoy: what the old fixed db/schema.rb path did to the same copy.
-    assert_includes out, { default: true, renamed: true, off: nil, sql: nil, rows: 1,
+    assert_includes out, { default: true, renamed: true, rails_string: true, daemon_string: true,
+                           off: nil, sql: nil, rows: 1,
                            decoy: "loaded the decoy schema.rb" }.inspect
   end
 

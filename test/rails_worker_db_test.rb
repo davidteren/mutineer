@@ -332,6 +332,38 @@ class RailsWorkerDbTest < Minitest::Test
     end
   end
 
+  def test_ruby_schema_path_accepts_a_global_string_format
+    in_app_root do |root|
+      File.write("db/schema_sqlite.rb", "\n")
+      with_schema_config(global: "ruby", dump: "db/schema_sqlite.rb") do |asked|
+        assert_equal File.join(root, "db/schema_sqlite.rb"), Mutineer::RailsWorkerDb.ruby_schema_path
+        assert_equal [:ruby], asked, "Rails receives the normalized Ruby format"
+      end
+    end
+  end
+
+  def test_ruby_schema_path_accepts_a_per_database_string_format
+    in_app_root do |root|
+      File.write("db/schema_sqlite.rb", "\n")
+      with_schema_config(global: :sql, per_config: "ruby", dump: "db/schema_sqlite.rb") do |asked|
+        assert_equal File.join(root, "db/schema_sqlite.rb"), Mutineer::RailsWorkerDb.ruby_schema_path
+        assert_equal [:ruby], asked, "the per-database string format wins and is normalized"
+      end
+    end
+  end
+
+  def test_ruby_schema_path_excludes_string_sql_formats
+    in_app_root do
+      File.write("db/schema.rb", "\n")
+      [{ global: "sql" }, { global: :ruby, per_config: "sql" }].each do |formats|
+        with_schema_config(**formats, dump: "db/schema.rb") do |asked|
+          assert_nil Mutineer::RailsWorkerDb.ruby_schema_path
+          assert_empty asked, "SQL formats do not ask Rails for a Ruby schema"
+        end
+      end
+    end
+  end
+
   # Yields the real path of a temp app root with a db/ folder, as the cwd.
   def in_app_root(&block)
     Dir.mktmpdir do |dir|

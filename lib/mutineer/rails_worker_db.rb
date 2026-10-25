@@ -472,6 +472,7 @@ module Mutineer
       db_config = ActiveRecord::Base.connection_db_config
       # Rails 8.1 lets each database config set its own schema_format.
       format = db_config.respond_to?(:schema_format) ? db_config.schema_format : current_schema_format
+      format = format.to_sym if format.respond_to?(:to_sym)
       return unless format == :ruby
 
       tasks = ActiveRecord::Tasks::DatabaseTasks
