@@ -52,6 +52,44 @@ class KillChannelTest < Minitest::Test
     refute report.serial_kill
   end
 
+  def test_an_unavailable_outcome_is_run_without_a_kill_and_leaves_the_row_incomplete
+    report = KC.parse(written do |io|
+      KC.write_start(io)
+      KC.write(io, KC::UNAVAILABLE, "/p/a_test.rb", "A#test_a")
+      KC.write(io, KC::KILL, "/p/b_test.rb", "B#test_b")
+      KC.write_end(io)
+    end)
+    assert_equal ["A#test_a", "B#test_b"], report.ran.map { |test| test[1] }
+    assert_equal ["B#test_b"], report.killed.map { |test| test[1] }
+    assert report.serial_error
+    refute report.serial_kill
+    assert_equal 1, report.lost
+    assert report.finished
+    refute report.invalid
+  end
+
+  def test_an_unavailable_outcome_preserves_an_earlier_serial_kill
+    report = KC.parse(written do |io|
+      KC.write_start(io)
+      KC.write(io, KC::KILL, "/p/a_test.rb", "A#test_a")
+      KC.write(io, KC::UNAVAILABLE, "/p/b_test.rb", "B#test_b")
+    end)
+    assert report.serial_kill
+    refute report.serial_error
+    assert_equal 1, report.lost
+  end
+
+  def test_an_unavailable_parallel_outcome_does_not_mark_a_serial_error
+    report = KC.parse(written do |io|
+      KC.write_start(io)
+      KC.write_parallel(io)
+      KC.write(io, KC::UNAVAILABLE, "/p/a_test.rb", "A#test_a")
+    end)
+    refute report.serial_error
+    refute report.serial_kill
+    assert_equal 1, report.lost
+  end
+
   def test_cleanup_and_lost_lines_are_read
     report = KC.parse(written do |io|
       KC.write_start(io)

@@ -69,7 +69,7 @@ module Mutineer
       id_map = {}
       declined = Hash.new(0)
       Project.discover(config.sources, only: config.only).each do |subject|
-        source = (source_map[subject.file] ||= File.read(subject.file))
+        source = (source_map[subject.file] ||= File.read(subject.file, encoding: "UTF-8"))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
         mutations = operator_classes.flat_map do |klass|
           operator = klass.new
@@ -184,11 +184,14 @@ module Mutineer
     # order of {CoverageMap#order_tests} (paired files, then cheapest), or
     # `[:verdict, Result]` (no_coverage / uncapturable) when none do. A line
     # Ruby does not count (a later line of a multi-line statement) uses the
-    # tests that ran the statement that holds it ({StatementLines}). When the
-    # mutant sits in code of that statement that runs only sometimes (the right
-    # side of a multi-line `a && b`), those tests may not have run it, so the
-    # answer is `[:maybe, abs_test_paths]` and {selection_verdict} treats a
-    # survivor as no_coverage (#254).
+    # tests that ran the statement that holds it ({StatementLines}). When those
+    # lines give no tests, it retries with the loose lines of the statement:
+    # code of the statement that runs only sometimes (the right side of a
+    # multi-line `a && b`, #254), and a first or last line that holds other
+    # code (the opener of a one-line block, #289), but never the `def` line.
+    # Those tests may not have run the mutant, so the answer is
+    # `[:maybe, abs_test_paths]` and {selection_verdict} treats a survivor as
+    # no_coverage.
     #
     # An empty selection is `:ran_at_load` when the mutant's line ran while the
     # app booted or its class loaded ({ran_at_load?}): no test ran it, but the
@@ -214,11 +217,12 @@ module Mutineer
       if chosen.empty? && subject
         # A multi-line statement has a count on one of its lines only.
         lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
-        if lines.empty?
+        chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq
+        if chosen.empty?
           lines = StatementLines.for(subject.def_node, source, mutation.start_offset, loose: true)
+          chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq
           kind = :maybe
         end
-        chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq
       end
       if chosen.empty?
         # Method BODY range, not the whole def: the def/end lines are "covered" at
@@ -467,16 +471,17 @@ module Mutineer
       config.sources.map { |f| File.dirname(File.expand_path(f, config.project_root)) }.uniq
     end
 
-    # Removes stale mutant tempfiles from the given directories. The daemon writes a
-    # differently-named temp, so {DaemonBackend} passes its glob when it sweeps
-    # tool-side at the end of every daemon run, empty or not.
-    # A daemon file another process still owns is left in place. In-process mutant
-    # files have no owner recorded in the name, so this still removes those orphans.
+    # Removes stale mutant tempfiles from the given directories. The default
+    # glob matches the files of both modes, so the in-process boot sweep also
+    # removes an old daemon file (#287). {DaemonBackend} passes its daemon-only
+    # glob when it sweeps tool-side at the end of every daemon run, empty or not.
+    # A file another process still owns is left in place: both modes record the
+    # creating pid in the name and lock the file while it loads (#295).
     #
     # @param dirs [Array<String>] directories to sweep.
     # @param glob [String] filename pattern to remove.
     # @return [Array<String>] the files left in place because a process owns them.
-    def self.sweep_orphans(dirs, glob = "{.,}mutineer_mutant*.rb")
+    def self.sweep_orphans(dirs, glob = OrphanGuard::TEMP_BASENAME)
       dirs.flat_map do |dir|
         Dir.glob(File.join(dir, glob)).select do |path|
           next true if OrphanGuard.mutant_file_in_use?(path)

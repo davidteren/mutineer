@@ -208,7 +208,9 @@ module Mutineer
       case argv.first
       when "run"
         warn_config_root_mismatch(file_path, config.project_root) if file_path
-        tests_as_sources = argv[1..].grep(%r{(\A|/)(test|spec)/.*_(test|spec)\.rb\z})
+        tests_as_sources = argv[1..].select do |arg|
+          Pairing.test_given_as_source?(arg, project_root: config.project_root, tests: config.tests)
+        end
         if config.explicit?(:tests) && tests_as_sources.any?
           warn "mutineer: #{tests_as_sources.join(', ')} looks like a test file, not a source. " \
                "--test takes one file; repeat it for each test file (--test a_test.rb --test b_test.rb)"
@@ -249,7 +251,7 @@ module Mutineer
     # @return [void]
     def self.migrate(config, file_path)
       current, old_to_new = Migrate.id_maps(config)
-      text = File.read(file_path)
+      text = File.read(file_path, encoding: "UTF-8")
       outcome = Migrate.rewrite(text, current, old_to_new)
       outcome.replacements.each do |rep|
         puts "[mutineer] #{rep.old_id} -> #{rep.new_ids.join(', ')}"

@@ -569,7 +569,7 @@ module Mutineer
       file = result.subject&.file
       return unless result.mutation && file
 
-      source = @source_map[file] || File.read(file)
+      source = source_for(file)
       source.byteslice(0, result.mutation.start_offset).count("\n") + 1
     end
 
@@ -656,7 +656,7 @@ module Mutineer
     def survivor_json(result)
       m = result.mutation
       file = result.subject.file
-      source = @source_map[file] || File.read(file)
+      source = source_for(file)
       start_line, original_block, mutated_block, token = diff_for(m, source)
       # A block at the end of the file has no newline after it; elsewhere the
       # file's next byte is one. Each side's own text decides its marker.
@@ -737,7 +737,7 @@ module Mutineer
     def mutant_json(result)
       m = result.mutation
       file = result.subject.file
-      source = @source_map[file] || File.read(file)
+      source = source_for(file)
       start_line, _orig, _mut, token = diff_for(m, source)
       {
         subject: result.subject.qualified_name,
@@ -954,7 +954,7 @@ module Mutineer
            .sort_by { |r| [r.subject.file, r.mutation.start_offset] }
            .each do |r|
         file = r.subject.file
-        source = @source_map[file] || File.read(file)
+        source = source_for(file)
         line, = diff_for(r.mutation, source)
         out.puts "  + #{printable(r.subject.qualified_name)} (#{printable(file)}:#{line}) #{r.mutation.operator}"
       end
@@ -991,7 +991,7 @@ module Mutineer
     # @return [void]
     def survivor(out, file, result)
       m = result.mutation
-      source = @source_map[file] || File.read(file)
+      source = source_for(file)
       start_line, original_block, mutated_block, token = diff_for(m, source)
 
       out.puts "  #{printable(result.subject.qualified_name)} (#{printable(File.basename(file))}:#{start_line})"
@@ -999,6 +999,14 @@ module Mutineer
       original_block.each_line { |l| out.puts "  - #{printable(l.chomp)}" }
       mutated_block.each_line  { |l| out.puts "  + #{printable(l.chomp)}" }
     end
+
+    # The source text of `file`: the run's copy when it has one, else the file
+    # read as UTF-8 whatever the locale (#303).
+    #
+    # @api private
+    # @param file [String] source file path.
+    # @return [String] source text.
+    def source_for(file) = @source_map[file] || File.read(file, encoding: "UTF-8")
 
     # Source text, a method name or a file path made safe for a terminal (#163):
     # each control character except tab becomes its Ruby escape (ESC prints as
