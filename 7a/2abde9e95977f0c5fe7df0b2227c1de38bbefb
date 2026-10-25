@@ -1,0 +1,21 @@
+docs/plans/2026-10-24-296-fix-in-test-db-error-verdict-plan.md
+  s_d60e2454db2056::t_6ba522ea2f4a6e 75-76
+test/daemon_client_test.rb
+  s_d60e2454db2056::t_6dc2e474aced31 85-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7a2abde9e95977f0c5fe7df0b2227c1de38bbefb",
+  "prompts": {},
+  "sessions": {
+    "s_d60e2454db2056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1d5efb-2691-4a0a-8a10-c060a7b2a92e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
