@@ -85,7 +85,7 @@
             <p>Write or strengthen a test so it fails under this change.</p>
           </blockquote>
         </li>
-        <li>Re-run. Accept the result only when this run exits <code>0</code>, <code>summary.score</code> is not <code>null</code>, and <code>summary.score &gt;= 90</code>. If every scored mutant must be killed, also require <code>summary.survived == 0</code>; the score is rounded, so <code>--threshold 100</code> alone can still pass with a survivor.</li>
+        <li>Re-run. Accept the result only when this run exits <code>0</code>, <code>summary.score</code> is not <code>null</code>, and <code>summary.score &gt;= 90</code>. If every scored mutant must be killed, also require <code>summary.survived == 0</code>. Mutineer 1.7.0 and earlier gate on the rounded score, so a run just below the threshold can still exit <code>0</code>. On those versions, also require <code>summary.killed * 100 &gt;= 90 * (summary.killed + summary.survived)</code>.</li>
       </ol>
       <p>Keep <code>fail_fast</code> disabled (the default). If the active <code>.mutineer.yml</code> sets it to <code>true</code>, temporarily change that value to <code>false</code> for the loop. Restore the original value when the loop ends, before committing. A fail-fast run is partial, and its score and exit code do not cover the full scope.</p>
       <p>Zero survivors alone is not success: an empty or fully suppressed scope, or a run with no usable verdicts, also has zero survivors. If the score is null, stop and report “no score”. Check <code>no_coverage[]</code> for test gaps and <code>no_verdict[]</code> for harness failures, and fix them before starting a new run. A positive threshold fails when nothing can be scored and something broke, or when more than one mutant has no verdict and they exceed 10% of those attempted; it does not require zero errors. Keep the threshold in the command equal to your target.</p>
@@ -94,15 +94,17 @@
       <p><code>--since</code> limits each run to changed lines. Review equivalent mutants as described in <a href="#equivalent">Avoiding infinite loops</a> below.</p>
 
       <h2 id="ci-gate">CI gate: fail a PR only when it makes things worse</h2>
-      <p>Save a full JSON report from the default branch as a baseline. Compare pull requests with that report to catch new survivors while you improve existing tests:</p>
-      <pre><code><span class="c"># On main, refresh the baseline (e.g. nightly) and commit/cache it:</span>
-<span class="p">$</span> mutineer run app/ --no-since --format json --output .mutineer/baseline.json
-
-<span class="c"># On a PR:</span>
-<span class="p">$</span> mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json</code></pre>
+      <p>Save a full JSON report from the default branch as a baseline. Compare pull requests with that report to catch new survivors while you improve existing tests. For this workflow, leave <code>baseline:</code> and <code>only:</code> unset in <code>.mutineer.yml</code>. Pass the baseline only in the pull request command or Action input. This keeps refreshes independent of the old report and prevents a hidden subject filter. Keep the source, test, and operator settings the same in both runs. The examples use <code>app/</code> and the default cache directory, <code>.mutineer</code>. Use the same sources, explicit test files, and operators as your CI gate. If <code>cache_dir</code> is different, replace <code>.mutineer</code> in every example path with that directory:</p>
+      <pre><code><span class="c"># On main, write a candidate without replacing the saved baseline:</span>
+<span class="p">$</span> mutineer run app/ --no-since --no-fail-fast --format json --output .mutineer/baseline-candidate.json</code></pre>
+      <p>Use a separate output path to preserve the saved report for review. An output path that names a baseline being compared exits <code>2</code> before a real run.</p>
+      <p>Keep the saved baseline if the command exits <code>1</code> or <code>2</code>. Before replacing it, require exit <code>0</code>, a non-null <code>summary.score</code>, and no <code>no_verdict[]</code> entries. Confirm the full intended scope ran, with <code>fail_fast</code> disabled and neither <code>--only</code> nor an <code>only:</code> configuration filter. Review the candidate's survivors, then copy it and commit or cache the saved baseline:</p>
+      <pre><code>cp .mutineer/baseline-candidate.json .mutineer/baseline.json</code></pre>
+      <p>Leave <code>only:</code> unset throughout these checks. On a pull request, compare against the saved file:</p>
+      <pre><code><span class="p">$</span> mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --no-fail-fast --format json</code></pre>
       <p><code>--baseline</code> exits <code>1</code> if it finds a new survivor or a lower score. It matches survivors by <code>id</code>; file moves and renames can change ids. <code>--baseline-epsilon</code> allows a small score difference. With <code>--since</code>, only new survivors fail the baseline check: a score for changed lines is not comparable to a full-run score. Add <code>--threshold</code> to enforce a minimum score as well.</p>
       <p>Run a full scan on the pull request whenever tests change, including when source code changes too. A scoped check cannot detect weaker tests for unchanged source lines. Compare the PR's full run with the full baseline:</p>
-      <pre><code>mutineer run app/ --no-since --baseline .mutineer/baseline.json --format json</code></pre>
+      <pre><code>mutineer run app/ --no-since --baseline .mutineer/baseline.json --no-fail-fast --format json</code></pre>
       <p>Keep a full scan on the default branch to refresh the baseline. That scan does not check a pull request's changed tests before merge.</p>
 
       <h3 id="action">GitHub Action</h3>
@@ -125,6 +127,7 @@ jobs:
           sources: app/
           since: none
           baseline: .mutineer/baseline.json
+          extra-args: "--no-fail-fast"
           threshold: "90"
           output: .mutineer/pr.json
       - uses: actions/upload-artifact@v4
@@ -140,6 +143,7 @@ jobs:
           sources: app/models/order.rb
           rails: true
           use-bundler: true
+          extra-args: "--no-fail-fast"
           since: none</code></pre>
       <p>See <code>action.yml</code> for all inputs (<code>operators</code>, <code>framework</code>, <code>strategy</code>, <code>jobs</code>, <code>extra-args</code>, …) and the <code>exit-code</code> / <code>report</code> outputs.</p>
 
