@@ -8,6 +8,41 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Included and prepended block methods under reload.** After you upgrade,
+  follow the [full baseline refresh recipe](https://davidteren.github.io/mutineer/agentic-coding.html#ci-gate)
+  with `--no-since --format json --output .mutineer/refreshed-baseline.json` and your
+  existing source and test options. Review the report and replace the stored
+  baseline. This applies only to runs that use `--strategy reload`: under
+  redefine these methods stay `unplaceable`. GitHub Action users on reload,
+  the Action's default (a Rails app without a daemon uses redefine), must
+  replace the file passed to the `baseline` input too. A check against an older
+  report lists the new survivors as regressions.
+  Under `--strategy reload`, in-process and on the daemon, a method in a
+  concern's `included` or `prepended` block is now mutated and scored (#297).
+  Mutineer loads the mutated method into each class that already has it. A
+  prepended wrapper that calls `super` reaches that mutated method too. A
+  concern included into an object's singleton class is supported. A class
+  that includes the concern later gets it from the reloaded block. The
+  rest of the block does not run again, so validators and callbacks are not
+  added twice. These mutants used to be `unplaceable`, so a reload score can go
+  down and a `--threshold` gate can start to fail. Some methods stay
+  `unplaceable`: a method in a class, module or `Struct.new` block inside the
+  block, a method inside another method or block, a method with an explicit
+  receiver other than `self` (such as `def base.tag` in `included do |base|`),
+  a hook-block method whose source line conflicts with another `def` or an
+  explicit Ruby method creator (the full rule is in `docs/json-schema.md`),
+  every method in a block that uses `alias` or `alias_method`, a method the
+  block itself calls, and every method in a block whose `included do` call is
+  not a plain line of the module
+  body (for example inside `if`, `unless`, or `x = included do`). The full list
+  is in `docs/json-schema.md`. If a class aliases a method that Mutineer does
+  run (one not in that list) outside the block, the mutant scores `error`,
+  because the alias keeps the original method. This also applies when a
+  wrapper replaces the original name and calls the saved alias. A retained
+  `Method` or `UnboundMethod` for the original also makes the mutant score
+  `error`: a wrapper can call that handle without testing the mutated method.
+  `--strategy redefine` still
+  reports all of these methods `unplaceable`.
 - **The gem ships the agent skill.** `skills/mutineer/SKILL.md` is now
   packaged in the gem, and the gemspec opts in as a
   [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive)
@@ -18,6 +53,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`--daemon` stops on MySQL older than 8.0 (#298).** The support matrix said
+  MySQL 5.7 is not supported, but `--daemon` ran on it. Mutineer now reads the
+  server version before it copies any worker database. MySQL older than 8.0
+  stops the run with `could not provision <base>: MySQL <version> is not
+  supported`. Pass `--no-daemon` (or set `daemon: false`) to stay serial.
+  MariaDB, MySQL 9 or later, and a server version Mutineer cannot read print
+  one warning and run.
 - **An in-test database error scores `error`, not `killed` (#296).** When
   the first failing test of a Minitest mutant run failed with an Active
   Record connection or lock error (`ConnectionNotEstablished`, including pool
@@ -190,6 +232,33 @@ All notable changes to this project are documented here. The format is based on
   database's own `schema_format:` (Rails 8.1) and a string format such as
   `"sql"`, the same as SQLite.
 
+- **No `DATABASE_URL` password in load errors and mutineer's own messages (#288).**
+  A load error in the tool process (an
+  in-process `--boot` or `--rails` run, a source file, or a `require:`
+  file) no longer prints the raw password or a backtrace. The run prints a
+  `mutineer: cannot load <path>: ...` message (a `SyntaxError` keeps its code
+  excerpt) and exits 1. By default, a load error adds a hint to re-run with `--verbose`;
+  verbose output gives a redacted backtrace and cause chain. CLI error messages, the
+  fork child's error line, the worker crash text in the report, the daemon's
+  stderr lines (except bare passwords known only to the app after boot),
+  the failing test report and any load error from the
+  clean-suite and coverage checks, and the `--verbose` test command output
+  are redacted too. Output that app code or a test writes straight to
+  stderr in a fork or subprocess is not filtered (#341 tracks this and the
+  other known gaps). A `password=` query parameter in DATABASE_URL is now
+  hidden too.
+  Daemon stderr is now copied line by line as UTF-8, so an invalid byte
+  shows as U+FFFD. Output without a newline waits for a newline or EOF, so
+  credentials split across writes can be redacted together. A password that
+  equals the username no longer blanks the same text elsewhere (for example
+  `role "postgres"`). Each password form of 3 characters or fewer is hidden
+  only when no ASCII letter, digit or underscore touches either edge.
+  The limit applies separately to raw, decoded and escaped forms: `%61%62`
+  is still replaced inside longer text, while its decoded `ab` is matched
+  only as a whole token. A longer form is hidden wherever it appears,
+  and the password inside a URL is always
+  hidden.
+
 - **`--strategy redefine` and path-relative methods.** Redefine now loads
   the mutated method from a hidden file beside the source, as reload does.
   It used the system temp directory before, so `__dir__` and
@@ -229,6 +298,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Load failures now use the runtime-error exit code (#288).** An
+  `ArgumentError` or `SystemCallError` raised while a boot file, a source
+  file or a `.mutineer.yml` `require:` file loads now exits 1 (runtime
+  error), instead of 2 (usage error). A missing boot or `require:` file now
+  exits 2 (usage error) with a one-line message. Before, it crashed with a
+  raw `LoadError` and a backtrace, and exited 1. With `--daemon` it is
+  checked before the daemon starts, so it exits 2 there too. Both moves bring
+  the code in line with the exit-code table in STABILITY.md, which already
+  lists a bad path as 2 and a runtime error as 1.
 - **`call_to_receiver` now mutates last-call conversions such as `to_s` and
   `to_i`.** `m[1].to_i` now gives the mutant `m[1]`. Before, the operator skipped the
   same names as `chain_link`. Now it skips only `new`, `dup`, `clone`,

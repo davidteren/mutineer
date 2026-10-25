@@ -4,6 +4,7 @@ require "shellwords"
 require "tempfile"
 require_relative "result"
 require_relative "rails_run_env"
+require_relative "redaction"
 
 module Mutineer
   # Raised when the smoke check (the unmutated suite) is not green, so the run
@@ -174,18 +175,18 @@ module Mutineer
         # A timeout is the one non-pass we flag by default — a normal kill is also
         # a non-zero exit, so notifying on every non-zero would spam every kill.
         warn "[mutineer] test-command exceeded #{timeout}s and was killed (scored timeout)."
-        warn output if verbose && !output.empty?
+        warn Redaction.text(output) if verbose && !output.empty?
         Result.timeout
       else # :exited
         return Result.survived if code&.zero?
         # Signal death (nil exitstatus) is infrastructure, not a suite assertion
         # failure — match Isolation/daemon (error), do not inflate kill rate.
         if code.nil?
-          warn output if verbose && !output.empty?
+          warn Redaction.text(output) if verbose && !output.empty?
           return Result.error("test-command terminated by signal")
         end
 
-        warn output if verbose && !output.empty?
+        warn Redaction.text(output) if verbose && !output.empty?
         # 126 (cannot execute) and 127 (command not found) come from a wrapper
         # such as `bundle exec` that could not start the suite: no test ran.
         return Result.error("test-command could not start (exit #{code})") if CANNOT_RUN_CODES.include?(code)

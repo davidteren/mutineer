@@ -353,6 +353,446 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #297: reload can place a def that sits directly in a plain `included` or
+  # `prepended` block, in its `class << self` too. Each such subject carries
+  # the hook call that discovery found.
+  def test_discover_sets_the_hook_call_for_placeable_hook_defs
+    src = <<~RUBY
+      module Billing
+        extend ActiveSupport::Concern
+        included do
+          def a; end
+          def self.b; end
+          class << self
+            def c; end
+          end
+          private def d; end
+        end
+        self.prepended do
+          def e; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[Billing#a Billing.b Billing.c Billing#d Billing#e], subjects.map(&:qualified_name)
+      assert_equal [3, 3, 3, 3, 11], subjects.map { |s| s.reload_hook_call&.location&.start_line }
+      assert(subjects.none? { |s| s.unplaceable?("reload") })
+      assert(subjects.all? { |s| s.unplaceable?("redefine") })
+    end
+  end
+
+  # #297: a def that is not directly in the hook block stays unplaceable.
+  def test_discover_leaves_nested_hook_defs_unplaceable
+    src = <<~RUBY
+      module Billing
+        extend ActiveSupport::Concern
+        included do
+          class Inner
+            def a; end
+          end
+          Kind = Struct.new(:a) do
+            def b; end
+          end
+          Anon = Class.new do
+            def f; end
+          end
+          def outer
+            def c; end
+          end
+          [1].each do
+            def d; end
+          end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      %i[a b f c d].each do |name|
+        assert subjects.fetch(name).hook_block, name
+        assert_nil subjects.fetch(name).reload_hook_call, name
+      end
+      refute_nil subjects.fetch(:outer).reload_hook_call
+    end
+  end
+
+  # An extracted def does not retain a receiver bound by the original block.
+  def test_discover_leaves_hook_local_receivers_unplaceable
+    src = <<~RUBY
+      module BoundHooks
+        extend ActiveSupport::Concern
+        included do |base|
+          def base.tag = 1
+          receiver = self
+          def receiver.other = 2
+          def self.safe = 3
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      %i[tag other].each do |name|
+        assert subjects.fetch(name).unplaceable?("reload"), name
+        assert_nil subjects.fetch(name).reload_hook_call, name
+      end
+      refute subjects.fetch(:safe).unplaceable?("reload")
+    end
+  end
+
+  # Ruby reports only the definition's file and line. Equal names on one line
+  # cannot identify which concern supplied an existing host's method.
+  def test_discover_leaves_ambiguous_same_line_hook_defs_unplaceable
+    src = "module First; extend ActiveSupport::Concern; included do; def total = 1; end; end; " \
+          "module Second; extend ActiveSupport::Concern; included do; def total = 2; end; end\n"
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[First#total Second#total], subjects.map(&:qualified_name)
+      assert(subjects.all? { |subject| subject.unplaceable?("reload") })
+      selected = Mutineer::Project.discover([path], only: "First#total")
+      assert selected.first.unplaceable?("reload"), "--only must not hide the other definition"
+    end
+  end
+
+  def test_discover_leaves_same_line_instance_and_singleton_hook_defs_unplaceable
+    src = "module TwoDefs; extend ActiveSupport::Concern; included do; def total = 1; def self.total = 2; end; end\n"
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[TwoDefs#total TwoDefs.total], subjects.map(&:qualified_name)
+      assert(subjects.all? { |subject| subject.unplaceable?("reload") })
+    end
+  end
+
+  def test_discover_leaves_a_hook_def_ambiguous_with_an_ordinary_def_unplaceable
+    src = "module Hook; extend ActiveSupport::Concern; included do; def total = 1; end; end; " \
+          "class Ordinary; def total = 2; end\n"
+    with_source(src) do |path|
+      hook, ordinary = Mutineer::Project.discover([path])
+      assert hook.unplaceable?("reload")
+      refute ordinary.unplaceable?("reload")
+    end
+  end
+
+  def test_discover_keeps_different_same_line_hook_defs_placeable
+    src = "module TwoDefs; extend ActiveSupport::Concern; included do; def a = 1; def b = 2; end; end\n"
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal %w[TwoDefs#a TwoDefs#b], subjects.map(&:qualified_name)
+      assert(subjects.none? { |subject| subject.unplaceable?("reload") })
+    end
+  end
+
+  # Method creators that Ruby maps to the same file and line are ambiguous
+  # even when their definitions are absent from SubjectVisitor's output.
+  def assert_hook_creator_ambiguity(creator, name: :tag, unplaceable: true)
+    definition = name.to_s.end_with?("=") ? "def #{name}(value); 1; end" : "def #{name} = 1"
+    src = "module HookCollision; extend ActiveSupport::Concern; included do; #{definition}; #{creator}; end; end\n"
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal ["HookCollision##{name}"], subjects.map(&:qualified_name), creator
+      assert_equal unplaceable, subjects.first.unplaceable?("reload"), creator
+    end
+  end
+
+  def test_discover_counts_defs_inside_an_unselected_singleton_class
+    assert_hook_creator_ambiguity("class << TARGET; def tag = 2; end")
+  end
+
+  def test_discover_counts_builtin_method_creators_on_the_hook_line
+    ["TARGET.singleton_class.define_method(:tag) { 2 }",
+     'TARGET.define_singleton_method("tag") { 2 }',
+     "TARGET.singleton_class.attr_reader(:tag)",
+     'TARGET.singleton_class.attr_accessor("tag")',
+     "TARGET.singleton_class.attr(:tag)"].each { |creator| assert_hook_creator_ambiguity(creator) }
+    ["TARGET.singleton_class.attr_writer(:tag)",
+     'TARGET.singleton_class.attr_accessor("tag")',
+     "TARGET.singleton_class.attr(:tag, true)"].each do |creator|
+      assert_hook_creator_ambiguity(creator, name: :tag=)
+    end
+  end
+
+  def test_discover_blocks_unknown_creator_names_only_on_the_hook_line
+    ["TARGET.singleton_class.define_method(method_name) { 2 }",
+     "TARGET.define_singleton_method(method_name) { 2 }",
+     "TARGET.singleton_class.attr_reader(method_name)",
+     "TARGET.singleton_class.attr_writer(method_name)",
+     "TARGET.singleton_class.attr_accessor(method_name)",
+     "TARGET.singleton_class.attr(method_name)"].each { |creator| assert_hook_creator_ambiguity(creator) }
+    assert_hook_creator_ambiguity("TARGET.singleton_class.attr(:tag, writable)", name: :tag=)
+  end
+
+  def test_discover_keeps_nonmatching_creator_names_placeable
+    assert_hook_creator_ambiguity("TARGET.singleton_class.define_method(:other) { 2 }", unplaceable: false)
+    assert_hook_creator_ambiguity("TARGET.singleton_class.attr_writer(:tag)", unplaceable: false)
+    assert_hook_creator_ambiguity("TARGET.singleton_class.attr(:tag, false)", name: :tag=, unplaceable: false)
+  end
+
+  def test_discover_uses_the_method_creators_runtime_source_line
+    ["TARGET.singleton_class\n .define_method(\n :tag\n ) { 2 }; def tag = 1",
+     "TARGET\n .singleton_class\n .attr_reader(:tag); def tag = 1"].each do |body|
+      src = "module HookCollision\n extend ActiveSupport::Concern\n included do\n #{body}\n end\nend\n"
+      with_source(src) do |path|
+        subject = Mutineer::Project.discover([path]).first
+        assert subject.unplaceable?("reload"), body
+      end
+    end
+  end
+
+  def test_discover_does_not_treat_a_multiline_receiver_as_the_creation_line
+    ["def tag = 1; TARGET.singleton_class\n .define_method(:tag) { 2 }",
+     "def tag = 1; TARGET\n .singleton_class\n .attr_reader(:tag)",
+     "def tag = 1\n TARGET.singleton_class.attr_reader(method_name)"].each do |body|
+      src = "module HookCollision\n extend ActiveSupport::Concern\n included do\n #{body}\n end\nend\n"
+      with_source(src) do |path|
+        subject = Mutineer::Project.discover([path]).first
+        refute subject.unplaceable?("reload"), body
+      end
+    end
+  end
+
+  def assert_hook_callable_body_ambiguity(body, unplaceable: true)
+    src = "module HookCollision\n extend ActiveSupport::Concern\n included do\n#{body}\n end\nend\n"
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal ["HookCollision#tag"], subjects.map(&:qualified_name), body
+      assert_equal unplaceable, subjects.first.unplaceable?("reload"), body
+    end
+  end
+
+  def test_discover_uses_inline_positional_and_block_pass_callable_lines
+    ["TARGET.define_singleton_method(:tag,\n -> { 2 }); def tag = 1",
+     "TARGET.define_singleton_method(:tag,\n &-> { 2 }); def tag = 1",
+     "TARGET.define_singleton_method(:tag,\n proc { 2 }); def tag = 1"].each do |body|
+      assert_hook_callable_body_ambiguity(body)
+    end
+  end
+
+  def test_discover_counts_stored_callable_body_lines_for_indirect_creators
+    ["body = -> { 2 }; def tag = 1\n TARGET.define_singleton_method(:tag, body)",
+     "body = proc { 2 }; def tag = 1\n TARGET.define_singleton_method(:tag, &body)",
+     "body = -> { 2 }; def tag = 1\n method_name = :tag\n TARGET.define_singleton_method(method_name, body)"].each do |body|
+      assert_hook_callable_body_ambiguity(body)
+    end
+  end
+
+  def test_discover_keeps_noncolliding_callable_sources_placeable
+    ["body = -> { 2 }\n def tag = 1\n TARGET.define_singleton_method(:tag, body)",
+     "body = -> { 2 }; def tag = 1\n TARGET.define_singleton_method(:other, body)",
+     "body = proc { 2 }\n TARGET.define_singleton_method(:tag, &body); def tag = 1",
+     "TARGET.define_singleton_method(:tag,\n -> { 2 }\n ) { 3 }; def tag = 1"].each do |body|
+      assert_hook_callable_body_ambiguity(body, unplaceable: false)
+    end
+  end
+
+  def test_discover_counts_a_reused_hook_container_as_a_possible_method_body
+    src = <<~RUBY
+      module ContainerReuse
+        extend ActiveSupport::Concern
+        included do; def tag = 1 unless self.equal?(TARGET)
+          body = ContainerReuse.instance_variable_get(:@_included_block)
+          TARGET.define_singleton_method(:tag, body) unless self.equal?(TARGET)
+          2
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subject = Mutineer::Project.discover([path]).first
+      assert subject.unplaceable?("reload")
+    end
+  end
+
+  def test_discover_keeps_ordinary_one_line_hooks_placeable
+    ["", "body = -> { 2 }\n TARGET.define_singleton_method(:other, body)"].each do |body|
+      src = "module HookCollision\n extend ActiveSupport::Concern\n included do; def tag = 1\n#{body}\n end\nend\n"
+      with_source(src) do |path|
+        subject = Mutineer::Project.discover([path]).first
+        refute subject.unplaceable?("reload")
+      end
+    end
+  end
+
+  # #297: an alias keeps the original body, so a block that aliases anything
+  # keeps every def in it unplaceable.
+  def test_an_alias_in_the_hook_block_makes_every_def_unplaceable
+    src = <<~RUBY
+      module Billing
+        extend ActiveSupport::Concern
+        included do
+          def tag; end
+          def other; end
+          alias_method :copy, :tag
+        end
+      end
+      module Shipping
+        extend ActiveSupport::Concern
+        included do
+          def tag; end
+          alias twin tag
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal 3, subjects.size
+      assert(subjects.all? { |s| s.hook_block && s.reload_hook_call.nil? })
+    end
+  end
+
+  # #297: the added statement must run exactly when the hook call runs, so
+  # only a hook call on a plain path from the top of the file is placeable.
+  def test_discover_requires_a_hook_call_on_a_plain_path
+    src = <<~RUBY
+      module A
+        extend ActiveSupport::Concern
+        x = included do
+          def a; end
+        end
+      end
+      module B
+        extend ActiveSupport::Concern
+        x =
+          included do
+            def b; end
+          end
+      end
+      module C
+        extend ActiveSupport::Concern
+        foo(included do
+          def c; end
+        end)
+      end
+      module D
+        extend ActiveSupport::Concern
+        included do
+          def d; end
+        end if true
+      end
+      module G
+        extend ActiveSupport::Concern
+        included do
+          def g; end
+        end
+      end unless defined?(G)
+      defined?(H) || module H
+        extend ActiveSupport::Concern
+        included do
+          def h; end
+        end
+      end
+      module I
+        extend ActiveSupport::Concern
+        case 1
+        in Integer then included do
+          def i; end
+        end
+        end
+      end
+      module J
+        extend ActiveSupport::Concern
+        def self.setup
+          included do
+            def j; end
+          end
+        end
+      end
+      module K
+        extend ActiveSupport::Concern
+        class << self
+          included do
+            def k; end
+          end
+        end
+      end
+      module L
+        extend ActiveSupport::Concern
+        included do
+          def l; end
+          module_function :l
+        end
+      end
+      module M
+        extend ActiveSupport::Concern; included do
+          def m; end
+        end
+      end
+      module N
+        extend ActiveSupport::Concern
+        included do
+          def n; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      %i[a b c d g h i j k l].each { |name| assert_nil subjects.fetch(name).reload_hook_call, name }
+      refute_nil subjects.fetch(:m).reload_hook_call
+      refute_nil subjects.fetch(:n).reload_hook_call
+    end
+  end
+
+  # #297: a file that can return early may never reach its hook call.
+  def test_a_top_level_return_makes_the_file_unplaceable
+    src = <<~RUBY
+      return if defined?(R)
+
+      module R
+        extend ActiveSupport::Concern
+        included do
+          def r; end
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subject = Mutineer::Project.discover([path]).first
+      assert subject.hook_block
+      assert_nil subject.reload_hook_call
+    end
+  end
+
+  # #297: the block ran once with the original def, so a def the block itself
+  # calls outside a def body keeps that result and stays unplaceable. A symbol
+  # argument calls by name later, so it stays placeable.
+  def test_a_def_the_block_uses_stays_unplaceable
+    src = <<~RUBY
+      module Billing
+        extend ActiveSupport::Concern
+        included do
+          def self.columns = %i[a]
+          searchable columns
+          def cb; end
+          register method(:cb)
+          def compute; end
+          %i[a].each { register(compute) }
+          def normalize; end
+          before_save { normalize }
+          def saved; end
+          before_save :saved
+          def sent = 1
+          register send(:sent)
+          def pub = 1
+          register public_send("pub")
+          def raw = 1
+          register __send__(:raw)
+        end
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      %i[columns cb compute normalize sent pub raw].each do |name|
+        assert_nil subjects.fetch(name).reload_hook_call, name
+      end
+      refute_nil subjects.fetch(:saved).reload_hook_call
+    end
+  end
+
+  # #297: a name `send` computes at runtime may be any def in the block, so
+  # the block places nothing.
+  def test_a_runtime_send_name_leaves_the_block_unplaceable
+    src = "module Billing; extend ActiveSupport::Concern; included do; def a = 1; register send(pick); end; end\n"
+    with_source(src) do |path|
+      assert_nil Mutineer::Project.discover([path]).first.reload_hook_call
+    end
+  end
+
   # #256: only a concern's `included` or `prepended` block is one ActiveSupport
   # runs once. A `class_methods` block, or another library's `included`, is not.
   def test_discover_marks_only_concern_included_and_prepended_blocks_as_hook_blocks

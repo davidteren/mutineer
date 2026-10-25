@@ -18,6 +18,7 @@ class RailsRunEnvTest < Minitest::Test
       Dir.mktmpdir("mutineer-fork-hygiene") do |dir|
         source = File.join(dir, "empty.rb")
         File.write(source, "# no mutants\n")
+        File.write(File.join(dir, "boot.rb"), "# never loaded: no daemon boots\n")
         _out, err = capture_io do
           Mutineer::Runner.execute(Mutineer::Config.new(
             sources: [source], tests: [], project_root: dir,
@@ -62,6 +63,7 @@ class RailsRunEnvTest < Minitest::Test
       Dir.mktmpdir("mutineer-fork-hygiene") do |dir|
         source = File.join(dir, "empty.rb")
         File.write(source, "# no mutants\n")
+        File.write(File.join(dir, "boot.rb"), "# never loaded: no daemon boots\n")
         _out, err = capture_io do
           Mutineer::Runner.execute(Mutineer::Config.new(
             sources: [source], tests: [], project_root: dir, daemon: true, boot: "boot.rb"
