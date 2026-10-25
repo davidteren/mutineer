@@ -161,8 +161,9 @@ module Mutineer
     # project's top-level `test/` or `spec/`, because real sources use the
     # prefix (`lib/mutineer/test_runners.rb`, `lib/foo/test/test_app.rb`). A
     # source whose own test (`<stem>_test.rb`, `test_<stem>.rb`,
-    # `<stem>_spec.rb` or a split `<stem>_*_test.rb` that no longer source on
-    # disk claims) sits beside it in the test set is not flagged. Paths compare relative to the root, as in
+    # `<stem>_spec.rb`, or a split `<stem>_*_test.rb` not claimed by a longer
+    # source on disk) sits beside it in the test set is not flagged. Paths
+    # compare relative to the root, as in
     # {expand_sources} (the root's real path counts too, for macOS `/var` vs
     # `/private/var`), so `./a_test.rb` and `a_test.rb` match. No file content
     # is read.
