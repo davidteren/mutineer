@@ -1,0 +1,39 @@
+CHANGELOG.md
+  s_f5d1755ce46b6f::t_891110020f8b1d 128-129
+README.md
+  s_f5d1755ce46b6f::t_4927c859259055 470-473
+docs/plans/2026-10-24-298-fix-mysql-version-check-plan.md
+  s_f5d1755ce46b6f::t_04bc578cb88cb9 18,66,73-74,145
+docs/rails.html
+  s_f5d1755ce46b6f::t_b3a261980f9e6d 129
+docs/rails.md
+  s_f5d1755ce46b6f::t_4786de8f9ec6b4 143-145
+lib/mutineer/rails_worker_db.rb
+  s_d60e2454db2056::t_abd390280bc7bb 875,913-915,918,920-925,927,930,933-934,936
+test/rails_worker_db_test.rb
+  s_d60e2454db2056::t_3411ec4e50cd6e 567-579,588,590
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9b09809b5f2f0eb1c15c64d876157816ecd54a25",
+  "prompts": {},
+  "sessions": {
+    "s_d60e2454db2056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1d5efb-2691-4a0a-8a10-c060a7b2a92e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_f5d1755ce46b6f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "176967f6-245d-44f1-a633-ea9edf9c12f8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
