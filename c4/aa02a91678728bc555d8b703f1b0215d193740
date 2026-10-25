@@ -1,0 +1,121 @@
+CHANGELOG.md
+  s_d60e2454db2056::t_1f1438c4092e19 11-45,56-62,235-261,301-309
+README.md
+  s_d60e2454db2056::t_16b09119fc7d66 296,319-320,478-483
+STABILITY.md
+  s_d60e2454db2056::t_cfd77d0d7c19a2 36-37
+action.yml
+  s_d60e2454db2056::t_d98229a72d3e60 117
+docs/agentic-coding.html
+  s_d60e2454db2056::t_f6990c624b0c7a 169-170
+docs/agentic-coding.md
+  s_d60e2454db2056::t_b3cd30eee4ebda 202-203
+docs/fragments/contract.yml
+  s_d60e2454db2056::t_02a7ef13be39dc 13-16,24-25,27-29
+docs/index.md
+  s_d60e2454db2056::t_007b5642767d0c 83-84
+docs/json-schema.md
+  s_d60e2454db2056::t_c757afbaaa9a98 60,98-137,243-244
+docs/plans/2026-10-24-288-fix-redaction-sinks-and-overmatch-plan.md
+  s_d60e2454db2056::t_b29920b2d8df16 1-318
+docs/plans/2026-10-24-297-feat-included-block-methods-plan.md
+  s_d60e2454db2056::t_999550ad018ec0 1-379
+docs/plans/2026-10-24-298-fix-mysql-version-check-plan.md
+  s_d60e2454db2056::t_e1b12b886d367c 1-254
+docs/rails.html
+  s_d60e2454db2056::t_f898900fe165f4 129
+docs/rails.md
+  s_d60e2454db2056::t_ca4935fec990c5 143-146
+lib/mutineer/cli.rb
+  s_d60e2454db2056::t_8f7e17a0004c24 21,102-104,345,350,353-356,359,364,369,372,377-381,383-388
+lib/mutineer/concern_blocks.rb
+  s_d60e2454db2056::t_cd7de21d0cccbb 13-21,24-25,75-231
+lib/mutineer/coverage_map.rb
+  s_d60e2454db2056::t_e9853fb228be2d 40-43,1035-1040,1042,1064-1067,1070,1075-1115,1143-1149,1151,1193-1197,1200
+lib/mutineer/daemon_backend.rb
+  s_d60e2454db2056::t_2553871bdab33d 390-395,398
+lib/mutineer/daemon_client.rb
+  s_d60e2454db2056::t_2ff5c43cd44cbc 8,47-49,353-354,356-360,419-445,458-462
+lib/mutineer/daemon_server.rb
+  s_d60e2454db2056::t_5b43866396ac3b 37-38,271-272,277,437-439,450-453
+lib/mutineer/external_backend.rb
+  s_d60e2454db2056::t_0ce492f6536fe0 7,178,185,189
+lib/mutineer/isolation.rb
+  s_d60e2454db2056::t_1cf8182f5d4d92 10,70,195-197,265,302-320
+lib/mutineer/job_plan.rb
+  s_d60e2454db2056::t_4a7c34812c2cf9 14,169-192
+lib/mutineer/project.rb
+  s_d60e2454db2056::t_112b3433004910 20,23,29-164,174-176,204-206,208,230-231,245-250,310,406,506,520,671-674,682-738
+lib/mutineer/rails_worker_db.rb
+  s_d60e2454db2056::t_ea64ad938b9c0c 5,542-562,864-865,875-878,911-960
+lib/mutineer/redaction.rb
+  s_d60e2454db2056::t_0fb92d8794c282 8-11,22-30,34-39,45-50,53-57,60-117,139-160,169-170
+lib/mutineer/reporter.rb
+  s_d60e2454db2056::t_3f6272e93610d5 756-757
+lib/mutineer/result.rb
+  s_d60e2454db2056::t_87f365eb9aeba4 28-32
+lib/mutineer/runner.rb
+  s_d60e2454db2056::t_47b797b4b98531 4,21,24-41,81-87,131,133,135,172,390-394,473-524
+lib/mutineer/subject.rb
+  s_d60e2454db2056::t_59f973cbab35cf 18-24,28,48-49,54
+lib/mutineer/worker_pool.rb
+  s_d60e2454db2056::t_c8595e79c53e71 4,78
+skills/mutineer/SKILL.md
+  s_d60e2454db2056::t_2ebdc255db5baf 74-75
+test/cli_test.rb
+  s_d60e2454db2056::t_c3453d88cf72a9 16-17,876-877,882-1074
+test/concern_blocks_test.rb
+  s_d60e2454db2056::t_c5f3d4b86f2f63 13,103-435
+test/coverage_map_test.rb
+  s_d60e2454db2056::t_77505d74375847 54-119
+test/daemon_backend_contract_test.rb
+  s_d60e2454db2056::t_1b4d2a9f3c4b78 189-214
+test/daemon_mysql_test.rb
+  s_d60e2454db2056::t_dcc0d2ff6105d0 90
+test/daemon_redaction_test.rb
+  s_d60e2454db2056::t_fd90a672b55c84 11,148-154,161-232
+test/daemon_server_hook_def_test.rb
+  s_d60e2454db2056::t_489aba72733f42 1-105
+test/fixtures/singleton/hook_edges.rb
+  s_d60e2454db2056::t_9eedda4d783860 1-42
+test/fixtures/singleton/hook_edges_hosts.rb
+  s_d60e2454db2056::t_58b261a1c9cb37 1-61
+test/fixtures/singleton/hook_edges_test.rb
+  s_d60e2454db2056::t_d58a65e8ca7ddb 1-72
+test/isolation_test.rb
+  s_d60e2454db2056::t_29ebd8373a114a 517-532
+test/project_test.rb
+  s_d60e2454db2056::t_58380b9cf9aaa8 356-795
+test/rails_run_env_test.rb
+  s_d60e2454db2056::t_359dc34f51f5dc 21,66
+test/rails_worker_db_test.rb
+  s_d60e2454db2056::t_4a9962ebf81585 511-602,978-1013
+test/redaction_test.rb
+  s_d60e2454db2056::t_c15dd160ce78b8 3,7,65-246
+test/runner_external_test.rb
+  s_d60e2454db2056::t_4391a4e94fa8b5 8,205-220
+test/runner_test.rb
+  s_d60e2454db2056::t_342184365e6337 810-828
+test/singleton_redefine_test.rb
+  s_d60e2454db2056::t_4257776df9d0bf 14,18,201-206,209-210,213-272
+test/subject_test.rb
+  s_d60e2454db2056::t_be68e07b2d9ecb 50-54
+test/worker_pool_test.rb
+  s_d60e2454db2056::t_09f830ed7e0180 141-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c4aa02a91678728bc555d8b703f1b0215d193740",
+  "prompts": {},
+  "sessions": {
+    "s_d60e2454db2056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1d5efb-2691-4a0a-8a10-c060a7b2a92e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
