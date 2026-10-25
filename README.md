@@ -425,12 +425,16 @@ RAILS_ENV=test bundle exec mutineer run \
 - **Safe `--jobs N`** — each worker routes to its own copy of the test database, so
   parallel verdicts equal serial (no fixture cross-talk). On first use, a
   worker's database is a copy of the test database after the app boots, so rows
-  written by initializers or `--require` files are there, as in-process. When
-  the copy's schema differs from `db/schema.rb` (another schema version or
-  `schema_sha1` checksum, or no stored checksum, as in an empty or out-of-date
-  test database, or one set up with a plain `load "db/schema.rb"`), the
-  worker loads `db/schema.rb` over it, which drops the copied rows of the
-  tables it defines.
+  written by initializers or `--require` files are there, as in-process. For
+  SQLite, when the copy's schema differs from the app's Ruby schema file (another schema
+  version or `schema_sha1` checksum, or no stored checksum, as in an empty or
+  out-of-date test database, or one set up with a plain `load "db/schema.rb"`),
+  the worker loads that file over it if the file exists. Loading drops copied
+  rows from tables the file defines. Rails selects the test database's schema
+  file: the `SCHEMA` environment variable when it is set, else `schema_dump:` in
+  `config/database.yml`, else `db/schema.rb`.
+  A missing file or `structure.sql` leaves the SQLite copy unchanged. So does
+  `schema_dump: false`, unless `SCHEMA` is set.
 - **One backend at a time** — `--daemon` can't be combined with `--test-command`
   (choose one), and it needs an app to boot (`--rails` or `--boot`).
 
