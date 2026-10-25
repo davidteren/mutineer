@@ -1,0 +1,75 @@
+CHANGELOG.md
+  s_d60e2454db2056::t_965bc24e9a39ab 115-125
+README.md
+  s_8868acb9ad5344::t_cd98aa43766c41 409-418,510-511
+docs/equivalent-skips.html
+  s_d60e2454db2056::t_5727607656ed2a 7,14,22,53,94-98
+docs/equivalent-skips.md
+  s_8868acb9ad5344::t_f6ef644bda4e37 4-5,73-81
+docs/json-schema.md
+  s_8868acb9ad5344::t_b2a091e604172c 39,58,66,90
+docs/plans/2026-10-24-289-fix-continuation-line-coverage-plan.md
+  s_8868acb9ad5344::t_fdce9e5f136d14 1-233
+docs/plans/2026-10-24-299-fix-endless-range-skip-plan.md
+  s_8868acb9ad5344::t_bf98277f553bfc 1-245
+lib/mutineer/external_backend.rb
+  s_8868acb9ad5344::t_909fce53075b70 31-32,98-106,130
+lib/mutineer/job_plan.rb
+  s_8868acb9ad5344::t_d7f893200232e4 174-181,207-208,210
+lib/mutineer/mutators/range_literal.rb
+  s_8868acb9ad5344::t_6173354b2ce0f6 13-19,24-86,92,98-126
+lib/mutineer/result.rb
+  s_8868acb9ad5344::t_2c4472f4a06bbe 14-16
+lib/mutineer/statement_lines.rb
+  s_8868acb9ad5344::t_06b501d702724d 15-22,25-28,49-50
+test/external_backend_test.rb
+  s_8868acb9ad5344::t_ae8a9c05524232 174-175,181
+test/fixtures/continuation.rb
+  s_8868acb9ad5344::t_6ff1b480f059b9 4-5,52-57
+test/fixtures/continuation_test.rb
+  s_8868acb9ad5344::t_9a358b31bee7eb 36-39
+test/fixtures/continuation_weak_test.rb
+  s_8868acb9ad5344::t_0f91c1b41c7a96 6-7,12-15
+test/fixtures/singleton/concern_class_methods.rb
+  s_8868acb9ad5344::t_2554d1790387e1 19-21
+test/fixtures/singleton/concern_class_methods_test.rb
+  s_8868acb9ad5344::t_9cd18202c4a76d 12-15
+test/mutators/range_literal_test.rb
+  s_8868acb9ad5344::t_3bb1d598db2e5a 45-49,55-84,86
+test/runner_external_test.rb
+  s_8868acb9ad5344::t_835bac6dbb704d 158-159,161,167,176
+test/runner_test.rb
+  s_8868acb9ad5344::t_4001a56795133a 284-320
+test/singleton_redefine_test.rb
+  s_8868acb9ad5344::t_5752692c8a151a 14,18,163-165,167-178
+test/site_docs_test.rb
+  s_d60e2454db2056::t_b5e411c12c2944 98-107
+test/statement_coverage_test.rb
+  s_8868acb9ad5344::t_eee2359a5c0141 82-100
+test/statement_lines_test.rb
+  s_8868acb9ad5344::t_323ca122bd0da7 40-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ff8a82ad7c96c1005875263a29b2f1be2989594c",
+  "prompts": {},
+  "sessions": {
+    "s_8868acb9ad5344": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17339-f8b6-7952-baca-e821e33accb9",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_d60e2454db2056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1d5efb-2691-4a0a-8a10-c060a7b2a92e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
