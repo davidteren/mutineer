@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **The gem ships the agent skill.** `skills/mutineer/SKILL.md` is now
+  packaged in the gem, and the gemspec opts in as a
+  [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive)
+  companion (`hyperdrive_targets: "*"`, `hyperdrive_artifacts: "skill"`). In a
+  Rails app that bundles mutineer, `bin/rails hyperdrive:init` installs the
+  skill to `.claude/skills/mutineer/SKILL.md`. A test in the default suite
+  fails if the gemspec stops shipping the skill or drops the opt-in (#315).
+
 ### Fixed
 
 - Mutineer reads its files and pipes as UTF-8 when `LANG` and `LC_ALL` are
@@ -15,6 +25,99 @@ All notable changes to this project are documented here. The format is based on
   stopped the run with "invalid byte sequence in US-ASCII" (exit 2) or a
   backtrace (exit 1). An invalid byte in test-command output now shows as
   `\xNN`. Non-ASCII file and folder names are not covered yet.
+- **Upgrade note for `--test-command` with a custom failure exit code (#292).**
+  An RSpec setup with `--failure-exit-code 3` now scores every kill as
+  `error`. Use the default exit code, or a wrapper that maps a failure to
+  exit 1. An `error` verdict leaves the score, so the score can drop, and more
+  `error` verdicts can fail a `--threshold` run through the existing no-verdict
+  check. A mutant that only trips a SimpleCov `minimum_coverage` gate now
+  scores `survived` when the output has SimpleCov's gate message and a
+  passing Minitest or RSpec summary line. Without a summary line that
+  Mutineer recognizes, the gate's exit scores `error`, which leaves the
+  score. Either way the old false kill is gone, so the score can drop. A `--baseline` made before
+  this change can report new survivors and errors: make a new baseline after
+  the upgrade.
+- **A `--test-command` exit other than 1 no longer counts as a kill (#292).**
+  Only exit 1 scores `killed`, the same rule as the in-process backend. One
+  exception: a SimpleCov gate exit whose summary reports a failing test also
+  scores `killed`. Any other non-zero exit scores `error`, such as a wrapper's
+  137 after an out-of-memory kill.
+- **A load crash under `--test-command` scores `error` (#292).** When the clean
+  run prints a Minitest or RSpec summary line, an exit 1 also needs a failing
+  test in that line. Code under test that calls `exit 1` or `abort` while the
+  default Minitest reporter runs its tests still scores `killed`, as in
+  process. Under RSpec or minitest-reporters, that case now scores `error`.
+  When a SimpleCov `minimum_coverage` gate replaces the exit code, the summary
+  line decides: a failing test is a kill, and a passing run is `survived`, as
+  in process. When the clean run
+  prints no summary line, Mutineer warns once and keeps the exit-code rule.
+
+- **`--output .mutineer/run.json` on a fresh checkout.** The documented
+  report path no longer exits 2 when `.mutineer/` does not exist yet. The
+  output check now creates the cache directory (`cache_dir`) when it is the
+  missing parent. Any other missing directory still exits 2. This is a CLI
+  fix: the GitHub Action's `output` input still needs an existing directory
+  (#270, #340).
+
+- **`--output` can no longer replace its own baseline.** When `--output`
+  and `--baseline` or `baseline:` in `.mutineer.yml` name the same file
+  (also through a symlink or hard link), a real `mutineer run` exits 2
+  before the run, with the GitHub Action's error adapted for the CLI. A dry run
+  still works because it writes no report. Before, a
+  failing run wrote its report over the baseline, and the next run passed
+  against it (#281).
+
+- **`--threshold` compares the exact score, not the rounded one (#280).** The
+  score is rounded to one decimal for display, and the gate used to compare that
+  rounded value. A run with 1999 of 2000 mutants killed showed 100.0% and passed
+  `--threshold 100` with a survivor. The exit code, the Action, and the PASSED or
+  FAILED line now use the exact counts. When the rounded score points the other
+  way, the PASSED or FAILED line gives the counts and says that the score is
+  rounded.
+
+- **The Minitest clean check now runs the tests in the order the mutant runs
+  use (#282).** Since 1.1.0, each mutant run used seed `1`, but coverage
+  capture, the clean checks and the `--daemon` mutant runs used a random
+  seed. An order-dependent suite could pass the clean check and then fail in
+  every mutant run, so each mutant scored a false `killed`. Every Minitest
+  run that Mutineer starts itself (not `--test-command`, see #338) now uses seed `1`,
+  or `SEED` when the environment sets it. Such a suite now stops the run
+  with "the unmutated suite is not green". The message names the configured
+  seed or default and notes that test helpers can change it. Capture, clean
+  checks and mutant runs all read `SEED` after loading the tests and helpers.
+  Check the listed test files with the same seed and helpers to investigate
+  the order-dependent test. A coverage cache from another
+  `SEED` in Mutineer's environment or an older version is captured again. A
+  `--coverage-from` capture from another `SEED` or an older version is
+  rejected with exit 2: capture it again with this version. The internal constant
+  `MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED` is now `PINNED_SEED`.
+  One gap stays: when a mutant runs several covering test files, their test
+  classes can still run in a different order than in the combined clean
+  check. RSpec does not change.
+
+- **`--daemon` SQLite workers load the schema file the app names (#317).**
+  The daemon always loaded `db/schema.rb` over an out-of-date worker copy,
+  even when `config/database.yml` sets `schema_dump:` to another file. An
+  app that keeps its SQLite schema in `db/schema_sqlite.rb` beside a MySQL
+  `db/schema.rb` errored every mutant. The booted daemon now asks Rails for
+  the file: `SCHEMA` when it is set, else `schema_dump:`, else
+  `db/schema.rb`. With `structure.sql`, a missing file, or
+  `schema_dump: false` (unless `SCHEMA` is set) it loads no schema, even
+  when a `db/schema.rb` exists: the worker keeps its copy of the test
+  database. A Postgres worker is a copy of the test database, so it was not
+  affected. MySQL already asked Rails for the file. It now also reads the
+  database's own `schema_format:` (Rails 8.1) and a string format such as
+  `"sql"`, the same as SQLite.
+
+- **`--strategy redefine` and path-relative methods.** Redefine now loads
+  the mutated method from a hidden file beside the source, as reload does.
+  It used the system temp directory before, so `__dir__` and
+  `require_relative` in the method pointed there, and every mutant of such
+  a method was falsely killed (#279). Redefine is also the default under
+  `--rails` without `--daemon`. When a source directory is not writable,
+  redefine still uses the system temp directory there, as before, and
+  the run warns that path-relative methods there can be falsely killed
+  (tracked in #339).
 
 ### Changed
 
