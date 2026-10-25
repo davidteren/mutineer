@@ -67,3 +67,28 @@ module ChildWait
   end
 end
 Minitest::Test.include(ChildWait)
+
+# Runs a block as Ruby runs with LANG and LC_ALL unset: Encoding.default_external
+# is US-ASCII, so a plain File.read tags non-ASCII bytes as invalid (#303).
+module AsciiLocale
+  # Yields with Encoding.default_external set to US-ASCII, then restores it.
+  def with_ascii_default_external
+    previous = Encoding.default_external
+    swap_default_external(Encoding::US_ASCII)
+    yield
+  ensure
+    swap_default_external(previous)
+  end
+
+  private
+
+  # Sets Encoding.default_external without the warning Ruby prints under -w.
+  def swap_default_external(encoding)
+    verbose = $VERBOSE
+    $VERBOSE = nil
+    Encoding.default_external = encoding
+  ensure
+    $VERBOSE = verbose
+  end
+end
+Minitest::Test.include(AsciiLocale)

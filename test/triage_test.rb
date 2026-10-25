@@ -5,6 +5,7 @@ require "json"
 require "open3"
 require "tmpdir"
 require "fileutils"
+require "stringio"
 require "yaml"
 
 # `mutineer triage` prints ignore entries and does not edit files.
@@ -20,6 +21,17 @@ class TriageTest < Minitest::Test
   def write_report(dir, ids)
     rows = ids.map { |id| { "id" => id } }
     File.write(File.join(dir, "report.json"), JSON.generate("schema_version" => "1.8", "survivors" => rows))
+  end
+
+  # #303: with LANG unset Ruby reads the report as US-ASCII. A non-ASCII
+  # report must still list its survivors, not crash with a backtrace.
+  def test_reads_a_non_ascii_report_under_an_ascii_locale
+    Dir.mktmpdir("mutineer-triage") do |dir|
+      path = File.join(dir, "report.json")
+      File.write(path, JSON.generate("survivors" => [{ "id" => "aaaaaaaaaaaa", "diff" => "+ caf\u00e9\n" }]))
+      ids = with_ascii_default_external { Mutineer::Triage.survivor_ids(path, StringIO.new) }
+      assert_equal %w[aaaaaaaaaaaa], ids
+    end
   end
 
   def test_all_prints_one_mapping_per_survivor_and_does_not_edit_files

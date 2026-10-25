@@ -378,7 +378,7 @@ module Mutineer
     # `schema.rb` again would drop those rows.
     #
     # @param worker [Integer] the worker slot index.
-    # @param schema_path [String, nil] absolute path to `db/schema.rb`, or nil to skip.
+    # @param schema_path [String, nil] the app's Ruby schema file ({ruby_schema_path}), or nil to skip.
     # @param seed [Boolean] copy the base SQLite file into the worker file first.
     # @return [void]
     def self.after_fork(worker, schema_path = nil, seed: false)
@@ -433,10 +433,10 @@ module Mutineer
     # file, which catches an edited schema with the same version. No stored
     # checksum counts as out of date, as in Rails' own `schema_up_to_date?`.
     #
-    # @param schema_path [String] absolute path to `db/schema.rb`.
+    # @param schema_path [String] absolute path to the app's Ruby schema file.
     # @return [Boolean]
     def self.schema_current?(schema_path)
-      text    = File.read(schema_path)
+      text    = File.read(schema_path, encoding: "UTF-8")
       version = schema_file_version(text)
       conn = ActiveRecord::Base.connection
       base       = ActiveRecord::Base
@@ -459,10 +459,30 @@ module Mutineer
       text[/define\(version:\s*([\d_]+)/, 1]&.delete("_")&.to_i
     end
 
+    # The Ruby schema file a SQLite worker loads over an out-of-date copy, as
+    # the booted app's config names it. Rails resolves the name: `db/schema.rb`
+    # by default, the `schema_dump:` file of the database config (a bare name
+    # such as `schema_sqlite.rb` lives in `db/`), or the `SCHEMA` variable.
+    # nil when the file does not exist, when the config sets `schema_dump: false`,
+    # or when the app uses `structure.sql` (a worker cannot `load` SQL). With nil
+    # the worker keeps its copy of the test database as it is.
+    #
+    # @return [String, nil] absolute path of an existing file, or nil.
+    def self.ruby_schema_path
+      db_config = ActiveRecord::Base.connection_db_config
+      format = schema_format_for(db_config)
+      return unless format == :ruby
+
+      path = ActiveRecord::Tasks::DatabaseTasks.schema_dump_path(db_config, format)
+      # Expanded so `load` never searches $LOAD_PATH for a relative SCHEMA value.
+      path &&= File.expand_path(path)
+      path if path && File.exist?(path)
+    end
+
     # Load a Rails `schema.rb` into the current connection with output silenced
     # (fork child stdout is already File::NULL; this is belt-and-braces).
     #
-    # @param schema_path [String] absolute path to `db/schema.rb`.
+    # @param schema_path [String] absolute path to the app's Ruby schema file.
     # @return [void]
     def self.load_schema(schema_path)
       ActiveRecord::Migration.verbose = false if defined?(ActiveRecord::Migration)
@@ -1111,7 +1131,7 @@ module Mutineer
         ActiveRecord::Base.establish_connection(slot_hash)
         switched = true
         db_config = mysql_db_config(slot_hash)
-        format = current_schema_format
+        format = schema_format_for(db_config)
         file = mysql_schema_file(db_config, format)
         ActiveRecord::Tasks::DatabaseTasks.load_schema(db_config, format, file) if file
       rescue StandardError => e
@@ -1140,6 +1160,17 @@ module Mutineer
       env = ENV["RAILS_ENV"].to_s
       env = "test" if env.empty?
       ActiveRecord::DatabaseConfigurations::HashConfig.new(env, "primary", slot_hash)
+    end
+
+    # Schema format of one database config. Rails 8.1 lets each config set its
+    # own `schema_format:`; older Rails has only the app-wide setting. A string
+    # setting ("ruby") counts the same as the symbol.
+    #
+    # @param db_config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    # @return [Symbol]
+    def self.schema_format_for(db_config)
+      format = db_config.respond_to?(:schema_format) ? db_config.schema_format : current_schema_format
+      format.respond_to?(:to_sym) ? format.to_sym : format
     end
 
     # Schema format the booted app is using.

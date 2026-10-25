@@ -11,6 +11,9 @@ module Mutineer
   #                  Also a mutant on a later line of a multi-line statement,
   #                  in code that runs only sometimes, that the statement's
   #                  tests ran but did not kill (#254): they may not reach it.
+  #                  Also a mutant on a later line of a statement whose first
+  #                  or last line holds other code (a call inside a one-line
+  #                  block), that the tests of that line did not kill (#289).
   #   uncapturable - the line's would-be covering test errored during capture,
   #                  so coverage was lost. Excluded from the denominator exactly
   #                  like no_coverage, but reported separately: it signals a
@@ -221,6 +224,21 @@ module Mutineer
       return nil if covered_count.zero?
 
       (killed_count.to_f / covered_count * 100).round(1)
+    end
+
+    # Checks the unrounded score against a threshold. `mutation_score` is
+    # rounded for display, so 1999 of 2000 killed reads 100.0; a gate that
+    # compared it would pass `--threshold 100` with a survivor. The comparison
+    # is exact: integer counts against the threshold as the decimal it prints
+    # as, so a float product such as `64.4 * 250` cannot tip a run at the
+    # boundary. `to_s.to_r` keeps that decimal; `rationalize` could round a
+    # long threshold such as 66.66666666666667 down to 200/3.
+    #
+    # @param threshold [Numeric] threshold percentage.
+    # @return [Boolean] true when killed / covered * 100 >= threshold; false
+    #   when nothing was covered.
+    def meets_threshold?(threshold)
+      covered_count.positive? && killed_count * 100 >= threshold.to_s.to_r * covered_count
     end
 
     # Returns the surviving mutants.
