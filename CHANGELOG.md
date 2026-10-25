@@ -112,14 +112,6 @@ All notable changes to this project are documented here. The format is based on
   the run warns that path-relative methods there can be falsely killed
   (tracked in #339).
 
-### Changed
-
-- Explain mutation testing before setup, with a runnable beginner guide and a
-  first run on one file. Simplify wording across the website and clarify Rails
-  setup, CI baselines, and reasons for ignoring a mutant.
-
-### Fixed
-
 - **A mutant on a later line of a call inside a one-line block can be killed
   (#289).** A call can span several lines, such as
   `users.map { |u| format("%s",` with arguments on the next lines. Mutineer
@@ -131,6 +123,12 @@ All notable changes to this project are documented here. The format is based on
   score can rise with no test change. Such a mutant can now also end as
   `error` or `timeout`. That counts toward the `--threshold` completeness
   check.
+
+### Changed
+
+- Explain mutation testing before setup, with a runnable beginner guide and a
+  first run on one file. Simplify wording across the website and clarify Rails
+  setup, CI baselines, and reasons for ignoring a mutant.
 
 ## [1.7.0] - 2026-10-23
 
