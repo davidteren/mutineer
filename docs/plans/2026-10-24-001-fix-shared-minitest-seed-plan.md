@@ -100,8 +100,8 @@ about the order the mutant runs use.
   check and the mutant runs share it. With `config.order = :random`, each
   process picks its own seed, so the same false-kill hazard exists there, plus
   the `killed` vs `timeout` flip the issue names. That needs its own design
-  (pin RSpec's seed or respect the user's) and stays for a follow-up issue,
-  as the issue comment suggests. The PR body says so.
+  (pin RSpec's seed or respect the user's) and remains tracked in issue #282.
+  This PR fixes the Minitest seed mismatch and does not close that issue.
 - The `--test-command` backend runs the user's own command and stays as is.
 - `i_suck_and_my_tests_are_order_dependent!` is not used in the fixture: it
   sorts by name and ignores the seed.
@@ -112,7 +112,7 @@ about the order the mutant runs use.
   mutant run keeps file order and seeds the shuffle over a different class
   list than the combined clean check. Method order inside a class depends only
   on the seed, so one-file selections match. Mention in the PR body as the
-  remaining gap.
+  remaining gap. Issue #282 tracks it alongside the RSpec ordering gap.
 
 ## Implementation Units
 
@@ -264,6 +264,5 @@ in `(#282)`, as the existing Fixed entries do. Body: the shared seed, the
 - The daemon change routes the Rails mutant run through
   `MinitestIntegration.run`. Run `rake test:daemon` where the machine allows,
   and say in the PR body if it could not run.
-- The deferred RSpec and multi-file gaps need tracking issues once #282
-  closes. Filing them is for the maintainer to approve; the PR body names
-  both.
+- Issue #282 remains open for the deferred RSpec and multi-file ordering
+  gaps. The PR body names both and does not close that issue.
