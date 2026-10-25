@@ -146,7 +146,7 @@ module Mutineer
           capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_or_load
       end
-      JobPlan.abort_if_unclean!(coverage_map)
+      JobPlan.abort_if_unclean!(coverage_map, framework: config.framework)
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
