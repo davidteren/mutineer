@@ -92,7 +92,7 @@ module Mutineer
         return nil
       end
 
-      doc = JSON.parse(File.read(path))
+      doc = JSON.parse(File.read(path, encoding: "UTF-8"))
       rows = doc.is_a?(Hash) ? doc["survivors"] : nil
       unless rows.is_a?(Array)
         err.puts "mutineer: triage report has no survivors list"

@@ -32,6 +32,25 @@ class MigrateTest < Minitest::Test
     assert_equal found, old_to_new.size
   end
 
+  # #303: with LANG unset Ruby reads files as US-ASCII. migrate must still
+  # rewrite a .mutineer.yml that holds a non-ASCII reason.
+  def test_migrate_rewrites_a_non_ascii_config_under_an_ascii_locale
+    path = File.join(ROOT, "test/fixtures/calculator.rb")
+    config = Mutineer::Config.new(sources: [path], project_root: ROOT, operators: ["arithmetic"])
+    old, new_ids = Mutineer::Migrate.id_maps(config).last.first
+    Dir.mktmpdir("mutineer-migrate") do |dir|
+      yml = File.join(dir, ".mutineer.yml")
+      File.write(yml, "ignore:\n  - id: #{old}\n    reason: caf\u00e9\n")
+      exit_status = with_ascii_default_external do
+        capture_io { Mutineer::CLI.migrate(config, yml) }
+      rescue SystemExit => e
+        e.status
+      end
+      assert_equal 0, exit_status
+      assert_equal "ignore:\n  - id: #{new_ids.first}\n    reason: caf\u00e9\n", File.read(yml, encoding: "UTF-8")
+    end
+  end
+
   # The collision fixed in #126: one old id, two files, both new ids.
   def test_an_old_id_shared_by_two_files_maps_to_both_new_ids
     Dir.mktmpdir("mutineer-migrate") do |root|

@@ -63,7 +63,7 @@ module Mutineer
       legacy_ignore_matches = {}
       id_map = {}
       Project.discover(config.sources, only: config.only).each do |subject|
-        source = (source_map[subject.file] ||= File.read(subject.file))
+        source = (source_map[subject.file] ||= File.read(subject.file, encoding: "UTF-8"))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
         mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
         id_path = (id_paths[subject.file] ||= ProjectPath.relative(subject.file, config.project_root))

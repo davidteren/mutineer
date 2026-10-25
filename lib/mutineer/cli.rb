@@ -251,7 +251,7 @@ module Mutineer
     # @return [void]
     def self.migrate(config, file_path)
       current, old_to_new = Migrate.id_maps(config)
-      text = File.read(file_path)
+      text = File.read(file_path, encoding: "UTF-8")
       outcome = Migrate.rewrite(text, current, old_to_new)
       outcome.replacements.each do |rep|
         puts "[mutineer] #{rep.old_id} -> #{rep.new_ids.join(', ')}"

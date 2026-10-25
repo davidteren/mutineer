@@ -55,6 +55,20 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
+  # #303: with LC_ALL=C Ruby reads the source as US-ASCII. A non-ASCII line
+  # must still be mutated and scored through --test-command.
+  def test_non_ascii_source_scores_under_an_ascii_locale
+    with_project("calculator_weak_test.rb") do |proj|
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub("    a + b\n", "    a + b # caf\u00e9\n"))
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                  "--test-command", "#{RUBY} %{files}", chdir: proj,
+                                  env: { "LC_ALL" => "C", "LANG" => nil })
+      assert_equal 0, status.exitstatus, err.b
+      assert_includes out.b, "66.7%"
+    end
+  end
+
   # The working tree is intact after a run — no mutated bytes, no leftover backup.
   def test_source_restored_after_run
     with_project("calculator_strong_test.rb") do |proj|
