@@ -178,8 +178,8 @@ own run, and the publish cannot finish. The workflow does not enforce the split.
 Safety nets:
 
 - The **tag must equal `Mutineer::VERSION`**, and it must be a stable
-  `vMAJOR.MINOR.PATCH` tag, or the job aborts before `gem push` and does not
-  move the floating major tag.
+  `vMAJOR.MINOR.PATCH` tag, or the job aborts before `gem push` and prints
+  no command to move the floating major tag.
 - **The publish job builds the dispatched commit.** If the tag points at a
   different commit by the time the approval comes, the job aborts before
   `gem push`.

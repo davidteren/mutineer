@@ -203,7 +203,7 @@ class ReleaseWorkflowTest < Minitest::Test
   end
 
   # #161: the release trigger glob v*.*.* also matches prereleases. Only a
-  # stable vMAJOR.MINOR.PATCH tag may publish and move the floating major tag.
+  # stable vMAJOR.MINOR.PATCH tag may publish and get a floating-tag command.
   def test_release_guard_accepts_a_stable_tag
     out, status = run_stable_tag_guard("v1.3.1")
     assert_equal 0, status.exitstatus, out

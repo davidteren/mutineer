@@ -162,7 +162,7 @@ jobs:
     needs: [authorize]
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # GitHub Release and the floating major tag
+      contents: write   # the GitHub Release
       id-token: write   # OIDC token for RubyGems Trusted Publishing
     # Approval of environment `rubygems` happens before any step, and only
     # after authorize succeeded. Required reviewers are a GitHub setting.
@@ -264,14 +264,14 @@ jobs:
           bundler-cache: true
 
       # A mistyped tag must never publish the wrong version. Prereleases
-      # (v1.3.1-rc1) and junk (v1.2.3.4) must neither publish nor move the
-      # floating major tag that Action users pin.
+      # (v1.3.1-rc1) and junk (v1.2.3.4) must not publish, and the run must
+      # not print a command to move the floating major tag that Action users pin.
       - name: "Guard: stable tag matching Mutineer::VERSION"
         run: |
           set -euo pipefail
           # MUTINEER_STABLE_TAG_START
           if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} is not a stable vMAJOR.MINOR.PATCH tag. Prereleases and malformed tags are not published and do not move the major tag. Aborting release."
+            echo "::error::Tag ${GITHUB_REF_NAME} is not a stable vMAJOR.MINOR.PATCH tag. Prereleases and malformed tags are not published, and no major-tag command is printed. Aborting release."
             exit 1
           fi
           # MUTINEER_STABLE_TAG_END
