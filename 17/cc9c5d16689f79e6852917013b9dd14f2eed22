@@ -1,0 +1,28 @@
+README.md
+  h_e8a5bb9272fa34 13-28,47-48,65,71-84,235,241,247-249,286,295,299,305,309-311,337-338,340-357,375,452,763,769-788,824-825,880-882
+docs/cli.md
+  h_e8a5bb9272fa34 1-40
+docs/comparison.md
+  h_e8a5bb9272fa34 1-59
+docs/getting-started.md
+  h_e8a5bb9272fa34 1-110
+docs/index.md
+  h_e8a5bb9272fa34 16-17,33,71
+docs/rails.md
+  h_e8a5bb9272fa34 15
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 39
+skills/mutineer/SKILL.md
+  h_e8a5bb9272fa34 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "17cc9c5d16689f79e6852917013b9dd14f2eed22",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
