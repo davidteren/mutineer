@@ -81,11 +81,14 @@ jobs:
             echo "::error::Could not read repository permission for ${actor}. Refusing the release."
             exit 1
           fi
-          mapfile -t fields <<<"$meta"
-          kind="${fields[0]:-}"
-          admin="${fields[1]:-}"
-          maintain="${fields[2]:-}"
-          role="${fields[3]:-}"
+          # Four lines, one field each. macOS ships bash 3.2, which has no bash-4 line array.
+          kind=""; admin=""; maintain=""; role=""
+          {
+            IFS= read -r kind || true
+            IFS= read -r admin || true
+            IFS= read -r maintain || true
+            IFS= read -r role || true
+          } < <(printf '%s\n' "$meta")
           if [ "$kind" != "User" ]; then
             echo "::error::A bot cannot start a release (actor ${actor}, type ${kind})."
             exit 1

@@ -309,6 +309,7 @@ class ReleaseWorkflowTest < Minitest::Test
     prep = marked_block(ACTOR_START, ACTOR_END, workflow: WORKFLOW)
     assert_equal release, prep
     assert_includes release, 'actor="${GITHUB_TRIGGERING_ACTOR:-}"'
+    refute_includes release, "mapfile", "macOS bash 3.2 has no mapfile"
     assert_includes release, ".user.permissions.maintain"
     assert_includes release, ".user.permissions.admin"
     assert_includes release, '.role_name // ""'
