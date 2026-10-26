@@ -1,0 +1,27 @@
+docs/agentic-coding.md
+  s_8868acb9ad5344::t_b4c60e3e4b2c37 23,43-53
+docs/equivalent-skips.md
+  s_8868acb9ad5344::t_0e273f218343ae 19,79-93
+docs/index.md
+  s_8868acb9ad5344::t_2de4e7b0a3fcb4 33-46,128
+docs/json-schema.md
+  s_8868acb9ad5344::t_8ebeac04ab5367 85
+docs/learn.md
+  s_8868acb9ad5344::t_d8783ff9be4501 129,148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "14c664744db2229e11f50153fcf5d48895c22a13",
+  "prompts": {},
+  "sessions": {
+    "s_8868acb9ad5344": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17339-f8b6-7952-baca-e821e33accb9",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
