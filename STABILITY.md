@@ -122,5 +122,6 @@ Where it prints no warning, the item says documented only.
 Patch releases ship when a fix needs them.
 At most one minor release ships per month.
 The owner still has to confirm that number.
-The weekly release pull request stays.
-It opens when `feat:` or `fix:` commits sit on `main` past the latest tag.
+There is no weekly release pull request.
+David opens one by hand when he wants a release.
+Pushing a tag leaves the gem unpublished until he approves the publish.

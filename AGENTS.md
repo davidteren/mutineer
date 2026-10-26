@@ -11,6 +11,9 @@ Conventions for any agent or contributor changing this repo. (Usage docs for
   `load`s a tempfile snippet instead — don't reintroduce `eval`.
 - **Least astonishment.** Names match behaviour, no hidden side effects, explicit
   failures over silent ones. Match the surrounding code's idiom.
+- **Never release, tag, or publish.** Do not push a `v*` tag, merge a release
+  PR, run a release workflow, or `gem push`. A release needs David's manual
+  approval (GitHub `davidteren`). The procedure is "Releasing" below.
 
 ## Before every commit (local gate)
 
@@ -86,58 +89,111 @@ After a later commit, run the checks that the new lines affect.
 **Stacked pull requests:** start at the bottom of the stack. After a lower
 pull request changes, update the ones above it and review the new lines.
 
-## Releasing (tag-driven — CI publishes, no manual `gem push`)
+## Releasing (manual — David only)
+
+Nothing in this repo releases, tags, or publishes on a schedule or from a bot
+trigger. Pushing a `vX.Y.Z` tag leaves the gem unpublished. v1.7.0 shipped
+because that tag push started `release.yml` with no approval gate. Keep a tag
+push from starting a publish: do not add a `schedule`, a `workflow_run`, or a
+tag-push trigger to either release workflow.
+
+**Agents must never:**
+
+- push a `v*` tag, including `vX.Y.Z` and the floating major tags (`v1`, `v2`, …)
+- merge a pull request whose branch is `release/v*`
+- run `.github/workflows/release-pr.yml` or `.github/workflows/release.yml`
+  (`gh workflow run`, the Actions UI, or another workflow)
+- run `gem push`, or create a GitHub Release
+
+Tell David the steps below when a task needs a release. Do not perform them.
+A schedule is not a substitute for him: GitHub records a cron run's actor as
+the last person who edited the workflow (`davidteren` on the Monday runs), so
+an actor check would not stop a cron. The schedule is deleted. Do not add it
+back, and do not run `gh workflow enable` to restore a Monday release.
 
 Semver: **new feature → minor bump, fix → patch.** A behavior change to the
 GitHub Action's defaults is a **major** bump: consumers pin `@v<major>`, and a
 default flip must never reach them without opting in.
 
-1. On a branch, bump `lib/mutineer/version.rb` and move the `CHANGELOG.md`
-   `## [Unreleased]` block into a dated `## [X.Y.Z] - YYYY-MM-DD` section.
-2. Merge to `main`.
-3. Tag and push — this is the whole release trigger:
+David does every step himself:
+
+1. Prepare the pull request when he wants a batch, from `main`:
+   ```sh
+   gh workflow run release-pr.yml --ref main
+   ```
+   `release-pr.yml` runs only for a `workflow_dispatch` started by `davidteren`.
+   It bumps `lib/mutineer/version.rb`, dates the CHANGELOG, and opens a PR.
+   It does not tag or publish. Each run he starts rebuilds `release/vX.Y.Z`
+   from current `main`. It still dispatches `ci.yml` when the push used
+   `GITHUB_TOKEN` (issue #234). That dispatch runs tests only.
+2. Review and merge that PR himself. Merging leaves the gem unpublished.
+   Leave repository auto-merge off.
+3. Tag the merged commit and push the tag:
    ```sh
    git tag vX.Y.Z && git push origin vX.Y.Z
    ```
-4. `.github/workflows/release.yml` then: guards `tag == Mutineer::VERSION`, runs
-   tests, publishes to RubyGems via **Trusted Publishing** (OIDC — no API key, no
-   OTP), cuts the GitHub release from the CHANGELOG section, and force-moves the
-   floating major tag (`v1`, `v2`, …) to the release so `uses: …@v<major>`
-   consumers track the latest in that line.
+   A tag push leaves the gem unpublished. It does not start `release.yml`.
+4. Publish from that tag, with the confirm word:
+   ```sh
+   gh workflow run release.yml --ref vX.Y.Z -f confirm=publish
+   ```
+   The publish job starts only when the actor is `davidteren`, the event is
+   `workflow_dispatch`, the ref is a tag, and `confirm` is `publish`.
+5. Approve the `rubygems` GitHub environment when Actions asks. That approval
+   publishes. The job then checks the tag against `Mutineer::VERSION`, runs
+   tests, pushes the gem with Trusted Publishing, creates the GitHub Release,
+   and force-moves the floating major tag (`v1`, `v2`, …) so
+   `uses: …@v<major>` follows the latest release in that line. The floating-tag
+   update is the last step of this approved job. It is one tag move inside the
+   publish he already approved.
 
 Safety nets:
-- The **tag must equal `Mutineer::VERSION`** or the release aborts.
-- **Releases are batched, not cut per merge.** `.github/workflows/release-pr.yml` runs
-  weekly (Monday 08:00 UTC) and on demand (`gh workflow run release-pr.yml`). When
-  `feat:`/`fix:` commits sit on `main` past the latest tag, it opens a release PR (bumps
-  `version.rb`, dates the CHANGELOG + adds its reference-link def). Each run rebuilds that
-  PR from the current `main`, so it always covers every change since the last tag; a
-  newer version supersedes an older open release PR, and when `main` moved the same
-  version is re-opened fresh (the old branch is deleted under a lease, never
-  force-pushed). The run never replaces a release branch that holds someone else's
-  commits, or that has a PR it did not open (it leaves that branch alone with a
-  warning), and it never closes a release PR it did not open. A merge commit counts as
-  someone else's commit: GitHub's "Update branch" button on the release PR pauses the
-  automation until that PR is merged or its branch is deleted. Review + merge it, then push the
-  `vX.Y.Z` tag. Every release moves the floating major tag (`v1` today), so Action users get it at once:
-  batch changes rather than releasing after each merge. CI runs on that auto-PR with no
-  secret: a push by the default `GITHUB_TOKEN` starts no other workflow, so after
-  pushing the release branch the job dispatches `ci.yml` on it, and those runs report
-  the required checks on the PR's head commit. With an optional `RELEASE_PR_TOKEN` PAT
-  secret, the push triggers CI itself and the dispatch is skipped. If the checks are
-  missing, run `gh workflow run ci.yml --ref release/vX.Y.Z`.
-- **The release-PR run stops (and opens nothing) in two cases.** If `VERSION` on `main`
-  differs from the latest tag, a bump is merged but not tagged: it warns you to push
-  that tag first. If the computed `vX.Y.Z` tag already exists on origin (for example
-  pushed from a branch), it fails and you resolve it by hand.
-- **GitHub disables scheduled workflows in a public repo after 60 days without
-  activity.** If no release PR appears on a Monday while unreleased `feat:`/`fix:`
-  work sits on `main`, check `gh workflow view release-pr.yml` and re-enable it with
-  `gh workflow enable release-pr.yml`.
 
-**One-time setup (required for the publish to work):** register a Trusted Publisher
-on <https://rubygems.org/gems/mutineer> → owner `davidteren`, repo `mutineer`,
-workflow `release.yml`, no environment. Without it, `release.yml`'s `gem push` fails.
+- The **tag must equal `Mutineer::VERSION`**, and it must be a stable
+  `vMAJOR.MINOR.PATCH` tag, or the job aborts before `gem push` and does not
+  move the floating major tag.
+- **`release-pr.yml` opens a PR only when David runs it.** It never replaces a
+  release branch that holds someone else's commits, or that has a PR it did
+  not open (it leaves that branch alone with a warning), and it never closes
+  a release PR it did not open. A merge commit counts as someone else's
+  commit: GitHub's "Update branch" button pauses the next rebuild until that
+  PR is merged or its branch is deleted. If `VERSION` on `main` differs from
+  the latest tag, the run warns and opens nothing. If the computed `vX.Y.Z`
+  tag already exists on origin, it fails and David resolves it by hand.
+- **CI on the release PR** still needs a dispatch when the branch was pushed
+  with the default `GITHUB_TOKEN`: that push starts no other workflow, so the
+  job dispatches `ci.yml` on the release branch and those runs report the
+  required checks on the PR's head commit. With an optional `RELEASE_PR_TOKEN`
+  PAT secret, the push triggers CI itself and the dispatch is skipped. If the
+  checks are missing, run `gh workflow run ci.yml --ref release/vX.Y.Z`. That
+  command runs CI only.
+
+**Settings David applies by hand.** They live in GitHub and on RubyGems, not
+in this repo. Do them in this order, before the next tag. A `v*.*.*` tag on a
+commit whose `release.yml` still triggers on tag push (any commit from before
+this change) still starts that old workflow. This file cannot edit those
+commits. Requiring the `rubygems` environment on the trusted publisher makes
+that old `gem push` fail, because the old job omits `environment:`.
+
+1. Create the GitHub environment `rubygems` and add required reviewer
+   `davidteren`. Turn off administrator bypass when GitHub offers it, so an
+   admin cannot skip the approval. Under deployment branches and tags, allow
+   tags matching `v*.*.*`, or leave the policy unrestricted. Leave "Protected
+   branches only" unset: the publish job runs on a tag, and that policy would
+   block it. Create this environment before any publish run. GitHub otherwise
+   creates a missing environment with no required reviewers, and the job
+   continues.
+2. On <https://rubygems.org/gems/mutineer>, edit the Trusted Publisher for
+   owner `davidteren`, repo `mutineer`, workflow `release.yml`. Set the
+   GitHub Actions environment name to `rubygems`. The new workflow's OIDC
+   token carries that environment. Do this after the required reviewer is
+   saved. From then on, a workflow whose job omits `environment:` cannot `gem push`,
+   and a run of the new workflow waits for the reviewer.
+3. Add a tag ruleset for `v*.*.*` that allows only `davidteren` to create or
+   update those tags. Keep the floating major tag (`v1`, `v2`, …) out of any
+   rule that blocks `github-actions`: the approved publish job updates that
+   tag with `GITHUB_TOKEN` after the gem is already on RubyGems. Leave
+   auto-merge disabled (`allow_auto_merge` is false today).
 
 ## Shift-left rules (from the 2026-10 PR audit)
 

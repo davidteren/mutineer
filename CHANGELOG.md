@@ -69,6 +69,13 @@ All notable changes to this project are documented here. The format is based on
   skill to `.claude/skills/mutineer/SKILL.md`. A test in the default suite
   fails if the gemspec stops shipping the skill or drops the opt-in (#315).
 
+### Changed
+
+- **A release waits for David.** The Monday release-PR schedule is gone, and
+  pushing a `vX.Y.Z` tag leaves the gem unpublished. He prepares a release PR
+  by hand, tags by hand, then runs the Release workflow on that tag and
+  approves the `rubygems` GitHub environment before the gem is pushed.
+
 ### Fixed
 
 - **`--daemon` stops on MySQL older than 8.0 (#298).** The support matrix said

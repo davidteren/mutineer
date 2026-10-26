@@ -1,14 +1,20 @@
 name: Release PR
 
-# Releases are batched: this runs weekly (and on demand), not on every push. When
-# shippable work (feat:/fix: commits) is on main past the latest tag, it opens a
-# release PR that bumps Mutineer::VERSION and dates the CHANGELOG (including the
-# reference-link def that's easy to forget). Each run REBUILDS that PR from the
-# current main, so it always covers every change since the last tag: a newer
-# version replaces an older open release PR, and when main moved the same version
-# is re-opened fresh (the old branch is deleted, never force-pushed). You review +
-# merge, then push the vX.Y.Z tag — release.yml tests and publishes. Cut a release
-# early with: gh workflow run release-pr.yml
+# Prepares a release pull request and nothing else. There is no schedule.
+# davidteren starts it by hand, from main:
+#
+#   gh workflow run release-pr.yml --ref main
+#
+# When feat:/fix: commits are on main past the latest tag, the run opens a PR
+# that bumps Mutineer::VERSION and dates the CHANGELOG (including the
+# reference-link def). Each run rebuilds that PR from current main. A newer
+# version replaces an older open release PR this workflow opened, and when
+# main moved the same version is re-opened fresh (the old branch is deleted
+# under a lease, never force-pushed). The run does not tag, publish, or merge.
+#
+# Merging the PR leaves the gem unpublished. Pushing the vX.Y.Z tag leaves the
+# gem unpublished. David then runs release.yml on that tag and approves the
+# rubygems environment. That approval is what publishes.
 #
 # Note: a push or PR made with the default GITHUB_TOKEN does NOT trigger other
 # workflows (GitHub's recursion guard), so ci.yml would never run on the release PR
@@ -16,12 +22,10 @@ name: Release PR
 # event GITHUB_TOKEN may start, so after a GITHUB_TOKEN push this job dispatches
 # ci.yml on the release branch; those runs report the required check names on the
 # PR's head commit. With a PAT in the optional `RELEASE_PR_TOKEN` secret (repo +
-# workflow scope) the push itself triggers CI and the dispatch is skipped. Either
-# way, merging to main and tagging still run release.yml.
+# workflow scope) the push itself triggers CI and the dispatch is skipped. The
+# dispatch runs CI only. It does not tag or publish.
 on:
-  schedule:
-    - cron: "0 8 * * 1" # Monday 08:00 UTC — the weekly release batch
-  workflow_dispatch: # cut a release now: gh workflow run release-pr.yml
+  workflow_dispatch: # davidteren prepares a release PR: gh workflow run release-pr.yml --ref main
 
 permissions:
   contents: write
@@ -38,6 +42,20 @@ jobs:
     name: open a release PR if one is due
     runs-on: ubuntu-latest
     steps:
+      # GitHub attributes a schedule event to the last person who edited the
+      # file (davidteren, on the Monday runs). The actor check alone would let
+      # that cron through, so the event must be workflow_dispatch as well.
+      # This workflow has no schedule; the check refuses one if it is added back.
+      - name: "Guard: only davidteren may prepare a release, and only by hand"
+        env:
+          ACTOR: ${{ github.actor }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$ACTOR" != "davidteren" ] || [ "$EVENT" != "workflow_dispatch" ]; then
+            echo "::error::release-pr.yml runs only when davidteren starts it with workflow_dispatch (actor ${ACTOR}, event ${EVENT}). It does not tag or publish."
+            exit 1
+          fi
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history + tags for git describe/log
@@ -106,7 +124,7 @@ jobs:
             local cur
             cur="$(ruby -r ./lib/mutineer/version -e 'print Mutineer::VERSION')"
             untagged_bump "$cur" "$1" || return 1
-            echo "::warning::VERSION $cur on main is not tagged yet (latest tag $1). Tag it: git tag v$cur && git push origin v$cur"
+            echo "::warning::VERSION $cur on main is not tagged yet (latest tag $1). Pushing a tag does not publish. The maintainer tags v$cur, runs release.yml on that tag with confirm=publish, and approves the rubygems environment."
             local open_release
             open_release="$(gh pr list --state open --json number,headRefName --jq '.[] | select(.headRefName | startswith("release/v")) | "#\(.number) \(.headRefName)"')"
             if [ -n "$open_release" ]; then
@@ -171,7 +189,7 @@ jobs:
           if stop_if_untagged_bump "$latest_tag"; then exit 0; fi
 
           # Only this workflow's own PRs carry this marker in the body (see the footer).
-          export RELEASE_PR_MARKER='Auto-opened by `release-pr.yml`'
+          export RELEASE_PR_MARKER='Opened by a manual run of `release-pr.yml`'
           # The open same-repo PR on head <branch> that this workflow opened (empty if none).
           own_pr_number() {
             gh pr list --state open --head "$1" --json number,isCrossRepository,body \
@@ -254,7 +272,7 @@ jobs:
 
           notes="$(git log --pretty='- %h %s' "${latest_tag}..HEAD" | grep -E '^- [0-9a-f]+ (feat|fix)(\(|!|:)' || true)"
           bump="$([ "$feats" -gt 0 ] && echo minor || echo patch)"
-          body="$(printf '## What / Why / How\n\n**What.** Cut release **v%s**.\n\n**Why.** feat:/fix: commits have landed on `main` since `%s` (auto-detected). This bumps the version + dates the CHANGELOG so a tag can publish — closing the release-drift gap automatically.\n\n**How.** Review, merge, then `git tag v%s && git push origin v%s` — release.yml tests and publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_%s and rebuilt from `main` on each weekly (or manual) run. When `main` moves, the next run replaces this PR with a fresh one, so comments and approvals stay on the closed PR: review and merge promptly, and put notes in comments only on the current PR. Closing it only snoozes it: the next run re-opens it._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes" "$RELEASE_PR_MARKER")"
+          body="$(printf '## What / Why / How\n\n**What.** Prepare release **v%s** (version bump and CHANGELOG only).\n\n**Why.** feat:/fix: commits have landed on `main` since `%s`. davidteren started this workflow by hand. Preparing this PR does not tag or publish, and nothing runs it on a schedule.\n\n**How.** davidteren reviews and merges this PR. Merging leaves the gem unpublished. He tags `v%s` and pushes the tag. A tag push leaves the gem unpublished. He runs `gh workflow run release.yml --ref v%s -f confirm=publish` and approves the `rubygems` environment. That approval publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_%s. Rebuilt from `main` only when davidteren runs this workflow again. When `main` moves, the next manual run replaces this PR with a fresh one. Closing the PR leaves the gem unpublished, and nothing re-opens it until he runs the workflow again._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes" "$RELEASE_PR_MARKER")"
 
           own_num="$(own_pr_number "$branch")"
           if [ -n "$own_num" ]; then

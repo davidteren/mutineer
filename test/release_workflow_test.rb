@@ -18,6 +18,8 @@ class ReleaseWorkflowTest < Minitest::Test
   RELEASE_WORKFLOW = File.expand_path("../.github/workflows/release.yml", __dir__)
   STABLE_TAG_START = "# MUTINEER_STABLE_TAG_START"
   STABLE_TAG_END = "# MUTINEER_STABLE_TAG_END"
+  PUBLISH_GATE_START = "# MUTINEER_PUBLISH_GATE_START"
+  PUBLISH_GATE_END = "# MUTINEER_PUBLISH_GATE_END"
   BOT = "41898282+github-actions[bot]@users.noreply.github.com"
   BOT_ENV = {
     "GIT_AUTHOR_NAME" => "github-actions[bot]", "GIT_AUTHOR_EMAIL" => BOT,
@@ -79,13 +81,19 @@ class ReleaseWorkflowTest < Minitest::Test
     end
   end
 
-  # Releases are batched (weekly + on demand): a merge to main must not open a
-  # release PR by itself, and each run rebuilds the release branch from main.
-  def test_release_prs_are_batched_not_opened_per_push
+  # A merge to main must not open a release PR, and nothing on a schedule may
+  # open one either. Each manual run still rebuilds the release branch from main.
+  def test_release_prs_are_opened_only_by_a_manual_dispatch
     triggers = YAML.load_file(WORKFLOW).then { |y| y[true] || y["on"] }
-    assert_equal %w[schedule workflow_dispatch], triggers.keys.sort
+    assert_equal %w[workflow_dispatch], triggers.keys
     text = File.read(WORKFLOW)
+    refute_match(/cron:/, text, "a cron would open a release PR with no one deciding")
+    refute_match(/^[ \t]*schedule:/, text, "release-pr.yml must not declare a schedule")
+    assert_includes text, 'davidteren starts it with workflow_dispatch', "a bot dispatch must fail"
+    assert_includes text, "[ \"$EVENT\" != \"workflow_dispatch\" ]", "a schedule event is attributed to davidteren, so the event is part of the guard"
     assert_includes text, 'git switch -C "$branch"', "the release branch must be rebuilt from main"
+    refute_includes text, "tests and publishes", "the release PR must not tell anyone that a tag publishes"
+    refute_includes text, "Auto-opened"
     refute_match(/git push --force(?!-with-lease)/, text, "never force-push the release branch (GITHUB_TOKEN may not)")
     assert_includes text, "--force-with-lease=", "the old release branch is deleted under a lease, never clobbered"
     assert_includes text, "gh pr edit", "an open release PR for the same version is refreshed"
@@ -207,11 +215,15 @@ class ReleaseWorkflowTest < Minitest::Test
     end
   end
 
-  # The guard must run before anything publishes or moves the major tag.
+  # The maintainer gate and the stable-tag guard both run before anything
+  # publishes or moves the major tag.
   def test_release_guard_runs_before_publishing
     steps = YAML.load_file(RELEASE_WORKFLOW).dig("jobs", "release", "steps").map { |s| "#{s["uses"]}#{s["run"]}" }
+    gate = steps.index { |s| s.include?(PUBLISH_GATE_START) }
     guard = steps.index { |s| s.include?(STABLE_TAG_START) }
+    refute_nil gate, "release.yml needs #{PUBLISH_GATE_START}"
     refute_nil guard, "release.yml needs #{STABLE_TAG_START}"
+    assert_operator gate, :<, guard, "the maintainer gate runs before the version check"
     ["configure-rubygems-credentials", "gem push", "gh release create", "git push -f"].each do |marker|
       step = steps.index { |s| s.include?(marker) }
       refute_nil step, marker
@@ -219,7 +231,116 @@ class ReleaseWorkflowTest < Minitest::Test
     end
   end
 
+  # Tag pushes and the Monday cron used to publish with no second decision.
+  # Publish is a manual workflow_dispatch by davidteren, then the rubygems
+  # environment. Required reviewers are a GitHub setting; the workflow names
+  # the environment so that setting has a job to hold.
+  def test_publish_is_a_manual_dispatch_gated_on_the_maintainer
+    workflow = YAML.load_file(RELEASE_WORKFLOW)
+    triggers = workflow[true] || workflow["on"]
+    assert_equal %w[workflow_dispatch], triggers.keys
+    assert_equal true, triggers.dig("workflow_dispatch", "inputs", "confirm", "required")
+    release = workflow.dig("jobs", "release")
+    assert_equal "rubygems", release.dig("environment", "name")
+    assert_includes release["if"], "github.actor == 'davidteren'"
+    assert_includes release["if"], "github.event_name == 'workflow_dispatch'"
+    assert_includes release["if"], "github.event.inputs.confirm == 'publish'"
+    assert_includes release["if"], "startsWith(github.ref, 'refs/tags/v')"
+    assert_equal "write", release.dig("permissions", "id-token")
+    assert_equal "write", release.dig("permissions", "contents")
+    refuse = workflow.dig("jobs", "refuse")
+    refute_nil refuse, "a refused publish must fail the workflow, so the skip is visible"
+    assert_nil refuse.dig("permissions", "id-token"), "the refuse job must not be able to mint RubyGems credentials"
+    assert_equal "none", refuse.dig("permissions", "contents")
+    text = File.read(RELEASE_WORKFLOW)
+    refute_match(/^[ \t]*schedule:/, text)
+    refute_match(/workflow_run:/, text)
+    refute_match(/^[ \t]*push:/, text)
+    refute_includes text, "tags:"
+  end
+
+  def test_gem_push_lives_only_in_the_manual_release_workflow
+    paths = Dir[File.expand_path("../.github/workflows/*.yml", __dir__)]
+    pushers = paths.select { |path| File.read(path).include?("gem push") }
+    assert_equal [RELEASE_WORKFLOW], pushers.map { |path| File.expand_path(path) }
+  end
+
+  def test_publish_gate_accepts_a_confirmed_maintainer_dispatch_on_a_tag
+    out, status = run_publish_gate(actor: "davidteren", event: "workflow_dispatch",
+                                    ref: "refs/tags/v1.2.3", confirm: "publish")
+    assert_equal 0, status.exitstatus, out
+  end
+
+  # The Monday cron's actor is davidteren. The event check is what stops it.
+  def test_publish_gate_refuses_a_schedule_even_from_the_maintainer
+    out, status = run_publish_gate(actor: "davidteren", event: "schedule",
+                                    ref: "refs/tags/v1.2.3", confirm: "publish")
+    assert_equal 1, status.exitstatus
+    assert_match(/A tag push does not publish/, out)
+  end
+
+  def test_publish_gate_refuses_a_tag_push
+    out, status = run_publish_gate(actor: "davidteren", event: "push",
+                                    ref: "refs/tags/v1.2.3", confirm: "publish")
+    assert_equal 1, status.exitstatus
+    assert_match(/A tag push does not publish/, out)
+  end
+
+  def test_publish_gate_refuses_another_actor
+    out, status = run_publish_gate(actor: "github-actions[bot]", event: "workflow_dispatch",
+                                    ref: "refs/tags/v1.2.3", confirm: "publish")
+    assert_equal 1, status.exitstatus
+    assert_match(/Only davidteren may publish/, out)
+  end
+
+  def test_agent_docs_forbid_releasing
+    agents = File.read(File.expand_path("../AGENTS.md", __dir__))
+    claude = File.read(File.expand_path("../CLAUDE.md", __dir__))
+    contributing = File.read(File.expand_path("../CONTRIBUTING.md", __dir__))
+    stability = File.read(File.expand_path("../STABILITY.md", __dir__))
+    [agents, claude, contributing].each do |text|
+      assert_includes text, "davidteren"
+      assert_match(/gem push/, text)
+    end
+    refute_includes agents, "this is the whole release trigger"
+    refute_includes agents, "no environment"
+    assert_includes agents, "environment name to `rubygems`"
+    assert_includes agents, "workflow_dispatch"
+    refute_includes stability, "weekly release pull request stays"
+    assert_includes stability, "There is no weekly release pull request."
+    assert_includes claude, "release.yml"
+    assert_includes claude, "rubygems"
+  end
+
+  def test_publish_gate_refuses_a_branch_and_a_missing_confirm_word
+    branch, branch_status = run_publish_gate(actor: "davidteren", event: "workflow_dispatch",
+                                              ref: "refs/heads/main", confirm: "publish")
+    assert_equal 1, branch_status.exitstatus
+    assert_match(/Pushing the tag does not publish/, branch)
+    word, word_status = run_publish_gate(actor: "davidteren", event: "workflow_dispatch",
+                                          ref: "refs/tags/v1.2.3", confirm: "yes")
+    assert_equal 1, word_status.exitstatus
+    assert_match(/confirm=publish/, word)
+  end
+
   private
+
+  # Runs the maintainer publish gate extracted from release.yml.
+  #
+  # @param actor [String] GITHUB_ACTOR
+  # @param event [String] GITHUB_EVENT_NAME
+  # @param ref [String] GITHUB_REF
+  # @param confirm [String] the workflow_dispatch confirm input
+  # @return [Array(String, Process::Status)] combined output and exit status
+  def run_publish_gate(actor:, event:, ref:, confirm:)
+    script = marked_block(PUBLISH_GATE_START, PUBLISH_GATE_END, workflow: RELEASE_WORKFLOW)
+    env = {
+      "GITHUB_ACTOR" => actor, "GITHUB_EVENT_NAME" => event,
+      "GITHUB_REF" => ref, "CONFIRM" => confirm
+    }
+    out, err, status = Open3.capture3(env, "bash", "-euo", "pipefail", "-c", script)
+    ["#{out}#{err}", status]
+  end
 
   # Runs the stable-tag guard extracted from release.yml for `tag`.
   #
