@@ -357,7 +357,10 @@ All notable changes to this project are documented here. The format is based on
   collaborator with maintain or admin prepares a release PR by hand, tags by
   hand, then runs the Release workflow on that tag with `confirm=publish`.
   A required reviewer approves the `rubygems` GitHub environment before the
-  gem is pushed.
+  gem is pushed. The Release workflow refuses to start the publish when that
+  environment is missing or has no required reviewers. The publish job
+  builds the commit that was dispatched, and it stops before `gem push` if
+  the tag moved while the job waited for approval.
 - **Load failures now use the runtime-error exit code (#288).** An
   `ArgumentError` or `SystemCallError` raised while a boot file, a source
   file or a `.mutineer.yml` `require:` file loads now exits 1 (runtime

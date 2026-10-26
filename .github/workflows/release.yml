@@ -7,8 +7,9 @@ name: Release
 #   gh workflow run release.yml --ref vX.Y.Z -f confirm=publish
 #
 # The authorize job asks GitHub for the actor's repository permission and
-# rejects bots, schedule events, and anyone below maintain. The publish job
-# then waits for approval of the GitHub environment `rubygems`. Required
+# rejects bots, schedule events, and anyone below maintain. It also refuses
+# when the GitHub environment `rubygems` has no required reviewers. The
+# publish job then waits for approval of that environment. Required
 # reviewers are a repository setting (see AGENTS.md). After approval the job
 # tests, publishes to RubyGems via Trusted Publishing (OIDC bound to that
 # environment), opens the GitHub Release from the CHANGELOG, and moves the
@@ -63,8 +64,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read   # read the rubygems environment's protection rules
     # The environment gate is on the publish job, which needs this job.
-    # A write collaborator who dispatches a valid tag never reaches that gate.
+    # This file stops a write collaborator before that gate. A dispatch runs
+    # the release.yml stored in the tag, so a tag with an edited copy skips
+    # these checks. The tag ruleset and the trusted publisher's environment
+    # (AGENTS.md) are what stop that tag.
     if: >-
       github.event_name == 'workflow_dispatch'
       && github.event.inputs.confirm == 'publish'
@@ -125,6 +130,28 @@ jobs:
           fi
           # MUTINEER_RELEASE_ACTOR_END
 
+      - name: Require reviewers on the rubygems environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # MUTINEER_ENV_GATE_START
+          # GitHub creates a missing environment with no reviewers, and the
+          # publish job then runs with no approval. Refuse unless `rubygems`
+          # exists and has required reviewers.
+          if ! reviewers=$(gh api "repos/${GITHUB_REPOSITORY:?}/environments/rubygems" --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length'); then
+            echo "::error::Could not read the rubygems environment. Create it with required reviewers (see AGENTS.md). Refusing the release."
+            exit 1
+          fi
+          case "$reviewers" in
+            '' | 0 | *[!0-9]*)
+              echo "::error::The rubygems environment has no required reviewers, so nobody would approve the publish. Add reviewers (see AGENTS.md). Refusing the release."
+              exit 1
+              ;;
+          esac
+          echo "The rubygems environment requires reviewers."
+          # MUTINEER_ENV_GATE_END
+
   release:
     name: publish gem + github release
     needs: [authorize]
@@ -134,8 +161,9 @@ jobs:
       id-token: write   # OIDC token for RubyGems Trusted Publishing
     # Approval of environment `rubygems` happens before any step, and only
     # after authorize succeeded. Required reviewers are a GitHub setting.
-    # Specifying `if` replaces the default needs-success check, so the result
-    # is repeated here.
+    # GitHub adds success() to an `if` that has no status function, so a
+    # failed authorize already skips this job. The explicit result check
+    # states that dependency where a reader looks for it.
     if: >-
       needs.authorize.result == 'success'
       && github.event_name == 'workflow_dispatch'
@@ -219,9 +247,12 @@ jobs:
           fi
           # MUTINEER_PUBLISH_GATE_END
 
+      # Check out the dispatched commit, not the tag's current target. The
+      # environment approval can wait for days, and a tag moved in that time
+      # must not change what publishes.
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
       - uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601 # v1 — pinned: privileged (id-token) job
         with:
           ruby-version: "3.4"
@@ -245,6 +276,18 @@ jobs:
             echo "::error::Tag ${GITHUB_REF_NAME} does not match Mutineer::VERSION ($ver). Aborting release."
             exit 1
           fi
+
+      - name: "Guard: tag still points at the dispatched commit"
+        run: |
+          set -euo pipefail
+          # MUTINEER_TAG_COMMIT_START
+          git fetch --no-tags --depth=1 origin "+refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          tagged="$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")"
+          if [ "$tagged" != "${GITHUB_SHA:?}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} now points at ${tagged}, but this run was dispatched on ${GITHUB_SHA}. The tag moved after dispatch. Aborting release."
+            exit 1
+          fi
+          # MUTINEER_TAG_COMMIT_END
 
       - name: Tests
         run: bundle exec rake test
@@ -271,7 +314,7 @@ jobs:
           ver="${GITHUB_REF_NAME#v}"
           awk -v ver="$ver" '$0 ~ "^## \\["ver"\\]"{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then printf 'Release %s\n' "$GITHUB_REF_NAME" > notes.md; fi
-          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md
 
       # The floating major tag (v1, v2, ...) tracks the newest release in its
       # line, so `uses: <this repository>@v1` follows the latest v1.x.y.
@@ -282,5 +325,5 @@ jobs:
         run: |
           set -euo pipefail
           major="${GITHUB_REF_NAME%%.*}"
-          git tag -f "$major" "$GITHUB_REF_NAME"
+          git tag -f "$major" "$GITHUB_SHA"
           git push -f origin "$major"
