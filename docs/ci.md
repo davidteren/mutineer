@@ -5,7 +5,7 @@ Use changed lines for faster CI checks and a saved baseline to catch regressions
 | Check | Behaviour |
 |-------|-----------|
 | Changed code | `--since REF` mutates lines changed since a Git ref. The GitHub Action defaults to the PR base. |
-| Baseline | `--baseline FILE` compares a saved JSON report and fails on new survivors or a score drop. |
+| Baseline | `--baseline FILE` compares a saved JSON report and fails on new survivors. A full run (`--no-since` or `since: none`) also fails on a score drop. |
 
 ## Changed code only
 
@@ -21,14 +21,14 @@ bundle exec mutineer run lib --no-since
 
 ## Baseline
 
-Leave `only:` unset for full-baseline checks. Create and refresh the saved JSON report with the [full-run baseline recipe](https://davidteren.github.io/mutineer/agentic-coding.html#ci-gate).
+Leave `only:` and `baseline:` unset in `.mutineer.yml` when you create or refresh the baseline; pass the baseline only to the PR gate. Create and refresh the saved JSON report with the [full-run baseline recipe](https://davidteren.github.io/mutineer/agentic-coding.html#ci-gate).
 Use the gate’s sources, test files and operators.
 
 ```sh
 mutineer run app/ --no-since --no-fail-fast --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
 ```
 
-`--baseline` reports new survivors by [mutant id](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids) and score drops.
+`--baseline` reports new survivors by [mutant id](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids). It checks score drops only on full runs; a `--since` run skips that check.
 With `--threshold`, the worse result sets the exit code.
 
 Directories or multiple sources run in one boot, with results per source. Tests pair by convention:
@@ -56,6 +56,8 @@ The composite action (`action.yml`) runs the CLI:
     threshold: "90"
 ```
 
+On `pull_request` this checks changed lines only. A changed-lines run cannot see a weakened test on unchanged code, so set `since: none` for any pull request that changes tests.
+
 Rails needs `mutineer` in the Gemfile, `rails: true` and `use-bundler: true`.
 Without these inputs, the Action runs a standalone gem without booting your app.
 
@@ -82,7 +84,7 @@ The Action fetches the commit for shallow checkouts, falling back to the base br
 |---------|-------|
 | Default on `pull_request` | Changed lines |
 | `none` | Full scan |
-| Explicit ref | Changed lines against that ref; requires checkout `fetch-depth: 0` |
+| Explicit ref | Changed lines against that ref; the ref must be in the checkout (fetch it, or use `fetch-depth: 0`) |
 
 | Default JSON output | Result |
 |---------------------|--------|
@@ -141,7 +143,7 @@ From [`action.yml`](https://github.com/davidteren/mutineer/blob/main/action.yml)
 | `operators` | `""` | Comma-separated operators; empty uses Tier-1 (default set) |
 | `framework` | `""` | `minitest` or `rspec`; empty auto-detects |
 | `strategy` | `""` | `reload` or `redefine` |
-| `jobs` | `""` | Parallel workers; empty uses CPU count |
+| `jobs` | `""` | Parallel workers; empty uses CPU count. `rails` without `--daemon`, `--fail-fast` and `--test-command` force one worker |
 | `rails` | `"false"` | Boot `config/environment` |
 | `format` | `"json"` | `human`, `json`, or `html`; JSON enables summaries and annotations |
 | `output` | `""` | Report path; cannot be the baseline file |
@@ -152,7 +154,7 @@ From [`action.yml`](https://github.com/davidteren/mutineer/blob/main/action.yml)
 
 ## Refresh the baseline
 
-Schedule a full scan on `main`. Save the report as an artifact or commit it.
+Schedule a full scan on `main`. The PR gate reads the committed `.mutineer/baseline.json`, so the refresh ends with a manual step: download the artifact, check that `summary.score` is not null and `no_verdict` is empty, then commit it as `.mutineer/baseline.json` in a pull request.
 Never overwrite the baseline read by the same step.
 
 ```yaml
@@ -169,6 +171,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
         with: { bundler-cache: true }
+      # A database-backed app also needs the database service, DATABASE_URL and
+      # `bin/rails db:prepare` steps from the PostgreSQL recipe above.
       - uses: davidteren/mutineer@v1
         env:
           RAILS_ENV: test
@@ -180,6 +184,7 @@ jobs:
           extra-args: "--no-fail-fast"
           output: mutineer-baseline.json
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: mutineer-baseline
           path: mutineer-baseline.json
@@ -187,11 +192,11 @@ jobs:
 
 More recipes, including GitLab CI: [Rails rollout guide](rails.md) and [AI agents and CI](agentic-coding.md).
 
-> **Prompt for your coding agent**
->
-> ```text
-> Set up Mutineer in CI for this repo. 1) Add a pull_request workflow using davidteren/mutineer@v1 with sources set to our main code folder, the baseline input pointing at .mutineer/baseline.json, and extra-args "--no-fail-fast" (for Rails also rails: "true" and use-bundler: "true", plus the database setup from our test workflow). 2) Add a scheduled workflow on main that runs a full scan with since: none and uploads the JSON report as an artifact. Never write the report onto the baseline file in the same step.
-> ```
+**Prompt for your coding agent**
+
+```text
+Set up Mutineer in CI for this repo. 1) On main, run a full scan with --no-since --no-fail-fast --format json --output .mutineer/baseline.json. Check that summary.score is not null and no_verdict is empty, then commit the file (git add -f if .mutineer/ is ignored). 2) Add a pull_request workflow using davidteren/mutineer@v1 with sources set to our main code folder, the baseline input pointing at .mutineer/baseline.json, and extra-args "--no-fail-fast" (for Rails also rails: "true" and use-bundler: "true", plus the database setup from our test workflow); use since: none when a pull request changes tests. 3) Add a scheduled workflow on main that runs a full scan with since: none and uploads the JSON report as an artifact. Never write the report onto the baseline file in the same step.
+```
 
 ## Timeouts and the score
 
@@ -199,7 +204,7 @@ The score is `killed / (killed + survived)`.
 
 | Rule | Behaviour |
 |------|-----------|
-| Tests exceed `--timeout` | The mutant receives `timeout`, neither killed nor survived |
+| In-process tests exceed `--timeout` | The mutant receives `timeout`, neither killed nor survived. `--timeout` does not apply to `--daemon` or `--test-command` |
 | Score exclusions | `timeout`, `no_coverage`, `uncapturable`, `unplaceable`, `ran_at_load`, `errored`, skipped and ignored mutants |
 | Timeout counts | Human report: `Timeout:`; JSON: `summary.timeout` |
 | `--threshold` failure | Exit 1 when multiple mutants lack verdicts and exceed 10% of attempted mutants |
@@ -208,4 +213,4 @@ The score is `killed / (killed + survived)`.
 Timeouts cannot distinguish a mutant’s hang from a slow suite, so they never count as kills.
 Raise `--timeout` if tests need longer to catch mutants.
 
-Runtime behaviour was not checked for this edit. A short timeout excludes mutants from the score and can fail the gate.
+A short timeout excludes mutants from the score and can fail the gate.

@@ -50,7 +50,9 @@ module Mutineer
                                                      --force replaces an existing file.
 
       Run options:
-        --test FILE          Test file covering the sources (one per flag; repeat it)
+        --test FILE          Test file covering the sources (one per flag; repeat it).
+                             Omit to pair each source with its test by convention
+                             (not under --dry-run)
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
         --baseline FILE      Fail (exit 1) on NEW survivors / score drop vs a prior
@@ -75,7 +77,7 @@ module Mutineer
                              cover these sources
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then
-                             fork per mutant (Rails apps; requires --test)
+                             fork per mutant (Rails apps; needs a test, given or found by convention)
         --rails              Boot config/environment; without --daemon, defaults to
                              redefine and serial execution
         --test-command CMD   Run the target suite in the app's own runtime as a
@@ -756,7 +758,7 @@ module Mutineer
              "in-process run: no coverage narrowing (uncovered mutants count as survivors). " \
              "Only exit 1 counts as a kill, or a SimpleCov gate exit whose summary shows a failing " \
              "test (an RSpec --failure-exit-code other than 1 makes every kill an error). When the clean run printed a Minitest or RSpec summary line, " \
-             "Mutineer also reads it to tell a crash from a kill. See README: Apps on Ruby < 3.4."
+             "Mutineer also reads it to tell a crash from a kill. See docs/rails-setup.md: Apps on Ruby < 3.4."
       end
 
       # Nudge toward the opt-in tier-2 operators (human report only: never

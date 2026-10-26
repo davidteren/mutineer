@@ -9,7 +9,7 @@ Line coverage shows which lines ran. Mutation testing checks whether the tests
 notice a change. Start with one file and understand the results before adding a CI gate.
 
 Key facts:
-- **Written from scratch**: no code from Mutant or any other mutation-testing tool. MIT for every use. How it differs from Mutant: [README](https://github.com/davidteren/mutineer/blob/main/docs/comparison.md#mutineer-and-mutant).
+- **Written from scratch**: no code from Mutant or any other mutation-testing tool. MIT for every use. How it differs from Mutant: [comparison guide](https://github.com/davidteren/mutineer/blob/main/docs/comparison.md#mutineer-and-mutant).
 - **Zero runtime dependencies** — Prism + stdlib only. No `eval`. Test-framework changes stay in disposable child processes.
 - **One mutation per mutant**, validity-checked by re-parsing; 21 mutation operators.
 - **Fork-isolated, parallel** execution (Linux + macOS); coverage-guided per-line test selection.

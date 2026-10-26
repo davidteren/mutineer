@@ -142,8 +142,8 @@ No test can distinguish those results.
 
 If you have checked that a survivor is equivalent, record why you ignore it.
 In Mutineer 1.7 or later, `mutineer triage` can print an ignore entry for a
-survivor from a JSON report. Select it with `--id ID` and supply its reason with
-`--reason TEXT`.
+survivor from a JSON report. Select survivors with `--id ID` (repeat it for
+several) or `--all`, and supply the reason with `--reason TEXT`.
 It does not edit your files. See
 [Suppressing equivalent mutants](https://github.com/davidteren/mutineer/blob/main/docs/results.md#suppressing-equivalent-mutants).
 If you cannot explain a survivor, ask for a review instead of hiding it to raise the score.
@@ -166,7 +166,7 @@ Each change runs tests again, so mutation testing takes longer than one normal
 test run. Start with one file, review its survivors, and expand the scope when
 the results are useful. You do not need to reach 100% before the tool has value.
 
-When you are ready, the [CI guide](agentic-coding.html) shows how to check only
+Next, follow the [quick start](https://github.com/davidteren/mutineer/blob/main/docs/quick-start.md). When you are ready, the [CI guide](agentic-coding.html) shows how to check only
 changed lines and compare results with an earlier run. The
 [support matrix](index.html#production-ready) lists the supported Rails setups.
 

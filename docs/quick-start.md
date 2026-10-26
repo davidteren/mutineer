@@ -79,6 +79,8 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
 
 ## Read the report
 
+This sample report comes from the `lib/discount.rb` example above. On a Rails app, repeat the same steps on your own survivor.
+
 ```text
 Mutation score: 50.0%  (killed / (killed + survived); ...)
 
@@ -92,7 +94,7 @@ lib/discount.rb
   +     return 0.1 if qty > 10
 ```
 
-A survivor is a change no test noticed. Test the missing boundary, exactly 10:
+A survivor is a change no test noticed. Test the missing boundary, exactly 10, inside `DiscountTest`:
 
 ```ruby
 def test_ten_is_the_first_bulk_quantity
@@ -107,10 +109,10 @@ Run again to kill the mutant.
 ```text
 Run Mutineer on one small file in this repo and explain the result.
 1. Pick a small source file with passing tests (Rails: a model in app/models).
-2. Run: bundle exec mutineer run <file> --dry-run   (Rails: RAILS_ENV=test, add --rails and --test <its test file>; a Rails dry run needs --test)
-3. Run the same command without --dry-run.
+2. Find its test file. Run: bundle exec mutineer run <file> --test <test file> --dry-run   (Rails: RAILS_ENV=test, add --rails)
+3. Run the same command, with the same --test, without --dry-run.
 4. For each survivor, show the diff and say what behaviour the change breaks.
-5. Propose one test per survivor that passes on the original code and fails on the change. Do not change the source.
+5. Propose one test per survivor that passes on the original code and fails on the change. If a survivor does not change behaviour (an equivalent mutant), explain why and propose an ignore entry with a reason instead. Do not change the source.
 ```
 
 ## Next

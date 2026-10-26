@@ -72,19 +72,21 @@ Only a maintainer may waive a step, in writing on that pull request.
 On the exact pull request head commit:
 
 1. Run "Before every commit" checks, plus website checks for site changes.
-2. Review your diff against `main`. Verify every claim and number against its source.
+2. Review your diff against the pull request base (`main`, or the lower pull
+   request in a stack). Verify every claim and number against its source.
 3. Never push or open a pull request with a red suite.
 
 After another commit, repeat these checks on the new head.
 
 ### Labels
 
-Label every pull request:
+Label every pull request, except the release pull requests that
+`release-pr.yml` opens:
 
 | Category | Required |
 |---|---|
 | Type | `bug`, `enhancement`, `documentation`, `dependencies`, or `github_actions` |
-| Issue and matching labels | Identify the issue closed with `Closes #N` in the body. Add matching labels, such as `priority: high` (high priority) or `risk: medium` (medium risk). |
+| Issue and matching labels | Name the issue it closes, if any, with `Closes #N` in the body. Add matching labels, such as `priority: high` (high priority) or `risk: medium` (medium risk). |
 | Target release | Use a version label, such as `v1.8.0` or `v2.0`. Tentative targets are acceptable. |
 
 Use existing labels only (`gh label list`). Ask a maintainer before adding a new label.

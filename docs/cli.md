@@ -6,20 +6,20 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `--test FILE` | Test file; repeat for each file | Paired with each source by convention |
+| `--test FILE` | Test file; repeat for each file | Paired with each source by convention; unmatched sources are skipped; `--dry-run` with `--rails` or `--boot` still needs `--test` |
 | `--framework minitest\|rspec` | Test framework | `rspec` if most tests end in `_spec.rb`; otherwise `minitest` |
 | `--operators LIST` | Comma-separated operator names | Tier-1 (default) set; see `mutineer --list-operators` |
 | `--only NAME` | Mutate one subject, such as `Calculator#add` | All subjects |
 | `--since REF` / `--no-since` | Mutate lines changed since git `REF` | Off |
-| `--threshold FLOAT` | Exit 1 below this score (0 to 100), or when too many mutants could not be judged | `0` (off) |
-| `--baseline FILE` | Exit 1 for new survivors or score drops against a prior `--format json` report | None |
+| `--threshold FLOAT` | Exit 1 below this score (0 to 100); see the README [options table](https://github.com/davidteren/mutineer#options) for every exit-1 case | `0` (off) |
+| `--baseline FILE` | Exit 1 for new survivors, or score drops on full runs, against a prior `--format json` report from a full run | None |
 | `--baseline-epsilon FLOAT` | Allowed baseline score drop (CLI only) | `0` |
 | `--jobs N` | Parallel workers | One per CPU; `1` under `--rails` without `--daemon`, `--test-command`, or `--fail-fast` |
 | `--rails` | Boot `config/environment` once; reconnect Active Record per fork | Off |
 | `--boot FILE` | Require app entry point before forking | None |
 | `--[no-]daemon` | Boot once; separate worker test databases. Minitest only; requires `--rails` or `--boot` | Off |
 | `--strategy reload\|redefine` | Reload file or redefine mutated method | `reload`; `redefine` under `--rails` without `--daemon` |
-| `--test-command CMD` | Run tests in another Ruby subprocess; include `%{files}` | None |
+| `--test-command CMD` | Run tests in another Ruby subprocess; include `%{files}`. Forces one worker and sets `PARALLEL_WORKERS=1`; a wrapper can reset it | None |
 | `--timeout SECONDS` | Per-mutant limit, in-process | `10` |
 | `--capture-timeout SECONDS` | Coverage capture and clean-run limit | `120` |
 | `--cache-dir DIR` | Coverage cache directory | `.mutineer` |
@@ -58,7 +58,7 @@ Pass sources as positional arguments and tests with `--test`.
 | `since` | Nonblank git ref; `false` disables diff scoping |
 | `framework` | `minitest` or `rspec`; preserved during test pairing |
 | `verbose` | Boolean; shows capture diagnostics |
-| `ignore` | Mutant ID or list to suppress |
+| `ignore` | Mutant ID or list, or mappings with an `id` and optional `reason`, to suppress |
 | `baseline` | Prior JSON report path |
 | `fail_fast` | Boolean; stops scheduling after first survivor |
 | `test_command` | External Ruby test command containing `%{files}`; see [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#apps-on-ruby--34) |
@@ -89,7 +89,6 @@ Use `--format json`, not `format:`. Select RSpec with `framework: rspec`.
 # .mutineer.yml
 operators: [arithmetic, comparison, boolean_connector, boolean_literal, statement_removal]
 threshold: 90
-jobs: 4
 # A Rails app: use `rails: true` (boots config/environment and sets the Rails defaults)
 # instead of `require: config/environment`.
 rails: true
@@ -104,5 +103,3 @@ Add `.mutineer/` and any in-project `--cache-dir` directory to `.gitignore`:
 ```
 
 Keep `.mutineer/` ignored: `--test-command` writes locks there beside each source file.
-
-Editing only; CLI behaviour was not checked.

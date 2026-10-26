@@ -1,14 +1,14 @@
 # Rails setup
 
-Use `--rails` to boot Rails once. Add `--daemon` for parallel workers with separate databases.
+Use `--rails` to boot Rails once. Add `--daemon` (Minitest) for parallel workers with separate databases; an app with more than one database runs one worker.
 For Ruby older than 3.4, use `--test-command`.
 Start with one model, then follow the [Rails rollout guide](rails.md) to a CI gate.
 
-> **Prompt for your coding agent**
->
-> ```text
-> Check this Rails app for Mutineer's --daemon backend. Report: the test framework (Minitest or RSpec), the test database adapter and version from config/database.yml (sqlite3 file, :memory:, postgresql, mysql2/trilogy and the MySQL server version), whether there is more than one database, and whether tests commit rows outside a transaction. Using the support matrix at https://github.com/davidteren/mutineer#is-it-production-ready, say whether to run with --rails --daemon or with --rails alone, and give the exact command for app/models.
-> ```
+**Prompt for your coding agent**
+
+```text
+Check this Rails app for Mutineer's --daemon backend. Report: the test framework (Minitest or RSpec), the test database adapter and version from config/database.yml (sqlite3 file, :memory:, postgresql, mysql2/trilogy and the MySQL server version), whether there is more than one database, and whether tests commit rows outside a transaction. Using the support matrix at https://github.com/davidteren/mutineer#is-it-production-ready, say whether to run with --rails --daemon or with --rails alone, and give the exact command for app/models.
+```
 
 ## Set up
 
@@ -41,7 +41,7 @@ Start with one model, then follow the [Rails rollout guide](rails.md) to a CI ga
 | Methods nested in blocks | A method inside a block such as `define_method` can falsely survive. Use `--strategy reload`. |
 
 Both strategies write a hidden `.mutineer_mutant*.rb` beside the source.
-Read-only directories force a system temporary file.
+Under `--strategy redefine`, a read-only directory falls back to a system temporary file; `reload` needs a writable source directory.
 Mutineer warns that `__dir__` or `require_relative` can then cause false kills and an inflated score.
 Make the source directory writable to avoid this problem, tracked in issue #339.
 
@@ -118,8 +118,8 @@ RAILS_ENV=test bundle exec mutineer run \
 | Feature | Behaviour |
 | --- | --- |
 | Shared boot | Boots once, then forks per mutant. |
-| Coverage | Runs only covering tests. Uncovered lines receive `no_coverage`, keeping scores comparable with in-process `--rails`. |
-| Worker databases | Separate databases prevent fixture interference. Initial copies include rows written during boot by initializers or `require:` files. |
+| Coverage | Runs only covering tests. Uncovered lines receive `no_coverage`, keeping scores comparable with in-process `--rails`. If coverage is unavailable, each mutant runs the full test set and the score is not comparable. |
+| Worker databases | Separate databases prevent fixture interference. Only single-database apps run in parallel; more than one database forces one worker. Initial copies include rows written during boot by initializers or `require:` files. |
 | Backend choice | Requires `--rails` or `--boot`. Cannot combine with `--test-command`. |
 
 For SQLite, Mutineer compares the copied database with the app's Ruby schema.
@@ -225,7 +225,7 @@ When Bundler prints `RubyVersionMismatch`, Mutineer reports that cause instead o
 | --- | --- |
 | Speed | Reboots the app for every mutant. No shared boot. |
 | Test selection | Runs the full `--test` set for every mutant, without coverage narrowing. |
-| Parallelism | Runs serially. Forces `--jobs` to 1. |
+| Parallelism | Runs serially by default and forces `--jobs` to 1; a wrapper can reset `PARALLEL_WORKERS` to re-enable Rails test workers. |
 | Strategy | Supports only `reload`. Rejects `--strategy redefine`. |
 | Smoke check | Aborts before mutation if the unmutated suite fails. |
 | Score comparison | Uncovered mutants count as survivors. Do not compare with in-process scores. Mutineer prints this warning every run. |
@@ -237,11 +237,8 @@ When Bundler prints `RubyVersionMismatch`, Mutineer reports that cause instead o
 | Clean run prints a recognised summary | Exit 1 requires a reported test failure or a Minitest run stopped during a test. Otherwise, `error`. |
 | Recognised summaries | Examples: `3 runs, 3 assertions, 0 failures, 0 errors` and `3 examples, 0 failures`. |
 | Crash during loading | `error` when summary validation applies. |
-| SimpleCov `minimum_coverage` failure | Summary decides: a failing test is a kill; all tests passing means `survived`. |
+| SimpleCov `minimum_coverage` failure with its gate message and a recognised summary | Summary decides: a failing test is a kill; all tests passing means `survived`. |
 | SimpleCov without a recognised summary, or with `print_error_status = false` | The coverage gate's exit scores `error`. |
 | Clean run prints no summary | Warns once, then counts every exit 1 as a kill. |
 
-For Ruby ≥ 3.4, use [the daemon backend](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#faster-parallel-safe-rails-the---daemon-backend) for safe parallelism.
-
-Runtime checks were not run for this edit.
-MariaDB and MySQL 9 or later remain untested.
+For Ruby ≥ 3.4 with Minitest and a supported database, use [the daemon backend](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#faster-parallel-safe-rails-the---daemon-backend) for safe parallelism. RSpec and other serial-only setups use `--rails` without `--daemon`.

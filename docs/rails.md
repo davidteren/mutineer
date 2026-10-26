@@ -7,8 +7,8 @@ This guide covers four stages. Stop at the stage that fits your team.
 It does not replace a file you already wrote.
 Pass `--force` to replace one.
 
-See the [README](https://github.com/davidteren/mutineer/blob/main/docs/ci.md#github-action) and
-[agent and CI guide](https://davidteren.github.io/mutineer/agentic-coding.html#action) for all Action inputs.
+See the [CI guide](https://github.com/davidteren/mutineer/blob/main/docs/ci.md#github-action) and
+[agent recipes](https://davidteren.github.io/mutineer/agentic-coding.html#action) for all Action inputs.
 
 ## One model locally
 
@@ -78,7 +78,11 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
+      # A database-backed app also needs the database service and a
+      # `bin/rails db:prepare` step from your test workflow.
       - uses: davidteren/mutineer@v1
+        env:
+          RAILS_ENV: test
         with:
           sources: app/models
           since: none

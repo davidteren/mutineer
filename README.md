@@ -13,8 +13,8 @@ Changes that still pass reveal possible test gaps. This is **mutation testing**.
 
 - **Minitest and RSpec.** Detected from test filenames; override with `--framework`.
 - **Rails support.** `--rails` boots once. With `--daemon`, each Minitest worker gets its own SQLite file, PostgreSQL, or MySQL 8 test database.
-- **Focused tests.** Runs tests that reach each changed line, likely and fast tests first. Stops at the first failure.
-- **PR checks.** `--since origin/main` checks changed lines; `--baseline` gates new survivors and score drops.
+- **Focused tests.** Runs tests that reach each changed line, likely and fast tests first. Stops at the first failure by default.
+- **PR checks.** `--since origin/main` checks changed lines; `--baseline` gates new survivors, and score drops on full runs. When tests change, run a full scan (`--no-since`).
 - **CI and agents.** GitHub Action, versioned JSON, stable mutant ids, clear exit codes, and zero runtime gem dependencies.
 
 📖 **[davidteren.github.io/mutineer →](https://davidteren.github.io/mutineer/)**: overview, operators, and usage.
@@ -63,7 +63,7 @@ See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/david
 <!-- /contract:support-matrix -->
 
 Older Ruby apps use `--test-command`; Mutineer still requires Ruby 3.4 or later.
-This path runs serially without coverage-based test selection.
+This path uses one Mutineer worker and no coverage-based test selection by default; a wrapper can re-enable Rails test workers by setting `PARALLEL_WORKERS`.
 
 | Subprocess result | Score |
 |---|---|
@@ -132,7 +132,7 @@ This gap is common in rushed tests and tests written by AI agents.
    Each loads the changed file (`reload`) or replaces the changed method (`redefine`).
    Only covering test files run: paired tests first, then fastest to slowest. In-process runs stop at the first failure unless `--matrix` requests every covering test.
 5. **Score.** A failing test kills the mutant; all tests passing means it survived.
-   Score: `killed / (killed + survived)`.
+   Score: `killed / (killed + survived)`. Timeouts, errors, and uncovered lines count as neither.
 
 | Alternative backend | Changes to step 4 |
 |---|---|
@@ -191,7 +191,7 @@ Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.c
 | `--test FILE` | Repeat per test file; omit to pair tests by convention |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
 | `--since REF` | Mutate only lines changed since git `REF`, such as `origin/main` |
-| `--baseline FILE` | Exit 1 for new survivors or score drops against a prior JSON report |
+| `--baseline FILE` | Exit 1 for new survivors, or score drops on full runs, against a prior JSON report from a full run |
 | `--rails` | Boot `config/environment` once; serial without `--daemon` |
 | `--[no-]daemon` | Enable or disable daemon; isolated worker databases, Minitest only |
 | `--jobs N` | Worker count; default: one per CPU |
@@ -236,7 +236,10 @@ List with `mutineer --list-operators`. Enable specific operators with `--operato
 ## For AI agents & pipelines
 
 Use versioned JSON, structured exit codes, and runs scoped to changed lines.
-[mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids) survive unrelated edits.
+[Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids) survive unrelated edits.
+
+<a id="mutant-ids"></a><a id="suppressing-equivalent-mutants"></a><a id="apps-on-ruby--34"></a>
+Mutant ids and equivalent-mutant suppression moved to [Reading results](https://github.com/davidteren/mutineer/blob/main/docs/results.md). Apps on Ruby < 3.4 moved to [Rails setup](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#apps-on-ruby--34).
 
 | Resource | Links and use |
 |---|---|
@@ -257,5 +260,3 @@ For Rails apps bundling Mutineer, `bin/rails hyperdrive:init` installs it to `.c
 ## License
 
 MIT. See [LICENSE](https://github.com/davidteren/mutineer/blob/main/LICENSE).
-
-Editing only: commands and release claims were not checked; their current accuracy remains unverified.

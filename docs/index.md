@@ -14,7 +14,9 @@ catches it. Line coverage can be 100% and still miss this case.
 
 The mutation score is `killed / (killed + survived)`. A run with 24 killed
 changes and one survivor scores 96%. Only killed and survived mutants count.
-100% means every change was caught, not that the code is bug-free.
+100% means every scored change was caught; changes that could not run are
+excluded. A run with nothing scored has an empty score (`null` in JSON), not 0%.
+A score of 100% does not mean the code is bug-free.
 
 [New to mutation testing? Run the complete example](learn.html).
 This is the Markdown twin of the [HTML landing page](https://davidteren.github.io/mutineer/).
@@ -125,10 +127,17 @@ Mutant is the established tool, with a deeper operator set. Mutineer trades
 that depth for an MIT license, an empty dependency list, and a JSON contract
 built for CI gates and AI agents. Checked against Mutant 0.17 on 2026-10-06.
 Full comparison:
-[README](https://github.com/davidteren/mutineer/blob/main/docs/comparison.md#mutineer-and-mutant).
+[comparison guide](https://github.com/davidteren/mutineer/blob/main/docs/comparison.md#mutineer-and-mutant).
 
 ## More docs
 
+- [Quick start](https://github.com/davidteren/mutineer/blob/main/docs/quick-start.md)
+- [First run to steady state](https://github.com/davidteren/mutineer/blob/main/docs/getting-started.md)
+- [Reading results](https://github.com/davidteren/mutineer/blob/main/docs/results.md)
+- [Rails setup](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md)
+- [CI: changed code and baselines](https://github.com/davidteren/mutineer/blob/main/docs/ci.md)
+- [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md)
+- [Comparison](https://github.com/davidteren/mutineer/blob/main/docs/comparison.md)
 - [Agent & CI guide](https://davidteren.github.io/mutineer/agentic-coding.html) · [Markdown](https://davidteren.github.io/mutineer/agentic-coding.md)
 - [JSON report schema](https://davidteren.github.io/mutineer/json-schema.html) · [Markdown](https://davidteren.github.io/mutineer/json-schema.md)
 - [Ruby API (YARD)](https://davidteren.github.io/mutineer/api/)

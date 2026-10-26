@@ -18,23 +18,25 @@ bundle install
 RAILS_ENV=test bundle exec mutineer init --rails
 ```
 
-Exclude the coverage cache in `.gitignore`:
+Exclude the coverage cache in `.gitignore`, but keep the baseline you add in step 6:
 
 ```gitignore
-.mutineer/
+.mutineer/*
+!.mutineer/baseline.json
 ```
 
 Tests must pass. Mutineer checks unchanged code first and stops on failure:
 
 ```sh
-bin/rails test
+bin/rails test        # Minitest
+bundle exec rspec     # RSpec
 ```
 
-> **Prompt for your coding agent**
->
-> ```text
-> Set up Mutineer in this Rails app. Add gem "mutineer", group: :test, require: false to the Gemfile test group, run bundle install, then RAILS_ENV=test bundle exec mutineer init --rails. Add .mutineer/ to .gitignore. Run the full test suite and report any failures; do not change application code.
-> ```
+**Prompt for your coding agent**
+
+```text
+Set up Mutineer in this Rails app. Add gem "mutineer", group: :test, require: false to the Gemfile test group, run bundle install, then RAILS_ENV=test bundle exec mutineer init --rails. Add .mutineer/* and !.mutineer/baseline.json to .gitignore. Run the full test suite and report any failures; do not change application code.
+```
 
 ## 2. First run on one file
 
@@ -92,11 +94,11 @@ ignore:
     reason: x / 1 equals x * 1 for numbers
 ```
 
-> **Prompt for your coding agent**
->
-> ```text
-> Run RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --format json --output report.json. For each entry in survivors[], read the diff and write a test that passes on the original code and fails on the mutant. Do not edit the source file. If you believe a mutant is equivalent, do not write a test: explain why and propose an ignore: entry with a reason. Re-run Mutineer and report the new score.
-> ```
+**Prompt for your coding agent**
+
+```text
+Run RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --format json --output report.json. For each entry in survivors[], read the diff and write a test that passes on the original code and fails on the mutant. Do not edit the source file. If you believe a mutant is equivalent, do not write a test: explain why and propose an ignore: entry with a reason. Re-run Mutineer and report the new score.
+```
 
 ## 5. Widen the run
 
@@ -106,7 +108,7 @@ Run a folder:
 RAILS_ENV=test bundle exec mutineer run app/models --rails
 ```
 
-For Minitest with SQLite files, PostgreSQL, or MySQL 8, `--daemon` runs one worker per CPU:
+For Minitest with one database (SQLite file, PostgreSQL, or MySQL 8), `--daemon` runs one worker per CPU. An app with more than one database runs one worker. MySQL older than 8.0 stops; MariaDB, MySQL 9 or later, and an unreadable version warn and continue:
 
 ```sh
 RAILS_ENV=test bundle exec mutineer run app/models --rails --daemon
@@ -116,23 +118,24 @@ RSpec with `--rails` runs serially. See the [support matrix](https://github.com/
 
 ## 6. Make a baseline
 
-On `main`, save a full scan:
+On `main`, with `only:` and `baseline:` unset in `.mutineer.yml`, save a full scan as a candidate:
 
 ```sh
 RAILS_ENV=test bundle exec mutineer run app/models --rails --no-since --no-fail-fast \
-  --format json --output .mutineer/baseline.json
+  --format json --output .mutineer/baseline.candidate.json
 ```
 
-Before committing the report, check: exit 0, non-null score and empty `no_verdict`:
+Check the candidate: exit 0, non-null score and empty `no_verdict`. Then copy it to the baseline:
 
 ```sh
-ruby -rjson -e 'r = JSON.parse(File.read(".mutineer/baseline.json")); abort("score is null") if r["summary"]["score"].nil?; abort("no_verdict is not empty") unless r["no_verdict"].empty?; puts "baseline ok"'
+ruby -rjson -e 'r = JSON.parse(File.read(".mutineer/baseline.candidate.json")); abort("score is null") if r["summary"]["score"].nil?; abort("no_verdict is not empty") unless r["no_verdict"].empty?; puts "baseline ok"'
+cp .mutineer/baseline.candidate.json .mutineer/baseline.json
 ```
 
-Force-add the ignored baseline:
+Commit the baseline:
 
 ```sh
-git add -f .mutineer/baseline.json
+git add .mutineer/baseline.json
 git commit -m "Add Mutineer baseline"
 ```
 
@@ -168,7 +171,7 @@ jobs:
 On `pull_request`, the Action tests changed lines. With `baseline:` set, only new survivors fail.
 
 Changed-lines runs miss weakened tests for unchanged code.
-For test-only PRs, scan fully with `since: none`
+For any PR that changes tests, including one that also changes source, scan fully with `since: none`
 (see [Rails rollout: report-only CI](rails.md#report-only-in-ci)).
 
 For PostgreSQL, add a database service and prepare the schema before the Mutineer step.
@@ -207,11 +210,11 @@ jobs:
 
 More options: [CI guide](ci.md).
 
-> **Prompt for your coding agent**
->
-> ```text
-> Add a GitHub Actions workflow at .github/workflows/mutineer.yml that runs davidteren/mutineer@v1 on pull_request with sources: app/models, rails: "true", use-bundler: "true", baseline: .mutineer/baseline.json and extra-args: "--no-fail-fast". Check out with fetch-depth: 0. Copy the database service and setup steps from the existing test workflow so RAILS_ENV=test can reach the test database. Do not change other workflows.
-> ```
+**Prompt for your coding agent**
+
+```text
+Add a GitHub Actions workflow at .github/workflows/mutineer.yml that runs davidteren/mutineer@v1 on pull_request with sources: app/models, rails: "true", use-bundler: "true", baseline: .mutineer/baseline.json and extra-args: "--no-fail-fast". Check out with fetch-depth: 0. Copy the database service and setup steps from the existing test workflow so RAILS_ENV=test can reach the test database. Do not change other workflows.
+```
 
 ## 8. Steady state
 
@@ -219,5 +222,3 @@ Refresh the baseline on `main` regularly. Raise the threshold as scores improve.
 See [CI guide: refresh the baseline](ci.md#refresh-the-baseline).
 
 Flags and defaults: [CLI reference](cli.md).
-
-Commands were preserved but not run; runtime behaviour was not verified.

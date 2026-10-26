@@ -8,7 +8,7 @@ Read report rows, fix survivors, suppress equivalent mutants, and check which te
 | --- | --- | --- |
 | Killed | A test failed against the mutant. | Yes |
 | Survived | Every test passed. Inspect the change. | Yes |
-| No coverage | No test runs that line. Add one first. | No |
+| No coverage | No test covers the line, or its tests do not reach this mutation. Add or extend a test first. | No |
 | Timeout | Tests exceeded `--timeout`. | No |
 | Errored | Tests crashed, or the first failed Minitest test had a database connection or lock error. No verdict. | No |
 | Ignored | You marked the mutant as equivalent. | No |
@@ -18,7 +18,7 @@ The [JSON schema](https://davidteren.github.io/mutineer/json-schema.html#summary
 
 **Mutation score:** `killed / (killed + survived)`. All other rows are excluded. An empty denominator produces an empty score (`null` in JSON), not 0.
 
-With `--threshold`, excessive Timeout or Errored results still fail the run. See [Timeouts and the score](https://github.com/davidteren/mutineer/blob/main/docs/ci.md#timeouts-and-the-score).
+With `--threshold`, excessive Timeout, Errored, or Uncapturable results still fail the run. See [Timeouts and the score](https://github.com/davidteren/mutineer/blob/main/docs/ci.md#timeouts-and-the-score).
 
 ## What to do with a survivor
 
@@ -28,11 +28,11 @@ With `--threshold`, excessive Timeout or Errored results still fail the run. See
 
 For example, replacing `x * 1` with `x / 1` gives the same result when `x` is a number. See [Suppressing equivalent mutants](https://github.com/davidteren/mutineer/blob/main/docs/results.md#suppressing-equivalent-mutants).
 
-> **Prompt for your coding agent**
->
-> ```text
-> Read report.json from Mutineer (--format json). For each survivor, show the source line, the mutant diff, and the behaviour the change breaks. Write one test per survivor that passes on the original code and fails on the mutant. Do not edit the source. If a mutant cannot be killed because it does not change behaviour, explain why and propose an ignore: entry with a reason instead of a test.
-> ```
+**Prompt for your coding agent**
+
+```text
+Read report.json from Mutineer (--format json). For each survivor, show the source line, the mutant diff, and the behaviour the change breaks. Write one test per survivor that passes on the original code and fails on the mutant. Do not edit the source. If a mutant cannot be killed because it does not change behaviour, explain why and propose an ignore: entry with a reason instead of a test.
+```
 
 ## Suppressing equivalent mutants
 
@@ -40,7 +40,7 @@ Equivalent mutants survive without changing behaviour. Suppression excludes them
 
 | Method | Usage |
 | --- | --- |
-| Inline | Add `# mutineer:disable-line`. Scope it with an operator: `# mutineer:disable-line comparison`. |
+| Inline | Add `# mutineer:disable-line`. Scope it with an operator: `# mutineer:disable-line comparison`. This suppresses every mutant of that operator on the line; use an `ignore:` id to suppress only one. |
 | Inline reason | Add a reason after `--`: `# mutineer:disable-line comparison -- the test checks only 20`. |
 | Config | Add a bare mutant id or an `id` mapping with an optional `reason` under `.mutineer.yml` `ignore:`. |
 | Reports | JSON lists each survivor's `id`. JSON and HTML show suppression reasons. Markers without reasons store none. |
@@ -82,7 +82,7 @@ A mutant id contains 12 hex characters. Its hash uses:
 | File path | Relative to the project root |
 | Method | Qualified name |
 | Mutation | Operator, mutated code, and position among identical mutants in the method |
-| Duplicate method | Second and later same-named methods also include their position within the file; the first method's id stays unchanged. |
+| Duplicate method | Second and later same-named methods also include their position among same-named methods in the file; the first method's id stays unchanged. |
 
 Duplicate names can occur with two top-level `def index` definitions in separate DSL blocks.
 
@@ -106,7 +106,7 @@ The project root is the run directory, or the Action's `working-directory`. Use 
 | One match | Replace the old entry with the new id. |
 | Multiple matches | The old entry also hid unintended mutants. Keep only intended ids, including across same-named methods or different files. |
 | Full migration list | Run every source and operator set you use, including Tier-2 (additional operators) `--operators`. Warnings cover only that run. |
-| `mutineer migrate` | Writes every matching new id. Delete unintended ids. See [Migrate old ignore ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#migrate-old-ignore-ids). |
+| `mutineer migrate` | Writes every matching new id for bare-id entries. A mapping entry that matches several mutants is not rewritten; split it by hand. Delete unintended ids. See [Migrate old ignore ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#migrate-old-ignore-ids). |
 | `--baseline` | Matches survivors by old id and file. Stored absolute paths outside the project root match by old id alone. |
 | Baseline replacement | Generate with `--format json` when prompted. `migrate` does not rewrite baselines. |
 
@@ -181,7 +181,7 @@ These labels apply only to this run's mutants. Mutate the code a test exercises 
 | Minitest name | For example, `CalculatorTest#test_add` |
 | RSpec name | Full description. Example ids such as `./spec/calc_spec.rb[1:2]` distinguish shared descriptions and preserve identity when generated descriptions change. |
 
-Every mutant runs its full covering set, costing as much as a survivor. Expect matrix runs to take 2.1 to 2.5 times as long. In 1.4, stopping at first failure reduced rack's `lib/rack/utils.rb` run from 86 to 89 seconds to 35 to 41.
+Every mutant with a covering test set runs that full set, costing as much as a survivor. Expect matrix runs to take 2.1 to 2.5 times as long. In 1.4, stopping at first failure reduced rack's `lib/rack/utils.rb` run from 86–89 seconds to 35–41 seconds.
 
 | Limit | Behaviour or action |
 | --- | --- |

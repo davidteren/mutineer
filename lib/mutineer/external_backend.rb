@@ -341,7 +341,7 @@ module Mutineer
                "ASDF_RUBY_VERSION from the child env; the suite still picked the wrong " \
                "Ruby. Use a wrapper that re-selects the app Ruby and ensure " \
                ".ruby-version / .tool-versions is present " \
-               "(see README: Apps on Ruby < 3.4 → Under a version manager)"
+               "(see docs/rails-setup.md: Apps on Ruby < 3.4 → Under a version manager)"
       parts
     end
 

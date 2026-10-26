@@ -2,7 +2,7 @@
 
 Compare frameworks, Rails support, CI, and costs. Checked against project READMEs and RubyGems pages on 26 October 2026.
 
-“Unknown” means the README does not say. Newer tools except mutant have few users; their claims are self-reported.
+“Unknown” means the README does not say. Apart from mutant, the tools are new and have few users; their claims are self-reported. Prices and features change; check each project's page before you decide.
 
 | Tool | Frameworks | Rails | Parallel | Changed code only | CI | Licence / cost | Maintenance |
 |------|-----------|-------|----------|-------------------|----|----------------|-------------|
@@ -42,7 +42,7 @@ Compare frameworks, Rails support, CI, and costs. Checked against project README
 | Mutant | More operators, Test::Unit, subject expressions selecting whole namespaces |
 | Both | Both tools can run in one project without conflict |
 
-This comparison covers Mutant 0.17, checked on 2026-10-06. See [Mutant's README](https://github.com/mbj/mutant#readme) for current licence terms and features.
+This comparison covers Mutant 0.17.1, checked on 26 October 2026. See [Mutant's README](https://github.com/mbj/mutant#readme) for current licence terms and features.
 
 ## Why Mutineer
 
@@ -50,8 +50,8 @@ This comparison covers Mutant 0.17, checked on 2026-10-06. See [Mutant's README]
 |---|---|
 | Cost | MIT, free for every use; mutant charges private or commercial apps |
 | Dependencies | No runtime gems |
-| GitHub Action | Tests changed pull-request lines; with `baseline:` set, fails only on new survivors |
-| Rails isolation | Each parallel worker gets its own test database, including MySQL 8 |
+| GitHub Action | Tests changed pull-request lines; with `baseline:` set, fails on new survivors. A full scan (`since: none`) also fails on score drops |
+| Rails isolation | With `--daemon` (Minitest), each parallel worker gets its own test database, including MySQL 8 |
 | Ruby | Requires 3.4+; older apps use serial `--test-command` |
 | RSpec | No `--daemon`; Rails runs are serial |
 | Mutant's strengths | Most mature tool; supports more frameworks |
@@ -65,8 +65,8 @@ Check whether the Mutineer gem (https://github.com/davidteren/mutineer) suits th
 
 1. Ruby: read .ruby-version, Gemfile and Gemfile.lock. Mutineer needs Ruby 3.4 or later. On an older Ruby it can still run with --test-command, but serially and with no coverage narrowing.
 2. OS for CI and development: Linux or macOS is required (it forks). Windows is not supported.
-3. Test framework: Minitest (test/**/*_test.rb) or RSpec (spec/**/*_spec.rb). Both work. With RSpec: no --daemon, so Rails runs are serial, and a spec that fails on a database connection error counts as killed (issue #347).
-4. Rails: is it a Rails app (config/application.rb)? Note the Rails version. If config/database.yml has several databases, note that --daemon isolates only the primary.
+3. Test framework: Minitest or RSpec. Inspect the test files and Gemfile; paths such as test/**/*_test.rb, test/**/test_*.rb and spec/**/*_spec.rb are examples. Both work. With RSpec: no --daemon, so Rails runs are serial, and a spec that fails on a database connection error counts as killed (issue #347).
+4. Rails: is it a Rails app (config/application.rb)? Note the Rails version. If config/database.yml has several databases, note that an app with more than one database runs one worker, so --daemon gives no parallelism.
 5. Test database adapter (config/database.yml, test env):
    - sqlite3 with a file path, postgresql, or mysql2/trilogy on MySQL 8.0: parallel runs work with --daemon (Minitest only).
    - sqlite3 :memory:: serial only.
@@ -79,8 +79,6 @@ Check whether the Mutineer gem (https://github.com/davidteren/mutineer) suits th
 Then output:
 - Verdict: FIT, FIT WITH LIMITS (list them), or NO FIT (give the reason).
 - A first command, e.g. RAILS_ENV=test bundle exec mutineer run app/models/<small_file>.rb --rails --dry-run --test test/models/<small_file>_test.rb (a Rails dry run needs --test; add --daemon for Minitest with a supported database).
-- Next steps: add gem "mutineer", group: :test, require: false; run mutineer init --rails; fix or ignore one file's survivors; save a full --format json baseline on main; add the GitHub Action so pull requests are checked only on changed lines.
+- Next steps: add gem "mutineer", group: :test, require: false; run mutineer init --rails; fix or ignore one file's survivors; save a full --format json baseline on main with --no-since --no-fail-fast, and with only:, baseline: and fail_fast unset in .mutineer.yml; add the GitHub Action so pull requests are checked on changed lines, and run a full scan (since: none) on any pull request that changes tests.
 Do not guess. Mark anything you could not verify as UNKNOWN.
 ```
-
-Technical claims were not rechecked during editing; features and prices may change.
