@@ -94,8 +94,7 @@ The CLI logs progress every 10%, in every format.
 
 ### Rails with PostgreSQL
 
-Rails jobs need a database before Mutineer boots the app. Add a service,
-point `DATABASE_URL` at it and prepare the schema:
+Before Mutineer boots Rails, add a database service, set `DATABASE_URL` and prepare the schema:
 
 ```yaml
 jobs:

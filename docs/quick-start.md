@@ -64,7 +64,7 @@ rails: true
 # The matrix is on https://davidteren.github.io/mutineer/rails.html#daemon
 ```
 
-List mutants without running tests. With `--rails`, a dry run needs `--test`, because it skips test pairing:
+List mutants without tests. With `--rails`, dry runs skip test pairing and require `--test`:
 
 ```sh
 RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --dry-run \

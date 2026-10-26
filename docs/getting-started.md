@@ -38,7 +38,7 @@ bin/rails test
 
 ## 2. First run on one file
 
-Choose a small model with passing tests. Count mutants. With `--rails`, a dry run needs `--test`, because it skips test pairing:
+Choose a small model with passing tests. Count mutants. With `--rails`, dry runs skip test pairing and require `--test`:
 
 ```sh
 RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --dry-run \
@@ -123,8 +123,7 @@ RAILS_ENV=test bundle exec mutineer run app/models --rails --no-since --no-fail-
   --format json --output .mutineer/baseline.json
 ```
 
-Check the report before you commit it. The run must exit 0, the score must
-not be null, and `no_verdict` must be empty:
+Before committing the report, check: exit 0, non-null score and empty `no_verdict`:
 
 ```sh
 ruby -rjson -e 'r = JSON.parse(File.read(".mutineer/baseline.json")); abort("score is null") if r["summary"]["score"].nil?; abort("no_verdict is not empty") unless r["no_verdict"].empty?; puts "baseline ok"'
@@ -166,14 +165,14 @@ jobs:
           extra-args: "--no-fail-fast"
 ```
 
-On `pull_request`, the Action tests changed lines. With `baseline:` set, it fails only for new survivors.
+On `pull_request`, the Action tests changed lines. With `baseline:` set, only new survivors fail.
 
-A changed-lines run does not notice a PR that weakens tests on unchanged code.
-For a PR that changes only tests, run a full scan with `since: none`
+Changed-lines runs miss weakened tests for unchanged code.
+For test-only PRs, scan fully with `since: none`
 (see [Rails rollout: report-only CI](rails.md#report-only-in-ci)).
 
-For PostgreSQL, add a database service and prepare the schema before the
-Mutineer step. Adjust names and versions to match your existing test workflow:
+For PostgreSQL, add a database service and prepare the schema before the Mutineer step.
+Match names and versions to your test workflow:
 
 ```yaml
 jobs:

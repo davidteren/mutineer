@@ -98,8 +98,7 @@ class Discount
 end
 ```
 
-The tests check quantities 1 and 50, so line coverage is 100%. Mutineer changes
-`>=` to `>`, and both tests still pass:
+Tests check quantities 1 and 50: 100% line coverage. Mutineer changes `>=` to `>`; both tests pass:
 
 ```text
 lib/discount.rb
@@ -109,8 +108,7 @@ lib/discount.rb
   +     return 0.1 if qty > 10
 ```
 
-No test checks exactly 10. A test for 10 kills the mutant. Run the full example,
-with its tests and report, in [Mutation testing, explained](https://davidteren.github.io/mutineer/learn.html).
+No test checks exactly 10. Testing 10 kills the mutant. Run the example, tests and report in [Mutation testing, explained](https://davidteren.github.io/mutineer/learn.html).
 
 ### Coverage and mutation testing
 
@@ -126,13 +124,13 @@ This gap is common in rushed tests and tests written by AI agents.
 
 1. **Parse.** [Prism](https://github.com/ruby/prism), included in Ruby 3.4, parses source files. Mutineer uses only Prism and the standard library.
 2. **Mutate.** Operators make one change per mutant. Mutineer parses each result again and skips invalid Ruby.
-3. **Map coverage and check the clean suite.** Each test file runs with coverage on to map lines to
-   test files. `.mutineer/coverage.json` caches the map; source changes rebuild it. The unchanged
-   tests must pass, alone and together, even when the map comes from the cache. A failure stops the run.
+3. **Map coverage and check unchanged tests.** Each test file runs with coverage to map lines to tests.
+   `.mutineer/coverage.json` caches the map; source changes rebuild it. Tests must pass alone and
+   together, including with a cached map. A failure stops the run.
 4. **Run each mutant in a fork.** The parent loads code once, including the app with `--rails`.
    Children run in parallel on Linux and macOS.
    Each loads the changed file (`reload`) or replaces the changed method (`redefine`).
-   Only covering test files run: paired tests first, then fastest to slowest. In-process runs stop at the first failure, unless `--matrix` asks for every covering test.
+   Only covering test files run: paired tests first, then fastest to slowest. In-process runs stop at the first failure unless `--matrix` requests every covering test.
 5. **Score.** A failing test kills the mutant; all tests passing means it survived.
    Score: `killed / (killed + survived)`.
 

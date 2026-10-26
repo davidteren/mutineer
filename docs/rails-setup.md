@@ -34,7 +34,7 @@ Start with one model, then follow the [Rails rollout guide](rails.md) to a CI ga
 | --- | --- |
 | `--rails` | Boots `config/environment` once. Each mutant forks from that process and reconnects ActiveRecord for a safe database connection. |
 | `--boot FILE` | Boots another entry point. |
-| Tests | Boot mode needs at least one test, found by convention or given with `--test`. A `--dry-run` skips pairing, so it needs `--test`. Each mutant runs only test files that cover its line. |
+| Tests | Boot mode requires a conventionally found test or `--test`. A `--dry-run` skips pairing and requires `--test`. Mutants run only tests covering their line. |
 | Coverage | Captured in a fork of the booted app, then cached. |
 | Default strategy | `redefine` without `--daemon`; `reload` with `--daemon`. |
 | `redefine` | Reloads the mutated method and each directly enclosing method, not the whole file. |
@@ -89,7 +89,7 @@ In-process and `--daemon` runs use a new file per mutant, preventing cache colli
 | Keep the cache | Run through a wrapper that first runs `unset DISABLE_BOOTSNAP_COMPILE_CACHE`. Boots accelerate, but stale mutant code can load. |
 | Stale code | Delete `tmp/cache/bootsnap`, or the directory set by `$BOOTSNAP_CACHE_DIR`, then rerun. |
 
-A direct `Bootsnap.setup` call, with the compile cache off under `--test-command`:
+Call `Bootsnap.setup` directly, disabling the compile cache under `--test-command`:
 
 ```ruby
 Bootsnap.setup(
