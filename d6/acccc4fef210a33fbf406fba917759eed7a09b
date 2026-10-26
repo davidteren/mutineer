@@ -1,0 +1,23 @@
+AGENTS.md
+  s_7450a0eca459f1::t_e8f7be823d6cba 172-179
+test/release_workflow_test.rb
+  s_7450a0eca459f1::t_e8f7be823d6cba 266-268
+.github/workflows/release.yml
+  s_7450a0eca459f1::t_e8f7be823d6cba 296-298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d6acccc4fef210a33fbf406fba917759eed7a09b",
+  "prompts": {},
+  "sessions": {
+    "s_7450a0eca459f1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7495421f-7cf7-4465-a337-ff5b38741c39",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
