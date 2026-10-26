@@ -151,8 +151,9 @@ A maintainer does every step:
    ```
    The publish job starts only when the actor is a human with maintain or
    admin, the event is `workflow_dispatch`, the ref is a tag, and `confirm`
-   is `publish`. It also refuses when the `rubygems` environment is missing
-   or has no required reviewers. Both checks run before the job asks for
+   is `publish`. It also refuses when the `rubygems` environment is missing,
+   has no required reviewers, or lets administrators bypass them (GitHub
+   turns that bypass on by default). Both checks run before the job asks for
    environment approval.
 5. Approve the `rubygems` GitHub environment when Actions asks. That approval
    publishes. The job then checks the tag against `Mutineer::VERSION`, runs
@@ -234,7 +235,8 @@ trusted publisher makes that old `gem push` fail, because the old job omits
    delete, so a write collaborator cannot push or move a release tag.
 4. Add a second tag ruleset for the floating major tags (`v[0-9]` and
    `v[0-9][0-9]`). Action users pin `@v1`, so a write collaborator who moves
-   it changes the code they run, with no release. Block update and delete.
+   it changes the code they run, with no release. Block create, update, and
+   delete, so nobody plants a `v2` before the first v2.0.0 release.
    Its bypass list is Maintain and Admin only. Do not add the GitHub Actions
    app: any workflow a write collaborator pushes could then move the tag.
    The publish job then cannot move the tag. It prints a warning with the

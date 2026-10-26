@@ -8,7 +8,8 @@ name: Release
 #
 # The authorize job asks GitHub for the actor's repository permission and
 # rejects bots, schedule events, and anyone below maintain. It also refuses
-# when the GitHub environment `rubygems` has no required reviewers. The
+# when the GitHub environment `rubygems` has no required reviewers or lets
+# administrators bypass them. The
 # publish job then waits for approval of that environment. Required
 # reviewers are a repository setting (see AGENTS.md). After approval the job
 # tests, publishes to RubyGems via Trusted Publishing (OIDC bound to that
@@ -338,5 +339,5 @@ jobs:
           # A ruleset on the floating tags refuses GITHUB_TOKEN (AGENTS.md).
           # The gem is already published, so say what to run instead of failing.
           if ! git push -f origin "$major"; then
-            echo "::warning::Could not move ${major} to ${GITHUB_REF_NAME}. A maintainer runs: git tag -f ${major} ${GITHUB_REF_NAME} && git push -f origin ${major}"
+            echo "::warning::Could not move ${major} to ${GITHUB_REF_NAME}. A maintainer runs: git tag -f ${major} ${GITHUB_SHA} && git push -f origin ${major}"
           fi
