@@ -59,10 +59,17 @@ jobs:
             echo "::error::A release workflow runs only from workflow_dispatch (event ${GITHUB_EVENT_NAME:-}). A schedule does not start a release."
             exit 1
           fi
-          actor="${GITHUB_ACTOR:-}"
+          # github.actor stays the person who started the original run. On a
+          # rerun, github.triggering_actor is who started this attempt. Check
+          # that person, or a rerun by someone else inherits the first dispatch.
+          actor="${GITHUB_TRIGGERING_ACTOR:-}"
+          if [ -z "$actor" ]; then
+            echo "::error::Could not read who started this run (github.triggering_actor is empty). Refusing the release."
+            exit 1
+          fi
           case "$actor" in
-            ""|*'[bot]')
-              echo "::error::A bot cannot start a release (actor ${actor:-none})."
+            *'[bot]')
+              echo "::error::A bot cannot start a release (actor ${actor})."
               exit 1
               ;;
           esac
@@ -222,19 +229,21 @@ jobs:
           # otherwise undo or stack on it.
           if stop_if_untagged_bump "$latest_tag"; then exit 0; fi
 
-          # Only this workflow's own PRs carry this marker in the body (see the footer).
+          # Only this workflow's own PRs carry a marker in the body (see the footer).
+          # The previous marker is what already-open release PRs still say.
           export RELEASE_PR_MARKER='Opened by a manual run of `release-pr.yml`'
+          export RELEASE_PR_MARKER_PREVIOUS='Auto-opened by `release-pr.yml`'
           # The open same-repo PR on head <branch> that this workflow opened (empty if none).
           own_pr_number() {
             gh pr list --state open --head "$1" --json number,isCrossRepository,body \
               --jq '[.[] | select(.isCrossRepository | not)
-                         | select(.body | contains(env.RELEASE_PR_MARKER))][0].number // empty'
+                         | select(.body | contains(env.RELEASE_PR_MARKER) or contains(env.RELEASE_PR_MARKER_PREVIOUS))][0].number // empty'
           }
           # Open same-repo PRs on head <branch> that a person opened (no marker).
           hand_opened_prs() {
             gh pr list --state open --head "$1" --json number,isCrossRepository,body \
               --jq '.[] | select(.isCrossRepository | not)
-                        | select(.body | contains(env.RELEASE_PR_MARKER) | not) | "#\(.number)"'
+                        | select((.body | contains(env.RELEASE_PR_MARKER) or contains(env.RELEASE_PR_MARKER_PREVIOUS)) | not) | "#\(.number)"'
           }
 
           date="$(date -u +%Y-%m-%d)"
@@ -306,7 +315,7 @@ jobs:
 
           notes="$(git log --pretty='- %h %s' "${latest_tag}..HEAD" | grep -E '^- [0-9a-f]+ (feat|fix)(\(|!|:)' || true)"
           bump="$([ "$feats" -gt 0 ] && echo minor || echo patch)"
-          body="$(printf '## What / Why / How\n\n**What.** Prepare release **v%s** (version bump and CHANGELOG only).\n\n**Why.** feat:/fix: commits have landed on `main` since `%s`. A maintainer started this workflow by hand. Preparing this PR does not tag or publish, and nothing runs it on a schedule.\n\n**How.** A maintainer reviews and merges this PR. Merging leaves the gem unpublished. They tag `v%s` and push the tag. A tag push leaves the gem unpublished. They run `gh workflow run release.yml --ref v%s -f confirm=publish` and a required reviewer approves the `rubygems` environment. That approval publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_%s. Rebuilt from `main` only when a maintainer runs this workflow again. When `main` moves, the next manual run replaces this PR with a fresh one. Closing the PR leaves the gem unpublished, and nothing re-opens it until a maintainer runs the workflow again._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes" "$RELEASE_PR_MARKER")"
+          body="$(printf '## What / Why / How\n\n**What.** Prepare release **v%s** (version bump and CHANGELOG only).\n\n**Why.** feat:/fix: commits have landed on `main` since `%s`. A maintainer started this workflow by hand. Preparing this PR does not tag or publish, and nothing runs it on a schedule.\n\n**How.** A maintainer reviews and merges this PR. Merging leaves the gem unpublished. They tag `v%s` and push the tag. A tag push leaves the gem unpublished. They run `gh workflow run release.yml --ref v%s -f confirm=publish` and a required reviewer approves the `rubygems` environment. That approval publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_%s. Rebuilt from `main` when `main` has moved. A run that finds this branch already on current `main` leaves it. Closing the PR leaves the gem unpublished, and nothing re-opens it until a maintainer runs the workflow again._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes" "$RELEASE_PR_MARKER")"
 
           own_num="$(own_pr_number "$branch")"
           if [ -n "$own_num" ]; then
@@ -323,7 +332,7 @@ jobs:
           olds="$(gh pr list --state open --limit 200 --json number,headRefName,isCrossRepository,body \
             --jq '.[] | select(.isCrossRepository | not)
                       | select(.headRefName | test("^release/v[0-9]+\\.[0-9]+\\.[0-9]+$"))
-                      | select(.body | contains(env.RELEASE_PR_MARKER))
+                      | select(.body | contains(env.RELEASE_PR_MARKER) or contains(env.RELEASE_PR_MARKER_PREVIOUS))
                       | "\(.number) \(.headRefName)"')"
           failed=0
           while read -r num old; do

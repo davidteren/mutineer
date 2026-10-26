@@ -133,8 +133,10 @@ A maintainer does every step:
    ```
    `release-pr.yml` runs only for a `workflow_dispatch` started by a human
    with maintain or admin. It bumps `lib/mutineer/version.rb`, dates the
-   CHANGELOG, and opens a PR. It does not tag or publish. Each run rebuilds
-   `release/vX.Y.Z` from current `main`. It still dispatches `ci.yml` when
+   CHANGELOG, and opens a PR. It does not tag or publish. It rebuilds
+   `release/vX.Y.Z` from current `main` only when `main` has moved. A run
+   that finds the branch already based on current `main` leaves that branch
+   as it is. It still dispatches `ci.yml` when
    the push used `GITHUB_TOKEN` (issue #234). That dispatch runs tests only.
 2. Review and merge that PR. Merging leaves the gem unpublished.
    Leave repository auto-merge off.

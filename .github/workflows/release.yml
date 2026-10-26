@@ -83,10 +83,17 @@ jobs:
             echo "::error::A release workflow runs only from workflow_dispatch (event ${GITHUB_EVENT_NAME:-}). A schedule does not start a release."
             exit 1
           fi
-          actor="${GITHUB_ACTOR:-}"
+          # github.actor stays the person who started the original run. On a
+          # rerun, github.triggering_actor is who started this attempt. Check
+          # that person, or a rerun by someone else inherits the first dispatch.
+          actor="${GITHUB_TRIGGERING_ACTOR:-}"
+          if [ -z "$actor" ]; then
+            echo "::error::Could not read who started this run (github.triggering_actor is empty). Refusing the release."
+            exit 1
+          fi
           case "$actor" in
-            ""|*'[bot]')
-              echo "::error::A bot cannot start a release (actor ${actor:-none})."
+            *'[bot]')
+              echo "::error::A bot cannot start a release (actor ${actor})."
               exit 1
               ;;
           esac
@@ -147,10 +154,17 @@ jobs:
             echo "::error::A release workflow runs only from workflow_dispatch (event ${GITHUB_EVENT_NAME:-}). A schedule does not start a release."
             exit 1
           fi
-          actor="${GITHUB_ACTOR:-}"
+          # github.actor stays the person who started the original run. On a
+          # rerun, github.triggering_actor is who started this attempt. Check
+          # that person, or a rerun by someone else inherits the first dispatch.
+          actor="${GITHUB_TRIGGERING_ACTOR:-}"
+          if [ -z "$actor" ]; then
+            echo "::error::Could not read who started this run (github.triggering_actor is empty). Refusing the release."
+            exit 1
+          fi
           case "$actor" in
-            ""|*'[bot]')
-              echo "::error::A bot cannot start a release (actor ${actor:-none})."
+            *'[bot]')
+              echo "::error::A bot cannot start a release (actor ${actor})."
               exit 1
               ;;
           esac

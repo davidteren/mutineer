@@ -95,7 +95,8 @@ class ReleaseWorkflowTest < Minitest::Test
     assert_includes text, 'GITHUB_EVENT_NAME:-}" != "workflow_dispatch"', "a schedule event is attributed to the last editor, so the event is part of the guard"
     assert_includes text, 'git switch -C "$branch"', "the release branch must be rebuilt from main"
     refute_includes text, "tests and publishes", "the release PR must not tell anyone that a tag publishes"
-    refute_includes text, "Auto-opened"
+    assert_includes text, "RELEASE_PR_MARKER_PREVIOUS='Auto-opened by `release-pr.yml`'", "an already-open release PR still uses the previous marker"
+    assert_equal 3, text.scan("contains(env.RELEASE_PR_MARKER_PREVIOUS)").length
     refute_match(/git push --force(?!-with-lease)/, text, "never force-push the release branch (GITHUB_TOKEN may not)")
     assert_includes text, "--force-with-lease=", "the old release branch is deleted under a lease, never clobbered"
     assert_includes text, "gh pr edit", "an open release PR for the same version is refreshed"
@@ -265,6 +266,12 @@ class ReleaseWorkflowTest < Minitest::Test
     assert_nil refuse.dig("permissions", "id-token"), "the refuse job must not be able to mint RubyGems credentials"
     assert_equal "none", refuse.dig("permissions", "contents")
     refute_includes refuse["if"], "github.actor"
+    assert_includes refuse["if"], "github.event_name != 'workflow_dispatch'"
+    assert_includes refuse["if"], "github.event.inputs.confirm != 'publish'"
+    assert_includes refuse["if"], "!startsWith(github.ref, 'refs/tags/v')"
+    assert_includes authorize["if"], "github.event_name == 'workflow_dispatch'"
+    assert_includes authorize["if"], "github.event.inputs.confirm == 'publish'"
+    assert_includes authorize["if"], "startsWith(github.ref, 'refs/tags/v')"
     text = File.read(RELEASE_WORKFLOW)
     refute_match(/^[ \t]*schedule:/, text)
     refute_match(/workflow_run:/, text)
@@ -301,6 +308,7 @@ class ReleaseWorkflowTest < Minitest::Test
     release = marked_block(ACTOR_START, ACTOR_END, workflow: RELEASE_WORKFLOW)
     prep = marked_block(ACTOR_START, ACTOR_END, workflow: WORKFLOW)
     assert_equal release, prep
+    assert_includes release, 'actor="${GITHUB_TRIGGERING_ACTOR:-}"'
     assert_includes release, ".user.permissions.maintain"
     assert_includes release, ".user.permissions.admin"
     assert_includes release, '.role_name // ""'
@@ -326,6 +334,24 @@ class ReleaseWorkflowTest < Minitest::Test
       assert_equal 1, status.exitstatus, role
       assert_match(/does not have maintain or admin/, out)
     end
+  end
+
+  # A rerun keeps github.actor as the original maintainer. The person who
+  # clicked rerun is github.triggering_actor, and that person needs maintain.
+  def test_release_actor_refuses_a_rerun_by_someone_without_maintain
+    out, status, calls = run_release_actor(actor: "original-maintainer", triggering_actor: "writer",
+                                            admin: false, maintain: false, role: "write")
+    assert_equal 1, status.exitstatus
+    assert_match(/does not have maintain or admin/, out)
+    assert calls.any? { |call| call.include?("collaborators/writer/permission") }, calls.inspect
+    refute calls.any? { |call| call.include?("collaborators/original-maintainer/permission") }
+  end
+
+  def test_release_actor_refuses_when_the_triggering_actor_is_missing
+    out, status, calls = run_release_actor(actor: "original-maintainer", triggering_actor: "")
+    assert_equal 1, status.exitstatus
+    assert_match(/triggering_actor is empty/, out)
+    assert_empty calls
   end
 
   def test_release_actor_refuses_a_bot_login_without_calling_the_api
@@ -408,15 +434,17 @@ class ReleaseWorkflowTest < Minitest::Test
   # Runs the permission check with a fake `gh` that prints the collaborator fields.
   #
   # @param event [String]
-  # @param actor [String]
+  # @param actor [String] GITHUB_ACTOR, the original dispatcher
+  # @param triggering_actor [String, nil] who started this attempt; defaults to actor
   # @param kind [String] GitHub user.type
   # @param admin [Boolean]
   # @param maintain [Boolean]
   # @param role [String] role_name
   # @param fail [Boolean] when the API call exits 1
   # @return [Array(String, Process::Status, Array<String>)] output, status, gh calls
-  def run_release_actor(event: "workflow_dispatch", actor: "maintainer", kind: "User",
+  def run_release_actor(event: "workflow_dispatch", actor: "maintainer", triggering_actor: nil, kind: "User",
                         admin: false, maintain: false, role: "write", fail: false)
+    triggering_actor = actor if triggering_actor.nil?
     script = marked_block(ACTOR_START, ACTOR_END, workflow: RELEASE_WORKFLOW)
     Dir.mktmpdir do |dir|
       log = File.join(dir, "calls.log")
@@ -432,6 +460,7 @@ class ReleaseWorkflowTest < Minitest::Test
         "PATH" => "#{dir}:#{ENV.fetch("PATH")}",
         "GITHUB_EVENT_NAME" => event,
         "GITHUB_ACTOR" => actor,
+        "GITHUB_TRIGGERING_ACTOR" => triggering_actor,
         "GITHUB_REPOSITORY" => "example/mutineer",
         "KIND" => kind,
         "ADMIN" => admin.to_s,
