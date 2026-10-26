@@ -1,0 +1,68 @@
+docs/learn.md
+  s_71f26a58caebaa::t_bec95cb87689c8 145-146
+  s_71f26a58caebaa::t_caebbbb62da8b4 169
+docs/llms.txt
+  s_71f26a58caebaa::t_caebbbb62da8b4 12
+docs/index.html
+  s_71f26a58caebaa::t_caebbbb62da8b4 289,303
+docs/index.md
+  s_71f26a58caebaa::t_caebbbb62da8b4 17-19,130,134-140
+AGENTS.md
+  s_71f26a58caebaa::t_bdb9f4c2fbec3f 75-76,83-84,89
+skills/mutineer/SKILL.md
+  s_71f26a58caebaa::t_bdb9f4c2fbec3f 21
+lib/mutineer/cli.rb
+  s_71f26a58caebaa::t_9e0312a749de1d 53-55,80
+  s_71f26a58caebaa::t_94ec3731bedb26 761
+rake/docs_contract.rb
+  s_71f26a58caebaa::t_8f480624933227 97-99,109,114,129
+  s_71f26a58caebaa::t_a8264cb108677d 130-132
+lib/mutineer/external_backend.rb
+  s_71f26a58caebaa::t_94ec3731bedb26 344
+docs/cli.md
+  s_71f26a58caebaa::t_bdb9f4c2fbec3f 9
+  s_71f26a58caebaa::t_aa8e9b72a2edf8 14,22,61
+  s_71f26a58caebaa::t_57c12a33a4e27c 15
+docs/rails-setup.md
+  s_71f26a58caebaa::t_dff0853736ab94 3,44,121-122,228,240,244
+  s_71f26a58caebaa::t_72259e22e09560 7-11
+docs/comparison.md
+  s_71f26a58caebaa::t_cf9541d1ae6ac3 5,45,53-54,68-69,82,84
+docs/learn.html
+  s_71f26a58caebaa::t_caebbbb62da8b4 127
+README.md
+  s_71f26a58caebaa::t_94ec3731bedb26 16-17,66,135,239-242
+  s_71f26a58caebaa::t_57c12a33a4e27c 194
+docs/rails.md
+  s_71f26a58caebaa::t_bec95cb87689c8 81-82,84-85
+  s_71f26a58caebaa::t_caebbbb62da8b4 10-11
+docs/quick-start.md
+  s_71f26a58caebaa::t_586079038cc247 82-83,97,112-113,115
+docs/results.md
+  s_71f26a58caebaa::t_6f4b6b69384534 11,21,43,85,109,184
+  s_71f26a58caebaa::t_72259e22e09560 31-35
+docs/ci.md
+  s_71f26a58caebaa::t_72259e22e09560 195-199
+  s_71f26a58caebaa::t_6a4f2eade62eee 8,24,31,59-60,87,146,157,174-175,187,207,216
+docs/getting-started.md
+  s_71f26a58caebaa::t_d7df42252ce0d1 21,24-25,31-32,111,121,125,128,131-132,135,138,174
+  s_71f26a58caebaa::t_72259e22e09560 35-39,97-101,213-217
+docs/rails.html
+  s_71f26a58caebaa::t_caebbbb62da8b4 72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fe8f7292812415c02e340b19e11ed87a0cb8d8fd",
+  "prompts": {},
+  "sessions": {
+    "s_71f26a58caebaa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2448274b-b65c-498e-93fb-b38fc54349ef",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
