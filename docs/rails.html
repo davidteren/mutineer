@@ -69,7 +69,7 @@
       <p class="doc-lede">Start with one Rails model, then add checks to CI when you understand the results. This guide covers four stages. Stop at the stage that fits your team.</p>
 
       <p><code>mutineer init --rails</code> writes <code>.mutineer.yml</code> and prints the first run command. It does not replace a file you already wrote. Pass <code>--force</code> to replace one.</p>
-      <p>See the <a href="https://github.com/davidteren/mutineer#github-action">README</a> and <a href="agentic-coding.html#action">agent and CI guide</a> for all Action inputs.</p>
+      <p>See the <a href="https://github.com/davidteren/mutineer/blob/main/docs/ci.md#github-action">CI guide</a> and <a href="agentic-coding.html#action">agent recipes</a> for all Action inputs.</p>
 
       <h2 id="one-model">One model locally</h2>
       <p>Add <code>gem "mutineer", group: :test</code> to your Gemfile and run <code>bundle install</code>. Create the configuration, then run Mutineer on one model and its test:</p>
@@ -123,7 +123,7 @@ jobs:
       <p>Leave <code>baseline</code> unset in <code>.mutineer.yml</code> for report-only CI. For a pull request check, keep <code>--no-fail-fast</code> and fetch the target branch before adding <code>--since origin/main</code> (replace <code>main</code> with that branch’s name), and supply a baseline from a full run on that branch. When tests change, keep <code>--no-since</code> to check the pull request's full source scope. Add <code>--threshold 90</code> when the chosen folders are ready.</p>
 
       <h2 id="parallel-tests">Parallel tests</h2>
-      <p>Mutineer sets <code>PARALLEL_WORKERS=1</code>, so <code>parallelize</code> in <code>test_helper.rb</code> starts no Rails workers during a mutant run. A <code>--test-command</code> script that sets <code>PARALLEL_WORKERS</code> again turns the workers back on. Details: <a href="https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis">Rails parallel tests, Spring, Bootsnap, and Redis</a>.</p>
+      <p>Mutineer sets <code>PARALLEL_WORKERS=1</code>, so <code>parallelize</code> in <code>test_helper.rb</code> starts no Rails workers during a mutant run. A <code>--test-command</code> script that sets <code>PARALLEL_WORKERS</code> again turns the workers back on. Details: <a href="https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#rails-parallel-tests-spring-bootsnap-and-redis">Rails parallel tests, Spring, Bootsnap, and Redis</a>.</p>
 
       <h2 id="daemon">Daemon</h2>
       <p><code>--daemon</code> gives each worker its own test database. It works with Minitest on a SQLite file, PostgreSQL, or MySQL 8 (<code>mysql2</code> or <code>trilogy</code>). MariaDB and MySQL 9 or later are not tested: <code>--daemon</code> prints a warning and runs. If Mutineer cannot read the server version, it prints a warning and runs. On MySQL older than 8.0 (such as 5.7), <code>--daemon</code> stops the run before it copies any database. Pass <code>--no-daemon</code> (or set <code>daemon: false</code>) there. An app with more than one database runs one worker. On another adapter, <code>--daemon</code> stops the run with an error before it scores any mutant. The <a href="https://github.com/davidteren/mutineer#is-it-production-ready">support matrix</a> lists each case. Leave <code>daemon</code> commented in <code>.mutineer.yml</code> until that matrix says your app fits. Run without the daemon to stay serial on other adapters.</p>

@@ -119,7 +119,7 @@ class SiteDocsTest < Minitest::Test
     assert_includes page, "--threshold"
     assert_includes page, "GitLab CI"
     blocks = page.scan(/```yaml\n(.*?)```/m).flatten
-    assert_equal 2, blocks.size
+    assert_equal 3, blocks.size
     blocks.each do |body|
       loaded = YAML.safe_load(body)
       assert_kind_of Hash, loaded

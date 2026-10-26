@@ -7,12 +7,12 @@ This guide covers four stages. Stop at the stage that fits your team.
 It does not replace a file you already wrote.
 Pass `--force` to replace one.
 
-See the [README](https://github.com/davidteren/mutineer#github-action) and
-[agent and CI guide](https://davidteren.github.io/mutineer/agentic-coding.html#action) for all Action inputs.
+See the [CI guide](https://github.com/davidteren/mutineer/blob/main/docs/ci.md#github-action) and
+[agent recipes](https://davidteren.github.io/mutineer/agentic-coding.html#action) for all Action inputs.
 
 ## One model locally
 
-Add `gem "mutineer", group: :test` to your Gemfile and run `bundle install`.
+Add `gem "mutineer", group: :test, require: false` to your Gemfile and run `bundle install`.
 Create the configuration, then run Mutineer on one model and its test:
 
 ```sh
@@ -78,7 +78,11 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
+      # A database-backed app also needs the database service and a
+      # `bin/rails db:prepare` step from your test workflow.
       - uses: davidteren/mutineer@v1
+        env:
+          RAILS_ENV: test
         with:
           sources: app/models
           since: none
@@ -95,6 +99,28 @@ unset in `.mutineer.yml`. Keep `since: none` to scan all chosen sources
 on every pull request, including when only tests change. This avoids a workflow
 edit for each PR, but can take longer than a scan of changed source lines. Add a
 `threshold` when the chosen folders are ready.
+
+```yaml
+name: Mutation testing
+"on": pull_request
+jobs:
+  mutineer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - uses: davidteren/mutineer@v1
+        with:
+          sources: app/models
+          since: none
+          rails: true
+          use-bundler: true
+          baseline: .mutineer/baseline.json
+          extra-args: "--no-fail-fast"
+```
 
 On `pull_request` events, omitting `since:` normally scans changed source lines
 against the PR's base commit. The Action tries the base branch tip if needed. If
@@ -134,7 +160,7 @@ Add `--threshold 90` when the chosen folders are ready.
 
 Mutineer sets `PARALLEL_WORKERS=1`, so `parallelize` in `test_helper.rb` starts no Rails workers during a mutant run.
 A `--test-command` script that sets `PARALLEL_WORKERS` again turns the workers back on.
-Details: [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis).
+Details: [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#rails-parallel-tests-spring-bootsnap-and-redis).
 
 ## Daemon
 
