@@ -199,9 +199,10 @@ RubyGems, not in this repo. Do them in this order, before the next tag. The
 workflow checks hold only for the `release.yml` stored in the tag. A dispatch
 on a tag runs that tag's copy, so a write collaborator could tag a commit
 with an edited copy that skips them. Until these settings exist, nothing
-stops that tag. A
-`v*.*.*` tag on a commit whose `release.yml` still triggers on tag push (any
-commit from before this change) still starts that old workflow. This file
+stops that tag.
+
+A `v*.*.*` tag on a commit whose `release.yml` still triggers on tag push
+(any commit from before this change) still starts that old workflow. This file
 cannot edit those commits. Requiring the `rubygems` environment on the
 trusted publisher makes that old `gem push` fail, because the old job omits
 `environment:`.
@@ -234,10 +235,11 @@ trusted publisher makes that old `gem push` fail, because the old job omits
 4. Add a second tag ruleset for the floating major tags (`v[0-9]` and
    `v[0-9][0-9]`). Action users pin `@v1`, so a write collaborator who moves
    it changes the code they run, with no release. Block update and delete.
-   Its bypass list is Maintain, Admin, and the GitHub Actions app: the
-   approved publish job moves that tag with `GITHUB_TOKEN` after the gem is
-   already on RubyGems. Leave auto-merge disabled (`allow_auto_merge` is
-   false today).
+   Its bypass list is Maintain and Admin only. Do not add the GitHub Actions
+   app: any workflow a write collaborator pushes could then move the tag.
+   The publish job then cannot move the tag. It prints a warning with the
+   command, and the maintainer runs it after the gem is on RubyGems. Leave
+   auto-merge disabled (`allow_auto_merge` is false today).
 
 ## Shift-left rules (from the 2026-10 PR audit)
 

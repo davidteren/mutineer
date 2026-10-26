@@ -358,7 +358,8 @@ All notable changes to this project are documented here. The format is based on
   hand, then runs the Release workflow on that tag with `confirm=publish`.
   A required reviewer approves the `rubygems` GitHub environment before the
   gem is pushed. The Release workflow refuses to start the publish when that
-  environment is missing or has no required reviewers. The publish job
+  environment is missing, has no required reviewers, or lets admins bypass
+  them. The publish job
   builds the commit that was dispatched, and it stops before `gem push` if
   the tag moved while the job waited for approval.
 - **Load failures now use the runtime-error exit code (#288).** An

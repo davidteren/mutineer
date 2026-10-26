@@ -234,6 +234,7 @@ class ReleaseWorkflowTest < Minitest::Test
     refute_nil actor, "release.yml needs #{ACTOR_START} on the publish job"
     refute_nil gate, "release.yml needs #{PUBLISH_GATE_START}"
     refute_nil guard, "release.yml needs #{STABLE_TAG_START}"
+    refute_nil tag_commit, "release.yml needs #{TAG_COMMIT_START}"
     assert_operator actor, :<, gate, "the permission check runs before the confirm-word check"
     assert_operator gate, :<, guard, "the confirm-word check runs before the version check"
     assert_operator guard, :<, tag_commit, "the tag name is validated before it is fetched"
@@ -274,17 +275,30 @@ class ReleaseWorkflowTest < Minitest::Test
   # GitHub creates a missing environment with no reviewers, and the publish
   # job would then run unapproved. The authorize job refuses that state.
   def test_env_gate_accepts_an_environment_with_reviewers
-    rules = [{ "type" => "branch_policy" }, { "type" => "required_reviewers", "reviewers" => [] }]
-    out, status, calls = run_env_gate({ "protection_rules" => rules })
+    reviewer = { "type" => "User", "reviewer" => { "login" => "maintainer" } }
+    rules = [{ "type" => "branch_policy" }, { "type" => "required_reviewers", "reviewers" => [reviewer] }]
+    out, status, calls = run_env_gate({ "can_admins_bypass" => false, "protection_rules" => rules })
     assert_equal 0, status.exitstatus, out
     assert_includes calls.first, "repos/example/mutineer/environments/rubygems"
   end
 
   def test_env_gate_refuses_an_environment_without_reviewers
-    [{}, { "protection_rules" => [] }, { "protection_rules" => [{ "type" => "wait_timer" }] }].each do |body|
-      out, status, = run_env_gate(body)
+    [
+      {}, { "protection_rules" => [] }, { "protection_rules" => [{ "type" => "wait_timer" }] },
+      { "protection_rules" => [{ "type" => "required_reviewers", "reviewers" => [] }] }
+    ].each do |body|
+      out, status, = run_env_gate(body.merge("can_admins_bypass" => false))
       assert_equal 1, status.exitstatus, body.inspect
       assert_match(/has no required reviewers/, out)
+    end
+  end
+
+  def test_env_gate_refuses_when_admins_can_bypass
+    rules = [{ "type" => "required_reviewers", "reviewers" => [{ "type" => "User" }] }]
+    [{ "can_admins_bypass" => true }, {}].each do |bypass|
+      out, status, = run_env_gate(bypass.merge("protection_rules" => rules))
+      assert_equal 1, status.exitstatus, bypass.inspect
+      assert_match(/Administrators can bypass/, out)
     end
   end
 

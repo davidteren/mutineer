@@ -138,9 +138,15 @@ jobs:
           # MUTINEER_ENV_GATE_START
           # GitHub creates a missing environment with no reviewers, and the
           # publish job then runs with no approval. Refuse unless `rubygems`
-          # exists and has required reviewers.
-          if ! reviewers=$(gh api "repos/${GITHUB_REPOSITORY:?}/environments/rubygems" --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length'); then
-            echo "::error::Could not read the rubygems environment. Create it with required reviewers (see AGENTS.md). Refusing the release."
+          # exists, has required reviewers, and admins cannot bypass them.
+          if ! state=$(gh api "repos/${GITHUB_REPOSITORY:?}/environments/rubygems" --jq '"\([.protection_rules[]? | select(.type == "required_reviewers") | .reviewers[]?] | length) \(.can_admins_bypass | tostring)"'); then
+            echo "::error::Could not read the rubygems environment (missing, no access, or an API error; see the gh output above). It must exist with required reviewers (AGENTS.md, Settings a maintainer applies by hand, item 1). Refusing the release."
+            exit 1
+          fi
+          reviewers="${state%% *}"
+          bypass="${state#* }"
+          if [ "$bypass" != "false" ]; then
+            echo "::error::Administrators can bypass the rubygems environment, so a publish could skip approval. Turn that option off (see AGENTS.md). Refusing the release."
             exit 1
           fi
           case "$reviewers" in
@@ -277,6 +283,14 @@ jobs:
             exit 1
           fi
 
+
+      - name: Tests
+        run: bundle exec rake test
+      - name: Pages site builds
+        run: bundle exec rake site:build
+
+      # Runs last before publishing, so the GitHub Release below names the
+      # commit the gem was built from.
       - name: "Guard: tag still points at the dispatched commit"
         run: |
           set -euo pipefail
@@ -284,15 +298,10 @@ jobs:
           git fetch --no-tags --depth=1 origin "+refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
           tagged="$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")"
           if [ "$tagged" != "${GITHUB_SHA:?}" ]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} now points at ${tagged}, but this run was dispatched on ${GITHUB_SHA}. The tag moved after dispatch. Aborting release."
+            echo "::error::Tag ${GITHUB_REF_NAME} now points at ${tagged}, but this run was dispatched on ${GITHUB_SHA}. The tag moved after dispatch. Aborting release. Find out why it moved. If the new commit is the right one, start a new dispatch on the tag: re-running this run uses the old commit and fails again."
             exit 1
           fi
           # MUTINEER_TAG_COMMIT_END
-
-      - name: Tests
-        run: bundle exec rake test
-      - name: Pages site builds
-        run: bundle exec rake site:build
 
       # Exchanges the workflow's OIDC token for short-lived RubyGems credentials.
       # The trusted publisher on rubygems.org must name environment `rubygems`
@@ -326,4 +335,8 @@ jobs:
           set -euo pipefail
           major="${GITHUB_REF_NAME%%.*}"
           git tag -f "$major" "$GITHUB_SHA"
-          git push -f origin "$major"
+          # A ruleset on the floating tags refuses GITHUB_TOKEN (AGENTS.md).
+          # The gem is already published, so say what to run instead of failing.
+          if ! git push -f origin "$major"; then
+            echo "::warning::Could not move ${major} to ${GITHUB_REF_NAME}. A maintainer runs: git tag -f ${major} ${GITHUB_REF_NAME} && git push -f origin ${major}"
+          fi
