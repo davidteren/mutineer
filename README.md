@@ -132,7 +132,7 @@ This gap is common in rushed tests and tests written by AI agents.
    Each loads the changed file (`reload`) or replaces the changed method (`redefine`).
    Only covering test files run: paired tests first, then fastest to slowest. In-process runs stop at the first failure unless `--matrix` requests every covering test.
 5. **Score.** A failing test kills the mutant; all tests passing means it survived.
-   Score: `killed / (killed + survived)`. Timeouts, errors, and uncovered lines count as neither.
+   Score: `killed / (killed + survived)`. In coverage-guided runs, timeouts, errors, and uncovered lines count as neither; `--test-command` has no coverage, so a mutant no test reaches survives.
 
 | Alternative backend | Changes to step 4 |
 |---|---|

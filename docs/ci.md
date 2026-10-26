@@ -56,7 +56,7 @@ The composite action (`action.yml`) runs the CLI:
     threshold: "90"
 ```
 
-On `pull_request` this checks changed lines only. A changed-lines run cannot see a weakened test on unchanged code, so set `since: none` for any pull request that changes tests.
+On `pull_request` this normally checks changed lines only; if the PR base cannot be resolved, the Action warns and falls back to a full scan. A changed-lines run cannot see a weakened test on unchanged code, so set `since: none` for any pull request that changes tests.
 
 Rails needs `mutineer` in the Gemfile, `rails: true` and `use-bundler: true`.
 Without these inputs, the Action runs a standalone gem without booting your app.

@@ -758,7 +758,7 @@ module Mutineer
              "in-process run: no coverage narrowing (uncovered mutants count as survivors). " \
              "Only exit 1 counts as a kill, or a SimpleCov gate exit whose summary shows a failing " \
              "test (an RSpec --failure-exit-code other than 1 makes every kill an error). When the clean run printed a Minitest or RSpec summary line, " \
-             "Mutineer also reads it to tell a crash from a kill. See docs/rails-setup.md: Apps on Ruby < 3.4."
+             "Mutineer also reads it to tell a crash from a kill. See https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#apps-on-ruby--34"
       end
 
       # Nudge toward the opt-in tier-2 operators (human report only: never

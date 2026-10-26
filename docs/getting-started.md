@@ -128,8 +128,8 @@ RAILS_ENV=test bundle exec mutineer run app/models --rails --no-since --no-fail-
 Check the candidate: exit 0, non-null score and empty `no_verdict`. Then copy it to the baseline:
 
 ```sh
-ruby -rjson -e 'r = JSON.parse(File.read(".mutineer/baseline.candidate.json")); abort("score is null") if r["summary"]["score"].nil?; abort("no_verdict is not empty") unless r["no_verdict"].empty?; puts "baseline ok"'
-cp .mutineer/baseline.candidate.json .mutineer/baseline.json
+ruby -rjson -e 'r = JSON.parse(File.read(".mutineer/baseline.candidate.json")); abort("score is null") if r["summary"]["score"].nil?; abort("no_verdict is not empty") unless r["no_verdict"].empty?; puts "baseline ok"' \
+  && cp .mutineer/baseline.candidate.json .mutineer/baseline.json
 ```
 
 Commit the baseline:

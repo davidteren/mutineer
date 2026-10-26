@@ -47,7 +47,7 @@ Key facts:
 ## Optional
 
 <!-- site-catalog:optional -->
-- [Full docs as one file](https://davidteren.github.io/mutineer/llms-full.txt): README + agent/CI guide + JSON schema concatenated for LLM ingestion.
+- [Full docs as one file](https://davidteren.github.io/mutineer/llms-full.txt): README + agent/CI guide + user guides + JSON schema concatenated for LLM ingestion.
 - [Agent skill](https://davidteren.github.io/mutineer/skill.md): compact skill card — install, the agent loop, exit codes, and links.
 - [Landing page (Markdown)](https://davidteren.github.io/mutineer/index.md): homepage / CLI essentials twin of the HTML landing page.
 - [Mutation testing, explained (Markdown)](https://davidteren.github.io/mutineer/learn.md): Markdown twin of the beginner guide.

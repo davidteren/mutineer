@@ -46,7 +46,7 @@ module MutineerSiteDocs
     Entry.new("/sample-report.html", :docs, "Sample HTML report",
       "example report data displayed in the website theme; the CLI’s self-contained HTML output has a different presentation.", "0.5", true),
     Entry.new("/llms-full.txt", :optional, "Full docs as one file",
-      "README + agent/CI guide + JSON schema concatenated for LLM ingestion.", "0.4", true),
+      "README + agent/CI guide + user guides + JSON schema concatenated for LLM ingestion.", "0.4", true),
     Entry.new("/skill.md", :optional, "Agent skill",
       "compact skill card — install, the agent loop, exit codes, and links.", "0.4", true),
     Entry.new("/index.md", :optional, "Landing page (Markdown)",
