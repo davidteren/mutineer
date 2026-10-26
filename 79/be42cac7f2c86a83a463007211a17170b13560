@@ -1,0 +1,30 @@
+test/release_workflow_test.rb
+  s_7450a0eca459f1::t_181a9a27f2437e 278-280,286-290,296-297
+  s_7450a0eca459f1::t_347fd28a3e8c4b 237
+  s_7450a0eca459f1::t_484c0b3d4959ec 298-304
+AGENTS.md
+  s_7450a0eca459f1::t_347fd28a3e8c4b 202-204
+  s_7450a0eca459f1::t_602df1fea5a506 205,238-242
+.github/workflows/release.yml
+  s_7450a0eca459f1::t_181a9a27f2437e 142
+  s_7450a0eca459f1::t_347fd28a3e8c4b 143-149,286-293,301
+  s_7450a0eca459f1::t_8f09c3b7c4fef1 141,338-342
+CHANGELOG.md
+  s_7450a0eca459f1::t_83d6a099610824 361-362
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "79be42cac7f2c86a83a463007211a17170b13560",
+  "prompts": {},
+  "sessions": {
+    "s_7450a0eca459f1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7495421f-7cf7-4465-a337-ff5b38741c39",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
