@@ -1,0 +1,14 @@
+AGENTS.md
+  h_e8a5bb9272fa34 67-68,72,74-90,94-102,104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9f6bcd10d2ff62a88638259467c00362d22f93cc",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
