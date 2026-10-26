@@ -1,0 +1,33 @@
+docs/comparison.md
+  s_71f26a58caebaa::t_204b401b9c6174 82
+lib/mutineer/cli.rb
+  s_71f26a58caebaa::t_204b401b9c6174 761
+rake/site_docs.rb
+  s_71f26a58caebaa::t_204b401b9c6174 49
+README.md
+  s_71f26a58caebaa::t_204b401b9c6174 135
+lib/mutineer/external_backend.rb
+  s_71f26a58caebaa::t_efcc83687d78d3 344
+docs/llms.txt
+  s_71f26a58caebaa::t_204b401b9c6174 50
+docs/getting-started.md
+  s_71f26a58caebaa::t_204b401b9c6174 131-132
+docs/ci.md
+  s_71f26a58caebaa::t_204b401b9c6174 59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "74c2407bcc787280a294a926c370d4c5de0168f8",
+  "prompts": {},
+  "sessions": {
+    "s_71f26a58caebaa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2448274b-b65c-498e-93fb-b38fc54349ef",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
