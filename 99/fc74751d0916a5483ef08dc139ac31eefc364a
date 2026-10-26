@@ -1,0 +1,19 @@
+docs/comparison.md
+  s_71f26a58caebaa::t_238856c8cdfcdf 82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "99fc74751d0916a5483ef08dc139ac31eefc364a",
+  "prompts": {},
+  "sessions": {
+    "s_71f26a58caebaa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2448274b-b65c-498e-93fb-b38fc54349ef",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
