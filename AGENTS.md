@@ -85,7 +85,7 @@ Label every pull request:
 |---|---|
 | Type | `bug`, `enhancement`, `documentation`, `dependencies`, or `github_actions` |
 | Issue and matching labels | Identify the issue closed with `Closes #N` in the body. Add matching labels, such as `priority: high` (high priority) or `risk: medium` (medium risk). |
-| Target release | Use a version label, such as `v1.7.1` or `v2.0`. Tentative targets are acceptable. |
+| Target release | Use a version label, such as `v1.8.0` or `v2.0`. Tentative targets are acceptable. |
 
 Use existing labels only (`gh label list`). Ask a maintainer before adding a new label.
 

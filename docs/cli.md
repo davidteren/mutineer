@@ -97,7 +97,12 @@ rails: true
 
 Coverage uses a digest-keyed cache at `.mutineer/coverage.json`, rebuilt automatically when sources change.
 
-Add `.mutineer/` and any in-project `--cache-dir` directory to `.gitignore`.
+Add `.mutineer/` and any in-project `--cache-dir` directory to `.gitignore`:
+
+```gitignore
+.mutineer/
+```
+
 Keep `.mutineer/` ignored: `--test-command` writes locks there beside each source file.
 
 Editing only; CLI behaviour was not checked.

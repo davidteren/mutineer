@@ -34,7 +34,7 @@ Start with one model, then follow the [Rails rollout guide](rails.md) to a CI ga
 | --- | --- |
 | `--rails` | Boots `config/environment` once. Each mutant forks from that process and reconnects ActiveRecord for a safe database connection. |
 | `--boot FILE` | Boots another entry point. |
-| Tests | Boot mode requires at least one `--test` file. Each mutant runs only test files that cover its line. |
+| Tests | Boot mode needs at least one test, found by convention or given with `--test`. A `--dry-run` skips pairing, so it needs `--test`. Each mutant runs only test files that cover its line. |
 | Coverage | Captured in a fork of the booted app, then cached. |
 | Default strategy | `redefine` without `--daemon`; `reload` with `--daemon`. |
 | `redefine` | Reloads the mutated method and each directly enclosing method, not the whole file. |
@@ -69,7 +69,12 @@ Continue from the first report to a CI gate with the
 | Spring with `--daemon` | Does not start because Mutineer loads `config/environment` directly. |
 | Wrapper overrides | A wrapper can reset these variables. Its values win. |
 
-Remove wrapper assignments to `PARALLEL_WORKERS`, or use `PARALLEL_WORKERS=${PARALLEL_WORKERS:-4}` to preserve Mutineer's value of 1.
+Remove wrapper assignments to `PARALLEL_WORKERS`, or use `PARALLEL_WORKERS=${PARALLEL_WORKERS:-4}` to preserve Mutineer's value of 1:
+
+```sh
+# in a wrapper script your --test-command runs
+export PARALLEL_WORKERS="${PARALLEL_WORKERS:-4}"
+```
 
 Bootsnap checks file paths, sizes, and modification times in whole seconds, without reading matching files.
 In-process and `--daemon` runs use a new file per mutant, preventing cache collisions.
@@ -83,6 +88,15 @@ In-process and `--daemon` runs use a new file per mutant, preventing cache colli
 | `DISABLE_BOOTSNAP_COMPILE_CACHE=0` | Still disables the cache. Bootsnap checks whether the variable exists. |
 | Keep the cache | Run through a wrapper that first runs `unset DISABLE_BOOTSNAP_COMPILE_CACHE`. Boots accelerate, but stale mutant code can load. |
 | Stale code | Delete `tmp/cache/bootsnap`, or the directory set by `$BOOTSNAP_CACHE_DIR`, then rerun. |
+
+A direct `Bootsnap.setup` call, with the compile cache off under `--test-command`:
+
+```ruby
+Bootsnap.setup(
+  cache_dir: "tmp/cache",
+  compile_cache_iseq: ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"].nil?
+)
+```
 
 | Redis version | Fork behaviour |
 | --- | --- |
@@ -190,6 +204,12 @@ export RBENV_VERSION="$(cat .ruby-version 2>/dev/null || true)"
 export RAILS_ENV="${RAILS_ENV:-test}"
 export PATH="${HOME}/.rbenv/shims:${PATH}"
 exec bundle exec rails test "$@"
+```
+
+Make it executable:
+
+```sh
+chmod +x bin/mutineer-test
 ```
 
 ```sh

@@ -92,6 +92,41 @@ The Action fetches the commit for shallow checkouts, falling back to the base br
 
 The CLI logs progress every 10%, in every format.
 
+### Rails with PostgreSQL
+
+Rails jobs need a database before Mutineer boots the app. Add a service,
+point `DATABASE_URL` at it and prepare the schema:
+
+```yaml
+jobs:
+  mutineer:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      RAILS_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/app_test
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: ruby/setup-ruby@v1
+        with: { bundler-cache: true }
+      - run: bin/rails db:prepare
+      - uses: davidteren/mutineer@v1
+        with:
+          sources: app/models
+          rails: "true"
+          use-bundler: "true"
+          baseline: .mutineer/baseline.json
+```
+
 ### Action inputs
 
 From [`action.yml`](https://github.com/davidteren/mutineer/blob/main/action.yml):

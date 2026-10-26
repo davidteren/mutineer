@@ -10,7 +10,7 @@ Install:
 gem install mutineer
 ```
 
-Run the [README](https://github.com/davidteren/mutineer#a-small-example) `Discount` example:
+Run the `Discount` example from [Mutation testing, explained](https://davidteren.github.io/mutineer/learn.html):
 
 ```sh
 mutineer run lib/discount.rb --test test/discount_test.rb
@@ -64,10 +64,11 @@ rails: true
 # The matrix is on https://davidteren.github.io/mutineer/rails.html#daemon
 ```
 
-List mutants without running tests:
+List mutants without running tests. With `--rails`, a dry run needs `--test`, because it skips test pairing:
 
 ```sh
-RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --dry-run
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --dry-run \
+  --test test/models/order_test.rb
 ```
 
 Run:
@@ -106,7 +107,7 @@ Run again to kill the mutant.
 ```text
 Run Mutineer on one small file in this repo and explain the result.
 1. Pick a small source file with passing tests (Rails: a model in app/models).
-2. Run: bundle exec mutineer run <file> --dry-run   (add --rails for a Rails app, with RAILS_ENV=test)
+2. Run: bundle exec mutineer run <file> --dry-run   (Rails: RAILS_ENV=test, add --rails and --test <its test file>; a Rails dry run needs --test)
 3. Run the same command without --dry-run.
 4. For each survivor, show the diff and say what behaviour the change breaks.
 5. Propose one test per survivor that passes on the original code and fails on the change. Do not change the source.

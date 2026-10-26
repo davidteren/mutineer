@@ -50,7 +50,7 @@ This comparison covers Mutant 0.17, checked on 2026-10-06. See [Mutant's README]
 |---|---|
 | Cost | MIT, free for every use; mutant charges private or commercial apps |
 | Dependencies | No runtime gems |
-| GitHub Action | Tests changed pull-request lines; fails only on new survivors |
+| GitHub Action | Tests changed pull-request lines; with `baseline:` set, fails only on new survivors |
 | Rails isolation | Each parallel worker gets its own test database, including MySQL 8 |
 | Ruby | Requires 3.4+; older apps use serial `--test-command` |
 | RSpec | No `--daemon`; Rails runs are serial |
@@ -78,7 +78,7 @@ Check whether the Mutineer gem (https://github.com/davidteren/mutineer) suits th
 
 Then output:
 - Verdict: FIT, FIT WITH LIMITS (list them), or NO FIT (give the reason).
-- A first command, e.g. RAILS_ENV=test bundle exec mutineer run app/models/<small_file>.rb --rails --dry-run (add --daemon for Minitest with a supported database).
+- A first command, e.g. RAILS_ENV=test bundle exec mutineer run app/models/<small_file>.rb --rails --dry-run --test test/models/<small_file>_test.rb (a Rails dry run needs --test; add --daemon for Minitest with a supported database).
 - Next steps: add gem "mutineer", group: :test, require: false; run mutineer init --rails; fix or ignore one file's survivors; save a full --format json baseline on main; add the GitHub Action so pull requests are checked only on changed lines.
 Do not guess. Mark anything you could not verify as UNKNOWN.
 ```

@@ -38,10 +38,11 @@ bin/rails test
 
 ## 2. First run on one file
 
-Choose a small model with passing tests. Count mutants:
+Choose a small model with passing tests. Count mutants. With `--rails`, a dry run needs `--test`, because it skips test pairing:
 
 ```sh
-RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --dry-run
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --dry-run \
+  --test test/models/order_test.rb
 ```
 
 Run:
@@ -122,6 +123,13 @@ RAILS_ENV=test bundle exec mutineer run app/models --rails --no-since --no-fail-
   --format json --output .mutineer/baseline.json
 ```
 
+Check the report before you commit it. The run must exit 0, the score must
+not be null, and `no_verdict` must be empty:
+
+```sh
+ruby -rjson -e 'r = JSON.parse(File.read(".mutineer/baseline.json")); abort("score is null") if r["summary"]["score"].nil?; abort("no_verdict is not empty") unless r["no_verdict"].empty?; puts "baseline ok"'
+```
+
 Force-add the ignored baseline:
 
 ```sh
@@ -158,8 +166,47 @@ jobs:
           extra-args: "--no-fail-fast"
 ```
 
-On `pull_request`, the Action tests changed lines and fails only for new survivors.
-Database setup and options: [CI guide](ci.md).
+On `pull_request`, the Action tests changed lines. With `baseline:` set, it fails only for new survivors.
+
+A changed-lines run does not notice a PR that weakens tests on unchanged code.
+For a PR that changes only tests, run a full scan with `since: none`
+(see [Rails rollout: report-only CI](rails.md#report-only-in-ci)).
+
+For PostgreSQL, add a database service and prepare the schema before the
+Mutineer step. Adjust names and versions to match your existing test workflow:
+
+```yaml
+jobs:
+  mutineer:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      RAILS_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/app_test
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: ruby/setup-ruby@v1
+        with: { bundler-cache: true }
+      - run: bin/rails db:prepare
+      - uses: davidteren/mutineer@v1
+        with:
+          sources: app/models
+          rails: "true"
+          use-bundler: "true"
+          baseline: .mutineer/baseline.json
+          extra-args: "--no-fail-fast"
+```
+
+More options: [CI guide](ci.md).
 
 > **Prompt for your coding agent**
 >

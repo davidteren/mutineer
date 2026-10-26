@@ -98,36 +98,10 @@ class Discount
 end
 ```
 
-```ruby
-# test/discount_test.rb
-require "minitest/autorun"
-require_relative "../lib/discount"
-
-class DiscountTest < Minitest::Test
-  def test_bulk_order_gets_ten_percent
-    assert_equal 0.1, Discount.new.rate(50)
-  end
-
-  def test_small_order_gets_nothing
-    assert_equal 0, Discount.new.rate(1)
-  end
-end
-```
-
-Both tests pass with 100% line coverage. Run Mutineer:
-
-```sh
-mutineer run lib/discount.rb --test test/discount_test.rb
-```
-
-Report excerpt:
+The tests check quantities 1 and 50, so line coverage is 100%. Mutineer changes
+`>=` to `>`, and both tests still pass:
 
 ```text
-Mutation score: 50.0%  (killed / (killed + survived); ...)
-
-Surviving Mutants
------------------
-
 lib/discount.rb
   Discount#rate (discount.rb:3)
   Operator: comparison  (>= -> >)
@@ -135,15 +109,8 @@ lib/discount.rb
   +     return 0.1 if qty > 10
 ```
 
-Both tests pass after `>=` becomes `>`. Neither checks exactly 10. Add the boundary test:
-
-```ruby
-def test_ten_is_the_first_bulk_quantity
-  assert_equal 0.1, Discount.new.rate(10)
-end
-```
-
-Run again. Both mutants are killed; the score is 100%.
+No test checks exactly 10. A test for 10 kills the mutant. Run the full example,
+with its tests and report, in [Mutation testing, explained](https://davidteren.github.io/mutineer/learn.html).
 
 ### Coverage and mutation testing
 
@@ -159,12 +126,13 @@ This gap is common in rushed tests and tests written by AI agents.
 
 1. **Parse.** [Prism](https://github.com/ruby/prism), included in Ruby 3.4, parses source files. Mutineer uses only Prism and the standard library.
 2. **Mutate.** Operators make one change per mutant. Mutineer parses each result again and skips invalid Ruby.
-3. **Map coverage.** Tests run once to map lines to test files and confirm the unchanged code passes.
-   Failures stop the run. `.mutineer/coverage.json` caches the map; source changes rebuild it.
+3. **Map coverage and check the clean suite.** Each test file runs with coverage on to map lines to
+   test files. `.mutineer/coverage.json` caches the map; source changes rebuild it. The unchanged
+   tests must pass, alone and together, even when the map comes from the cache. A failure stops the run.
 4. **Run each mutant in a fork.** The parent loads code once, including the app with `--rails`.
    Children run in parallel on Linux and macOS.
    Each loads the changed file (`reload`) or replaces the changed method (`redefine`).
-   Only covering test files run: paired tests first, then fastest to slowest. In-process runs stop at the first failure.
+   Only covering test files run: paired tests first, then fastest to slowest. In-process runs stop at the first failure, unless `--matrix` asks for every covering test.
 5. **Score.** A failing test kills the mutant; all tests passing means it survived.
    Score: `killed / (killed + survived)`.
 
@@ -284,7 +252,7 @@ Install the skill with either command:
 - `gh skill install davidteren/mutineer mutineer`
 - `npx skills add davidteren/mutineer --skill mutineer`
 
-**Unreleased: on `main`, not in 1.7.0.** The next release bundles the skill and offers
+**Mutineer 1.8.0 and later** bundle the skill and offer
 [ Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive) companion installation.
 For Rails apps bundling Mutineer, `bin/rails hyperdrive:init` installs it to `.claude/skills/mutineer/SKILL.md`.
 
