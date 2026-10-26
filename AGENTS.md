@@ -163,9 +163,9 @@ A maintainer does every step:
 While one person is the only required reviewer, that person may start the
 workflow and approve it. Once a second maintainer is a required reviewer,
 turn on the environment's **Prevent self-review** option so the approver is
-someone other than the starter. Leave that option off until then: with one
-reviewer it is on, that reviewer cannot approve their own run, and the
-publish cannot finish. The workflow does not enforce the split.
+someone other than the starter. Leave that option off until then: if it is
+on while only one reviewer can approve, that reviewer cannot approve their
+own run, and the publish cannot finish. The workflow does not enforce the split.
 
 Safety nets:
 

@@ -316,7 +316,8 @@ class ReleaseWorkflowTest < Minitest::Test
 
   def test_release_actor_accepts_admin_and_maintain
     %w[admin maintain].each do |role|
-      out, status, calls = run_release_actor(actor: "maintainer", admin: role == "admin", maintain: true, role: role)
+      out, status, calls = run_release_actor(actor: "maintainer", admin: role == "admin",
+                                            maintain: role == "maintain", role: role)
       assert_equal 0, status.exitstatus, out
       assert calls.any? { |call| call.include?("collaborators/maintainer/permission") }, calls.inspect
     end
