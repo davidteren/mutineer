@@ -1,110 +1,177 @@
 # First run to steady state
 
-This guide takes a Rails app from its first Mutineer run to a CI check that
-tests only new and changed code. For a plain Ruby project, drop `--rails` and
-`RAILS_ENV=test`.
+Set up Rails mutation testing, then check new and changed code in CI.
+For plain Ruby, omit `--rails` and `RAILS_ENV=test`.
 
 ## 1. Install
 
-Mutineer needs Ruby 3.4 or later on Linux or macOS. Add it to the Gemfile and
-run `bundle install`:
+Requires Ruby 3.4 or later on Linux or macOS. Add to your `Gemfile` test group:
 
 ```ruby
 gem "mutineer", group: :test, require: false
 ```
 
-Then write a starter `.mutineer.yml`:
+Install and create `.mutineer.yml`:
 
 ```sh
+bundle install
 RAILS_ENV=test bundle exec mutineer init --rails
 ```
 
-Your suite must pass before you start. Mutineer checks the unchanged code
-first and stops if a test fails.
+Exclude the coverage cache in `.gitignore`:
+
+```gitignore
+.mutineer/
+```
+
+Tests must pass. Mutineer checks unchanged code first and stops on failure:
+
+```sh
+bin/rails test
+```
+
+> **Prompt for your coding agent**
+>
+> ```text
+> Set up Mutineer in this Rails app. Add gem "mutineer", group: :test, require: false to the Gemfile test group, run bundle install, then RAILS_ENV=test bundle exec mutineer init --rails. Add .mutineer/ to .gitignore. Run the full test suite and report any failures; do not change application code.
+> ```
 
 ## 2. First run on one file
 
-Pick one small model with passing tests. See how many mutants it has first:
+Choose a small model with passing tests. Count mutants:
 
 ```sh
 RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --dry-run
+```
+
+Run:
+
+```sh
 RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
 ```
 
-You can leave out `--test`. Mutineer pairs `app/models/order.rb` with
-`test/models/order_test.rb` or `spec/models/order_spec.rb`. Pass
-`--test FILE` (once per file) to choose the tests yourself.
+Mutineer pairs `app/models/order.rb` with `test/models/order_test.rb` or `spec/models/order_spec.rb`.
+Override with `--test` per file:
+
+```sh
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails \
+  --test test/models/order_test.rb --test test/integration/checkout_test.rb
+```
 
 ## 3. Read the report
 
-The score is `killed / (killed + survived)`.
+Score: `killed / (killed + survived)`.
 
-- **Killed:** a test failed against the change. Good.
-- **Survived:** every test passed. Read the diff under Surviving Mutants.
-- **No coverage:** no test runs that line. Write a test first.
-- **Timeout, errored, ignored, skipped:** not in the score.
+| Result | Meaning | In the score? |
+|--------|---------|---------------|
+| Killed | A test failed against the change. | Yes |
+| Survived | All tests passed. Read the diff. | Yes |
+| No coverage | No test runs this line. Add one. | No |
+| Timeout, Errored, Ignored, Skipped | No verdict or deliberately excluded. | No |
+
+See [Reading results](results.md).
 
 ## 4. Fix survivors
 
-For each survivor, ask what behaviour the change breaks. Write a test that
-passes on the original code and fails on the change, then run again.
+Add tests that pass on the original code and fail on the mutant. Run again.
 
-Sometimes no test can tell the difference (for example `x * 1` and `x / 1`).
-That mutant is equivalent. Record it with a reason:
+Equivalent mutants, such as `x * 1` and `x / 1`, cannot be distinguished by tests.
+Generate `ignore:` entries:
 
 ```sh
-bundle exec mutineer run app/models/order.rb --rails --format json --output report.json
-bundle exec mutineer triage report.json --reason "x / 1 equals x * 1 here" --id ID
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --format json --output report.json
+bundle exec mutineer triage report.json --reason "x / 1 equals x * 1 for numbers" --id ID
 ```
 
-`triage` prints `ignore:` entries. Paste them into `.mutineer.yml`.
+`triage` edits nothing. Paste its output into `.mutineer.yml`:
+
+```yaml
+ignore:
+  - id: ID
+    reason: x / 1 equals x * 1 for numbers
+```
+
+> **Prompt for your coding agent**
+>
+> ```text
+> Run RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --format json --output report.json. For each entry in survivors[], read the diff and write a test that passes on the original code and fails on the mutant. Do not edit the source file. If you believe a mutant is equivalent, do not write a test: explain why and propose an ignore: entry with a reason. Re-run Mutineer and report the new score.
+> ```
 
 ## 5. Widen the run
 
-Run a folder, such as `app/models`. With Minitest and a SQLite file,
-PostgreSQL, or MySQL 8 test database, add `--daemon` to use every CPU:
+Run a folder:
+
+```sh
+RAILS_ENV=test bundle exec mutineer run app/models --rails
+```
+
+For Minitest with SQLite files, PostgreSQL, or MySQL 8, `--daemon` runs one worker per CPU:
 
 ```sh
 RAILS_ENV=test bundle exec mutineer run app/models --rails --daemon
 ```
 
-RSpec runs under `--rails` are serial, one mutant at a time.
+RSpec with `--rails` runs serially. See the [support matrix](https://github.com/davidteren/mutineer#is-it-production-ready).
 
 ## 6. Make a baseline
 
-On `main`, run a full scan and save the JSON report:
+On `main`, save a full scan:
 
 ```sh
 RAILS_ENV=test bundle exec mutineer run app/models --rails --no-since --no-fail-fast \
   --format json --output .mutineer/baseline.json
 ```
 
-Commit the file (keep the rest of `.mutineer/` ignored), or store it as a CI
-artifact. Use the same sources, tests, and operators in the gate.
+Force-add the ignored baseline:
+
+```sh
+git add -f .mutineer/baseline.json
+git commit -m "Add Mutineer baseline"
+```
+
+Use matching sources, tests, and operators in CI.
 
 ## 7. Check only new and changed code in CI
 
+Add `.github/workflows/mutineer.yml`:
+
 ```yaml
-- uses: actions/checkout@v4
-  with: { fetch-depth: 0 }
-- uses: ruby/setup-ruby@v1
-  with: { bundler-cache: true }
-- uses: davidteren/mutineer@v1
-  env:
-    RAILS_ENV: test
-  with:
-    sources: app/models
-    rails: "true"
-    use-bundler: "true"
-    baseline: .mutineer/baseline.json
-    extra-args: "--no-fail-fast"
+name: Mutineer
+on: pull_request
+
+jobs:
+  mutineer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: ruby/setup-ruby@v1
+        with: { bundler-cache: true }
+      - uses: davidteren/mutineer@v1
+        env:
+          RAILS_ENV: test
+        with:
+          sources: app/models
+          rails: "true"
+          use-bundler: "true"
+          baseline: .mutineer/baseline.json
+          extra-args: "--no-fail-fast"
 ```
 
-On `pull_request` events the Action tests only the lines the PR changed. The job
-fails only when the PR adds a new survivor.
+On `pull_request`, the Action tests changed lines and fails only for new survivors.
+Database setup and options: [CI guide](ci.md).
+
+> **Prompt for your coding agent**
+>
+> ```text
+> Add a GitHub Actions workflow at .github/workflows/mutineer.yml that runs davidteren/mutineer@v1 on pull_request with sources: app/models, rails: "true", use-bundler: "true", baseline: .mutineer/baseline.json and extra-args: "--no-fail-fast". Check out with fetch-depth: 0. Copy the database service and setup steps from the existing test workflow so RAILS_ENV=test can reach the test database. Do not change other workflows.
+> ```
 
 ## 8. Steady state
 
-- A scheduled job on `main` with `since: none` refreshes the baseline.
-- Raise `threshold` as the score climbs.
-- Every flag and default: [CLI reference](cli.md).
+Refresh the baseline on `main` regularly. Raise the threshold as scores improve.
+See [CI guide: refresh the baseline](ci.md#refresh-the-baseline).
+
+Flags and defaults: [CLI reference](cli.md).
+
+Commands were preserved but not run; runtime behaviour was not verified.

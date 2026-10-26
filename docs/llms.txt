@@ -9,7 +9,7 @@ Line coverage shows which lines ran. Mutation testing checks whether the tests
 notice a change. Start with one file and understand the results before adding a CI gate.
 
 Key facts:
-- **Written from scratch**: no code from Mutant or any other mutation-testing tool. MIT for every use. How it differs from Mutant: [README](https://github.com/davidteren/mutineer#mutineer-and-mutant).
+- **Written from scratch**: no code from Mutant or any other mutation-testing tool. MIT for every use. How it differs from Mutant: [README](https://github.com/davidteren/mutineer/blob/main/docs/comparison.md#mutineer-and-mutant).
 - **Zero runtime dependencies** — Prism + stdlib only. No `eval`. Test-framework changes stay in disposable child processes.
 - **One mutation per mutant**, validity-checked by re-parsing; 21 mutation operators.
 - **Fork-isolated, parallel** execution (Linux + macOS); coverage-guided per-line test selection.
@@ -26,6 +26,13 @@ Key facts:
 - [For AI agents & CI](https://davidteren.github.io/mutineer/agentic-coding.html): the agent inner loop, CI regression gating, the GitHub Action, and equivalent-mutant suppression.
 - [Equivalent skips](https://davidteren.github.io/mutineer/equivalent-skips.html): code changes Mutineer skips automatically, and why.
 - [Rails rollout](https://davidteren.github.io/mutineer/rails.html): four stages from one Rails model to a CI gate, plus GitHub Actions and GitLab CI recipes.
+- [Quick start](https://davidteren.github.io/mutineer/quick-start.md): install, a first run on one file, and one fixed survivor, with agent prompts.
+- [First run to steady state](https://davidteren.github.io/mutineer/getting-started.md): from one file to a baseline and a CI check on changed code, with agent prompts.
+- [Reading results](https://davidteren.github.io/mutineer/results.md): report rows, fixing survivors, suppressing equivalent mutants, mutant ids, and the kill matrix.
+- [Rails setup](https://davidteren.github.io/mutineer/rails-setup.md): `--rails`, the `--daemon` backend, worker databases, Spring and Bootsnap, and apps on Ruby < 3.4.
+- [CI: changed code and baselines](https://davidteren.github.io/mutineer/ci.md): `--since`, `--baseline`, the GitHub Action and its inputs, baseline refresh, and timeouts.
+- [CLI reference](https://davidteren.github.io/mutineer/cli.md): every `mutineer run` flag with its default, and the `.mutineer.yml` keys.
+- [Ruby mutation-testing tools compared](https://davidteren.github.io/mutineer/comparison.md): Mutineer, Mutant, and other Ruby tools, plus a fit-check prompt for your coding agent.
 - [JSON report schema](https://davidteren.github.io/mutineer/json-schema.html): the versioned JSON contract — `summary`, `survivors[]`, `no_coverage[]`, `uncapturable[]`, `unplaceable[]`, `ran_at_load[]`, `no_verdict[]`, `ignored[]`, `per_source[]`, and the `baseline` and `matrix` blocks.
 - [Ruby API (YARD)](https://davidteren.github.io/mutineer/api/): class reference generated from the website build’s source revision.
 - [Sample HTML report](https://davidteren.github.io/mutineer/sample-report.html): example report data displayed in the website theme; the CLI’s self-contained HTML output has a different presentation.

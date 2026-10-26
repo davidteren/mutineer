@@ -16,7 +16,7 @@ is not ignored. `mutineer triage` prints these entries using survivor ids from a
 JSON report. Select survivors with `--id ID` (repeat it for more than one), or
 use `--all` for every survivor. Supply the reason with the required `--reason TEXT`
 argument. The command does not edit files. See
-[Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants).
+[Suppressing equivalent mutants](https://github.com/davidteren/mutineer/blob/main/docs/results.md#suppressing-equivalent-mutants).
 
 ## Chain link
 
@@ -75,6 +75,21 @@ survivor `id` suppresses only that one mutant.
 ## Endless range
 
 The `range` operator is not in the default set. Add it to the `operators:` list in `.mutineer.yml`, or pass `--operators`. The `--operators` list replaces the default set, so name the default operators too.
+
+```yaml
+# .mutineer.yml
+operators:
+  - arithmetic
+  - comparison
+  - boolean_connector
+  - boolean_literal
+  - statement_removal
+  - range
+```
+
+```sh
+mutineer run lib --operators arithmetic,comparison,boolean_connector,boolean_literal,statement_removal,range
+```
 
 The `range` operator swaps `..` and `...`. It skips an endless range (`1..` or `1..nil`) only when the range is a direct argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`, `bytesplice` or `values_at`, as in `argv[1..]` or `text.byteslice(offset..)`. Index writes such as `list[1..] += x` are skipped too.
 

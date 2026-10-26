@@ -30,9 +30,20 @@ mutineer run lib/discount.rb --test test/discount_test.rb
 ```
 
 Replace both paths with files in your project. For RSpec, pass a spec file to
-`--test`. In a Bundler project, add `gem "mutineer", group: :test, require: false` to the Gemfile,
-run `bundle install`, and use `bundle exec mutineer`. For Rails, follow the
-[one-model guide](rails.html#one-model).
+`--test`. In a Bundler project, add the gem to the test group in your `Gemfile`:
+
+```ruby
+gem "mutineer", group: :test, require: false
+```
+
+Then install it and run through the bundle:
+
+```sh
+bundle install
+bundle exec mutineer run lib/discount.rb --test test/discount_test.rb
+```
+
+For Rails, follow the [one-model guide](rails.html#one-model).
 
 Read one entry under **Surviving Mutants**. Add a test that passes with the
 original code and fails with the change, then run again. If the change leaves
@@ -114,7 +125,7 @@ Mutant is the established tool, with a deeper operator set. Mutineer trades
 that depth for an MIT license, an empty dependency list, and a JSON contract
 built for CI gates and AI agents. Checked against Mutant 0.17 on 2026-10-06.
 Full comparison:
-[README](https://github.com/davidteren/mutineer#mutineer-and-mutant).
+[README](https://github.com/davidteren/mutineer/blob/main/docs/comparison.md#mutineer-and-mutant).
 
 ## More docs
 

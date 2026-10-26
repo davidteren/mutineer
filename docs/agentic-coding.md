@@ -20,7 +20,7 @@ change against the intended behaviour before asking the agent to add a test:
    mutineer run app/ --since origin/main --threshold 90 --format json --output .mutineer/run.json
    ```
 
-3. Parse `survivors[]`. Each entry carries a ready-made `diff` and an `id`. Unrelated edits can preserve the id; file moves, renames, project-root changes, and changes to repeated-name or repeated-mutation order can change it. See [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). For each survivor, feed
+3. Parse `survivors[]`. Each entry carries a ready-made `diff` and an `id`. Unrelated edits can preserve the id; file moves, renames, project-root changes, and changes to repeated-name or repeated-mutation order can change it. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids). For each survivor, feed
    the agent a prompt like:
 
    > This change to `{subject}` (`{file}:{line}`) was **not** caught by any test:
@@ -39,6 +39,17 @@ Keep `fail_fast` disabled (the default). If the active `.mutineer.yml` sets it t
 `true`, temporarily change that value to `false` for the loop. Restore the original
 value when the loop ends, before committing. A fail-fast run is partial,
 and its score and exit code do not cover the full scope.
+
+```yaml
+# .mutineer.yml, during the loop
+fail_fast: false
+```
+
+Or turn it off for one run without editing the file:
+
+```sh
+mutineer run lib --no-fail-fast
+```
 
 Zero survivors alone is not success: an empty or fully suppressed scope, or a run
 with no usable verdicts, also has zero survivors. If the score is null, stop and

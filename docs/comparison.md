@@ -1,39 +1,64 @@
 # Mutineer and other Ruby mutation-testing tools
 
-Checked on 26 October 2026 against each project's README and RubyGems page.
-"Unknown" means the project's README does not say. Apart from mutant, the
-newer tools have few users so far, so their claims are self-reported.
+Compare frameworks, Rails support, CI, and costs. Checked against project READMEs and RubyGems pages on 26 October 2026.
+
+“Unknown” means the README does not say. Newer tools except mutant have few users; their claims are self-reported.
 
 | Tool | Frameworks | Rails | Parallel | Changed code only | CI | Licence / cost | Maintenance |
 |------|-----------|-------|----------|-------------------|----|----------------|-------------|
-| [mutineer](https://github.com/davidteren/mutineer) 1.7.0 | Minitest, RSpec | `--rails`; per-worker DB with `--daemon` (Minitest; SQLite, PostgreSQL, MySQL 8) | Yes; Rails needs `--daemon` | `--since`, `--baseline` | Official GitHub Action | MIT, free | Active (Oct 2026) |
-| [mutant](https://github.com/mbj/mutant) 0.17.1 | RSpec, Minitest, Test::Unit | Yes; per-worker DB for PostgreSQL and SQLite | Yes | Incremental mode | Documented CI use | Free for open source; commercial $30/month or $250/year per developer | Active (Oct 2026) |
-| [evilution](https://github.com/marinazzio/evilution) 1.5.1 | RSpec, Minitest, Test::Unit | Yes (fork and preload) | `--jobs` (default 1) | `--incremental` cache | Unknown | MIT, free | Active (Oct 2026) |
-| [kimera](https://github.com/giacope/kimera) 0.1.6 | Minitest, RSpec | Yes; per-worker DBs, `--isolate-db` | Yes | `--since`, `kimera changed` | GitHub Actions recipe | MIT, free | Active, new |
-| [henitai](https://github.com/martinotten/henitai) 0.6.0 | RSpec; Minitest partial | Per-worker DB via a config hook | `--jobs`, opt-in | `--since`, `--incremental` | GitHub Actions annotations | MIT, free | Active, new |
-| [saboteur](https://github.com/vamsipavanmahesh/saboteur) 0.12.3 | RSpec only | Rails generator | Parallel coverage builds | `--since`, `--incremental` | Installs GitHub workflows | MIT, free | Active, new |
-| [mutation_tester](https://github.com/Oxyconit/mutation_tester) 1.7.0 | RSpec 3, Minitest 5/6 | Rake tasks | Yes, all cores | `--since` (files) | Unknown | MIT, free | Active (Sep 2026) |
-| [mutaruby](https://github.com/Atlas-Authorization/mutaruby) 0.3.0 | Any test command | Through the test command | Yes | `--since` (files) | GitHub Actions example | MIT, free | Active, new |
+| [mutineer](https://github.com/davidteren/mutineer) 1.7.0 | Minitest, RSpec | `--rails`; `--daemon` isolates worker DBs (Minitest; SQLite, PostgreSQL, MySQL 8) | Yes; Rails requires `--daemon` | `--since`, `--baseline` | Official GitHub Action | MIT, free | Active (Oct 2026) |
+| [mutant](https://github.com/mbj/mutant) 0.17.1 | RSpec, Minitest, Test::Unit | Yes; worker DBs for PostgreSQL, SQLite | Yes | Incremental mode | Documented | Open source: free; commercial: $30/month or $250/year per developer | Active (Oct 2026) |
+| [evilution](https://github.com/marinazzio/evilution) 1.5.1 | RSpec, Minitest, Test::Unit | Fork and preload | `--jobs` (default 1) | `--incremental` cache | Unknown | MIT, free | Active (Oct 2026) |
+| [kimera](https://github.com/giacope/kimera) 0.1.6 | Minitest, RSpec | Worker DBs, `--isolate-db` | Yes | `--since`, `kimera changed` | GitHub Actions recipe | MIT, free | Active, new |
+| [henitai](https://github.com/martinotten/henitai) 0.6.0 | RSpec; partial Minitest | Worker DBs through config hook | `--jobs`, opt-in | `--since`, `--incremental` | GitHub Actions annotations | MIT, free | Active, new |
+| [saboteur](https://github.com/vamsipavanmahesh/saboteur) 0.12.3 | RSpec only | Rails generator | Coverage builds | `--since`, `--incremental` | Installs GitHub workflows | MIT, free | Active, new |
+| [mutation_tester](https://github.com/Oxyconit/mutation_tester) 1.7.0 | RSpec 3, Minitest 5/6 | Rake tasks | All cores | `--since` (files) | Unknown | MIT, free | Active (Sep 2026) |
+| [mutaruby](https://github.com/Atlas-Authorization/mutaruby) 0.3.0 | Any test command | Through test command | Yes | `--since` (files) | GitHub Actions example | MIT, free | Active, new |
 | [mutato](https://github.com/LQkkeN/mutato) 0.2.1 | RSpec, Minitest | Unknown | Unknown | Unknown | Unknown | MIT, free | Active, new |
 | [mutateRB](https://github.com/MarceloM47/mutateRB) 0.3.1 | RSpec, Minitest | Unknown | Unknown | Unknown | Unknown | MIT, free | Small (Sep 2026) |
 | [crispr](https://github.com/afstanton/crispr) 0.2.2 | Unknown | Unknown | Unknown | Unknown | Unknown | MIT, free | Last gem Jul 2025 |
 | [mutest](https://github.com/backus/mutest) 0.0.10 | Unknown (mutant fork) | Unknown | Unknown | Unknown | Unknown | MIT | Archived; last gem 2019 |
 | [heckle](https://github.com/seattlerb/heckle) 1.4.3 | Test::Unit era | No | No | No | No | None declared | Last gem 2009 |
 
+## Mutineer and Mutant
+
+[Mutant](https://github.com/mbj/mutant), by Markus Schirp, is Ruby's established mutation-testing tool, developed since 2012 and studied in published research. Mutineer was written from scratch under MIT and shares no code with other mutation-testing tools.
+
+| Aspect | Mutineer | Mutant |
+|---|---|---|
+| License | MIT for all uses | Open source: free (`--usage opensource`); commercial: paid subscription |
+| Runtime dependencies | None (Prism + stdlib) | `parser`, `unparser`, `regexp_parser`, `sorbet-runtime`, others |
+| Ruby | 3.4+; older apps use `--test-command`: [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#apps-on-ruby--34) | 3.3+ |
+| Test frameworks | Minitest, RSpec; one gem | RSpec, Minitest, Test::Unit; separate integration gems |
+| What you mutate | Files: `mutineer run lib/foo.rb --test test/foo_test.rb`; methods: `--only 'Foo#bar'` | Subject expressions: `mutant run 'Foo#bar'`, `'Foo*'` |
+| Which tests run | Files whose coverage reaches the mutated line | Tests declaring the subject through RSpec descriptions or Minitest `cover`, or selected through per-test coverage |
+| Operators | 21 (5 by default, 16 opt-in) | A larger set; the default `light` set applies almost all of it (`full` adds `#==` to `#eql?`) |
+| CI gating | `--threshold`, `--baseline` deltas, `--since`, GitHub Action | Incremental mode (`--since`), recorded session history |
+| Machine-readable output | Versioned JSON report schema | Session JSON schema |
+
+| Choose | When you need |
+|---|---|
+| Mutineer | MIT, no extra runtime gems, file-based runs, JSON contract for CI gates and AI agents |
+| Mutant | More operators, Test::Unit, subject expressions selecting whole namespaces |
+| Both | Both tools can run in one project without conflict |
+
+This comparison covers Mutant 0.17, checked on 2026-10-06. See [Mutant's README](https://github.com/mbj/mutant#readme) for current licence terms and features.
+
 ## Why Mutineer
 
-mutant is the most mature tool and covers more frameworks, but a private or
-commercial app has to pay for it. Mutineer is MIT and free for every use, has
-no runtime gem dependencies, and ships an official GitHub Action that tests
-only a pull request's changed lines and fails only on new survivors. It gives
-each parallel Rails worker its own test database, including MySQL 8. Its
-limits: it needs Ruby 3.4 or later (older apps use the serial
-`--test-command` path), and RSpec cannot use `--daemon`, so RSpec Rails runs
-are serial.
+| Benefit or limit | Detail |
+|---|---|
+| Cost | MIT, free for every use; mutant charges private or commercial apps |
+| Dependencies | No runtime gems |
+| GitHub Action | Tests changed pull-request lines; fails only on new survivors |
+| Rails isolation | Each parallel worker gets its own test database, including MySQL 8 |
+| Ruby | Requires 3.4+; older apps use serial `--test-command` |
+| RSpec | No `--daemon`; Rails runs are serial |
+| Mutant's strengths | Most mature tool; supports more frameworks |
 
 ## Does Mutineer fit my app?
 
-Paste this prompt into your coding agent at the root of your app:
+Paste this prompt into your coding agent at your app's root:
 
 ```text
 Check whether the Mutineer gem (https://github.com/davidteren/mutineer) suits this Ruby app. Read files only; install or change nothing. Answer each check with the evidence (file and line).
@@ -57,3 +82,5 @@ Then output:
 - Next steps: add gem "mutineer", group: :test, require: false; run mutineer init --rails; fix or ignore one file's survivors; save a full --format json baseline on main; add the GitHub Action so pull requests are checked only on changed lines.
 Do not guess. Mark anything you could not verify as UNKNOWN.
 ```
+
+Technical claims were not rechecked during editing; features and prices may change.

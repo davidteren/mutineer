@@ -78,7 +78,7 @@
         <li>Run Mutineer on the diff, as JSON:
           <pre><code><span class="p">$</span> mutineer run app/ --since origin/main --threshold 90 --format json --output .mutineer/run.json</code></pre>
         </li>
-        <li>Parse <code>survivors[]</code>. Each entry carries a ready-made <code>diff</code> and an <code>id</code>. Unrelated edits can preserve the id; file moves, renames, project-root changes, and changes to repeated-name or repeated-mutation order can change it. See <a href="https://github.com/davidteren/mutineer#mutant-ids">Mutant ids</a>. For each survivor, feed the agent a prompt like:
+        <li>Parse <code>survivors[]</code>. Each entry carries a ready-made <code>diff</code> and an <code>id</code>. Unrelated edits can preserve the id; file moves, renames, project-root changes, and changes to repeated-name or repeated-mutation order can change it. See <a href="https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids">Mutant ids</a>. For each survivor, feed the agent a prompt like:
           <blockquote>
             <p>This change to <code>{subject}</code> (<code>{file}:{line}</code>) was <strong>not</strong> caught by any test:</p>
             <pre><code><span class="s">{diff}</span></code></pre>

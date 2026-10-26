@@ -126,7 +126,7 @@ A high score with many unscored changes can still leave large gaps.
 
 The [report reference](json-schema.html#summary) also explains Uncapturable,
 Unplaceable, and Ran at load. The
-[timeout rules](https://github.com/davidteren/mutineer#timeouts-and-the-score)
+[timeout rules](https://github.com/davidteren/mutineer/blob/main/docs/ci.md#timeouts-and-the-score)
 explain when incomplete results fail a score gate.
 
 ## What to do with a survivor
@@ -145,7 +145,7 @@ In Mutineer 1.7 or later, `mutineer triage` can print an ignore entry for a
 survivor from a JSON report. Select it with `--id ID` and supply its reason with
 `--reason TEXT`.
 It does not edit your files. See
-[Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants).
+[Suppressing equivalent mutants](https://github.com/davidteren/mutineer/blob/main/docs/results.md#suppressing-equivalent-mutants).
 If you cannot explain a survivor, ask for a review instead of hiding it to raise the score.
 
 ## Try your own project

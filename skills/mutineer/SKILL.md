@@ -36,7 +36,7 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
    ```
 3. Parse `survivors[]` — each carries a `diff` and an `id`. File moves, renames,
    project-root changes, and changes to repeated-name or repeated-mutation order can
-   change ids; see [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). Review each change
+   change ids; see [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids). Review each change
    against the intended behaviour. If review finds a test gap, write or strengthen
    a test that fails under that change.
 4. Re-run. Accept the result only when this run exits `0`, `summary.score` is not `null`,
@@ -49,7 +49,7 @@ Stop after a few unsuccessful attempts and ask a person to review the survivor.
 Failed attempts do not prove that a mutant is equivalent. To
 suppress it, `mutineer triage .mutineer/run.json --reason TEXT --id ID` prints an
 `ignore:` entry for `.mutineer.yml` (Mutineer 1.7 or later reads it). See
-[Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants).
+[Suppressing equivalent mutants](https://github.com/davidteren/mutineer/blob/main/docs/results.md#suppressing-equivalent-mutants).
 
 Keep `fail_fast` disabled (the default). If the active `.mutineer.yml` sets it to
 `true`, temporarily change that value to `false` for the loop. Restore the original

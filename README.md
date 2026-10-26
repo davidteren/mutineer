@@ -6,51 +6,25 @@
 [![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Mutineer%20Ruby-2da44e?logo=githubactions&logoColor=white)](https://github.com/marketplace/actions/mutineer-ruby)
 [![Socket](https://img.shields.io/badge/Socket-security%20report-0a66c2?logo=socket&logoColor=white)](https://socket.dev/rubygems/package/mutineer)
 
-Would your tests catch a bug? Mutineer makes small changes to your Ruby code
-and runs your Minitest or RSpec tests against each change. If the tests still
-pass, it shows you what they missed. This is **mutation testing**.
+**Find bugs your tests would miss.** Mutineer changes your Ruby code and runs your Minitest or RSpec tests.
+Changes that still pass reveal possible test gaps. This is **mutation testing**.
 
 **Features**
 
-- **Finds weak tests.** Small code changes your tests should catch, and a list of the ones they miss.
-- **Minitest and RSpec.** Picked from your test file names; `--framework` overrides.
-- **Rails-ready.** `--rails` boots your app once. With `--daemon` (Minitest), each
-  parallel worker gets its own SQLite file, PostgreSQL, or MySQL 8 test database.
-- **Fast by design.** Each mutant runs only the tests that reach its line, most
-  likely and fastest first, and stops at the first failure.
-- **PR-sized runs.** `--since origin/main` tests only the lines a PR changes;
-  `--baseline` fails only on new survivors.
-- **Built for CI and agents.** A GitHub Action, versioned JSON, stable mutant ids,
-  clear exit codes, and zero runtime gem dependencies (Ruby 3.4+, Linux or macOS).
+- **Minitest and RSpec.** Detected from test filenames; override with `--framework`.
+- **Rails support.** `--rails` boots once. With `--daemon`, each Minitest worker gets its own SQLite file, PostgreSQL, or MySQL 8 test database.
+- **Focused tests.** Runs tests that reach each changed line, likely and fast tests first. Stops at the first failure.
+- **PR checks.** `--since origin/main` checks changed lines; `--baseline` gates new survivors and score drops.
+- **CI and agents.** GitHub Action, versioned JSON, stable mutant ids, clear exit codes, and zero runtime gem dependencies.
 
-New here? Follow [First run to steady state](https://github.com/davidteren/mutineer/blob/main/docs/getting-started.md).
-Every flag and its default: [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md).
-Choosing a tool: [Mutineer and other Ruby mutation-testing tools](https://github.com/davidteren/mutineer/blob/main/docs/comparison.md).
-
-📖 **[davidteren.github.io/mutineer →](https://davidteren.github.io/mutineer/)** — overview, operators, and usage.
-
-New to mutation testing? Read
-[What is mutation testing?](https://github.com/davidteren/mutineer#what-is-mutation-testing)
-first. It takes five minutes and uses one small example.
-
-Try it on one file and its test:
-
-```sh
-gem install mutineer
-mutineer run lib/calculator.rb --test test/calculator_test.rb
-```
+📖 **[davidteren.github.io/mutineer →](https://davidteren.github.io/mutineer/)**: overview, operators, and usage.
 
 ## Is it production-ready?
 
-Read this section before you gate an app on Mutineer.
-Use the Status column to decide.
-Find your database and test framework below.
-`supported` means parallel runs work. `serial only` works, one mutant at a time.
-
-Mutineer itself needs Ruby 3.4 or later.
-In-process runs fork, so use Linux or macOS.
-A plain Ruby project with no database is supported.
-It runs in parallel on those systems.
+Check your database and framework before adding a CI gate.
+Mutineer requires Ruby 3.4 or later. In-process runs require Linux or macOS for forks.
+Plain Ruby projects without databases support parallel runs.
+In the Status column, `supported` means parallel runs work and `serial only` runs one mutant at a time.
 
 <!-- contract:support-matrix -->
 | Ruby | Database | Framework | Parallelism | Status |
@@ -84,37 +58,33 @@ job runs it. SQLite file means a database file, not `:memory:`.
   ([#347](https://github.com/davidteren/mutineer/issues/347)).
 
 Mutineer sets `PARALLEL_WORKERS=1`, so a `parallelize` call in `test_helper.rb` starts no Rails workers during a mutant run.
-See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis).
+See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#rails-parallel-tests-spring-bootsnap-and-redis).
 
 <!-- /contract:support-matrix -->
 
-An app on an older Ruby uses `--test-command`.
-Mutineer still runs on Ruby 3.4 or later.
-That path is serial.
-It does not narrow tests by coverage.
-Normally only exit 1 counts as a kill; a SimpleCov gate exit with a
-failing test is also a kill.
-Another exit code scores `error`, and a crash before any test fails can
-also score `error`. A mutant that only fails a SimpleCov coverage gate
-scores `survived` when SimpleCov prints its gate message and the run prints
-a passing summary line
-(details under [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34)).
+Older Ruby apps use `--test-command`; Mutineer still requires Ruby 3.4 or later.
+This path runs serially without coverage-based test selection.
 
-What a release will not break is in
-[STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md).
+| Subprocess result | Score |
+|---|---|
+| Exit 1, normally | `killed` |
+| SimpleCov gate exit with a failing test | `killed` |
+| Other exit code | `error` |
+| Crash before a test fails | Can score `error` |
+| Only a SimpleCov gate fails, with its gate message and a passing summary | `survived` |
+
+See [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#apps-on-ruby--34)
+and release guarantees in [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md).
 
 ## What is mutation testing?
 
-Your tests pass. That shows the code does what the tests check. It does not
-show that the tests check enough. Mutation testing finds out by changing your
-code on purpose and seeing whether any test notices.
+Mutation testing changes code to check whether your tests notice.
+Each changed copy is a **mutant**, such as replacing `>=` with `>` or `&&` with `||`.
 
-Each change is small, such as `>=` to `>` or `&&` to `||`. One changed copy of
-your code is a **mutant**. Mutineer runs your tests against each mutant:
-
-- When a test fails, the tests **killed** the mutant. Good: they noticed.
-- When every test still passes, the mutant **survived**. The tests did not distinguish the
-  changed code from the original. Read the change to see whether it exposes a gap.
+| Result | Meaning |
+|---|---|
+| **Killed** | A test failed and caught the change. |
+| **Survived** | All tests passed. Inspect the change for a test gap. |
 
 ### A small example
 
@@ -144,13 +114,13 @@ class DiscountTest < Minitest::Test
 end
 ```
 
-Both tests pass, and every line runs, so line coverage is 100%. Run Mutineer:
+Both tests pass with 100% line coverage. Run Mutineer:
 
 ```sh
 mutineer run lib/discount.rb --test test/discount_test.rb
 ```
 
-Part of the report:
+Report excerpt:
 
 ```text
 Mutation score: 50.0%  (killed / (killed + survived); ...)
@@ -165,8 +135,7 @@ lib/discount.rb
   +     return 0.1 if qty > 10
 ```
 
-Mutineer changed `>=` to `>`, and both tests still passed. No test checks an
-order of exactly 10, so a bug at that boundary would ship. Add that test:
+Both tests pass after `>=` becomes `>`. Neither checks exactly 10. Add the boundary test:
 
 ```ruby
 def test_ten_is_the_first_bulk_quantity
@@ -174,66 +143,69 @@ def test_ten_is_the_first_bulk_quantity
 end
 ```
 
-Run Mutineer again. Both mutants are killed, and the score is 100%.
+Run again. Both mutants are killed; the score is 100%.
 
 ### Coverage and mutation testing
 
-Line coverage tells you which lines ran during the tests. Mutation testing tells
-you whether the tests would fail if those lines were wrong. A test with no
-assertion still adds coverage, but it kills a mutant only when the change makes
-the code raise an error. That gap is common in
-tests written in a hurry, and in tests written by AI coding agents.
+| Check | What it shows |
+|---|---|
+| Line coverage | Which lines ran |
+| Mutation testing | Whether tests detect changes to those lines |
 
-### What each result means
+Tests without assertions add coverage but kill mutants only when changes cause errors.
+This gap is common in rushed tests and tests written by AI agents.
 
-| Report row | What happened | In the score? |
-| --- | --- | --- |
-| Killed | A test failed against the mutant. | Yes |
-| Survived | Every test passed against the mutant. Look at it. | Yes |
-| No coverage | No test runs that line. Write a test for it first. | No |
-| Timeout | The tests ran past `--timeout`. | No |
-| Errored | The test run crashed, or its first failed Minitest test had a database connection or lock error. There is no verdict. | No |
-| Ignored | You marked the mutant as equivalent (see below). | No |
-| Skipped | The change made invalid Ruby, so it did not run. | No |
+## How it works
 
-Uncapturable, Unplaceable, and Ran at load are rarer. The
-[JSON schema](https://davidteren.github.io/mutineer/json-schema.html#summary)
-explains each one.
+1. **Parse.** [Prism](https://github.com/ruby/prism), included in Ruby 3.4, parses source files. Mutineer uses only Prism and the standard library.
+2. **Mutate.** Operators make one change per mutant. Mutineer parses each result again and skips invalid Ruby.
+3. **Map coverage.** Tests run once to map lines to test files and confirm the unchanged code passes.
+   Failures stop the run. `.mutineer/coverage.json` caches the map; source changes rebuild it.
+4. **Run each mutant in a fork.** The parent loads code once, including the app with `--rails`.
+   Children run in parallel on Linux and macOS.
+   Each loads the changed file (`reload`) or replaces the changed method (`redefine`).
+   Only covering test files run: paired tests first, then fastest to slowest. In-process runs stop at the first failure.
+5. **Score.** A failing test kills the mutant; all tests passing means it survived.
+   Score: `killed / (killed + survived)`.
 
-The **mutation score** is `killed / (killed + survived)`. The other rows do not
-change the score. When nothing can be scored, the score is empty (`null` in
-JSON), not 0. Under `--threshold`, too many Timeout or Errored mutants still
-fail the run; see [Timeouts and the score](https://github.com/davidteren/mutineer#timeouts-and-the-score).
+| Alternative backend | Changes to step 4 |
+|---|---|
+| `--daemon` | Boots Rails once in a persistent process; isolates each worker's test database |
+| `--test-command` | Runs tests in another Ruby subprocess; writes mutants to the real file, then restores it |
 
-### What to do with a survivor
+| At a glance | |
+|---|---|
+| Parser | Prism, with no runtime gem dependencies |
+| Ruby | 3.4 or later; older apps use `--test-command` |
+| Operators | 21 (5 by default, 16 opt-in) |
+| Isolation | One fork per mutant on Linux and macOS |
+| Report formats | human, JSON (versioned schema), HTML |
 
-1. Read the diff. Ask what behaviour the change breaks.
-2. Write or strengthen a test that fails under the change. Run again.
-3. Sometimes the change breaks nothing. For example, when `x` is a number,
-   swapping `x * 1` for `x / 1` gives the same result. That mutant is **equivalent**, and no test can
-   kill it. Suppress it with a reason (see
-   [Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants)).
+## Quick start
 
-### Where to start
-
-Each mutant runs part of your suite again, so a run takes longer than one test
-run. Start with one file and its test, as above. Use `--dry-run` to list the
-mutants without running tests. When the report makes sense, widen the run to a
-folder, then gate pull requests on the lines they change with `--since`. On a
-Rails app, the [Rails rollout guide](https://davidteren.github.io/mutineer/rails.html)
-walks through each stage.
-
-## Install
+Plain Ruby:
 
 ```sh
 gem install mutineer
+mutineer run lib/discount.rb --test test/discount_test.rb
 ```
 
-Or in a Gemfile:
+Rails: add to your `Gemfile` test group:
 
 ```ruby
 gem "mutineer", group: :test, require: false
 ```
+
+Install, create `.mutineer.yml`, and check one model:
+
+```sh
+bundle install
+RAILS_ENV=test bundle exec mutineer init --rails
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
+```
+
+Without `--test`, `app/models/order.rb` pairs with `test/models/order_test.rb` or `spec/models/order_spec.rb`.
+See [Quick start](https://github.com/davidteren/mutineer/blob/main/docs/quick-start.md).
 
 ## Usage
 
@@ -244,73 +216,21 @@ mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)
 mutineer migrate <source...> [--dry-run] [--operators LIST]
 ```
 
-- `run` mutates the sources, runs the tests, and prints the report. Leave out
-  `--test` and each source is paired with its test by convention
-  (`app/models/order.rb` → `test/models/order_test.rb` or `spec/models/order_spec.rb`).
-- `init` writes a commented `.mutineer.yml` and prints a first run command.
-- `triage` prints `ignore:` entries for survivors in a JSON report. It does not
-  edit files. See [Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants).
-- `migrate` rewrites old ignore ids. See [Migrate old ignore ids](https://github.com/davidteren/mutineer#migrate-old-ignore-ids).
-
-Mutate `lib/calculator.rb`, checking it against its test, and fail CI if the
-mutation score drops below 90%:
-
-```sh
-mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
-```
-
-### Migrate old ignore ids
-
-```sh
-mutineer migrate <source...> [--dry-run] [--operators LIST]
-```
-
-`migrate` rewrites old-format ids in `.mutineer.yml` `ignore:` to the current
-ids. It keeps comments and every other line. When one old id matches several
-mutants, it writes every new id. That keeps the 1.x match. An id that matches
-nothing stays, and the command exits 1. In an `{ id:, reason: }` entry, the
-id changes and the reason stays. One entry holds one id, so an old id there
-that now matches several mutants stays as written: the command names the new
-ids, exits 1, and you split the entry by hand. A block scalar under `ignore:`
-is not supported: the command exits 2 and does not change the file.
-`--dry-run` prints each change and writes nothing.
-
-Pass the same sources and `--operators` you use for `run`. The command runs
-no tests. It does not rewrite a baseline. Generate a new baseline with
-`--format json`.
-
 ### Options
+
+Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md).
 
 | Flag | Meaning |
 |------|---------|
-| `--test FILE` | Test file covering the sources; one file per flag, so repeat it for each (`--test a_test.rb --test b_test.rb`). Optional: when omitted, each source is paired with its test by convention |
-| `--operators LIST` | Comma-separated operator names (default: the Tier-1 set) |
+| `--test FILE` | Repeat per test file; omit to pair tests by convention |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
-| `--only NAME` | Restrict to one fully-qualified subject, e.g. `Calculator#add` |
-| `--framework NAME` | `minitest` (default) or `rspec`; auto-detected as rspec when most `--test` files end in `_spec.rb` |
-| `--since REF` | Only mutate lines changed since git `REF` (e.g. `origin/main`). Untracked files are scored in full unless Git ignores them. The report lists only suppressed mutants on changed lines, too. |
-| `--no-since` | Disable diff scoping; a typed no beats a `.mutineer.yml` `since:` key |
-| `--baseline FILE` | Compare against a prior `--format json` run; exit 1 on new survivors / score drop (score drop is skipped under `--since`, whose score covers a different denominator; see [CI](https://github.com/davidteren/mutineer#ci-gating)) |
-| `--baseline-epsilon FLOAT` | Score-drop tolerance for `--baseline` (default: 0) |
-| `--jobs N` | Parallel worker count (default: one per CPU). Set to `1` automatically by `--test-command`, `--fail-fast`, or `--rails` without `--daemon` |
-| `--boot FILE` | Require an app entry point once before forking; select at least one test file |
-| `--rails` | Boot `config/environment` and reconnect ActiveRecord per fork; without `--daemon`, defaults to `redefine` and runs serially |
-| `--verbose` | Show full error details: the backtrace and causes of a load failure, the real error of a failed fork capture, and the `--test-command` output (alias `--debug`) |
-| `--strategy reload\|redefine` | Mutation application: `reload` whole-file (default) or `redefine` surgical (`7a`/`7b` accepted as deprecated aliases) |
-| `--timeout SECONDS` | Per-mutant time limit for in-process runs, in whole seconds (default: 10). A mutant whose tests run longer is a `timeout`; see [Timeouts and the score](https://github.com/davidteren/mutineer#timeouts-and-the-score). `--daemon` and `--test-command` keep their own limits |
-| `--capture-timeout SECONDS` | Time limit for each in-process coverage-capture subprocess and for the clean run of the unmutated tests, in whole seconds (default: 120). A suite slower than this stops the run as not green. `--daemon` uses it for its coverage capture; `--test-command` ignores it and says so |
-| `--cache-dir DIR` | Directory for the coverage cache (default: `.mutineer`). Give two runs from the same project root different directories so they do not share `coverage.json`. `--test-command` builds no cache, so it ignores it and says so |
-| `--coverage-from FILE` | Reuse the `coverage.json` of an earlier `--rails`/`--boot` run with the same tests over these sources or more, so parallel shards capture coverage once. The run skips the capture. It runs each test that covers one of its sources alone, because a mutant runs only those tests, then all tests once together, and writes its own cache to `--cache-dir`. A test that covers none of its sources does not run alone. A capture that does not fit (changed tests or sources, an owner file added or removed, a source it did not cover, a failed capture, another `PARALLEL_WORKERS`, another Minitest `SEED`, a cache from before this flag or a Minitest capture from an older version) stops the run (exit 2). Under `--strategy redefine`, eager-load in both runs. It has no effect, and says so, without `--rails`/`--boot` or with `--daemon`, `--test-command` or `--dry-run` |
-| `--test-command CMD` | Run the suite as a subprocess in the app's own runtime (for apps on Ruby < 3.4); `CMD` must contain `%{files}`. See [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34) |
-| `--[no-]daemon` | Boot the app once in a persistent daemon and fork per mutant, with per-worker DB isolation so `--jobs N` is safe under Rails (needs `--rails`/`--boot`; not with `--test-command`). See [the daemon backend](https://github.com/davidteren/mutineer#faster-parallel-safe-rails-the---daemon-backend). `--no-daemon` beats a `.mutineer.yml` `daemon:` key. It keeps `--rails` serial, which is the 1.x default, and in 2.0 it opts out of the parallel default |
-| `--format human\|json\|html` | Report format (default: human; `html` is a self-contained file) |
-| `--output FILE` | Write the report to FILE instead of stdout |
-| `--dry-run` | List candidate mutations without executing (honors suppression) |
-| `--[no-]fail-fast` | Stop at the first surviving mutant (`--no-fail-fast` beats a `.mutineer.yml` `fail_fast:` key) |
-| `--[no-]allow-empty` | A run with no mutants is expected. Without it, an empty run warns that Mutineer 2.0 will fail it. A `--since` run whose changes hold no mutants does not warn: it reports that the changes hold nothing to test. A `--since` run with no mutants even before scoping still warns. `--no-allow-empty` beats a `.mutineer.yml` `allow_empty:` key |
-| `--[no-]matrix` | Run every covering test for each mutant and report the blind and redundant tests; the JSON report also lists each mutant's killers. In-process only; exits 2 with `--daemon`, `--test-command`, `--fail-fast` or `--dry-run`. RSpec needs 3.3 or later. `--no-matrix` beats a `.mutineer.yml` `matrix:` key. See [Kill matrix](https://github.com/davidteren/mutineer#kill-matrix) |
-| `--list-operators` | List available operators (default vs optional) and exit |
-| `--version`, `--help` | Print version / usage and exit |
+| `--since REF` | Mutate only lines changed since git `REF`, such as `origin/main` |
+| `--baseline FILE` | Exit 1 for new survivors or score drops against a prior JSON report |
+| `--rails` | Boot `config/environment` once; serial without `--daemon` |
+| `--[no-]daemon` | Enable or disable daemon; isolated worker databases, Minitest only |
+| `--jobs N` | Worker count; default: one per CPU |
+| `--format human\|json\|html` | Report format; default: human |
+| `--dry-run` | List mutants without running tests |
 
 ### Exit codes
 
@@ -324,600 +244,52 @@ no tests. It does not rewrite a baseline. Generate a new baseline with
 
 ### Operators
 
-Run `mutineer --list-operators` to see them. Default (Tier 1): `arithmetic`,
-`comparison`, `boolean_connector`, `boolean_literal`, `statement_removal`.
-Available but off by default (Tier 2, enable via `--operators`): `return_nil`,
-`literal_mutation`, `condition_negation`, `string_literal`, `regex`,
-`collection_method`, `safe_navigation`, `range`, `negation_removal`, `chain_link`,
-`call_to_receiver`, `operand_removal`, `array_literal`, `condition_true`,
-`condition_false`, `operator_assignment`.
-
-## Rails apps
-
-Rails code needs its environment booted before the suite runs. Set it up in
-this order:
-
-1. Add Mutineer to your Gemfile's test group and run `bundle install`:
-
-   ```ruby
-   gem "mutineer", group: :test, require: false
-   ```
-
-2. Write `.mutineer.yml` and print a first run command. It does not replace a
-   file you already wrote; pass `--force` to replace one.
-
-   ```sh
-   RAILS_ENV=test bundle exec mutineer init --rails
-   ```
-
-3. Run one model inside the project's bundle (add `--test FILE` to pick tests yourself):
-
-   ```sh
-   RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
-   ```
-
-`--rails` boots `config/environment` once in the parent process (every mutant
-then forks and inherits it), defaults `--strategy` to `redefine` without `--daemon`
-(surgical: it reloads only the mutated method and each method that directly encloses it, not the whole file; a method nested in a block such as `define_method` can still falsely survive, so use `--strategy reload` for it; `--daemon` keeps `reload`), and reconnects ActiveRecord in each
-fork so the database connection is fork-safe. Use `--boot FILE` to boot a
-different entry point. Boot mode requires at least one `--test` file and is
-coverage-guided — each mutant runs only the test files that exercise its line
-(coverage is captured by forking the booted app, then cached).
-
-Like `reload`, redefine writes a hidden `.mutineer_mutant*.rb` beside the source.
-In a read-only source directory it uses the system temp directory instead. The
-run then warns that methods using `__dir__` or `require_relative` can be falsely
-killed, so the score can be too high. Make the directory writable to avoid
-this (#339).
-
-Some code runs while the app boots or a class loads, for example a class body
-that calls a method to build a constant, a `to_prepare` initializer, or a
-file listed under `require:` in `.mutineer.yml` that calls a source method. That run
-happens before the mutant is applied, and the forked test does not repeat it.
-A mutant on such a line is `ran_at_load`, not `survived` or `no_coverage`. It is
-left out of the score and does not fail `--threshold`; a kill still counts.
-This holds under both strategies: `reload` runs the mutated file's class body
-again, but not an initializer or another file's code, so a survivor on such a
-line is not trusted there either.
-Run those mutants with `--test-command`, which boots a fresh process per mutant,
-to get a verdict.
-
-
-The path from that first report to a CI gate is the
-[Rails rollout guide](https://davidteren.github.io/mutineer/rails.html).
-
-### Rails parallel tests, Spring, Bootsnap, and Redis
-
-Mutineer sets `PARALLEL_WORKERS` to `1` for every run.
-Rails then runs each mutant's tests in one process.
-Your `parallelize(workers:)` call stays in `test_helper.rb`.
-It does not start Rails workers during a mutant run.
-If you already set `PARALLEL_WORKERS` to another value, Mutineer replaces it and prints one line.
-With `--test-command`, a script your command runs can set `PARALLEL_WORKERS` again.
-Its value wins, and the Rails workers start again.
-Remove that line from the script, or write `PARALLEL_WORKERS=${PARALLEL_WORKERS:-4}` so it keeps the 1 Mutineer passes.
-
-Mutineer does not run your `parallelize_setup` hooks.
-Rails registers its own database hook in that same list.
-Running the list would point the tests at `<base>-<n>` instead of Mutineer's database.
-
-`--test-command` also sets `DISABLE_SPRING=1`.
-Spring does not start for that command.
-The `--daemon` path loads `config/environment` itself, so Spring does not start there either.
-A wrapper that sets `DISABLE_SPRING` again wins, same as `PARALLEL_WORKERS`.
-
-Bootsnap checks its compile cache by file path, size, and modification time in whole seconds.
-When the size and the time match, it uses the cached code without reading the file content.
-The in-process and `--daemon` paths load each mutant from a new file, so the cache cannot mix them up.
-`--test-command` rewrites the source file in place.
-Two mutants of the same size, written in the same second, could then load the first one's cached code.
-So `--test-command` also sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1`, and Bootsnap compiles each file again on every boot.
-This makes each mutant boot slower.
-The variable works through `require "bootsnap/setup"`, which Rails puts in `config/boot.rb`.
-It needs Bootsnap 1.7.0 or later. Older versions ignore it, so upgrade Bootsnap first.
-If your app calls `Bootsnap.setup` itself, pass `compile_cache_iseq: ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"].nil?` there.
-This turns the cache off only when the variable is set, so other boots keep it.
-Bootsnap checks only that the variable is set, so `DISABLE_BOOTSNAP_COMPILE_CACHE=0` still turns the cache off.
-To keep the cache, run the suite through a wrapper script that runs `unset DISABLE_BOOTSNAP_COMPILE_CACHE` first.
-Boots are then faster, but a mutant can again load the previous mutant's cached code.
-Bootsnap keeps its cache in `tmp/cache/bootsnap`, or under `$BOOTSNAP_CACHE_DIR` when that is set.
-If a run uses code that no longer matches your files, delete that folder and run again.
-
-`redis-client` (which `redis` 5 uses) opens a new connection after a fork on its own.
-You do not set anything in Mutineer for this.
-`redis` 4.x raises `Redis::InheritedError` instead.
-Open that connection after boot, or reconnect it in an after-fork hook.
-
-### Faster, parallel-safe Rails (the `--daemon` backend)
-
-`--rails` boots your app once but runs mutants **serially** — parallel `--jobs`
-under Rails is unsafe, because every worker shares one test database and clobbers
-the others' fixtures. `--daemon` fixes both: it boots the app once in a persistent
-helper and forks per mutant, and gives **each parallel worker its own database**,
-so `--jobs N` is safe and its verdicts are proven identical to a serial run.
-
-```sh
-RAILS_ENV=test bundle exec mutineer run \
-  app/models/order.rb --test test/models/order_test.rb \
-  --rails --daemon --jobs 4
-```
-
-- **One boot, forked per mutant** — restores the shared-boot speed.
-- **Coverage-guided** — each mutant runs only its covering tests (like `--rails`);
-  a mutant on an uncovered line is `no_coverage`, so the score stays comparable to
-  the in-process `--rails` score.
-- **Safe `--jobs N`** — each worker routes to its own copy of the test database, so
-  parallel verdicts equal serial (no fixture cross-talk). On first use, a
-  worker's database is a copy of the test database after the app boots, so rows
-  written by initializers or `require:` files are there, as in-process. For
-  SQLite, when the copy's schema differs from the app's Ruby schema file (another schema
-  version or `schema_sha1` checksum, or no stored checksum, as in an empty or
-  out-of-date test database, or one set up with a plain `load "db/schema.rb"`),
-  the worker loads that file over it if the file exists. Loading drops copied
-  rows from tables the file defines. Rails selects the test database's schema
-  file: the `SCHEMA` environment variable when it is set, else `schema_dump:` in
-  `config/database.yml`, else `db/schema.rb`.
-  A missing file or `structure.sql` leaves the SQLite copy unchanged. So does
-  `schema_dump: false`, unless `SCHEMA` is set.
-- **One backend at a time** — `--daemon` can't be combined with `--test-command`
-  (choose one), and it needs an app to boot (`--rails` or `--boot`).
-
-Status: **SQLite**, **PostgreSQL**, and **MySQL 8** (Minitest). Each Postgres worker uses a
-database named `<base>-mutineer-<N>` (shortened when that would pass 63 bytes).
-Mutineer copies the test database into those names before the workers start,
-and leaves them in place when the run ends. Drop one with
-`DROP DATABASE "myapp_test-mutineer-0";` (use your test database name and slot).
-Each MySQL 8 worker uses a database named `<base>-mutineer-<N>` (shortened when that would pass 64 bytes).
-Mutineer creates that database, loads `schema.rb` or `structure.sql`, and copies rows before the workers start.
-It does not copy the database again after an error or a timeout.
-The worker databases stay in place when the run ends. The next run drops and rebuilds them.
-Triggers in the schema do not fire on the copied rows: in each worker database, Mutineer drops them for the copy and creates them again.
-The database user needs CREATE, DROP, TRIGGER, and the table and row privileges a schema load and a row copy use (such as ALTER, INDEX, REFERENCES, and INSERT) on the worker databases, plus SELECT on the test database.
-A trigger whose DEFINER is another account also needs SET_USER_ID.
-An app on `structure.sql` also needs the `mysql` client on `PATH`.
-Drop one with ``DROP DATABASE `myapp_test-mutineer-0`;`` (MySQL quotes the name with backticks).
-A second run on the same test database stops with `another Mutineer run is using <base>` until the first run ends.
-MySQL runs at most 256 workers.
-`mysql2` and `trilogy` are supported.
-MySQL older than 8.0 (such as 5.7) is not supported.
-On MySQL older than 8.0, `--daemon` stops the run with `could not provision <base>: MySQL <version> is not supported` before it copies any database.
-To run on MySQL older than 8.0, pass `--no-daemon` (or set `daemon: false`), and the run is serial.
-MariaDB and MySQL 9 or later are not tested.
-On them, `--daemon` prints a warning and runs.
-If Mutineer cannot read the server version, it prints a warning and runs.
-A `:memory:` database is not supported on `--daemon`.
-
-### Apps on Ruby < 3.4
-
-Mutineer's own process needs Ruby ≥ 3.4 (it parses with stdlib Prism), and the
-`--rails` path above boots your app *inside Mutineer's process* — so it can't run
-against an app pinned to an older Ruby (`ruby "3.1.6"` in the Gemfile), where the
-bundle rejects 3.4.
-
-`--test-command` decouples the two: Mutineer stays on ≥ 3.4, but your suite runs
-as a **subprocess in your app's own runtime** (whatever Ruby its bundle resolves
-to). Run Mutineer with a 3.4+ Ruby and hand it the command that runs your tests:
-
-```sh
-RAILS_ENV=test mutineer run app/models/order.rb \
-  --test test/models/order_test.rb \
-  --test-command "bundle exec rails test %{files}"
-```
-
-- **`%{files}`** is required; it expands to the `--test` paths as separate
-  arguments (a path with a space stays one argument — there is no shell).
-- **Environment:** vars like `RAILS_ENV` / `DATABASE_URL` set on the Mutineer
-  command are inherited. Mutineer **unsets** `BUNDLE_*`, `GEM_*`, `RUBY*`,
-  `RBENV_VERSION`, `ASDF_RUBY_VERSION`, and `RBENV_DIR` in the child (so
-  Mutineer's own Ruby cannot pin the suite), and drops version-manager
-  **version bins** (e.g. `~/.rbenv/versions/3.4.x/bin`) from `PATH`, then
-  prepends rbenv/asdf shims when a pin was scrubbed. Do not rely on
-  `RBENV_VERSION=…` on the Mutineer command for the suite; use `.ruby-version`
-  or a wrapper. Don't put `KEY=val` prefixes *inside* `--test-command` (no shell;
-  that would be treated as the program name). Mutineer also sets
-  `PARALLEL_WORKERS=1`, `DISABLE_SPRING=1` and `DISABLE_BOOTSNAP_COMPILE_CACHE=1`
-  in the child and replaces a value you set (see [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis)).
-
-#### Under a version manager (rbenv / asdf / chruby)
-
-Automatic scrub targets **rbenv** and **asdf** (shims + version bins). **chruby**
-has no shims: Mutineer still strips `…/rubies/…/bin` so it cannot leave Mutineer's
-Ruby pinned, but you need a wrapper that sources chruby and selects the app
-version. If the smoke check still reports a **Ruby version mismatch**, wrap the
-suite. Example rbenv wrapper (`bin/mutineer-test` in the app):
-
-```sh
-#!/usr/bin/env bash
-set -euo pipefail
-cd "$(dirname "$0")/.."
-unset GEM_HOME GEM_PATH RUBYLIB RUBYOPT BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION
-export RBENV_VERSION="$(cat .ruby-version 2>/dev/null || true)"
-export RAILS_ENV="${RAILS_ENV:-test}"
-export PATH="${HOME}/.rbenv/shims:${PATH}"
-exec bundle exec rails test "$@"
-```
-
-```sh
-# Mutineer on 3.4+; suite on the app's Ruby via the wrapper
-mutineer run app/models/order.rb \
-  --test test/models/order_test.rb \
-  --test-command "bin/mutineer-test %{files}"
-```
-
-Mutineer also surfaces a targeted smoke-check message when Bundler prints
-`RubyVersionMismatch`, instead of only blaming DB/migrations.
-
-Tradeoffs — this path is correct but not free:
-
-- **Slower:** your app re-boots for every mutant (no shared boot yet).
-- **No coverage narrowing:** every mutant runs the full `--test` set.
-  The run is serial.
-  Only exit 1 counts as a kill.
-  Other exit codes and signals score `error`.
-  An RSpec `--failure-exit-code` other than 1 turns every kill into `error`.
-  When the clean run prints a Minitest or RSpec summary line
-  (`3 runs, 3 assertions, 0 failures, 0 errors` or `3 examples, 0 failures`),
-  an exit 1 also needs a failing test in that line, or a Minitest run that
-  stopped during a test. Otherwise it scores `error`, such as a crash at load.
-  When a SimpleCov `minimum_coverage` gate fails the run, the summary line
-  decides: a failing test is a kill, and every test passing is `survived`.
-  With no recognized summary line, or with SimpleCov's
-  `print_error_status = false`, the gate's exit scores `error`.
-  When the clean run prints no summary line, Mutineer warns once and counts
-  every exit 1 as a kill.
-  Uncovered mutants count as survivors.
-  Do not compare a `--test-command` score with an in-process score.
-  Mutineer prints this caveat on every run and aborts up
-  front (a "smoke check") if your unmutated suite isn't green.
-- **Reload strategy only** (`--strategy redefine` is rejected on this path) and
-  **serial** (`--jobs` is forced to 1). For apps on Ruby ≥ 3.4, `--daemon` gives
-  safe parallelism instead (see [the daemon backend](https://github.com/davidteren/mutineer#faster-parallel-safe-rails-the---daemon-backend)).
-
-## Timeouts and the score
-
-The mutation score is `killed / (killed + survived)`. A mutant whose tests run
-past `--timeout` is a `timeout`. It is neither killed nor survived, so it is
-left out of the score, like `no_coverage`, `uncapturable`, `unplaceable`, `ran_at_load`, `errored`, skipped
-and ignored mutants. A timeout is not counted as a kill, because a hang the
-mutant caused and a suite that is just slow look the same. The human report
-shows the count in its `Timeout:` row, and the JSON report in `summary.timeout`.
-
-Under `--threshold`, a timeout is a mutant with no verdict. The run exits 1 when
-more than one mutant produced no verdict and they exceed 10% of those attempted,
-or when nothing could be scored and something broke. If a slow suite times out
-mutants that its tests would catch, raise `--timeout`. A limit set below what
-the suite needs does not raise the score: it turns those mutants into timeouts,
-and once they pass 10% of the attempted mutants the run fails.
-
-## Suppressing equivalent mutants
-
-Some mutants are equivalent (behaviour-identical) and survive forever — keeping a
-file off 100%. Suppress them so the score and `--threshold` gate stay meaningful:
-
-- **Inline:** `some_line # mutineer:disable-line` (or scope it: `# mutineer:disable-line comparison`). Put a reason after `--`: `# mutineer:disable-line comparison -- the test checks only 20`. The reason is stored on the ignored mutant and shown in the JSON report and the HTML report. A marker with no reason stores none.
-- **Config:** a `.mutineer.yml` `ignore:` list. A bare mutant id still works. A mapping is `id` plus an optional `reason`. Mutineer 1.7 is the first version that reads a mapping. An older version matches no mutant to a mapping and does not warn, so the mutant it names is not ignored. Add a mapping only after every gate that reads the file runs 1.7 or later. In the Action, the `version:` input sets the version, or your `Gemfile.lock` does when you set `use-bundler: true`. In your own CI job, your `Gemfile.lock` sets it. The reason shows in the same reports as an inline reason. Each survivor's `id` is printed in the JSON report.
-
-`mutineer triage REPORT.json --reason TEXT --all` prints one mapping entry per survivor. `--id ID` prints one entry. Repeat `--id` for several. The command does not edit files. Paste the lines under `ignore:`. They are mappings, so every gate that reads the file must run 1.7 or later (see **Config** above).
-
-Built-in skips are listed on the [equivalent skips](https://davidteren.github.io/mutineer/equivalent-skips.html) page. There is no switch to turn them off.
-
-Suppressed mutants are excluded from the score (so 100% becomes reachable).
-
-## Mutant ids
-
-A mutant id is 12 hex characters. It hashes the file path (relative to the
-project root), the method's qualified name, the operator, the mutated code, and
-the mutant's position among identical mutants in that method. When one file has
-two methods with the same qualified name (for example two top-level `def index`
-in two DSL blocks), the second and later ones also hash their position among
-those methods, so their ids differ. The first one's id does not change. An edit
-outside the method does not change the id. Moving or renaming the file,
-renaming the method or its class, or adding an identical mutant earlier in the
-method does. Adding a method with the same name earlier in the same file also
-does.
-
-- The project root is the directory mutineer runs from (in the Action, the
-  `working-directory`). Run from the same root to get the same ids.
-- A source outside the project root uses its absolute path, so its ids differ
-  between machines.
-
-**Migrating from ids without the file path.** Before 1.3, ids did not include
-the file path, so two files could share an id (#126). Old-format ids keep
-working until 2.0, with a warning:
-
-- **`ignore:`** An old entry still suppresses its mutants. The run prints the
-  new ids for each old entry, each with its file and method. When it names one
-  mutant, replace the entry with that id. When it names several (in different
-  files, or same-named methods in one file), the old entry over-matched: it also
-  hid mutants you did not mean to ignore. The warning says so. Keep only the ids for the mutant you meant to
-  ignore, not all of them. The list covers only the sources and operators in
-  that run, so run over every source with every operator set you use (for
-  example your Tier-2 `--operators`) for the full list. Or run
-  `mutineer migrate` on those sources. It writes every new id. Delete any id
-  you did not mean to ignore. See [Migrate old ignore ids](https://github.com/davidteren/mutineer#migrate-old-ignore-ids).
-- **`--baseline`** An old baseline still matches: a survivor matches a stored
-  one with the same old id in the same file. A stored file that is an absolute
-  path outside the project root (a baseline written on another machine)
-  matches on the old id alone. The run tells you to
-  generate a new baseline with `--format json`. `migrate` does not rewrite a
-  baseline. Generate the new file only after every gate
-  that reads it runs 1.3 or later. In the Action, the `version:` input sets
-  the version, or your `Gemfile.lock` does when you set `use-bundler: true`.
-  In your own CI job, your `Gemfile.lock` sets it. An older version treats every new-format survivor as new.
-
-The JSON report's `summary.id_format` is `2` for the new format.
-`summary.legacy_id_matches.ignore` counts the old-format ignore entries a run
-matched, and `summary.legacy_id_matches.baseline` counts the survivors matched
-only through an old baseline id.
-
-Ids are relative to the directory you run mutineer from. mutineer finds
-`.mutineer.yml` by walking up. When the file it loads is in a parent directory
-(other than your home directory), it warns that the ignore ids will not match
-and tells you which directory to run from.
-
-## Kill matrix
-
-`--matrix` reports which tests kill each mutant, and from that, which tests
-add nothing to the suite.
-
-```sh
-mutineer run lib/calculator.rb --test test/calculator_test.rb --matrix
-```
-
-For each mutant, Mutineer runs every test in its covering files instead of
-stopping at the first failure, and records which tests failed. Coverage is
-recorded per test file, so that set also holds tests that never reach the
-mutated line; they pass and count as having run. A mutant's row is complete
-when its whole covering set ran and the suite returned normally (under
-Minitest, an `Interrupt` that cut the run short does not count as returning
-normally). A database connection or lock failure in a Minitest test also leaves
-the row incomplete. It does not count as a kill, even when an earlier assertion
-already killed the mutant. The report
-names two kinds of test:
-
-- **Blind:** the test ran in at least one complete row and killed no mutant
-  in any row. It would still pass with this run's mutations of the code, so
-  it guards none of them. It can still check behavior outside this run's
-  mutants (code in other files, or edits no operator makes), so look at what
-  it asserts before you delete it, or give it an assertion that can fail.
-- **Redundant:** every mutant the test kills, another test kills too. That
-  makes it a candidate for deletion, one test at a time: two redundant tests
-  can be the only killers of one mutant, so re-run after each deletion.
-
-The answers cover this run's mutants only. A test of code outside the sources
-you passed kills nothing here, so mutate the code a test exercises before you
-call the test blind.
-
-The matrix changes no verdict, score or exit code: each mutant gets the
-verdict a run without `--matrix` gives. That run skips every later test,
-test class and example group after the first failure, so when a later one
-exits the process, crashes or runs into the time limit, the first failure still
-decides: `killed` for an ordinary test failure, or `error` for a Minitest database
-connection or lock failure. The run without `--matrix` still runs the code around the failing
-test (the rest of its Minitest class `run` wrapper, the `after(:all)` hooks of
-its RSpec groups) and the suite's own cleanup (RSpec's `after(:suite)`), so an
-end there keeps the exit status. A failure in a Minitest `parallelize_me!`
-class also keeps it: those run after every serial class and cannot be stopped
-once queued, while a failure in a serial class still stops the run.
-
-Under RSpec, `--matrix` needs RSpec 3.3 or later, whose example ids tell
-apart examples on one line. With an older RSpec every row is incomplete.
-
-The human report lists up to 20 blind and 20 redundant tests, and the HTML
-report lists them all. `--format json` adds a `matrix` block with every test
-and each mutant's killers (see the
-[JSON schema](https://davidteren.github.io/mutineer/json-schema.html#matrix)).
-A test is its file and its id. The name is `CalculatorTest#test_add` under
-Minitest, or the example's full description under RSpec, where the example id
-(`./spec/calc_spec.rb[1:2]`) tells apart examples that share a description
-and keeps an example whose generated description changes with the mutant as
-one test.
-
-Each mutant runs its whole covering set, so every mutant costs what a survivor
-costs. In 1.4, stopping at the first failure cut a full run of rack's
-`lib/rack/utils.rb` from 86 to 89 seconds down to 35 to 41, so expect a matrix
-run to take 2.1 to 2.5 times as long as a normal one. A mutant that reaches the
-per-mutant time limit (`--timeout`, 10 seconds by default) after a test already failed keeps
-that first failure's verdict, with its row marked incomplete. The report names each incomplete row and warns
-that a blind test may have killed one of those mutants, so do not delete a
-blind test until its rows are complete. Raise `--timeout` (or `timeout:` in
-`.mutineer.yml`) to get complete rows.
-
-`--matrix` runs on the in-process backend only. It exits 2 with `--daemon`,
-`--test-command`, `--fail-fast` or `--dry-run`, and the message says whether
-each setting came from the command line or `.mutineer.yml`. To run one of
-those with `matrix: true` in the file, pass `--no-matrix`; to run `--matrix`
-with `fail_fast: true` in the file, pass `--no-fail-fast`.
-
-## CI gating
-
-Store a JSON run as a baseline, then fail the build only when a PR makes things
-worse. Keep `only:` unset for these full-baseline checks. Create and refresh the
-saved report with the [full-run baseline recipe](https://davidteren.github.io/mutineer/agentic-coding.html#ci-gate),
-using the same sources, test files and operators as the gate:
-
-```sh
-mutineer run app/ --no-since --no-fail-fast --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
-```
-
-`--baseline` reports which survivors are new (by [mutant id](https://github.com/davidteren/mutineer#mutant-ids)) and any score drop. It
-combines with `--threshold` (the worse of the two sets the exit code). Pass a
-directory (or several sources) to audit a whole layer in one boot — tests are
-auto-paired by convention and the report breaks down per source. A source
-`app/foo/bar.rb` pairs with `test/foo/bar_test.rb` and with unclaimed
-`test/foo/bar_*_test.rb` files in that directory, such as `bar_upsert_test.rb`.
-It does not take `user_session_test.rb` when `user_session.rb` exists in the same directory.
-It does not take `bar_upsert_guards_test.rb` when `bar_upsert.rb` exists.
-A spec that already pairs is left as that one file.
-
-### GitHub Action
-
-This repo ships a composite action (`action.yml`) that wraps the CLI for CI:
-
-```yaml
-- uses: actions/checkout@v4
-- uses: ruby/setup-ruby@v1
-  with: { ruby-version: "3.4", bundler-cache: true }
-- uses: davidteren/mutineer@v1
-  with:
-    sources: lib/
-    baseline: .mutineer/baseline.json
-    extra-args: "--no-fail-fast"
-    threshold: "90"
-```
-
-For a Rails app, boot Rails and use the app's bundle (`mutineer` must be in the
-Gemfile). Without `rails: true` and `use-bundler: true` the Action runs a
-standalone gem that never boots your app:
-
-```yaml
-- uses: actions/checkout@v4
-  with: { fetch-depth: 0 }
-- uses: ruby/setup-ruby@v1
-  with: { bundler-cache: true }
-- uses: davidteren/mutineer@v1
-  env:
-    RAILS_ENV: test
-  with:
-    sources: app/models
-    rails: "true"
-    use-bundler: "true"
-    baseline: .mutineer/baseline.json
-    extra-args: "--no-fail-fast"
-```
-
-**Default change:** on `pull_request` events (not `pull_request_target`) the
-action scopes the run to the PR's changed lines, diffing against the PR's exact
-base commit (fetched by the action itself when the checkout is shallow; falls
-back to the base branch tip). Pass `since: none` for a full scan, or an
-explicit `since:` ref (which needs `fetch-depth: 0` on checkout).
-
-With the default JSON format the action also:
-
-- writes a score summary to the job's step summary;
-- annotates surviving mutants on the PR diff, up to 50 (`error` level when the
-  gate failed, `warning` when it passed);
-- exposes the report path via the `report` output for later steps (with
-  `format: human`/`html` this needs the `output` input).
-
-The CLI prints a progress line to the log at every 10% of the run, whatever
-the format.
+List with `mutineer --list-operators`. Enable specific operators with `--operators`.
+
+| Group | Operators |
+|---|---|
+| Tier 1 (default) | `arithmetic`, `comparison`, `boolean_connector`, `boolean_literal`, `statement_removal` |
+| Tier 2 (opt-in) | `return_nil`, `literal_mutation`, `condition_negation`, `string_literal`, `regex`, `collection_method`, `safe_navigation`, `range`, `negation_removal`, `chain_link`, `call_to_receiver`, `operand_removal`, `array_literal`, `condition_true`, `condition_false`, `operator_assignment` |
+
+## Documentation
+
+| Guide | What it covers |
+|-------|----------------|
+| [Quick start](https://github.com/davidteren/mutineer/blob/main/docs/quick-start.md) | Install, run, fix a survivor |
+| [First run to steady state](https://github.com/davidteren/mutineer/blob/main/docs/getting-started.md) | One file through changed-code CI |
+| [Reading results](https://github.com/davidteren/mutineer/blob/main/docs/results.md) | Reports, survivors, suppression, mutant ids, kill matrix |
+| [Rails setup](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md) | Rails, daemon, databases, Spring, Bootsnap, Ruby < 3.4 |
+| [Rails rollout](https://davidteren.github.io/mutineer/rails.html) | Four stages from model to CI gate |
+| [CI: changed code and baselines](https://github.com/davidteren/mutineer/blob/main/docs/ci.md) | `--since`, `--baseline`, Action inputs, timeouts |
+| [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md) | Flags, defaults, `.mutineer.yml` |
+| [Comparison](https://github.com/davidteren/mutineer/blob/main/docs/comparison.md) | Mutineer, Mutant, other Ruby tools, fit-check prompt |
+| [AI agents and CI](https://davidteren.github.io/mutineer/agentic-coding.html) | Agent loop and CI recipes |
+| [JSON schema](https://davidteren.github.io/mutineer/json-schema.html) | Versioned report contract |
+| [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md) | Release guarantees |
 
 ## For AI agents & pipelines
 
-Mutineer is built for programmatic use — versioned JSON, [mutant ids](https://github.com/davidteren/mutineer#mutant-ids) that survive unrelated edits,
-structured exit codes, and diff-scoped runs. See:
+Use versioned JSON, structured exit codes, and runs scoped to changed lines.
+[mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids) survive unrelated edits.
 
-- **AI agents & CI recipes** — the agent inner-loop and CI-gate recipes (and how
-  to avoid infinite loops on equivalent mutants):
-  [rendered](https://davidteren.github.io/mutineer/agentic-coding.html) ·
-  [source](https://davidteren.github.io/mutineer/agentic-coding.md)
-- **JSON schema reference** — the `--format json` schema and its versioning
-  contract:
-  [rendered](https://davidteren.github.io/mutineer/json-schema.html) ·
-  [source](https://davidteren.github.io/mutineer/json-schema.md)
-- **Ruby API (YARD)** — class reference for the shipped gem:
-  [https://davidteren.github.io/mutineer/api/](https://davidteren.github.io/mutineer/api/)
-- **Agent skill** ([`skills/mutineer/SKILL.md`](https://github.com/davidteren/mutineer/blob/main/skills/mutineer/SKILL.md)): a short
-  card for coding agents with install, the agent loop, and exit codes. Install it
-  with `gh skill install davidteren/mutineer mutineer` or
-  `npx skills add davidteren/mutineer --skill mutineer`. **Unreleased (on
-  `main`, not in 1.7.0):** the next release also ships the skill inside the gem and opt in as a
-  [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive)
-  companion, so in a Rails app that bundles mutineer, `bin/rails hyperdrive:init`
-  installs it to `.claude/skills/mutineer/SKILL.md`.
+| Resource | Links and use |
+|---|---|
+| AI agents & CI recipes | [rendered](https://davidteren.github.io/mutineer/agentic-coding.html) · [source](https://davidteren.github.io/mutineer/agentic-coding.md): agent loops, CI gates, avoiding equivalent-mutant loops |
+| JSON schema reference | [rendered](https://davidteren.github.io/mutineer/json-schema.html) · [source](https://davidteren.github.io/mutineer/json-schema.md): `--format json` schema and versioning |
+| Ruby API (YARD) | [https://davidteren.github.io/mutineer/api/](https://davidteren.github.io/mutineer/api/): shipped classes |
+| Agent skill | [`skills/mutineer/SKILL.md`](https://github.com/davidteren/mutineer/blob/main/skills/mutineer/SKILL.md): installation, agent loop, exit codes |
 
-## Configuration
+Install the skill with either command:
 
-Mutineer reads an optional `.mutineer.yml` from the project root (nearest one,
-walking up). CLI flags override config; config overrides defaults.
+- `gh skill install davidteren/mutineer mutineer`
+- `npx skills add davidteren/mutineer --skill mutineer`
 
-Sources are positional CLI arguments and test files come from `--test`. The
-config file accepts these keys:
-
-| Key | Value and purpose |
-|-----|-------------------|
-| `operators` | An operator name or list of names; defaults to the Tier-1 set |
-| `threshold` | A number from 0 to 100; 0 turns the score gate off |
-| `jobs` | A positive integer; the default is the processor count. `test_command`, `fail_fast`, or `--rails` without `--daemon` forces 1. |
-| `only` | A fully-qualified subject name, such as `Calculator#add` |
-| `require` | A path or list of extra files to load before mutating |
-| `boot` | The app entry point to require once before forking |
-| `rails` | `true` or `false`; enables the Rails boot defaults |
-| `since` | A nonblank git ref, or `false` to disable diff scoping |
-| `framework` | `minitest` or `rspec`; an explicit value is kept during test pairing |
-| `verbose` | `true` or `false`; shows capture diagnostics |
-| `ignore` | A mutant id or list of ids to suppress |
-| `baseline` | The path to a prior JSON report |
-| `fail_fast` | `true` or `false`; stops scheduling after the first survivor |
-| `test_command` | The external-runtime suite command, including `%{files}`; see [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34) |
-| `daemon` | `true` or `false`; uses the persistent app daemon with worker DB isolation |
-| `timeout` | A positive integer; the per-mutant time limit in seconds (default 10) |
-| `capture_timeout` | A positive integer; the coverage-capture time limit in seconds (default 120) |
-| `cache_dir` | The coverage cache directory (default `.mutineer`) |
-| `matrix` | `true` or `false`; runs every covering test for each mutant and adds the kill matrix to the report |
-| `allow_empty` | `true` or `false`; a run with no mutants is expected, so it does not warn |
-
-Invalid values for known scalar keys, and a blank `operators` list, exit 2
-with a message naming the file and key. An unknown operator name warns and
-is skipped. If none of the names are known, the run exits 2. An empty
-`require` or `ignore` list is valid. Boolean keys take `true` or `false` (quoted forms also work), not `"yes"`.
-`jobs` must be positive; a string value contains digits only. String values for
-`threshold` and the CLI-only `--baseline-epsilon` use plain decimals such as `90`
-or `0.5`, not `+2`, `1e2`, or `1_0`. String options such as `only` and `baseline`
-cannot be null or boolean. A blank `since` is invalid; use `since: false` to turn
-scoping off. Unknown keys warn and are ignored. Unknown operator names warn and are skipped, and the run exits 2 when none remain. Both warnings suggest the closest valid name, and both become errors in Mutineer 2.0. `--operators` replaces a blank or unknown file list.
-
-`format`, `strategy`, `output`, `baseline_epsilon`, `dry_run`, and `coverage_from` are CLI-only.
-For JSON output, use `--format json`, not a `format:` config key. To select RSpec
-in the file, add `framework: rspec`.
-
-```yaml
-# .mutineer.yml
-operators: [arithmetic, comparison, boolean_connector, boolean_literal, statement_removal]
-threshold: 90
-jobs: 4
-# A Rails app: use `rails: true` (boots config/environment and sets the Rails defaults)
-# instead of `require: config/environment`.
-rails: true
-```
-
-Coverage results are cached in `.mutineer/coverage.json` (digest-keyed; rebuilt
-automatically when sources change). Add `.mutineer/` to your `.gitignore`, and
-the directory you set with `--cache-dir` if it is inside the project. Keep
-`.mutineer/` ignored even then: `--test-command` writes lock files to
-`.mutineer/` beside each source file.
-
-## Mutineer and Mutant
-
-[Mutant](https://github.com/mbj/mutant), by Markus Schirp, is the established
-mutation-testing tool for Ruby. It has been in development since 2012 and is
-the subject of published research. Mutineer is a separate tool, and it shares
-no code with Mutant or any other mutation-testing tool. Mutineer was written
-from scratch and is MIT licensed.
-
-| Aspect | Mutineer | Mutant |
-|---|---|---|
-| License | MIT, for every use | Free for open source (`--usage opensource`); commercial use needs a paid subscription |
-| Runtime dependencies | None (Prism + stdlib) | `parser`, `unparser`, `regexp_parser`, `sorbet-runtime` and others |
-| Ruby | 3.4 and later to run Mutineer; an app on an older Ruby works through `--test-command` (see [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer#apps-on-ruby--34)) | 3.3 and later |
-| Test frameworks | Minitest and RSpec, in one gem | RSpec, Minitest and Test::Unit, one integration gem each |
-| What you mutate | Files (`mutineer run lib/foo.rb --test test/foo_test.rb`), narrowed to one method with `--only 'Foo#bar'` | Subjects named by expression (`mutant run 'Foo#bar'`, `'Foo*'`) |
-| Which tests run | The test files whose coverage reaches the mutated line | The tests that declare the subject (an RSpec description or a Minitest `cover`), or the tests that ran it in a per-test coverage recording |
-| Operators | 21 (5 by default, 16 opt-in) | A larger set; the default `light` set applies almost all of it (`full` adds `#==` to `#eql?`) |
-| CI gating | `--threshold`, `--baseline` deltas, `--since`, and a GitHub Action | Incremental mode (`--since`) and a recorded session history |
-| Machine-readable output | Versioned JSON report schema | Session JSON schema |
-
-Choose Mutineer when you want an MIT-licensed tool with no extra gems in your
-bundle, file-based runs, and a JSON contract built for CI gates and AI agents.
-Choose Mutant when you need its deeper operator set, Test::Unit support, or
-subject expressions that select whole namespaces. The two tools do not
-conflict, so you can run both on one project.
-
-This comparison describes Mutant 0.17 (checked on 2026-10-06). Check
-[Mutant's README](https://github.com/mbj/mutant#readme) for its current
-license terms and features.
+**Unreleased: on `main`, not in 1.7.0.** The next release bundles the skill and offers
+[ Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive) companion installation.
+For Rails apps bundling Mutineer, `bin/rails hyperdrive:init` installs it to `.claude/skills/mutineer/SKILL.md`.
 
 ## License
 
-MIT — see [LICENSE](https://github.com/davidteren/mutineer/blob/main/LICENSE).
+MIT. See [LICENSE](https://github.com/davidteren/mutineer/blob/main/LICENSE).
+
+Editing only: commands and release claims were not checked; their current accuracy remains unverified.
