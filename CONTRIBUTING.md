@@ -14,8 +14,9 @@ Ruby 3.4 or later is required.
 
 ## Releases
 
-A release is a manual action by David Teren (GitHub `davidteren`).
+A release is a manual action by a human collaborator with maintain or admin
+permission.
 Contributors and agents must never push a `v*` tag, merge a release pull
 request, run a release workflow, or `gem push`.
-Releases need his approval, including the `rubygems` GitHub environment.
-The steps and the settings he applies by hand are in [AGENTS.md](AGENTS.md).
+Releases also need approval of the `rubygems` GitHub environment.
+The steps and the settings a maintainer applies by hand are in [AGENTS.md](AGENTS.md).

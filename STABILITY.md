@@ -123,5 +123,5 @@ Patch releases ship when a fix needs them.
 At most one minor release ships per month.
 The owner still has to confirm that number.
 There is no weekly release pull request.
-David opens one by hand when he wants a release.
-Pushing a tag leaves the gem unpublished until he approves the publish.
+A maintainer opens one by hand when they want a release.
+Pushing a tag leaves the gem unpublished until a maintainer approves the publish.

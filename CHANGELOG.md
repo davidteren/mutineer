@@ -71,9 +71,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **A release waits for David.** The Monday release-PR schedule is gone, and
-  pushing a `vX.Y.Z` tag leaves the gem unpublished. He prepares a release PR
-  by hand, tags by hand, then runs the Release workflow on that tag and
+- **A release waits for a maintainer.** The Monday release-PR schedule is
+  gone, and pushing a `vX.Y.Z` tag leaves the gem unpublished. A human
+  collaborator with maintain or admin prepares a release PR by hand, tags by
+  hand, then runs the Release workflow on that tag. A required reviewer
   approves the `rubygems` GitHub environment before the gem is pushed.
 
 ### Fixed

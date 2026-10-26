@@ -1,7 +1,7 @@
 name: Release PR
 
 # Prepares a release pull request and nothing else. There is no schedule.
-# davidteren starts it by hand, from main:
+# A human collaborator with maintain or admin starts it by hand, from main:
 #
 #   gh workflow run release-pr.yml --ref main
 #
@@ -13,8 +13,8 @@ name: Release PR
 # under a lease, never force-pushed). The run does not tag, publish, or merge.
 #
 # Merging the PR leaves the gem unpublished. Pushing the vX.Y.Z tag leaves the
-# gem unpublished. David then runs release.yml on that tag and approves the
-# rubygems environment. That approval is what publishes.
+# gem unpublished. A maintainer then runs release.yml on that tag and approves
+# the rubygems environment. That approval is what publishes.
 #
 # Note: a push or PR made with the default GITHUB_TOKEN does NOT trigger other
 # workflows (GitHub's recursion guard), so ci.yml would never run on the release PR
@@ -25,7 +25,7 @@ name: Release PR
 # workflow scope) the push itself triggers CI and the dispatch is skipped. The
 # dispatch runs CI only. It does not tag or publish.
 on:
-  workflow_dispatch: # davidteren prepares a release PR: gh workflow run release-pr.yml --ref main
+  workflow_dispatch: # a maintainer prepares a release PR: gh workflow run release-pr.yml --ref main
 
 permissions:
   contents: write
@@ -42,20 +42,54 @@ jobs:
     name: open a release PR if one is due
     runs-on: ubuntu-latest
     steps:
-      # GitHub attributes a schedule event to the last person who edited the
-      # file (davidteren, on the Monday runs). The actor check alone would let
-      # that cron through, so the event must be workflow_dispatch as well.
+      # GitHub attributes a schedule event to the last editor of this file, who
+      # may hold maintain or admin. The permission check alone would let that
+      # cron through, so the event must be workflow_dispatch as well.
       # This workflow has no schedule; the check refuses one if it is added back.
-      - name: "Guard: only davidteren may prepare a release, and only by hand"
+      - name: Require a human with maintain or admin
         env:
-          ACTOR: ${{ github.actor }}
-          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ "$ACTOR" != "davidteren" ] || [ "$EVENT" != "workflow_dispatch" ]; then
-            echo "::error::release-pr.yml runs only when davidteren starts it with workflow_dispatch (actor ${ACTOR}, event ${EVENT}). It does not tag or publish."
+          # MUTINEER_RELEASE_ACTOR_START
+          # Schedule events are rejected before the API call. GitHub attributes a
+          # cron to the last editor of this file, and that person may hold
+          # maintain or admin, so a permission check alone would let the cron through.
+          if [ "${GITHUB_EVENT_NAME:-}" != "workflow_dispatch" ]; then
+            echo "::error::A release workflow runs only from workflow_dispatch (event ${GITHUB_EVENT_NAME:-}). A schedule does not start a release."
             exit 1
           fi
+          actor="${GITHUB_ACTOR:-}"
+          case "$actor" in
+            ""|*'[bot]')
+              echo "::error::A bot cannot start a release (actor ${actor:-none})."
+              exit 1
+              ;;
+          esac
+          # Legacy `permission` maps the maintain role to write. Read the
+          # maintain and admin flags, and accept role_name admin or maintain
+          # for a response that omits the flags. A custom role that grants
+          # maintain still passes, so adding a collaborator needs no workflow edit.
+          if ! meta=$(gh api "repos/${GITHUB_REPOSITORY:?}/collaborators/${actor}/permission" --jq '[.user.type // "unknown", ((.user.permissions.admin // false) | tostring), ((.user.permissions.maintain // false) | tostring), (.role_name // "")] | .[]'); then
+            echo "::error::Could not read repository permission for ${actor}. Refusing the release."
+            exit 1
+          fi
+          mapfile -t fields <<<"$meta"
+          kind="${fields[0]:-}"
+          admin="${fields[1]:-}"
+          maintain="${fields[2]:-}"
+          role="${fields[3]:-}"
+          if [ "$kind" != "User" ]; then
+            echo "::error::A bot cannot start a release (actor ${actor}, type ${kind})."
+            exit 1
+          fi
+          if [ "$admin" = "true" ] || [ "$maintain" = "true" ] || [ "$role" = "admin" ] || [ "$role" = "maintain" ]; then
+            echo "Release actor ${actor} is a human with role ${role} (admin=${admin} maintain=${maintain})."
+          else
+            echo "::error::${actor} does not have maintain or admin on this repository (role ${role}). Write, triage, and read cannot start a release."
+            exit 1
+          fi
+          # MUTINEER_RELEASE_ACTOR_END
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history + tags for git describe/log
@@ -272,7 +306,7 @@ jobs:
 
           notes="$(git log --pretty='- %h %s' "${latest_tag}..HEAD" | grep -E '^- [0-9a-f]+ (feat|fix)(\(|!|:)' || true)"
           bump="$([ "$feats" -gt 0 ] && echo minor || echo patch)"
-          body="$(printf '## What / Why / How\n\n**What.** Prepare release **v%s** (version bump and CHANGELOG only).\n\n**Why.** feat:/fix: commits have landed on `main` since `%s`. davidteren started this workflow by hand. Preparing this PR does not tag or publish, and nothing runs it on a schedule.\n\n**How.** davidteren reviews and merges this PR. Merging leaves the gem unpublished. He tags `v%s` and pushes the tag. A tag push leaves the gem unpublished. He runs `gh workflow run release.yml --ref v%s -f confirm=publish` and approves the `rubygems` environment. That approval publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_%s. Rebuilt from `main` only when davidteren runs this workflow again. When `main` moves, the next manual run replaces this PR with a fresh one. Closing the PR leaves the gem unpublished, and nothing re-opens it until he runs the workflow again._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes" "$RELEASE_PR_MARKER")"
+          body="$(printf '## What / Why / How\n\n**What.** Prepare release **v%s** (version bump and CHANGELOG only).\n\n**Why.** feat:/fix: commits have landed on `main` since `%s`. A maintainer started this workflow by hand. Preparing this PR does not tag or publish, and nothing runs it on a schedule.\n\n**How.** A maintainer reviews and merges this PR. Merging leaves the gem unpublished. They tag `v%s` and push the tag. A tag push leaves the gem unpublished. They run `gh workflow run release.yml --ref v%s -f confirm=publish` and a required reviewer approves the `rubygems` environment. That approval publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_%s. Rebuilt from `main` only when a maintainer runs this workflow again. When `main` moves, the next manual run replaces this PR with a fresh one. Closing the PR leaves the gem unpublished, and nothing re-opens it until a maintainer runs the workflow again._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes" "$RELEASE_PR_MARKER")"
 
           own_num="$(own_pr_number "$branch")"
           if [ -n "$own_num" ]; then

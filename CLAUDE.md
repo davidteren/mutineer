@@ -10,8 +10,9 @@ never-release rule is repeated here so it applies even if that import is skipped
 
 Agents must never push a `v*` tag, merge a release pull request, run
 `.github/workflows/release-pr.yml` or `.github/workflows/release.yml`, or
-`gem push`. Do not create a GitHub Release. A release needs David's manual
-approval (GitHub `davidteren`), including approval of the `rubygems`
-environment. Pushing a tag leaves the gem unpublished. When a task needs a
-release, tell David the steps in the Releasing section of AGENTS.md. Do not
-perform them.
+`gem push`. Do not create a GitHub Release. A release needs a human
+collaborator with maintain or admin permission to start the workflow, and
+approval of the `rubygems` environment by its required reviewers. Pushing a
+tag leaves the gem unpublished. When a task needs a release, tell a
+maintainer the steps in the Releasing section of AGENTS.md. Do not perform
+them.

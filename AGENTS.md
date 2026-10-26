@@ -12,8 +12,9 @@ Conventions for any agent or contributor changing this repo. (Usage docs for
 - **Least astonishment.** Names match behaviour, no hidden side effects, explicit
   failures over silent ones. Match the surrounding code's idiom.
 - **Never release, tag, or publish.** Do not push a `v*` tag, merge a release
-  PR, run a release workflow, or `gem push`. A release needs David's manual
-  approval (GitHub `davidteren`). The procedure is "Releasing" below.
+  PR, run a release workflow, or `gem push`. A release needs a human
+  collaborator with maintain or admin permission. The procedure is "Releasing"
+  below.
 
 ## Before every commit (local gate)
 
@@ -89,13 +90,22 @@ After a later commit, run the checks that the new lines affect.
 **Stacked pull requests:** start at the bottom of the stack. After a lower
 pull request changes, update the ones above it and review the new lines.
 
-## Releasing (manual — David only)
+## Releasing (manual — maintainers only)
 
 Nothing in this repo releases, tags, or publishes on a schedule or from a bot
 trigger. Pushing a `vX.Y.Z` tag leaves the gem unpublished. v1.7.0 shipped
 because that tag push started `release.yml` with no approval gate. Keep a tag
 push from starting a publish: do not add a `schedule`, a `workflow_run`, or a
 tag-push trigger to either release workflow.
+
+A person may start a release workflow only when GitHub reports them as a
+human collaborator with maintain or admin on this repository. The workflow
+reads that from the collaborator permission API at runtime. Adding a
+maintainer is a GitHub permission change. The workflow file does not name
+anyone. Write, triage, and read cannot start a release. Bots cannot either.
+The legacy API field `permission` maps the maintain role to `write`, so the
+check uses `user.permissions.maintain`, `user.permissions.admin`, and
+`role_name` of `admin` or `maintain`.
 
 **Agents must never:**
 
@@ -105,28 +115,28 @@ tag-push trigger to either release workflow.
   (`gh workflow run`, the Actions UI, or another workflow)
 - run `gem push`, or create a GitHub Release
 
-Tell David the steps below when a task needs a release. Do not perform them.
-A schedule is not a substitute for him: GitHub records a cron run's actor as
-the last person who edited the workflow (`davidteren` on the Monday runs), so
-an actor check would not stop a cron. The schedule is deleted. Do not add it
-back, and do not run `gh workflow enable` to restore a Monday release.
+Tell a maintainer the steps below when a task needs a release. Do not perform
+them. A schedule is not a substitute: GitHub records a cron run's actor as the
+last person who edited the workflow, and that person may be a maintainer, so
+a permission check would not stop a cron. The schedule is deleted. Do not add
+it back, and do not run `gh workflow enable` to restore a Monday release.
 
 Semver: **new feature → minor bump, fix → patch.** A behavior change to the
 GitHub Action's defaults is a **major** bump: consumers pin `@v<major>`, and a
 default flip must never reach them without opting in.
 
-David does every step himself:
+A maintainer does every step:
 
-1. Prepare the pull request when he wants a batch, from `main`:
+1. Prepare the pull request when they want a batch, from `main`:
    ```sh
    gh workflow run release-pr.yml --ref main
    ```
-   `release-pr.yml` runs only for a `workflow_dispatch` started by `davidteren`.
-   It bumps `lib/mutineer/version.rb`, dates the CHANGELOG, and opens a PR.
-   It does not tag or publish. Each run he starts rebuilds `release/vX.Y.Z`
-   from current `main`. It still dispatches `ci.yml` when the push used
-   `GITHUB_TOKEN` (issue #234). That dispatch runs tests only.
-2. Review and merge that PR himself. Merging leaves the gem unpublished.
+   `release-pr.yml` runs only for a `workflow_dispatch` started by a human
+   with maintain or admin. It bumps `lib/mutineer/version.rb`, dates the
+   CHANGELOG, and opens a PR. It does not tag or publish. Each run rebuilds
+   `release/vX.Y.Z` from current `main`. It still dispatches `ci.yml` when
+   the push used `GITHUB_TOKEN` (issue #234). That dispatch runs tests only.
+2. Review and merge that PR. Merging leaves the gem unpublished.
    Leave repository auto-merge off.
 3. Tag the merged commit and push the tag:
    ```sh
@@ -137,29 +147,38 @@ David does every step himself:
    ```sh
    gh workflow run release.yml --ref vX.Y.Z -f confirm=publish
    ```
-   The publish job starts only when the actor is `davidteren`, the event is
-   `workflow_dispatch`, the ref is a tag, and `confirm` is `publish`.
+   The publish job starts only when the actor is a human with maintain or
+   admin, the event is `workflow_dispatch`, the ref is a tag, and `confirm`
+   is `publish`. That check runs before the job asks for environment approval.
 5. Approve the `rubygems` GitHub environment when Actions asks. That approval
    publishes. The job then checks the tag against `Mutineer::VERSION`, runs
    tests, pushes the gem with Trusted Publishing, creates the GitHub Release,
    and force-moves the floating major tag (`v1`, `v2`, …) so
    `uses: …@v<major>` follows the latest release in that line. The floating-tag
    update is the last step of this approved job. It is one tag move inside the
-   publish he already approved.
+   publish a maintainer already approved.
+
+While one person is the only required reviewer, that person may start the
+workflow and approve it. Once a second maintainer is a required reviewer,
+turn on the environment's **Prevent self-review** option so the approver is
+someone other than the starter. Leave that option off until then: with one
+reviewer it is on, that reviewer cannot approve their own run, and the
+publish cannot finish. The workflow does not enforce the split.
 
 Safety nets:
 
 - The **tag must equal `Mutineer::VERSION`**, and it must be a stable
   `vMAJOR.MINOR.PATCH` tag, or the job aborts before `gem push` and does not
   move the floating major tag.
-- **`release-pr.yml` opens a PR only when David runs it.** It never replaces a
-  release branch that holds someone else's commits, or that has a PR it did
-  not open (it leaves that branch alone with a warning), and it never closes
-  a release PR it did not open. A merge commit counts as someone else's
-  commit: GitHub's "Update branch" button pauses the next rebuild until that
-  PR is merged or its branch is deleted. If `VERSION` on `main` differs from
-  the latest tag, the run warns and opens nothing. If the computed `vX.Y.Z`
-  tag already exists on origin, it fails and David resolves it by hand.
+- **`release-pr.yml` opens a PR only when a maintainer runs it.** It never
+  replaces a release branch that holds someone else's commits, or that has a
+  PR it did not open (it leaves that branch alone with a warning), and it
+  never closes a release PR it did not open. A merge commit counts as someone
+  else's commit: GitHub's "Update branch" button pauses the next rebuild
+  until that PR is merged or its branch is deleted. If `VERSION` on `main`
+  differs from the latest tag, the run warns and opens nothing. If the
+  computed `vX.Y.Z` tag already exists on origin, it fails and a maintainer
+  resolves it by hand.
 - **CI on the release PR** still needs a dispatch when the branch was pushed
   with the default `GITHUB_TOKEN`: that push starts no other workflow, so the
   job dispatches `ci.yml` on the release branch and those runs report the
@@ -168,32 +187,40 @@ Safety nets:
   checks are missing, run `gh workflow run ci.yml --ref release/vX.Y.Z`. That
   command runs CI only.
 
-**Settings David applies by hand.** They live in GitHub and on RubyGems, not
-in this repo. Do them in this order, before the next tag. A `v*.*.*` tag on a
-commit whose `release.yml` still triggers on tag push (any commit from before
-this change) still starts that old workflow. This file cannot edit those
-commits. Requiring the `rubygems` environment on the trusted publisher makes
-that old `gem push` fail, because the old job omits `environment:`.
+**Settings a maintainer applies by hand.** They live in GitHub and on
+RubyGems, not in this repo. Do them in this order, before the next tag. A
+`v*.*.*` tag on a commit whose `release.yml` still triggers on tag push (any
+commit from before this change) still starts that old workflow. This file
+cannot edit those commits. Requiring the `rubygems` environment on the
+trusted publisher makes that old `gem push` fail, because the old job omits
+`environment:`.
 
-1. Create the GitHub environment `rubygems` and add required reviewer
-   `davidteren`. Turn off administrator bypass when GitHub offers it, so an
-   admin cannot skip the approval. Under deployment branches and tags, allow
-   tags matching `v*.*.*`, or leave the policy unrestricted. Leave "Protected
+1. Create the GitHub environment `rubygems`. Required reviewers are the
+   maintainers, not one named account. On an organization repository, use a
+   team such as `release-maintainers` whose members have maintain or admin.
+   On a personal repository, teams are unavailable, so list the individual
+   users who have maintain or admin. Adding a person later is a team or
+   reviewer change, not a workflow change. Turn off "Allow administrators to
+   bypass configured protection rules", so an admin cannot skip the approval.
+   Leave **Prevent self-review** off until at least two of those reviewers
+   exist, then turn it on. Under deployment branches and tags, allow tags
+   matching `v*.*.*`, or leave the policy unrestricted. Leave "Protected
    branches only" unset: the publish job runs on a tag, and that policy would
    block it. Create this environment before any publish run. GitHub otherwise
    creates a missing environment with no required reviewers, and the job
    continues.
 2. On <https://rubygems.org/gems/mutineer>, edit the Trusted Publisher for
-   owner `davidteren`, repo `mutineer`, workflow `release.yml`. Set the
-   GitHub Actions environment name to `rubygems`. The new workflow's OIDC
-   token carries that environment. Do this after the required reviewer is
-   saved. From then on, a workflow whose job omits `environment:` cannot `gem push`,
-   and a run of the new workflow waits for the reviewer.
-3. Add a tag ruleset for `v*.*.*` that allows only `davidteren` to create or
-   update those tags. Keep the floating major tag (`v1`, `v2`, …) out of any
-   rule that blocks `github-actions`: the approved publish job updates that
-   tag with `GITHUB_TOKEN` after the gem is already on RubyGems. Leave
-   auto-merge disabled (`allow_auto_merge` is false today).
+   the GitHub account that owns this repository, repo `mutineer`, workflow
+   `release.yml`. Set the GitHub Actions environment name to `rubygems`. The
+   new workflow's OIDC token carries that environment. Do this after the
+   required reviewers are saved. From then on, a workflow whose job omits
+   `environment:` cannot `gem push`, and a run of the new workflow waits for
+   a reviewer.
+3. Add a tag ruleset for `v*.*.*`. Its bypass list is the repository roles
+   Maintain and Admin, not a named user. Keep the floating major tag (`v1`,
+   `v2`, …) out of any rule that blocks `github-actions`: the approved
+   publish job updates that tag with `GITHUB_TOKEN` after the gem is already
+   on RubyGems. Leave auto-merge disabled (`allow_auto_merge` is false today).
 
 ## Shift-left rules (from the 2026-10 PR audit)
 

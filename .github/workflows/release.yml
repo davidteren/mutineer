@@ -1,14 +1,19 @@
 name: Release
 
-# Publishing is a manual act by davidteren. A tag push does not start this
-# workflow, and there is no schedule. Run it on an existing stable tag:
+# Publishing is a manual act by a human collaborator with maintain or admin.
+# A tag push does not start this workflow, and there is no schedule. Run it
+# on an existing stable tag:
 #
 #   gh workflow run release.yml --ref vX.Y.Z -f confirm=publish
 #
-# The job waits for approval of the GitHub environment `rubygems`, then tests,
-# publishes to RubyGems via Trusted Publishing (OIDC bound to that environment),
-# opens the GitHub Release from the CHANGELOG, and moves the floating major
-# tag (v1, v2, ...). That tag move is the last step of this approved job.
+# The authorize job asks GitHub for the actor's repository permission and
+# rejects bots, schedule events, and anyone below maintain. The publish job
+# then waits for approval of the GitHub environment `rubygems`. Required
+# reviewers are a repository setting (see AGENTS.md). After approval the job
+# tests, publishes to RubyGems via Trusted Publishing (OIDC bound to that
+# environment), opens the GitHub Release from the CHANGELOG, and moves the
+# floating major tag (v1, v2, ...). That tag move is the last step of this
+# approved job.
 on:
   workflow_dispatch:
     inputs:
@@ -31,16 +36,14 @@ concurrency:
 
 jobs:
   refuse:
-    name: refuse unless the maintainer confirmed publish
+    name: refuse unless this is a confirmed tag dispatch
     runs-on: ubuntu-latest
     permissions:
       contents: none
-    # The publish job's `if` is the complement of this one. A tag push, a
-    # schedule, another actor, or a missing confirm word fails here and the
-    # publish job stays skipped, so it never asks for environment approval.
+    # Wrong event, confirm word, or ref fails here, before any permission
+    # lookup and before the publish job can ask for environment approval.
     if: >-
-      github.actor != 'davidteren'
-      || github.event_name != 'workflow_dispatch'
+      github.event_name != 'workflow_dispatch'
       || github.event.inputs.confirm != 'publish'
       || !startsWith(github.ref, 'refs/tags/v')
     steps:
@@ -52,36 +55,136 @@ jobs:
           CONFIRM: ${{ github.event.inputs.confirm }}
         run: |
           set -euo pipefail
-          echo "::error::Refusing to publish. Only davidteren may run Release as a workflow_dispatch on a vX.Y.Z tag with confirm=publish. actor=${ACTOR} event=${EVENT} ref=${REF} confirm=${CONFIRM}. A tag push does not publish."
+          echo "::error::Refusing to publish. Release runs only from workflow_dispatch on a vX.Y.Z tag with confirm=publish. actor=${ACTOR} event=${EVENT} ref=${REF} confirm=${CONFIRM}. A tag push does not publish."
           exit 1
+
+  authorize:
+    name: human maintainer must start the publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # The environment gate is on the publish job, which needs this job.
+    # A write collaborator who dispatches a valid tag never reaches that gate.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      && github.event.inputs.confirm == 'publish'
+      && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Require a human with maintain or admin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # MUTINEER_RELEASE_ACTOR_START
+          # Schedule events are rejected before the API call. GitHub attributes a
+          # cron to the last editor of this file, and that person may hold
+          # maintain or admin, so a permission check alone would let the cron through.
+          if [ "${GITHUB_EVENT_NAME:-}" != "workflow_dispatch" ]; then
+            echo "::error::A release workflow runs only from workflow_dispatch (event ${GITHUB_EVENT_NAME:-}). A schedule does not start a release."
+            exit 1
+          fi
+          actor="${GITHUB_ACTOR:-}"
+          case "$actor" in
+            ""|*'[bot]')
+              echo "::error::A bot cannot start a release (actor ${actor:-none})."
+              exit 1
+              ;;
+          esac
+          # Legacy `permission` maps the maintain role to write. Read the
+          # maintain and admin flags, and accept role_name admin or maintain
+          # for a response that omits the flags. A custom role that grants
+          # maintain still passes, so adding a collaborator needs no workflow edit.
+          if ! meta=$(gh api "repos/${GITHUB_REPOSITORY:?}/collaborators/${actor}/permission" --jq '[.user.type // "unknown", ((.user.permissions.admin // false) | tostring), ((.user.permissions.maintain // false) | tostring), (.role_name // "")] | .[]'); then
+            echo "::error::Could not read repository permission for ${actor}. Refusing the release."
+            exit 1
+          fi
+          mapfile -t fields <<<"$meta"
+          kind="${fields[0]:-}"
+          admin="${fields[1]:-}"
+          maintain="${fields[2]:-}"
+          role="${fields[3]:-}"
+          if [ "$kind" != "User" ]; then
+            echo "::error::A bot cannot start a release (actor ${actor}, type ${kind})."
+            exit 1
+          fi
+          if [ "$admin" = "true" ] || [ "$maintain" = "true" ] || [ "$role" = "admin" ] || [ "$role" = "maintain" ]; then
+            echo "Release actor ${actor} is a human with role ${role} (admin=${admin} maintain=${maintain})."
+          else
+            echo "::error::${actor} does not have maintain or admin on this repository (role ${role}). Write, triage, and read cannot start a release."
+            exit 1
+          fi
+          # MUTINEER_RELEASE_ACTOR_END
 
   release:
     name: publish gem + github release
+    needs: [authorize]
     runs-on: ubuntu-latest
     permissions:
       contents: write   # GitHub Release and the floating major tag
       id-token: write   # OIDC token for RubyGems Trusted Publishing
-    # Approval of environment `rubygems` happens before any step. Required
-    # reviewers are a GitHub setting, not this file. Create that environment
-    # with reviewer davidteren before the first publish (see AGENTS.md).
+    # Approval of environment `rubygems` happens before any step, and only
+    # after authorize succeeded. Required reviewers are a GitHub setting.
+    # Specifying `if` replaces the default needs-success check, so the result
+    # is repeated here.
     if: >-
-      github.actor == 'davidteren'
+      needs.authorize.result == 'success'
       && github.event_name == 'workflow_dispatch'
       && github.event.inputs.confirm == 'publish'
       && startsWith(github.ref, 'refs/tags/v')
     environment:
       name: rubygems
     steps:
-      - name: "Guard: maintainer, manual dispatch, confirm word, tag ref"
+      - name: Require a human with maintain or admin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # MUTINEER_RELEASE_ACTOR_START
+          # Schedule events are rejected before the API call. GitHub attributes a
+          # cron to the last editor of this file, and that person may hold
+          # maintain or admin, so a permission check alone would let the cron through.
+          if [ "${GITHUB_EVENT_NAME:-}" != "workflow_dispatch" ]; then
+            echo "::error::A release workflow runs only from workflow_dispatch (event ${GITHUB_EVENT_NAME:-}). A schedule does not start a release."
+            exit 1
+          fi
+          actor="${GITHUB_ACTOR:-}"
+          case "$actor" in
+            ""|*'[bot]')
+              echo "::error::A bot cannot start a release (actor ${actor:-none})."
+              exit 1
+              ;;
+          esac
+          # Legacy `permission` maps the maintain role to write. Read the
+          # maintain and admin flags, and accept role_name admin or maintain
+          # for a response that omits the flags. A custom role that grants
+          # maintain still passes, so adding a collaborator needs no workflow edit.
+          if ! meta=$(gh api "repos/${GITHUB_REPOSITORY:?}/collaborators/${actor}/permission" --jq '[.user.type // "unknown", ((.user.permissions.admin // false) | tostring), ((.user.permissions.maintain // false) | tostring), (.role_name // "")] | .[]'); then
+            echo "::error::Could not read repository permission for ${actor}. Refusing the release."
+            exit 1
+          fi
+          mapfile -t fields <<<"$meta"
+          kind="${fields[0]:-}"
+          admin="${fields[1]:-}"
+          maintain="${fields[2]:-}"
+          role="${fields[3]:-}"
+          if [ "$kind" != "User" ]; then
+            echo "::error::A bot cannot start a release (actor ${actor}, type ${kind})."
+            exit 1
+          fi
+          if [ "$admin" = "true" ] || [ "$maintain" = "true" ] || [ "$role" = "admin" ] || [ "$role" = "maintain" ]; then
+            echo "Release actor ${actor} is a human with role ${role} (admin=${admin} maintain=${maintain})."
+          else
+            echo "::error::${actor} does not have maintain or admin on this repository (role ${role}). Write, triage, and read cannot start a release."
+            exit 1
+          fi
+          # MUTINEER_RELEASE_ACTOR_END
+
+      - name: "Guard: manual dispatch, confirm word, tag ref"
         env:
           CONFIRM: ${{ github.event.inputs.confirm }}
         run: |
           set -euo pipefail
           # MUTINEER_PUBLISH_GATE_START
-          if [ "${GITHUB_ACTOR:-}" != "davidteren" ]; then
-            echo "::error::Only davidteren may publish (actor ${GITHUB_ACTOR:-})."
-            exit 1
-          fi
           if [ "${GITHUB_EVENT_NAME:-}" != "workflow_dispatch" ]; then
             echo "::error::Publishing runs only from a manual workflow_dispatch (event ${GITHUB_EVENT_NAME:-}). A tag push does not publish."
             exit 1
@@ -151,7 +254,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
 
       # The floating major tag (v1, v2, ...) tracks the newest release in its
-      # line, so `uses: davidteren/mutineer@v1` follows the latest v1.x.y.
+      # line, so `uses: <this repository>@v1` follows the latest v1.x.y.
       # This push happens only after the environment approval and the gem push.
       # The tag name is a single component (v1, v2, ...). This workflow has no
       # tag trigger, so the push does not start another publish.
