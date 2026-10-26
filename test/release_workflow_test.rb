@@ -223,8 +223,8 @@ class ReleaseWorkflowTest < Minitest::Test
     end
   end
 
-  # The maintainer gate and the stable-tag guard both run before anything
-  # publishes or moves the major tag.
+  # The maintainer gate, the stable-tag guard, and the moved-tag guard run
+  # before anything publishes.
   def test_release_guard_runs_before_publishing
     steps = YAML.load_file(RELEASE_WORKFLOW).dig("jobs", "release", "steps").map { |s| "#{s["uses"]}#{s["run"]}" }
     actor = steps.index { |s| s.include?(ACTOR_START) }
@@ -253,7 +253,8 @@ class ReleaseWorkflowTest < Minitest::Test
     checkout = release["steps"].find { |s| s["uses"].to_s.start_with?("actions/checkout") }
     assert_equal "${{ github.sha }}", checkout.dig("with", "ref")
     text = File.read(RELEASE_WORKFLOW)
-    assert_includes text, "--verify-tag"
+    assert_includes text, '--verify-tag --target "$GITHUB_SHA"'
+    assert_includes text, "GITHUB_STEP_SUMMARY", "a green run must still show the tag move that is left"
     assert_includes text, "git tag -f ${major} ${GITHUB_SHA}", "the printed command names the built commit"
     refute_match(/^\s*git push/, text, "a ruleset keeps the floating tag for maintainers; the job never pushes a tag")
   end
@@ -262,6 +263,14 @@ class ReleaseWorkflowTest < Minitest::Test
     with_tagged_origin do |clone, first, _second|
       out, status = run_tag_commit_guard(clone, first)
       assert_equal 0, status.exitstatus, out
+    end
+  end
+
+  def test_tag_commit_guard_refuses_a_deleted_tag
+    with_tagged_origin(delete: true) do |clone, first, _second|
+      out, status = run_tag_commit_guard(clone, first)
+      assert_equal 1, status.exitstatus
+      assert_match(/Tag v1\.2\.3 is gone from origin since dispatch/, out)
     end
   end
 
@@ -601,11 +610,12 @@ class ReleaseWorkflowTest < Minitest::Test
 
   # An origin with two commits and an annotated tag v1.2.3 on the first, and
   # a clone of it. With `move`, the tag is then moved to the second commit.
+  # With `delete`, the tag is then deleted from the origin.
   #
   # @yieldparam clone [String] the clone path
   # @yieldparam first [String] the first commit SHA
   # @yieldparam second [String] the second commit SHA
-  def with_tagged_origin(move: false)
+  def with_tagged_origin(move: false, delete: false)
     root = Dir.mktmpdir("mutineer-release-tag")
     origin = File.join(root, "origin")
     clone = File.join(root, "clone")
@@ -621,7 +631,8 @@ class ReleaseWorkflowTest < Minitest::Test
     end
     git.call("tag", "-a", "-m", "v1.2.3", "v1.2.3", shas[0])
     system("git", "clone", "-q", origin, clone, exception: true, err: File::NULL)
-    system("git", "tag", "-f", "-a", "-m", "v1.2.3", "v1.2.3", shas[1], chdir: origin, exception: true, err: File::NULL) if move
+    system("git", "tag", "-f", "-a", "-m", "v1.2.3", "v1.2.3", shas[1], chdir: origin, exception: true, out: File::NULL, err: File::NULL) if move
+    system("git", "tag", "-d", "v1.2.3", chdir: origin, exception: true, out: File::NULL) if delete
     yield clone, *shas
   ensure
     FileUtils.rm_rf(root) if root

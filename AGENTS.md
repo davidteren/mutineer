@@ -160,13 +160,16 @@ A maintainer does every step:
    tests, pushes the gem with Trusted Publishing, and creates the GitHub
    Release.
 6. Move the floating major tag (`v1`, `v2`, …) so `uses: …@v<major>`
-   follows the latest release in that line. The run's last step prints the
-   command, with the commit it published:
+   follows the latest release in that line. Until you do, `@v<major>` users
+   stay on the previous release. The run's last step prints the command, with
+   the commit it published, in the log and in the run summary. `<commit>` is
+   `git rev-parse vX.Y.Z^{commit}`:
    ```sh
    git fetch origin && git tag -f v<major> <commit> && git push -f origin v<major>
    ```
    The job does not move it: the floating-tag ruleset (below) lets only
-   maintainers do that.
+   maintainers do that. Skip this step for a patch on an older line (v1.2.4
+   after v1.3.0), or `v1` moves backward.
 
 While one person is the only required reviewer, that person may start the
 workflow and approve it. Once a second maintainer is a required reviewer,
@@ -241,7 +244,8 @@ trusted publisher makes that old `gem push` fail, because the old job omits
 4. Add a second tag ruleset for the floating major tags (`v[0-9]` and
    `v[0-9][0-9]`). Action users pin `@v1`, so a write collaborator who moves
    it changes the code they run, with no release. Block create, update, and
-   delete, so nobody plants a `v2` before the first v2.0.0 release.
+   delete, so nobody plants a `v2` before the first v2.0.0 release. Check
+   that the ruleset's target list shows `v1` after you save it.
    Its bypass list is Maintain and Admin only. Do not add the GitHub Actions
    app: any workflow a write collaborator pushes could then move the tag.
    So the publish job does not move the tag. It prints the command, and a

@@ -282,19 +282,21 @@ jobs:
             exit 1
           fi
 
-
       - name: Tests
         run: bundle exec rake test
       - name: Pages site builds
         run: bundle exec rake site:build
 
-      # Runs last before publishing, so the GitHub Release below names the
-      # commit the gem was built from.
+      # Runs last before publishing, so the gem is built only from the
+      # dispatched commit. The GitHub Release below targets that commit too.
       - name: "Guard: tag still points at the dispatched commit"
         run: |
           set -euo pipefail
           # MUTINEER_TAG_COMMIT_START
-          git fetch --no-tags --depth=1 origin "+refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          if ! git fetch --no-tags --depth=1 origin "+refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"; then
+            echo "::error::Tag ${GITHUB_REF_NAME} is gone from origin since dispatch. Aborting release."
+            exit 1
+          fi
           tagged="$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")"
           if [ "$tagged" != "${GITHUB_SHA:?}" ]; then
             echo "::error::Tag ${GITHUB_REF_NAME} now points at ${tagged}, but this run was dispatched on ${GITHUB_SHA}. The tag moved after dispatch. Aborting release. Find out why it moved. If the new commit is the right one, start a new dispatch on the tag: re-running this run uses the old commit and fails again."
@@ -322,14 +324,18 @@ jobs:
           ver="${GITHUB_REF_NAME#v}"
           awk -v ver="$ver" '$0 ~ "^## \\["ver"\\]"{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then printf 'Release %s\n' "$GITHUB_REF_NAME" > notes.md; fi
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --target "$GITHUB_SHA" --title "$GITHUB_REF_NAME" --notes-file notes.md
 
       # The floating major tag (v1, v2, ...) tracks the newest release in its
-      # line, so `uses: <this repository>@v1` follows the latest v1.x.y. A
-      # ruleset lets only maintainers move it (AGENTS.md), because a bypass
-      # for GITHUB_TOKEN would let any pushed workflow move it too.
+      # line, so `uses: <this repository>@v1` follows the latest v1.x.y only
+      # after a maintainer moves it. A ruleset lets only maintainers move it
+      # (AGENTS.md), because a bypass for GITHUB_TOKEN would let any pushed
+      # workflow move it too. The command goes in the run summary as well, so
+      # a green run does not hide the step that is left.
       - name: Command to move the floating major tag
         run: |
           set -euo pipefail
           major="${GITHUB_REF_NAME%%.*}"
-          echo "::notice::Published ${GITHUB_REF_NAME}. A maintainer now moves ${major}: git fetch origin && git tag -f ${major} ${GITHUB_SHA} && git push -f origin ${major}"
+          cmd="git fetch origin && git tag -f ${major} ${GITHUB_SHA} && git push -f origin ${major}"
+          echo "::notice::Published ${GITHUB_REF_NAME}. A maintainer now moves ${major}: ${cmd}"
+          printf '## Not done yet: move %s\n\n```sh\n%s\n```\n' "$major" "$cmd" >> "$GITHUB_STEP_SUMMARY"
