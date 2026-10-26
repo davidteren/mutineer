@@ -254,10 +254,11 @@ class ReleaseWorkflowTest < Minitest::Test
     release = YAML.load_file(RELEASE_WORKFLOW).dig("jobs", "release")
     checkout = release["steps"].find { |s| s["uses"].to_s.start_with?("actions/checkout") }
     assert_equal "${{ github.sha }}", checkout.dig("with", "ref")
-    text = File.read(RELEASE_WORKFLOW)
-    assert_includes text, "--verify-tag"
-    assert_includes text, "GITHUB_STEP_SUMMARY", "a green run must still show the tag move that is left"
     steps = release["steps"].map { |s| s["run"].to_s }
+    create = steps.find { |run| run.include?("gh release create") }
+    assert_match(/gh release create .*--verify-tag/, create, "the Release must use the existing tag, never create one")
+    floating = steps.find { |run| run.include?(FLOATING_TAG_START) }
+    assert_includes floating, "GITHUB_STEP_SUMMARY", "a green run must still show the tag move that is left"
     refute(steps.any? { |run| run.lines.any? { |l| l.strip.start_with?("git push") } },
            "a ruleset keeps the floating tag for maintainers; the job never pushes a tag")
     tests = release["steps"].index { |s| s["run"] == "bundle exec rake test" }

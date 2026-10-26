@@ -357,13 +357,15 @@ All notable changes to this project are documented here. The format is based on
   collaborator with maintain or admin prepares a release PR by hand, tags by
   hand, then runs the Release workflow on that tag with `confirm=publish`.
   A required reviewer approves the `rubygems` GitHub environment before the
-  gem is pushed. The Release workflow refuses to start the publish when that
+  gem is pushed. A new Release run refuses to start the publish when that
   environment is missing, has no required reviewers, or lets admins bypass
-  them. The publish job
-  builds the commit that was dispatched, and it stops before `gem push` if
-  the tag moved while the job waited for approval. The job no longer moves
-  the floating major tag (`v1`). It prints the command, and a maintainer
-  runs it, so a ruleset can keep that tag for maintainers.
+  them. Re-running only the publish job of an earlier run does not repeat
+  that check. The publish job builds the commit that was dispatched, and it
+  stops before `gem push` if the tag moved while the job waited for
+  approval. The job no longer moves the floating major tag (`v1`). When the
+  release is the newest stable tag in its line, the job prints the command
+  and a maintainer runs it, so a ruleset can keep that tag for maintainers.
+  For a patch on an older line, it prints no command.
 - **Load failures now use the runtime-error exit code (#288).** An
   `ArgumentError` or `SystemCallError` raised while a boot file, a source
   file or a `.mutineer.yml` `require:` file loads now exits 1 (runtime
