@@ -1,0 +1,22 @@
+README.md
+  h_e8a5bb9272fa34 101,111,127-129,133
+docs/ci.md
+  h_e8a5bb9272fa34 97
+docs/getting-started.md
+  h_e8a5bb9272fa34 41,126,168,170-171,174-175
+docs/quick-start.md
+  h_e8a5bb9272fa34 67
+docs/rails-setup.md
+  h_e8a5bb9272fa34 37,92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "59b101c5a7e45294bcb2f9e378cf7e6615d2ce2f",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
