@@ -64,27 +64,44 @@ independent of Node and Playwright. CI runs these checks in `website browser tes
 
 ## PR review gate (before any merge)
 
-Applies to every open pull request, including a stack. Do not merge until
-the current head meets this bar.
+Every pull request must meet this gate on its current head, including stacks, docs-only, and "small" changes.
+Only a maintainer may waive a step, in writing on that pull request.
 
 ### Before opening a new pull request
 
-Run the checks in "Before every commit". For a site change, run the website
-checks too. Open the pull request when those checks pass.
+On the exact pull request head commit:
 
-After a later commit, run the checks that the new lines affect.
+1. Run "Before every commit" checks, plus website checks for site changes.
+2. Review your diff against `main`. Verify every claim and number against its source.
+3. Never push or open a pull request with a red suite.
+
+After another commit, repeat these checks on the new head.
+
+### Labels
+
+Label every pull request:
+
+| Category | Required |
+|---|---|
+| Type | `bug`, `enhancement`, `documentation`, `dependencies`, or `github_actions` |
+| Issue and matching labels | Identify the issue closed with `Closes #N` in the body. Add matching labels, such as `priority: high` (high priority) or `risk: medium` (medium risk). |
+| Target release | Use a version label, such as `v1.7.1` or `v2.0`. Tentative targets are acceptable. |
+
+Use existing labels only (`gh label list`). Ask a maintainer before adding a new label.
 
 ### After the pull request is open
 
-1. Read every review comment. Fix a real finding, or write why the comment
-   is wrong.
-2. Reply on every thread before resolving it. A fix reply names the commit.
-   A decline reply gives the reason.
-3. GitHub checks are green on the head commit.
-4. A person merges.
+1. Wait for CI, review bots (cubic and Qodo), and other required checks to finish on the head commit.
+2. Read every human and bot review comment. Fix valid findings or explain why they are wrong.
+3. Reply before resolving each thread. Name the fix commit, explain a decline, or name the GitHub issue tracking a deferral. Create that issue if needed.
+4. After fixes, push and check the new lines again.
+5. Require green GitHub checks on the head commit.
+6. A person merges. Never merge your own pull request unless a maintainer asks.
 
-**Stacked pull requests:** start at the bottom of the stack. After a lower
-pull request changes, update the ones above it and review the new lines.
+Agents use a person's GitHub account. Start every agent comment or reply with its bold name, such as `**Codex:**`.
+Post findings on the relevant code line, never in a separate summary comment.
+
+**Stacked pull requests:** start at the bottom. When a lower pull request changes, update those above it and recheck new lines.
 
 ## Releasing (tag-driven — CI publishes, no manual `gem push`)
 
