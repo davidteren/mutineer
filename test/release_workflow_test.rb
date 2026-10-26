@@ -278,7 +278,7 @@ class ReleaseWorkflowTest < Minitest::Test
   # A patch on an older line must not tell anyone to move v1 backward.
   def test_floating_tag_command_skipped_for_an_older_line
     out, summary = run_floating_tag("v1.6.1", tags: %w[v1.6.1 v1.7.0])
-    assert_match(/v1\.7\.0 is the newest v1 release, so leave v1 where it is/, out)
+    assert_match(/v1\.7\.0 is the newest stable v1 tag, so leave v1 where it is/, out)
     refute_includes out, "git push"
     assert_empty summary
   end
@@ -602,7 +602,10 @@ class ReleaseWorkflowTest < Minitest::Test
   # @param fail [Boolean] when the API call exits 1
   # @return [Array(String, Process::Status, Array<String>)] output, status, gh calls
   def run_with_fake_api(script, body, env, fail: false)
-    skip "jq not on PATH" unless system("command -v jq >/dev/null 2>&1")
+    unless system("command -v jq >/dev/null 2>&1")
+      flunk "jq is required in CI for the release gate tests" if ENV["CI"]
+      skip "jq not on PATH"
+    end
     Dir.mktmpdir do |dir|
       log = File.join(dir, "calls.log")
       json = File.join(dir, "body.json")

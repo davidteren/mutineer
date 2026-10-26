@@ -347,7 +347,7 @@ jobs:
           # A patch on an older line (v1.6.1 after v1.7.0) must not move v1 backward.
           newest="$(git ls-remote --tags --refs origin "refs/tags/${major}.*" | sed 's|.*refs/tags/||' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -n 1)"
           if [ "$newest" != "$GITHUB_REF_NAME" ]; then
-            echo "::notice::Published ${GITHUB_REF_NAME}. ${newest} is the newest ${major} release, so leave ${major} where it is."
+            echo "::notice::Published ${GITHUB_REF_NAME}. ${newest} is the newest stable ${major} tag, so leave ${major} where it is. If ${newest} was never published, move ${major} by hand (AGENTS.md, step 6)."
             exit 0
           fi
           cmd="git fetch origin && git tag -f ${major} ${GITHUB_SHA} && git push -f origin ${major}"
