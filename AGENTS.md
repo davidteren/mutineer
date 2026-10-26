@@ -151,14 +151,32 @@ A maintainer does every step:
    ```
    The publish job starts only when the actor is a human with maintain or
    admin, the event is `workflow_dispatch`, the ref is a tag, and `confirm`
-   is `publish`. That check runs before the job asks for environment approval.
+   is `publish`. It also refuses when the `rubygems` environment is missing,
+   has no required reviewers, or lets administrators bypass them (GitHub
+   turns that bypass on by default). Both checks run before the job asks for
+   environment approval.
 5. Approve the `rubygems` GitHub environment when Actions asks. That approval
    publishes. The job then checks the tag against `Mutineer::VERSION`, runs
-   tests, pushes the gem with Trusted Publishing, creates the GitHub Release,
-   and force-moves the floating major tag (`v1`, `v2`, …) so
-   `uses: …@v<major>` follows the latest release in that line. The floating-tag
-   update is the last step of this approved job. It is one tag move inside the
-   publish a maintainer already approved.
+   tests, pushes the gem with Trusted Publishing, and creates the GitHub
+   Release.
+6. Move the floating major tag (`v1`, `v2`, …) so `uses: …@v<major>`
+   follows the latest release in that line. Until you do, `@v<major>` users
+   stay on the previous release. The run's last step prints the command, with
+   the commit it published, in the log and in the run summary. `<commit>` is
+   `git rev-parse vX.Y.Z^{commit}`:
+   ```sh
+   git fetch origin && git tag -f v<major> <commit> && git push -f origin v<major>
+   ```
+   The job does not move it: the floating-tag ruleset (below) lets only
+   maintainers do that. For a patch on an older line (v1.2.4 after v1.3.0),
+   the run prints no command and says to leave `v1` where it is. The printed
+   command is right only until the next release in that line: do not run an
+   old one, or `v1` moves backward.
+
+If the publish job fails after `gem push`, that version is already on
+RubyGems and a new dispatch stops at `gem push`. Finish by hand from the
+tag: `gh release create vX.Y.Z --verify-tag --notes-file <notes>`, then
+step 6.
 
 While one person is the only required reviewer, that person may start the
 workflow and approve it. Once a second maintainer is a required reviewer,
@@ -170,8 +188,11 @@ own run, and the publish cannot finish. The workflow does not enforce the split.
 Safety nets:
 
 - The **tag must equal `Mutineer::VERSION`**, and it must be a stable
-  `vMAJOR.MINOR.PATCH` tag, or the job aborts before `gem push` and does not
-  move the floating major tag.
+  `vMAJOR.MINOR.PATCH` tag, or the job aborts before `gem push` and prints
+  no command to move the floating major tag.
+- **The publish job builds the dispatched commit.** If the tag points at a
+  different commit by the time the approval comes, the job aborts before
+  `gem push`.
 - **`release-pr.yml` opens a PR only when a maintainer runs it.** It never
   replaces a release branch that holds someone else's commits, or that has a
   PR it did not open (it leaves that branch alone with a warning), and it
@@ -190,9 +211,14 @@ Safety nets:
   command runs CI only.
 
 **Settings a maintainer applies by hand.** They live in GitHub and on
-RubyGems, not in this repo. Do them in this order, before the next tag. A
-`v*.*.*` tag on a commit whose `release.yml` still triggers on tag push (any
-commit from before this change) still starts that old workflow. This file
+RubyGems, not in this repo. Do them in this order, before the next tag. The
+workflow checks hold only for the `release.yml` stored in the tag. A dispatch
+on a tag runs that tag's copy, so a write collaborator could tag a commit
+with an edited copy that skips them. Until these settings exist, nothing
+stops that tag. Issue #354 tracks applying them.
+
+A `v*.*.*` tag on a commit whose `release.yml` still triggers on tag push
+(any commit from before this change) still starts that old workflow. This file
 cannot edit those commits. Requiring the `rubygems` environment on the
 trusted publisher makes that old `gem push` fail, because the old job omits
 `environment:`.
@@ -205,12 +231,14 @@ trusted publisher makes that old `gem push` fail, because the old job omits
    reviewer change, not a workflow change. Turn off "Allow administrators to
    bypass configured protection rules", so an admin cannot skip the approval.
    Leave **Prevent self-review** off until at least two of those reviewers
-   exist, then turn it on. Under deployment branches and tags, allow tags
-   matching `v*.*.*`, or leave the policy unrestricted. Leave "Protected
-   branches only" unset: the publish job runs on a tag, and that policy would
-   block it. Create this environment before any publish run. GitHub otherwise
-   creates a missing environment with no required reviewers, and the job
-   continues.
+   exist, then turn it on. Under deployment branches and tags, choose
+   "Selected branches and tags" and allow only tags matching `v*.*.*`. An
+   unrestricted policy would let a run from a branch, with an edited
+   `release.yml`, ask for the same approval. Leave "Protected branches only"
+   unset: the publish job runs on a tag, and that policy would block it. Create this environment before any publish run. GitHub
+   otherwise creates a missing environment with no required reviewers. The
+   authorize job refuses that state, so a publish fails until the reviewers
+   exist.
 2. On <https://rubygems.org/gems/mutineer>, edit the Trusted Publisher for
    the GitHub account that owns this repository, repo `mutineer`, workflow
    `release.yml`. Set the GitHub Actions environment name to `rubygems`. The
@@ -219,10 +247,18 @@ trusted publisher makes that old `gem push` fail, because the old job omits
    `environment:` cannot `gem push`, and a run of the new workflow waits for
    a reviewer.
 3. Add a tag ruleset for `v*.*.*`. Its bypass list is the repository roles
-   Maintain and Admin, not a named user. Keep the floating major tag (`v1`,
-   `v2`, …) out of any rule that blocks `github-actions`: the approved
-   publish job updates that tag with `GITHUB_TOKEN` after the gem is already
-   on RubyGems. Leave auto-merge disabled (`allow_auto_merge` is false today).
+   Maintain and Admin, not a named user. It blocks create, update, and
+   delete, so a write collaborator cannot push or move a release tag.
+4. Add a second tag ruleset for the floating major tags (`v[0-9]` and
+   `v[0-9][0-9]`). Action users pin `@v1`, so a write collaborator who moves
+   it changes the code they run, with no release. Block create, update, and
+   delete, so nobody plants a `v2` before the first v2.0.0 release. Check
+   that the ruleset's target list shows `v1` after you save it.
+   Its bypass list is Maintain and Admin only. Do not add the GitHub Actions
+   app: any workflow a write collaborator pushes could then move the tag.
+   So the publish job does not move the tag. It prints the command, and a
+   maintainer runs it (step 6) after the gem is on RubyGems. Leave
+   auto-merge disabled (`allow_auto_merge` is false today).
 
 ## Shift-left rules (from the 2026-10 PR audit)
 

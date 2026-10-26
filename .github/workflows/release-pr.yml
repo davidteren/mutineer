@@ -282,7 +282,7 @@ jobs:
           if git rev-parse -q --verify "$remote" >/dev/null; then
             if has_human_commits "$branch"; then
               # Someone is working on this release PR: leave it alone (no rebuild, no
-              # close), and say so. A failure here would repeat every week.
+              # close), and say so. A failure here would repeat on every run.
               echo "::warning::$branch has commits this workflow did not make, so it is left as is. Merge that release PR, or close it and delete the branch, to let the next run rebuild it."
               exit 0
             fi
