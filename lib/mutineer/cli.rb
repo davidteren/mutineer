@@ -36,7 +36,7 @@ module Mutineer
       Usage: mutineer [options] <command> [args]
 
       Commands:
-        run [options] <source...> --test <test> [--test <test>...]
+        run [options] <source...> [--test <test>...]
                                                      Mutate, run, and report
         run --dry-run [options] <source...>          Print candidate mutations only
         triage REPORT.json --reason TEXT

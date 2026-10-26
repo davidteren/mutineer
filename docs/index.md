@@ -13,8 +13,8 @@ For example, changing `qty >= 10` to `qty > 10` removes the discount at exactly
 catches it. Line coverage can be 100% and still miss this case.
 
 The mutation score is `killed / (killed + survived)`. A run with 24 killed
-changes and one survivor scores 96%. Other results are excluded. The score
-is empty when nothing can be scored; even 100% does not prove the code has no bugs.
+changes and one survivor scores 96%. Only killed and survived mutants count.
+100% means every change was caught, not that the code is bug-free.
 
 [New to mutation testing? Run the complete example](learn.html).
 This is the Markdown twin of the [HTML landing page](https://davidteren.github.io/mutineer/).
@@ -30,7 +30,7 @@ mutineer run lib/discount.rb --test test/discount_test.rb
 ```
 
 Replace both paths with files in your project. For RSpec, pass a spec file to
-`--test`. In a Bundler project, add `gem "mutineer", group: :test` to the Gemfile,
+`--test`. In a Bundler project, add `gem "mutineer", group: :test, require: false` to the Gemfile,
 run `bundle install`, and use `bundle exec mutineer`. For Rails, follow the
 [one-model guide](rails.html#one-model).
 
@@ -68,7 +68,7 @@ mutineer run --dry-run lib/discount.rb
 | `--dry-run` | List candidate mutations without executing |
 | `--matrix` | Run every covering test for each mutant and name the blind and redundant tests; the JSON report also lists each mutant's killers (in-process only; RSpec 3.3+) |
 
-Typed flags override `.mutineer.yml`. Full flag list: `mutineer --help` or the [README](https://github.com/davidteren/mutineer/blob/main/README.md).
+Typed flags override `.mutineer.yml`. Every flag with its default: [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md), `mutineer --help`, or the [README](https://github.com/davidteren/mutineer/blob/main/README.md).
 
 `--test-command` forces one Mutineer worker. It also sets `PARALLEL_WORKERS=1`
 for Rails tests. A script that sets this variable again can start Rails test

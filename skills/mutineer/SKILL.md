@@ -18,7 +18,7 @@ gem install mutineer
 ## Run
 
 ```sh
-mutineer run <source...> --test <test> [--test <test>...] [options]
+mutineer run <source...> [--test <test>...] [options]   # no --test: pairs each source with its test by convention
 ```
 
 Example — mutate `lib/calculator.rb`, gate CI below 90%:

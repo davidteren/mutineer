@@ -12,7 +12,7 @@ See the [README](https://github.com/davidteren/mutineer#github-action) and
 
 ## One model locally
 
-Add `gem "mutineer", group: :test` to your Gemfile and run `bundle install`.
+Add `gem "mutineer", group: :test, require: false` to your Gemfile and run `bundle install`.
 Create the configuration, then run Mutineer on one model and its test:
 
 ```sh
