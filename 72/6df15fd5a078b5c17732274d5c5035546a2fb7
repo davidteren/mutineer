@@ -1,0 +1,28 @@
+AGENTS.md
+  h_e8a5bb9272fa34 88
+README.md
+  h_e8a5bb9272fa34 101-102,112-113,129-131,135,255
+docs/ci.md
+  h_e8a5bb9272fa34 95-129
+docs/cli.md
+  h_e8a5bb9272fa34 100-105
+docs/comparison.md
+  h_e8a5bb9272fa34 53,81
+docs/getting-started.md
+  h_e8a5bb9272fa34 41,44-45,126-132,169-209
+docs/quick-start.md
+  h_e8a5bb9272fa34 13,67,70-71,110
+docs/rails-setup.md
+  h_e8a5bb9272fa34 37,72-77,92-100,209-214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "726df15fd5a078b5c17732274d5c5035546a2fb7",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
