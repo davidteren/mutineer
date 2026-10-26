@@ -27,6 +27,8 @@ class ReleaseWorkflowTest < Minitest::Test
   ENV_GATE_END = "# MUTINEER_ENV_GATE_END"
   TAG_COMMIT_START = "# MUTINEER_TAG_COMMIT_START"
   TAG_COMMIT_END = "# MUTINEER_TAG_COMMIT_END"
+  FLOATING_TAG_START = "# MUTINEER_FLOATING_TAG_START"
+  FLOATING_TAG_END = "# MUTINEER_FLOATING_TAG_END"
   BOT = "41898282+github-actions[bot]@users.noreply.github.com"
   BOT_ENV = {
     "GIT_AUTHOR_NAME" => "github-actions[bot]", "GIT_AUTHOR_EMAIL" => BOT,
@@ -253,10 +255,29 @@ class ReleaseWorkflowTest < Minitest::Test
     checkout = release["steps"].find { |s| s["uses"].to_s.start_with?("actions/checkout") }
     assert_equal "${{ github.sha }}", checkout.dig("with", "ref")
     text = File.read(RELEASE_WORKFLOW)
-    assert_includes text, '--verify-tag --target "$GITHUB_SHA"'
+    assert_includes text, "--verify-tag"
     assert_includes text, "GITHUB_STEP_SUMMARY", "a green run must still show the tag move that is left"
-    assert_includes text, "git tag -f ${major} ${GITHUB_SHA}", "the printed command names the built commit"
-    refute_match(/^\s*git push/, text, "a ruleset keeps the floating tag for maintainers; the job never pushes a tag")
+    steps = release["steps"].map { |s| s["run"].to_s }
+    refute(steps.any? { |run| run.lines.any? { |l| l.strip.start_with?("git push") } },
+           "a ruleset keeps the floating tag for maintainers; the job never pushes a tag")
+    tests = release["steps"].index { |s| s["run"] == "bundle exec rake test" }
+    guard = release["steps"].index { |s| s["run"].to_s.include?(TAG_COMMIT_START) }
+    assert_operator tests, :<, guard, "the moved-tag guard runs after the slow steps, just before publishing"
+  end
+
+  # The newest release in its line gets the command, with the built commit.
+  def test_floating_tag_command_for_the_newest_release
+    out, summary = run_floating_tag("v1.10.0", tags: %w[v1.9.0 v1.10.0 v10.0.0 v1.11.0-rc1])
+    assert_match(/A maintainer now moves v1: git fetch origin && git tag -f v1 abc123 && git push -f origin v1/, out)
+    assert_includes summary, "Not done yet: move v1"
+  end
+
+  # A patch on an older line must not tell anyone to move v1 backward.
+  def test_floating_tag_command_skipped_for_an_older_line
+    out, summary = run_floating_tag("v1.6.1", tags: %w[v1.6.1 v1.7.0])
+    assert_match(/v1\.7\.0 is the newest v1 release, so leave v1 where it is/, out)
+    refute_includes out, "git push"
+    assert_empty summary
   end
 
   def test_tag_commit_guard_accepts_an_unmoved_tag
@@ -270,7 +291,7 @@ class ReleaseWorkflowTest < Minitest::Test
     with_tagged_origin(delete: true) do |clone, first, _second|
       out, status = run_tag_commit_guard(clone, first)
       assert_equal 1, status.exitstatus
-      assert_match(/Tag v1\.2\.3 is gone from origin since dispatch/, out)
+      assert_match(/Could not fetch tag v1\.2\.3 from origin\. It was deleted since dispatch/, out)
     end
   end
 
@@ -310,6 +331,14 @@ class ReleaseWorkflowTest < Minitest::Test
       assert_equal 1, status.exitstatus, bypass.inspect
       assert_match(/Administrators can bypass/, out)
     end
+  end
+
+  # A new environment has both problems. One run names both.
+  def test_env_gate_reports_every_problem_at_once
+    out, status, = run_env_gate({ "can_admins_bypass" => true, "protection_rules" => [] })
+    assert_equal 1, status.exitstatus
+    assert_match(/Administrators can bypass/, out)
+    assert_match(/has no required reviewers/, out)
   end
 
   def test_env_gate_refuses_a_missing_environment
@@ -593,6 +622,30 @@ class ReleaseWorkflowTest < Minitest::Test
       out, err, status = Open3.capture3(env, "bash", "-euo", "pipefail", "-c", script)
       calls = File.exist?(log) ? File.readlines(log, chomp: true) : []
       ["#{out}#{err}", status, calls]
+    end
+  end
+
+  # Runs the floating-tag step against an origin that holds `tags`.
+  #
+  # @param tag [String] GITHUB_REF_NAME
+  # @param tags [Array<String>] tags on the origin
+  # @return [Array(String, String)] combined output and the step summary
+  def run_floating_tag(tag, tags:)
+    script = marked_block(FLOATING_TAG_START, FLOATING_TAG_END, workflow: RELEASE_WORKFLOW)
+    Dir.mktmpdir("mutineer-floating-tag") do |root|
+      origin = File.join(root, "origin")
+      clone = File.join(root, "clone")
+      git = ->(*args) { system("git", "-c", "core.hooksPath=/dev/null", *args, chdir: origin, exception: true) }
+      system("git", "init", "-q", origin, exception: true)
+      git.call("-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "--allow-empty", "-m", "base")
+      tags.each { |t| git.call("tag", t) }
+      system("git", "clone", "-q", origin, clone, exception: true, err: File::NULL)
+      summary = File.join(root, "summary.md")
+      File.write(summary, "")
+      env = { "GITHUB_REF_NAME" => tag, "GITHUB_SHA" => "abc123", "GITHUB_STEP_SUMMARY" => summary }
+      out, err, status = Open3.capture3(env, "bash", "-euo", "pipefail", "-c", script, chdir: clone)
+      assert_equal 0, status.exitstatus, "#{out}#{err}"
+      ["#{out}#{err}", File.read(summary)]
     end
   end
 

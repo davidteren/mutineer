@@ -168,8 +168,8 @@ A maintainer does every step:
    git fetch origin && git tag -f v<major> <commit> && git push -f origin v<major>
    ```
    The job does not move it: the floating-tag ruleset (below) lets only
-   maintainers do that. Skip this step for a patch on an older line (v1.2.4
-   after v1.3.0), or `v1` moves backward.
+   maintainers do that. For a patch on an older line (v1.2.4 after v1.3.0),
+   the run prints no command and says to leave `v1` where it is.
 
 While one person is the only required reviewer, that person may start the
 workflow and approve it. Once a second maintainer is a required reviewer,
@@ -208,7 +208,7 @@ RubyGems, not in this repo. Do them in this order, before the next tag. The
 workflow checks hold only for the `release.yml` stored in the tag. A dispatch
 on a tag runs that tag's copy, so a write collaborator could tag a commit
 with an edited copy that skips them. Until these settings exist, nothing
-stops that tag.
+stops that tag. Issue #354 tracks applying them.
 
 A `v*.*.*` tag on a commit whose `release.yml` still triggers on tag push
 (any commit from before this change) still starts that old workflow. This file
@@ -224,10 +224,11 @@ trusted publisher makes that old `gem push` fail, because the old job omits
    reviewer change, not a workflow change. Turn off "Allow administrators to
    bypass configured protection rules", so an admin cannot skip the approval.
    Leave **Prevent self-review** off until at least two of those reviewers
-   exist, then turn it on. Under deployment branches and tags, allow tags
-   matching `v*.*.*`, or leave the policy unrestricted. Leave "Protected
-   branches only" unset: the publish job runs on a tag, and that policy would
-   block it. Create this environment before any publish run. GitHub
+   exist, then turn it on. Under deployment branches and tags, choose
+   "Selected branches and tags" and allow only tags matching `v*.*.*`. An
+   unrestricted policy would let a run from a branch, with an edited
+   `release.yml`, ask for the same approval. Leave "Protected branches only"
+   unset: the publish job runs on a tag, and that policy would block it. Create this environment before any publish run. GitHub
    otherwise creates a missing environment with no required reviewers. The
    authorize job refuses that state, so a publish fails until the reviewers
    exist.
