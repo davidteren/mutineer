@@ -12,12 +12,13 @@ reviews:
   senior_reviewers: [davidteren]
   auto_approve_behavior: disabled
   auto_approve: disabled
-  ultrareview: automatic
-  auto_ultrareview: high_risk_only
-  # Ultrareviews bill at 3x the reviewed lines. lib/** matched nearly every PR.
-  # Lib changes now get an ultrareview only when the high_risk_only check flags them.
-  auto_ultrareview_file_patterns:
-    - '.github/workflows/**'
+  # Ultra Review bills at 3x the reviewed lines, so it runs only when someone
+  # requests it. `automatic` with `high_risk_only` would still start one on
+  # other pull requests. A file pattern would start one whenever that path
+  # changes, including after this list is emptied, once the mode is automatic.
+  # `manual` is request-only. `disabled` would also block an explicit request.
+  ultrareview: manual
+  auto_ultrareview: disabled
   custom_instructions: |
     This is the Mutineer Ruby gem (mutation testing CLI + GitHub Action).
     Prioritize: CLI contract stability (exit codes, flags, JSON report shape),
