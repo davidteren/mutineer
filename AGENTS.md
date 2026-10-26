@@ -169,7 +169,14 @@ A maintainer does every step:
    ```
    The job does not move it: the floating-tag ruleset (below) lets only
    maintainers do that. For a patch on an older line (v1.2.4 after v1.3.0),
-   the run prints no command and says to leave `v1` where it is.
+   the run prints no command and says to leave `v1` where it is. The printed
+   command is right only until the next release in that line: do not run an
+   old one, or `v1` moves backward.
+
+If the publish job fails after `gem push`, that version is already on
+RubyGems and a new dispatch stops at `gem push`. Finish by hand from the
+tag: `gh release create vX.Y.Z --verify-tag --notes-file <notes>`, then
+step 6.
 
 While one person is the only required reviewer, that person may start the
 workflow and approve it. Once a second maintainer is a required reviewer,

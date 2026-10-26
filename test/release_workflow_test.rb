@@ -263,6 +263,9 @@ class ReleaseWorkflowTest < Minitest::Test
     tests = release["steps"].index { |s| s["run"] == "bundle exec rake test" }
     guard = release["steps"].index { |s| s["run"].to_s.include?(TAG_COMMIT_START) }
     assert_operator tests, :<, guard, "the moved-tag guard runs after the slow steps, just before publishing"
+    created = release["steps"].index { |s| s["run"].to_s.include?("gh release create") }
+    floating = release["steps"].index { |s| s["run"].to_s.include?(FLOATING_TAG_START) }
+    assert_operator created, :<, floating, "the floating-tag command comes only after the gem and the Release"
   end
 
   # The newest release in its line gets the command, with the built commit.

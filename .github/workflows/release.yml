@@ -293,8 +293,9 @@ jobs:
       - name: Pages site builds
         run: bundle exec rake site:build
 
-      # Runs last before publishing, so the gem and the GitHub Release below
-      # (which uses the existing tag) both come from the dispatched commit.
+      # Runs last before publishing, so the gem comes from the dispatched
+      # commit. The GitHub Release below uses the tag, which the v*.*.*
+      # ruleset (issue #354) keeps from moving in the seconds between.
       - name: "Guard: tag still points at the dispatched commit"
         run: |
           set -euo pipefail
