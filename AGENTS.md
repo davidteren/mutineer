@@ -157,11 +157,16 @@ A maintainer does every step:
    environment approval.
 5. Approve the `rubygems` GitHub environment when Actions asks. That approval
    publishes. The job then checks the tag against `Mutineer::VERSION`, runs
-   tests, pushes the gem with Trusted Publishing, creates the GitHub Release,
-   and force-moves the floating major tag (`v1`, `v2`, …) so
-   `uses: …@v<major>` follows the latest release in that line. The floating-tag
-   update is the last step of this approved job. It is one tag move inside the
-   publish a maintainer already approved.
+   tests, pushes the gem with Trusted Publishing, and creates the GitHub
+   Release.
+6. Move the floating major tag (`v1`, `v2`, …) so `uses: …@v<major>`
+   follows the latest release in that line. The run's last step prints the
+   command, with the commit it published:
+   ```sh
+   git fetch origin && git tag -f v<major> <commit> && git push -f origin v<major>
+   ```
+   The job does not move it: the floating-tag ruleset (below) lets only
+   maintainers do that.
 
 While one person is the only required reviewer, that person may start the
 workflow and approve it. Once a second maintainer is a required reviewer,
@@ -239,8 +244,8 @@ trusted publisher makes that old `gem push` fail, because the old job omits
    delete, so nobody plants a `v2` before the first v2.0.0 release.
    Its bypass list is Maintain and Admin only. Do not add the GitHub Actions
    app: any workflow a write collaborator pushes could then move the tag.
-   The publish job then cannot move the tag. It prints a warning with the
-   command, and the maintainer runs it after the gem is on RubyGems. Leave
+   So the publish job does not move the tag. It prints the command, and a
+   maintainer runs it (step 6) after the gem is on RubyGems. Leave
    auto-merge disabled (`allow_auto_merge` is false today).
 
 ## Shift-left rules (from the 2026-10 PR audit)

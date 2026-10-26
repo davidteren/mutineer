@@ -361,7 +361,9 @@ All notable changes to this project are documented here. The format is based on
   environment is missing, has no required reviewers, or lets admins bypass
   them. The publish job
   builds the commit that was dispatched, and it stops before `gem push` if
-  the tag moved while the job waited for approval.
+  the tag moved while the job waited for approval. The job no longer moves
+  the floating major tag (`v1`). It prints the command, and a maintainer
+  runs it, so a ruleset can keep that tag for maintainers.
 - **Load failures now use the runtime-error exit code (#288).** An
   `ArgumentError` or `SystemCallError` raised while a boot file, a source
   file or a `.mutineer.yml` `require:` file loads now exits 1 (runtime

@@ -9,13 +9,13 @@ name: Release
 # The authorize job asks GitHub for the actor's repository permission and
 # rejects bots, schedule events, and anyone below maintain. It also refuses
 # when the GitHub environment `rubygems` has no required reviewers or lets
-# administrators bypass them. The
-# publish job then waits for approval of that environment. Required
-# reviewers are a repository setting (see AGENTS.md). After approval the job
-# tests, publishes to RubyGems via Trusted Publishing (OIDC bound to that
-# environment), opens the GitHub Release from the CHANGELOG, and moves the
-# floating major tag (v1, v2, ...). That tag move is the last step of this
-# approved job.
+# administrators bypass them. The publish job then waits for approval of
+# that environment. Required reviewers are a repository setting (see
+# AGENTS.md). After approval the job tests, publishes to RubyGems via
+# Trusted Publishing (OIDC bound to that environment), and opens the GitHub
+# Release from the CHANGELOG. It does not move the floating major tag (v1,
+# v2, ...): a ruleset keeps that tag for maintainers, so the job prints the
+# command for one to run.
 on:
   workflow_dispatch:
     inputs:
@@ -28,10 +28,8 @@ on:
 permissions:
   contents: read
 
-# One release at a time. Two publishes in the same major (v1.0.0 then v1.0.1)
-# overlapping would let the older run force-push @v1 backward after the
-# newer one had already moved it. cancel-in-progress: false queues the
-# second run instead of cancelling a publish already in flight.
+# One release at a time. cancel-in-progress: false queues a second run
+# instead of cancelling a publish already in flight.
 concurrency:
   group: mutineer-release
   cancel-in-progress: false
@@ -327,17 +325,11 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md
 
       # The floating major tag (v1, v2, ...) tracks the newest release in its
-      # line, so `uses: <this repository>@v1` follows the latest v1.x.y.
-      # This push happens only after the environment approval and the gem push.
-      # The tag name is a single component (v1, v2, ...). This workflow has no
-      # tag trigger, so the push does not start another publish.
-      - name: Move floating major tag
+      # line, so `uses: <this repository>@v1` follows the latest v1.x.y. A
+      # ruleset lets only maintainers move it (AGENTS.md), because a bypass
+      # for GITHUB_TOKEN would let any pushed workflow move it too.
+      - name: Command to move the floating major tag
         run: |
           set -euo pipefail
           major="${GITHUB_REF_NAME%%.*}"
-          git tag -f "$major" "$GITHUB_SHA"
-          # A ruleset on the floating tags refuses GITHUB_TOKEN (AGENTS.md).
-          # The gem is already published, so say what to run instead of failing.
-          if ! git push -f origin "$major"; then
-            echo "::warning::Could not move ${major} to ${GITHUB_REF_NAME}. A maintainer runs: git tag -f ${major} ${GITHUB_SHA} && git push -f origin ${major}"
-          fi
+          echo "::notice::Published ${GITHUB_REF_NAME}. A maintainer now moves ${major}: git fetch origin && git tag -f ${major} ${GITHUB_SHA} && git push -f origin ${major}"

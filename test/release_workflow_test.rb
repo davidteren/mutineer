@@ -238,7 +238,7 @@ class ReleaseWorkflowTest < Minitest::Test
     assert_operator actor, :<, gate, "the permission check runs before the confirm-word check"
     assert_operator gate, :<, guard, "the confirm-word check runs before the version check"
     assert_operator guard, :<, tag_commit, "the tag name is validated before it is fetched"
-    ["configure-rubygems-credentials", "gem push", "gh release create", "git push -f"].each do |marker|
+    ["configure-rubygems-credentials", "gem push", "gh release create"].each do |marker|
       step = steps.index { |s| s.include?(marker) }
       refute_nil step, marker
       assert_operator guard, :<, step, "the stable-tag guard must run before #{marker}"
@@ -254,7 +254,8 @@ class ReleaseWorkflowTest < Minitest::Test
     assert_equal "${{ github.sha }}", checkout.dig("with", "ref")
     text = File.read(RELEASE_WORKFLOW)
     assert_includes text, "--verify-tag"
-    assert_includes text, 'git tag -f "$major" "$GITHUB_SHA"'
+    assert_includes text, "git tag -f ${major} ${GITHUB_SHA}", "the printed command names the built commit"
+    refute_match(/^\s*git push/, text, "a ruleset keeps the floating tag for maintainers; the job never pushes a tag")
   end
 
   def test_tag_commit_guard_accepts_an_unmoved_tag
