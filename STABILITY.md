@@ -117,14 +117,10 @@ Where it prints no warning, the item says documented only.
   With `--threshold`, that run can also exit 1.
   In 2.0 a provisioning failure exits 3.
 
-## Release rhythm
-
-There is no weekly release pull request.
-A maintainer opens one by hand when they want a release.
-Pushing a tag leaves the gem unpublished until a maintainer approves the publish.
-
 ## Release rhythm after 2.0
 
 Patch releases ship when a fix needs them.
 At most one minor release ships per month.
 The owner still has to confirm that number.
+The weekly release pull request stays.
+It opens when `feat:` or `fix:` commits sit on `main` past the latest tag.

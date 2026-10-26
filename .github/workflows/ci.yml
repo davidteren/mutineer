@@ -7,7 +7,6 @@ on:
     branches: [main]
   # release-pr.yml dispatches this on the release branch: its GITHUB_TOKEN push
   # starts no pull_request run, and the release PR needs the required checks.
-  # This dispatch runs CI only. It does not tag or publish.
   workflow_dispatch:
 
 jobs:

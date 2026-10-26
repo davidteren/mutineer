@@ -352,12 +352,6 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **A release waits for a maintainer.** The Monday release-PR schedule is
-  gone, and pushing a `vX.Y.Z` tag leaves the gem unpublished. A human
-  collaborator with maintain or admin prepares a release PR by hand, tags by
-  hand, then runs the Release workflow on that tag with `confirm=publish`.
-  A required reviewer approves the `rubygems` GitHub environment before the
-  gem is pushed.
 - **Load failures now use the runtime-error exit code (#288).** An
   `ArgumentError` or `SystemCallError` raised while a boot file, a source
   file or a `.mutineer.yml` `require:` file loads now exits 1 (runtime

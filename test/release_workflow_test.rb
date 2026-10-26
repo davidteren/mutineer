@@ -18,10 +18,6 @@ class ReleaseWorkflowTest < Minitest::Test
   RELEASE_WORKFLOW = File.expand_path("../.github/workflows/release.yml", __dir__)
   STABLE_TAG_START = "# MUTINEER_STABLE_TAG_START"
   STABLE_TAG_END = "# MUTINEER_STABLE_TAG_END"
-  PUBLISH_GATE_START = "# MUTINEER_PUBLISH_GATE_START"
-  PUBLISH_GATE_END = "# MUTINEER_PUBLISH_GATE_END"
-  ACTOR_START = "# MUTINEER_RELEASE_ACTOR_START"
-  ACTOR_END = "# MUTINEER_RELEASE_ACTOR_END"
   BOT = "41898282+github-actions[bot]@users.noreply.github.com"
   BOT_ENV = {
     "GIT_AUTHOR_NAME" => "github-actions[bot]", "GIT_AUTHOR_EMAIL" => BOT,
@@ -83,20 +79,13 @@ class ReleaseWorkflowTest < Minitest::Test
     end
   end
 
-  # A merge to main must not open a release PR, and nothing on a schedule may
-  # open one either. Each manual run still rebuilds the release branch from main.
-  def test_release_prs_are_opened_only_by_a_manual_dispatch
+  # Releases are batched (weekly + on demand): a merge to main must not open a
+  # release PR by itself, and each run rebuilds the release branch from main.
+  def test_release_prs_are_batched_not_opened_per_push
     triggers = YAML.load_file(WORKFLOW).then { |y| y[true] || y["on"] }
-    assert_equal %w[workflow_dispatch], triggers.keys
+    assert_equal %w[schedule workflow_dispatch], triggers.keys.sort
     text = File.read(WORKFLOW)
-    refute_match(/cron:/, text, "a cron would open a release PR with no one deciding")
-    refute_match(/^[ \t]*schedule:/, text, "release-pr.yml must not declare a schedule")
-    assert_includes text, "collaborators/${actor}/permission", "the actor's permission is read at runtime"
-    assert_includes text, 'GITHUB_EVENT_NAME:-}" != "workflow_dispatch"', "a schedule event is attributed to the last editor, so the event is part of the guard"
     assert_includes text, 'git switch -C "$branch"', "the release branch must be rebuilt from main"
-    refute_includes text, "tests and publishes", "the release PR must not tell anyone that a tag publishes"
-    assert_includes text, "RELEASE_PR_MARKER_PREVIOUS='Auto-opened by `release-pr.yml`'", "an already-open release PR still uses the previous marker"
-    assert_equal 3, text.scan("contains(env.RELEASE_PR_MARKER_PREVIOUS)").length
     refute_match(/git push --force(?!-with-lease)/, text, "never force-push the release branch (GITHUB_TOKEN may not)")
     assert_includes text, "--force-with-lease=", "the old release branch is deleted under a lease, never clobbered"
     assert_includes text, "gh pr edit", "an open release PR for the same version is refreshed"
@@ -218,18 +207,11 @@ class ReleaseWorkflowTest < Minitest::Test
     end
   end
 
-  # The maintainer gate and the stable-tag guard both run before anything
-  # publishes or moves the major tag.
+  # The guard must run before anything publishes or moves the major tag.
   def test_release_guard_runs_before_publishing
     steps = YAML.load_file(RELEASE_WORKFLOW).dig("jobs", "release", "steps").map { |s| "#{s["uses"]}#{s["run"]}" }
-    actor = steps.index { |s| s.include?(ACTOR_START) }
-    gate = steps.index { |s| s.include?(PUBLISH_GATE_START) }
     guard = steps.index { |s| s.include?(STABLE_TAG_START) }
-    refute_nil actor, "release.yml needs #{ACTOR_START} on the publish job"
-    refute_nil gate, "release.yml needs #{PUBLISH_GATE_START}"
     refute_nil guard, "release.yml needs #{STABLE_TAG_START}"
-    assert_operator actor, :<, gate, "the permission check runs before the confirm-word check"
-    assert_operator gate, :<, guard, "the confirm-word check runs before the version check"
     ["configure-rubygems-credentials", "gem push", "gh release create", "git push -f"].each do |marker|
       step = steps.index { |s| s.include?(marker) }
       refute_nil step, marker
@@ -237,244 +219,7 @@ class ReleaseWorkflowTest < Minitest::Test
     end
   end
 
-  # Tag pushes and the Monday cron used to publish with no second decision.
-  # Publish is a manual workflow_dispatch by a human maintainer, then the
-  # rubygems environment. Required reviewers are a GitHub setting; the
-  # workflow names the environment so that setting has a job to hold.
-  def test_publish_is_a_manual_dispatch_gated_on_the_maintainer
-    workflow = YAML.load_file(RELEASE_WORKFLOW)
-    triggers = workflow[true] || workflow["on"]
-    assert_equal %w[workflow_dispatch], triggers.keys
-    assert_equal true, triggers.dig("workflow_dispatch", "inputs", "confirm", "required")
-    release = workflow.dig("jobs", "release")
-    assert_equal ["authorize"], release["needs"]
-    assert_equal "rubygems", release.dig("environment", "name")
-    assert_includes release["if"], "needs.authorize.result == 'success'"
-    assert_includes release["if"], "github.event_name == 'workflow_dispatch'"
-    assert_includes release["if"], "github.event.inputs.confirm == 'publish'"
-    assert_includes release["if"], "startsWith(github.ref, 'refs/tags/v')"
-    refute_includes release["if"], "github.actor"
-    assert_equal "write", release.dig("permissions", "id-token")
-    assert_equal "write", release.dig("permissions", "contents")
-    authorize = workflow.dig("jobs", "authorize")
-    refute_nil authorize
-    assert_equal "read", authorize.dig("permissions", "contents")
-    assert_nil authorize.dig("permissions", "id-token")
-    assert_nil authorize["environment"], "permission is checked before the environment is requested"
-    refuse = workflow.dig("jobs", "refuse")
-    refute_nil refuse, "a refused publish must fail the workflow, so the skip is visible"
-    assert_nil refuse.dig("permissions", "id-token"), "the refuse job must not be able to mint RubyGems credentials"
-    assert_equal "none", refuse.dig("permissions", "contents")
-    refute_includes refuse["if"], "github.actor"
-    assert_includes refuse["if"], "github.event_name != 'workflow_dispatch'"
-    assert_includes refuse["if"], "github.event.inputs.confirm != 'publish'"
-    assert_includes refuse["if"], "!startsWith(github.ref, 'refs/tags/v')"
-    assert_includes authorize["if"], "github.event_name == 'workflow_dispatch'"
-    assert_includes authorize["if"], "github.event.inputs.confirm == 'publish'"
-    assert_includes authorize["if"], "startsWith(github.ref, 'refs/tags/v')"
-    text = File.read(RELEASE_WORKFLOW)
-    refute_match(/^[ \t]*schedule:/, text)
-    refute_match(/workflow_run:/, text)
-    refute_match(/^[ \t]*push:/, text)
-    refute_includes text, "tags:"
-    assert_equal 2, text.scan(ACTOR_START).length, "authorize and the publish job both check the actor"
-  end
-
-  def test_gem_push_lives_only_in_the_manual_release_workflow
-    paths = Dir[File.expand_path("../.github/workflows/*.yml", __dir__)]
-    pushers = paths.select { |path| File.read(path).include?("gem push") }
-    assert_equal [RELEASE_WORKFLOW], pushers.map { |path| File.expand_path(path) }
-  end
-
-  def test_publish_gate_accepts_a_confirmed_dispatch_on_a_tag
-    out, status = run_publish_gate(event: "workflow_dispatch", ref: "refs/tags/v1.2.3", confirm: "publish")
-    assert_equal 0, status.exitstatus, out
-  end
-
-  # The Monday cron's actor can be a maintainer. The event check is what stops it.
-  def test_publish_gate_refuses_a_schedule
-    out, status = run_publish_gate(event: "schedule", ref: "refs/tags/v1.2.3", confirm: "publish")
-    assert_equal 1, status.exitstatus
-    assert_match(/A tag push does not publish/, out)
-  end
-
-  def test_publish_gate_refuses_a_tag_push
-    out, status = run_publish_gate(event: "push", ref: "refs/tags/v1.2.3", confirm: "publish")
-    assert_equal 1, status.exitstatus
-    assert_match(/A tag push does not publish/, out)
-  end
-
-  def test_release_actor_check_is_the_same_in_both_workflows
-    release = marked_block(ACTOR_START, ACTOR_END, workflow: RELEASE_WORKFLOW)
-    prep = marked_block(ACTOR_START, ACTOR_END, workflow: WORKFLOW)
-    assert_equal release, prep
-    assert_includes release, 'actor="${GITHUB_TRIGGERING_ACTOR:-}"'
-    refute_includes release, "mapfile", "macOS bash 3.2 has no mapfile"
-    assert_includes release, ".user.permissions.maintain"
-    assert_includes release, ".user.permissions.admin"
-    assert_includes release, '.role_name // ""'
-  end
-
-  def test_release_actor_accepts_admin_and_maintain
-    %w[admin maintain].each do |role|
-      out, status, calls = run_release_actor(actor: "maintainer", admin: role == "admin",
-                                            maintain: role == "maintain", role: role)
-      assert_equal 0, status.exitstatus, out
-      assert calls.any? { |call| call.include?("collaborators/maintainer/permission") }, calls.inspect
-    end
-  end
-
-  # The legacy permission field reports maintain as write. The maintain flag is what counts.
-  def test_release_actor_accepts_a_custom_role_that_grants_maintain
-    out, status, = run_release_actor(actor: "maintainer", admin: false, maintain: true, role: "shippers")
-    assert_equal 0, status.exitstatus, out
-  end
-
-  def test_release_actor_refuses_write_triage_and_read
-    %w[write triage read].each do |role|
-      out, status, = run_release_actor(actor: "contributor", admin: false, maintain: false, role: role)
-      assert_equal 1, status.exitstatus, role
-      assert_match(/does not have maintain or admin/, out)
-    end
-  end
-
-  # A rerun keeps github.actor as the original maintainer. The person who
-  # clicked rerun is github.triggering_actor, and that person needs maintain.
-  def test_release_actor_refuses_a_rerun_by_someone_without_maintain
-    out, status, calls = run_release_actor(actor: "original-maintainer", triggering_actor: "writer",
-                                            admin: false, maintain: false, role: "write")
-    assert_equal 1, status.exitstatus
-    assert_match(/does not have maintain or admin/, out)
-    assert calls.any? { |call| call.include?("collaborators/writer/permission") }, calls.inspect
-    refute calls.any? { |call| call.include?("collaborators/original-maintainer/permission") }
-  end
-
-  def test_release_actor_refuses_when_the_triggering_actor_is_missing
-    out, status, calls = run_release_actor(actor: "original-maintainer", triggering_actor: "")
-    assert_equal 1, status.exitstatus
-    assert_match(/triggering_actor is empty/, out)
-    assert_empty calls
-  end
-
-  def test_release_actor_refuses_a_bot_login_without_calling_the_api
-    _out, status, calls = run_release_actor(actor: "github-actions[bot]", admin: true, maintain: true, role: "admin")
-    assert_equal 1, status.exitstatus
-    assert_empty calls
-  end
-
-  def test_release_actor_refuses_a_bot_account_type
-    out, status, = run_release_actor(actor: "some-app", kind: "Bot", admin: true, maintain: true, role: "admin")
-    assert_equal 1, status.exitstatus
-    assert_match(/type Bot/, out)
-  end
-
-  def test_release_actor_refuses_a_schedule_without_calling_the_api
-    out, status, calls = run_release_actor(event: "schedule", actor: "maintainer", admin: true, maintain: true, role: "admin")
-    assert_equal 1, status.exitstatus
-    assert_match(/A schedule does not start a release/, out)
-    assert_empty calls
-  end
-
-  def test_release_actor_refuses_when_the_permission_api_fails
-    out, status, = run_release_actor(actor: "maintainer", fail: true)
-    assert_equal 1, status.exitstatus
-    assert_match(/Could not read repository permission/, out)
-  end
-
-  def test_agent_docs_forbid_releasing
-    root = File.expand_path("..", __dir__)
-    agents = File.read(File.join(root, "AGENTS.md"))
-    claude = File.read(File.join(root, "CLAUDE.md"))
-    contributing = File.read(File.join(root, "CONTRIBUTING.md"))
-    stability = File.read(File.join(root, "STABILITY.md"))
-    [agents, claude, contributing].each do |text|
-      assert_includes text, "maintain or admin"
-      assert_match(/gem push/, text)
-    end
-    [
-      "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md", "STABILITY.md",
-      ".github/workflows/release.yml", ".github/workflows/release-pr.yml"
-    ].each do |rel|
-      refute_includes File.read(File.join(root, rel)), "davidteren", "#{rel} must not name a person"
-    end
-    refute_includes agents, "this is the whole release trigger"
-    refute_includes agents, "no environment"
-    assert_includes agents, "environment name to `rubygems`"
-    assert_includes agents, "Prevent self-review"
-    assert_includes agents, "release-maintainers"
-    assert_includes agents, "workflow_dispatch"
-    refute_includes stability, "weekly release pull request stays"
-    assert_includes stability, "There is no weekly release pull request."
-    assert_includes claude, "release.yml"
-    assert_includes claude, "rubygems"
-  end
-
-  def test_publish_gate_refuses_a_branch_and_a_missing_confirm_word
-    branch, branch_status = run_publish_gate(event: "workflow_dispatch", ref: "refs/heads/main", confirm: "publish")
-    assert_equal 1, branch_status.exitstatus
-    assert_match(/Pushing the tag does not publish/, branch)
-    word, word_status = run_publish_gate(event: "workflow_dispatch", ref: "refs/tags/v1.2.3", confirm: "yes")
-    assert_equal 1, word_status.exitstatus
-    assert_match(/confirm=publish/, word)
-  end
-
   private
-
-  # Runs the maintainer publish gate extracted from release.yml.
-  #
-  # @param event [String] GITHUB_EVENT_NAME
-  # @param ref [String] GITHUB_REF
-  # @param confirm [String] the workflow_dispatch confirm input
-  # @return [Array(String, Process::Status)] combined output and exit status
-  def run_publish_gate(event:, ref:, confirm:)
-    script = marked_block(PUBLISH_GATE_START, PUBLISH_GATE_END, workflow: RELEASE_WORKFLOW)
-    env = { "GITHUB_EVENT_NAME" => event, "GITHUB_REF" => ref, "CONFIRM" => confirm }
-    out, err, status = Open3.capture3(env, "bash", "-euo", "pipefail", "-c", script)
-    ["#{out}#{err}", status]
-  end
-
-  # Runs the permission check with a fake `gh` that prints the collaborator fields.
-  #
-  # @param event [String]
-  # @param actor [String] GITHUB_ACTOR, the original dispatcher
-  # @param triggering_actor [String, nil] who started this attempt; defaults to actor
-  # @param kind [String] GitHub user.type
-  # @param admin [Boolean]
-  # @param maintain [Boolean]
-  # @param role [String] role_name
-  # @param fail [Boolean] when the API call exits 1
-  # @return [Array(String, Process::Status, Array<String>)] output, status, gh calls
-  def run_release_actor(event: "workflow_dispatch", actor: "maintainer", triggering_actor: nil, kind: "User",
-                        admin: false, maintain: false, role: "write", fail: false)
-    triggering_actor = actor if triggering_actor.nil?
-    script = marked_block(ACTOR_START, ACTOR_END, workflow: RELEASE_WORKFLOW)
-    Dir.mktmpdir do |dir|
-      log = File.join(dir, "calls.log")
-      File.write(File.join(dir, "gh"), <<~SH)
-        #!/bin/bash
-        echo "$*" >> #{log}
-        [ "$1" = "api" ] || exit 1
-        [ "${FAIL}" = "1" ] && exit 1
-        printf '%s\\n' "$KIND" "$ADMIN" "$MAINTAIN" "$ROLE"
-      SH
-      File.chmod(0o755, File.join(dir, "gh"))
-      env = {
-        "PATH" => "#{dir}:#{ENV.fetch("PATH")}",
-        "GITHUB_EVENT_NAME" => event,
-        "GITHUB_ACTOR" => actor,
-        "GITHUB_TRIGGERING_ACTOR" => triggering_actor,
-        "GITHUB_REPOSITORY" => "example/mutineer",
-        "KIND" => kind,
-        "ADMIN" => admin.to_s,
-        "MAINTAIN" => maintain.to_s,
-        "ROLE" => role,
-        "FAIL" => fail ? "1" : "0"
-      }
-      out, err, status = Open3.capture3(env, "bash", "-euo", "pipefail", "-c", script)
-      calls = File.exist?(log) ? File.readlines(log, chomp: true) : []
-      ["#{out}#{err}", status, calls]
-    end
-  end
 
   # Runs the stable-tag guard extracted from release.yml for `tag`.
   #

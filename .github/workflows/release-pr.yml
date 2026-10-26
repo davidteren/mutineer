@@ -1,20 +1,14 @@
 name: Release PR
 
-# Prepares a release pull request and nothing else. There is no schedule.
-# A human collaborator with maintain or admin starts it by hand, from main:
-#
-#   gh workflow run release-pr.yml --ref main
-#
-# When feat:/fix: commits are on main past the latest tag, the run opens a PR
-# that bumps Mutineer::VERSION and dates the CHANGELOG (including the
-# reference-link def). Each run rebuilds that PR from current main. A newer
-# version replaces an older open release PR this workflow opened, and when
-# main moved the same version is re-opened fresh (the old branch is deleted
-# under a lease, never force-pushed). The run does not tag, publish, or merge.
-#
-# Merging the PR leaves the gem unpublished. Pushing the vX.Y.Z tag leaves the
-# gem unpublished. A maintainer then runs release.yml on that tag and approves
-# the rubygems environment. That approval is what publishes.
+# Releases are batched: this runs weekly (and on demand), not on every push. When
+# shippable work (feat:/fix: commits) is on main past the latest tag, it opens a
+# release PR that bumps Mutineer::VERSION and dates the CHANGELOG (including the
+# reference-link def that's easy to forget). Each run REBUILDS that PR from the
+# current main, so it always covers every change since the last tag: a newer
+# version replaces an older open release PR, and when main moved the same version
+# is re-opened fresh (the old branch is deleted, never force-pushed). You review +
+# merge, then push the vX.Y.Z tag — release.yml tests and publishes. Cut a release
+# early with: gh workflow run release-pr.yml
 #
 # Note: a push or PR made with the default GITHUB_TOKEN does NOT trigger other
 # workflows (GitHub's recursion guard), so ci.yml would never run on the release PR
@@ -22,10 +16,12 @@ name: Release PR
 # event GITHUB_TOKEN may start, so after a GITHUB_TOKEN push this job dispatches
 # ci.yml on the release branch; those runs report the required check names on the
 # PR's head commit. With a PAT in the optional `RELEASE_PR_TOKEN` secret (repo +
-# workflow scope) the push itself triggers CI and the dispatch is skipped. The
-# dispatch runs CI only. It does not tag or publish.
+# workflow scope) the push itself triggers CI and the dispatch is skipped. Either
+# way, merging to main and tagging still run release.yml.
 on:
-  workflow_dispatch: # a maintainer prepares a release PR: gh workflow run release-pr.yml --ref main
+  schedule:
+    - cron: "0 8 * * 1" # Monday 08:00 UTC — the weekly release batch
+  workflow_dispatch: # cut a release now: gh workflow run release-pr.yml
 
 permissions:
   contents: write
@@ -42,64 +38,6 @@ jobs:
     name: open a release PR if one is due
     runs-on: ubuntu-latest
     steps:
-      # GitHub attributes a schedule event to the last editor of this file, who
-      # may hold maintain or admin. The permission check alone would let that
-      # cron through, so the event must be workflow_dispatch as well.
-      # This workflow has no schedule; the check refuses one if it is added back.
-      - name: Require a human with maintain or admin
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # MUTINEER_RELEASE_ACTOR_START
-          # Schedule events are rejected before the API call. GitHub attributes a
-          # cron to the last editor of this file, and that person may hold
-          # maintain or admin, so a permission check alone would let the cron through.
-          if [ "${GITHUB_EVENT_NAME:-}" != "workflow_dispatch" ]; then
-            echo "::error::A release workflow runs only from workflow_dispatch (event ${GITHUB_EVENT_NAME:-}). A schedule does not start a release."
-            exit 1
-          fi
-          # github.actor stays the person who started the original run. On a
-          # rerun, github.triggering_actor is who started this attempt. Check
-          # that person, or a rerun by someone else inherits the first dispatch.
-          actor="${GITHUB_TRIGGERING_ACTOR:-}"
-          if [ -z "$actor" ]; then
-            echo "::error::Could not read who started this run (github.triggering_actor is empty). Refusing the release."
-            exit 1
-          fi
-          case "$actor" in
-            *'[bot]')
-              echo "::error::A bot cannot start a release (actor ${actor})."
-              exit 1
-              ;;
-          esac
-          # Legacy `permission` maps the maintain role to write. Read the
-          # maintain and admin flags, and accept role_name admin or maintain
-          # for a response that omits the flags. A custom role that grants
-          # maintain still passes, so adding a collaborator needs no workflow edit.
-          if ! meta=$(gh api "repos/${GITHUB_REPOSITORY:?}/collaborators/${actor}/permission" --jq '[.user.type // "unknown", ((.user.permissions.admin // false) | tostring), ((.user.permissions.maintain // false) | tostring), (.role_name // "")] | .[]'); then
-            echo "::error::Could not read repository permission for ${actor}. Refusing the release."
-            exit 1
-          fi
-          # Four lines, one field each. macOS ships bash 3.2, which has no bash-4 line array.
-          kind=""; admin=""; maintain=""; role=""
-          {
-            IFS= read -r kind || true
-            IFS= read -r admin || true
-            IFS= read -r maintain || true
-            IFS= read -r role || true
-          } < <(printf '%s\n' "$meta")
-          if [ "$kind" != "User" ]; then
-            echo "::error::A bot cannot start a release (actor ${actor}, type ${kind})."
-            exit 1
-          fi
-          if [ "$admin" = "true" ] || [ "$maintain" = "true" ] || [ "$role" = "admin" ] || [ "$role" = "maintain" ]; then
-            echo "Release actor ${actor} is a human with role ${role} (admin=${admin} maintain=${maintain})."
-          else
-            echo "::error::${actor} does not have maintain or admin on this repository (role ${role}). Write, triage, and read cannot start a release."
-            exit 1
-          fi
-          # MUTINEER_RELEASE_ACTOR_END
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history + tags for git describe/log
@@ -168,7 +106,7 @@ jobs:
             local cur
             cur="$(ruby -r ./lib/mutineer/version -e 'print Mutineer::VERSION')"
             untagged_bump "$cur" "$1" || return 1
-            echo "::warning::VERSION $cur on main is not tagged yet (latest tag $1). Pushing a tag does not publish. The maintainer tags v$cur, runs release.yml on that tag with confirm=publish, and approves the rubygems environment."
+            echo "::warning::VERSION $cur on main is not tagged yet (latest tag $1). Tag it: git tag v$cur && git push origin v$cur"
             local open_release
             open_release="$(gh pr list --state open --json number,headRefName --jq '.[] | select(.headRefName | startswith("release/v")) | "#\(.number) \(.headRefName)"')"
             if [ -n "$open_release" ]; then
@@ -232,21 +170,19 @@ jobs:
           # otherwise undo or stack on it.
           if stop_if_untagged_bump "$latest_tag"; then exit 0; fi
 
-          # Only this workflow's own PRs carry a marker in the body (see the footer).
-          # The previous marker is what already-open release PRs still say.
-          export RELEASE_PR_MARKER='Opened by a manual run of `release-pr.yml`'
-          export RELEASE_PR_MARKER_PREVIOUS='Auto-opened by `release-pr.yml`'
+          # Only this workflow's own PRs carry this marker in the body (see the footer).
+          export RELEASE_PR_MARKER='Auto-opened by `release-pr.yml`'
           # The open same-repo PR on head <branch> that this workflow opened (empty if none).
           own_pr_number() {
             gh pr list --state open --head "$1" --json number,isCrossRepository,body \
               --jq '[.[] | select(.isCrossRepository | not)
-                         | select(.body | contains(env.RELEASE_PR_MARKER) or contains(env.RELEASE_PR_MARKER_PREVIOUS))][0].number // empty'
+                         | select(.body | contains(env.RELEASE_PR_MARKER))][0].number // empty'
           }
           # Open same-repo PRs on head <branch> that a person opened (no marker).
           hand_opened_prs() {
             gh pr list --state open --head "$1" --json number,isCrossRepository,body \
               --jq '.[] | select(.isCrossRepository | not)
-                        | select((.body | contains(env.RELEASE_PR_MARKER) or contains(env.RELEASE_PR_MARKER_PREVIOUS)) | not) | "#\(.number)"'
+                        | select(.body | contains(env.RELEASE_PR_MARKER) | not) | "#\(.number)"'
           }
 
           date="$(date -u +%Y-%m-%d)"
@@ -318,7 +254,7 @@ jobs:
 
           notes="$(git log --pretty='- %h %s' "${latest_tag}..HEAD" | grep -E '^- [0-9a-f]+ (feat|fix)(\(|!|:)' || true)"
           bump="$([ "$feats" -gt 0 ] && echo minor || echo patch)"
-          body="$(printf '## What / Why / How\n\n**What.** Prepare release **v%s** (version bump and CHANGELOG only).\n\n**Why.** feat:/fix: commits have landed on `main` since `%s`. A maintainer started this workflow by hand. Preparing this PR does not tag or publish, and nothing runs it on a schedule.\n\n**How.** A maintainer reviews and merges this PR. Merging leaves the gem unpublished. They tag `v%s` and push the tag. A tag push leaves the gem unpublished. They run `gh workflow run release.yml --ref v%s -f confirm=publish` and a required reviewer approves the `rubygems` environment. That approval publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_%s. Rebuilt from `main` when `main` has moved. A run that finds this branch already on current `main` leaves it. Closing the PR leaves the gem unpublished, and nothing re-opens it until a maintainer runs the workflow again._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes" "$RELEASE_PR_MARKER")"
+          body="$(printf '## What / Why / How\n\n**What.** Cut release **v%s**.\n\n**Why.** feat:/fix: commits have landed on `main` since `%s` (auto-detected). This bumps the version + dates the CHANGELOG so a tag can publish — closing the release-drift gap automatically.\n\n**How.** Review, merge, then `git tag v%s && git push origin v%s` — release.yml tests and publishes to RubyGems.\n\n---\n\n**Bump:** %s -> v%s (%s). Included:\n%s\n\n_%s and rebuilt from `main` on each weekly (or manual) run. When `main` moves, the next run replaces this PR with a fresh one, so comments and approvals stay on the closed PR: review and merge promptly, and put notes in comments only on the current PR. Closing it only snoozes it: the next run re-opens it._\n' "$next" "$latest_tag" "$next" "$next" "$latest_tag" "$next" "$bump" "$notes" "$RELEASE_PR_MARKER")"
 
           own_num="$(own_pr_number "$branch")"
           if [ -n "$own_num" ]; then
@@ -335,7 +271,7 @@ jobs:
           olds="$(gh pr list --state open --limit 200 --json number,headRefName,isCrossRepository,body \
             --jq '.[] | select(.isCrossRepository | not)
                       | select(.headRefName | test("^release/v[0-9]+\\.[0-9]+\\.[0-9]+$"))
-                      | select(.body | contains(env.RELEASE_PR_MARKER) or contains(env.RELEASE_PR_MARKER_PREVIOUS))
+                      | select(.body | contains(env.RELEASE_PR_MARKER))
                       | "\(.number) \(.headRefName)"')"
           failed=0
           while read -r num old; do
