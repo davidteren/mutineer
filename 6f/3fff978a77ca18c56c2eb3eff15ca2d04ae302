@@ -1,0 +1,19 @@
+docs/cli.md
+  s_c72800bf270529::t_58a8793cea60e4 71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6f3fff978a77ca18c56c2eb3eff15ca2d04ae302",
+  "prompts": {},
+  "sessions": {
+    "s_c72800bf270529": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9e84c7f6-f7b5-4b6e-b38d-4c1c6a5be3a6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
