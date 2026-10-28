@@ -1,7 +1,7 @@
 # Default: a file-backed SQLite DB (not :memory:) so the connection survives the
 # fork Mutineer does per mutant. DB=postgres selects Postgres. DB=mysql selects
-# MySQL. MUTINEER_SECOND_DB=1 adds a second config so a parallel run must fall
-# back to one worker.
+# MySQL. MUTINEER_SECOND_DB=1 adds a second SQLite config: each --daemon worker
+# copies both files.
 <% if ENV["MUTINEER_SECOND_DB"] == "1" %>
 test:
   primary:

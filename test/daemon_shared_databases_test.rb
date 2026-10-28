@@ -38,6 +38,9 @@ class DaemonSharedDatabasesTest < Minitest::Test
 
     # @return [void]
     def self.after_fork(*, **); end
+
+    # @return [void]
+    def self.recheck_routing!; end
   end
 
   # A lookup that fails. The primary alone may still resolve, or not.

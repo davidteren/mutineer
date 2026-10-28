@@ -170,8 +170,10 @@ MariaDB and MySQL 9 or later are not tested: `--daemon` prints a warning and run
 If Mutineer cannot read the server version, it prints a warning and runs.
 On MySQL older than 8.0 (such as 5.7), `--daemon` stops the run before it copies any database.
 Pass `--no-daemon` (or set `daemon: false`) there.
-An app with more than one database runs one worker.
-On Rails 7.1 or later, list the databases your tests never use in `shared_databases`, and the workers run in parallel.
+On Rails 7.1 or later, when every test database in `config/database.yml` uses SQLite with a plain file path, each worker copies every file except those shared through `shared_databases`.
+A shared database and all other names for its file use the base file, unless it is the primary file. Every name for the primary file uses the worker copy, even if an alias is listed in `shared_databases`.
+On Rails 7.0, an extra database outside `shared_databases` means one worker, and only the primary database is copied. A parallel run that shares extra databases scores every mutant `error`: the shared-connection check needs Rails 7.1 or later.
+On Postgres or MySQL, an app with an extra database outside `shared_databases` runs one worker. On Rails 7.1 or later, it can run in parallel when `shared_databases` lists every extra database and the tests never use those databases.
 A mutant scores `error` when a shared database still holds a connection after its tests.
 Transactional tests open a connection to every database with a test pool, so check that caveat first.
 See [More than one database](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database).

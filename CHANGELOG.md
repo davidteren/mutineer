@@ -23,6 +23,25 @@ All notable changes to this project are documented here. The format is based on
   (before, each case could start several workers). See
   [More than one database](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database)
   for the transactional-tests caveat.
+- **Parallel `--daemon` runs for apps with several SQLite databases** (#332).
+  On Rails 7.1 or later, when every test database in `config/database.yml` uses
+  SQLite with a plain file path, each worker copies every file except those shared through
+  `shared_databases` (`storage/cable.sqlite3` becomes `storage/cable-0.sqlite3`).
+  Such an app runs `--jobs N` in parallel with no `shared_databases` entry.
+  Secondary copies load their configured schema dumps when out of date.
+  The primary copy loads the schema file Rails names for it (#317). Physical aliases use one
+  schema. Conflicting secondary alias dumps raise before any
+  secondary schema loads, so configuration order cannot delete copied rows.
+  Postgres and MySQL keep the one-worker limit unless
+  `shared_databases` lists the other databases. A SQLite database listed in
+  `shared_databases` and all other names for the same file keep the base file,
+  unless it is the primary file. Every name for the primary file uses the
+  worker copy, even if an alias is listed in `shared_databases`. Routing is
+  checked before schema loading, and a worker destination cannot alias a
+  configured base file. On Rails 7.0, an extra database outside
+  `shared_databases` means one worker, and only the primary database is copied.
+  A parallel run that shares extra databases scores every mutant `error`:
+  the shared-connection check needs Rails 7.1 or later.
 - **Counts of mutants that were not scored (#291).** Operators now count the
   candidates they decline: a heredoc they cannot mutate safely, or an
   equivalent skip such as an endless range or a skipped chain-link name. The
@@ -367,6 +386,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Breaking: `--daemon` refuses SQLite connections that cannot be copied
+  per worker** (#332). Before, the fork reconnected
+  `ActiveRecord::Base` to a worker file whatever its config. Now Mutineer
+  copies only databases in `config/database.yml`. A connection from an inline
+  `establish_connection` hash, or any SQLite pool given as a `file:` URI, stops
+  the run with its routing error if registered at boot. A pool opened later
+  makes the mutant score `error`, even with one worker. Declare a plain file
+  path in `config/database.yml`, then replace the connection hash with the
+  declared name in `establish_connection(:name)`.
 - **A release waits for a maintainer.** The Monday release-PR schedule is
   gone, and pushing a `vX.Y.Z` tag leaves the gem unpublished. A human
   collaborator with maintain or admin prepares a release PR by hand, tags by

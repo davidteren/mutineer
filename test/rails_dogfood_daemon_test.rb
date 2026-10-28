@@ -53,22 +53,26 @@ class RailsDogfoodDaemonTest < Minitest::Test
       .select { |path| File.basename(path).match?(/\Atest\.sqlite3[-_]\d+\z/) }
   end
 
-  # More than one database config is only known after boot. The run warns once
-  # and uses one worker, so only slot 0's file appears.
-  def test_several_databases_run_one_worker_and_warn_once
+  # Each worker copies every SQLite database, so an app with two SQLite
+  # databases runs parallel workers with no warning. Both workers get their
+  # own copy of each file, and the score matches one worker. The deterministic
+  # commit check is DaemonWorkerDbTest#test_each_worker_copies_the_second_database.
+  def test_two_sqlite_databases_run_parallel_workers_and_match_one_worker
     ENV["MUTINEER_SECOND_DB"] = "1"
-    slot1 = File.join(APP, "storage", "test-1.sqlite3")
-    File.delete(slot1) if File.exist?(slot1)
-    aggregate = nil
+    slots = %w[test-1 extra-0 extra-1].map { |name| File.join(APP, "storage", "#{name}.sqlite3") }
+    slots.each { |path| File.delete(path) if File.exist?(path) }
+    serial = parallel = nil
     _out, err = capture_subprocess_io do
-      aggregate, = Mutineer::Runner.execute(config_for(4))
+      serial,   = Mutineer::Runner.execute(config_for(1))
+      parallel, = Mutineer::Runner.execute(config_for(2))
     end
 
-    assert_equal 100.0, aggregate.mutation_score
-    sentence = "this app has 2 databases; Mutineer runs one worker. Parallel runs support one database."
-    assert_equal 1, err.scan(sentence).size
-    refute File.exist?(slot1), "a second worker must not start"
-    assert File.exist?(File.join(APP, "storage", "test-0.sqlite3"))
+    assert_equal 100.0, parallel.mutation_score
+    assert_equal serial.killed_count, parallel.killed_count, "--jobs 2 == --jobs 1"
+    assert_equal serial.survived_count, parallel.survived_count
+    assert_equal 0, parallel.errored_count
+    refute_match(/Mutineer runs one worker/, err)
+    slots.each { |path| assert File.exist?(path), "#{File.basename(path)} must exist" }
   ensure
     ENV.delete("MUTINEER_SECOND_DB")
   end
@@ -86,7 +90,7 @@ class RailsDogfoodDaemonTest < Minitest::Test
 
     assert_equal 100.0, aggregate.mutation_score
     assert_equal 0, aggregate.errored_count
-    refute_match(/databases; Mutineer runs one worker/, err)
+    refute_match(/Mutineer runs one worker/, err)
     refute_match(/shared database used/, err)
     assert File.exist?(slot1), "a second worker must start"
   ensure

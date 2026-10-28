@@ -113,16 +113,43 @@ class DaemonBackendContractTest < Minitest::Test
     assert_empty Mutineer::DaemonBackend.boot_config(config, [], coverage: true)[:shared_databases]
   end
 
-  # The daemon's database report, as RailsWorkerDb.database_names gives it.
-  TWO_DATABASES = { "names" => %w[primary cable], "primary" => "primary" }.freeze
+  # The daemon's database report, as RailsWorkerDb.database_names gives it
+  # for Postgres or MySQL: each worker copies only the primary.
+  TWO_DATABASES = { "names" => %w[primary cable], "primary" => "primary", "copied" => %w[primary] }.freeze
 
   def test_a_second_database_forces_one_worker_and_names_it
     count = nil
     _out, err = capture_io { count = worker_count_for(TWO_DATABASES, [], 4) }
 
     assert_equal 1, count
-    assert_includes err, "this app has 2 databases; Mutineer runs one worker. Parallel runs support one database."
+    assert_includes err, "each worker copies only primary; this app also has cable. Mutineer runs one worker."
     assert_includes err, "under shared_databases: cable."
+    assert_includes err, "SQLite file databases on Rails 7.1 or later"
+  end
+
+  # On SQLite each worker copies every file database, so nothing is left to
+  # share. A database the daemon did not copy still forces one worker.
+  def test_copied_databases_need_no_shared_databases
+    sqlite = { "names" => %w[primary cable], "primary" => "primary", "copied" => %w[primary cable] }
+    mixed  = { "names" => %w[primary cable queue], "primary" => "primary", "copied" => %w[primary cable] }
+    _out, sqlite_err = capture_io { assert_equal 4, worker_count_for(sqlite, [], 4) }
+    assert_empty sqlite_err
+
+    count = nil
+    _out, err = capture_io { count = worker_count_for(mixed, [], 4) }
+
+    assert_equal 1, count
+    assert_includes err, "each worker copies only primary, cable; this app also has queue."
+  end
+
+  def test_fallback_warning_excludes_shared_files_from_the_copied_names
+    mixed = { "names" => %w[primary cable queue], "primary" => "primary", "copied" => %w[primary cable] }
+    count = nil
+    _out, err = capture_io { count = worker_count_for(mixed, %w[cable], 4) }
+
+    assert_equal 1, count
+    assert_includes err, "each worker copies only primary; this app also has queue outside shared_databases."
+    refute_includes err, "each worker copies only primary, cable"
   end
 
   def test_shared_databases_lifts_the_one_worker_limit
@@ -151,7 +178,7 @@ class DaemonBackendContractTest < Minitest::Test
 
     assert_equal 1, count
     assert_includes err, "shared_databases names no test database: cabel. This app has primary, cable."
-    assert_includes err, "this app has 2 databases outside shared_databases; Mutineer runs one worker."
+    assert_includes err, "this app also has cable outside shared_databases. Mutineer runs one worker."
   end
 
   # Each worker copies the primary database. Sharing it would leave the other
