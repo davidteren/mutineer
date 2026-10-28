@@ -6,7 +6,7 @@ Compare frameworks, Rails support, CI, and costs. Checked against project README
 
 | Tool | Frameworks | Rails | Parallel | Changed code only | CI | Licence / cost | Maintenance |
 |------|-----------|-------|----------|-------------------|----|----------------|-------------|
-| [mutineer](https://github.com/davidteren/mutineer) 1.7.0 | Minitest, RSpec | `--rails`; `--daemon` isolates worker DBs (Minitest; SQLite, PostgreSQL, MySQL 8) | Yes; Rails requires `--daemon` | `--since`, `--baseline` | Official GitHub Action | MIT, free | Active (Oct 2026) |
+| [mutineer](https://github.com/davidteren/mutineer) 1.8.0 | Minitest, RSpec | `--rails`; `--daemon` isolates worker DBs (Minitest; SQLite, PostgreSQL, MySQL 8) | Yes; Rails requires `--daemon` | `--since`, `--baseline` | Official GitHub Action | MIT, free | Active (Oct 2026) |
 | [mutant](https://github.com/mbj/mutant) 0.17.1 | RSpec, Minitest, Test::Unit | Yes; worker DBs for PostgreSQL, SQLite | Yes | Incremental mode | Documented | Open source: free; commercial: $30/month or $250/year per developer | Active (Oct 2026) |
 | [evilution](https://github.com/marinazzio/evilution) 1.5.1 | RSpec, Minitest, Test::Unit | Fork and preload | `--jobs` (default 1) | `--incremental` cache | Unknown | MIT, free | Active (Oct 2026) |
 | [kimera](https://github.com/giacope/kimera) 0.1.6 | Minitest, RSpec | Worker DBs, `--isolate-db` | Yes | `--since`, `kimera changed` | GitHub Actions recipe | MIT, free | Active, new |

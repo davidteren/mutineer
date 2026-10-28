@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Highlights
+
+Read these before you upgrade. Details are in the sections below.
+
+- **Scores can change after the upgrade.** Under `--strategy reload`, methods
+  in a concern's `included` or `prepended` block are now scored (#297). Runs
+  that list `call_to_receiver` get more mutants (#274). Both can add
+  survivors. If you gate on `--baseline`, write a new full baseline.
+- **Fewer false kills.** A `--test-command` exit other than 1, a load crash
+  under `--test-command` (#292), and a database error inside a test (#296)
+  now score `error`, not `killed`.
+- **Exit codes match STABILITY.md (#288).** A boot, source or `require:`
+  file that raises while it loads exits 1. A missing boot or `require:` file exits 2.
+- **`--threshold` compares the exact score (#280).** A run with 1999 of
+  2000 mutants killed shows 100.0% but no longer passes `--threshold 100`.
+- **New report data.** The JSON report adds `summary.declined` and
+  `summary.declined_by_operator` (schema `1.9`), and stderr warns when many
+  mutants could not run (#291).
+- **Parallel `--daemon` with unused test databases (#316).** List them under
+  `shared_databases` to run more than one worker. Needs Rails 7.1 or later.
+- **The gem ships the agent skill (#315).**
+- **Releases wait for a maintainer.** Nothing publishes on a schedule or on
+  a tag push.
+
 ### Added
 
 - **`shared_databases` config key** (#316). An app with a second test
