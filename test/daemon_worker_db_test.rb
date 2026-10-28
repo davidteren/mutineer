@@ -25,8 +25,7 @@ class DaemonWorkerDbTest < Minitest::Test
       load_paths: [File.join(APP, "test")],
       source_dirs: [File.join(APP, "app/models")],
       framework: "minitest",
-      rails: true,
-      schema: File.join(APP, "db/schema.rb")
+      rails: true
     }
   end
 
@@ -581,6 +580,78 @@ class DaemonWorkerDbTest < Minitest::Test
     assert status.success?, out
     assert_includes out, "extra_worker_0=0"
     assert_includes out, "extra_worker_1=0"
+  end
+
+  # #317: a worker loads the schema file the app's config names. A decoy
+  # db/schema.rb that SQLite cannot load (like a MySQL schema) sits beside the
+  # `schema_dump: schema_sqlite.rb` file whose checksum the base DB holds.
+  # Real Rails resolves each name through DaemonServer's worker setup, under the
+  # fixture bundle, in a temp db dir. The worker uses the daemon's stored path.
+  SCHEMA_DUMP_CHECK = <<~RUBY
+    require "./config/environment"
+    require #{File.expand_path("../lib/mutineer/daemon_server", __dir__).inspect}
+    require "digest"
+    require "tmpdir"
+    ActiveRecord::Migration.verbose = false
+    daemon = Mutineer::DaemonServer
+    daemon.send(:setup_worker_db, "db_role" => "prepare")
+    db = Mutineer::RailsWorkerDb
+    found = { default: daemon.instance_variable_get(:@schema_path) == File.expand_path("db/schema.rb") }
+    Dir.mktmpdir do |dir|
+      ActiveRecord::Tasks::DatabaseTasks.db_dir = dir
+      File.write(File.join(dir, "schema.rb"), 'raise "loaded the decoy schema.rb"')
+      sqlite_schema = File.join(dir, "schema_sqlite.rb")
+      File.write(sqlite_schema, File.read("db/schema.rb"))
+      base = { adapter: "sqlite3", database: File.join(dir, "base.sqlite3"), schema_dump: "schema_sqlite.rb" }
+      route = lambda do |extra = {}|
+        # A declared config, not an inline hash: --daemon copies only declared SQLite files (#332).
+        ActiveRecord::Base.configurations = { "test" => base.merge(extra) }
+        ActiveRecord::Base.establish_connection(:test)
+        daemon.send(:setup_worker_db, "db_role" => "prepare")
+        daemon.instance_variable_get(:@schema_path)
+      end
+      found[:renamed] = route.() == sqlite_schema
+      ActiveRecord.schema_format = "ruby"
+      config = ActiveRecord::Base.connection_db_config
+      found[:rails_string] = ActiveRecord::Tasks::DatabaseTasks.schema_dump_path(config, "ruby") == sqlite_schema
+      found[:daemon_string] = route.() == sqlite_schema
+      ActiveRecord.schema_format = :ruby
+      found[:off] = route.(schema_dump: false)
+      ActiveRecord.schema_format = :sql
+      found[:sql] = route.()
+      ActiveRecord.schema_format = :ruby
+      route.()
+      load sqlite_schema
+      c = ActiveRecord::Base.connection
+      c.execute("INSERT INTO orders (created_at, updated_at) VALUES (datetime(), datetime())")
+      c.execute("INSERT OR REPLACE INTO ar_internal_metadata VALUES ('schema_sha1', \#{c.quote(Digest::SHA1.hexdigest(File.read(sqlite_schema)))}, datetime(), datetime())")
+      # A fork discards the connections it inherits. This stands in for it.
+      ActiveRecord::Base.connection_pool.disconnect!
+      db.after_fork(0, daemon.instance_variable_get(:@schema_path), seed: true)
+      found[:rows] = ActiveRecord::Base.connection.select_value("SELECT COUNT(*) FROM orders")
+      route.()
+      found[:decoy] = begin
+        ActiveRecord::Base.connection_pool.disconnect!
+        db.after_fork(1, File.join(dir, "schema.rb"), seed: true)
+      rescue RuntimeError => e
+        e.message
+      end
+    end
+    puts found.inspect
+  RUBY
+
+  def test_seeded_worker_loads_the_schema_dump_file_not_db_schema_rb
+    env = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+    out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", SCHEMA_DUMP_CHECK,
+                                  chdir: APP, unsetenv_others: true)
+    assert status.success?, out
+    # The daemon stores the fixture's default or renamed path, including Rails'
+    # accepted string format, or nil for schema_dump: false and SQL format.
+    # rows: the copy is current against schema_sqlite.rb, so its row stays.
+    # decoy: what the old fixed db/schema.rb path did to the same copy.
+    assert_includes out, { default: true, renamed: true, rails_string: true, daemon_string: true,
+                           off: nil, sql: nil, rows: 1,
+                           decoy: "loaded the decoy schema.rb" }.inspect
   end
 
   def test_verdicts_are_correct_across_distinct_worker_dbs

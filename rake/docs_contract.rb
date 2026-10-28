@@ -94,6 +94,9 @@ module DocsContract
       HTML
     end
 
+    # User guides appended to `llms-full.txt`, in reading order.
+    GUIDES = %w[quick-start.md getting-started.md results.md rails-setup.md ci.md cli.md comparison.md].freeze
+
     # Concatenated agent ingest file.
     #
     # @return [String]
@@ -103,11 +106,12 @@ module DocsContract
       readme = readme.gsub("[LICENSE](LICENSE)",
         "[LICENSE](https://github.com/davidteren/mutineer/blob/main/LICENSE)")
       agentic = File.read(File.join(ROOT, "docs/agentic-coding.md"))
+      guides = GUIDES.map { |name| File.read(File.join(ROOT, "docs", name)).rstrip }.join("\n\n---\n\n")
       schema = File.read(SCHEMA_MD)
       <<~TXT
         # Mutineer — full documentation
 
-        > Concatenated from README, the AI-agents/CI guide, and the JSON report schema.
+        > Concatenated from README, the AI-agents/CI guide, the user guides, and the JSON report schema.
         > Source: https://github.com/davidteren/mutineer
 
         ---
@@ -119,6 +123,10 @@ module DocsContract
         ---
 
         #{agentic.rstrip}
+
+        ---
+
+        #{guides}
 
         ---
 

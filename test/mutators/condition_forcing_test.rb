@@ -126,4 +126,27 @@ class ConditionForcingTest < Minitest::Test
   def test_nested_def_is_its_own_subject
     assert_equal [[], []], both("def inner = (a if b)")
   end
+
+  # The operator instance after one call on `body`, to read its declined count.
+  def ran(klass, body)
+    source = "def m\n  #{body}\nend\n"
+    klass.new.tap { |op| op.mutations_for(subject_for(source), source) }
+  end
+
+  def test_heredoc_condition_counts_as_declined
+    [Mutineer::Mutators::ConditionTrue, Mutineer::Mutators::ConditionFalse].each do |klass|
+      assert_equal 1, ran(klass, "if foo(<<~X)\n    hi\n  X\n    1\n  end").declined
+    end
+  end
+
+  def test_literal_condition_is_not_declined
+    assert_equal 0, ran(Mutineer::Mutators::ConditionTrue, "if true then 1 end").declined
+  end
+
+  def test_declined_resets_on_each_call
+    op = ran(Mutineer::Mutators::ConditionTrue, "if foo(<<~X)\n    hi\n  X\n    1\n  end")
+    source = "def m\n  if a then 1 end\nend\n"
+    op.mutations_for(subject_for(source), source)
+    assert_equal 0, op.declined
+  end
 end

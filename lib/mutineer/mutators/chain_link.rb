@@ -16,16 +16,16 @@ module Mutineer
     # The mutant survives when no test tells the chain apart from the same chain
     # without that step: a scope, a filter or a lookup the tests never see.
     #
-    # Links in {SKIPPED} are never dropped. On a value that already has the
-    # target type or needs no copy, a conversion (`name.to_s.strip`) or a copy
-    # (`list.dup.sort`) is a no-op, so dropping it most often makes an
-    # equivalent mutant. Dropping `new` sends the next call to the class, which
+    # Links in {SKIPPED} are never dropped; each one counts as declined. On a
+    # value that already has the target type or needs no copy, a conversion
+    # (`name.to_s.strip`) or a copy (`list.dup.sort`) is a no-op, so dropping
+    # it most often makes an equivalent mutant. Dropping `new` sends the next call to the class, which
     # raises (killed by any test that runs the line) or reaches a class method
     # that builds the instance itself (equivalent); neither says anything about
     # the tests.
     class ChainLink < Base
       # Method names whose link is never dropped: core conversions and copies,
-      # plus `new`. {CallToReceiver} uses the same list for the last call.
+      # plus `new`. {CallToReceiver} has its own shorter list for the last call.
       SKIPPED = %i[
         to_s to_str to_sym to_i to_int to_f to_r to_c to_a to_ary to_h to_hash to_proc to_set
         dup clone freeze itself
@@ -100,7 +100,7 @@ module Mutineer
         link = top.receiver
         while dotted?(link)
           @links[link] = true
-          drop(link) unless SKIPPED.include?(link.name)
+          SKIPPED.include?(link.name) ? decline : drop(link)
           link = link.receiver
         end
       end

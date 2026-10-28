@@ -33,4 +33,8 @@ class ContinuationTest < Minitest::Test
   def test_kind
     assert_equal :number, Continuation.kind(1)
   end
+
+  def test_names
+    assert_equal ["2 1"], Continuation.names([[1, 2]])
+  end
 end

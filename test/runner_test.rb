@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "minitest/mock"
+require "rbconfig"
 require "tmpdir"
 # Pre-require the fixture (R5/KTD4): with it already in $LOADED_FEATURES, the
 # test files' `require_relative "calculator"` is a no-op in the child, so the
@@ -79,7 +80,7 @@ class RunnerTest < Minitest::Test
 
       assert_predicate result, :killed?, "expected killed, got #{result.status} (#{result.details})"
       refute_path_exists marker, "the mutant run must stop at the first failing test"
-      pinned = ENV["SEED"] ? ENV["SEED"].to_i % 0xFFFF : Mutineer::MinitestIntegration::STOP_AT_FIRST_FAILURE_SEED
+      pinned = ENV["SEED"] ? ENV["SEED"].to_i % 0xFFFF : Mutineer::MinitestIntegration::PINNED_SEED
       assert_equal pinned.to_s, File.read(seed)
     end
   end
@@ -280,6 +281,43 @@ class RunnerTest < Minitest::Test
     assert_equal :no_coverage, selection(source, "false", {}, load_lines: [2])[1].status
   end
 
+  # #289: when the strict lines give no tests, the tests of the statement's
+  # first or last line run as :maybe. A strict hit still wins as :run.
+  def test_coverage_selection_retries_with_the_edge_lines_as_maybe
+    source = "def f(users)\n  users.map { |u| format(\"%s %s\",\n    u + 1,\n    u - 1) }\nend\n"
+
+    assert_equal [:maybe, ["/root/t_test.rb"]], selection(source, "u + 1", { 2 => ["t_test.rb"] })
+    assert_equal [:run, ["/root/t_test.rb"]],
+                 selection(source, "u - 1", { 2 => ["a_test.rb"], 3 => ["t_test.rb"] })
+  end
+
+  # #289: a mutant whose strict lines ran at load runs the tests of an edge
+  # line as :maybe, so a kill counts and a survivor stays ran_at_load.
+  def test_coverage_selection_runs_a_load_time_mutant_with_an_edge_line_test_as_maybe
+    source = "def f(xs)\n  x = 1; y = xs.map { |v|\n    v }.size + 1\nend\n"
+
+    assert_equal [:maybe, ["/root/t_test.rb"]], selection(source, "+ 1", { 2 => ["t_test.rb"] }, load_lines: [3])
+
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
+    start = source.index("+ 1")
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + 1, replacement: "-", operator: :test)
+    map = FakeCoverageMap.new({ 2 => ["t_test.rb"] }, "/root", [3], false, [])
+    loaded = Mutineer::JobPlan.load_verdict(Mutineer::Result.new(status: :survived), "x.rb", mutation, subject,
+                                            source, map)
+
+    assert_equal :ran_at_load, Mutineer::JobPlan.selection_verdict(:maybe, loaded).status
+  end
+
+  # #289: a #254 :maybe selection also gets the tests of a first line that it
+  # shares with other code.
+  def test_coverage_selection_adds_the_shared_first_line_to_a_maybe_selection
+    source = "def f(p, q)\n  return if p.nil?; g(p &&\n    qq)\nend\n"
+
+    assert_equal [:maybe, ["/root/t_test.rb"]], selection(source, "qq", { 2 => ["t_test.rb"] })
+    assert_equal :no_coverage, selection(source, "qq", {})[1].status
+  end
+
   # #254: under redefine, a mutant whose owner cannot be named is unplaceable; a
   # :maybe one stays no_coverage, as it was before #254.
   def test_an_unplaceable_maybe_mutant_stays_no_coverage
@@ -435,6 +473,201 @@ class RunnerTest < Minitest::Test
     assert_nil Mutineer::JobPlan.abort_if_unclean!(map)
   end
 
+  def test_abort_if_unclean_names_the_minitest_seed
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], failed_clean_tests: ["test/a_test.rb"],
+                                          project_root: ROOT)
+    without_seed_env do
+      minitest = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+      assert_includes minitest.message, "SEED=#{Mutineer::MinitestIntegration::PINNED_SEED}"
+      ENV["SEED"] = "4242"
+      own = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+      assert_includes own.message, "SEED=4242"
+      rspec = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map, framework: "rspec") }
+      refute_includes rspec.message, "SEED="
+    end
+  end
+
+  # #282: `test_a` needs a global that `test_b` sets. The pinned seed runs
+  # `test_a` first (Minitest 5 and 6), so the suite is red in the order every
+  # mutant run uses. With `classes: true`, the reader, the writer and a filler
+  # are three classes instead.
+  def write_order_dependent_suite(dir, classes: false)
+    src  = File.join(dir, "order_dep_calc.rb")
+    test = File.join(dir, "order_dep_calc_test.rb")
+    File.write(src, "class OrderDependentCalculator\n  def add(a, b)\n    a + b\n  end\nend\n")
+    body =
+      if classes
+        <<~RUBY
+          class OrderDependentReaderTest < Minitest::Test
+            def test_reads_the_global = assert_equal(5, $mutineer_order_dep)
+          end
+          class OrderDependentWriterTest < Minitest::Test
+            def test_sets_the_global = $mutineer_order_dep = OrderDependentCalculator.new.add(2, 3)
+          end
+          class OrderDependentFillerTest < Minitest::Test
+            def test_passes = pass
+          end
+        RUBY
+      else
+        <<~RUBY
+          class OrderDependentCalculatorTest < Minitest::Test
+            def test_a_reads_the_global = assert_equal(5, $mutineer_order_dep)
+            def test_b_sets_the_global = $mutineer_order_dep = OrderDependentCalculator.new.add(2, 3)
+          end
+        RUBY
+      end
+    File.write(test, "require \"minitest/autorun\"\nrequire_relative \"order_dep_calc\"\n#{body}")
+    [src, test]
+  end
+
+  # Runs the block with SEED unset, so the pinned seed applies.
+  def without_seed_env
+    saved = ENV.delete("SEED")
+    yield
+  ensure
+    saved ? ENV["SEED"] = saved : ENV.delete("SEED")
+  end
+
+  # #282: with a random clean check, this suite aborted on some runs and scored
+  # the `a + b` mutant killed on the others.
+  def test_order_dependent_suite_aborts_on_every_run
+    without_seed_env do
+      3.times do
+        Dir.mktmpdir("mutineer-order-dep") do |dir|
+          src, test = write_order_dependent_suite(dir)
+          config = Mutineer::Config.new(sources: [src], tests: [test], operators: ["arithmetic"], jobs: 1,
+                                        cache_dir: File.join(dir, "cache"), project_root: dir)
+          err = nil
+          capture_subprocess_io { err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::Runner.execute(config) } }
+          assert_includes err.message, "SEED="
+        end
+      end
+    end
+  end
+
+  def test_subprocess_clean_check_uses_the_pinned_seed
+    without_seed_env do
+      Dir.mktmpdir("mutineer-order-dep") do |dir|
+        src, test = write_order_dependent_suite(dir)
+        map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir)
+        capture_subprocess_io do
+          3.times { refute map.send(:subprocess_clean_pass?, [test]), "the clean check must fail under the pinned seed" }
+        end
+      end
+    end
+  end
+
+  # The subprocess clean check and the in-process run (the mutant path) shuffle
+  # the same class list, so order-dependent classes in one file agree. Without
+  # the reset, the script's list also holds Minitest::Test, and seed 1 then
+  # runs the reader class before the writer (#282). The
+  # in-process run starts in a fresh `ruby`, as the CLI does: this suite has
+  # already loaded minitest/spec, which changes the class list a fork sees.
+  def test_subprocess_clean_check_orders_classes_like_the_in_process_run
+    without_seed_env do
+      Dir.mktmpdir("mutineer-order-dep") do |dir|
+        src, test = write_order_dependent_suite(dir, classes: true)
+        map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir)
+        subprocess = capture = nil
+        capture_subprocess_io do
+          subprocess = map.send(:subprocess_clean_pass?, [test])
+          capture = map.send(:capture, test)&.fetch("passed")
+        end
+        script = "require 'mutineer'; Mutineer::ChildStdout.silence; exit Mutineer::TestRunners::Minitest.run([#{test.dump}], stop_at_first_failure: true)"
+        in_process = system(RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", "-e", script, out: File::NULL, err: File::NULL)
+        assert in_process, "the fixture must pass in the in-process order, or this proves nothing"
+        assert_equal in_process, subprocess, "the clean check and the mutant run must order classes the same way"
+        assert_equal in_process, capture, "coverage capture and the mutant run must order classes the same way"
+      end
+    end
+  end
+
+  # The helper changes SEED only in children. Preserve the caller's environment.
+  def with_helper_seed_env(seed, mode, log)
+    names = %w[SEED MUTINEER_HELPER_SEED_MODE MUTINEER_HELPER_SEED_LOG]
+    saved = names.to_h { |name| [name, ENV[name]] }
+    seed ? ENV["SEED"] = seed : ENV.delete("SEED")
+    ENV["MUTINEER_HELPER_SEED_MODE"] = mode
+    ENV["MUTINEER_HELPER_SEED_LOG"] = log
+    yield
+  ensure
+    saved.each { |name, value| value.nil? ? ENV.delete(name) : ENV[name] = value }
+  end
+
+  # A helper's assignment, default or deletion must take effect at the same
+  # point in capture, clean checks and the armed mutant runner (#282).
+  def test_helper_seed_changes_match_across_subprocess_and_mutant_paths
+    root = File.join(ROOT, "test/fixtures/helper_seed")
+    src = File.join(root, "subject.rb")
+    test = File.join(root, "subject_test.rb")
+    [[nil, "assign", 99, false], [nil, "or", 99, false],
+     ["1", "or", 1, true], ["17", "clear", 1, true], [nil, "inherit", 1, true]].each do |seed, mode, expected, passed|
+      Dir.mktmpdir("mutineer-helper-seed") do |dir|
+        log = File.join(dir, "seed.jsonl")
+        with_helper_seed_env(seed, mode, log) do
+          map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test], project_root: root,
+                                          cache_dir: File.join(dir, "cache"))
+          outcomes = []
+          rows = []
+          capture_subprocess_io do
+            File.write(log, "")
+            outcomes << map.send(:capture, test).fetch("passed")
+            rows << File.readlines(log).map { |line| JSON.parse(line) }
+            File.write(log, "")
+            outcomes << map.send(:subprocess_clean_pass?, [test])
+            rows << File.readlines(log).map { |line| JSON.parse(line) }
+          end
+          File.write(log, "")
+          script = "require 'mutineer'; Mutineer::ChildStdout.silence; exit Mutineer::TestRunners::Minitest.run([#{test.dump}], stop_at_first_failure: true)"
+          outcomes << system(RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", "-e", script,
+                             out: File::NULL, err: File::NULL)
+          rows << File.readlines(log).map { |line| JSON.parse(line) }
+          assert_equal [passed] * 3, outcomes, "seed #{seed.inspect}, helper #{mode}"
+          rows.each do |entries|
+            refute_empty entries
+            assert_equal [expected], entries.map { |entry| entry.fetch("seed") }.uniq
+          end
+          labels = rows.map { |entries| entries.map { |entry| entry.fetch("label") } }
+          assert_equal labels[0], labels[1], "capture and clean check must use the same order"
+          assert_equal labels[0].take(labels[2].length), labels[2], "the armed run must keep that order"
+          if seed
+            assert_equal seed, ENV["SEED"], "the helper must not change the parent's environment"
+          else
+            assert_nil ENV["SEED"], "the helper must not change the parent's environment"
+          end
+        end
+      end
+    end
+  end
+
+  # The unasserted literal survives the matching-seed control. A helper-selected
+  # red order must abort before scoring, rather than manufacture a kill (#282).
+  def test_helper_seed_order_failure_aborts_before_false_kills
+    root = File.join(ROOT, "test/fixtures/helper_seed")
+    src = File.join(root, "subject.rb")
+    test = File.join(root, "subject_test.rb")
+    [[nil, "assign"], [nil, "or"], ["1", "or"]].each do |seed, mode|
+      Dir.mktmpdir("mutineer-helper-seed") do |dir|
+        log = File.join(dir, "seed.jsonl")
+        with_helper_seed_env(seed, mode, log) do
+          config = Mutineer::Config.new(sources: [src], tests: [test], operators: ["literal_mutation"],
+                                        jobs: 1, project_root: root, cache_dir: File.join(dir, "cache"))
+          capture_subprocess_io do
+            if seed
+              result = Mutineer::Runner.execute(config).first
+              assert_operator result.survived_count, :>, 0
+              assert_equal 0, result.killed_count
+            else
+              assert_raises(Mutineer::SmokeCheckError) { Mutineer::Runner.execute(config) }
+            end
+          end
+        end
+      end
+    end
+  end
+
   # #159: an operator that emits one edit twice runs it once, and every kept
   # mutant keeps the id it had before (ids are assigned before the drop, so a
   # dropped copy's id is never handed to the next twin).
@@ -514,6 +747,97 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # #275: literal_mutation and string_literal both turn "hi" into "". The copy
+  # runs once, and the kept mutant keeps the id of a literal_mutation-only run.
+  def test_collect_jobs_runs_a_cross_operator_copy_once
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      jobs, _ignored, _map, extras = collect(path, dir, %w[literal_mutation string_literal])
+      assert_equal [:literal_mutation], jobs.map { |_s, m, _id| m.operator }
+      assert_equal collect(path, dir, %w[literal_mutation]).first.map(&:last), jobs.map(&:last)
+      assert_equal 1, extras[:id_map].size
+    end
+  end
+
+  # #275: the registry-first copy stays, whatever the --operators order.
+  def test_collect_jobs_keeps_the_registry_first_copy_in_any_operator_order
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      jobs, = collect(path, dir, %w[string_literal literal_mutation])
+      assert_equal [:literal_mutation], jobs.map { |_s, m, _id| m.operator }
+      assert_equal collect(path, dir, %w[literal_mutation string_literal]).first.map(&:last), jobs.map(&:last)
+    end
+  end
+
+  # #275: chain_link and call_to_receiver both turn node.name.name into
+  # node.name. One copy runs, the chain_link one (it is first in the registry).
+  def test_collect_jobs_runs_a_chain_copy_once
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "chain.rb")
+      File.write(path, "class Chain\n  def a(node)\n    node.name.name\n  end\nend\n")
+      jobs, = collect(path, dir, %w[call_to_receiver chain_link])
+      source = File.read(path)
+      mutated = jobs.map { |_s, m, _id| m.apply(source) }
+      assert_equal mutated.uniq, mutated
+      short = jobs.select { |_s, m, _id| m.apply(source).include?("    node.name\n") }
+      assert_equal [:chain_link], short.map { |_s, m, _id| m.operator }
+    end
+  end
+
+  # #275, #159: an ignore entry for the string_literal copy ignores only that
+  # copy. The literal_mutation copy still runs.
+  def test_collect_jobs_keeps_the_run_copy_when_the_other_operator_copy_is_ignored
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      string_id = collect(path, dir, %w[string_literal]).first.first.last
+      jobs, ignored, = collect(path, dir, %w[literal_mutation string_literal], ignore: [string_id])
+      assert_equal [string_id], ignored.map(&:id)
+      assert_equal [:literal_mutation], jobs.map { |_s, m, _id| m.operator }
+    end
+  end
+
+  # #275: two ignored copies of one edit are recorded once.
+  def test_collect_jobs_records_one_ignored_copy_across_operators
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi" # mutineer:disable-line))
+      jobs, ignored, = collect(path, dir, %w[string_literal literal_mutation])
+      assert_empty jobs
+      assert_equal [:literal_mutation], ignored.map { |r| r.mutation.operator }
+    end
+  end
+
+  # #275: within a method, mutants follow the registry order, not the
+  # --operators order.
+  def test_collect_jobs_lists_mutants_in_registry_order
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "plus.rb")
+      File.write(path, "class Plus\n  def a(x)\n    \"hi\" + x\n  end\nend\n")
+      jobs, = collect(path, dir, %w[string_literal arithmetic])
+      assert_equal %i[arithmetic string_literal], jobs.map { |_s, m, _id| m.operator }
+    end
+  end
+
+  # #275 scope: 'hi' gives "" and '', which are different text, so both stay.
+  def test_collect_jobs_keeps_both_copies_of_a_single_quoted_string
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", "'hi'")
+      jobs, = collect(path, dir, %w[literal_mutation string_literal])
+      assert_equal %i[literal_mutation string_literal], jobs.map { |_s, m, _id| m.operator }
+    end
+  end
+
+  # #275: a dropped copy's old-format ignore entry is still reported for
+  # migration, so the run-time migrate warning lists it.
+  def test_collect_jobs_reports_an_old_format_entry_for_a_dropped_copy
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      olds = %w[literal_mutation string_literal].map { |op| collect(path, dir, [op]).last[:id_map].values.first }
+      _jobs, ignored, _map, extras = collect(path, dir, %w[literal_mutation string_literal], ignore: olds)
+      assert_equal 1, ignored.size
+      assert_equal olds.sort, extras[:legacy_ignore_matches].keys.sort
+    end
+  end
+
   # Every row of a large matrix names the same tests; after share_tests they
   # are one frozen array per test, whatever row they came from.
   def test_share_tests_gives_every_row_the_same_test_objects
@@ -574,6 +898,42 @@ class RunnerTest < Minitest::Test
     assert_same kept, Mutineer::Runner.unreported_row(Mutineer::Result.survived.with(kills: kept)).kills
   end
 
+  def test_collect_jobs_reports_declined_counts_per_operator
+    Dir.mktmpdir do |root|
+      path = File.join(root, "declines.rb")
+      File.write(path, "class Declines\n  def m(a, b)\n    if foo(<<~X)\n      hi\n    X\n      a + b\n    end\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: root)
+      _jobs, _ignored, _map, extras =
+        Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[condition_true arithmetic]))
+      assert_equal({ "condition_true" => 1 }, extras[:declined])
+    end
+  end
+
+  def test_collect_jobs_reports_no_declined_when_none
+    config = Mutineer::Config.new(sources: [CALC], project_root: File.dirname(CALC))
+    _jobs, _ignored, _map, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic]))
+    assert_equal({}, extras[:declined])
+  end
+
+  # #297: the reload mutant of a hook-block def stores the mutated def just
+  # before the hook call, in the same module body, and still parses.
+  def test_hook_mutant_inserts_the_stored_def_before_the_hook_call
+    path = File.expand_path("fixtures/singleton/concern_class_methods.rb", __dir__)
+    source = File.read(path)
+    subject = Mutineer::Project.discover([path], only: "ConcernPricing#doubled").first
+    body = subject.body_loc
+    mutation = Mutineer::Mutation.new(start_offset: body.start_offset, end_offset: body.end_offset,
+                                      replacement: "x - 2", operator: "test")
+    code, hook_def = Mutineer::JobPlan.hook_mutant(mutation.apply(source), mutation, subject, source)
+
+    assert_empty Mutineer::Parser.parse_string(code).errors
+    assert_equal 1, code.scan("::Mutineer::ConcernBlocks.store_hook_def do").size
+    stored = code.index("store_hook_def do\ndef doubled(x)\n      x - 2\n    end\nend; included do")
+    refute_nil stored, code
+    assert_operator stored, :<, code.index("included do\n    def doubled(x)\n      x - 2")
+    assert_equal({ line: 23, name: :doubled, singleton: false }, hook_def)
+  end
+
   private
 
   def with_rails_env(value)
@@ -582,6 +942,20 @@ class RunnerTest < Minitest::Test
     yield
   ensure
     orig.nil? ? ENV.delete("RAILS_ENV") : (ENV["RAILS_ENV"] = orig)
+  end
+
+  # Writes `class <name>; def a; <body>; end; end` to dir and returns its path.
+  # The body is on line 3.
+  def write_class(dir, name, body)
+    path = File.join(dir, "#{name.downcase}.rb")
+    File.write(path, "class #{name}\n  def a\n    #{body}\n  end\nend\n")
+    path
+  end
+
+  # JobPlan.collect_jobs on one file with the named operators.
+  def collect(path, dir, operators, ignore: [])
+    config = Mutineer::Config.new(sources: [path], project_root: dir, ignore: ignore)
+    Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(operators))
   end
 
   def line_of(mutation, source)

@@ -13,8 +13,10 @@ For example, changing `qty >= 10` to `qty > 10` removes the discount at exactly
 catches it. Line coverage can be 100% and still miss this case.
 
 The mutation score is `killed / (killed + survived)`. A run with 24 killed
-changes and one survivor scores 96%. Other results are excluded. The score
-is empty when nothing can be scored; even 100% does not prove the code has no bugs.
+changes and one survivor scores 96%. Only killed and survived mutants count.
+100% means every scored change was caught; changes that could not run are
+excluded. A run with nothing scored has an empty score (`null` in JSON), not 0%.
+A score of 100% does not mean the code is bug-free.
 
 [New to mutation testing? Run the complete example](learn.html).
 This is the Markdown twin of the [HTML landing page](https://davidteren.github.io/mutineer/).
@@ -30,9 +32,20 @@ mutineer run lib/discount.rb --test test/discount_test.rb
 ```
 
 Replace both paths with files in your project. For RSpec, pass a spec file to
-`--test`. In a Bundler project, add `gem "mutineer", group: :test` to the Gemfile,
-run `bundle install`, and use `bundle exec mutineer`. For Rails, follow the
-[one-model guide](rails.html#one-model).
+`--test`. In a Bundler project, add the gem to the test group in your `Gemfile`:
+
+```ruby
+gem "mutineer", group: :test, require: false
+```
+
+Then install it and run through the bundle:
+
+```sh
+bundle install
+bundle exec mutineer run lib/discount.rb --test test/discount_test.rb
+```
+
+For Rails, follow the [one-model guide](rails.html#one-model).
 
 Read one entry under **Surviving Mutants**. Add a test that passes with the
 original code and fails with the change, then run again. If the change leaves
@@ -68,7 +81,7 @@ mutineer run --dry-run lib/discount.rb
 | `--dry-run` | List candidate mutations without executing |
 | `--matrix` | Run every covering test for each mutant and name the blind and redundant tests; the JSON report also lists each mutant's killers (in-process only; RSpec 3.3+) |
 
-Typed flags override `.mutineer.yml`. Full flag list: `mutineer --help` or the [README](https://github.com/davidteren/mutineer/blob/main/README.md).
+Typed flags override `.mutineer.yml`. Every flag with its default: [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md), `mutineer --help`, or the [README](https://github.com/davidteren/mutineer/blob/main/README.md).
 
 `--test-command` forces one Mutineer worker. It also sets `PARALLEL_WORKERS=1`
 for Rails tests. A script that sets this variable again can start Rails test
@@ -80,8 +93,8 @@ workers.
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
-| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading. |
+| `2` | Usage / invalid-flag error, including a mistyped flag, a bad path (such as a missing `--boot` or `require:` file), or an unreadable baseline. |
 <!-- /contract:exit-codes -->
 
 ## Operators
@@ -114,10 +127,17 @@ Mutant is the established tool, with a deeper operator set. Mutineer trades
 that depth for an MIT license, an empty dependency list, and a JSON contract
 built for CI gates and AI agents. Checked against Mutant 0.17 on 2026-10-06.
 Full comparison:
-[README](https://github.com/davidteren/mutineer#mutineer-and-mutant).
+[comparison guide](https://github.com/davidteren/mutineer/blob/main/docs/comparison.md#mutineer-and-mutant).
 
 ## More docs
 
+- [Quick start](https://github.com/davidteren/mutineer/blob/main/docs/quick-start.md)
+- [First run to steady state](https://github.com/davidteren/mutineer/blob/main/docs/getting-started.md)
+- [Reading results](https://github.com/davidteren/mutineer/blob/main/docs/results.md)
+- [Rails setup](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md)
+- [CI: changed code and baselines](https://github.com/davidteren/mutineer/blob/main/docs/ci.md)
+- [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md)
+- [Comparison](https://github.com/davidteren/mutineer/blob/main/docs/comparison.md)
 - [Agent & CI guide](https://davidteren.github.io/mutineer/agentic-coding.html) · [Markdown](https://davidteren.github.io/mutineer/agentic-coding.md)
 - [JSON report schema](https://davidteren.github.io/mutineer/json-schema.html) · [Markdown](https://davidteren.github.io/mutineer/json-schema.md)
 - [Ruby API (YARD)](https://davidteren.github.io/mutineer/api/)

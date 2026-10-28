@@ -92,7 +92,7 @@ class DaemonBackendContractTest < Minitest::Test
                       "the test_helper root must reach the daemon so `require \"test_helper\"` resolves in each fork"
       assert_equal [File.join(root, "app/models")], boot[:source_dirs]
       assert_equal File.join(root, ".mutineer"), boot[:cache_dir]
-      assert_nil boot[:schema], "no db/schema.rb in this app, so the daemon skips worker-DB schema loading"
+      refute boot.key?(:schema), "#317: the booted daemon asks Rails for the schema file; the tool does not guess"
       assert boot[:rails]
       refute boot[:coverage], "worker daemons boot with Coverage off; only the map-building daemon enables it"
       assert_nil boot[:capture_timeout], "no --capture-timeout: the daemon uses the default"
@@ -228,6 +228,17 @@ class DaemonBackendContractTest < Minitest::Test
     assert_empty err, "one worker was asked for, so nothing changes"
   end
 
+  # A failed lookup that still names the primary keeps the usage error: the
+  # run exits 2 instead of falling back to one worker.
+  def test_a_failed_lookup_still_rejects_a_listed_primary
+    failed = { "error" => "no pool", "primary" => "primary" }
+    error = assert_raises(Mutineer::ConfigError) { worker_count_for(failed, %w[primary], 4) }
+    assert_includes error.message, "shared_databases lists primary"
+
+    _out, err = capture_io { assert_equal 1, worker_count_for(failed.merge("primary" => nil), %w[primary], 4) }
+    assert_includes err, "could not list this app's databases (no pool)"
+  end
+
   # Mutatable fixture for the daemon-path tests: one arithmetic operator, so the
   # Arithmetic mutator yields a real Mutation to send through job_result.
   SOURCE = "class Order\n  def total(a, b)\n    a + b\n  end\nend\n"
@@ -310,6 +321,32 @@ class DaemonBackendContractTest < Minitest::Test
       end
       assert_equal %i[no_coverage unplaceable], statuses
     end
+  end
+
+  # #297: a def in a concern's hook block that reload can place goes to the
+  # daemon with the stored def in its code and the hook-def values to place it.
+  def test_a_placeable_hook_def_sends_the_stored_def
+    path = File.expand_path("fixtures/singleton/concern_class_methods.rb", __dir__)
+    source = File.binread(path)
+    subject = Mutineer::Project.discover([path], only: "ConcernPricing#doubled").first
+    mutation = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source).first
+    config = Mutineer::Config.new(sources: [path], tests: [], project_root: File.dirname(path), framework: "minitest")
+    sent = []
+    client = Object.new
+    def client.start = self
+    def client.quit = nil
+    client.define_singleton_method(:request) do |payload:, **|
+      sent << payload
+      "killed"
+    end
+    results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+      Mutineer::DaemonBackend.send(:run_serial, [[subject, mutation, "id-0"]], config, [], nil, { path => source })
+    end
+
+    assert_equal %i[killed], results.map(&:status)
+    assert_includes sent.first["code"], "::Mutineer::ConcernBlocks.store_hook_def do"
+    assert_match(%r{store_hook_def do\n\s*def doubled\(x\)\s+x / 2\s+end\nend}, sent.first["code"])
+    assert_equal({ "line" => 23, "name" => "doubled", "singleton" => false }, sent.first["hook_def"])
   end
 
   # #187: the daemon's map ships the lines that ran at boot, and a survivor on
@@ -510,7 +547,7 @@ class DaemonBackendContractTest < Minitest::Test
         exit!(0)
       end
       Process.detach(child)
-      orphan = File.join(config.project_root, "app/mutineer_daemon20260101-#{child}-abcdef.rb")
+      orphan = File.join(config.project_root, "app/.mutineer_daemon20260101-#{child}-abcdef.rb")
       aborting_run = lambda do |*|
         File.binwrite(orphan, "class Order; end\n")
         raise Mutineer::DaemonBootError, "daemon gave up"
@@ -828,7 +865,7 @@ class DaemonBackendContractTest < Minitest::Test
       FileUtils.mkdir_p(File.join(root, "app"))
       source = File.join(root, "app/order.rb")
       File.binwrite(source, SOURCE)
-      live = File.join(root, "app/mutineer_daemon20260101-#{Process.pid}-abcdef.rb")
+      live = File.join(root, "app/.mutineer_daemon20260101-#{Process.pid}-abcdef.rb")
       File.binwrite(live, "class Order; end\n")
       config = Mutineer::Config.new(sources: [source], tests: [], project_root: root,
                                     framework: "minitest", only: ["NoSuchMethod"])

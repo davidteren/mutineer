@@ -18,7 +18,7 @@ gem install mutineer
 ## Run
 
 ```sh
-mutineer run <source...> --test <test> [--test <test>...] [options]
+mutineer run <source...> [--test <test>...] [options]   # no --test: pairs each source with its test by convention; unmatched sources are skipped; --dry-run with --rails/--boot needs --test
 ```
 
 Example — mutate `lib/calculator.rb`, gate CI below 90%:
@@ -36,18 +36,20 @@ mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
    ```
 3. Parse `survivors[]` — each carries a `diff` and an `id`. File moves, renames,
    project-root changes, and changes to repeated-name or repeated-mutation order can
-   change ids; see [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). Review each change
+   change ids; see [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids). Review each change
    against the intended behaviour. If review finds a test gap, write or strengthen
    a test that fails under that change.
 4. Re-run. Accept the result only when this run exits `0`, `summary.score` is not `null`,
-   and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`;
-   the score is rounded, so `--threshold 100` alone can still pass with a survivor.
+   and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`.
+   Mutineer 1.7.0 and earlier gate on the rounded score, so a run just below the threshold can
+   still exit `0`. On those versions, also require
+   `summary.killed * 100 >= 90 * (summary.killed + summary.survived)`.
 
 Stop after a few unsuccessful attempts and ask a person to review the survivor.
 Failed attempts do not prove that a mutant is equivalent. To
 suppress it, `mutineer triage .mutineer/run.json --reason TEXT --id ID` prints an
 `ignore:` entry for `.mutineer.yml` (Mutineer 1.7 or later reads it). See
-[Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants).
+[Suppressing equivalent mutants](https://github.com/davidteren/mutineer/blob/main/docs/results.md#suppressing-equivalent-mutants).
 
 Keep `fail_fast` disabled (the default). If the active `.mutineer.yml` sets it to
 `true`, temporarily change that value to `false` for the loop. Restore the original
@@ -69,8 +71,8 @@ An empty run (`summary.total` is 0) exits 0 in 1.x and prints a warning on stder
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
-| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading. |
+| `2` | Usage / invalid-flag error, including a mistyped flag, a bad path (such as a missing `--boot` or `require:` file), or an unreadable baseline. |
 <!-- /contract:exit-codes -->
 
 ## References

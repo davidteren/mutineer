@@ -33,8 +33,11 @@ module Mutineer
 
     # The daemon's per-mutant tempfile, written into the source dir so
     # require_relative resolves. The leading dot hides it from Zeitwerk (#253);
-    # older versions wrote it without one. Kept in step with DaemonServer#sweep_temps.
-    DAEMON_TEMP_GLOB = "{.,}mutineer_daemon*.rb"
+    # older versions wrote it without one. Daemon files only, unlike the boot
+    # sweeps ({OrphanGuard::TEMP_BASENAME}): this sweep runs after the boot and
+    # waits up to {SWEEP_GRACE} while any file it matches is still owned, so a
+    # parallel in-process run's live files would add that wait to every daemon run.
+    DAEMON_TEMP_GLOB = "{.,}mutineer_daemon#{"[0-9]" * 8}-*.rb"
 
     # Seconds the end-of-run sweep waits for an orphaned child to die. Its
     # watchdog notices a dead daemon within {OrphanGuard::POLL}.
@@ -196,13 +199,20 @@ module Mutineer
     # never be shared by accident.
     #
     # @param databases [Hash, nil] the daemon's report: "names", "primary" and
-    #   "copied", or "error". nil when the app has no worker-DB adapter.
+    #   "copied", or "error" (with "primary" when it resolves). nil when the app
+    #   has no worker-DB adapter.
     # @param shared [Array<String>] the `shared_databases` config names.
     # @param worker_count [Integer] the workers requested.
     # @return [Integer] the workers to start.
     # @raise [Mutineer::ConfigError] when `shared` lists the primary database.
     def self.worker_count_for(databases, shared, worker_count)
       return worker_count if databases.nil?
+
+      primary = databases["primary"]
+      if shared.include?(primary)
+        raise ConfigError, "shared_databases lists #{primary}, the database each worker copies. " \
+                           "List only the other databases, the ones parallel workers may share."
+      end
 
       if databases["error"]
         if worker_count > 1
@@ -212,12 +222,6 @@ module Mutineer
       end
 
       names = Array(databases["names"])
-      primary = databases["primary"]
-      if shared.include?(primary)
-        raise ConfigError, "shared_databases lists #{primary}, the database each worker copies. " \
-                           "List only the other databases, the ones parallel workers may share."
-      end
-
       unknown = shared - names
       if unknown.any?
         warn "[mutineer] shared_databases names no test database: #{unknown.join(", ")}. " \
@@ -251,7 +255,7 @@ module Mutineer
           failed_test_files: data["failed_test_files"] || [],
           project_root: config.project_root,
           failed_clean_tests: data["failed_clean_tests"]
-        ))
+        ), framework: config.framework)
       end
 
       unless data && !(data["map"] || {}).empty?
@@ -432,10 +436,15 @@ module Mutineer
           # A :maybe mutant that cannot be placed stays no_coverage, as in-process.
           sel && sel[0] == :maybe ? Result.no_coverage : Result.unplaceable
         else
+          payload = { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) }
+          if subject.reload_hook_call
+            # #297: the daemon child places the hook-block def, as in-process (Runner.run).
+            payload["code"], hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source)
+            payload["hook_def"] = hook_def.to_h { |key, value| [key.to_s, key == :name ? value.to_s : value] }
+          end
           verdict = client.request(
             id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,
-            payload: { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) },
-            tests: sel ? sel[1] : abs_tests
+            payload: payload, tests: sel ? sel[1] : abs_tests
           )
           # A survivor whose line ran at load, as in-process (Runner.run).
           loaded = JobPlan.load_verdict(result_for(verdict), subject.file, mutation, subject, source, coverage_map)
@@ -470,9 +479,6 @@ module Mutineer
         source_dirs: JobPlan.source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,
         rails: config.rails,
-        # Schema for per-worker DB isolation. Sent when present; the daemon loads
-        # it over a worker's copy of the test DB only when that copy is out of date.
-        schema: schema_path(config),
         # Databases the workers share. A parallel worker fails a mutant whose
         # tests used one. One worker shares nothing, so it gets no names.
         shared_databases: parallel ? config.shared_databases : [],
@@ -489,19 +495,6 @@ module Mutineer
         sources: config.sources.map { |s| File.expand_path(s, config.project_root) },
         tests: abs_tests
       }
-    end
-
-    # Absolute path to the app's `db/schema.rb` if it exists, else nil. Each worker
-    # DB starts as a copy of the test DB; the daemon loads this file over the copy
-    # when the copy's schema differs. `structure.sql` apps get nil and keep the
-    # copy as it is.
-    #
-    # @param config [Mutineer::Config] the run config.
-    # @api private
-    # @return [String, nil] absolute schema path or nil.
-    def self.schema_path(config)
-      path = File.expand_path("db/schema.rb", config.project_root)
-      File.exist?(path) ? path : nil
     end
 
     # Map a daemon verdict string to a Result. The daemon reports the four
@@ -524,7 +517,7 @@ module Mutineer
     # tests drive directly: {boot_config} from the zero-dep suite and
     # {build_coverage_map} from the daemon suite. Everything else is daemon-pipeline
     # internals with no caller outside this file.
-    private_class_method :sweep_daemon_temps, :run_serial, :run_parallel, :job_result, :schema_path, :result_for,
+    private_class_method :sweep_daemon_temps, :run_serial, :run_parallel, :job_result, :result_for,
                          :prepare_run, :coverage_map_from_client, :worker_count_for
   end
 end

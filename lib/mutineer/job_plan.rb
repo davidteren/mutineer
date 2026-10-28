@@ -11,6 +11,8 @@ require_relative "mutator_registry"
 require_relative "mutant_id"
 require_relative "project_path"
 require_relative "external_backend"
+require_relative "isolation"
+require_relative "test_runners"
 require_relative "orphan_guard"
 
 module Mutineer
@@ -37,7 +39,20 @@ module Mutineer
     # `{id:, file:, subject:}` hash per matched mutant, in collection order: its
     # new id, its project-relative file and its subject's qualified name;
     # recorded even when a new id is also listed, since the old entry still
-    # over-matches other files) and `id_map` (every new id => its old-format id).
+    # over-matches other files), `id_map` (every reported mutant's new id =>
+    # its old-format id), `dropped_id_map` (the same for each dropped repeat of
+    # an edit: its id is still current for `mutineer migrate`) and `declined`
+    # (operator name => count of candidates that operator found and did not
+    # mutate, {Mutators::Base#declined}; only counts above zero, keys sorted).
+    # The name is the {MutatorRegistry::ALL} key, or the class's `to_s` for an
+    # operator outside the registry. `--only` narrows `declined`, and `--since`
+    # does not: a declined candidate has no mutation to place on a line.
+    #
+    # Mutations are collected in {MutatorRegistry::ALL} order, whatever the
+    # order of `operator_classes`. Two operators can give the same mutated
+    # source (#275), and the copy of the registry-first operator is the one
+    # that runs, so the kept copy and the run order do not depend on the
+    # `--operators` order.
     #
     # Subjects sharing a qualified name in one file (two owner-less `def index`
     # in two DSL blocks) get a per-file ordinal in discovery order, so their ids
@@ -46,8 +61,15 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @param operator_classes [Array<Class>] resolved operators.
     # @return [Array(Array, Array<Result>, Hash<String,String>, Hash{Symbol => Hash})]
-    #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`, `:id_map`).
+    #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`,
+    #   `:id_map`, `:dropped_id_map`, `:declined`).
     def self.collect_jobs(config, operator_classes)
+      # Registry order, so a repeat across operators keeps the registry-first
+      # copy (#275). A class outside ALL goes last; ties keep the input order.
+      rank = MutatorRegistry::ALL.values
+      operator_classes = operator_classes.each_with_index
+                                         .sort_by { |klass, i| [rank.index(klass) || rank.size, i] }
+                                         .map(&:first)
       source_map = {}
       disabled_map = {}
       id_paths = {}
@@ -61,10 +83,18 @@ module Mutineer
       ignored_results = []
       legacy_ignore_matches = {}
       id_map = {}
+      dropped_id_map = {}
+      declined = Hash.new(0)
       Project.discover(config.sources, only: config.only).each do |subject|
-        source = (source_map[subject.file] ||= File.read(subject.file))
+        source = (source_map[subject.file] ||= File.read(subject.file, encoding: "UTF-8"))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
-        mutations = operator_classes.flat_map { |klass| klass.new.mutations_for(subject, source) }
+        # A repeated operator name runs once, so its declines count once.
+        mutations = operator_classes.uniq.flat_map do |klass|
+          operator = klass.new
+          found = operator.mutations_for(subject, source)
+          declined[MutatorRegistry::ALL.key(klass) || klass.to_s] += operator.declined
+          found
+        end
         id_path = (id_paths[subject.file] ||= ProjectPath.relative(subject.file, config.project_root))
         decls = name_decls[[id_path, subject.qualified_name]]
         ordinal = (decls[subject.def_node.location.start_offset] ||= decls.size)
@@ -72,22 +102,27 @@ module Mutineer
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
         lines = mutations.map { |m| source.byteslice(0, m.start_offset).count("\n") + 1 }
         keys = result_keys(mutations, source, lines)
-        # A repeat of an earlier edit on the same line is dropped (#159),
-        # separately among the run and the ignored mutants, so an ignored copy
-        # never hides a copy that should run. A dropped copy records nothing.
+        # A repeat of an earlier edit on the same line, from any operator, is
+        # dropped (#159, #275), separately among the run and the ignored
+        # mutants, so an ignored copy never hides a copy that should run. A
+        # dropped copy is not reported, but its id stays current for migrate.
         seen = { run: Set.new, ignored: Set.new }
         mutations.each_with_index do |mutation, i|
           id = ids[i]
           legacy = legacy_ids[i]
           ignored = suppressed?(mutation.operator, lines[i], [id, legacy], disabled, ignore_set)
-          next unless seen[ignored ? :ignored : :run].add?(keys[i])
-
-          id_map[id] = legacy
           # An old entry still over-matches other files even when the new id is
-          # listed too, so every old-entry match is reported for migration.
+          # listed too, so every old-entry match is reported for migration,
+          # including a dropped copy's.
           if ignore_set.include?(legacy)
             (legacy_ignore_matches[legacy] ||= []) << { id: id, file: id_path, subject: subject.qualified_name }
           end
+          unless seen[ignored ? :ignored : :run].add?(keys[i])
+            dropped_id_map[id] = legacy
+            next
+          end
+
+          id_map[id] = legacy
           if ignored
             reason = suppression_reason(mutation.operator, lines[i], [id, legacy], disabled, ignore_reasons)
             ignored_results << Result.ignored.with(subject: subject, mutation: mutation, id: id, reason: reason)
@@ -96,13 +131,15 @@ module Mutineer
           end
         end
       end
-      [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map }]
+      declined = declined.select { |_, count| count.positive? }.sort.to_h
+      [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map,
+                                            dropped_id_map: dropped_id_map, declined: declined }]
     end
 
-    # One key per mutation; two mutations share a key exactly when they are
-    # the same operator on the same line and give the same mutated source (one
-    # edit, #159). The caller drops a repeat after ids are assigned. Only a
-    # group of same-operator, same-line mutations can repeat, so only those
+    # One key per mutation; two mutations share a key exactly when they are on
+    # the same line and give the same mutated source (one edit), from one
+    # operator (#159) or two (#275). The caller drops a repeat after ids are
+    # assigned. Only a group of same-line mutations can repeat, so only those
     # build a key from their text: the span from the group's earliest start to
     # its latest end, digested. Every other mutation gets a key of its own.
     #
@@ -112,7 +149,7 @@ module Mutineer
     # @return [Array<Object>] one key per mutation, in order.
     def self.result_keys(mutations, source, lines)
       keys = Array.new(mutations.size) { |i| i }
-      mutations.each_index.group_by { |i| [mutations[i].operator, lines[i]] }.each_value do |group|
+      mutations.each_index.group_by { |i| lines[i] }.each_value do |group|
         next if group.size < 2
 
         from = group.map { |i| mutations[i].start_offset }.min
@@ -120,7 +157,7 @@ module Mutineer
         group.each do |i|
           m = mutations[i]
           span = "#{source.byteslice(from...m.start_offset)}#{m.replacement}#{source.byteslice(m.end_offset...to)}"
-          keys[i] = [m.operator, lines[i], Digest::SHA256.digest(span)]
+          keys[i] = [lines[i], Digest::SHA256.digest(span)]
         end
       end
       keys
@@ -130,10 +167,14 @@ module Mutineer
     # those results would treat existing assertion failures as killed mutants.
     #
     # @param coverage_map [Mutineer::CoverageMap] the built or loaded map.
+    # @param framework [String, nil] the run's framework (nil is Minitest, as in
+    #   {TestRunners.for}). For Minitest, the message names the seed: an
+    #   order-dependent suite can pass in a random order and fail in the
+    #   pinned one (#282).
     # @return [void]
     # @raise [Mutineer::SmokeCheckError] when any captured test failed clean,
     #   or when no test recorded coverage and a capture failed.
-    def self.abort_if_unclean!(coverage_map)
+    def self.abort_if_unclean!(coverage_map, framework: nil)
       if coverage_map.map.empty? && coverage_map.failed_test_files.any?
         raise SmokeCheckError, "no test recorded coverage, and capture failed for #{coverage_map.failed_test_files.join(', ')}"
       end
@@ -141,9 +182,47 @@ module Mutineer
       files = coverage_map.failed_clean_tests
       return if files.empty?
 
+      seed_hint = TestRunners.for(framework) == TestRunners::Minitest ? minitest_seed_hint : ""
       raise SmokeCheckError,
             "the unmutated suite is not green (#{files.join(', ')}) — " \
-            "#{ExternalBackend.generic_env_hint}."
+            "#{ExternalBackend.generic_env_hint}.#{seed_hint}"
+    end
+
+    # Names the configured seed, and accounts for helper overrides.
+    #
+    # @api private
+    # @return [String]
+    def self.minitest_seed_hint
+      seed = MinitestIntegration.seed
+      " Mutineer runs Minitest with SEED=#{seed}, unless a test helper changes SEED. " \
+        "An order-dependent test can fail here and pass in another order. " \
+        "Check the listed test files with the same seed and helpers " \
+        "(for \"combined suite\", all of them together). " \
+        "Change SEED, including helper settings, to choose another order."
+    end
+
+    # The reload mutant text for a def in a concern's `included` or `prepended`
+    # block (#297): the mutated file with one statement added just before the
+    # hook call, `::Mutineer::ConcernBlocks.store_hook_def do <mutated def> end`.
+    # The statement sits in the same body as the hook call, so the stored def has
+    # the block's constant scope. After the load, the child passes the hook-def
+    # values to {ConcernBlocks.place_hook_def}. Shared by {Runner.run} and
+    # {DaemonBackend.job_result}, so both build the same text. The hook call starts
+    # before the def, so the mutation does not move its offset. A bad insert is
+    # not checked here: the child's `load` raises `SyntaxError` before any test
+    # runs, so the mutant scores `error`.
+    #
+    # @param mutated [String] the mutated source text.
+    # @param mutation [Mutineer::Mutation] the mutation.
+    # @param subject [Mutineer::Subject] a subject with a {Subject#reload_hook_call}.
+    # @param source [String] the original source text.
+    # @return [Array(String, Hash{Symbol => Object})] the mutant text, and the
+    #   original def's `line`, `name` and `singleton`.
+    def self.hook_mutant(mutated, mutation, subject, source)
+      at = subject.reload_hook_call.location.start_offset
+      stored = "::Mutineer::ConcernBlocks.store_hook_def do\n#{Isolation.mutated_def(mutation, subject, source)}\nend; "
+      [mutated.byteslice(0...at) + stored + mutated.byteslice(at..),
+       { line: subject.def_node.location.start_line, name: subject.name, singleton: subject.singleton }]
     end
 
     # Coverage-based test selection, shared by the in-process ({Runner.run}) and daemon
@@ -152,11 +231,14 @@ module Mutineer
     # order of {CoverageMap#order_tests} (paired files, then cheapest), or
     # `[:verdict, Result]` (no_coverage / uncapturable) when none do. A line
     # Ruby does not count (a later line of a multi-line statement) uses the
-    # tests that ran the statement that holds it ({StatementLines}). When the
-    # mutant sits in code of that statement that runs only sometimes (the right
-    # side of a multi-line `a && b`), those tests may not have run it, so the
-    # answer is `[:maybe, abs_test_paths]` and {selection_verdict} treats a
-    # survivor as no_coverage (#254).
+    # tests that ran the statement that holds it ({StatementLines}). When those
+    # lines give no tests, it retries with the loose lines of the statement:
+    # code of the statement that runs only sometimes (the right side of a
+    # multi-line `a && b`, #254), and a first or last line that holds other
+    # code (the opener of a one-line block, #289), but never the `def` line.
+    # Those tests may not have run the mutant, so the answer is
+    # `[:maybe, abs_test_paths]` and {selection_verdict} treats a survivor as
+    # no_coverage.
     #
     # An empty selection is `:ran_at_load` when the mutant's line ran while the
     # app booted or its class loaded ({ran_at_load?}): no test ran it, but the
@@ -182,11 +264,12 @@ module Mutineer
       if chosen.empty? && subject
         # A multi-line statement has a count on one of its lines only.
         lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
-        if lines.empty?
+        chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq
+        if chosen.empty?
           lines = StatementLines.for(subject.def_node, source, mutation.start_offset, loose: true)
+          chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq
           kind = :maybe
         end
-        chosen = lines.flat_map { |l| coverage_map.tests_for(source_file, l) }.uniq
       end
       if chosen.empty?
         # Method BODY range, not the whole def: the def/end lines are "covered" at
@@ -435,16 +518,17 @@ module Mutineer
       config.sources.map { |f| File.dirname(File.expand_path(f, config.project_root)) }.uniq
     end
 
-    # Removes stale mutant tempfiles from the given directories. The daemon writes a
-    # differently-named temp, so {DaemonBackend} passes its glob when it sweeps
-    # tool-side at the end of every daemon run, empty or not.
-    # A daemon file another process still owns is left in place. In-process mutant
-    # files have no owner recorded in the name, so this still removes those orphans.
+    # Removes stale mutant tempfiles from the given directories. The default
+    # glob matches the files of both modes, so the in-process boot sweep also
+    # removes an old daemon file (#287). {DaemonBackend} passes its daemon-only
+    # glob when it sweeps tool-side at the end of every daemon run, empty or not.
+    # A file another process still owns is left in place: both modes record the
+    # creating pid in the name and lock the file while it loads (#295).
     #
     # @param dirs [Array<String>] directories to sweep.
     # @param glob [String] filename pattern to remove.
     # @return [Array<String>] the files left in place because a process owns them.
-    def self.sweep_orphans(dirs, glob = "{.,}mutineer_mutant*.rb")
+    def self.sweep_orphans(dirs, glob = OrphanGuard::TEMP_BASENAME)
       dirs.flat_map do |dir|
         Dir.glob(File.join(dir, glob)).select do |path|
           next true if OrphanGuard.mutant_file_in_use?(path)

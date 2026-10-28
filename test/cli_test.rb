@@ -13,8 +13,8 @@ class CliTest < Minitest::Test
   BIN      = File.join(ROOT, "bin", "mutineer")
   FIXTURES = File.expand_path("fixtures", __dir__)
 
-  def mutineer(*args, chdir: Dir.tmpdir)
-    Open3.capture3(RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", BIN, *args, chdir: chdir)
+  def mutineer(*args, chdir: Dir.tmpdir, env: {})
+    Open3.capture3(env, RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", BIN, *args, chdir: chdir)
   end
 
   # An isolated project dir with the calculator fixtures copied in, so the run is
@@ -93,6 +93,27 @@ class CliTest < Minitest::Test
         FileUtils.cp(File.join(FIXTURES, f), File.join(proj, f))
       end
       yield proj
+    end
+  end
+
+  # #303: with LC_ALL=C Ruby reads files as US-ASCII. A source line with a
+  # non-ASCII character must still run, report, and gate on a baseline.
+  def test_non_ascii_source_runs_and_gates_under_an_ascii_locale
+    with_project do |proj|
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub("    a + b\n", "    a + b # caf\u00e9\n"))
+      env = { "LC_ALL" => "C", "LANG" => nil }
+      run = ["run", "calculator.rb", "--test", "calculator_weak_test.rb", "--operators", "arithmetic", "--jobs", "1"]
+      ruby = [RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", BIN]
+
+      # binmode: this test process may run under an ASCII locale too.
+      out, err, status = Open3.capture3(env, *ruby, *run, "--format", "json", chdir: proj, binmode: true)
+      assert_equal 0, status.exitstatus, err
+      File.write(File.join(proj, "base.json"), out)
+      assert_includes JSON.parse(out)["survivors"].map { |s| s["diff"] }.join, "caf\u00e9"
+
+      _, err, status = Open3.capture3(env, *ruby, *run, "--baseline", "base.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
     end
   end
 
@@ -214,6 +235,45 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_a_test_prefixed_file_given_as_a_source_after_test_exits_two
+    with_project do |proj|
+      FileUtils.mkdir_p(File.join(proj, "test"))
+      %w[test_a.rb test_b.rb].each { |f| FileUtils.touch(File.join(proj, "test", f)) }
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", "--test", "test/test_a.rb",
+                                "test/test_b.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "test/test_b.rb looks like a test file, not a source"
+    end
+  end
+
+  def test_a_root_level_test_file_given_as_a_source_after_test_exits_two
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "calculator_weak_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "calculator_weak_test.rb looks like a test file, not a source"
+    end
+  end
+
+  def test_a_stray_test_file_with_json_format_exits_two_before_any_output
+    with_project do |proj|
+      out, err, status = mutineer("run", "--format", "json", "calculator.rb", "--test",
+                                  "calculator_strong_test.rb", "calculator_weak_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_empty out
+    end
+  end
+
+  def test_a_root_level_source_named_like_a_test_still_runs
+    Dir.mktmpdir("mutineer-ab") do |proj|
+      File.write(File.join(proj, "ab_test.rb"), "class AbTest\n  def n = 1 + 1\nend\n")
+      File.write(File.join(proj, "ab_test_test.rb"), "")
+      out, err, status = mutineer("run", "--dry-run", "ab_test.rb", "--test", "ab_test_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "AbTest#n"
+    end
+  end
+
   def test_a_source_named_like_a_test_outside_test_dirs_still_runs
     Dir.mktmpdir("mutineer-ab") do |proj|
       FileUtils.mkdir_p(File.join(proj, "app/models"))
@@ -286,6 +346,66 @@ class CliTest < Minitest::Test
     _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--output", "/no-such-dir/out.json")
     assert_equal 2, status.exitstatus
     assert_includes err, "cannot write to"
+  end
+
+  # #270: the documented --output .mutineer/run.json works on a fresh checkout.
+  # The cache dir is the one missing parent the preflight creates.
+  def test_output_in_missing_cache_dir_is_created
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--format", "json", "--output", ".mutineer/run.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert File.file?(File.join(proj, ".mutineer", "run.json"))
+    end
+  end
+
+  # A dry run writes no report, so it does not create the cache dir.
+  def test_dry_run_output_in_missing_cache_dir_creates_nothing
+    with_project do |proj|
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", "--output", ".mutineer/run.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute File.exist?(File.join(proj, ".mutineer"))
+    end
+  end
+
+  # #270: only the cache dir itself is created. A missing child of it, or any
+  # other missing relative parent, is still a usage error.
+  def test_output_in_other_missing_dir_exits_two
+    with_project do |proj|
+      %w[reports/run.json .mutineer/sub/run.json].each do |output|
+        _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--output", output, chdir: proj)
+        assert_equal 2, status.exitstatus, output
+        assert_includes err, "no such directory"
+      end
+    end
+  end
+
+  # #270: the created dir is the configured cache dir, not a literal `.mutineer`.
+  def test_output_in_missing_custom_cache_dir_is_created
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--cache-dir", "mcache",
+                                "--format", "json", "--output", "mcache/run.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert File.file?(File.join(proj, "mcache", "run.json"))
+
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--cache-dir", "mcache",
+                                "--output", ".mutineer/run.json", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "no such directory"
+    end
+  end
+
+  # #270: a cache dir that cannot be created is a usage error before the run.
+  def test_output_in_uncreatable_cache_dir_exits_two
+    with_project do |proj|
+      File.write(File.join(proj, "blocker"), "")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--cache-dir", "blocker/cache",
+                                "--output", "blocker/cache/run.json", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "cannot write to blocker/cache/run.json"
+      refute_includes err, "no such directory", "the mkdir_p failure must be reported, not the fallback check"
+    end
   end
 
   # #27: --test-command usage errors — all exit 2 (usage), never a backtrace.
@@ -588,6 +708,65 @@ class CliTest < Minitest::Test
       assert_equal 0, status.exitstatus
       assert_includes out, "mutations (dry run, not executed)"
       assert_includes out, "arithmetic:"
+      assert_includes out, "0 declined"
+    end
+  end
+
+  HEREDOC_CONDITION = "class Notes\n  def note(x)\n    if x == <<~S\n      hi\n    S\n      1\n    end\n  end\nend\n"
+
+  def test_dry_run_prints_declined_counts
+    with_project do |proj|
+      File.write(File.join(proj, "notes.rb"), HEREDOC_CONDITION)
+      out, err, status = mutineer("run", "notes.rb", "--dry-run", "--operators", "condition_true", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "1 declined (condition_true: 1)"
+
+      # A repeated operator name runs once, so its decline counts once.
+      out, err, status = mutineer("run", "notes.rb", "--dry-run", "--operators", "condition_true,condition_true", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "1 declined (condition_true: 1)"
+    end
+  end
+
+  def test_dry_run_labels_declined_under_since
+    with_project do |proj|
+      # The declined heredoc sits on a line the change does not touch.
+      File.write(File.join(proj, "notes.rb"), HEREDOC_CONDITION)
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub("a + b", "a + b + 0"))
+      out, err, status = mutineer("run", "calculator.rb", "notes.rb", "--dry-run", "--since", "HEAD",
+                                  "--operators", "arithmetic,condition_true", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "1 declined in the scanned files (not narrowed by --since) (condition_true: 1)"
+    end
+  end
+
+  def test_empty_run_names_declined_candidates
+    with_project do |proj|
+      File.write(File.join(proj, "notes.rb"), HEREDOC_CONDITION)
+      _, err, status = mutineer("run", "notes.rb", "--test", "calculator_strong_test.rb",
+                                "--operators", "condition_true", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "no mutants were generated. 1 candidate was declined (--dry-run shows the count per operator)."
+      refute_includes err, "Check that the sources contain code"
+    end
+  end
+
+  def test_json_report_carries_declined_counts
+    with_project do |proj|
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub(/end\s*\z/, "  def note(x)\n    if x == <<~S\n      hi\n    S\n      1\n    end\n  end\nend\n"))
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--operators", "condition_true,arithmetic", "--format", "json",
+                                "--output", "r.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      summary = JSON.parse(File.read(File.join(proj, "r.json")))["summary"]
+      assert_equal({ "condition_true" => 1 }, summary["declined_by_operator"])
+      assert_equal 1, summary["declined"]
     end
   end
 
@@ -735,7 +914,7 @@ class CliTest < Minitest::Test
                               "--format", "json", "--output", "report.json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(File.read(File.join(proj, "report.json")))
-      assert_equal "1.8", doc["schema_version"]
+      assert_equal "1.9", doc["schema_version"]
       assert_equal 100.0, doc["summary"]["score"]
     end
   end
@@ -753,8 +932,202 @@ class CliTest < Minitest::Test
     with_project do |proj|
       File.write(File.join(proj, "broken.rb"), "def oops(\n")
       _, err, status = mutineer("run", "broken.rb", "--test", "calculator_strong_test.rb", chdir: proj)
-      refute_equal 0, status.exitstatus
+      assert_equal 1, status.exitstatus
+      assert_includes err, "mutineer: cannot load broken.rb: SyntaxError"
       refute_includes err, "cli.rb:", "no internal backtrace should leak"
+    end
+  end
+
+  # #288: a load error in the tool process can quote DATABASE_URL. The run
+  # prints one redacted line and exits 1, with no backtrace unless --verbose.
+  BAD_DATABASE_URL = "postgres://u:s3cret@ho st/db"
+  # A boot file that fails the way Rails does on a malformed DATABASE_URL.
+  URI_BOOT = %(require "uri"\nURI.parse(ENV.fetch("DATABASE_URL"))\n)
+
+  def run_with_boot(boot_source, *flags)
+    with_project do |proj|
+      File.write(File.join(proj, "boot.rb"), boot_source)
+      return mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--boot", "boot.rb",
+                      *flags, chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+    end
+  end
+
+  def backtrace_lines(err)
+    err.lines.grep(/\A\s/)
+  end
+
+  def test_boot_error_hides_the_database_password
+    _, err, status = run_with_boot(URI_BOOT)
+
+    assert_equal 1, status.exitstatus, err
+    assert_includes err, "mutineer: cannot load boot.rb: URI::InvalidURIError"
+    assert_includes err, "[REDACTED]"
+    refute_includes err, "s3cret"
+    assert_empty backtrace_lines(err)
+    assert_includes err, "mutineer: re-run with --verbose for the backtrace and causes"
+  end
+
+  def test_boot_error_prints_a_redacted_backtrace_under_verbose
+    _, err, status = run_with_boot(URI_BOOT, "--verbose")
+
+    assert_equal 1, status.exitstatus, err
+    assert_includes err, "boot.rb:2"
+    refute_includes err, "s3cret"
+    refute_includes err, "re-run with --verbose"
+  end
+
+  def test_boot_error_prints_a_redacted_cause_under_verbose
+    boot = <<~RUBY
+      require "uri"
+      begin
+        URI.parse(ENV.fetch("DATABASE_URL"))
+      rescue URI::InvalidURIError
+        raise "boot failed"
+      end
+    RUBY
+    _, err, status = run_with_boot(boot, "--verbose")
+
+    assert_equal 1, status.exitstatus, err
+    assert_includes err, "mutineer: caused by: URI::InvalidURIError"
+    assert_includes err, "[REDACTED]"
+    refute_includes err, "s3cret"
+  end
+
+  def test_boot_load_error_exits_one_cleanly
+    _, err, status = run_with_boot(%(require "no_such_gem_288"\n))
+
+    assert_equal 1, status.exitstatus, err
+    assert_includes err, "mutineer: cannot load boot.rb: LoadError"
+    assert_empty backtrace_lines(err)
+  end
+
+  def test_require_file_error_hides_the_password
+    with_project do |proj|
+      File.write(File.join(proj, "extra.rb"), %(raise "no db: #{BAD_DATABASE_URL}"\n))
+      File.write(File.join(proj, ".mutineer.yml"), "require:\n  - extra.rb\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "mutineer: cannot load extra.rb: RuntimeError"
+      refute_includes err, "s3cret"
+      assert_empty backtrace_lines(err)
+    end
+  end
+
+  # A non-ASCII path next to a Latin-1 message must not break the message
+  # build, or Ruby would print the raw error as the cause.
+  def test_boot_error_with_a_non_ascii_path_and_latin1_message_hides_the_password
+    with_project do |proj|
+      File.write(File.join(proj, "bööt.rb"), %(raise "caf\\xE9 #{BAD_DATABASE_URL}".dup.force_encoding("ISO-8859-1")\n))
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--boot", "bööt.rb",
+                                chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "mutineer: cannot load bööt.rb: RuntimeError"
+      refute_includes err.b, "s3cret".b
+    end
+  end
+
+  def test_boot_path_ruby_cannot_expand_stays_a_usage_error
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--boot", "~nosuchuser288/boot.rb", chdir: proj)
+
+      assert_equal 2, status.exitstatus, err
+      refute_includes err, "cannot load"
+    end
+  end
+
+  def test_missing_boot_file_is_a_usage_error
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--boot", "missing_boot.rb", chdir: proj)
+
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "missing_boot.rb"
+      refute_includes err, "cannot load"
+    end
+  end
+
+  def test_missing_boot_file_is_a_usage_error_under_daemon
+    with_project do |proj|
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--boot", "missing_boot.rb", "--daemon", chdir: proj)
+
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "missing_boot.rb"
+      refute_includes err, "daemon"
+    end
+  end
+
+  def test_missing_require_file_is_a_usage_error
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "require:\n  - missing_extra.rb\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "missing_extra.rb"
+      refute_includes err, "cannot load"
+    end
+  end
+
+  def test_boot_not_implemented_error_exits_one_cleanly
+    _, err, status = run_with_boot(%(raise NotImplementedError, "adapter for #{BAD_DATABASE_URL}"\n))
+
+    assert_equal 1, status.exitstatus, err
+    assert_includes err, "mutineer: cannot load boot.rb: NotImplementedError"
+    refute_includes err, "s3cret"
+  end
+
+  # The clean-suite check writes a failing test's report to stderr; a test that
+  # fails on a database error can quote DATABASE_URL.
+  def test_failing_clean_suite_report_hides_the_password
+    with_project do |proj|
+      File.write(File.join(proj, "fail_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "calculator"
+        class FailTest < Minitest::Test
+          def test_db = flunk("no db: \#{ENV.fetch("DATABASE_URL")}")
+        end
+      RUBY
+      _, err, status = mutineer("run", "calculator.rb", "--test", "fail_test.rb",
+                                chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "no db: postgres://u:[REDACTED]@ho st/db"
+      refute_includes err, "s3cret"
+    end
+  end
+
+  def test_test_file_load_error_in_the_clean_suite_hides_the_password
+    with_project do |proj|
+      File.write(File.join(proj, "boom_test.rb"), %(raise "cannot connect: \#{ENV.fetch("DATABASE_URL")}"\n))
+      _, err, status = mutineer("run", "calculator.rb", "--test", "boom_test.rb",
+                                chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "[mutineer] load failed: RuntimeError: cannot connect: postgres://u:[REDACTED]@ho st/db"
+      assert_includes err, "[mutineer] re-run with --verbose for the backtrace"
+      refute_includes err, "s3cret"
+
+      _, err, = mutineer("run", "calculator.rb", "--test", "boom_test.rb", "--verbose",
+                         chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+
+      assert_includes err, "boom_test.rb:1"
+      refute_includes err, "s3cret"
+    end
+  end
+
+  def test_source_argument_error_at_load_exits_one
+    with_project do |proj|
+      File.write(File.join(proj, "bad.rb"), %(def one = 1\nraise ArgumentError, "bad #{BAD_DATABASE_URL}"\n))
+      _, err, status = mutineer("run", "bad.rb", "--test", "calculator_strong_test.rb",
+                                chdir: proj, env: { "DATABASE_URL" => BAD_DATABASE_URL })
+
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "cannot load"
+      refute_includes err, "s3cret"
     end
   end
 
@@ -874,7 +1247,7 @@ class CliTest < Minitest::Test
       out, _, status = mutineer("run", "lib", "--format", "json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(out)
-      assert_equal "1.8", doc["schema_version"]
+      assert_equal "1.9", doc["schema_version"]
       per = doc["per_source"].sort_by { |h| h["file"] }
       assert_equal ["lib/calc.rb", "lib/greeter.rb"], per.map { |h| h["file"] }
       assert_equal 100.0, per.find { |h| h["file"] == "lib/greeter.rb" }["score"]
@@ -1081,6 +1454,60 @@ class CliTest < Minitest::Test
     _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--baseline", "/no/such.json")
     assert_equal 2, status.exitstatus
     assert_includes err, "mutineer:"
+  end
+
+  def test_dry_run_allows_output_same_file_as_baseline_without_writing_it
+    with_project do |proj|
+      baseline = File.join(proj, "base.json")
+      before = JSON.generate("schema_version" => "1.8", "survivors" => [])
+      File.write(baseline, before)
+      File.write(File.join(proj, ".mutineer.yml"), "baseline: base.json\n")
+
+      [[], ["--baseline", "base.json"]].each do |flags|
+        out, err, status = mutineer("run", "calculator.rb", "--dry-run",
+                                   "--output", "base.json", *flags, chdir: proj)
+        assert_equal 0, status.exitstatus, err
+        assert_includes out, "mutations (dry run, not executed)"
+        assert_equal before, File.read(baseline)
+      end
+    end
+  end
+
+  # #281: --output naming the baseline file (directly or via a link) is a
+  # usage error, so a failing run cannot replace its own baseline.
+  def test_output_same_file_as_baseline_exits_two
+    with_project do |proj|
+      _, _, s1 = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                          "--format", "json", "--output", "base.json", chdir: proj)
+      assert_equal 0, s1.exitstatus
+      before = File.read(File.join(proj, "base.json"))
+      marker = File.join(proj, "tests-loaded")
+      File.open(File.join(proj, "calculator_weak_test.rb"), "a") do |file|
+        file.puts "File.write(#{marker.dump}, 'loaded')"
+      end
+      File.symlink("base.json", File.join(proj, "link.json"))
+      File.link(File.join(proj, "base.json"), File.join(proj, "hardlink.json"))
+      %w[base.json ./base.json link.json hardlink.json nosuch/../base.json].each do |output|
+        _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                  "--baseline", "base.json", "--output", output, chdir: proj)
+        assert_equal 2, status.exitstatus, output
+        assert_includes err, "--output and --baseline are the same file"
+        refute_path_exists marker, "same-file rejection must happen before tests load (#{output})"
+      end
+      # A baseline from .mutineer.yml is named as such.
+      File.write(File.join(proj, ".mutineer.yml"), "baseline: base.json\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                "--output", "base.json", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "--output and baseline in .mutineer.yml are the same file"
+      refute_path_exists marker, "a configured baseline must be checked before tests load"
+      # A separate report path runs the tests without replacing the baseline.
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                "--baseline", "base.json", "--format", "json", "--output", "pr.json", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      assert_path_exists marker, "the marker must detect a run that loads the tests"
+      assert_equal before, File.read(File.join(proj, "base.json"))
+    end
   end
 
   # NEW survivors vs a clean (100%) baseline regress -> exit 1, named on stdout.

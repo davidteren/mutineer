@@ -4,6 +4,8 @@ require_relative "test_helper"
 require "open3"
 require "tmpdir"
 require "fileutils"
+require "json"
+require "shellwords"
 
 # #27 (U4/U5): end-to-end for the external --test-command backend. Drives the real
 # bin against copied fixtures, using `ruby <test_file>` as the app's suite (the
@@ -36,6 +38,8 @@ class RunnerExternalTest < Minitest::Test
       assert_equal 0, status.exitstatus, "stdout:#{out}\nstderr:#{err}"
       assert_match(/100(\.0)?%/, out)
       assert_match(/upper bound/, err)
+      assert_includes err, "Only exit 1 counts as a kill"
+      refute_includes err, "no Minitest or RSpec summary line"
       assert_match(%r{\[mutineer\] \d+/\d+ mutants \(\d+%\)}, err,
                    "external backend must emit progress on stderr")
     end
@@ -49,6 +53,20 @@ class RunnerExternalTest < Minitest::Test
                                    "--test-command", "#{RUBY} %{files}", chdir: proj)
       assert_equal 0, status.exitstatus
       assert_match(/66\.7%/, out)
+    end
+  end
+
+  # #303: with LC_ALL=C Ruby reads the source as US-ASCII. A non-ASCII line
+  # must still be mutated and scored through --test-command.
+  def test_non_ascii_source_scores_under_an_ascii_locale
+    with_project("calculator_weak_test.rb") do |proj|
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub("    a + b\n", "    a + b # caf\u00e9\n"))
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_weak_test.rb",
+                                  "--test-command", "#{RUBY} %{files}", chdir: proj,
+                                  env: { "LC_ALL" => "C", "LANG" => nil })
+      assert_equal 0, status.exitstatus, err.b
+      assert_includes out.b, "66.7%"
     end
   end
 
@@ -106,6 +124,36 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
+  # #292: the clean run prints a Minitest summary, so a mutant run that exits 1
+  # with no summary (the mutant crashed the suite at load) scores error, not
+  # killed. The wrapper runs the suite on the clean tree and crashes otherwise.
+  def test_exit_one_without_summary_scores_error_after_summary_smoke
+    with_project("calculator_strong_test.rb") do |proj|
+      original = File.read(File.join(proj, "calculator.rb"))
+      wrapper = File.join(proj, "wrapper.rb")
+      File.write(wrapper, <<~RUBY)
+        exit 1 unless File.read(#{File.join(proj, 'calculator.rb').dump}) == #{original.dump}
+        load ARGV.fetch(0)
+      RUBY
+      out, err, = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--format", "json",
+                           "--test-command", "#{RUBY} #{wrapper} %{files}", chdir: proj)
+      summary = JSON.parse(out).fetch("summary")
+      assert_equal 0, summary.fetch("killed"), err
+      assert_equal 6, summary.fetch("errored"), err
+      refute_includes err, "no Minitest or RSpec summary line"
+    end
+  end
+
+  # #292: a clean run with no summary line keeps the exit-code rule and says so once.
+  def test_no_summary_on_clean_run_warns_once
+    with_project("calculator_strong_test.rb") do |proj|
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                   "--test-command", "#{RUBY} -e exit(0) %{files}", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, err.scan("no Minitest or RSpec summary line").size, err
+    end
+  end
+
   # PR #183 review: --test-command never reads --timeout, so it says so.
   def test_timeout_flag_warns_that_it_has_no_effect
     with_project("calculator_strong_test.rb") do |proj|
@@ -122,15 +170,16 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
-  # The child sees PARALLEL_WORKERS=1 and DISABLE_SPRING=1 on every spawn.
+  # The child sees PARALLEL_WORKERS=1, DISABLE_SPRING=1 and
+  # DISABLE_BOOTSNAP_COMPILE_CACHE=1 on every spawn.
   # A user value is replaced once, not once per mutant.
-  def test_test_command_replaces_parallel_workers_and_disables_spring
+  def test_test_command_replaces_parallel_workers_and_disables_spring_and_bootsnap_cache
     with_project("calculator_strong_test.rb") do |proj|
       log = File.join(proj, "child-env.log")
       probe = File.join(proj, "probe.rb")
       File.write(probe, <<~RUBY)
         File.open(#{log.dump}, "a") do |file|
-          file.puts([ENV["PARALLEL_WORKERS"], ENV["DISABLE_SPRING"]].inspect)
+          file.puts([ENV["PARALLEL_WORKERS"], ENV["DISABLE_SPRING"], ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"]].inspect)
         end
       RUBY
       _out, err, status = mutineer(
@@ -139,7 +188,7 @@ class RunnerExternalTest < Minitest::Test
         chdir: proj, env: { "PARALLEL_WORKERS" => "8" }
       )
       assert_equal 0, status.exitstatus, "stdout:#{_out}\nstderr:#{err}"
-      assert_equal ['["1", "1"]'], File.readlines(log).map(&:strip).uniq
+      assert_equal ['["1", "1", "1"]'], File.readlines(log).map(&:strip).uniq
       assert_equal 1, err.scan('PARALLEL_WORKERS was "8"').size
     end
   end
@@ -152,5 +201,21 @@ class RunnerExternalTest < Minitest::Test
       assert_equal 0, status.exitstatus
       assert_match(/forcing --jobs 1/, err)
     end
+  end
+
+  # #288: --verbose prints the test command's output, which can quote
+  # DATABASE_URL.
+  def test_verbose_output_hides_the_password
+    url = "postgres://u:s3cret@ho st/db"
+    saved = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = url
+    command = "#{RUBY} -e #{Shellwords.escape('puts ENV.fetch("DATABASE_URL"); exit 1')} %{files}"
+
+    _, err = capture_io { Mutineer::ExternalBackend.run(command, [], timeout: 30, verbose: true) }
+
+    assert_includes err, "[REDACTED]"
+    refute_includes err, "s3cret"
+  ensure
+    ENV["DATABASE_URL"] = saved
   end
 end

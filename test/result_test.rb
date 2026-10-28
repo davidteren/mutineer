@@ -110,4 +110,10 @@ class ResultTest < Minitest::Test
     ].map(&:status)
     assert_equal statuses, statuses.uniq
   end
+
+  def test_unrun_count
+    agg = Mutineer::AggregateResult.new([Mutineer::Result.killed, Mutineer::Result.killed, Mutineer::Result.unplaceable,
+                                         Mutineer::Result.skipped, Mutineer::Result.skipped])
+    assert_equal 3, agg.unrun_count
+  end
 end
