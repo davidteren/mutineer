@@ -10,7 +10,7 @@ All notable changes to this project are documented here. The format is based on
 
 Read these before you upgrade. Details are in the sections below.
 
-- **Scores can change after the upgrade.** Under `--strategy reload`, methods
+- **Scores can change after the upgrade.** Under `--strategy reload`, most methods
   in a concern's `included` or `prepended` block are now scored (#297). Runs
   that list `call_to_receiver` get more mutants (#274). Runs that list
   `range` get new mutants for endless ranges (#299). A mutant that two
@@ -22,7 +22,8 @@ Read these before you upgrade. Details are in the sections below.
   under `--test-command` (#292), and an Active Record connection or lock
   error inside a Minitest test (#296) now score `error`, not `killed`.
 - **Exit codes match STABILITY.md (#288).** A boot, source or `require:`
-  file that raises while it loads exits 1. A missing boot or `require:` file exits 2.
+  file that raises while it loads exits 1. A missing boot or `require:`
+  file exits 2.
 - **`--threshold` compares the exact score (#280).** A run with 1999 of
   2000 mutants killed shows 100.0% but no longer passes `--threshold 100`.
 - **New report data.** The JSON report adds `summary.declined` and
