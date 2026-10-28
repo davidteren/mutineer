@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "mutineer/daemon_server"
+require "minitest/mock"
 require "tempfile"
 
 # The daemon side of `shared_databases`: the database report the tool counts,
