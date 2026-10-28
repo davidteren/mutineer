@@ -12,11 +12,15 @@ Read these before you upgrade. Details are in the sections below.
 
 - **Scores can change after the upgrade.** Under `--strategy reload`, methods
   in a concern's `included` or `prepended` block are now scored (#297). Runs
-  that list `call_to_receiver` get more mutants (#274). Both can add
-  survivors. If you gate on `--baseline`, write a new full baseline.
+  that list `call_to_receiver` get more mutants (#274). Runs that list
+  `range` get new mutants for endless ranges (#299). A mutant that two
+  operators make now counts once (#275). These can change counts, scores
+  and survivors. If you gate on `--baseline`, write a new full baseline.
+- **Delete `ignore:` entries for `range` mutants (#299).** A new `range`
+  mutant can take an old id, so an old entry can hide a real survivor.
 - **Fewer false kills.** A `--test-command` exit other than 1, a load crash
-  under `--test-command` (#292), and a database error inside a test (#296)
-  now score `error`, not `killed`.
+  under `--test-command` (#292), and an Active Record connection or lock
+  error inside a Minitest test (#296) now score `error`, not `killed`.
 - **Exit codes match STABILITY.md (#288).** A boot, source or `require:`
   file that raises while it loads exits 1. A missing boot or `require:` file exits 2.
 - **`--threshold` compares the exact score (#280).** A run with 1999 of
