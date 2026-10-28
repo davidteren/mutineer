@@ -37,6 +37,10 @@ module Mutineer
     # The result is already in the pipe then; the wait only lets the reader
     # thread run, even when the capture deadline has passed (#129).
     RESULT_GRACE = 1
+    # The redaction module, by absolute path, for the subprocess scripts: they
+    # write a failing test's report, or a load error, to the inherited stderr,
+    # and either can quote DATABASE_URL.
+    REDACTION_PATH = File.expand_path("redaction.rb", __dir__)
 
     attr_reader :project_root, :failed_test_files, :failed_clean_tests, :phase_a_ran, :map
 
@@ -447,7 +451,7 @@ module Mutineer
         raise CoverageFromError, "--coverage-from #{@coverage_from} is this run's own cache; give the run another --cache-dir"
       end
 
-      cached = JSON.parse(File.read(@coverage_from))
+      cached = JSON.parse(File.read(@coverage_from, encoding: "UTF-8"))
       reason = capture_mismatch(cached)
       raise CoverageFromError, "--coverage-from #{@coverage_from} cannot be reused: #{reason}" if reason
 
@@ -467,7 +471,7 @@ module Mutineer
         return "it has no source fingerprints; capture it again with this version and --rails/--boot"
       end
       return "its entries are not the shape a coverage cache saves; capture it again" unless well_formed_capture?(cached)
-      return "its tests, --require files, boot file, load paths or framework differ" unless cached["inputs"] == compute_digest(inputs_only: true)
+      return "its tests, --require files, boot file, load paths, framework or Minitest seed differ, or an older version made it; capture it again" unless cached["inputs"] == compute_digest(inputs_only: true)
 
       fingerprints = source_fingerprints
       missing = fingerprints.keys - cached["sources"].keys
@@ -1028,10 +1032,14 @@ module Mutineer
         Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
         Minitest.extensions << "mutineer_report"
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_preload_paths.inspect}.each { |f| require f }
-        #{loads}
-        _passed = Minitest.run([])
-        $stderr.write(_report.string) unless _passed
+        begin
+          #{abs_preload_paths.inspect}.each { |f| require f }
+          Minitest::Runnable.reset
+          #{loads}
+        #{load_failure_rescue}
+        end
+        _passed = Minitest.run(#{minitest_seed_args_expression})
+        $stderr.write(#{redacted_expression("_report.string")}) unless _passed
         exit(_passed ? 0 : 1)
       RUBY
     end
@@ -1053,11 +1061,55 @@ module Mutineer
         end
         RSpec::Core::Runner.disable_autorun!
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_preload_paths.inspect}.each { |f| require f }
+        begin
+          #{abs_preload_paths.inspect}.each { |f| require f }
+        #{load_failure_rescue}
+        end
         _sink = StringIO.new
         status = RSpec::Core::Runner.run(["--no-color", #{specs}], _sink, _sink)
-        $stderr.write(_sink.string) unless status.zero?
+        $stderr.write(#{redacted_expression("_sink.string")}) unless status.zero?
         exit(status.zero? ? 0 : 1)
+      RUBY
+    end
+
+    # Ruby source, for a subprocess script, that loads the redaction module
+    # and returns the redacted value of `expression`.
+    #
+    # @api private
+    # @param expression [String] Ruby source for the text to redact.
+    # @return [String] Ruby script text.
+    def redacted_expression(expression)
+      "(require #{REDACTION_PATH.inspect}; Mutineer::Redaction.text(#{expression}))"
+    end
+
+    # Ruby source, for a subprocess script, that closes a `begin` around the
+    # project and test file loads. A load error then prints one redacted line
+    # (Ruby's own printer would show DATABASE_URL raw), and the child still
+    # exits 1, as it did when the error went uncaught. Under --verbose the
+    # redacted backtrace follows; otherwise a hint says how to get it.
+    #
+    # @api private
+    # @return [String] Ruby script text.
+    def load_failure_rescue
+      detail =
+        if @verbose
+          <<~RUBY.chomp
+            (_e.backtrace || []).each { |_f| $stderr.puts("\t" + Mutineer::Redaction.text(_f)) }
+            _cause = _e.cause
+            while _cause
+              $stderr.puts("[mutineer] caused by: " + Mutineer::Redaction.describe(_cause))
+              _cause = _cause.cause
+            end
+          RUBY
+        else
+          '$stderr.puts("[mutineer] re-run with --verbose for the backtrace")'
+        end
+      <<~RUBY.chomp
+        rescue ScriptError, StandardError => _e
+          require #{REDACTION_PATH.inspect}
+          $stderr.puts("[mutineer] load failed: " + Mutineer::Redaction.describe(_e))
+          #{detail}
+          exit 1
       RUBY
     end
 
@@ -1088,17 +1140,33 @@ module Mutineer
         Minitest.extensions << "mutineer_report"
         Coverage.start(lines: true, methods: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_preload_paths.inspect}.each { |f| require f }
-        _load = #{load_coverage_expression}
-        load #{absolute(test_path).inspect}
-        _passed = Minitest.run([])
-        $stderr.write(_report.string) unless _passed
+        begin
+          #{abs_preload_paths.inspect}.each { |f| require f }
+          _load = #{load_coverage_expression}
+          Minitest::Runnable.reset
+          load #{absolute(test_path).inspect}
+        #{load_failure_rescue}
+        end
+        _passed = Minitest.run(#{minitest_seed_args_expression})
+        $stderr.write(#{redacted_expression("_report.string")}) unless _passed
         _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => _coverage,
                                     "load_coverage" => _load,
                                     "loaded_files" => #{loaded_files_expression})
         _result.close
       RUBY
+    end
+
+    # Selects the seed inside the generated child, after its tests and helpers
+    # load. Choosing in the parent can ignore a helper's SEED assignment and
+    # let a clean check pass in an order the mutant run never uses (#282).
+    # The default comes from the same constant as the in-process runner; the
+    # child needs no Mutineer require and the parent's environment is unchanged.
+    #
+    # @api private
+    # @return [String] Ruby expression for the Minitest argument array.
+    def minitest_seed_args_expression
+      "ENV[\"SEED\"] ? [] : [\"--seed\", #{MinitestIntegration::PINNED_SEED.to_s.inspect}]"
     end
 
     # Same coverage-JSON contract as the minitest path, but driven by RSpec:
@@ -1122,11 +1190,14 @@ module Mutineer
         RSpec::Core::Runner.disable_autorun!
         Coverage.start(lines: true, methods: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
-        #{abs_preload_paths.inspect}.each { |f| require f }
-        _load = #{load_coverage_expression}
+        begin
+          #{abs_preload_paths.inspect}.each { |f| require f }
+          _load = #{load_coverage_expression}
+        #{load_failure_rescue}
+        end
         _sink = StringIO.new
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
-        $stderr.write(_sink.string) unless _status.zero?
+        $stderr.write(#{redacted_expression("_sink.string")}) unless _status.zero?
         _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
         _result.puts JSON.generate("passed" => _status.zero?, "coverage" => _coverage,
                                     "load_coverage" => _load,
@@ -1355,6 +1426,10 @@ module Mutineer
       end
       @load_paths.sort.each { |lp| d.update("loadpath\0#{lp}\0") }
       d.update("framework\0#{@framework}\0")
+      # The seed sets the test order, and the order can change which lines run (#282).
+      # This is the configured seed. A test helper that changes SEED is not
+      # digested, like any other helper edit.
+      d.update("seed\0#{MinitestIntegration.seed}\0") unless @framework == "rspec"
       d.hexdigest
     end
 
@@ -1448,7 +1523,7 @@ module Mutineer
     def read_cache
       return nil unless File.exist?(cache_path)
 
-      JSON.parse(File.read(cache_path))
+      JSON.parse(File.read(cache_path, encoding: "UTF-8"))
     rescue JSON::ParserError
       nil # corrupt cache: rebuild from scratch
     end

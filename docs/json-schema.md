@@ -11,7 +11,7 @@ add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, 
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.8"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.9"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -33,10 +33,10 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 
 ```jsonc
 {
-  "schema_version": "1.8",
+  "schema_version": "1.9",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch; review for test gaps or equivalent behaviour */ ],
-  "no_coverage":  [ /* mutants on lines no test exercises, or that the statement's tests may not reach (#254) */ ],
+  "no_coverage":  [ /* mutants on lines no test exercises, or that the statement's tests may not reach (#254, #289) */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
   "unplaceable":  [ /* mutants the strategy cannot load where the tests call them; not run */ ],
   "ran_at_load":  [ /* mutants on a line that ran while the app or class loaded; no verdict */ ],
@@ -55,15 +55,17 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `total` | int | Classified results included in this report, across all statuses. With `--fail-fast`, unscheduled candidates are omitted, so this is not the full generated candidate count. |
 | `killed` | int | Mutants a test caught (suite went red). |
 | `survived` | int | Mutants no test caught. Review each for a missing test or equivalent behaviour. |
-| `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant in code that runs only sometimes on a later line of a multi-line statement, such as the right side of `a &&` on its own line, when the tests that ran the statement did not kill it: the run cannot tell whether they reached it. |
+| `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant in code that runs only sometimes on a later line of a multi-line statement, such as the right side of `a &&` on its own line, when the tests that ran the statement did not kill it: the run cannot tell whether they reached it. Also a mutant on a later line of a multi-line statement whose first or last line holds other code, such as a call inside a one-line block. Mutineer ran the tests that ran that first or last line (never the `def` line); they did not kill it, and they may not have run the mutant. |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
-| `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically; under either strategy, a method in a concern's `included` or `prepended` block. The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). |
+| `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically, or any method in a concern's `included` or `prepended` block; under `--strategy reload`, some methods in such a block. The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). Counted in the unrun share: when `unplaceable + skipped_invalid` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid`, stderr warns on every format. The warning does not change the exit code (schema `1.9`, #291). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
-| `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). |
-| `errored` | int | Mutants whose run raised (excluded). |
+| `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). Counted in the unrun share: when `unplaceable + skipped_invalid` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid`, stderr warns on every format. The warning does not change the exit code (schema `1.9`, #291). |
+| `declined` | int | Candidates the operators found and did not mutate, so they are not in `total`: a heredoc the edit would split, or an equivalent skip listed on the [equivalent-skips page](equivalent-skips.md). Counted per operator, so a candidate two operators decline counts twice. Counted before `# mutineer:disable-line` and `ignore:` apply. `--only` narrows it; `--since` does not. Additive key (schema `1.9`, #291). |
+| `declined_by_operator` | object | The same count per operator name, operator name => int, only operators above zero, keys sorted. `{}` when none. Additive key (schema `1.9`, #291). |
+| `errored` | int | Mutants whose run crashed, or whose first failed Minitest test had a database connection or lock error (excluded). |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). Under `--since`, only those on changed lines. |
-| `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 no-coverage mutant did run its statement's tests). |
+| `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 or #289 no-coverage mutant did run its statement's tests). |
 | `no_verdict` | int | Attempted mutants that produced no verdict: `errored + timeout + uncapturable`. The completeness gate is `no_verdict / attempted`. |
 | `score` | float \| null | `killed / (killed + survived) * 100`, rounded. **`null`** when the denominator is empty (no covered mutants) — never `0.0`. |
 | `scoped` | bool | `true` when the run was diff-scoped (`--since`): the score covers only the changed-line mutants, so it is not comparable to a full-run score. A scoped CURRENT run skips `--baseline`'s score-drop check (new-survivor detection still applies); a scoped report is REFUSED as a baseline (exit 2) because survivors outside its diff would read as new regressions. Additive key (absent in reports from older versions; treat absent as `false`). |
@@ -80,14 +82,14 @@ Each surviving mutant — the records an agent or reviewer acts on:
 | `file` | string | Source file path, relative to the project root for a file inside the project (`./lib/x.rb` and an absolute path both report `lib/x.rb`); a file outside the project keeps the path as passed. |
 | `line` | int | 1-based line of the mutation. |
 | `operator` | string | Operator name, e.g. `arithmetic`, `comparison`. |
-| `id` | string | **Offset-free id** (12 hex chars). Includes the file path relative to the project root (a source outside the root uses its absolute real path, so its ids differ between machines). Unrelated edits preserve it when the path, qualified method name, mutated token, and repeated-name/mutation order stay the same. File moves, renames, and root changes can change it. See [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
+| `id` | string | **Offset-free id** (12 hex chars). Includes the file path relative to the project root (a source outside the root uses its absolute real path, so its ids differ between machines). Unrelated edits preserve it when the path, qualified method name, mutated token, and repeated-name/mutation order stay the same. File moves, renames, and root changes can change it. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids). Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
 | `token` | string | The exact code being mutated (whitespace-collapsed), e.g. `a + b`. |
 | `diff` | string | A unified diff with no context lines: `-original` / `+mutant` lines under a hunk header that gives each side's start line and, when it is not 1, its line count (`@@ -3,2 +3 @@`). For a `file` given relative to the project root, `git apply --unidiff-zero` run from that root accepts it. An absolute or `../` path needs `git apply --directory`/`-p` or an edit. Ready to hand to an agent as "write a test that fails under this change." |
 
 ### `no_coverage[]`, `uncapturable[]`, `unplaceable[]` and `ran_at_load[]` (array of object)
 
 Each entry is `{ subject, file, line, operator, token, id }`, sorted by
-`(file, line, operator, id)`. `no_coverage` is a coverage gap: no test runs the line, or (#254) the tests that run a later line's statement may not reach the mutant and none killed it, so only a test that kills it clears the entry; `uncapturable` means the test that
+`(file, line, operator, id)`. `no_coverage` is a coverage gap: no test runs the line, or (#254, #289) the tests that run a later line's statement may not reach the mutant and none killed it, so only a test that kills it clears the entry; `uncapturable` means the test that
 should cover the line errored while capturing coverage (fix the harness, not the test). `unplaceable` (schema
 `1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module cannot be
 named statically (an anonymous `Class.new`, a relative path such as `User::Permission` inside a namespace,
@@ -95,10 +97,46 @@ a class or module opened or assigned in `class << self`, a `self::X` opened in a
 that does not build a class, a method in an `included` or `prepended` block, which ActiveSupport runs in each
 includer, or a method in a `class_methods` block that is not in the body of a module known as a concern (see
 `subject` above), such as one inside Rails' `concerning` or an unassigned `Module.new`); `--strategy reload`
-runs these, except a method in an `included` or `prepended` block. Under `--strategy reload`, `unplaceable`
-means the mutant's method is anywhere inside a concern's `included` or `prepended` block (#256): ActiveSupport
-runs that block only when a class first includes or prepends the concern, so loading the file again never reaches
-a class that already has it, and the mutant would falsely survive. `--test-command` runs both kinds. `ran_at_load` (schema `1.7`) means the mutant's
+runs these, except some methods in an `included` or `prepended` block.
+
+Under `--strategy reload`, ActiveSupport runs a concern's `included` or `prepended` block only when a class first
+includes or prepends the concern, so loading the file again does not reach a class that already has it (#256).
+For a method directly in the block, Mutineer loads the mutated method into each host that already has it, and a
+host that includes the concern later gets it from the reloaded block (#297). Nothing else in the block runs
+again. Two methods in one block can therefore get different verdicts. `unplaceable` under reload means the
+mutant's method is one of these:
+
+- a method in a class, module, `Module.new`, `Struct.new`, `Class.new` or `Data.define` block inside the block;
+- a method inside another method, or inside a block that does not build a class (such as `[1].each do`);
+- a method with an explicit receiver other than `self` (such as `def base.tag` in `included do |base|`),
+  because extracting the definition does not keep a receiver bound inside the hook;
+- a hook-block method whose name and first line match another definition in the same file, including a
+  collision between an instance and a singleton definition. The check reads all parsed `def`s, even when
+  they are not selected as subjects, and explicit `define_method`, `define_singleton_method`, `attr_reader`,
+  `attr_writer`, `attr_accessor` and `attr` calls. A positional lambda uses its own source line. When a
+  callable body comes through a variable or another expression, the check includes possible block and
+  lambda source lines in that file, including stored hook blocks. A matching-name or unknown-name
+  indirect creator can therefore conservatively exclude a one-line hook. A dynamic name blocks only those
+  possible body lines; a dynamic attribute name or writer flag blocks the attribute creation line.
+  Ruby's source location cannot distinguish which definition an existing host has;
+- every method in a block that uses `alias` or `alias_method`;
+- a method the block itself calls outside a method body (a bare call, `self.name`, `method(:name)`,
+  `instance_method(:name)` or `send(:name)`, `public_send` and `__send__` too, also inside a nested block or
+  lambda); a symbol such as `before_save :name` is fine;
+- every method in a block that passes a name computed at runtime to one of those calls (such as `send(pick)`);
+- every method in a block whose `included` or `prepended` call is not a plain statement of the module body, for
+  example `x = included do`, a call inside `if`, `unless` or `case`, a module under `unless defined?`, or a call
+  inside `class << self`, a method or a block;
+- every method in a file with a `return` outside any method or block;
+- a method that `module_function` makes a module function.
+
+For an otherwise placeable hook-block method, an `alias` made outside the block keeps the original body and
+makes the mutant score `error`. This includes a wrapper that replaces the original name and calls the saved
+alias, even when no host keeps the original at its current name. The methods listed as `unplaceable` above
+keep that verdict and are not run. A live `Method` or `UnboundMethod` for the original definition also makes
+an otherwise placeable mutant score `error`: a wrapper can keep and call that handle after the method was
+redefined. A discarded reflection result does not trigger this error. `--test-command` runs every kind.
+`ran_at_load` (schema `1.7`) means the mutant's
 line ran while the app booted or its class loaded (for example a class body that calls the method to build a constant). Neither strategy re-runs that load in full, so a survivor there, or a line that ran
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.
@@ -173,7 +211,9 @@ arrived out of order names no tests (`killed_by` and `ran` are empty).
 
 `status` is the verdict a run without `--matrix` gives. After the first failing test, that run skips every
 later test, test class and example group, so an exit, a crash or the timeout in one of those leaves the status
-`"killed"`. It still runs the code around the failing test (the rest of its Minitest class `run` wrapper, the
+`"killed"` for an ordinary test failure, or `"error"` for a Minitest database connection or lock failure.
+A database failure is not a killer and leaves the row incomplete, even when an earlier assertion
+already killed the mutant. It still runs the code around the failing test (the rest of its Minitest class `run` wrapper, the
 `after(:all)` hooks of its RSpec groups) and the suite's own cleanup (RSpec `after(:suite)`), so an end there
 keeps the exit status (or `"timeout"`). A failure in the tests of a Minitest `parallelize_me!` class keeps it
 too: those run after every serial class and cannot be stopped once queued, while a failure in a serial class
@@ -202,8 +242,8 @@ The delta versus the prior `--format json` report, matched by `id`. A baseline w
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
-| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading. |
+| `2` | Usage / invalid-flag error, including a mistyped flag, a bad path (such as a missing `--boot` or `require:` file), or an unreadable baseline. |
 <!-- /contract:exit-codes -->
 
 Under a positive `--threshold`, a run is gated on being complete as well as on its score. Mutants with no
@@ -217,6 +257,9 @@ A run where *nothing* was scored and something broke already exits 1.
 `--threshold` and `--baseline` are independent gates OR'd together (the worse code wins); usage errors (2)
 always win. Exit 2 still means "you invoked me wrong". Exit 1 now covers three distinct situations —
 tests too weak, the run did not complete, or a baseline regression — and they are not distinguishable
-from the exit code alone. Tell them apart from the JSON: compare `summary.score` against your threshold,
-`summary.no_verdict / summary.attempted` against 10%, and `baseline.regressed`. A run that failed only on
+from the exit code alone. Tell them apart from the JSON: compare the exact score against your
+threshold. When `summary.killed + summary.survived > 0`, check
+`summary.killed * 100 >= threshold * (summary.killed + summary.survived)`, with decimal or rational
+arithmetic for a fractional threshold (`summary.score` is rounded, and the gate does not use it). Compare
+`summary.no_verdict / summary.attempted` against 10%, and check `baseline.regressed`. A run that failed only on
 completeness is the one worth retrying rather than blaming on the tests.

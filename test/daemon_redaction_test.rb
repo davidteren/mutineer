@@ -8,6 +8,7 @@ require "tempfile"
 require_relative "test_helper"
 require "mutineer/daemon_server"
 require "mutineer/coverage_map"
+require "mutineer/daemon_client"
 
 # Rails parses DATABASE_URL itself, so a malformed one raises a URI error that
 # quotes the whole URL. No daemon reply or stderr line may echo the password.
@@ -53,6 +54,24 @@ class DaemonRedactionTest < Minitest::Test
       assert_includes reply["error"], "URI::InvalidURIError"
       assert_includes reply["error"], "[REDACTED]"
       refute_includes out + err, "s3cret"
+    end
+  end
+
+  # #303: with LC_ALL=C the daemon reads its stdin as US-ASCII. A boot line
+  # with a non-ASCII path must still parse, so the daemon replies.
+  def test_boot_line_with_a_non_ascii_path_parses_under_an_ascii_locale
+    Dir.mktmpdir do |dir|
+      root = File.join(dir, "caf\u00e9")
+      Dir.mkdir(root)
+      boot = File.join(root, "boot.rb")
+      File.write(boot, "raise \"boot ran\"\n")
+      lib = File.expand_path("../lib", __dir__)
+      script = "require \"mutineer/daemon_server\"; Mutineer::DaemonServer.run"
+      stdin = JSON.generate("cmd" => "boot", "project_root" => root, "boot" => boot)
+      out, err, = Open3.capture3({ "LC_ALL" => "C", "LANG" => nil }, RbConfig.ruby, "-I", lib, "-e", script,
+                                 stdin_data: "#{stdin}\n")
+      refute_empty out, err
+      assert_includes JSON.parse(out.lines.last)["error"], "boot ran"
     end
   end
 
@@ -139,10 +158,89 @@ class DaemonRedactionTest < Minitest::Test
     assert_equal "auth failed: [REDACTED] ([REDACTED])", text
   end
 
+  def test_describe_error_fails_closed_when_the_message_raises
+    error = RuntimeError.new("x")
+    def error.message = raise("boom")
+
+    assert_equal Mutineer::Redaction::FAILED, Mutineer::DaemonServer.send(:describe_error, error)
+  end
+
   def test_redact_leaves_text_without_credentials_alone
     ENV.delete("DATABASE_URL")
     text = "PG::ConnectionBad: could not connect to http://host:5432/db"
 
     assert_equal text, Mutineer::DaemonServer.send(:redact, text)
+  end
+
+  # #288: the daemon's stderr (which also carries the app's stdout) reaches the
+  # tool's stderr through the client's drain, one redacted line at a time.
+  def drain(bytes)
+    errio = StringIO.new
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe
+    wr.binmode
+    wr.write(bytes)
+    wr.close
+    client.send(:drain_stderr, rd)
+    errio.string
+  ensure
+    rd&.close
+  end
+
+  def test_daemon_stderr_drain_hides_the_password
+    out = drain("boot failed: #{BAD_URL}\nsecond line\n")
+
+    assert_includes out, "postgres://u:[REDACTED]@ho st/db"
+    assert_includes out, "second line"
+    refute_includes out, "s3cret"
+  end
+
+  def test_daemon_stderr_drain_survives_invalid_bytes
+    out = drain("bad \xFF byte #{BAD_URL}\n".b)
+
+    assert_includes out, "[REDACTED]"
+    refute_includes out, "s3cret"
+  end
+
+  # After a tool stderr has gone away (EPIPE), the drain drops lines but keeps
+  # reading, so the daemon never blocks, and it ends quietly, so close_io's
+  # join cannot re-raise the error mid-cleanup.
+  def test_daemon_stderr_drain_survives_a_broken_errio
+    errio = Object.new
+    def errio.write(*) = raise(Errno::EPIPE)
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe
+    wr.write("line\n" * 100)
+    wr.close
+
+    assert_nil client.send(:drain_stderr, rd)
+    assert_predicate rd, :eof?, "the drain must keep reading so the daemon never blocks on a full pipe"
+  ensure
+    rd&.close
+  end
+
+  def test_daemon_stderr_drain_keeps_line_breaks_when_redaction_fails_closed
+    failed = Mutineer::Redaction::FAILED
+    out = Mutineer::Redaction.stub(:text, failed) { drain("one\ntwo\n") }
+
+    assert_equal "#{failed}\n#{failed}\n", out
+  end
+
+  def test_close_io_lets_the_drain_finish_a_last_partial_line
+    errio = StringIO.new
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe
+    client.instance_variable_set(:@stderr, rd)
+    client.instance_variable_set(:@drain, Thread.new { client.send(:drain_stderr, rd) })
+    wr.write("boot failed: #{BAD_URL}")
+    wr.close
+
+    client.send(:close_io)
+
+    assert_equal "boot failed: postgres://u:[REDACTED]@ho st/db", errio.string
+  end
+
+  def test_daemon_stderr_drain_keeps_a_last_partial_line
+    assert drain("first\ntail without newline").end_with?("tail without newline")
   end
 end

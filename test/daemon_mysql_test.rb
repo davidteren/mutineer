@@ -37,7 +37,6 @@ class DaemonMysqlTest < Minitest::Test
       source_dirs: [File.join(APP, "app/models")],
       framework: "minitest",
       rails: true,
-      schema: File.join(APP, "db/schema.rb"),
       require_paths: [File.join(APP, "test/support/seed_setup")],
       slots: slots
     }
@@ -88,6 +87,7 @@ class DaemonMysqlTest < Minitest::Test
       _out, err = capture_subprocess_io { aggregate = Mutineer::Runner.execute(config).first }
       assert_equal 100.0, aggregate.mutation_score
       assert_includes err, "provisioned 1 mysql worker database(s) from #{BASE}"
+      refute_match(/is not tested with --daemon|is not supported\. --daemon needs MySQL 8\.0|could not read the MySQL server version/, err)
     end
   end
 

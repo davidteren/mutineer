@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "optparse"
 require "open3"
 require_relative "version"
@@ -17,6 +18,7 @@ require_relative "migrate"
 require_relative "mutator_registry"
 require_relative "triage"
 require_relative "init"
+require_relative "redaction"
 
 module Mutineer
   # Command-line entry point. `start` is the single public method called by
@@ -34,7 +36,7 @@ module Mutineer
       Usage: mutineer [options] <command> [args]
 
       Commands:
-        run [options] <source...> --test <test> [--test <test>...]
+        run [options] <source...> [--test <test>...]
                                                      Mutate, run, and report
         run --dry-run [options] <source...>          Print candidate mutations only
         triage REPORT.json --reason TEXT
@@ -48,7 +50,9 @@ module Mutineer
                                                      --force replaces an existing file.
 
       Run options:
-        --test FILE          Test file covering the sources (one per flag; repeat it)
+        --test FILE          Test file covering the sources (one per flag; repeat it).
+                             Omit to pair each source with its test by convention
+                             (not under --dry-run)
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
         --baseline FILE      Fail (exit 1) on NEW survivors / score drop vs a prior
@@ -73,7 +77,7 @@ module Mutineer
                              cover these sources
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
         --boot FILE          Require FILE once in the parent to boot the app env, then
-                             fork per mutant (Rails apps; requires --test)
+                             fork per mutant (Rails apps; needs a test, given or found by convention)
         --rails              Boot config/environment; without --daemon, defaults to
                              redefine and serial execution
         --test-command CMD   Run the target suite in the app's own runtime as a
@@ -97,7 +101,9 @@ module Mutineer
                              matrix:)
         --allow-empty        A run with no mutants is expected; do not warn (--no-allow-empty
                              beats a .mutineer.yml allow_empty:)
-        --verbose            Surface the real error when a fork capture fails (alias: --debug)
+        --verbose            Show full error details: the backtrace and causes of a load
+                             failure, the real error of a failed fork capture, and the
+                             --test-command output (alias: --debug)
 
       Options:
         --list-operators  List available operators (default vs optional) and exit
@@ -207,7 +213,9 @@ module Mutineer
       case argv.first
       when "run"
         warn_config_root_mismatch(file_path, config.project_root) if file_path
-        tests_as_sources = argv[1..].grep(%r{(\A|/)(test|spec)/.*_(test|spec)\.rb\z})
+        tests_as_sources = argv[1..].select do |arg|
+          Pairing.test_given_as_source?(arg, project_root: config.project_root, tests: config.tests)
+        end
         if config.explicit?(:tests) && tests_as_sources.any?
           warn "mutineer: #{tests_as_sources.join(', ')} looks like a test file, not a source. " \
                "--test takes one file; repeat it for each test file (--test a_test.rb --test b_test.rb)"
@@ -248,7 +256,7 @@ module Mutineer
     # @return [void]
     def self.migrate(config, file_path)
       current, old_to_new = Migrate.id_maps(config)
-      text = File.read(file_path)
+      text = File.read(file_path, encoding: "UTF-8")
       outcome = Migrate.rewrite(text, current, old_to_new)
       outcome.replacements.each do |rep|
         puts "[mutineer] #{rep.old_id} -> #{rep.new_ids.join(', ')}"
@@ -336,7 +344,7 @@ module Mutineer
       config.dry_run ? dry_run(config) : execute(config)
     rescue ArgumentError => e
       # Unknown --operators value surfaces here; no backtrace reaches the user.
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 2
     rescue Mutineer::ConfigError => e
       # A config value that only the booted app can check (`shared_databases`
@@ -346,33 +354,45 @@ module Mutineer
     rescue SystemCallError => e
       # A missing/unreadable path reaches here as Errno::ENOENT etc. A plain
       # message and usage exit, never a raw backtrace.
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 2
     rescue SyntaxError => e
-      # A syntactically invalid source file surfaces when `require`d; report it
-      # cleanly rather than dumping a backtrace.
-      warn "mutineer: cannot load source: #{e.message}"
+      # Boot, source and require files report a SyntaxError as ProjectLoadError
+      # below. This covers a file loaded on any other path; report it cleanly
+      # rather than dumping a backtrace.
+      warn "mutineer: cannot load source: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::ParseError => e
-      warn "mutineer: error reading: #{e.message}"
+      warn "mutineer: error reading: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::SmokeCheckError => e
       # The unmutated suite is not green under --test-command: a broken
       # environment, not weak tests. Runtime error (exit 1), not usage (exit 2).
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::ConcurrentRunError => e
       # Another process owns a source file. Runtime error (exit 1), not a
       # backtrace: the working tree is still the other run's responsibility.
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 1
     rescue Mutineer::CoverageFromError => e
-      warn "mutineer: #{e.message}"
+      warn "mutineer: #{Redaction.text(e.message)}"
       exit 2
     rescue Mutineer::DaemonBootError => e
       # The daemon is gone for good, so the run ended rather than scoring the rest
       # against it. A deliberate stop deserves a message, not a raw backtrace.
+      warn "mutineer: #{Redaction.text(e.message)}"
+      exit 1
+    rescue Mutineer::ProjectLoadError => e
+      # A boot file, source or --require file failed to load. The message is
+      # already redacted; --verbose adds the backtrace and the cause chain.
       warn "mutineer: #{e.message}"
+      if config.verbose
+        (e.backtrace || []).each { |frame| warn "\t#{Redaction.text(frame)}" }
+        e.causes.each { |cause| warn "mutineer: caused by: #{cause}" }
+      else
+        warn "mutineer: re-run with --verbose for the backtrace and causes"
+      end
       exit 1
     end
 
@@ -388,8 +408,9 @@ module Mutineer
       validate_test_command!(config) if config.test_command
 
       validate_since!(config) if config.since
-      preflight_output!(config.output) if config.output
+      preflight_output!(config.output, config) if config.output
       preflight_baseline!(config.baseline) if config.baseline
+      preflight_same_file!(config) if config.output && config.baseline && !config.dry_run
 
       # When --test is omitted, infer each source's test by convention. Autopair
       # also re-detects framework from inferred tests when --framework was not set.
@@ -641,13 +662,50 @@ module Mutineer
       exit 2
     end
 
-    # Preflights an output path.
+    # #281: a report written over its own baseline turns a failed gate into the
+    # next baseline. Same check as the Action's guard (action.yml); the message
+    # is that guard's text adapted for the CLI, so keep the two in step. The
+    # output is expanded the way Reporter#report writes it, so `x/../b.json`
+    # with a missing `x/` still matches `b.json`. File.identical? is false when
+    # either file is missing, so a new output path never matches.
+    # Unlike the Action's guard, a dry run skips this check: it writes no report.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration (output and baseline set).
+    # @return [void]
+    def self.preflight_same_file!(config)
+      output = File.expand_path(config.output)
+      return unless File.identical?(output, config.baseline)
+
+      warn "mutineer: --output and #{config.origin(:baseline)} are the same file ('#{File.realpath(output)}'). " \
+           "A failing run would replace the baseline. Write the report to a separate path. " \
+           "Copy that file onto the baseline only when the run exits 0."
+      exit 2
+    end
+
+    # Preflights an output path. A missing parent is a usage error (exit 2),
+    # except the cache directory: the documented `--output .mutineer/run.json`
+    # must work on a fresh checkout. It is created here, before the run, so a
+    # failure to create it exits 2 up front. A later failed check can leave the
+    # empty cache directory behind (a real run creates it anyway). A dry run
+    # writes no report, so it creates nothing.
     #
     # @api private
     # @param path [String] output file path.
+    # @param config [Mutineer::Config] run configuration (for the cache directory).
     # @return [void]
-    def self.preflight_output!(path)
+    def self.preflight_output!(path, config)
       dir = File.dirname(File.expand_path(path))
+      if !File.exist?(dir) && dir == File.expand_path(config.cache_dir, config.project_root)
+        return if config.dry_run
+
+        begin
+          FileUtils.mkdir_p(dir)
+        rescue SystemCallError => e
+          warn "mutineer: cannot write to #{path}: #{e.message}"
+          exit 2
+        end
+      end
       return if File.directory?(dir) && File.writable?(dir)
 
       reason = File.directory?(dir) ? "directory is not writable" : "no such directory"
@@ -688,18 +746,24 @@ module Mutineer
                             baseline: delta ? delta.legacy_matches : 0 }
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
-                      scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches)
+                      scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches,
+                      declined: extras.fetch(:declined, {}))
       warn_empty_run(config, extras) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
-      # mutants count as survivors), and an infra failure that still starts the
-      # suite is scored as a kill (exit 126/127 are scored error). Daemon coverage fallback warnings are emitted from the runner
-      # only when the map is unavailable, not on every --daemon run.
+      # mutants count as survivors), and an infra failure that exits 1 can still
+      # score as a kill (#292): with the summary check on, when its output names a
+      # failing test; with it off (the clean run printed no Minitest or RSpec
+      # summary line), on any exit 1, a load crash included. Daemon coverage
+      # fallback warnings are emitted from the runner only when the map is
+      # unavailable, not on every --daemon run.
       if config.test_command
         warn "[mutineer] --test-command score is an upper bound, not comparable to an " \
-             "in-process run: no coverage narrowing (uncovered mutants count as survivors) " \
-             "and an infra failure is scored as a kill (except exit 126 and 127, scored error)."
+             "in-process run: no coverage narrowing (uncovered mutants count as survivors). " \
+             "Only exit 1 counts as a kill, or a SimpleCov gate exit whose summary shows a failing " \
+             "test (an RSpec --failure-exit-code other than 1 makes every kill an error). When the clean run printed a Minitest or RSpec summary line, " \
+             "Mutineer also reads it to tell a crash from a kill. See https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#apps-on-ruby--34"
       end
 
       # Nudge toward the opt-in tier-2 operators (human report only: never
@@ -722,15 +786,21 @@ module Mutineer
     #
     # @param config [Mutineer::Config] run configuration.
     # @param extras [Hash] the run extras; `:unscoped_mutants` counts the mutants (run and
-    #   suppressed) before --since.
+    #   suppressed) before --since, and `:declined` the candidates each operator did not mutate.
     # @return [void]
     def self.warn_empty_run(config, extras)
       # Mutants existed before --since narrowed them: the changes held none.
       if config.since && extras[:unscoped_mutants].to_i.positive?
         warn "mutineer: nothing to test in the changes since #{config.since}"
       elsif !config.allow_empty
-        warn "mutineer: no mutants were generated. Check that the sources contain code the " \
-             "operators mutate. The run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
+        declined = extras.fetch(:declined, {}).values.sum
+        cause = if declined.positive?
+                  "#{declined} #{declined == 1 ? 'candidate was' : 'candidates were'} declined " \
+                    "(--dry-run shows the count per operator)."
+                else
+                  "Check that the sources contain code the operators mutate."
+                end
+        warn "mutineer: no mutants were generated. #{cause} The run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
              "Pass --allow-empty (or allow_empty: true) if an empty run is expected."
       end
     end
@@ -842,8 +912,25 @@ module Mutineer
       breakdown = per_operator.map { |op, n| "#{op}: #{n}" }.join(", ")
       summary = breakdown.empty? ? "" : "#{breakdown} — "
       puts "#{summary}#{total} mutations (dry run, not executed); " \
-           "#{skipped} skipped (invalid); #{ignored} ignored (suppressed)"
+           "#{skipped} skipped (invalid); #{ignored} ignored (suppressed); " \
+           "#{declined_summary(extras[:declined], since: config.since)}"
       exit 0
+    end
+
+    # Formats the dry run's declined count: the total, then each operator's
+    # count when the total is above zero. `--since` does not narrow the count,
+    # so under `--since` the text says so.
+    #
+    # @param declined [Hash{String => Integer}] operator name => declined count.
+    # @param since [String, nil] the `--since` ref, when set.
+    # @return [String] e.g. `2 declined (range: 2)`.
+    def self.declined_summary(declined, since:)
+      total = declined.values.sum
+      text = "#{total} declined"
+      text += " in the scanned files (not narrowed by --since)" if since
+      return text if total.zero?
+
+      "#{text} (#{declined.map { |op, n| "#{op}: #{n}" }.join(', ')})"
     end
   end
 end

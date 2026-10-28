@@ -149,7 +149,7 @@ class IsolationTest < Minitest::Test
   def test_nesting_keywords_mixed_simple_and_compact
     Object.const_set(:OuterNS, Module.new) unless Object.const_defined?(:OuterNS)
     OuterNS.const_set(:Mid, Module.new) unless OuterNS.const_defined?(:Mid)
-    OuterNS::Mid.const_set(:Deep, Class.new) unless OuterNS::Mid.const_defined?(:Deep)
+    OuterNS::Mid.const_set(:Deep, Class.new) unless OuterNS::Mid.const_defined?(:Deep, false)
     assert_equal [["module", "OuterNS"], ["class", "Mid::Deep"]],
                  Mutineer::Isolation.nesting_keywords(["OuterNS", "Mid::Deep"])
   end
@@ -167,6 +167,20 @@ class IsolationTest < Minitest::Test
       assert_equal File.join(File.realpath(dir), "lib"), File.dirname($loaded_from)
       # Hidden, so Zeitwerk never lists it as a constant file (#253).
       assert_match(/\A\.mutineer_mutant/, File.basename($loaded_from))
+    end
+  end
+
+  # #295: another run's sweep can run while this mutant loads. The file is
+  # locked and named for a live pid, so the sweep leaves it in place.
+  def test_a_sweep_during_load_keeps_the_mutant_file
+    Dir.mktmpdir do |dir|
+      code = <<~RUBY
+        $kept = Mutineer::JobPlan.sweep_orphans([File.dirname(__FILE__)]).include?(__FILE__) && File.exist?(__FILE__)
+        $locked = File.open(__FILE__) { |f| f.flock(File::LOCK_EX | File::LOCK_NB) == false }
+      RUBY
+      Mutineer::Isolation.apply_whole_file(code, File.join(dir, "x.rb"))
+      assert $kept, "the sweep must not delete a file that is loading"
+      assert $locked, "the file is locked while it loads"
     end
   end
 
@@ -500,4 +514,20 @@ class IsolationTest < Minitest::Test
     refute result.kills.complete
   end
 
+  # #288: the child's diagnostic line can quote DATABASE_URL.
+  def test_error_diagnostic_hides_the_database_password
+    url = "postgres://u:s3cret@ho st/db"
+    saved = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = url
+    result = nil
+    _, err = capture_subprocess_io do
+      result = Mutineer::Isolation.run { raise "no connection: #{url}" }
+    end
+
+    assert_predicate result, :error?
+    assert_includes err, "[mutineer-child] RuntimeError: no connection: postgres://u:[REDACTED]@ho st/db"
+    refute_includes err, "s3cret"
+  ensure
+    ENV["DATABASE_URL"] = saved
+  end
 end

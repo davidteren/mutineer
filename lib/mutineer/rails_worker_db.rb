@@ -2,6 +2,7 @@
 
 require "digest"
 require "uri"
+require_relative "redaction"
 
 module Mutineer
   # Per-worker database isolation for the daemon path.
@@ -386,7 +387,7 @@ module Mutineer
     # `schema.rb` again would drop those rows.
     #
     # @param worker [Integer] the worker slot index.
-    # @param schema_path [String, nil] absolute path to `db/schema.rb`, or nil to skip.
+    # @param schema_path [String, nil] the app's Ruby schema file ({ruby_schema_path}), or nil to skip.
     # @param seed [Boolean] copy the base SQLite file into the worker file first.
     # @return [void]
     def self.after_fork(worker, schema_path = nil, seed: false)
@@ -441,10 +442,10 @@ module Mutineer
     # file, which catches an edited schema with the same version. No stored
     # checksum counts as out of date, as in Rails' own `schema_up_to_date?`.
     #
-    # @param schema_path [String] absolute path to `db/schema.rb`.
+    # @param schema_path [String] absolute path to the app's Ruby schema file.
     # @return [Boolean]
     def self.schema_current?(schema_path)
-      text    = File.read(schema_path)
+      text    = File.read(schema_path, encoding: "UTF-8")
       version = schema_file_version(text)
       conn = ActiveRecord::Base.connection
       base       = ActiveRecord::Base
@@ -497,10 +498,30 @@ module Mutineer
       names.compact.uniq
     end
 
+    # The Ruby schema file a SQLite worker loads over an out-of-date copy, as
+    # the booted app's config names it. Rails resolves the name: `db/schema.rb`
+    # by default, the `schema_dump:` file of the database config (a bare name
+    # such as `schema_sqlite.rb` lives in `db/`), or the `SCHEMA` variable.
+    # nil when the file does not exist, when the config sets `schema_dump: false`,
+    # or when the app uses `structure.sql` (a worker cannot `load` SQL). With nil
+    # the worker keeps its copy of the test database as it is.
+    #
+    # @return [String, nil] absolute path of an existing file, or nil.
+    def self.ruby_schema_path
+      db_config = ActiveRecord::Base.connection_db_config
+      format = schema_format_for(db_config)
+      return unless format == :ruby
+
+      path = ActiveRecord::Tasks::DatabaseTasks.schema_dump_path(db_config, format)
+      # Expanded so `load` never searches $LOAD_PATH for a relative SCHEMA value.
+      path &&= File.expand_path(path)
+      path if path && File.exist?(path)
+    end
+
     # Load a Rails `schema.rb` into the current connection with output silenced
     # (fork child stdout is already File::NULL; this is belt-and-braces).
     #
-    # @param schema_path [String] absolute path to `db/schema.rb`.
+    # @param schema_path [String] absolute path to the app's Ruby schema file.
     # @return [void]
     def self.load_schema(schema_path)
       ActiveRecord::Migration.verbose = false if defined?(ActiveRecord::Migration)
@@ -554,6 +575,27 @@ module Mutineer
     # @return [Boolean]
     def self.mysql_adapter?(adapter)
       adapter == "mysql2" || adapter == "trilogy"
+    end
+
+    # Classify a MySQL `SELECT VERSION()` text against the support matrix.
+    # MariaDB is matched by name first: it reports 10.x or 11.x, and some
+    # builds prefix `5.5.5-`, so a numeric check alone would misread it.
+    #
+    # @param version [String, nil]
+    # @return [Symbol] `:supported` (MySQL 8), `:not_supported` (before 8),
+    #   `:not_tested` (MariaDB, MySQL 9 or later), or `:unreadable`.
+    def self.mysql_version_support(version)
+      text = version.to_s
+      return :not_tested if text.match?(/mariadb/i)
+
+      major = text[/\A(\d+)\.\d+/, 1]
+      return :unreadable unless major
+
+      major = major.to_i
+      return :not_supported if major < 8
+      return :not_tested if major > 8
+
+      :supported
     end
 
     # Drop and recreate slots `0...count` from the booted test database.
@@ -857,7 +899,8 @@ module Mutineer
     #
     # @param count [Integer]
     # @return [void]
-    # @raise [RuntimeError] when `count` exceeds {MYSQL_LOCK_SLOTS}, or another run holds the lock.
+    # @raise [RuntimeError] when `count` exceeds {MYSQL_LOCK_SLOTS}, the server is
+    #   MySQL older than 8.0, or another run holds the lock.
     def self.provision_mysql(count)
       if count > MYSQL_LOCK_SLOTS
         raise "MySQL worker databases support at most #{MYSQL_LOCK_SLOTS} workers"
@@ -867,6 +910,10 @@ module Mutineer
       remember_mysql_base_config(hash)
       base = hash[:database].to_s
       conn = open_mysql_connection(hash, base)
+      if (refusal = check_mysql_server(conn, password: hash[:password]))
+        conn.close
+        raise "could not provision #{base}: #{refusal}"
+      end
       unless try_mysql_lock(conn, base, shared: false)
         conn.close
         raise "another Mutineer run is using #{base}"
@@ -897,6 +944,56 @@ module Mutineer
 
       @lock_connection = conn
       warn "[mutineer] provisioned #{count} mysql worker database(s) from #{base}"
+    end
+
+    # Read the server version and print a warning when the matrix does not
+    # test it. Does not close `conn` or raise: the caller does both. A failed
+    # version query only warns, with its cause shown. URL passwords, the
+    # DATABASE_URL password and the configured `password` are hidden in the
+    # cause and in the version text.
+    #
+    # @param conn [Mysql2::Client, Trilogy]
+    # @param password [String, nil] the configured password, hidden when it appears.
+    # @return [String, nil] the refusal text for MySQL older than 8.0, else nil.
+    def self.check_mysql_server(conn, password: nil)
+      secret = password.to_s
+      hide = lambda do |text|
+        out = Redaction.text(text)
+        next out if secret.empty?
+        # A short password would match inside ordinary words, so hide it only as a whole word.
+        pattern = secret.length >= 4 ? secret : /(?<![[:alnum:]])#{Regexp.escape(secret)}(?![[:alnum:]])/
+        out.gsub(pattern, Redaction::REDACTED)
+      end
+      failure = nil
+      raw = begin
+        mysql_rows(conn, "SELECT VERSION() AS version").first&.fetch("version", nil)
+      rescue StandardError => e
+        failure = hide.call("#{e.class}: #{e.message.lines.first.to_s.strip}")
+        nil
+      end
+      support = mysql_version_support(raw)
+      version = raw.nil? ? nil : hide.call(raw)
+
+      case support
+      when :not_supported
+        "MySQL #{version} is not supported. --daemon needs MySQL 8.0 or later. " \
+          "Pass --no-daemon (or daemon: false) to stay serial."
+      when :not_tested
+        warn "[mutineer] server version #{version} is not tested with --daemon. " \
+             "The run continues. If a result looks wrong, pass --no-daemon."
+        nil
+      when :unreadable
+        shown = if failure
+                  "an error: #{failure}"
+                elsif version.to_s.empty?
+                  "nothing"
+                else
+                  "\"#{version}\""
+                end
+        warn "[mutineer] could not read the MySQL server version (got #{shown}). " \
+             "The run continues. --daemon is tested on MySQL 8."
+        nil
+      end
     end
 
     # Take one shared GET_LOCK name and drop this process's app connection.
@@ -1149,7 +1246,7 @@ module Mutineer
         ActiveRecord::Base.establish_connection(slot_hash)
         switched = true
         db_config = mysql_db_config(slot_hash)
-        format = current_schema_format
+        format = schema_format_for(db_config)
         file = mysql_schema_file(db_config, format)
         ActiveRecord::Tasks::DatabaseTasks.load_schema(db_config, format, file) if file
       rescue StandardError => e
@@ -1178,6 +1275,17 @@ module Mutineer
       env = ENV["RAILS_ENV"].to_s
       env = "test" if env.empty?
       ActiveRecord::DatabaseConfigurations::HashConfig.new(env, "primary", slot_hash)
+    end
+
+    # Schema format of one database config. Rails 8.1 lets each config set its
+    # own `schema_format:`; older Rails has only the app-wide setting. A string
+    # setting ("ruby") counts the same as the symbol.
+    #
+    # @param db_config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    # @return [Symbol]
+    def self.schema_format_for(db_config)
+      format = db_config.respond_to?(:schema_format) ? db_config.schema_format : current_schema_format
+      format.respond_to?(:to_sym) ? format.to_sym : format
     end
 
     # Schema format the booted app is using.

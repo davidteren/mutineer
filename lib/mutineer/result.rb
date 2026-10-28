@@ -4,13 +4,18 @@ module Mutineer
   # Immutable outcome of running one mutant. Ten distinct states:
   #   killed       - a test failed/errored, so the mutation was caught.
   #   survived     - every test passed, so the mutation went undetected.
-  #   error        - the child crashed (unhandled exception): exit status 2.
+  #   error        - the child crashed (unhandled exception), or a Minitest
+  #                  run's first failure was a database connection or lock
+  #                  error (#296): exit status 2.
   #   timeout      - the parent SIGKILLed a child that overran its wall clock.
   #   skipped      - the mutated source failed to re-parse (invalid); no fork.
   #   no_coverage  - no test exercises the mutated line; not run, not scored.
   #                  Also a mutant on a later line of a multi-line statement,
   #                  in code that runs only sometimes, that the statement's
   #                  tests ran but did not kill (#254): they may not reach it.
+  #                  Also a mutant on a later line of a statement whose first
+  #                  or last line holds other code (a call inside a one-line
+  #                  block), that the tests of that line did not kill (#289).
   #   uncapturable - the line's would-be covering test errored during capture,
   #                  so coverage was lost. Excluded from the denominator exactly
   #                  like no_coverage, but reported separately: it signals a
@@ -20,9 +25,11 @@ module Mutineer
   #                  it, so it is not run. Under `--strategy redefine` the
   #                  method belongs to a class or module that cannot be named
   #                  statically (for example each class that includes a
-  #                  concern). Under either strategy the method is in a
-  #                  concern's `included` or `prepended` block, which does not
-  #                  run again in a class that already includes it (#256).
+  #                  concern), and every method in a concern's `included` or
+  #                  `prepended` block is one (#256). Under `--strategy reload`
+  #                  only some methods in such a block are: those it cannot
+  #                  load into each class that has them (#297; the cases are
+  #                  listed in docs/json-schema.md).
   #                  Excluded from the denominator and, unlike uncapturable,
   #                  from the no-verdict gate: nothing is broken.
   #                  `--test-command` runs these mutants.
@@ -162,7 +169,8 @@ module Mutineer
   # cleanly (see Isolation.finish). It is false when the child timed out,
   # errored or exited the process early, when the recorder never armed, when
   # its lines arrived out of order, when Minitest returned after an Interrupt
-  # with tests unseen, or when the row does not agree with the verdict.
+  # with tests unseen, when a test had a database connection or lock failure,
+  # or when the row does not agree with the verdict.
   Kills = Data.define(:killed_by, :ran, :complete)
 
   # Aggregates a flat list of Results into counts, the mutation score, and the
@@ -203,6 +211,11 @@ module Mutineer
     def timeout_count         = count(:timeout)
     # @return [Integer] ignored count.
     def ignored_count         = count(:ignored)
+    # Mutants that exist but did not run: unplaceable plus skipped invalid.
+    # Neither is in the score; the reporter warns when they pass a share of the run.
+    #
+    # @return [Integer] unplaceable plus skipped-invalid count.
+    def unrun_count           = unplaceable_count + skipped_invalid_count
 
     # Every generated, classified mutation. NOT the score denominator.
     #
@@ -221,6 +234,21 @@ module Mutineer
       return nil if covered_count.zero?
 
       (killed_count.to_f / covered_count * 100).round(1)
+    end
+
+    # Checks the unrounded score against a threshold. `mutation_score` is
+    # rounded for display, so 1999 of 2000 killed reads 100.0; a gate that
+    # compared it would pass `--threshold 100` with a survivor. The comparison
+    # is exact: integer counts against the threshold as the decimal it prints
+    # as, so a float product such as `64.4 * 250` cannot tip a run at the
+    # boundary. `to_s.to_r` keeps that decimal; `rationalize` could round a
+    # long threshold such as 66.66666666666667 down to 200/3.
+    #
+    # @param threshold [Numeric] threshold percentage.
+    # @return [Boolean] true when killed / covered * 100 >= threshold; false
+    #   when nothing was covered.
+    def meets_threshold?(threshold)
+      covered_count.positive? && killed_count * 100 >= threshold.to_s.to_r * covered_count
     end
 
     # Returns the surviving mutants.

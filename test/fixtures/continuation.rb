@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 # Ruby counts one line of a statement only. It counts no line for the second
-# entry of a hash, and for an assigned heredoc it counts the body line.
+# entry of a hash, and for an assigned heredoc it counts the body line. For a
+# call split across lines inside a one-line block, it counts the block opener.
 class Continuation
   def self.summary(counts)
     {
@@ -47,5 +48,11 @@ class Continuation
     when :never_matched,
          :never_matched_either then :symbol
     end
+  end
+
+  def self.names(users)
+    users.map { |u| format("%s %s",
+      u[0] + 1,
+      u[1] - 1) }
   end
 end

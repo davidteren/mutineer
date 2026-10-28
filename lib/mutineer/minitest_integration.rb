@@ -2,11 +2,13 @@
 
 require_relative "minitest_integration/stop_at_first_failure"
 require_relative "minitest_integration/kill_recorder"
+require_relative "minitest_integration/in_test_database_error"
 
 module Mutineer
   # Child-process-only: loads a test file in the current process and runs it
   # programmatically, returning an exit status integer (0 = all passed,
-  # 1 = any failure/error).
+  # 1 = any failure/error, 2 = the first failure was an Active Record
+  # connection or lock error).
   #
   # Never call this in the parent — it manipulates global Minitest state
   # (autorun, runnables) that only makes sense in a throwaway forked child.
@@ -14,15 +16,39 @@ module Mutineer
   # A missing minitest is rescued as FrameworkUnavailable (Isolation.run
   # still turns that raise into exit 2). There is no rescue around the
   # suite run itself: Isolation.run's fork block is the single exception
-  # boundary for unexpected errors. Swallowing those here would create a
-  # second exit-2 path and break this method's 0/1 return contract.
+  # boundary for unexpected errors. Swallowing those here would hide a
+  # crash as a verdict. The one 2 this method returns on purpose comes from
+  # Minitest's own results: the run's first failing test failed with an
+  # Active Record connection or lock error (#296, {InTestDatabaseError}).
   class MinitestIntegration
-    # The seed of a mutant run (one that stops at the first failure, or a
-    # `--matrix` run that records every test), unless `SEED` is set. With the
-    # stop, the test order can decide `killed` vs `timeout`; a fixed order keeps
-    # the verdict stable for a `--baseline` gate. A matrix run uses the same
+    # The seed of every Minitest run Mutineer starts, unless `SEED` is set:
+    # coverage capture, the clean checks and the mutant runs (#282). A file's
+    # clean check then runs its tests in the order a mutant run of that file
+    # uses. Several covering files can still differ from the combined clean
+    # check: a smaller class list shuffles differently. With the stop,
+    # the test order can decide `killed` vs `timeout`; a fixed order keeps the
+    # verdict stable for a `--baseline` gate. A `--matrix` run uses the same
     # order, so its first failure comes at the same point as the stop's.
-    STOP_AT_FIRST_FAILURE_SEED = 1
+    #
+    # @api private
+    PINNED_SEED = 1
+
+    # The arguments that give `Minitest.run` the shared seed. With `SEED` set,
+    # none: Minitest reads `SEED` itself.
+    #
+    # @api private
+    # @return [Array<String>] `["--seed", "1"]`, or `[]` when `SEED` is set.
+    def self.seed_args
+      ENV["SEED"] ? [] : ["--seed", seed]
+    end
+
+    # The seed the Minitest runs use: `SEED` when set, else {PINNED_SEED}.
+    #
+    # @api private
+    # @return [String]
+    def self.seed
+      ENV.fetch("SEED", PINNED_SEED.to_s)
+    end
 
     # Tested via runner_test.rb, not in isolation — a direct unit test
     # would require forking and duplicate isolation_test's coverage.
@@ -36,7 +62,8 @@ module Mutineer
     #   test. Only the mutant path passes true.
     # @param record_to [IO, nil] a `--matrix` run: send each test's outcome to
     #   this channel (see {KillRecorder}) and run every test.
-    # @return [Integer] 0 on success, 1 on failure.
+    # @return [Integer] 0 on success, 1 on failure, 2 when the first failure
+    #   was an Active Record connection or lock error (see {InTestDatabaseError}).
     # @raise [ArgumentError] when both options are given: a matrix run never stops.
     def self.run(test_files, stop_at_first_failure: false, record_to: nil)
       if stop_at_first_failure && record_to
@@ -75,22 +102,25 @@ module Mutineer
         elsif stop_at_first_failure
           StopAtFirstFailure.arm!(Minitest::Runnable.runnables)
         end
-      # Pin the seed only when a hook is armed; an unknown Minitest shape gets
-      # the normal full, randomly ordered run.
-      args = armed && !ENV["SEED"] ? ["--seed", STOP_AT_FIRST_FAILURE_SEED.to_s] : []
+      # An unknown Minitest shape arms no hook and gets a full run, in the
+      # same seeded order.
       keep_file_order(rank) if armed
+      # Every run, on its own line: `armed` decides the file order (#296).
+      InTestDatabaseError.arm!
       # No silencing here: the fork boundary that calls this method has already
       # pointed stdout at File::NULL (see ChildStdout).
-      passed = Minitest.run(args)
+      passed = Minitest.run(seed_args)
       # Reached only when the suite returned: a test that exits the process
       # skips it, and the parent then keeps the row incomplete.
       KillRecorder.finish! if record_to
 
       # A plugin can replace the summary reporter, so a stop decides by itself.
-      passed && !StopAtFirstFailure.stopped_here? ? 0 : 1
+      code = passed && !StopAtFirstFailure.stopped_here? ? 0 : 1
+      InTestDatabaseError.exit_code(code)
     ensure
       StopAtFirstFailure.disarm!
       KillRecorder.disarm!
+      InTestDatabaseError.disarm!
     end
 
     # Runs the test classes in the order of their files (#203). Minitest

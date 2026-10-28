@@ -289,6 +289,130 @@ class RailsWorkerDbTest < Minitest::Test
     assert_nil Mutineer::RailsWorkerDb.schema_file_version("ActiveRecord::Schema.define do")
   end
 
+  # #317: a SQLite worker loads the schema file the app's config names, not a
+  # fixed db/schema.rb. Runs in a temp app root with a stubbed ActiveRecord.
+  # SQLite and MySQL workers share this lookup, so both honour the same settings.
+  def test_schema_format_for_prefers_the_config_and_reads_strings
+    with_schema_config(dump: nil, global: "ruby") do
+      assert_equal :ruby, Mutineer::RailsWorkerDb.schema_format_for(Object.new),
+                   "a config without schema_format (Rails < 8.1) uses the app-wide setting, as a symbol"
+    end
+    with_schema_config(dump: nil) do
+      config = Object.new
+      config.define_singleton_method(:schema_format) { "sql" }
+      assert_equal :sql, Mutineer::RailsWorkerDb.schema_format_for(config),
+                   "the database's own schema_format wins over the app-wide :ruby"
+    end
+  end
+
+  def test_ruby_schema_path_follows_the_configured_file
+    in_app_root do |root|
+      File.write("db/schema.rb", "# MySQL schema SQLite cannot load\n")
+      File.write("db/schema_sqlite.rb", "\n")
+      with_schema_config(dump: File.join(root, "db/schema_sqlite.rb")) do |asked|
+        assert_equal File.join(root, "db/schema_sqlite.rb"), Mutineer::RailsWorkerDb.ruby_schema_path
+        assert_equal [:ruby], asked, "Rails resolves the Ruby-format file"
+      end
+      with_schema_config(dump: "db/schema_sqlite.rb") do
+        assert_equal File.join(root, "db/schema_sqlite.rb"), Mutineer::RailsWorkerDb.ruby_schema_path,
+                     "a relative SCHEMA value is expanded, so `load` never searches $LOAD_PATH"
+      end
+    end
+  end
+
+  def test_ruby_schema_path_is_nil_when_no_ruby_schema_file_applies
+    in_app_root do |root|
+      File.write("db/schema.rb", "\n")
+      with_schema_config(dump: nil) do
+        assert_nil Mutineer::RailsWorkerDb.ruby_schema_path, "schema_dump: false loads no schema"
+      end
+      with_schema_config(dump: File.join(root, "db/missing.rb")) do
+        assert_nil Mutineer::RailsWorkerDb.ruby_schema_path, "a named file that does not exist loads nothing"
+      end
+      with_schema_config(global: :sql, dump: File.join(root, "db/schema.rb")) do |asked|
+        assert_nil Mutineer::RailsWorkerDb.ruby_schema_path, "structure.sql apps keep the copy, even beside a schema.rb"
+        assert_empty asked
+      end
+      with_schema_config(global: :ruby, per_config: :sql, dump: File.join(root, "db/schema.rb")) do
+        assert_nil Mutineer::RailsWorkerDb.ruby_schema_path, "a per-database schema_format (Rails 8.1) wins"
+      end
+      with_schema_config(global: :sql, per_config: :ruby, dump: File.join(root, "db/schema.rb")) do
+        assert_equal File.join(root, "db/schema.rb"), Mutineer::RailsWorkerDb.ruby_schema_path
+      end
+    end
+  end
+
+  def test_ruby_schema_path_accepts_a_global_string_format
+    in_app_root do |root|
+      File.write("db/schema_sqlite.rb", "\n")
+      with_schema_config(global: "ruby", dump: "db/schema_sqlite.rb") do |asked|
+        assert_equal File.join(root, "db/schema_sqlite.rb"), Mutineer::RailsWorkerDb.ruby_schema_path
+        assert_equal [:ruby], asked, "Rails receives the normalized Ruby format"
+      end
+    end
+  end
+
+  def test_ruby_schema_path_accepts_a_per_database_string_format
+    in_app_root do |root|
+      File.write("db/schema_sqlite.rb", "\n")
+      with_schema_config(global: :sql, per_config: "ruby", dump: "db/schema_sqlite.rb") do |asked|
+        assert_equal File.join(root, "db/schema_sqlite.rb"), Mutineer::RailsWorkerDb.ruby_schema_path
+        assert_equal [:ruby], asked, "the per-database string format wins and is normalized"
+      end
+    end
+  end
+
+  def test_ruby_schema_path_excludes_string_sql_formats
+    in_app_root do
+      File.write("db/schema.rb", "\n")
+      [{ global: "sql" }, { global: :ruby, per_config: "sql" }].each do |formats|
+        with_schema_config(**formats, dump: "db/schema.rb") do |asked|
+          assert_nil Mutineer::RailsWorkerDb.ruby_schema_path
+          assert_empty asked, "SQL formats do not ask Rails for a Ruby schema"
+        end
+      end
+    end
+  end
+
+  # Yields the real path of a temp app root with a db/ folder, as the cwd.
+  def in_app_root(&block)
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        Dir.mkdir("db")
+        block.call(Dir.pwd)
+      end
+    end
+  end
+
+  # Stub the ActiveRecord surface {RailsWorkerDb.ruby_schema_path} reads.
+  # `dump` is what Rails' schema_dump_path returns.
+  # Yields the formats it was asked for.
+  def with_schema_config(dump:, global: :ruby, per_config: nil)
+    saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    asked = []
+    db_config = Object.new
+    db_config.define_singleton_method(:schema_format) { per_config } if per_config
+    base = Module.new
+    base.define_singleton_method(:connection_db_config) { db_config }
+    tasks = Module.new
+    tasks.define_singleton_method(:schema_dump_path) do |config, format|
+      raise "wrong db config" unless config.equal?(db_config)
+
+      asked << format
+      dump
+    end
+    active_record = Module.new
+    active_record.define_singleton_method(:schema_format) { global }
+    active_record.const_set(:Base, base)
+    active_record.const_set(:Tasks, Module.new)
+    active_record::Tasks.const_set(:DatabaseTasks, tasks)
+    Object.const_set(:ActiveRecord, active_record)
+    yield asked
+  ensure
+    Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    Object.const_set(:ActiveRecord, saved) if saved
+  end
+
   def teardown
     db = Mutineer::RailsWorkerDb
     db.forget_mysql_base_config
@@ -382,6 +506,98 @@ class RailsWorkerDbTest < Minitest::Test
     cfg = db.worker_db_config(0)
     assert_equal "app_test-mutineer-0", cfg[:database]
     assert_equal "/tmp/mysql.sock", cfg[:socket]
+  end
+
+  def test_mysql_version_support_accepts_mysql_8
+    %w[8.0.36 8.0.36-0ubuntu0.22.04.1 8.4.0].each do |version|
+      assert_equal :supported, Mutineer::RailsWorkerDb.mysql_version_support(version), version
+    end
+  end
+
+  def test_mysql_version_support_refuses_mysql_before_8
+    %w[5.7.44 5.7.44-log 5.6.51].each do |version|
+      assert_equal :not_supported, Mutineer::RailsWorkerDb.mysql_version_support(version), version
+    end
+  end
+
+  # MariaDB reports 10.x or 11.x, and some builds prefix 5.5.5-, so the name check runs first.
+  def test_mysql_version_support_marks_mariadb_and_mysql_9_not_tested
+    %w[10.11.6-MariaDB 11.4.2-MariaDB-log 5.5.5-10.6.12-MariaDB 9.1.0].each do |version|
+      assert_equal :not_tested, Mutineer::RailsWorkerDb.mysql_version_support(version), version
+    end
+  end
+
+  def test_mysql_version_support_marks_an_unreadable_version
+    [nil, "", "unknown"].each do |version|
+      assert_equal :unreadable, Mutineer::RailsWorkerDb.mysql_version_support(version), version.inspect
+    end
+  end
+
+  def test_provision_mysql_refuses_mysql_5_7_before_it_takes_a_lock
+    conn = VersionMysql.new("5.7.44")
+    error = provision_mysql_against(conn)
+    assert_equal "could not provision app_test: MySQL 5.7.44 is not supported. " \
+                 "--daemon needs MySQL 8.0 or later. Pass --no-daemon (or daemon: false) to stay serial.",
+                 error.message
+    assert conn.closed?
+    assert(conn.queries.none? { |sql| sql.match?(/GET_LOCK|DROP DATABASE|CREATE DATABASE/) })
+  end
+
+  def test_provision_mysql_warns_once_on_mariadb
+    error = nil
+    _out, err = capture_io { error = provision_mysql_against(VersionMysql.new("10.11.6-MariaDB")) }
+    assert_equal "another Mutineer run is using app_test", error.message
+    assert_equal 1, err.scan("server version 10.11.6-MariaDB is not tested with --daemon").size
+  end
+
+  def test_provision_mysql_warns_when_the_version_query_fails
+    error = nil
+    _out, err = capture_io { error = provision_mysql_against(VersionMysql.new(RuntimeError.new("boom"))) }
+    assert_equal "another Mutineer run is using app_test", error.message
+    assert_equal 1, err.scan("could not read the MySQL server version (got an error: RuntimeError: boom)").size
+  end
+
+  def test_provision_mysql_hides_a_password_in_the_version_query_error
+    failure = RuntimeError.new("bad url mysql2://app:s3cret@db/app_test")
+    _out, err = capture_io { provision_mysql_against(VersionMysql.new(failure)) }
+    assert_includes err, "mysql2://app:[REDACTED]@db/app_test"
+    refute_includes err, "s3cret"
+  end
+
+  def test_provision_mysql_hides_the_configured_password_in_the_version_query_error
+    failure = RuntimeError.new("Access denied (password: s3cret)")
+    _out, err = capture_io { provision_mysql_against(VersionMysql.new(failure), password: "s3cret") }
+    assert_includes err, "(password: [REDACTED])"
+    refute_includes err, "s3cret"
+  end
+
+  def test_provision_mysql_hides_a_short_configured_password_only_as_a_word
+    failure = RuntimeError.new("Access denied for app (using a)")
+    _out, err = capture_io { provision_mysql_against(VersionMysql.new(failure), password: "a") }
+    assert_includes err, "Access denied for app (using [REDACTED])"
+  end
+
+  def test_provision_mysql_hides_a_password_in_the_server_version
+    _out, err = capture_io { provision_mysql_against(VersionMysql.new("10.11.6-MariaDB mysql2://app:s3cret@db")) }
+    assert_includes err, "mysql2://app:[REDACTED]@db"
+    refute_includes err, "s3cret"
+  end
+
+  def test_provision_mysql_accepts_mysql_8_without_a_warning
+    error = nil
+    _out, err = capture_io { error = provision_mysql_against(VersionMysql.new("8.0.36")) }
+    assert_equal "another Mutineer run is using app_test", error.message
+    assert_empty err
+  end
+
+  # Run provision_mysql(1) against `conn` and return the RuntimeError it raises.
+  def provision_mysql_against(conn, password: nil)
+    db = Mutineer::RailsWorkerDb
+    db.stub(:routing_config_hash, { adapter: "trilogy", database: "app_test", password: password }.compact) do
+      db.stub(:open_mysql_connection, conn) do
+        assert_raises(RuntimeError) { db.provision_mysql(1) }
+      end
+    end
   end
 
   def test_load_mysql_schema_restores_the_base_connection
@@ -825,6 +1041,42 @@ class RailsWorkerDbTest < Minitest::Test
 
     def escape(value)
       value.to_s.gsub("'", "''")
+    end
+  end
+  # Answers SELECT VERSION() with a fixed text, or raises a given error, and
+  # refuses every GET_LOCK. Records each query and whether it was closed.
+  class VersionMysql
+    attr_reader :queries
+
+    def initialize(version)
+      @version = version
+      @queries = []
+      @closed = false
+    end
+
+    def query(sql)
+      @queries << sql
+      if sql.include?("VERSION()")
+        raise @version if @version.is_a?(Exception)
+
+        HashRows.new([{ "version" => @version }])
+      elsif sql.include?("GET_LOCK")
+        HashRows.new([{ "got" => "0" }])
+      else
+        HashRows.new([])
+      end
+    end
+
+    def escape(value)
+      value.to_s.gsub("'", "''")
+    end
+
+    def close
+      @closed = true
+    end
+
+    def closed?
+      @closed
     end
   end
 end

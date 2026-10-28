@@ -20,7 +20,7 @@ change against the intended behaviour before asking the agent to add a test:
    mutineer run app/ --since origin/main --threshold 90 --format json --output .mutineer/run.json
    ```
 
-3. Parse `survivors[]`. Each entry carries a ready-made `diff` and an `id`. Unrelated edits can preserve the id; file moves, renames, project-root changes, and changes to repeated-name or repeated-mutation order can change it. See [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). For each survivor, feed
+3. Parse `survivors[]`. Each entry carries a ready-made `diff` and an `id`. Unrelated edits can preserve the id; file moves, renames, project-root changes, and changes to repeated-name or repeated-mutation order can change it. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids). For each survivor, feed
    the agent a prompt like:
 
    > This change to `{subject}` (`{file}:{line}`) was **not** caught by any test:
@@ -30,13 +30,26 @@ change against the intended behaviour before asking the agent to add a test:
    > Write or strengthen a test so it fails under this change.
 
 4. Re-run. Accept the result only when this run exits `0`, `summary.score` is not `null`,
-   and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`;
-   the score is rounded, so `--threshold 100` alone can still pass with a survivor.
+   and `summary.score >= 90`. If every scored mutant must be killed, also require `summary.survived == 0`.
+   Mutineer 1.7.0 and earlier gate on the rounded score, so a run just below the threshold can
+   still exit `0`. On those versions, also require
+   `summary.killed * 100 >= 90 * (summary.killed + summary.survived)`.
 
 Keep `fail_fast` disabled (the default). If the active `.mutineer.yml` sets it to
 `true`, temporarily change that value to `false` for the loop. Restore the original
 value when the loop ends, before committing. A fail-fast run is partial,
 and its score and exit code do not cover the full scope.
+
+```yaml
+# .mutineer.yml, during the loop
+fail_fast: false
+```
+
+Or turn it off for one run without editing the file:
+
+```sh
+mutineer run lib --no-fail-fast
+```
 
 Zero survivors alone is not success: an empty or fully suppressed scope, or a run
 with no usable verdicts, also has zero survivors. If the score is null, stop and
@@ -57,14 +70,38 @@ in **Avoiding infinite loops** below.
 ## CI gate: fail a PR only when it makes things worse
 
 Save a full JSON report from the default branch as a baseline. Compare pull
-requests with that report to catch new survivors while you improve existing tests:
+requests with that report to catch new survivors while you improve existing tests.
+For this workflow, leave `baseline:` and `only:` unset in `.mutineer.yml`.
+Pass the baseline only in the pull request command or Action input. This keeps
+refreshes independent of the old report and prevents a hidden subject filter.
+Keep the source, test, and operator settings the same in both runs.
+The examples use `app/` and the default cache directory, `.mutineer`. Use the
+same sources, explicit test files, and operators as your CI gate. If `cache_dir`
+is different, replace `.mutineer` in every example path with that directory:
 
 ```sh
-# On main, refresh the baseline (e.g. nightly) and commit/cache it:
-mutineer run app/ --no-since --format json --output .mutineer/baseline.json
+# On main, write a candidate without replacing the saved baseline:
+mutineer run app/ --no-since --no-fail-fast --format json --output .mutineer/baseline-candidate.json
+```
 
-# On a PR:
-mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --format json
+Use a separate output path to preserve the saved report for review. An output
+path that names a baseline being compared exits `2` before a real run.
+
+Keep the saved baseline if the command exits `1` or `2`. Before replacing it,
+require exit `0`, a non-null `summary.score`, and no `no_verdict[]` entries.
+Confirm the full intended scope ran, with `fail_fast` disabled and neither
+`--only` nor an `only:` configuration filter. Review the candidate's survivors, then copy it and commit or cache the
+saved baseline:
+
+```sh
+cp .mutineer/baseline-candidate.json .mutineer/baseline.json
+```
+
+Leave `only:` unset throughout these checks. On a pull request, compare against
+the saved file:
+
+```sh
+mutineer run app/ --since origin/main --baseline .mutineer/baseline.json --no-fail-fast --format json
 ```
 
 `--baseline` exits `1` if it finds a new survivor or a lower score.
@@ -78,7 +115,7 @@ code changes too. A scoped check cannot detect weaker tests for unchanged source
 lines. Compare the PR's full run with the full baseline:
 
 ```sh
-mutineer run app/ --no-since --baseline .mutineer/baseline.json --format json
+mutineer run app/ --no-since --baseline .mutineer/baseline.json --no-fail-fast --format json
 ```
 
 Keep a full scan on the default branch to refresh the baseline. That scan does
@@ -109,6 +146,7 @@ jobs:
           sources: app/
           since: none
           baseline: .mutineer/baseline.json
+          extra-args: "--no-fail-fast"
           threshold: "90"
           output: .mutineer/pr.json
       - uses: actions/upload-artifact@v4
@@ -122,6 +160,11 @@ This workflow runs a full scan on every pull request, so it checks test changes
 without a workflow edit for each PR. A full scan can take longer than a scan of
 changed source lines.
 
+On `pull_request` events, omitting `since:` normally scans changed source lines
+against the PR's base commit. The Action tries the base branch tip if needed. If
+neither base resolves, it warns and supplies no `--since` override; any `since:`
+setting in `.mutineer.yml` can still apply. `since: none` forces a full scan.
+
 For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the app's own bundle):
 
 ```yaml
@@ -130,6 +173,7 @@ For a Rails app, add `rails: true` and `use-bundler: true` (boot mode needs the 
           sources: app/models/order.rb
           rails: true
           use-bundler: true
+          extra-args: "--no-fail-fast"
           since: none
 ```
 
@@ -166,8 +210,8 @@ unresolved survivors. Failed attempts alone do not prove that a mutant is equiva
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error. |
-| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading. |
+| `2` | Usage / invalid-flag error, including a mistyped flag, a bad path (such as a missing `--boot` or `require:` file), or an unreadable baseline. |
 <!-- /contract:exit-codes -->
 
 Branch on these directly; never scrape the human report. The JSON `summary` and `baseline` blocks carry

@@ -8,6 +8,17 @@ class ConfigTest < Minitest::Test
 
   # --- find_file (KTD4) ---
 
+  # #303: `migrate` and every run parse .mutineer.yml here first, so a
+  # non-ASCII reason must load under LANG unset (US-ASCII default external).
+  def test_from_file_reads_a_non_ascii_config_under_an_ascii_locale
+    Dir.mktmpdir do |dir|
+      yml = File.join(dir, ".mutineer.yml")
+      File.write(yml, "ignore:\n  - id: abc\n    reason: caf\u00e9\n")
+      raw = with_ascii_default_external { Mutineer::Config.from_file(yml) }
+      assert_equal "caf\u00e9", raw[:ignore_reasons]["abc"], "Psych reads YAML as UTF-8 whatever the locale"
+    end
+  end
+
   def test_find_file_walks_up_to_two_dirs
     Dir.mktmpdir do |root|
       deep = File.join(root, "a", "b", "c")

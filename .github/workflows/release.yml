@@ -1,47 +1,283 @@
 name: Release
 
-# Publish is tag-driven: bump Mutineer::VERSION, date the CHANGELOG section, then
-#   git tag vX.Y.Z && git push origin vX.Y.Z
-# This workflow then tests, publishes the gem to RubyGems via Trusted Publishing
-# (OIDC — no API key, no OTP), and cuts the GitHub release from the CHANGELOG.
+# Publishing is a manual act by a human collaborator with maintain or admin.
+# A tag push does not start this workflow, and there is no schedule. Run it
+# on an existing stable tag:
+#
+#   gh workflow run release.yml --ref vX.Y.Z -f confirm=publish
+#
+# The authorize job asks GitHub for the actor's repository permission and
+# rejects bots, schedule events, and anyone below maintain. It also refuses
+# when the GitHub environment `rubygems` has no required reviewers or lets
+# administrators bypass them. The publish job then waits for approval of
+# that environment. Required reviewers are a repository setting (see
+# AGENTS.md). After approval the job tests, publishes to RubyGems via
+# Trusted Publishing (OIDC bound to that environment), and opens the GitHub
+# Release from the CHANGELOG. It does not move the floating major tag (v1,
+# v2, ...): a ruleset keeps that tag for maintainers, so the job prints the
+# command for one to run.
 on:
-  push:
-    # Three-component release tags only: the workflow itself force-pushes the
-    # bare floating major tag (v1, v2, ...), which must not re-trigger it.
-    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type publish to release this tag to RubyGems."
+        required: true
+        type: string
 
+# The publish job is the only one that can push a release or mint OIDC credentials.
 permissions:
-  contents: write   # create the GitHub release
-  id-token: write   # OIDC token for RubyGems Trusted Publishing
+  contents: read
 
-# One release at a time. Two tags in the same major (v1.0.0 then v1.0.1)
-# overlapping would let the older run force-push @v1 backward after the
-# newer one had already moved it. cancel-in-progress: false queues the
-# second run instead of cancelling a publish already in flight.
+# One release at a time. cancel-in-progress: false queues a second run
+# instead of cancelling a publish already in flight.
 concurrency:
   group: mutineer-release
   cancel-in-progress: false
 
 jobs:
+  refuse:
+    name: refuse unless this is a confirmed tag dispatch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: none
+    # Wrong event, confirm word, or ref fails here, before any permission
+    # lookup and before the publish job can ask for environment approval.
+    if: >-
+      github.event_name != 'workflow_dispatch'
+      || github.event.inputs.confirm != 'publish'
+      || !startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Refuse to publish
+        env:
+          ACTOR: ${{ github.actor }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          set -euo pipefail
+          echo "::error::Refusing to publish. Release runs only from workflow_dispatch on a vX.Y.Z tag with confirm=publish. actor=${ACTOR} event=${EVENT} ref=${REF} confirm=${CONFIRM}. A tag push does not publish."
+          exit 1
+
+  authorize:
+    name: human maintainer must start the publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read   # read the rubygems environment's protection rules
+    # The environment gate is on the publish job, which needs this job.
+    # This file stops a write collaborator before that gate. A dispatch runs
+    # the release.yml stored in the tag, so a tag with an edited copy skips
+    # these checks. The tag ruleset and the trusted publisher's environment
+    # (AGENTS.md, issue #354) are what stop that tag.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      && github.event.inputs.confirm == 'publish'
+      && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Require a human with maintain or admin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # MUTINEER_RELEASE_ACTOR_START
+          # Schedule events are rejected before the API call. GitHub attributes a
+          # cron to the last editor of this file, and that person may hold
+          # maintain or admin, so a permission check alone would let the cron through.
+          if [ "${GITHUB_EVENT_NAME:-}" != "workflow_dispatch" ]; then
+            echo "::error::A release workflow runs only from workflow_dispatch (event ${GITHUB_EVENT_NAME:-}). A schedule does not start a release."
+            exit 1
+          fi
+          # github.actor stays the person who started the original run. On a
+          # rerun, github.triggering_actor is who started this attempt. Check
+          # that person, or a rerun by someone else inherits the first dispatch.
+          actor="${GITHUB_TRIGGERING_ACTOR:-}"
+          if [ -z "$actor" ]; then
+            echo "::error::Could not read who started this run (github.triggering_actor is empty). Refusing the release."
+            exit 1
+          fi
+          case "$actor" in
+            *'[bot]')
+              echo "::error::A bot cannot start a release (actor ${actor})."
+              exit 1
+              ;;
+          esac
+          # Legacy `permission` maps the maintain role to write. Read the
+          # maintain and admin flags, and accept role_name admin or maintain
+          # for a response that omits the flags. A custom role that grants
+          # maintain still passes, so adding a collaborator needs no workflow edit.
+          if ! meta=$(gh api "repos/${GITHUB_REPOSITORY:?}/collaborators/${actor}/permission" --jq '[.user.type // "unknown", ((.user.permissions.admin // false) | tostring), ((.user.permissions.maintain // false) | tostring), (.role_name // "")] | .[]'); then
+            echo "::error::Could not read repository permission for ${actor}. Refusing the release."
+            exit 1
+          fi
+          # Four lines, one field each. macOS ships bash 3.2, which has no bash-4 line array.
+          kind=""; admin=""; maintain=""; role=""
+          {
+            IFS= read -r kind || true
+            IFS= read -r admin || true
+            IFS= read -r maintain || true
+            IFS= read -r role || true
+          } < <(printf '%s\n' "$meta")
+          if [ "$kind" != "User" ]; then
+            echo "::error::A bot cannot start a release (actor ${actor}, type ${kind})."
+            exit 1
+          fi
+          if [ "$admin" = "true" ] || [ "$maintain" = "true" ] || [ "$role" = "admin" ] || [ "$role" = "maintain" ]; then
+            echo "Release actor ${actor} is a human with role ${role} (admin=${admin} maintain=${maintain})."
+          else
+            echo "::error::${actor} does not have maintain or admin on this repository (role ${role}). Write, triage, and read cannot start a release."
+            exit 1
+          fi
+          # MUTINEER_RELEASE_ACTOR_END
+
+      - name: Require reviewers on the rubygems environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # MUTINEER_ENV_GATE_START
+          # GitHub creates a missing environment with no reviewers, and the
+          # publish job then runs with no approval. Refuse unless `rubygems`
+          # exists, has required reviewers, and admins cannot bypass them.
+          if ! state=$(gh api "repos/${GITHUB_REPOSITORY:?}/environments/rubygems" --jq '"\([.protection_rules[]? | select(.type == "required_reviewers") | .reviewers[]?] | length) \(.can_admins_bypass | tostring)"'); then
+            echo "::error::Could not read the rubygems environment (missing, no access, or an API error; see the gh output above). It must exist with required reviewers (AGENTS.md, Settings a maintainer applies by hand, item 1). Refusing the release."
+            exit 1
+          fi
+          reviewers="${state%% *}"
+          bypass="${state#* }"
+          # Report every problem in one run, so a new environment needs one fix pass.
+          ok=1
+          if [ "$bypass" != "false" ]; then
+            echo "::error::Administrators can bypass the rubygems environment, so a publish could skip approval. Turn that option off (AGENTS.md, Settings a maintainer applies by hand, item 1)."
+            ok=0
+          fi
+          case "$reviewers" in
+            '' | 0 | *[!0-9]*)
+              echo "::error::The rubygems environment has no required reviewers, so nobody would approve the publish. Add reviewers (AGENTS.md, Settings a maintainer applies by hand, item 1)."
+              ok=0
+              ;;
+          esac
+          if [ "$ok" != 1 ]; then
+            echo "::error::Refusing the release."
+            exit 1
+          fi
+          echo "The rubygems environment requires reviewers."
+          # MUTINEER_ENV_GATE_END
+
   release:
     name: publish gem + github release
+    needs: [authorize]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # the GitHub Release
+      id-token: write   # OIDC token for RubyGems Trusted Publishing
+    # Approval of environment `rubygems` happens before any step, and only
+    # after authorize succeeded. Required reviewers are a GitHub setting.
+    # GitHub adds success() to an `if` that has no status function, so a
+    # failed authorize already skips this job. The explicit result check
+    # states that dependency where a reader looks for it.
+    if: >-
+      needs.authorize.result == 'success'
+      && github.event_name == 'workflow_dispatch'
+      && github.event.inputs.confirm == 'publish'
+      && startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: rubygems
     steps:
+      - name: Require a human with maintain or admin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # MUTINEER_RELEASE_ACTOR_START
+          # Schedule events are rejected before the API call. GitHub attributes a
+          # cron to the last editor of this file, and that person may hold
+          # maintain or admin, so a permission check alone would let the cron through.
+          if [ "${GITHUB_EVENT_NAME:-}" != "workflow_dispatch" ]; then
+            echo "::error::A release workflow runs only from workflow_dispatch (event ${GITHUB_EVENT_NAME:-}). A schedule does not start a release."
+            exit 1
+          fi
+          # github.actor stays the person who started the original run. On a
+          # rerun, github.triggering_actor is who started this attempt. Check
+          # that person, or a rerun by someone else inherits the first dispatch.
+          actor="${GITHUB_TRIGGERING_ACTOR:-}"
+          if [ -z "$actor" ]; then
+            echo "::error::Could not read who started this run (github.triggering_actor is empty). Refusing the release."
+            exit 1
+          fi
+          case "$actor" in
+            *'[bot]')
+              echo "::error::A bot cannot start a release (actor ${actor})."
+              exit 1
+              ;;
+          esac
+          # Legacy `permission` maps the maintain role to write. Read the
+          # maintain and admin flags, and accept role_name admin or maintain
+          # for a response that omits the flags. A custom role that grants
+          # maintain still passes, so adding a collaborator needs no workflow edit.
+          if ! meta=$(gh api "repos/${GITHUB_REPOSITORY:?}/collaborators/${actor}/permission" --jq '[.user.type // "unknown", ((.user.permissions.admin // false) | tostring), ((.user.permissions.maintain // false) | tostring), (.role_name // "")] | .[]'); then
+            echo "::error::Could not read repository permission for ${actor}. Refusing the release."
+            exit 1
+          fi
+          # Four lines, one field each. macOS ships bash 3.2, which has no bash-4 line array.
+          kind=""; admin=""; maintain=""; role=""
+          {
+            IFS= read -r kind || true
+            IFS= read -r admin || true
+            IFS= read -r maintain || true
+            IFS= read -r role || true
+          } < <(printf '%s\n' "$meta")
+          if [ "$kind" != "User" ]; then
+            echo "::error::A bot cannot start a release (actor ${actor}, type ${kind})."
+            exit 1
+          fi
+          if [ "$admin" = "true" ] || [ "$maintain" = "true" ] || [ "$role" = "admin" ] || [ "$role" = "maintain" ]; then
+            echo "Release actor ${actor} is a human with role ${role} (admin=${admin} maintain=${maintain})."
+          else
+            echo "::error::${actor} does not have maintain or admin on this repository (role ${role}). Write, triage, and read cannot start a release."
+            exit 1
+          fi
+          # MUTINEER_RELEASE_ACTOR_END
+
+      - name: "Guard: manual dispatch, confirm word, tag ref"
+        env:
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          set -euo pipefail
+          # MUTINEER_PUBLISH_GATE_START
+          if [ "${GITHUB_EVENT_NAME:-}" != "workflow_dispatch" ]; then
+            echo "::error::Publishing runs only from a manual workflow_dispatch (event ${GITHUB_EVENT_NAME:-}). A tag push does not publish."
+            exit 1
+          fi
+          if [[ "${GITHUB_REF:-}" != refs/tags/v* ]]; then
+            echo "::error::Run Release on a vX.Y.Z tag (got ${GITHUB_REF:-}). Pushing the tag does not publish; dispatch this workflow on that tag."
+            exit 1
+          fi
+          if [ "${CONFIRM:-}" != "publish" ]; then
+            echo "::error::Refusing to publish until confirm=publish (got ${CONFIRM:-})."
+            exit 1
+          fi
+          # MUTINEER_PUBLISH_GATE_END
+
+      # Check out the dispatched commit, not the tag's current target. The
+      # environment approval can wait for days, and a tag moved in that time
+      # must not change what publishes.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
       - uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601 # v1 — pinned: privileged (id-token) job
         with:
           ruby-version: "3.4"
           bundler-cache: true
 
-      # A mistyped tag must never publish the wrong version. The trigger glob
-      # also matches prereleases (v1.3.1-rc1) and junk (v1.2.3.4), which must
-      # neither publish nor move the floating major tag that Action users pin.
+      # A mistyped tag must never publish the wrong version. Prereleases
+      # (v1.3.1-rc1) and junk (v1.2.3.4) must not publish, and the run must
+      # not print a command to move the floating major tag that Action users pin.
       - name: "Guard: stable tag matching Mutineer::VERSION"
         run: |
           set -euo pipefail
           # MUTINEER_STABLE_TAG_START
           if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} is not a stable vMAJOR.MINOR.PATCH tag. Prereleases and malformed tags are not published and do not move the major tag. Aborting release."
+            echo "::error::Tag ${GITHUB_REF_NAME} is not a stable vMAJOR.MINOR.PATCH tag. Prereleases and malformed tags are not published, and no major-tag command is printed. Aborting release."
             exit 1
           fi
           # MUTINEER_STABLE_TAG_END
@@ -57,9 +293,27 @@ jobs:
       - name: Pages site builds
         run: bundle exec rake site:build
 
+      # Runs last before publishing, so the gem comes from the dispatched
+      # commit. The GitHub Release below uses the tag, which the v*.*.*
+      # ruleset (issue #354) keeps from moving in the seconds between.
+      - name: "Guard: tag still points at the dispatched commit"
+        run: |
+          set -euo pipefail
+          # MUTINEER_TAG_COMMIT_START
+          if ! git fetch --no-tags --depth=1 origin "+refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"; then
+            echo "::error::Could not fetch tag ${GITHUB_REF_NAME} from origin. It was deleted since dispatch, or the fetch failed (see the git output above). Aborting release."
+            exit 1
+          fi
+          tagged="$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")"
+          if [ "$tagged" != "${GITHUB_SHA:?}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} now points at ${tagged}, but this run was dispatched on ${GITHUB_SHA}. The tag moved after dispatch. Aborting release. Find out why it moved. If the new commit is the right one, start a new dispatch on the tag: re-running this run uses the old commit and fails again."
+            exit 1
+          fi
+          # MUTINEER_TAG_COMMIT_END
+
       # Exchanges the workflow's OIDC token for short-lived RubyGems credentials.
-      # Requires a one-time Trusted Publisher entry on rubygems.org for this repo
-      # + workflow (see the release runbook). No secret, no OTP.
+      # The trusted publisher on rubygems.org must name environment `rubygems`
+      # (see AGENTS.md). No secret, no OTP.
       - name: Configure RubyGems Trusted Publishing (OIDC)
         uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
 
@@ -77,13 +331,26 @@ jobs:
           ver="${GITHUB_REF_NAME#v}"
           awk -v ver="$ver" '$0 ~ "^## \\["ver"\\]"{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then printf 'Release %s\n' "$GITHUB_REF_NAME" > notes.md; fi
-          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md
 
-      # Keep the floating major tag (v1, v2, ...) on the newest release in its
-      # line, so `uses: davidteren/mutineer@v1` tracks the latest v1.x.y.
-      - name: Move floating major tag
+      # The floating major tag (v1, v2, ...) tracks the newest release in its
+      # line, so `uses: <this repository>@v1` follows the latest v1.x.y only
+      # after a maintainer moves it. A ruleset lets only maintainers move it
+      # (AGENTS.md), because a bypass for GITHUB_TOKEN would let any pushed
+      # workflow move it too. The command goes in the run summary as well, so
+      # a green run does not hide the step that is left.
+      - name: Command to move the floating major tag
         run: |
           set -euo pipefail
+          # MUTINEER_FLOATING_TAG_START
           major="${GITHUB_REF_NAME%%.*}"
-          git tag -f "$major" "$GITHUB_REF_NAME"
-          git push -f origin "$major"
+          # A patch on an older line (v1.6.1 after v1.7.0) must not move v1 backward.
+          newest="$(git ls-remote --tags --refs origin "refs/tags/${major}.*" | sed 's|.*refs/tags/||' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -n 1)"
+          if [ "$newest" != "$GITHUB_REF_NAME" ]; then
+            echo "::notice::Published ${GITHUB_REF_NAME}. ${newest} is the newest stable ${major} tag, so leave ${major} where it is. If ${newest} was never published, move ${major} by hand (AGENTS.md, step 6)."
+            exit 0
+          fi
+          cmd="git fetch origin && git tag -f ${major} ${GITHUB_SHA} && git push -f origin ${major}"
+          echo "::notice::Published ${GITHUB_REF_NAME}. A maintainer now moves ${major}: ${cmd}"
+          printf '## Not done yet: move %s\n\n```sh\n%s\n```\n' "$major" "$cmd" >> "${GITHUB_STEP_SUMMARY:?}"
+          # MUTINEER_FLOATING_TAG_END
