@@ -68,6 +68,7 @@ Pass sources as positional arguments and tests with `--test`.
 | `cache_dir` | Coverage cache directory (default `.mutineer`) |
 | `matrix` | Boolean; runs every covering test per mutant; adds report kill matrix |
 | `allow_empty` | Boolean; suppresses warnings for expected runs without mutants |
+| `shared_databases` | Test database names that parallel `--daemon` workers may share; see [More than one database](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database) |
 
 | Validation | Rule |
 |------------|------|

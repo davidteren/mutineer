@@ -105,6 +105,7 @@ class RailsDogfoodDaemonTest < Minitest::Test
     end
 
     assert_operator aggregate.errored_count, :>, 0
+    assert_equal aggregate.total, aggregate.errored_count, "every mutant must score error"
     assert_equal 0, aggregate.killed_count
     assert_equal 0, aggregate.survived_count
     assert_includes err, "shared database used during a parallel run: extra."

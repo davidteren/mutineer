@@ -221,7 +221,8 @@ module Mutineer
       # The booted test environment's database config names and the one each
       # worker copies, for the tool's worker count. nil when the app has no
       # worker-DB adapter. A failed lookup is reported, not hidden: the tool
-      # then keeps one worker.
+      # then keeps one worker. That report still names the primary when it
+      # resolves, so the tool still rejects a `shared_databases` that lists it.
       #
       # @return [Hash, nil]
       def databases
@@ -229,7 +230,16 @@ module Mutineer
 
         @worker_db.database_names
       rescue StandardError => e
-        { "error" => describe_error(e) }
+        { "error" => describe_error(e), "primary" => primary_database_name }
+      end
+
+      # The primary config name alone, or nil when it does not resolve either.
+      #
+      # @return [String, nil]
+      def primary_database_name
+        @worker_db.primary_database_name
+      rescue StandardError
+        nil
       end
 
       # Raise when a test in this fork used a database that parallel workers
@@ -245,7 +255,7 @@ module Mutineer
         return if used.empty?
 
         raise "shared database used during a parallel run: #{used.join(", ")}. " \
-              "Remove it from shared_databases, or see the README note on transactional tests."
+              "Remove it from shared_databases, or see https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database"
       end
 
       # Run {RailsWorkerDb.provision} and report success or the cause. A failure
@@ -348,6 +358,9 @@ module Mutineer
               # A routing failure raises here and is scored `error`, never a false verdict.
               @worker_db&.after_fork(worker, first_use ? @schema_path : nil, seed: first_use)
               apply_payload(req["payload"])
+              # A parallel worker records each pool that runs SQL, so a test
+              # that closes its shared connection is still caught below.
+              @worker_db.watch_sql if @worker_db && @shared_databases&.any?
               result = run_tests(Array(req["tests"]))
               check_shared_databases!
               result
@@ -361,7 +374,10 @@ module Mutineer
         # Mark ready only when the child finished cleanly after seeding
         # (killed/survived). Timeout can interrupt mid-copy; error can be a
         # routing failure or a database error inside a test (#296). Both leave
-        # the slot unready so the next fork seeds again.
+        # the slot unready so the next fork seeds again. A shared-database
+        # error (check_shared_databases!) also exits 2, so it seeds again too:
+        # the exit code cannot tell it from a routing failure. That costs only
+        # time, in a run where that check then fails every mutant.
         @slot_ready[worker] = true if first_use && %w[killed survived].include?(verdict)
         # A SIGKILLed timeout child skipped its Tempfile unlink. Sweep the orphan
         # so it cannot outlive the run.

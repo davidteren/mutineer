@@ -171,6 +171,10 @@ If Mutineer cannot read the server version, it prints a warning and runs.
 On MySQL older than 8.0 (such as 5.7), `--daemon` stops the run before it copies any database.
 Pass `--no-daemon` (or set `daemon: false`) there.
 An app with more than one database runs one worker.
+On Rails 7.1 or later, list the databases your tests never use in `shared_databases`, and the workers run in parallel.
+A mutant scores `error` when a shared database still holds a connection after its tests.
+Transactional tests open a connection to every database with a test pool, so check that caveat first.
+See [More than one database](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database).
 On another adapter, `--daemon` stops the run with an error before it scores any mutant.
 The [support matrix](https://github.com/davidteren/mutineer#is-it-production-ready) lists each case.
 Leave `daemon` commented in `.mutineer.yml` until that matrix says your app fits.

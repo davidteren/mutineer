@@ -198,13 +198,20 @@ module Mutineer
     # never be shared by accident.
     #
     # @param databases [Hash, nil] the daemon's report: "names" and "primary",
-    #   or "error". nil when the app has no worker-DB adapter.
+    #   or "error" (with "primary" when it resolves). nil when the app has no
+    #   worker-DB adapter.
     # @param shared [Array<String>] the `shared_databases` config names.
     # @param worker_count [Integer] the workers requested.
     # @return [Integer] the workers to start.
     # @raise [Mutineer::ConfigError] when `shared` lists the primary database.
     def self.worker_count_for(databases, shared, worker_count)
       return worker_count if databases.nil?
+
+      primary = databases["primary"]
+      if shared.include?(primary)
+        raise ConfigError, "shared_databases lists #{primary}, the database each worker copies. " \
+                           "List only the other databases, the ones parallel workers may share."
+      end
 
       if databases["error"]
         if worker_count > 1
@@ -214,12 +221,6 @@ module Mutineer
       end
 
       names = Array(databases["names"])
-      primary = databases["primary"]
-      if shared.include?(primary)
-        raise ConfigError, "shared_databases lists #{primary}, the database each worker copies. " \
-                           "List only the other databases, the ones parallel workers may share."
-      end
-
       unknown = shared - names
       if unknown.any?
         warn "[mutineer] shared_databases names no test database: #{unknown.join(", ")}. " \

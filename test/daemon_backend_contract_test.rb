@@ -201,6 +201,17 @@ class DaemonBackendContractTest < Minitest::Test
     assert_empty err, "one worker was asked for, so nothing changes"
   end
 
+  # A failed lookup that still names the primary keeps the usage error: the
+  # run exits 2 instead of falling back to one worker.
+  def test_a_failed_lookup_still_rejects_a_listed_primary
+    failed = { "error" => "no pool", "primary" => "primary" }
+    error = assert_raises(Mutineer::ConfigError) { worker_count_for(failed, %w[primary], 4) }
+    assert_includes error.message, "shared_databases lists primary"
+
+    _out, err = capture_io { assert_equal 1, worker_count_for(failed.merge("primary" => nil), %w[primary], 4) }
+    assert_includes err, "could not list this app's databases (no pool)"
+  end
+
   # Mutatable fixture for the daemon-path tests: one arithmetic operator, so the
   # Arithmetic mutator yields a real Mutation to send through job_result.
   SOURCE = "class Order\n  def total(a, b)\n    a + b\n  end\nend\n"

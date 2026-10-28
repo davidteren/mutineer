@@ -365,7 +365,14 @@ module Mutineer
     # @return [Hash{String => Object}] "names" (Array<String>) and "primary" (String).
     def self.database_names
       names = test_configs.reject(&:replica?).map(&:name)
-      { "names" => names, "primary" => ActiveRecord::Base.connection_db_config.name }
+      { "names" => names, "primary" => primary_database_name }
+    end
+
+    # The config name each worker copies: the one `ActiveRecord::Base` uses.
+    #
+    # @return [String]
+    def self.primary_database_name
+      ActiveRecord::Base.connection_db_config.name
     end
 
     # The test environment's database configs, hidden ones and replicas included.
@@ -468,34 +475,65 @@ module Mutineer
       text[/define\(version:\s*([\d_]+)/, 1]&.delete("_")&.to_i
     end
 
-    # Names from `shared` whose database a connected pool uses in this
-    # process. Run in a fork after its tests: a name here means a test used a
-    # database that parallel workers share, so the verdict cannot be trusted.
-    # A pool counts when its config has a shared name, or names the same
-    # database as a shared config (a replica of it, say). Transactional tests
-    # connect every registered writing pool, so a pool registered for a shared
-    # database shows up here after any test.
+    # Record each pool that runs SQL in this fork from now on. Run in the fork
+    # before its tests, so {touched_shared_databases} also sees a pool that a
+    # test disconnects or removes before it ends.
+    #
+    # @return [void]
+    def self.watch_sql
+      @sql_pools = []
+      ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+        connection = payload[:connection]
+        @sql_pools << connection.pool if connection.respond_to?(:pool)
+      end
+    end
+
+    # Names from `shared` whose database this fork used. Run in a fork after
+    # its tests: a name here means a test used a database that parallel
+    # workers share, so the verdict cannot be trusted. A pool counts when it
+    # is still connected, or when it ran SQL since {watch_sql}. It names a
+    # shared database when its config has a shared name, when its class also
+    # holds a shared writer pool (a replica in the same `connects_to`), or when
+    # its config names the same database as a shared config. Transactional
+    # tests connect every registered writing pool, so a pool registered for a
+    # shared database shows up here after any test.
+    #
+    # Only names in {database_names} count: the tool warned about any other
+    # name, and no worker shares a database that does not exist.
     #
     # No rescue: a failed check must raise (scored `error`), never read as clean.
-    # ponytail: a snapshot after the run; a pool the test removes
-    # (`remove_connection`) is missed. Upgrade path: watch `sql.active_record`.
+    # shortcut: a connection made outside Active Record (a raw driver) is not
+    # seen; upgrade when such an app needs `shared_databases`.
     #
     # @param shared [Array<String>] database config names in `shared_databases`.
     # @return [Array<String>]
     def self.touched_shared_databases(shared)
       return [] if shared.empty? || !available?
+
+      shared &= database_names["names"]
+      return [] if shared.empty?
       # Rails 7.0 reads `:all` below as a role name and lists no pool, so the
       # check would always pass. Fail every mutant instead of trusting it.
       raise "shared_databases needs Rails 7.1 or later" if ActiveRecord.version < Gem::Version.new("7.1")
 
-      by_database = {}
-      test_configs.each { |c| by_database[c.database] = c.name if shared.include?(c.name) && c.database }
-      pools = ActiveRecord::Base.connection_handler.connection_pool_list(:all).select(&:connected?)
-      names = pools.map do |pool|
+      pools = ActiveRecord::Base.connection_handler.connection_pool_list(:all)
+      owners = pools.filter_map { |p| [pool_owner(p), p.db_config.name] if shared.include?(p.db_config.name) }.to_h
+      by_database = test_configs.filter_map { |c| [c.database, c.name] if shared.include?(c.name) && c.database }.to_h
+      used = pools.select(&:connected?) | Array(@sql_pools)
+      used.filter_map do |pool|
         config = pool.db_config
-        shared.include?(config.name) ? config.name : by_database[config.database]
-      end
-      names.compact.uniq
+        shared.include?(config.name) ? config.name : owners[pool_owner(pool)] || by_database[config.database]
+      end.uniq
+    end
+
+    # The class a pool belongs to, by name. `connects_to` registers a class's
+    # writer and replica pools under it. Rails 8 keeps it in a descriptor.
+    #
+    # @param pool [ActiveRecord::ConnectionAdapters::ConnectionPool]
+    # @return [String]
+    def self.pool_owner(pool)
+      config = pool.pool_config
+      config.respond_to?(:connection_descriptor) ? config.connection_descriptor.name : config.connection_name
     end
 
     # The Ruby schema file a SQLite worker loads over an out-of-date copy, as
