@@ -49,6 +49,10 @@ These keys are accepted in `.mutineer.yml` in 1.8.0:
 `allow_empty`, `shared_databases`.
 
 `shared_databases` is new in 1.8.0.
+It is a file key with no flag.
+Parallel workers with it need Rails 7.1 or later.
+On Rails 7.0, every parallel mutant scores `error`.
+Listing the primary database exits 2.
 
 `allow_empty` is new in 1.7.0.
 An `ignore:` entry can be a mapping with an `id` and an optional `reason` from 1.7.0.
@@ -97,8 +101,8 @@ Where it prints no warning, the item says documented only.
   In 2.0 an untrustworthy run exits 3.
   Exit 1 stays the code for tests that are too weak.
 - **Old ids stop matching.** 1.8.0 warns.
-  An old `ignore:` entry warns that it uses the old id format, which did not include the file path.
-  An old baseline warns that the baseline uses the old id format.
+  An old `ignore:` entry that matches a mutant warns that it uses the old id format, which did not include the file path.
+  An old baseline whose ids match this run warns that the baseline uses the old id format.
   In 2.0 those old ids stop matching.
   Run `mutineer migrate` to rewrite old `ignore:` entries.
   Regenerate a baseline with `--format json`.

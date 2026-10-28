@@ -18,9 +18,10 @@ Read these before you upgrade. Details are in the sections below.
   and survivors. If you gate on `--baseline`, write a new full baseline.
 - **Delete `ignore:` entries for `range` mutants (#299).** A new `range`
   mutant can take an old id, so an old entry can hide a real survivor.
-- **Fewer false kills.** A `--test-command` exit other than 1, a load crash
-  under `--test-command` (#292), and an Active Record connection or lock
-  error inside a Minitest test (#296) now score `error`, not `killed`.
+- **Fewer false kills.** Under `--test-command`, a non-zero exit other than 1
+  scores `error`, and so does an exit 1 with no failing test in the summary
+  line (#292). An Active Record connection or lock error inside a Minitest
+  test scores `error` too (#296). Before, these scored `killed`.
 - **Exit codes match STABILITY.md (#288).** A boot, source or `require:`
   file that raises while it loads exits 1. A missing boot or `require:`
   file exits 2.
