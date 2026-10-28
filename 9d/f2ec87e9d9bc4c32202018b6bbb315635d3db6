@@ -1,0 +1,45 @@
+CHANGELOG.md
+  s_c72800bf270529::t_1d03ab6ccf89c5 14-25
+README.md
+  s_c72800bf270529::t_f1b3122cfa043c 43,54-55
+STABILITY.md
+  s_c72800bf270529::t_531b7db057aaa1 49
+docs/cli.md
+  s_c72800bf270529::t_e6d61e19569ed4 71
+docs/rails-setup.md
+  s_c72800bf270529::t_0fd37014f8137a 122,164-201
+docs/rails.html
+  s_c72800bf270529::t_42148b08ac3211 129
+docs/rails.md
+  s_c72800bf270529::t_525b0cebcc1080 174-177
+lib/mutineer/daemon_backend.rb
+  s_c72800bf270529::t_a3721eb67df689 201-202,210-215
+lib/mutineer/daemon_server.rb
+  s_c72800bf270529::t_5cc346ed809901 224-225,233-242,258,361-363,377-380
+lib/mutineer/rails_worker_db.rb
+  s_c72800bf270529::t_08ed8627e8690c 368-375,478-502,505-506,512-514,519-523,525-536
+test/daemon_backend_contract_test.rb
+  s_c72800bf270529::t_e762479ac8b9c1 204-214
+test/daemon_shared_databases_test.rb
+  s_c72800bf270529::t_2e9868f4a91e69 5,26-27,29-53,58,63,74-109,112
+test/rails_dogfood_daemon_test.rb
+  s_c72800bf270529::t_a2cc2ec01d511e 108
+test/rails_worker_db_test.rb
+  s_c72800bf270529::t_48d9f7721a95a5 661-662,664-723,725-729,732-740,742,744,748,750,752
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9df2ec87e9d9bc4c32202018b6bbb315635d3db6",
+  "prompts": {},
+  "sessions": {
+    "s_c72800bf270529": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9e84c7f6-f7b5-4b6e-b38d-4c1c6a5be3a6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
