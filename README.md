@@ -41,7 +41,7 @@ In the Status column, `supported` means parallel runs work and `serial only` run
 | 3.4 or later | SQLite in memory | RSpec | not supported | serial only |
 | 3.4 or later | more than one database, all SQLite files | Minitest | supported with `--daemon` on Rails 7.1 or later | supported |
 | 3.4 or later | more than one database, Postgres or MySQL, with an extra database outside `shared_databases` | Minitest | one worker | serial only |
-| 3.4 or later | more than one database, the extra ones in `shared_databases` | Minitest | supported with `--daemon` on Rails 7.1 or later | supported |
+| 3.4 or later | more than one database, the extra ones in `shared_databases` | Minitest | supported with `--daemon` on Rails 7.1 or later | supported, unless the test environment registers a pool for a shared database |
 | 3.4 or later | more than one database | RSpec | not supported | serial only |
 
 This matrix is for a Rails app on Ruby 3.4 or later. A plain Ruby project

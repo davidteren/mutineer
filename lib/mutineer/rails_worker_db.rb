@@ -735,10 +735,10 @@ module Mutineer
     #
     # @return [void]
     def self.watch_sql
-      @sql_pools = []
+      @sql_pools = {} # used as a set: one entry per pool, not per query
       ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
         connection = payload[:connection]
-        @sql_pools << connection.pool if connection.respond_to?(:pool)
+        @sql_pools[connection.pool] = true if connection.respond_to?(:pool)
       end
     end
 
@@ -781,7 +781,7 @@ module Mutineer
       by_database = configs.to_h { |config| [database_key.call(config), config.name] }
       pools = ActiveRecord::Base.connection_handler.connection_pool_list(:all)
       owners = pools.filter_map { |p| [pool_owner(p), p.db_config.name] if shared_names.include?(p.db_config.name) }.to_h
-      used = pools.select(&:connected?) | Array(@sql_pools)
+      used = pools.select(&:connected?) | (@sql_pools&.keys || [])
       used.filter_map do |pool|
         config = pool.db_config
         shared_names.include?(config.name) ? config.name : owners[pool_owner(pool)] || by_database[database_key.call(config)]

@@ -30,7 +30,7 @@ module Mutineer
   #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment","require_paths":[...],
   #               "load_paths":["test"],"framework":"minitest","rails":true}
   #   ready out: {"ready":true,"ruby":"3.3.6","databases":{"names":["primary"],"primary":"primary","copied":["primary"]}}
-  #              ("databases" is null with no worker-DB adapter, {"error":"..."} when the lookup fails)
+  #              ("databases" is null with no worker-DB adapter, {"error":"...","primary":"primary"|null} when the lookup fails)
   #              (or {"ready":false,"error":"..."} then exit)
   #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
