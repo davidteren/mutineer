@@ -16,10 +16,11 @@ Ruby 3.4 or later is required.
 
 A release is a manual action by a human collaborator with maintain or admin
 permission.
-Only a maintainer, or an agent that acts for one, may push a `v*` tag, merge
-a release pull request, run a release workflow, or `gem push`.
-An agent may suggest a release, but it never cuts one on its own. It does
-release steps 1 to 4 in AGENTS.md only after a maintainer agrees to that
-release.
+Other contributors never push a `v*` tag, merge a release pull request, run a
+release workflow, or `gem push`.
+An agent may suggest a release, but it never cuts one on its own.
+It acts only after a maintainer agrees to that release, and then does only
+release steps 1 to 4 in AGENTS.md. Every other release step stays with the
+maintainer.
 Releases also need approval of the `rubygems` GitHub environment.
 The steps and the settings a maintainer applies by hand are in [AGENTS.md](AGENTS.md).
