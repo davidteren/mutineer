@@ -244,7 +244,9 @@ workflow checks hold only for the `release.yml` stored in the tag. A dispatch
 on a tag runs that tag's copy, so a write collaborator could tag a commit
 with an edited copy that skips them. Until these settings exist, nothing
 stops that tag. Issue #354 deferred them on 2026-10-26, so they are not
-applied today.
+applied today. Item 1 is still needed for any release: `release.yml` refuses
+to publish while the `rubygems` environment is missing or has no required
+reviewers.
 
 A `v*.*.*` tag on a commit whose `release.yml` still triggers on tag push
 (any commit from before this change) still starts that old workflow. This file
