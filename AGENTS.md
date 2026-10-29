@@ -13,8 +13,8 @@ Conventions for any agent or contributor changing this repo. (Usage docs for
   failures over silent ones. Match the surrounding code's idiom.
 - **Never release without a maintainer's yes.** Do not push a `v*` tag, merge
   a release PR, run a release workflow, or `gem push` on your own. You may
-  suggest a release. Cut it only after a maintainer agrees to that release.
-  The policy and procedure are in "Releasing" below.
+  suggest a release. Cut it only after a maintainer agrees to that release,
+  and then do only steps 1 to 4 in "Releasing" below.
 
 ## Before every commit (local gate)
 
