@@ -133,9 +133,12 @@ check uses `user.permissions.maintain`, `user.permissions.admin`, and
    `release/v*` pull request, run `.github/workflows/release-pr.yml` or
    `.github/workflows/release.yml` (`gh workflow run`, the Actions UI, or
    another workflow), run `gem push`, or create a GitHub Release.
-2. An agent may suggest a release now and then. It does the steps below only
-   after a maintainer agrees in chat to that release. One yes covers one
-   release, not later ones.
+2. An agent may suggest a release now and then. It does steps 1 to 4 below
+   only after a maintainer agrees in chat to that release. One yes covers one
+   release, not later ones. Step 5 (approve the `rubygems` environment) and
+   step 6 (move the floating major tag) stay with the maintainer.
+   An agent runs `gh` under a maintainer's account, so the actor check above
+   passes for it. The chat yes is the control for agents, not that check.
 3. For an urgent bug or a security fix, the agent asks a maintainer if the fix
    should go out in a release now. It does not release without that answer.
 4. Other work waits for the next batch. Label each pull request with the next
@@ -152,8 +155,8 @@ Semver: **new feature → minor bump, fix → patch.** A behavior change to the
 GitHub Action's defaults is a **major** bump: consumers pin `@v<major>`, and a
 default flip must never reach them without opting in.
 
-A maintainer does every step, or an agent does them after that maintainer
-agrees to this release:
+A maintainer does every step. An agent may do steps 1 to 4 after that
+maintainer agrees to this release:
 
 1. Prepare the pull request when they want a batch, from `main`:
    ```sh
@@ -239,14 +242,14 @@ Safety nets:
   command runs CI only.
 
 **Settings a maintainer applies by hand.** They live in GitHub and on
-RubyGems, not in this repo. Do them in this order, before the next tag. The
+RubyGems, not in this repo. Apply them in this order. The
 workflow checks hold only for the `release.yml` stored in the tag. A dispatch
 on a tag runs that tag's copy, so a write collaborator could tag a commit
 with an edited copy that skips them. Until these settings exist, nothing
 stops that tag. Issue #354 deferred them on 2026-10-26, so they are not
-applied today. Item 1 is still needed for any release: `release.yml` refuses
-to publish while the `rubygems` environment is missing or has no required
-reviewers.
+applied today. Item 1 is still needed before the next publish: `release.yml`
+refuses to publish while the `rubygems` environment is missing, has no
+required reviewers, or lets administrators bypass them.
 
 A `v*.*.*` tag on a commit whose `release.yml` still triggers on tag push
 (any commit from before this change) still starts that old workflow. This file
