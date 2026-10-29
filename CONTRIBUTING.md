@@ -20,7 +20,7 @@ Other contributors never push a `v*` tag, merge a release pull request, run a
 release workflow, or `gem push`.
 An agent may suggest a release, but it never cuts one on its own.
 It acts only after a maintainer agrees to that release, and then does only
-release steps 1 to 4 in AGENTS.md. Every other release step stays with the
-maintainer.
+steps 1 to 4 of the release procedure in AGENTS.md.
+Every other release step stays with the maintainer.
 Releases also need approval of the `rubygems` GitHub environment.
 The steps and the settings a maintainer applies by hand are in [AGENTS.md](AGENTS.md).

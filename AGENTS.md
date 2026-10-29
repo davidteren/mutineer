@@ -14,7 +14,7 @@ Conventions for any agent or contributor changing this repo. (Usage docs for
 - **Never release without a maintainer's yes.** Do not push a `v*` tag, merge
   a release PR, run a release workflow, or `gem push` on your own. You may
   suggest a release. Cut it only after a maintainer agrees to that release,
-  and then do only steps 1 to 4 in "Releasing" below.
+  and then do only steps 1 to 4 of the release procedure in "Releasing".
 
 ## Before every commit (local gate)
 
@@ -133,9 +133,10 @@ check uses `user.permissions.maintain`, `user.permissions.admin`, and
    `release/v*` pull request, run `.github/workflows/release-pr.yml` or
    `.github/workflows/release.yml` (`gh workflow run`, the Actions UI, or
    another workflow), run `gem push`, or create a GitHub Release.
-2. An agent may suggest a release now and then. It does steps 1 to 4 below
-   only after a maintainer agrees in chat to that release. One yes covers one
-   release, not later ones. Step 5 (approve the `rubygems` environment) and
+2. An agent may suggest a release now and then. It does steps 1 to 4 of the
+   release procedure below only after a maintainer agrees in chat to that
+   release. One yes covers one release, not later ones. Step 5 (approve the
+   `rubygems` environment) and
    step 6 (move the floating major tag) stay with the maintainer.
    An agent runs `gh` under a maintainer's account, so the actor check above
    passes for it. The chat yes is the control for agents, not that check.
@@ -155,8 +156,8 @@ Semver: **new feature → minor bump, fix → patch.** A behavior change to the
 GitHub Action's defaults is a **major** bump: consumers pin `@v<major>`, and a
 default flip must never reach them without opting in.
 
-A maintainer owns every step. An agent may do steps 1 to 4 after that
-maintainer agrees to this release:
+The release procedure. A maintainer owns every step. An agent may do steps
+1 to 4 after that maintainer agrees to this release:
 
 1. Prepare the pull request when they want a batch, from `main`:
    ```sh
