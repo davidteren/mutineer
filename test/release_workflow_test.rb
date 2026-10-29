@@ -539,7 +539,7 @@ class ReleaseWorkflowTest < Minitest::Test
     assert_includes contributing, "after a maintainer agrees"
     assert_includes agents, "step 6 (move the floating major tag) stay with the maintainer"
     assert_includes agents, "Step 5 (approve the"
-    assert_includes agents, "Before step 3 (the tag), the agent checks that the `rubygems` environment"
+    assert_includes agents, "Before step 1, the agent checks that the `rubygems` environment exists,"
     # CLAUDE.md only imports AGENTS.md, so the release rules live in one place.
     assert_includes claude, "@AGENTS.md"
     refute_includes claude, "gem push"
