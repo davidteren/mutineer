@@ -11,10 +11,10 @@ Conventions for any agent or contributor changing this repo. (Usage docs for
   `load`s a tempfile snippet instead — don't reintroduce `eval`.
 - **Least astonishment.** Names match behaviour, no hidden side effects, explicit
   failures over silent ones. Match the surrounding code's idiom.
-- **Never release, tag, or publish.** Do not push a `v*` tag, merge a release
-  PR, run a release workflow, or `gem push`. A release needs a human
-  collaborator with maintain or admin permission. The procedure is "Releasing"
-  below.
+- **Never release without a maintainer's yes.** Do not push a `v*` tag, merge
+  a release PR, run a release workflow, or `gem push` on your own. You may
+  suggest a release. Cut it only after a maintainer agrees to that release.
+  The policy and procedure are in "Releasing" below.
 
 ## Before every commit (local gate)
 
@@ -109,7 +109,7 @@ Post findings on the relevant code line, never in a separate summary comment.
 
 **Stacked pull requests:** start at the bottom. When a lower pull request changes, update those above it and recheck new lines.
 
-## Releasing (manual — maintainers only)
+## Releasing (manual, a maintainer approves each release)
 
 Nothing in this repo releases, tags, or publishes on a schedule or from a bot
 trigger. Pushing a `vX.Y.Z` tag leaves the gem unpublished. v1.7.0 shipped
@@ -126,16 +126,24 @@ The legacy API field `permission` maps the maintain role to `write`, so the
 check uses `user.permissions.maintain`, `user.permissions.admin`, and
 `role_name` of `admin` or `maintain`.
 
-**Agents must never:**
+**Release policy for agents (issue #357):**
 
-- push a `v*` tag, including `vX.Y.Z` and the floating major tags (`v1`, `v2`, …)
-- merge a pull request whose branch is `release/v*`
-- run `.github/workflows/release-pr.yml` or `.github/workflows/release.yml`
-  (`gh workflow run`, the Actions UI, or another workflow)
-- run `gem push`, or create a GitHub Release
+1. An agent never cuts or publishes a release on its own. Release steps are:
+   push a `v*` tag (including the floating major tags `v1`, `v2`, …), merge a
+   `release/v*` pull request, run `.github/workflows/release-pr.yml` or
+   `.github/workflows/release.yml` (`gh workflow run`, the Actions UI, or
+   another workflow), run `gem push`, or create a GitHub Release.
+2. An agent may suggest a release now and then. It does the steps below only
+   after a maintainer agrees in chat to that release. One yes covers one
+   release, not later ones.
+3. For an urgent bug or a security fix, the agent asks a maintainer if the fix
+   should go out in a release now. It does not release without that answer.
+4. Other work waits for the next batch. Label each pull request with the next
+   version label, such as `v1.8.0` (see "Labels" above).
+5. A breaking change stays a **draft** pull request. Label it
+   `breaking change` and the possible major version, such as `v2.0`.
 
-Tell a maintainer the steps below when a task needs a release. Do not perform
-them. A schedule is not a substitute: GitHub records a cron run's actor as the
+A schedule is not a substitute: GitHub records a cron run's actor as the
 last person who edited the workflow, and that person may be a maintainer, so
 a permission check would not stop a cron. The schedule is deleted. Do not add
 it back, and do not run `gh workflow enable` to restore a Monday release.
@@ -144,7 +152,8 @@ Semver: **new feature → minor bump, fix → patch.** A behavior change to the
 GitHub Action's defaults is a **major** bump: consumers pin `@v<major>`, and a
 default flip must never reach them without opting in.
 
-A maintainer does every step:
+A maintainer does every step, or an agent does them after that maintainer
+agrees to this release:
 
 1. Prepare the pull request when they want a batch, from `main`:
    ```sh
@@ -234,7 +243,8 @@ RubyGems, not in this repo. Do them in this order, before the next tag. The
 workflow checks hold only for the `release.yml` stored in the tag. A dispatch
 on a tag runs that tag's copy, so a write collaborator could tag a commit
 with an edited copy that skips them. Until these settings exist, nothing
-stops that tag. Issue #354 tracks applying them.
+stops that tag. Issue #354 deferred them on 2026-10-26, so they are not
+applied today.
 
 A `v*.*.*` tag on a commit whose `release.yml` still triggers on tag push
 (any commit from before this change) still starts that old workflow. This file
