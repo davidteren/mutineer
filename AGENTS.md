@@ -138,6 +138,9 @@ check uses `user.permissions.maintain`, `user.permissions.admin`, and
    release. One yes covers one release, not later ones. Step 5 (approve the
    `rubygems` environment) and
    step 6 (move the floating major tag) stay with the maintainer.
+   Before step 3 (the tag), the agent checks that the `rubygems` environment
+   exists with required reviewers. If it does not, the agent stops and tells
+   the maintainer, because `release.yml` would refuse to publish that tag.
    An agent runs `gh` under a maintainer's account, so the actor check above
    passes for it. The chat yes is the control for agents, not that check.
 3. For an urgent bug or a security fix, the agent asks a maintainer if the fix
