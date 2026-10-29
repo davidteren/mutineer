@@ -511,13 +511,13 @@ class ReleaseWorkflowTest < Minitest::Test
     assert_match(/Could not read repository permission/, out)
   end
 
-  def test_agent_docs_forbid_releasing
+  def test_agent_docs_gate_releasing_on_a_maintainer
     root = File.expand_path("..", __dir__)
     agents = File.read(File.join(root, "AGENTS.md"))
     claude = File.read(File.join(root, "CLAUDE.md"))
     contributing = File.read(File.join(root, "CONTRIBUTING.md"))
     stability = File.read(File.join(root, "STABILITY.md"))
-    [agents, claude, contributing].each do |text|
+    [agents, contributing].each do |text|
       assert_includes text, "maintain or admin"
       assert_match(/gem push/, text)
     end
@@ -535,8 +535,18 @@ class ReleaseWorkflowTest < Minitest::Test
     assert_includes agents, "workflow_dispatch"
     refute_includes stability, "weekly release pull request stays"
     assert_includes stability, "There is no weekly release pull request."
-    assert_includes claude, "release.yml"
-    assert_includes claude, "rubygems"
+    assert_includes agents, "after a maintainer agrees"
+    assert_includes contributing, "after a maintainer agrees"
+    assert_includes agents, "step 6 (move the floating major tag) stay with the maintainer"
+    assert_includes agents, "Step 5 (approve the"
+    assert_includes agents, "should go out in a release now, without waiting for the next batch"
+    assert_includes agents, "Label each pull request with the next"
+    assert_includes agents, "A breaking change stays a **draft** pull request"
+    refute_includes agents, "Issue #354 tracks applying them"
+    assert_includes agents, "Before step 1, the agent checks that the `rubygems` environment exists,"
+    # CLAUDE.md only imports AGENTS.md, so the release rules live in one place.
+    assert_includes claude, "@AGENTS.md"
+    refute_includes claude, "gem push"
   end
 
   def test_publish_gate_refuses_a_branch_and_a_missing_confirm_word
