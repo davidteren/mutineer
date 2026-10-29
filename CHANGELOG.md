@@ -8,6 +8,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`shared_databases` config key** (#316). An app with a second test
+  database ran one worker under `--daemon`. List the databases your tests
+  never use (`shared_databases: [cable]`), and the workers share them and run
+  in parallel. After each mutant, a parallel worker checks those databases.
+  The mutant scores `error` when a pool for one is still connected after the
+  tests, or ran SQL during them. A replica in the same `connects_to` counts
+  as its database. Listing the primary database stops the run with exit 2.
+  A name that matches no test database warns and is not checked. The check
+  needs Rails 7.1 or later. Three safety changes come with it for
+  `--rails --daemon`: a test database with `database_tasks: false` now
+  counts toward the one-worker limit, and the run keeps one worker when the
+  app's databases cannot be listed or the first daemon does not boot
+  (before, each case could start several workers). See
+  [More than one database](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database)
+  for the transactional-tests caveat.
 - **Counts of mutants that were not scored (#291).** Operators now count the
   candidates they decline: a heredoc they cannot mutate safely, or an
   equivalent skip such as an endless range or a skipped chain-link name. The

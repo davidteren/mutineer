@@ -40,6 +40,7 @@ In the Status column, `supported` means parallel runs work and `serial only` run
 | 3.4 or later | SQLite in memory | Minitest | not supported | serial only |
 | 3.4 or later | SQLite in memory | RSpec | not supported | serial only |
 | 3.4 or later | more than one database | Minitest | one worker | serial only |
+| 3.4 or later | more than one database, Rails 7.1 or later, the extra ones in `shared_databases` | Minitest | supported with `--daemon` | supported, unless the test environment registers a pool for a shared database |
 | 3.4 or later | more than one database | RSpec | not supported | serial only |
 
 This matrix is for a Rails app on Ruby 3.4 or later. A plain Ruby project
@@ -50,6 +51,8 @@ job runs it. SQLite file means a database file, not `:memory:`.
 - `--rails` without `--daemon` is serial on every row. `--daemon` is Minitest only.
 - MySQL older than 8.0 stops `--daemon`. MariaDB and MySQL 9 or later warn and run.
 - An app with more than one database runs one worker: `--daemon` isolates only the primary connection.
+  On Rails 7.1 or later, list the databases your tests never use in `shared_databases`, and the workers
+  run in parallel. CI tests that row on SQLite. See [More than one database](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database).
 - Postgres worker databases are copied once at the start; MySQL 8 worker databases are created then and the rows copied.
 - A test that commits rows outside a transaction leaves them in that worker's
   database, and the next mutant on that worker sees them. Rails parallel tests have the same limit.

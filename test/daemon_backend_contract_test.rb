@@ -102,6 +102,116 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # Only a parallel worker daemon gets the shared names: one worker shares
+  # nothing, so its daemon runs no shared-database check.
+  def test_boot_config_sends_shared_databases_only_to_parallel_workers
+    config = Mutineer::Config.new(sources: [], tests: [], project_root: Dir.pwd, framework: "minitest",
+                                  shared_databases: %w[cable])
+
+    assert_equal %w[cable], Mutineer::DaemonBackend.boot_config(config, [], parallel: true)[:shared_databases]
+    assert_empty Mutineer::DaemonBackend.boot_config(config, [])[:shared_databases]
+    assert_empty Mutineer::DaemonBackend.boot_config(config, [], coverage: true)[:shared_databases]
+  end
+
+  # The daemon's database report, as RailsWorkerDb.database_names gives it.
+  TWO_DATABASES = { "names" => %w[primary cable], "primary" => "primary" }.freeze
+
+  def test_a_second_database_forces_one_worker_and_names_it
+    count = nil
+    _out, err = capture_io { count = worker_count_for(TWO_DATABASES, [], 4) }
+
+    assert_equal 1, count
+    assert_includes err, "this app has 2 databases; Mutineer runs one worker. Parallel runs support one database."
+    assert_includes err, "under shared_databases: cable."
+  end
+
+  def test_shared_databases_lifts_the_one_worker_limit
+    count = nil
+    _out, err = capture_io { count = worker_count_for(TWO_DATABASES, %w[cable], 4) }
+
+    assert_equal 4, count
+    assert_empty err
+  end
+
+  def test_one_database_or_one_worker_keeps_the_count_without_a_warning
+    one = { "names" => %w[primary], "primary" => "primary" }
+    _out, err = capture_io do
+      assert_equal 4, worker_count_for(one, [], 4)
+      assert_equal 1, worker_count_for(TWO_DATABASES, [], 1)
+      assert_equal 3, worker_count_for(nil, [], 3), "no worker-DB adapter: nothing to count"
+    end
+    assert_empty err
+  end
+
+  # A typo matches no config. The database it meant stays counted, so the run
+  # keeps one worker, and the warning names the real configs.
+  def test_an_unknown_shared_database_warns_and_lifts_nothing
+    count = nil
+    _out, err = capture_io { count = worker_count_for(TWO_DATABASES, %w[cabel], 4) }
+
+    assert_equal 1, count
+    assert_includes err, "shared_databases names no test database: cabel. This app has primary, cable."
+    assert_includes err, "this app has 2 databases outside shared_databases; Mutineer runs one worker."
+  end
+
+  # Each worker copies the primary database. Sharing it would leave the other
+  # database unisolated, so the run stops before any mutant, at any worker count.
+  def test_listing_the_primary_database_is_a_config_error
+    [4, 1].each do |workers|
+      error = assert_raises(Mutineer::ConfigError) { worker_count_for(TWO_DATABASES, %w[primary cable], workers) }
+      assert_includes error.message, "shared_databases lists primary, the database each worker copies."
+    end
+  end
+
+  # The first daemon lists the databases. When it cannot boot, nobody counted
+  # them, so the run must not start a second worker that could share one.
+  # A --boot app without --rails has no database routing, so it keeps its workers.
+  def test_a_failed_first_boot_keeps_one_worker_on_rails
+    client = Object.new
+    client.define_singleton_method(:start) { raise Mutineer::DaemonBootError, "boom" }
+    results = {}
+    _out, err = capture_io do
+      Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+        [true, false].each do |rails|
+          config = Mutineer::Config.new(sources: [], tests: [], project_root: Dir.pwd, framework: "minitest",
+                                        rails: rails)
+          results[rails] = Mutineer::DaemonBackend.send(:prepare_run, config, [], 4)
+        end
+      end
+    end
+
+    assert_equal [nil, 1, nil], results[true]
+    assert_equal [nil, 4, nil], results[false]
+    assert_includes err, "daemon coverage map unavailable"
+    assert_equal 1, err.scan("could not list this app's databases (the first daemon did not boot); " \
+                             "Mutineer runs one worker.").size
+  end
+
+  # A failed lookup must not lift the guard: an uncounted database could be
+  # shared without anyone listing it.
+  def test_a_failed_database_lookup_keeps_one_worker
+    failed = { "error" => "ActiveRecord::ConnectionNotEstablished: no pool" }
+    count = nil
+    _out, err = capture_io { count = worker_count_for(failed, %w[cable], 4) }
+
+    assert_equal 1, count
+    assert_includes err, "could not list this app's databases (ActiveRecord::ConnectionNotEstablished: no pool); " \
+                         "Mutineer runs one worker."
+    _out, err = capture_io { assert_equal 1, worker_count_for(failed, [], 1) }
+    assert_empty err, "one worker was asked for, so nothing changes"
+  end
+
+  # A failed lookup that still names the primary keeps the usage error: the
+  # run exits 2 instead of falling back to one worker.
+  def test_a_failed_lookup_still_rejects_a_listed_primary
+    failed = { "error" => "no pool", "primary" => "primary" }
+    error = assert_raises(Mutineer::ConfigError) { worker_count_for(failed, %w[primary], 4) }
+    assert_includes error.message, "shared_databases lists primary"
+
+    _out, err = capture_io { assert_equal 1, worker_count_for(failed.merge("primary" => nil), %w[primary], 4) }
+    assert_includes err, "could not list this app's databases (no pool)"
+  end
+
   # Mutatable fixture for the daemon-path tests: one arithmetic operator, so the
   # Arithmetic mutator yields a real Mutation to send through job_result.
   SOURCE = "class Order\n  def total(a, b)\n    a + b\n  end\nend\n"
@@ -789,7 +899,7 @@ class DaemonBackendContractTest < Minitest::Test
       quits = 0
       client = Object.new
       client.define_singleton_method(:start) { self }
-      client.define_singleton_method(:database_count) { 1 }
+      client.define_singleton_method(:databases) { nil }
       client.define_singleton_method(:provision) { |_count| nil }
       client.define_singleton_method(:coverage) do
         { "map" => { "app/order.rb:1" => ["test/order_test.rb"] }, "failed_test_files" => [] }
@@ -815,7 +925,7 @@ class DaemonBackendContractTest < Minitest::Test
       quits = 0
       client = Object.new
       client.define_singleton_method(:start) { self }
-      client.define_singleton_method(:database_count) { 1 }
+      client.define_singleton_method(:databases) { nil }
       client.define_singleton_method(:provision) { |_count| raise stop }
       client.define_singleton_method(:quit) { quits += 1 }
 
@@ -843,6 +953,11 @@ class DaemonBackendContractTest < Minitest::Test
   end
 
   private
+
+  # @return [Integer] DaemonBackend.worker_count_for, a private helper.
+  def worker_count_for(databases, shared, workers)
+    Mutineer::DaemonBackend.send(:worker_count_for, databases, shared, workers)
+  end
 
   # A stub daemon client whose request blocks until its worker thread is killed.
   def waiting_client(name, quits, quit_delay: 0)

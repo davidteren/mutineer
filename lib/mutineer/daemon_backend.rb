@@ -172,16 +172,15 @@ module Mutineer
         raise
       rescue DaemonBootError => e
         warn_coverage_fallback("#{e.class}: #{e.message}")
-        return [nil, worker_count, nil]
+        # No daemon listed a Rails app's databases, so no second worker may
+        # share them. A --boot app without --rails has no database routing.
+        unknown = { "error" => "the first daemon did not boot" }
+        return [nil, config.rails ? worker_count_for(unknown, [], worker_count) : worker_count, nil]
       end
 
       begin
-        count = client.database_count.to_i
-        if count > 1 && worker_count > 1
-          warn "[mutineer] this app has #{count} databases; Mutineer runs one worker. " \
-               "Parallel runs support one database."
-          worker_count = 1
-        end
+        # Raises ConfigError when shared_databases lists the primary database.
+        worker_count = worker_count_for(client.databases, config.shared_databases, worker_count)
         # Raises DaemonBootError. Callers must not score mutants after this.
         client.provision(worker_count)
         [coverage_map_from_client(client, config), worker_count, client]
@@ -190,6 +189,52 @@ module Mutineer
         client.quit
         raise
       end
+    end
+
+    # The worker count once the booted app's databases are known. Each worker
+    # copies only the primary database, so a second database forces one worker
+    # unless `shared_databases` lists it. Listing the primary is a config error.
+    # A failed lookup also forces one worker: a database nobody counted must
+    # never be shared by accident.
+    #
+    # @param databases [Hash, nil] the daemon's report: "names" and "primary",
+    #   or "error" (with "primary" when it resolves). nil when the app has no
+    #   worker-DB adapter.
+    # @param shared [Array<String>] the `shared_databases` config names.
+    # @param worker_count [Integer] the workers requested.
+    # @return [Integer] the workers to start.
+    # @raise [Mutineer::ConfigError] when `shared` lists the primary database.
+    def self.worker_count_for(databases, shared, worker_count)
+      return worker_count if databases.nil?
+
+      primary = databases["primary"]
+      if shared.include?(primary)
+        raise ConfigError, "shared_databases lists #{primary}, the database each worker copies. " \
+                           "List only the other databases, the ones parallel workers may share."
+      end
+
+      if databases["error"]
+        if worker_count > 1
+          warn "[mutineer] could not list this app's databases (#{databases["error"]}); Mutineer runs one worker."
+        end
+        return 1
+      end
+
+      names = Array(databases["names"])
+      unknown = shared - names
+      if unknown.any?
+        warn "[mutineer] shared_databases names no test database: #{unknown.join(", ")}. " \
+             "This app has #{names.join(", ")}."
+      end
+
+      unshared = names - shared
+      return worker_count unless unshared.size > 1 && worker_count > 1
+
+      outside = shared.empty? ? "" : " outside shared_databases"
+      warn "[mutineer] this app has #{unshared.size} databases#{outside}; Mutineer runs one worker. " \
+           "Parallel runs support one database. To run in parallel, list each one " \
+           "your tests never use under shared_databases: #{(unshared - [primary]).join(", ")}."
+      1
     end
 
     # Turn one daemon's coverage reply into a map. Does not start or stop the daemon.
@@ -302,7 +347,8 @@ module Mutineer
       threads = []
       begin
         worker_count.times do
-          clients << DaemonClient.new(boot: boot_config(config, abs_tests), app_root: config.project_root)
+          clients << DaemonClient.new(boot: boot_config(config, abs_tests, parallel: true),
+                                      app_root: config.project_root)
           clients.last.start
         end
       ensure
@@ -415,8 +461,10 @@ module Mutineer
     # @param coverage [Boolean] whether this daemon builds the coverage map.
     # @param db_role [String, nil] "prepare" (copy databases on command),
     #   "worker" (lock only), or nil to pick from `coverage`.
+    # @param parallel [Boolean] whether this daemon is one of several workers.
+    #   Only then does it check `shared_databases` after each mutant.
     # @return [Hash] the boot config shipped to the daemon.
-    def self.boot_config(config, abs_tests, coverage: false, db_role: nil)
+    def self.boot_config(config, abs_tests, coverage: false, db_role: nil, parallel: false)
       {
         project_root: config.project_root,
         boot: File.expand_path(config.boot || "config/environment", config.project_root),
@@ -428,6 +476,9 @@ module Mutineer
         source_dirs: JobPlan.source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,
         rails: config.rails,
+        # Databases the workers share. A parallel worker fails a mutant whose
+        # tests used one. One worker shares nothing, so it gets no names.
+        shared_databases: parallel ? config.shared_databases : [],
         # Coverage narrowing. Only the short-lived map-building daemon starts
         # Coverage (before boot); worker daemons boot with it OFF (no wasted
         # instrumentation/memory across every mutant fork). `sources`/`tests` are the
@@ -464,6 +515,6 @@ module Mutineer
     # {build_coverage_map} from the daemon suite. Everything else is daemon-pipeline
     # internals with no caller outside this file.
     private_class_method :sweep_daemon_temps, :run_serial, :run_parallel, :job_result, :result_for,
-                         :prepare_run, :coverage_map_from_client
+                         :prepare_run, :coverage_map_from_client, :worker_count_for
   end
 end

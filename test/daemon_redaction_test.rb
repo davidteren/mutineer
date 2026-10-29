@@ -22,6 +22,9 @@ class DaemonRedactionTest < Minitest::Test
 
     # @raise [RuntimeError]
     def self.after_fork(*, **) = raise("routing failed for #{BAD_URL}")
+
+    # @raise [RuntimeError]
+    def self.database_names = raise("no pool for #{BAD_URL}")
   end
 
   def setup
@@ -78,6 +81,16 @@ class DaemonRedactionTest < Minitest::Test
     reply = Mutineer::DaemonServer.send(:provision_slots, 2)
 
     refute reply["ok"]
+    assert_includes reply["error"], "postgres://u:[REDACTED]@ho st/db"
+    refute_includes reply["error"], "s3cret"
+  end
+
+  # A failed database lookup goes to the tool in the ready reply.
+  def test_database_lookup_reply_hides_the_password
+    Mutineer::DaemonServer.instance_variable_set(:@worker_db, LeakyWorkerDb)
+
+    reply = Mutineer::DaemonServer.send(:databases)
+
     assert_includes reply["error"], "postgres://u:[REDACTED]@ho st/db"
     refute_includes reply["error"], "s3cret"
   end
