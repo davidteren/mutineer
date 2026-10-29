@@ -102,7 +102,7 @@ Use existing labels only (`gh label list`). Ask a maintainer before adding a new
 3. Reply before resolving each thread. Name the fix commit, explain a decline, or name the GitHub issue tracking a deferral. Create that issue if needed.
 4. After fixes, push and check the new lines again.
 5. Require green GitHub checks on the head commit.
-6. A person merges. Never merge your own pull request unless a maintainer asks.
+6. A person merges. Never merge your own pull request unless a maintainer asks. A maintainer's yes to a release covers that release's pull request (see "Releasing").
 
 Agents use a person's GitHub account. Start every agent comment or reply with its bold name, such as `**Codex:**`.
 Post findings on the relevant code line, never in a separate summary comment.
@@ -155,7 +155,7 @@ Semver: **new feature → minor bump, fix → patch.** A behavior change to the
 GitHub Action's defaults is a **major** bump: consumers pin `@v<major>`, and a
 default flip must never reach them without opting in.
 
-A maintainer does every step. An agent may do steps 1 to 4 after that
+A maintainer owns every step. An agent may do steps 1 to 4 after that
 maintainer agrees to this release:
 
 1. Prepare the pull request when they want a batch, from `main`:
