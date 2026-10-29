@@ -3,7 +3,7 @@
 This file says what a Mutineer release promises not to break.
 Mutineer uses Semantic Versioning.
 A breaking change waits for the next major version.
-This file describes Mutineer 1.7.0.
+This file describes Mutineer 1.8.0.
 The latest published version is on [RubyGems](https://rubygems.org/gems/mutineer).
 
 ## What SemVer covers
@@ -13,7 +13,7 @@ The latest published version is on [RubyGems](https://rubygems.org/gems/mutineer
 | Commands | `run`, `init`, `triage`, `migrate` | the command and its meaning |
 | CLI flags | the flags in `mutineer --help` | the flag and its meaning |
 | Exit codes | `0`, `1`, and `2` | which result uses which code |
-| JSON schema | `schema_version` `1.9` (unreleased; 1.7.0 reports `1.8`) | existing keys and their meaning |
+| JSON schema | `schema_version` `1.9` (1.7.0 reports `1.8`) | existing keys and their meaning |
 | Mutant ids | `summary.id_format` `2` | the same id for the same mutant |
 | Config keys | the `.mutineer.yml` keys below | the key and what a value means |
 | Action inputs | the `action.yml` inputs below | the input and its meaning |
@@ -41,12 +41,18 @@ Exit code 3 does not exist in 1.x.
 
 ### Config keys
 
-These keys are accepted in `.mutineer.yml` in 1.7.0:
+These keys are accepted in `.mutineer.yml` in 1.8.0:
 
 `operators`, `jobs`, `threshold`, `only`, `require`, `boot`, `rails`, `since`,
 `framework`, `verbose`, `ignore`, `baseline`, `fail_fast`, `matrix`,
 `test_command`, `daemon`, `timeout`, `capture_timeout`, `cache_dir`,
-`allow_empty`.
+`allow_empty`, `shared_databases`.
+
+`shared_databases` is new in 1.8.0.
+It is a file key with no flag.
+Parallel workers with it need Rails 7.1 or later.
+On Rails 7.0, every parallel mutant scores `error`.
+Listing the primary database exits 2.
 
 `shared_databases` is new after 1.7.0. It is not in a release yet.
 
@@ -66,7 +72,7 @@ that cannot be read.
 
 ### Action inputs
 
-These inputs exist on the GitHub Action in 1.7.0:
+These inputs exist on the GitHub Action in 1.8.0:
 
 `sources`, `test`, `since`, `threshold`, `baseline`, `baseline-epsilon`,
 `operators`, `framework`, `strategy`, `jobs`, `rails`, `format`, `output`,
@@ -75,45 +81,45 @@ These inputs exist on the GitHub Action in 1.7.0:
 ## 2.0 changes
 
 Each item below is a planned break.
-It is not the behaviour of 1.7.0.
-Each item says whether 1.7.0 warns about it.
+It is not the behaviour of 1.8.0.
+Each item says whether 1.8.0 warns about it.
 Where it prints no warning, the item says documented only.
 
-- **Strict operator names and config keys.** 1.7.0 warns.
+- **Strict operator names and config keys.** 1.8.0 warns.
   Today an unknown operator name warns and is skipped.
   An unknown config key warns and is ignored.
   The warning names the closest valid name.
   A `.mutineer.yml` warning says that 2.0 makes it an error.
   In 2.0 both become errors.
-- **Empty full scans fail.** 1.7.0 warns.
+- **Empty full scans fail.** 1.8.0 warns.
   Today a full scan with zero mutants exits 0 and warns on stderr.
   In 2.0 that run fails.
   Pass `--allow-empty` (or `allow_empty: true`) when an empty run is expected.
-  It stops the warning in 1.7.0 and keeps the run a success in 2.0.
+  It stops the warning in 1.8.0 and keeps the run a success in 2.0.
   A `--since` run whose changes hold no mutants stays a success.
 - **Exit code 3.** Documented only.
   1.x has no exit 3.
   It prints no warning about one.
   In 2.0 an untrustworthy run exits 3.
   Exit 1 stays the code for tests that are too weak.
-- **Old ids stop matching.** 1.7.0 warns.
-  An old `ignore:` entry warns that it uses the old id format, which did not include the file path.
-  An old baseline warns that the baseline uses the old id format.
+- **Old ids stop matching.** 1.8.0 warns.
+  An old `ignore:` entry that matches a mutant warns that it uses the old id format, which did not include the file path.
+  An old baseline whose ids match this run warns that the baseline uses the old id format.
   In 2.0 those old ids stop matching.
   Run `mutineer migrate` to rewrite old `ignore:` entries.
   Regenerate a baseline with `--format json`.
 - **JSON `schema_version` 2.0.** Documented only.
   No run warns about this bump.
   The schema page already says a breaking change bumps the major version.
-  1.7.0 reports `schema_version` `1.8`.
-- **Parallel `--rails` by default, with the `reload` strategy.** 1.7.0 warns.
+  1.8.0 reports `schema_version` `1.9`.
+- **Parallel `--rails` by default, with the `reload` strategy.** 1.8.0 warns.
   Today `--rails` without `--daemon` is serial and uses `redefine`.
   A Minitest `--rails` run with no `daemon` value prints a notice.
   Pass `--no-daemon` (or `daemon: false`) to keep the run serial and stop the notice.
   In 2.0, Minitest `--rails` runs in parallel with `reload`.
   RSpec stays serial.
 - **Provisioning failure moves from exit 1 to exit 3.** Documented only.
-  1.7.0 does not warn about that move.
+  1.8.0 does not warn about that move.
   Today a daemon that fails to boot exits 1.
   A worker database that cannot be provisioned scores those mutants as `error`.
   With `--threshold`, that run can also exit 1.

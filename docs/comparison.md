@@ -6,7 +6,7 @@ Compare frameworks, Rails support, CI, and costs. Checked against project README
 
 | Tool | Frameworks | Rails | Parallel | Changed code only | CI | Licence / cost | Maintenance |
 |------|-----------|-------|----------|-------------------|----|----------------|-------------|
-| [mutineer](https://github.com/davidteren/mutineer) 1.7.0 | Minitest, RSpec | `--rails`; `--daemon` isolates worker DBs (Minitest; SQLite, PostgreSQL, MySQL 8) | Yes; Rails requires `--daemon` | `--since`, `--baseline` | Official GitHub Action | MIT, free | Active (Oct 2026) |
+| [mutineer](https://github.com/davidteren/mutineer) 1.8.0 | Minitest, RSpec | `--rails`; `--daemon` isolates worker DBs (Minitest; SQLite, PostgreSQL, MySQL 8); `shared_databases` for unused extra DBs | Yes; Rails requires `--daemon` | `--since`, `--baseline` | Official GitHub Action | MIT, free | Active (Oct 2026) |
 | [mutant](https://github.com/mbj/mutant) 0.17.1 | RSpec, Minitest, Test::Unit | Yes; worker DBs for PostgreSQL, SQLite | Yes | Incremental mode | Documented | Open source: free; commercial: $30/month or $250/year per developer | Active (Oct 2026) |
 | [evilution](https://github.com/marinazzio/evilution) 1.5.1 | RSpec, Minitest, Test::Unit | Fork and preload | `--jobs` (default 1) | `--incremental` cache | Unknown | MIT, free | Active (Oct 2026) |
 | [kimera](https://github.com/giacope/kimera) 0.1.6 | Minitest, RSpec | Worker DBs, `--isolate-db` | Yes | `--since`, `kimera changed` | GitHub Actions recipe | MIT, free | Active, new |
@@ -66,7 +66,7 @@ Check whether the Mutineer gem (https://github.com/davidteren/mutineer) suits th
 1. Ruby: read .ruby-version, Gemfile and Gemfile.lock. Mutineer needs Ruby 3.4 or later. On an older Ruby it can still run with --test-command, but serially and with no coverage narrowing.
 2. OS for CI and development: Linux or macOS is required (it forks). Windows is not supported.
 3. Test framework: Minitest or RSpec. Inspect the test files and Gemfile; paths such as test/**/*_test.rb, test/**/test_*.rb and spec/**/*_spec.rb are examples. Both work. With RSpec: no --daemon, so Rails runs are serial, and a spec that fails on a database connection error counts as killed (issue #347).
-4. Rails: is it a Rails app (config/application.rb)? Note the Rails version. If config/database.yml has several databases, note that an app with more than one database runs one worker, so --daemon gives no parallelism.
+4. Rails: is it a Rails app (config/application.rb)? Note the Rails version. If config/database.yml has several databases, note that an app with more than one database runs one worker, unless shared_databases in .mutineer.yml lists each database the tests never use (Rails 7.1 or later).
 5. Test database adapter (config/database.yml, test env):
    - sqlite3 with a file path, postgresql, or mysql2/trilogy on MySQL 8.0: parallel runs work with --daemon (Minitest only).
    - sqlite3 :memory:: serial only.
