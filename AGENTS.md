@@ -145,7 +145,8 @@ check uses `user.permissions.maintain`, `user.permissions.admin`, and
    An agent runs `gh` under a maintainer's account, so the actor check above
    passes for it. The chat yes is the control for agents, not that check.
 3. For an urgent bug or a security fix, the agent asks a maintainer if the fix
-   should go out in a release now. It does not release without that answer.
+   should go out in a release now, without waiting for the next batch. It does
+   not release without that answer.
 4. Other work waits for the next batch. Label each pull request with the next
    version label, such as `v1.8.0` (see "Labels" above).
 5. A breaking change stays a **draft** pull request. Label it
