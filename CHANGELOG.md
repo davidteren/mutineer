@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-29
+
 ### Highlights
 
 Read these before you upgrade. Details are in the sections below.
@@ -1826,6 +1828,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.8.0]: https://github.com/davidteren/mutineer/releases/tag/v1.8.0
 [1.7.0]: https://github.com/davidteren/mutineer/releases/tag/v1.7.0
 [1.6.0]: https://github.com/davidteren/mutineer/releases/tag/v1.6.0
 [1.5.0]: https://github.com/davidteren/mutineer/releases/tag/v1.5.0
