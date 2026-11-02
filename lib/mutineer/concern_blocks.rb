@@ -15,10 +15,13 @@ module Mutineer
   # ActiveSupport does not run the block again in a class that already includes
   # the concern, so that class keeps what the original block defined. For a def
   # in the block, the mutant file also passes the mutated def to
-  # {.store_hook_def}, just before the `included` or `prepended` call, and
-  # {.place_hook_def} then loads only that def into each class that has the
-  # method (#297). Nothing else in the block runs again. Discovery decides which
-  # defs can be placed this way (see {Subject#unplaceable?}).
+  # {.store_hook_def}, just before the `included` or `prepended` call. Under
+  # {.load_mutant} with a `hook_def`, {.store_hook_def} then calls
+  # {.place_hook_def} at once, which loads only that def into each class that
+  # has the method (#297). It runs before the rest of the file, so a later
+  # line of the file that calls the method while the file loads gets the
+  # mutant (#348). Nothing else in the block runs again. Discovery decides
+  # which defs can be placed this way (see {Subject#unplaceable?}).
   #
   # Call it only in a forked child that loads the mutant. Without
   # ActiveSupport, {.replace} and {.forget} do nothing; {.store_hook_def} and
@@ -51,11 +54,18 @@ module Mutineer
     # would warn twice per constant, per mutant (#364). Warnings are off for
     # the load only, and back on before the tests run.
     #
+    # With a `hook_def`, the file's {.store_hook_def} call places the mutated
+    # def during the load (#348). A load that never reached that call raises.
+    #
     # @param source_file [String] the file the mutant replaces.
     # @param path [String] the mutant file to load.
+    # @param hook_def [Hash{Symbol => Object}, nil] the original def's `line`,
+    #   `name` and `singleton`, from {JobPlan.hook_mutant}.
+    # @raise [RuntimeError] from {.place_hook_def}, so the child scores `error`.
     # @return [Object] what `load` returns.
-    def self.load_mutant(source_file, path)
-      replace(source_file) do
+    def self.load_mutant(source_file, path, hook_def: nil)
+      @hook_target = hook_def && { source_file: source_file, **hook_def }
+      loaded = replace(source_file) do
         verbose, $VERBOSE = $VERBOSE, nil
         begin
           load path
@@ -63,6 +73,11 @@ module Mutineer
           $VERBOSE = verbose
         end
       end
+      # Still set: the load did not reach store_hook_def, so this raises.
+      place_hook_def(**@hook_target) if @hook_target
+      loaded
+    ensure
+      @hook_target = nil
     end
 
     # Removes every stored `included` and `prepended` block that the source
@@ -93,12 +108,17 @@ module Mutineer
 
     # Keeps the mutated hook-block def for {.place_hook_def}. The mutant file
     # calls it in the concern's body, just before the hook call, so the block has
-    # the same constant scope as the hook block (#297).
+    # the same constant scope as the hook block (#297). Under {.load_mutant}
+    # with a `hook_def`, it places the def now, before the rest of the file
+    # runs (#348).
     #
-    # @yield the mutated def, run later with `class_eval` in each owner.
+    # @yield the mutated def, run with `class_eval` in each owner.
+    # @raise [RuntimeError] from {.place_hook_def}.
     # @return [nil]
     def self.store_hook_def(&block)
       @hook_def = block
+      target, @hook_target = @hook_target, nil
+      place_hook_def(**target) if target
       nil
     end
 
