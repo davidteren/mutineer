@@ -16,7 +16,7 @@ All notable changes to this project are documented here. The format is based on
   password inside a longer word is no longer hidden. The word `test` on its
   own is still hidden, also right after an escape such as `%40` or `\n`, a
   colour code, or a `-p` flag. That escape rule now covers short forms
-  that start with a letter, digit or underscore too. A longer form with any
+  too. A longer form with any
   other character is still hidden wherever it appears.
 - **Redaction keeps the host after a password with an `@` (#341).** In
   `postgres://u:p@ss@h/db and p@ss`, only `p@ss` is hidden now. Before, the

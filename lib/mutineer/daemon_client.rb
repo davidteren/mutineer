@@ -446,9 +446,11 @@ module Mutineer
         break if chunk.nil?
 
         if chunk == :wait_readable
-          break if exited
+          # After the exit, one more quiet poll before stopping, so a mutant
+          # child's last line, written just after the daemon died, still shows.
+          ready = io.wait_readable(DRAIN_POLL)
+          break if exited && !ready
 
-          io.wait_readable(DRAIN_POLL)
           next
         end
         pending << chunk.b

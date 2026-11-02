@@ -44,10 +44,12 @@ module Mutineer
     SHORT_FORM = 3
     # An escape or prefix that glues a word character to the left of a
     # password form in a message: `%40`, `\x41`, `\u0041`, `\u{41}`, `\101`,
-    # `\n`, an ANSI colour code as Rails logs colour a span (raw, or escaped
-    # as `\e`, `\033`, `\x1b` or `\u001b`), or a `-p` flag
-    # (`mysql -ps3cret`). A form right after one is still a whole token.
-    ESCAPE = /%\h{2}|\\x\h{2}|\\u(?:\h{4}|\{\h+\})|\\[0-7]{1,3}|(?:\e|\\(?:e|033|x1[bB]|u001[bB]))\[[0-9;]*m|\\[a-z]|(?<!\S)-p/.source
+    # `\n`, an ANSI code such as the colour Rails logs put on a span (raw,
+    # escaped as `\e`, `\033`, `\x1b` or `\u001b`, or with its ESC byte
+    # stripped), or a `-p` flag after a space, quote, bracket, comma or `=`
+    # (`mysql -ps3cret`, `["-ps3cret"]`). A form right after one is still a
+    # whole token.
+    ESCAPE = /%\h{2}|\\x\h{2}|\\u(?:\h{4}|\{\h+\})|\\[0-7]{1,3}|(?:(?:\e|\\(?:e|033|x1[bB]|u001[bB]))\[[0-9;]*|\[[0-9;]+)[A-Za-z]|\\[a-z]|(?<![^\s"'(\[,=])-p/.source
 
     module_function
 
@@ -116,17 +118,16 @@ module Mutineer
 
     # Replace `form` in `text` only where it is a whole token: no ASCII word
     # character touches either edge, including a punctuation edge. A form
-    # that starts with a word character also counts as a whole token right
-    # after an {ESCAPE}, and the escape is kept. A form that starts with
-    # punctuation never does, so the escape cannot swallow a copy of it
-    # (`%41%41` with password `%41`).
+    # right after an {ESCAPE} also counts as a whole token, and the escape is
+    # kept. An escape may not start where a copy of the form starts, so it
+    # cannot swallow that copy (`%41%41` with password `%41`).
     #
     # @param text [String]
     # @param form [String] one form of the password.
     # @return [String]
     def redact_word(text, form)
-      escape = form.match?(/\A#{WORD_CHAR}/) ? "#{ESCAPE}|" : ""
-      pattern = "(#{escape}(?<!#{WORD_CHAR}))#{Regexp.escape(form)}(?!#{WORD_CHAR})"
+      quoted = Regexp.escape(form)
+      pattern = "((?!#{quoted})(?:#{ESCAPE})|(?<!#{WORD_CHAR}))#{quoted}(?!#{WORD_CHAR})"
       text.gsub(Regexp.new(pattern)) { "#{Regexp.last_match(1)}#{REDACTED}" }
     end
 
