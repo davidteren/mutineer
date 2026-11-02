@@ -49,7 +49,7 @@ module Mutineer
     # stripped), or a `-p` flag after a space, quote, bracket, comma or `=`
     # (`mysql -ps3cret`, `["-ps3cret"]`). A form right after one is still a
     # whole token.
-    ESCAPE = /%\h{2}|\\x\h{2}|\\u(?:\h{4}|\{\h+\})|\\[0-7]{1,3}|(?:(?:\e|\\(?:e|033|x1[bB]|u001[bB]))\[[0-9;]*|\[[0-9;]+)[A-Za-z]|\\[a-z]|(?<![^\s"'(\[,=])-p/.source
+    ESCAPE = /%\h{2}|\\x\h{2}|\\u(?:\h{4}|\{\h+\})|\\[0-7]{1,3}|(?:\e|\\(?:e|033|x1[bB]|u001[bB]))?\[[0-9;]*[A-Za-z]|\\[a-z]|(?<![^\s"'(\[,=])-p/.source
 
     module_function
 

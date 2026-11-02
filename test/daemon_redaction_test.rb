@@ -269,26 +269,28 @@ class DaemonRedactionTest < Minitest::Test
   end
 
   # A mutant child can still write just after the daemon died. The drain waits
-  # one more quiet poll, so that line still shows.
+  # one more quiet poll, so that line still shows. The line is written from
+  # inside that poll, so the test needs no sleep and takes the post-exit path.
   def test_close_io_keeps_a_line_written_just_after_the_daemon_exits
     errio = StringIO.new
     client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
     rd, wr = IO.pipe
     daemon = Process.detach(spawn({ "RUBYOPT" => nil }, RbConfig.ruby, "-e", "exit"))
     daemon.join
+    late = wr
+    rd.define_singleton_method(:wait_readable) do |timeout|
+      late&.write("late line\n")
+      late = nil
+      super(timeout)
+    end
     client.instance_variable_set(:@stderr, rd)
     client.instance_variable_set(:@wait_thr, daemon)
     client.instance_variable_set(:@drain, Thread.new { client.send(:drain_stderr, rd) })
-    late = Thread.new do
-      sleep(Mutineer::DaemonClient::DRAIN_POLL / 4.0)
-      wr.write("late line\n")
-    end
 
     client.send(:close_io)
 
     assert_equal "late line\n", errio.string
   ensure
-    late&.join
     wr&.close
   end
 

@@ -212,7 +212,7 @@ class RedactionTest < Minitest::Test
     url = "postgres://u:s3cret@host/db"
 
     ["u%40s3cret", "\\u0041s3cret", "\\u{41}s3cret", "\\x41s3cret", "\\101s3cret", "\\ns3cret",
-     "\e[1m\e[36ms3cret\e[0m", "\\e[36ms3cret", "\\033[36ms3cret", "\\x1b[36ms3cret", "\\u001b[36ms3cret", "[31ms3cret", "\e[Ks3cret", %(["mysql", "-ps3cret"]), "mysql -uapp -ps3cret prod"].each do |glued|
+     "\e[1m\e[36ms3cret\e[0m", "\\e[36ms3cret", "\\033[36ms3cret", "\\x1b[36ms3cret", "\\u001b[36ms3cret", "[31ms3cret", "[Ks3cret", "\e[Ks3cret", %(["mysql", "-ps3cret"]), "mysql -uapp -ps3cret prod"].each do |glued|
       text = redact("auth failed for #{glued}", url)
 
       refute_includes text, "s3cret", glued
