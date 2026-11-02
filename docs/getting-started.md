@@ -162,7 +162,7 @@ Use matching sources, tests, and operators in CI.
 ## 7. Check only new and changed code in CI
 
 Add `.github/workflows/mutineer.yml` from the [CI guide: Rails workflow](ci.md#rails-workflow).
-For PostgreSQL, use [Rails with PostgreSQL](ci.md#rails-with-postgresql) instead: it adds the database service and prepares the schema before the Mutineer step.
+For PostgreSQL, add the database service, `DATABASE_URL` and the `bin/rails db:prepare` step from [Rails with PostgreSQL](ci.md#rails-with-postgresql).
 
 On `pull_request`, the Action tests changed lines. With `baseline:` set, only new survivors fail.
 
