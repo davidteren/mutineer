@@ -42,13 +42,12 @@ class DaemonServerHookDefTest < Minitest::Test
   def test_apply_payload_does_not_warn_about_reassigned_constants
     Dir.mktmpdir do |dir|
       sent = { "code" => "module Daemon364; LIMIT = 10; end\n", "source_file" => File.join(dir, "x.rb") }
-      verbose = $VERBOSE
-      $VERBOSE = false
-      _, err = capture_io { 2.times { Mutineer::DaemonServer.send(:apply_payload, sent) } }
-      assert_equal false, $VERBOSE
-      refute_match(/already initialized constant|previous definition/, err)
-    ensure
-      $VERBOSE = verbose
+      result = Mutineer::Isolation.run do
+        $VERBOSE = false
+        _, err = capture_io { 2.times { Mutineer::DaemonServer.send(:apply_payload, sent) } }
+        $VERBOSE == false && !err.match?(/already initialized constant|previous definition/) ? 0 : 1
+      end
+      assert_predicate result, :survived?, "no redefinition warning, and $VERBOSE restored"
     end
   end
 
