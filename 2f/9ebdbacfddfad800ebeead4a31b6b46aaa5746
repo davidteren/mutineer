@@ -1,0 +1,31 @@
+action.yml
+  s_631a03a1cf375a::t_6ca2afc8040cb6 269-295,301
+  s_631a03a1cf375a::t_9e93181197891a 228-231,245,251-252,337
+  s_631a03a1cf375a::t_7ad64a7926c101 232-244,246-250
+  s_631a03a1cf375a::t_4673968ac9022a 253
+  s_631a03a1cf375a::t_cfb91c9a401e1c 296-300
+test/action_harness_test.rb
+  s_631a03a1cf375a::t_964b90da6b5d12 64-69
+  s_631a03a1cf375a::t_081955e0c9875a 30-31
+  s_631a03a1cf375a::t_29c8dba94514f5 13-14
+test/fixtures/action_harness.sh
+  s_631a03a1cf375a::t_a570dab1124641 207-230
+CHANGELOG.md
+  s_631a03a1cf375a::t_c452b91544b2a2 11-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2f9ebdbacfddfad800ebeead4a31b6b46aaa5746",
+  "prompts": {},
+  "sessions": {
+    "s_631a03a1cf375a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d613f288-33ac-4d2c-8d2e-48094cb91b8d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
