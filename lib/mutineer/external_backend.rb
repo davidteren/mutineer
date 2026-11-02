@@ -300,22 +300,26 @@ module Mutineer
     # The runner and seed of a random test order the output shows, or nil.
     # Nil also when Mutineer sees a fixed seed: for Minitest, SEED, TESTOPTS
     # or the command sets one; for RSpec, SPEC_OPTS or the command does. RSpec
-    # `--order defined` prints no seed line. Ceiling: a seed set in a wrapper
-    # script or `.rspec`, or Minitest's `test_order`, is not seen, so the
-    # warning still prints (#338, limits tracked in #368).
+    # `--order defined` prints no seed line. Each runner is checked on its
+    # own, so a seeded Minitest suite does not hide an unseeded RSpec suite
+    # that the same command runs. Ceiling: a seed set in a wrapper script or
+    # `.rspec`, or Minitest's `test_order`, is not seen, so the warning still
+    # prints; a seed-like argument meant for a wrapper hides it (#338, limits
+    # tracked in #368).
     #
     # @api private
     # @param command [String] the --test-command template.
     # @param text [String] output from {summary_text}.
     # @return [Array(Symbol, String), nil] `[:minitest | :rspec, seed]`.
     def self.random_order(command, text)
-      if (seed = text[MINITEST_SEED, 1])
-        unseeded = ENV["SEED"].to_s.empty? &&
-                [command, ENV["TESTOPTS"]].none? { |s| s.to_s.match?(MINITEST_SEED_GIVEN) }
-        [:minitest, seed] if unseeded
-      elsif (seed = text[RSPEC_SEED, 1])
-        [:rspec, seed] if [command, ENV["SPEC_OPTS"]].none? { |s| s.to_s.match?(RSPEC_SEED_GIVEN) }
+      minitest = text[MINITEST_SEED, 1]
+      if minitest && ENV["SEED"].to_s.empty? &&
+         [command, ENV["TESTOPTS"]].none? { |s| s.to_s.match?(MINITEST_SEED_GIVEN) }
+        return [:minitest, minitest]
       end
+
+      rspec = text[RSPEC_SEED, 1]
+      [:rspec, rspec] if rspec && [command, ENV["SPEC_OPTS"]].none? { |s| s.to_s.match?(RSPEC_SEED_GIVEN) }
     end
 
     # Pre-flight: run the command once against the UNMUTATED tree. Green (exit 0)

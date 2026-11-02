@@ -296,6 +296,15 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
+  # A command that runs a seeded Minitest suite and then an unseeded RSpec
+  # suite still reports the RSpec order.
+  def test_random_order_checks_each_runner_in_a_combined_run
+    text = "Run options: --seed 1\n2 runs, 2 assertions, 0 failures, 0 errors\nRandomized with seed 4242\n"
+    with_env("SEED" => "1", "TESTOPTS" => nil, "SPEC_OPTS" => nil) do
+      assert_equal [:rspec, "4242"], Backend.random_order("bin/run-both %{files}", text)
+    end
+  end
+
   # RSpec ignores SEED and TESTOPTS, so they do not hide its random order.
   def test_random_order_ignores_minitest_settings_under_rspec
     with_env("SEED" => "7", "TESTOPTS" => "--seed=7", "SPEC_OPTS" => nil) do

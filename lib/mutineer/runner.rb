@@ -282,7 +282,9 @@ module Mutineer
                   "set SEED=#{seed} before the mutineer command (SEED=#{seed} mutineer run ...), " \
                     "not inside --test-command"
                 else
-                  "add --order defined to the rspec command in --test-command"
+                  # SPEC_OPTS is read after the command line, so it would undo the fix.
+                  "add --order defined to the rspec command in --test-command and keep " \
+                    "--order rand out of SPEC_OPTS"
                 end
           warn "[mutineer] the clean run of --test-command printed a #{runner == :minitest ? 'Minitest' : 'RSpec'} " \
                "seed (#{seed}) and Mutineer found no fixed seed, so each mutant run may use a new test " \
