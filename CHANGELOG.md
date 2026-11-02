@@ -19,6 +19,8 @@ All notable changes to this project are documented here. The format is based on
 - **The "not green" message says it once (#360).** When the clean run of a
   file's tests failed, the message said "the unmutated suite is not green"
   twice. It now says it once, then names the test files after `Failed:`.
+  A failure that only the check of all test files together finds is listed
+  as `Failed: combined suite`.
   Under Minitest, the seed hint follows them.
   The failing test names and the first error are still not shown; #360
   tracks that.

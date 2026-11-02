@@ -248,7 +248,7 @@ module Mutineer
       # message that raises while it is built is not shown at all.
       details = begin
         e.full_message(highlight: false)
-      rescue StandardError
+      rescue StandardError, ScriptError
         Redaction::FAILED
       end
       warn "mutineer: #{Redaction.text(details)}"

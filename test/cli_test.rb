@@ -997,11 +997,26 @@ class CliTest < Minitest::Test
         end
       end
       assert_equal 1, status.status
+      assert_includes err, "adapter: [REDACTED]"
       refute_includes err, "s3cret"
     end
   ensure
     cli.send(:define_method, :run, original)
     previous ? ENV["DATABASE_URL"] = previous : ENV.delete("DATABASE_URL")
+  end
+
+  # #364 repro (the reporter's files): a run under the default reload
+  # strategy kills its one mutant and prints no constant-redefinition warning.
+  def test_reload_run_prints_no_constant_redefinition_warnings
+    Dir.mktmpdir("mutineer-proj") do |proj|
+      %w[constant_reload.rb constant_reload_test.rb].each { |f| FileUtils.cp(File.join(FIXTURES, f), proj) }
+      out, err, status = mutineer("run", "constant_reload.rb", "--test", "constant_reload_test.rb",
+                                  "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      summary = JSON.parse(out).fetch("summary")
+      assert_equal [1, 1, 0], summary.values_at("total", "killed", "survived")
+      refute_match(/already initialized constant|previous definition of/, err)
+    end
   end
 
   def test_ambiguous_option_is_a_usage_error
