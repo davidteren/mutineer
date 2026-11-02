@@ -104,8 +104,6 @@ jobs:
           extra-args: "--no-fail-fast"
 ```
 
-On `pull_request`, the Action tests changed lines. With `baseline:` set, only new survivors fail.
-
 ### Rails with PostgreSQL
 
 Before Mutineer boots Rails, add a database service, set `DATABASE_URL` and prepare the schema.
