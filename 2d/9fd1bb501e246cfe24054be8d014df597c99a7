@@ -1,0 +1,26 @@
+action.yml
+  s_631a03a1cf375a::t_db8f6b14a28894 319-320
+  s_631a03a1cf375a::t_d63730f34c4c26 92-95
+  s_631a03a1cf375a::t_30c9c494fb0e59 256-276
+  s_631a03a1cf375a::t_2926e0d0c09d4f 299-300
+CHANGELOG.md
+  s_631a03a1cf375a::t_23811bc8bda0a9 18-22
+docs/ci.md
+  s_631a03a1cf375a::t_e237a26737f6c3 149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2d9fd1bb501e246cfe24054be8d014df597c99a7",
+  "prompts": {},
+  "sessions": {
+    "s_631a03a1cf375a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d613f288-33ac-4d2c-8d2e-48094cb91b8d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
