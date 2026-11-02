@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **No "already initialized constant" warnings under reload (#364).** Each
+  mutant loads its whole file again, so every constant in the file was
+  assigned twice. Ruby then printed two warning lines per constant, per
+  mutant, on stderr. Mutineer now turns warnings off while it loads the
+  mutant file, in-process and on `--daemon`, and turns them back on before
+  the tests run. Warnings that the tests raise still print. Other warnings
+  raised while the mutant file loads, such as an unused variable under `-w`,
+  no longer print either. Scores and the JSON report do not change.
+
 ## [1.8.0] - 2026-10-29
 
 ### Highlights

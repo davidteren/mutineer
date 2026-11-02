@@ -170,6 +170,23 @@ class IsolationTest < Minitest::Test
     end
   end
 
+  # #364: each mutant load assigns the file's constants again. Ruby's
+  # "already initialized constant" warning must not print, and the warning
+  # level must be back before the tests run.
+  def test_apply_whole_file_does_not_warn_about_reassigned_constants
+    Dir.mktmpdir do |dir|
+      code = "module Isolation364; LIMIT = 10; end\n"
+      source = File.join(dir, "x.rb")
+      verbose = $VERBOSE
+      $VERBOSE = false
+      _, err = capture_io { 2.times { Mutineer::Isolation.apply_whole_file(code, source) } }
+      assert_equal false, $VERBOSE
+      refute_match(/already initialized constant|previous definition/, err)
+    ensure
+      $VERBOSE = verbose
+    end
+  end
+
   # #295: another run's sweep can run while this mutant loads. The file is
   # locked and named for a live pid, so the sweep leaves it in place.
   def test_a_sweep_during_load_keeps_the_mutant_file
