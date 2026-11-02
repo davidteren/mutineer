@@ -16,11 +16,13 @@ All notable changes to this project are documented here. The format is based on
   a mutant run for a reason the mutant did not cause, and that mutant
   scores a false `killed`. When the clean run prints a random seed
   (Minitest `Run options: --seed N`, RSpec `Randomized with seed N`) and
-  no seed is set, Mutineer now prints one warning with the fix: set `SEED`
-  for Minitest, or pass `--order defined` to RSpec. The docs for
-  `--test-command` say the same. Mutineer does not set the seed itself, so
-  scores do not change. It cannot see a seed that a wrapper script sets,
-  so the warning still prints there.
+  Mutineer finds no fixed seed, it now prints one warning with the fix for
+  that runner: put `SEED=1` before the `mutineer` command for Minitest, or
+  add `--order defined` to an RSpec command. The docs for `--test-command`
+  say the same. Mutineer does not set the seed itself, so scores do not
+  change. It cannot see a seed set in a wrapper script or `.rspec`, or a
+  Minitest `test_order`, so the warning can print when the order is
+  already fixed. #368 tracks these limits.
 - **No "already initialized constant" warnings under reload (#364).** Each
   mutant loads its whole file again, so every constant in the file was
   assigned twice. Ruby then printed two warning lines per constant, per

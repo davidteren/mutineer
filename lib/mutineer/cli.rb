@@ -84,8 +84,9 @@ module Mutineer
                              subprocess (for apps on Ruby < 3.4). CMD must contain
                              %{files}. Scrubs Mutineer Ruby PATH pins; set RAILS_ENV
                              on the mutineer command (not as KEY=val inside CMD).
-                             CMD must run tests in a fixed order (SEED=1 for
-                             Minitest, --order defined for RSpec)
+                             CMD must run tests in a fixed order: put SEED=1
+                             before the mutineer command for Minitest, or add
+                             --order defined to an RSpec CMD
         --daemon             Boot the app ONCE in a persistent daemon and fork per
                              mutant, with per-worker DB isolation so --jobs N is safe
                              under Rails (needs --rails/--boot; not with --test-command).

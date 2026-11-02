@@ -267,46 +267,38 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
-  # #338: the seed line of a shuffled run is reported, unless a seed is given.
-  def test_smoke_check_reports_random_order_seed
-    ["Run options: --seed 4242", "Randomized with seed 4242"].each do |line|
+  # #338: the runner and seed of a shuffled run are reported, unless a seed is given.
+  def test_smoke_check_reports_random_order
+    { "Run options: --seed 4242" => :minitest, "Randomized with seed 4242" => :rspec }.each do |line, runner|
       with_script(%(puts #{line.dump}\n)) do |path|
         with_env("SEED" => nil, "TESTOPTS" => nil, "SPEC_OPTS" => nil) do
-          _elapsed, _summary, seed = Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
-          assert_equal "4242", seed, line
+          _elapsed, _summary, order = Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
+          assert_equal [runner, "4242"], order, line
         end
       end
     end
   end
 
-  def test_random_order_seed_is_nil_when_the_order_is_fixed
+  def test_random_order_is_nil_when_the_order_is_fixed
     text = "Run options: --seed 4242\n"
     rspec = "Randomized with seed 4242\n"
     with_env("SEED" => nil, "TESTOPTS" => nil, "SPEC_OPTS" => nil) do
-      assert_nil Backend.random_order_seed("rspec --order defined %{files}", "3 examples, 0 failures\n")
-      assert_nil Backend.random_order_seed("ruby %{files} --seed 7", text)
-      assert_nil Backend.random_order_seed("env SEED=7 ruby %{files}", text)
-      assert_equal "4242", Backend.random_order_seed("ruby %{files}", text)
-      with_env("SEED" => "7") { assert_nil Backend.random_order_seed("ruby %{files}", text) }
-      with_env("TESTOPTS" => "--seed=7") { assert_nil Backend.random_order_seed("rake test", text) }
-      with_env("SPEC_OPTS" => "--seed 7") { assert_nil Backend.random_order_seed("rspec %{files}", rspec) }
+      assert_nil Backend.random_order("rspec --order defined %{files}", "3 examples, 0 failures\n")
+      assert_nil Backend.random_order("ruby %{files} --seed 7", text)
+      assert_nil Backend.random_order("env SEED=7 ruby %{files}", text)
+      assert_nil Backend.random_order("rspec --seed 7 %{files}", rspec)
+      assert_equal [:minitest, "4242"], Backend.random_order("ruby %{files}", text)
+      with_env("SEED" => "7") { assert_nil Backend.random_order("ruby %{files}", text) }
+      with_env("TESTOPTS" => "--seed=7") { assert_nil Backend.random_order("rake test", text) }
+      with_env("SPEC_OPTS" => "--seed 7") { assert_nil Backend.random_order("rspec %{files}", rspec) }
     end
   end
 
   # RSpec ignores SEED and TESTOPTS, so they do not hide its random order.
-  def test_random_order_seed_ignores_minitest_settings_under_rspec
+  def test_random_order_ignores_minitest_settings_under_rspec
     with_env("SEED" => "7", "TESTOPTS" => "--seed=7", "SPEC_OPTS" => nil) do
-      assert_equal "4242", Backend.random_order_seed("rspec %{files}", "Randomized with seed 4242\n")
+      assert_equal [:rspec, "4242"], Backend.random_order("env SEED=7 rspec %{files}", "Randomized with seed 4242\n")
     end
-  end
-
-  # Sets each env key (nil unsets it) for the block, then restores it.
-  def with_env(vars)
-    saved = vars.keys.to_h { |k| [k, ENV.fetch(k, nil)] }
-    vars.each { |k, v| ENV[k] = v }
-    yield
-  ensure
-    saved.each { |k, v| ENV[k] = v }
   end
 
   def test_smoke_check_non_green_raises_with_output

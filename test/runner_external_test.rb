@@ -162,8 +162,8 @@ class RunnerExternalTest < Minitest::Test
       out, err, status = mutineer("run", "ledger.rb", "--test", "ledger_test.rb", "--format", "json",
                                   "--test-command", "#{RUBY} %{files}", chdir: proj, env: { "SEED" => nil })
       assert_equal 0, status.exitstatus, err
-      assert_equal 1, err.scan("ran the tests in a random order (seed 1)").size, err
-      assert_includes err, "set SEED=1 for Minitest"
+      assert_equal 1, err.scan("printed a Minitest seed (1)").size, err
+      assert_includes err, "set SEED=1 before the mutineer command"
       assert_equal 1, JSON.parse(out).dig("summary", "killed"), err
     end
   end
@@ -175,7 +175,7 @@ class RunnerExternalTest < Minitest::Test
       out, err, status = mutineer("run", "ledger.rb", "--test", "ledger_test.rb", "--format", "json",
                                   "--test-command", "#{RUBY} %{files}", chdir: proj, env: { "SEED" => "1" })
       assert_equal 0, status.exitstatus, err
-      refute_includes err, "random order"
+      refute_includes err, "seed (1)"
       assert_equal 1, JSON.parse(out).dig("summary", "killed"), err
     end
   end

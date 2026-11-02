@@ -19,7 +19,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--boot FILE` | Require app entry point before forking | None |
 | `--[no-]daemon` | Boot once; separate worker test databases. Minitest only; requires `--rails` or `--boot` | Off |
 | `--strategy reload\|redefine` | Reload file or redefine mutated method | `reload`; `redefine` under `--rails` without `--daemon` |
-| `--test-command CMD` | Run tests in another Ruby subprocess; include `%{files}`. Forces one worker and sets `PARALLEL_WORKERS=1`; a wrapper can reset it. Run the tests in a fixed order: set `SEED=1` for Minitest, or pass `--order defined` to RSpec | None |
+| `--test-command CMD` | Run tests in another Ruby subprocess; include `%{files}`. Forces one worker and sets `PARALLEL_WORKERS=1`; a wrapper can reset it. Run the tests in a fixed order: for Minitest, put `SEED=1` before the `mutineer` command (not inside `CMD`); for RSpec, add `--order defined` to `CMD` | None |
 | `--timeout SECONDS` | Per-mutant limit, in-process | `10` |
 | `--capture-timeout SECONDS` | Coverage capture and clean-run limit | `120` |
 | `--cache-dir DIR` | Coverage cache directory | `.mutineer` |

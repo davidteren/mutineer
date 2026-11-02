@@ -65,9 +65,11 @@ module Mutineer
     MINITEST_SEED = /^Run options:.*--seed (\d+)/
     # The seed line RSpec prints when it shuffles the tests. Captures the seed.
     RSPEC_SEED = /^Randomized with seed (\d+)/
-    # A seed given on the command or in TESTOPTS or SPEC_OPTS. Both runners
-    # print the seed line for a fixed seed too, so the line alone cannot tell.
-    SEED_GIVEN = /\bSEED=|--seed\b/
+    # A Minitest seed given on the command or in TESTOPTS. Minitest prints its
+    # seed line for a fixed seed too, so the line alone cannot tell.
+    MINITEST_SEED_GIVEN = /\bSEED=|--seed\b/
+    # An RSpec seed given on the command or in SPEC_OPTS. RSpec ignores SEED.
+    RSPEC_SEED_GIVEN = /--seed\b/
 
     # PATH entries that pin a concrete Ruby under a version manager (ahead of
     # shims). Optional trailing slash; normal bins are left alone.
@@ -293,45 +295,45 @@ module Mutineer
       output.b.gsub(ANSI_CODE, "")
     end
 
-    # The seed of a random test order the output shows, or nil. Nil also when
-    # the order looks fixed: the command names a seed, or, for Minitest, SEED
-    # or TESTOPTS sets one, or, for RSpec, SPEC_OPTS does. RSpec `--order
-    # defined` prints no seed line. Ceiling: a seed set in a wrapper script or
-    # `.rspec`, or Minitest's `test_order`, is not seen, so the warning still
-    # prints (#338).
+    # The runner and seed of a random test order the output shows, or nil.
+    # Nil also when Mutineer sees a fixed seed: for Minitest, SEED, TESTOPTS
+    # or the command sets one; for RSpec, SPEC_OPTS or the command does. RSpec
+    # `--order defined` prints no seed line. Ceiling: a seed set in a wrapper
+    # script or `.rspec`, or Minitest's `test_order`, is not seen, so the
+    # warning still prints (#338, limits tracked in #368).
     #
     # @api private
     # @param command [String] the --test-command template.
     # @param text [String] output from {summary_text}.
-    # @return [String, nil] the seed the clean run used.
-    def self.random_order_seed(command, text)
-      return nil if command.match?(SEED_GIVEN)
-
+    # @return [Array(Symbol, String), nil] `[:minitest | :rspec, seed]`.
+    def self.random_order(command, text)
       if (seed = text[MINITEST_SEED, 1])
-        seed if ENV["SEED"].to_s.empty? && !ENV["TESTOPTS"].to_s.match?(SEED_GIVEN)
+        unseeded = ENV["SEED"].to_s.empty? &&
+                [command, ENV["TESTOPTS"]].none? { |s| s.to_s.match?(MINITEST_SEED_GIVEN) }
+        [:minitest, seed] if unseeded
       elsif (seed = text[RSPEC_SEED, 1])
-        seed unless ENV["SPEC_OPTS"].to_s.match?(SEED_GIVEN)
+        [:rspec, seed] if [command, ENV["SPEC_OPTS"]].none? { |s| s.to_s.match?(RSPEC_SEED_GIVEN) }
       end
     end
 
     # Pre-flight: run the command once against the UNMUTATED tree. Green (exit 0)
     # returns the elapsed seconds (used to calibrate the per-mutant timeout),
     # whether the output has a Minitest or RSpec summary line (used to turn on
-    # the summary check in {run}), and the seed of a random test order (see
-    # {random_order_seed}); anything else raises SmokeCheckError so the run
+    # the summary check in {run}), and the runner and seed of a random test
+    # order (see {random_order}); anything else raises SmokeCheckError so the run
     # aborts before scoring.
     #
     # @param command [String] the --test-command template.
     # @param files [Array<String>] test file paths.
     # @param timeout [Numeric] ceiling for the calibration run.
-    # @return [Array(Float, Boolean, String, nil)]
-    #   `[elapsed_seconds, summary_seen, random_seed]`.
+    # @return [Array(Float, Boolean, Array(Symbol, String), nil)]
+    #   `[elapsed_seconds, summary_seen, random_order]`.
     # @raise [Mutineer::SmokeCheckError] when the clean suite is not green.
     def self.smoke_check!(command, files, timeout: SMOKE_TIMEOUT)
       kind, code, output, elapsed = spawn_capture(command, files, timeout)
       if kind == :exited && code&.zero?
         text = summary_text(output)
-        return [elapsed, summary_line?(text), random_order_seed(command, text)]
+        return [elapsed, summary_line?(text), random_order(command, text)]
       end
 
       reason =

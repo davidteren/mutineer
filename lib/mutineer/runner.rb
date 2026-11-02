@@ -264,7 +264,7 @@ module Mutineer
         # 3x the clean run, floor 30s, ceiling 300s: a heuristic. The floor covers
         # a fast suite; the ceiling bounds a hung mutant (infinite loop) so a
         # handful cannot stall a serial run for ~45min on a slow suite.
-        smoke_elapsed, check_summary, random_seed = ExternalBackend.smoke_check!(config.test_command, abs_tests)
+        smoke_elapsed, check_summary, random_order = ExternalBackend.smoke_check!(config.test_command, abs_tests)
         timeout = [[smoke_elapsed * 3, 30].max, 300].min.ceil
         # #292: the summary check needs a summary line to look for. Without one
         # on the clean run, keep the exit-code rule and say what that costs.
@@ -276,11 +276,17 @@ module Mutineer
         end
         # #338: each mutant run picks its own order, so an order-dependent
         # suite can fail a mutant run for a reason the mutant did not cause.
-        if random_seed
-          warn "[mutineer] the clean run of --test-command ran the tests in a random order " \
-               "(seed #{random_seed}), and each mutant run picks a new one, so an order-dependent " \
-               "suite can give a false kill. Fix the order: set SEED=#{random_seed} for Minitest, " \
-               "or pass --order defined to RSpec."
+        if random_order
+          runner, seed = random_order
+          fix = if runner == :minitest
+                  "set SEED=#{seed} before the mutineer command (SEED=#{seed} mutineer run ...), " \
+                    "not inside --test-command"
+                else
+                  "add --order defined to the rspec command in --test-command"
+                end
+          warn "[mutineer] the clean run of --test-command printed a #{runner == :minitest ? 'Minitest' : 'RSpec'} " \
+               "seed (#{seed}) and Mutineer found no fixed seed, so each mutant run may use a new test " \
+               "order and an order-dependent suite can give a false kill. To fix the order, #{fix}."
         end
 
         results = []
