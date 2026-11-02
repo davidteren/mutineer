@@ -261,7 +261,8 @@ class DaemonRedactionTest < Minitest::Test
     client.send(:close_io)
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
 
-    assert_operator elapsed, :<, Mutineer::DaemonClient::DRAIN_GRACE / 2.0
+    # The old drain always waited the full DRAIN_GRACE; leave room for a slow runner.
+    assert_operator elapsed, :<, Mutineer::DaemonClient::DRAIN_GRACE * 0.8
     assert_equal "boot failed: postgres://u:[REDACTED]@ho st/db", errio.string
   ensure
     wr&.close

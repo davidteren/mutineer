@@ -21,8 +21,9 @@ All notable changes to this project are documented here. The format is based on
   `postgres://u:p@ss@h/db and p@ss`, only `p@ss` is hidden now. Before, the
   host and the rest of the line were hidden too. One known limit: in a URL
   other than DATABASE_URL, a password that holds an `@`, a host, a `/`, `:`,
-  `?` or `#`, and a space, in a URL whose own host has nothing after it,
-  shows the part after that `@`. #341 tracks it.
+  `?` or `#`, and a space, shows the part after that `@` when the URL's own
+  host has nothing after it, or has an `@` in its path or query. #341 tracks
+  it.
 - **Daemon shutdown no longer waits a second (#341).** A process the app
   started could keep the daemon's error output open. Each quit or respawn of
   `--daemon` then waited one second. Mutineer now stops waiting once the

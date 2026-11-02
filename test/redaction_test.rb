@@ -253,9 +253,11 @@ class RedactionTest < Minitest::Test
   end
 
   # Known limit (#341): a password that holds an `@`, a host, a `/` and a
-  # space, in a URL whose own host has nothing after it, shows the rest.
+  # space shows the rest when the URL's own host has nothing after it, or has
+  # an `@` in its path or query.
   def test_url_password_limit_is_pinned
     assert_equal "postgres://u:[REDACTED]@b/c d@h", redact("postgres://u:a@b/c d@h", "")
+    assert_equal "postgres://u:[REDACTED]@h:1 x@db/app?n=ci@corp", redact("postgres://u:p@h:1 x@db/app?n=ci@corp", "")
   end
 
   def test_still_hides_a_password_that_only_partly_matches_the_username

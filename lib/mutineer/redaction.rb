@@ -23,7 +23,7 @@ module Mutineer
     # `u:pw@h/x and y@h2/db` the text up to `h2` is hidden. One case still
     # shows part of a password: one that holds an `@`, a host, a `/`, `:`,
     # `?` or `#`, and a space (`a@b/c d`), in a URL whose own host has no
-    # port, path or query.
+    # port, path or query, or has an `@` in them (`?n=ci@corp`).
     URL_PASSWORD = %r{
       ([a-z][a-z0-9+.\-]*://[^\s:/@"'\\]*):
       (?:
