@@ -5,18 +5,35 @@ require "uri"
 module Mutineer
   # Hides database credentials in text bound for a terminal: an error reply,
   # a log line, a warning. Rails parses DATABASE_URL itself, so an error about
-  # a malformed one can quote the whole URL. Outside a URL a password of 3
-  # characters or fewer is hidden only as a whole token, so it cannot blank
-  # letters inside other words. A password that exactly equals the username is
-  # left visible outside a URL, so `role "postgres"` stays readable.
+  # a malformed one can quote the whole URL. Outside a URL a password form
+  # made only of word characters is hidden only as a whole token, so it cannot
+  # blank letters inside other words (#341). A password that exactly equals the
+  # username is left visible outside a URL, so `role "postgres"` stays readable.
   #
   # Stdlib only: the app-side daemon loads this file without the rest of
   # mutineer.
   module Redaction
-    # The password in a `scheme://user:password@host` URL. Greedy up to the last
-    # `@` before an unescaped quote or line end, so a malformed password with a
-    # space, an unescaped `@`, or a quote `inspect` escaped (`\"`) is hidden too.
-    URL_PASSWORD = %r{([a-z][a-z0-9+.\-]*://[^\s:/@"'\\]*):(?:\\.|[^"'\r\n\\])*@}i
+    # The password in a `scheme://user:password@host` URL. It ends at an `@`
+    # followed by a host: a run with no `@` up to a `/`, `:`, `?`, `#`, a
+    # space, a quote, a backslash or the end. In order, it ends at:
+    #
+    # 1. the last such `@` before a space, so `p@ss@h/db and a@b` hides `p@ss`;
+    # 2. else the first such `@`, so a password with a space is hidden but
+    #    later text with an `@` stays readable;
+    # 3. else the last `@` before an unescaped quote or line end (fail safe).
+    #
+    # A malformed password with an `@`, a space, or a quote `inspect` escaped
+    # (`\"`) is hidden too. When the two goals conflict, hiding wins: in
+    # `u:pw@h/x@h2/db` the password may be `pw@h/x`, so the host `h` is hidden
+    # with it (#341).
+    URL_PASSWORD = %r{
+      ([a-z][a-z0-9+.\-]*://[^\s:/@"'\\]*):
+      (?:
+        (?:\\.|[^"'\s\\])*@(?=[^@\s"'\\/:?\#]+(?:[\s"'\\/:?\#]|\z))
+      | (?:\\.|[^"'\r\n\\])*?@(?=[^@\s"'\\/:?\#]+(?:[\s"'\\/:?\#]|\z))
+      | (?:\\.|[^"'\r\n\\])*@
+      )
+    }xi
     # What replaces a hidden password.
     REDACTED = "[REDACTED]"
     # What {text} returns when it fails: never the input, which may hold the
@@ -24,18 +41,23 @@ module Mutineer
     FAILED = "[message hidden: redaction failed]"
     # An ASCII word character, the edge a whole-token match must not touch.
     WORD_CHAR = "[A-Za-z0-9_]"
-    # The longest password form hidden only as a whole token. A longer form is
-    # hidden wherever it appears, even glued to an escape such as `%40` or
-    # `\x41`: failing toward hiding too much is safer for a long secret.
+    # The longest password form hidden only as a whole token whatever its
+    # characters. A longer form with a non-word character is hidden wherever
+    # it appears, because its edges are no reliable token boundary.
     SHORT_FORM = 3
+    # An escape that glues a word character to the left of a password form in
+    # a message: `%40`, `\x41`, `\u0041`, `\u{41}`, `\101`, `\n`. A form right
+    # after one is still a whole token.
+    ESCAPE = /%\h{2}|\\x\h{2}|\\u(?:\h{4}|\{\h+\})|\\[0-7]{1,3}|\\[a-z]/.source
 
     module_function
 
     # Hide the password in any URL, and the DATABASE_URL password (from its
     # `user:password@` pair and from its `password=` query parameter) wherever
     # it appears: whole, percent-decoded, `inspect` escaped, or cut short after
-    # its `scheme://user:` prefix. Outside a URL a form of {SHORT_FORM}
-    # characters or fewer is hidden only as a whole token. Never raises: text in
+    # its `scheme://user:` prefix. Outside a URL a form of word characters, or
+    # of {SHORT_FORM} characters or fewer, is hidden only as a whole token; a
+    # longer form with another character is hidden anywhere. Never raises: text in
     # any encoding comes back as UTF-8, and an internal error returns {FAILED}.
     #
     # @param text [#to_s]
@@ -68,7 +90,8 @@ module Mutineer
       raws.concat(query_passwords(url))
       secrets = raws.compact.uniq.flat_map { |raw| password_forms(raw) }.uniq.sort_by { |form| -form.length }
       secrets.reduce(out) do |acc, secret|
-        secret.length > SHORT_FORM ? acc.gsub(secret, REDACTED) : redact_word(acc, secret)
+        whole_token = secret.length <= SHORT_FORM || secret.match?(/\A#{WORD_CHAR}+\z/)
+        whole_token ? redact_word(acc, secret) : acc.gsub(secret, REDACTED)
       end
     rescue StandardError
       FAILED
@@ -93,14 +116,15 @@ module Mutineer
     end
 
     # Replace `form` in `text` only where it is a whole token: no ASCII word
-    # character touches either edge, including a punctuation edge.
+    # character touches either edge, including a punctuation edge. A form
+    # right after an {ESCAPE} counts as a whole token, and the escape is kept.
     #
     # @param text [String]
     # @param form [String] one form of the password.
     # @return [String]
     def redact_word(text, form)
-      pattern = "(?<!#{WORD_CHAR})#{Regexp.escape(form)}(?!#{WORD_CHAR})"
-      text.gsub(Regexp.new(pattern), REDACTED)
+      pattern = "(#{ESCAPE}|(?<!#{WORD_CHAR}))#{Regexp.escape(form)}(?!#{WORD_CHAR})"
+      text.gsub(Regexp.new(pattern)) { "#{Regexp.last_match(1)}#{REDACTED}" }
     end
 
     # An exception as `Class: message`, redacted. Each part is redacted on its

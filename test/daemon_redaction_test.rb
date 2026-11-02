@@ -240,6 +240,29 @@ class DaemonRedactionTest < Minitest::Test
     assert_equal "boot failed: postgres://u:[REDACTED]@ho st/db", errio.string
   end
 
+  # #341 item 7: a grandchild that holds the stderr pipe open never sends EOF.
+  # Once the daemon has exited and the pipe is empty, close_io stops waiting,
+  # and the last partial line still prints.
+  def test_close_io_does_not_wait_on_a_pipe_a_grandchild_holds
+    errio = StringIO.new
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe # wr stays open, as a grandchild would keep it
+    daemon = Process.detach(spawn(RbConfig.ruby, "-e", "$stderr.print 'boot failed: #{BAD_URL}'", err: wr))
+    daemon.join
+    client.instance_variable_set(:@stderr, rd)
+    client.instance_variable_set(:@wait_thr, daemon)
+    client.instance_variable_set(:@drain, Thread.new { client.send(:drain_stderr, rd) })
+
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    client.send(:close_io)
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+    assert_operator elapsed, :<, Mutineer::DaemonClient::DRAIN_GRACE / 2.0
+    assert_equal "boot failed: postgres://u:[REDACTED]@ho st/db", errio.string
+  ensure
+    wr&.close
+  end
+
   def test_daemon_stderr_drain_keeps_a_last_partial_line
     assert drain("first\ntail without newline").end_with?("tail without newline")
   end

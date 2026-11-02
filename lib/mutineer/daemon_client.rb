@@ -44,9 +44,13 @@ module Mutineer
     # Seconds the daemon gets to boot the app and answer the handshake. A boot
     # that never returns ends the run instead of hanging it (#101).
     BOOT_TIMEOUT = 600
-    # Seconds close_io waits for the stderr drain to reach EOF before it stops
-    # the thread, so a last line without a newline is not lost.
+    # Most seconds close_io waits for the stderr drain to finish. The drain
+    # ends at EOF, or once the daemon has exited and the pipe is empty, so
+    # only a grandchild that keeps writing makes close_io wait this long.
     DRAIN_GRACE = 1
+    # Seconds the stderr drain waits for output before it checks whether the
+    # daemon has exited. A grandchild that holds the pipe open never sends EOF.
+    DRAIN_POLL = 0.05
     # Bundler's marker for a variable that was unset before it activated.
     BUNDLER_UNSET = "BUNDLER_ENVIRONMENT_PRESERVER_INTENTIONALLY_NIL"
 
@@ -419,27 +423,56 @@ module Mutineer
     # A line is the unit the daemon and the app write, so a password is never
     # split across two redaction calls. The line break is kept outside the
     # redaction, so a line redaction hides as a whole still ends its line.
-    # After a write fails (EPIPE from a tool stderr that went away), the drain
-    # keeps reading and drops the lines, so the daemon never blocks on a full
-    # pipe. The outer rescue swallows the benign EBADF/IOError raised when
-    # close_io closes the pipe under an in-flight read, so the thread never
-    # ends with an error that close_io's join would re-raise.
+    # The drain ends at EOF, or once the daemon has exited and the pipe is
+    # empty: a grandchild that keeps the pipe open would otherwise hold it
+    # until close_io's DRAIN_GRACE (#341). Either way it writes a last line
+    # that has no newline. After a write fails (EPIPE from a tool stderr that
+    # went away), the drain keeps reading and drops the lines, so the daemon
+    # never blocks on a full pipe. The outer rescue swallows the benign
+    # EBADF/IOError raised when close_io closes the pipe under an in-flight
+    # read, so the thread never ends with an error that close_io's join would
+    # re-raise.
     #
     # @param io [IO] the daemon's stderr pipe.
     # @return [nil]
     def drain_stderr(io)
       writable = true
-      io.each_line do |line|
-        next unless writable
+      pending = "".b
+      loop do
+        # Read the exit before the pipe: everything the daemon wrote is in the
+        # pipe by the time it has exited, so an empty read after it is the end.
+        exited = @wait_thr && !@wait_thr.alive?
+        chunk = io.read_nonblock(4096, exception: false)
+        break if chunk.nil?
 
-        body = line.chomp("\n").scrub # an invalid byte must not stop the drain
-        @errio.write(Redaction.text(body), body.length < line.length ? "\n" : "")
-      rescue StandardError
-        writable = false
+        if chunk == :wait_readable
+          break if exited
+
+          io.wait_readable(DRAIN_POLL)
+          next
+        end
+        pending << chunk.b
+        while (cut = pending.index("\n"))
+          line = pending.slice!(0..cut)
+          writable &&= write_redacted(line)
+        end
       end
+      write_redacted(pending) if writable && !pending.empty?
       nil
     rescue StandardError
       nil
+    end
+
+    # Write one line of daemon stderr to the tool's stderr, redacted.
+    #
+    # @param line [String] raw bytes, with or without the trailing newline.
+    # @return [Boolean] false when the write failed.
+    def write_redacted(line)
+      body = line.chomp("\n").force_encoding(Encoding::UTF_8).scrub # an invalid byte must not stop the drain
+      @errio.write(Redaction.text(body), body.bytesize < line.bytesize ? "\n" : "")
+      true
+    rescue StandardError
+      false
     end
 
     # Close the IPC pipes, stop the stderr-drain thread, and reap the daemon so a
@@ -454,9 +487,9 @@ module Mutineer
       rescue Errno::ESRCH
         nil # it exited between the check and the kill
       end
-      # The drain holds a partial last line until EOF. Give it a moment to reach
-      # EOF now the daemon is dead, so a boot error with no final newline still
-      # prints; then stop it BEFORE closing its fd (avoids an EBADF mid-read).
+      # The drain ends on its own once the daemon has exited and the pipe is
+      # empty, writing a boot error with no final newline. Wait for that, then
+      # stop it BEFORE closing its fd (avoids an EBADF mid-read).
       @drain&.join(DRAIN_GRACE)
       @drain&.kill
       [@stdin, @stdout, @stderr].each { |io| io&.close rescue nil } # rubocop:disable Style/RescueModifier
