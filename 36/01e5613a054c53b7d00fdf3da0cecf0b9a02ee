@@ -1,0 +1,21 @@
+test/docs_contract_test.rb
+  s_2c953e24b9e1fe::t_d31a21051c2aea 112-113,117
+README.md
+  s_2c953e24b9e1fe::t_32340028226378 22-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3601e5613a054c53b7d00fdf3da0cecf0b9a02ee",
+  "prompts": {},
+  "sessions": {
+    "s_2c953e24b9e1fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9ab16ac-735f-4ebc-ae8f-635a479e989d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
