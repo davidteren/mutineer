@@ -16,8 +16,9 @@ All notable changes to this project are documented here. The format is based on
   (Minitest `Run options: --seed N`, RSpec `Randomized with seed N`) and
   Mutineer finds no fixed seed, it now prints one warning with the fix for
   that runner: put `SEED=1` before the `mutineer` command for Minitest, or
-  add `--order defined` to an RSpec command. The docs for `--test-command`
-  say the same. Mutineer does not set the seed itself, so scores do not
+  add `--order defined` to an RSpec command and keep `--order rand` out of
+  `SPEC_OPTS`, which RSpec reads after the command. The docs for
+  `--test-command` say the same. Mutineer does not set the seed itself, so scores do not
   change. It cannot see a seed set in a wrapper script or `.rspec`, or a
   Minitest `test_order`, so the warning can print when the order is
   already fixed. #368 tracks these limits.
