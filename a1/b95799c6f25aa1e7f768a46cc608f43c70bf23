@@ -1,0 +1,42 @@
+docs/cli.md
+  s_04b9cadd0694d9::t_4882c76f273d3f 22
+test/fixtures/order_dependent/ledger_test.rb
+  s_04b9cadd0694d9::t_ffe4513e0d57de 7
+  s_04b9cadd0694d9::t_fb1d7a50c2d542 1-6,8-21
+lib/mutineer/cli.rb
+  s_04b9cadd0694d9::t_4882c76f273d3f 86-88
+test/runner_external_test.rb
+  s_04b9cadd0694d9::t_f48ea1f54a1728 157-201
+lib/mutineer/external_backend.rb
+  s_04b9cadd0694d9::t_2e8b74c398747b 295-311,313,315-317,322-323,327-330
+  s_04b9cadd0694d9::t_5cab05aab61668 64-69
+CHANGELOG.md
+  s_04b9cadd0694d9::t_4882c76f273d3f 11-21
+lib/mutineer/runner.rb
+  s_04b9cadd0694d9::t_699f9e5a91cbd2 267
+  s_04b9cadd0694d9::t_b22b8fa9a4a7b8 277-283
+  s_04b9cadd0694d9::t_6c6452e8f85a40 284
+test/fixtures/order_dependent/ledger.rb
+  s_04b9cadd0694d9::t_b72786d110ee00 18
+  s_04b9cadd0694d9::t_fb1d7a50c2d542 1-17,19-20
+test/external_backend_test.rb
+  s_04b9cadd0694d9::t_f48ea1f54a1728 270-303
+docs/rails-setup.md
+  s_04b9cadd0694d9::t_4882c76f273d3f 225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a1b95799c6f25aa1e7f768a46cc608f43c70bf23",
+  "prompts": {},
+  "sessions": {
+    "s_04b9cadd0694d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "094c6fd3-b03e-4cdc-8a7c-adc64bc6ad49",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
