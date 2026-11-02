@@ -22,8 +22,9 @@ All notable changes to this project are documented here. The format is based on
   A failure that only the check of all test files together finds is listed
   as `Failed: combined suite`.
   Under Minitest, the seed hint follows them.
-  The failing test names and the first error are still not shown; #360
-  tracks that.
+  The message itself still does not name the failing tests or the first
+  error; #360 tracks that. On the default in-process path, the failing
+  test's own report still prints on stderr before the message.
 - **An unexpected error no longer prints an unredacted message (#341).**
   An error that no other handler expected went to Ruby's default printer,
   which did not hide a database password in its message. The CLI now prints
