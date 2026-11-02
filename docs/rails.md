@@ -22,6 +22,7 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/models/o
 
 Review each survivor. Add a test for a missed behaviour, or record why the change
 is equivalent before ignoring it. Start without a score threshold.
+Full first-run steps: [First run to steady state](https://github.com/davidteren/mutineer/blob/main/docs/getting-started.md).
 
 ## Report-only in CI
 
