@@ -1,0 +1,24 @@
+test/fixtures/action_harness.sh
+  s_631a03a1cf375a::t_e33d2ddc0427ae 218-219,222-224
+  s_631a03a1cf375a::t_89d4afc8774c2c 233
+  s_631a03a1cf375a::t_bea010599d005e 225
+test/action_harness_test.rb
+  s_631a03a1cf375a::t_98eb7f92994d5d 68
+  s_631a03a1cf375a::t_af288918d31c9b 31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5caf44c32397fe48e9a66946767d500ce6a7350e",
+  "prompts": {},
+  "sessions": {
+    "s_631a03a1cf375a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d613f288-33ac-4d2c-8d2e-48094cb91b8d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
