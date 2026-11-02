@@ -1,0 +1,23 @@
+CHANGELOG.md
+  s_a73b5274fea120::t_e9ab61815d261e 21-22,30-33
+lib/mutineer/cli.rb
+  s_a73b5274fea120::t_e9ab61815d261e 187,244,247-254
+test/cli_test.rb
+  s_a73b5274fea120::t_e9ab61815d261e 984-1012
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "996adc3f0a1b8308f4b2c089e576a247c39954ac",
+  "prompts": {},
+  "sessions": {
+    "s_a73b5274fea120": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b72fec05-766c-47d0-89bd-4b6c38c74d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
