@@ -251,7 +251,7 @@ class DaemonRedactionTest < Minitest::Test
     errio = StringIO.new
     client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
     rd, wr = IO.pipe # wr stays open, as a grandchild would keep it
-    daemon = Process.detach(spawn(RbConfig.ruby, "-e", "$stderr.print 'boot failed: #{BAD_URL}'", err: wr))
+    daemon = Process.detach(spawn({ "RUBYOPT" => nil }, RbConfig.ruby, "-e", "$stderr.print 'boot failed: #{BAD_URL}'", err: wr))
     daemon.join
     client.instance_variable_set(:@stderr, rd)
     client.instance_variable_set(:@wait_thr, daemon)

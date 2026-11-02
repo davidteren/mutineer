@@ -353,10 +353,10 @@ module Mutineer
             "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run",
             unsetenv_others: true, chdir: @app_root
           )
-          # Replies are UTF-8 JSON, and the app's stderr is redacted as text: with
-          # LANG unset both pipes would read as US-ASCII (#303).
+          # Replies are UTF-8 JSON: with LANG unset the pipe would read as
+          # US-ASCII (#303). The stderr drain reads bytes and marks each line
+          # UTF-8 itself (write_redacted).
           @stdout.set_encoding(Encoding::UTF_8)
-          @stderr.set_encoding(Encoding::UTF_8)
           # Drain daemon stderr to the tool's stderr so child/boot errors are visible,
           # redacted line by line (#288: the app's output goes through here too).
           # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn.
