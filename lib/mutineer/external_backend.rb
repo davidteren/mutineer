@@ -61,6 +61,17 @@ module Mutineer
     RSPEC_OUTSIDE_ERROR = /errors? occurred outside of examples/
     # ANSI colour codes, removed before matching so a coloured summary still counts.
     ANSI_CODE = /\e\[[\d;]*m/
+    # The seed line Minitest prints before every run. Captures the seed.
+    MINITEST_SEED = /^Run options:.*--seed (\d+)/
+    # The seed line RSpec prints when it shuffles the tests. Captures the seed.
+    RSPEC_SEED = /^Randomized with seed (\d+)/
+    # A Minitest seed given on the command or in TESTOPTS (`SEED=N`, `--seed N`
+    # or `-s N`). Minitest prints its seed line for a fixed seed too, so the
+    # line alone cannot tell.
+    MINITEST_SEED_GIVEN = /\bSEED=|--seed\b|(?:\A|\s)-s\b/
+    # An RSpec seed given on the command or in SPEC_OPTS (`--seed N` or
+    # `--order rand:N`). RSpec ignores SEED.
+    RSPEC_SEED_GIVEN = /--seed\b|\brand(?:om)?:\d/
 
     # PATH entries that pin a concrete Ruby under a version manager (ahead of
     # shims). Optional trailing slash; normal bins are left alone.
@@ -286,20 +297,50 @@ module Mutineer
       output.b.gsub(ANSI_CODE, "")
     end
 
+    # The runner and seed of a random test order the output shows, or nil.
+    # Nil also when Mutineer sees a fixed seed: for Minitest, SEED, TESTOPTS
+    # or the command sets one; for RSpec, SPEC_OPTS or the command does. RSpec
+    # `--order defined` prints no seed line. Each runner is checked on its
+    # own, so a seeded Minitest suite does not hide an unseeded RSpec suite
+    # that the same command runs. Ceiling: a seed set in a wrapper script or
+    # `.rspec`, or Minitest's `test_order`, is not seen, so the warning still
+    # prints; a seed-like argument meant for a wrapper hides it (#338, limits
+    # tracked in #368).
+    #
+    # @api private
+    # @param command [String] the --test-command template.
+    # @param text [String] output from {summary_text}.
+    # @return [Array(Symbol, String), nil] `[:minitest | :rspec, seed]`.
+    def self.random_order(command, text)
+      minitest = text[MINITEST_SEED, 1]
+      if minitest && ENV["SEED"].to_s.empty? &&
+         [command, ENV["TESTOPTS"]].none? { |s| s.to_s.match?(MINITEST_SEED_GIVEN) }
+        return [:minitest, minitest]
+      end
+
+      rspec = text[RSPEC_SEED, 1]
+      [:rspec, rspec] if rspec && [command, ENV["SPEC_OPTS"]].none? { |s| s.to_s.match?(RSPEC_SEED_GIVEN) }
+    end
+
     # Pre-flight: run the command once against the UNMUTATED tree. Green (exit 0)
-    # returns the elapsed seconds (used to calibrate the per-mutant timeout) and
+    # returns the elapsed seconds (used to calibrate the per-mutant timeout),
     # whether the output has a Minitest or RSpec summary line (used to turn on
-    # the summary check in {run}); anything else raises SmokeCheckError so the
-    # run aborts before scoring.
+    # the summary check in {run}), and the runner and seed of a random test
+    # order (see {random_order}); anything else raises SmokeCheckError so the run
+    # aborts before scoring.
     #
     # @param command [String] the --test-command template.
     # @param files [Array<String>] test file paths.
     # @param timeout [Numeric] ceiling for the calibration run.
-    # @return [Array(Float, Boolean)] `[elapsed_seconds, summary_seen]`.
+    # @return [Array(Float, Boolean, Array(Symbol, String), nil)]
+    #   `[elapsed_seconds, summary_seen, random_order]`.
     # @raise [Mutineer::SmokeCheckError] when the clean suite is not green.
     def self.smoke_check!(command, files, timeout: SMOKE_TIMEOUT)
       kind, code, output, elapsed = spawn_capture(command, files, timeout)
-      return [elapsed, summary_line?(summary_text(output))] if kind == :exited && code&.zero?
+      if kind == :exited && code&.zero?
+        text = summary_text(output)
+        return [elapsed, summary_line?(text), random_order(command, text)]
+      end
 
       reason =
         if kind == :timeout then "did not finish within #{timeout}s"
