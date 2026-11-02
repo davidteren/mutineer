@@ -243,14 +243,18 @@ class RedactionTest < Minitest::Test
       "postgres://u:pa@ss word@h/db" => "postgres://u:[REDACTED]@h/db",
       "postgres://u:pw@h1/db, postgres://v:pw@h2/db" => "postgres://u:[REDACTED]@h2/db",
       "postgres://u:pw@x@" => "postgres://u:[REDACTED]@",
+      "postgres://u:p@ss:word@host" => "postgres://u:[REDACTED]@host",
+      %("postgres://u:p@ss/word@host") => %("postgres://u:[REDACTED]@host"),
+      "postgres://u:p@ss:word@host failed" => "postgres://u:[REDACTED]@host failed",
+      "postgres://u:a@b/c@d@h" => "postgres://u:[REDACTED]@h",
       "postgres://u:s3 cr@t@ho st/db" => "postgres://u:[REDACTED]@ho st/db"
     }.each { |text, want| assert_equal want, redact(text, "") }
   end
 
-  # Known limit (#341): a password that holds an `@`, a host and a `/`, in a
-  # URL whose own host has nothing after it, shows the part after that `/`.
+  # Known limit (#341): a password that holds an `@`, a host, a `/` and a
+  # space, in a URL whose own host has nothing after it, shows the rest.
   def test_url_password_limit_is_pinned
-    assert_equal "postgres://u:[REDACTED]@b/c@d@h", redact("postgres://u:a@b/c@d@h", "")
+    assert_equal "postgres://u:[REDACTED]@b/c d@h", redact("postgres://u:a@b/c d@h", "")
   end
 
   def test_still_hides_a_password_that_only_partly_matches_the_username

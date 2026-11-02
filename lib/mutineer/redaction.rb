@@ -15,17 +15,18 @@ module Mutineer
   module Redaction
     # The password in a `scheme://user:password@host` URL. It ends at the last
     # `@` before an unescaped quote or line end that starts a host: a run with
-    # no `@`, then a `/`, `:`, `?` or `#`. So in `u:p@ss@h/db and p@ss` only
-    # `p@ss` is hidden (#341). With no such `@`, it ends at the last `@`, as
-    # before. A malformed password with an `@`, a space, or a quote `inspect`
-    # escaped (`\"`) is hidden too, so when the two goals conflict, hiding
-    # wins: in `u:pw@h/x and y@h2/db` the text up to `h2` is hidden. One case
-    # still shows part of a password: one that holds an `@`, a host and a `/`
-    # (`a@b/c@d`), in a URL whose own host has no port, path or query after it.
+    # no `@`, then a `/`, `:`, `?` or `#`, and no other `@` before the next
+    # space. So in `u:p@ss@h/db and p@ss` only `p@ss` is hidden (#341). With no
+    # such `@`, it ends at the last `@`, as before. A malformed password with
+    # an `@`, a `:`, a space, or a quote `inspect` escaped (`\"`) is hidden
+    # too, so when the two goals conflict, hiding wins: in
+    # `u:pw@h/x and y@h2/db` the text up to `h2` is hidden. One case still
+    # shows part of a password: one that holds an `@`, a host, a `/` and a
+    # space (`a@b/c d`), in a URL whose own host has no port, path or query.
     URL_PASSWORD = %r{
       ([a-z][a-z0-9+.\-]*://[^\s:/@"'\\]*):
       (?:
-        (?:\\.|[^"'\r\n\\])*@(?=[^@\s"'\\/:?\#]+[/:?\#])
+        (?:\\.|[^"'\r\n\\])*@(?=[^@\s"'\\/:?\#]+[/:?\#][^@\s]*(?:\s|\z))
       | (?:\\.|[^"'\r\n\\])*@
       )
     }xi
