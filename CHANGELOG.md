@@ -41,7 +41,8 @@ All notable changes to this project are documented here. The format is based on
 - **Redaction no longer hides a password inside other words (#341).** A
   database password made of letters, digits and underscores is now hidden
   only as a whole word. With password `test`, the backtrace path
-  `user_test.rb` stays readable. The word `test` on its own is still hidden,
+  `user_test.rb` stays readable. Such a password inside a longer word is no
+  longer hidden. The word `test` on its own is still hidden,
   also right after an escape such as `%40` or `\n`. A password with other
   characters is still hidden wherever it appears.
 - **Redaction keeps the host after a password with an `@` (#341).** In

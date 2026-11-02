@@ -469,7 +469,7 @@ module Mutineer
     # @return [Boolean] false when the write failed.
     def write_redacted(line)
       body = line.chomp("\n").force_encoding(Encoding::UTF_8).scrub # an invalid byte must not stop the drain
-      @errio.write(Redaction.text(body), body.bytesize < line.bytesize ? "\n" : "")
+      @errio.write(Redaction.text(body), line.end_with?("\n") ? "\n" : "")
       true
     rescue StandardError
       false

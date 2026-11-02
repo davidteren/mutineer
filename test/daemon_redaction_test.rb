@@ -202,6 +202,10 @@ class DaemonRedactionTest < Minitest::Test
     refute_includes out, "s3cret"
   end
 
+  def test_daemon_stderr_drain_keeps_the_line_break_after_an_invalid_byte
+    assert_equal "bad \uFFFD\nnext\n", drain("bad \xFF\nnext\n".b)
+  end
+
   # After a tool stderr has gone away (EPIPE), the drain drops lines but keeps
   # reading, so the daemon never blocks, and it ends quietly, so close_io's
   # join cannot re-raise the error mid-cleanup.
