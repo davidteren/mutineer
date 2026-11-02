@@ -122,6 +122,12 @@ class RedactionTest < Minitest::Test
     assert_equal "pw [REDACTED] rejected", redact("pw a rejected", "postgres://u:a@host/db")
   end
 
+  # An escape never swallows a copy of a form that starts with punctuation.
+  def test_an_escape_does_not_swallow_a_punctuation_password
+    assert_equal "pw [REDACTED] rejected", redact("pw %41 rejected", "postgres://u:%41@host/db")
+    refute redact("%41%41", "postgres://u:%41@host/db").start_with?("%41")
+  end
+
   def test_short_punctuation_passwords_keep_other_tokens_readable
     { "!" => "word!word", "!a" => "word!aword", "a!" => "worda!word" }.each do |password, token|
       url = "postgres://u:#{password}@host/db"
@@ -202,7 +208,7 @@ class RedactionTest < Minitest::Test
     url = "postgres://u:s3cret@host/db"
 
     ["u%40s3cret", "\\u0041s3cret", "\\u{41}s3cret", "\\x41s3cret", "\\101s3cret", "\\ns3cret",
-     "\e[1m\e[36ms3cret\e[0m", "\\e[36ms3cret", "\\033[36ms3cret", "\\x1b[36ms3cret", "mysql -uapp -ps3cret prod"].each do |glued|
+     "\e[1m\e[36ms3cret\e[0m", "\\e[36ms3cret", "\\033[36ms3cret", "\\x1b[36ms3cret", "\\u001b[36ms3cret", "mysql -uapp -ps3cret prod"].each do |glued|
       text = redact("auth failed for #{glued}", url)
 
       refute_includes text, "s3cret", glued

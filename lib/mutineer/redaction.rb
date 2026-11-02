@@ -116,13 +116,17 @@ module Mutineer
 
     # Replace `form` in `text` only where it is a whole token: no ASCII word
     # character touches either edge, including a punctuation edge. A form
-    # right after an {ESCAPE} counts as a whole token, and the escape is kept.
+    # that starts with a word character also counts as a whole token right
+    # after an {ESCAPE}, and the escape is kept. A form that starts with
+    # punctuation never does, so the escape cannot swallow a copy of it
+    # (`%41%41` with password `%41`).
     #
     # @param text [String]
     # @param form [String] one form of the password.
     # @return [String]
     def redact_word(text, form)
-      pattern = "(#{ESCAPE}|(?<!#{WORD_CHAR}))#{Regexp.escape(form)}(?!#{WORD_CHAR})"
+      escape = form.match?(/\A#{WORD_CHAR}/) ? "#{ESCAPE}|" : ""
+      pattern = "(#{escape}(?<!#{WORD_CHAR}))#{Regexp.escape(form)}(?!#{WORD_CHAR})"
       text.gsub(Regexp.new(pattern)) { "#{Regexp.last_match(1)}#{REDACTED}" }
     end
 
