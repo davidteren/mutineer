@@ -276,9 +276,12 @@ class SingletonRedefineTest < Minitest::Test
   # that checks the load-time value kills it. Placed after the load, the
   # mutant survived and then scored ran_at_load.
   def test_reload_places_a_hook_def_before_later_load_time_calls
-    agg = run_redefine("hook_load_time.rb", "hook_load_time_test.rb", strategy: "reload")
-    assert_equal %w[HookLoadTime#doubled HookLoadTimeWrap#bumped],
-                 agg.results.select(&:killed?).map { |r| r.subject.qualified_name }.uniq.sort
+    agg = run_redefine("hook_load_time.rb", "hook_load_time_test.rb", strategy: "reload", matrix: true)
+    killers = agg.results.select(&:killed?).group_by { |r| r.subject.qualified_name }.transform_values do |rs|
+      rs.flat_map { |r| r.kills.killed_by.map { |entry| entry[1].split("#").last } }.uniq
+    end
+    assert_equal({ "HookLoadTime#doubled" => %w[test_total_computed_at_load],
+                   "HookLoadTimeWrap#bumped" => %w[test_bumped_computed_at_load] }, killers)
     assert_equal 0, agg.survived_count
     assert_equal 0, agg.ran_at_load_count
     assert_equal 0, agg.errored_count

@@ -56,6 +56,8 @@ module Mutineer
     #
     # With a `hook_def`, the file's {.store_hook_def} call places the mutated
     # def during the load (#348). A load that never reached that call raises.
+    # The kept-handle check runs after the load, so a handle the file holds
+    # only while it loads does not count.
     #
     # @param source_file [String] the file the mutant replaces.
     # @param path [String] the mutant file to load.
@@ -74,8 +76,12 @@ module Mutineer
           $VERBOSE = verbose
         end
       end
-      # Still set: the load did not reach store_hook_def, so this raises.
-      place_hook_def(**@hook_target) if @hook_target
+      if @hook_target
+        # Still set: the load did not reach store_hook_def, so this raises.
+        place_hook_def(**@hook_target)
+      elsif hook_def
+        refuse_retained_hook_def(source_file: source_file, line: hook_def[:line], name: hook_def[:name])
+      end
       loaded
     ensure
       @hook_target = nil
@@ -120,7 +126,7 @@ module Mutineer
       @hook_def = block
       return unless @hook_target
 
-      place_hook_def(**@hook_target)
+      place_hook_def(**@hook_target, check_retained: false) # load_mutant checks after the load
       # Cleared only after placement, so a raise the file rescues still errors after the load.
       @hook_target = nil
     end
@@ -135,12 +141,14 @@ module Mutineer
     # @param line [Integer] the original def's first line.
     # @param name [Symbol] the method name.
     # @param singleton [Boolean] true for a class method.
+    # @param check_retained [Boolean] false when the caller checks for a kept
+    #   method handle itself, after the load ({.load_mutant}).
     # @raise [RuntimeError] when no def was kept (the mutant file did not reach
     #   its hook call), or when a module keeps the original under another name
     #   (see {.aliases}) or in a live method handle; the child then scores the
     #   mutant `error`.
     # @return [Integer] how many owners got the mutated def.
-    def self.place_hook_def(source_file:, line:, name:, singleton:)
+    def self.place_hook_def(source_file:, line:, name:, singleton:, check_retained: true)
       block = @hook_def
       @hook_def = nil
       where = "mutineer: could not place the mutant of #{name} (#{source_file}:#{line})"
@@ -150,10 +158,7 @@ module Mutineer
       end
 
       # Check before owner and alias lookup create temporary UnboundMethods.
-      if retained_hook_def?(source_file: source_file, line: line, name: name)
-        raise "#{where}: the original is retained in a Method or UnboundMethod object, " \
-              "so the mutant scores error."
-      end
+      refuse_retained_hook_def(source_file: source_file, line: line, name: name) if check_retained
 
       # ponytail: one ObjectSpace walk per mutant (about 11 ms with Rails loaded);
       # index modules by method name if a large app makes it slow.
@@ -234,6 +239,21 @@ module Mutineer
 
       file, def_line = method.source_location
       method.original_name == original_name && def_line == line && !file.nil? && real_path(file) == path
+    end
+
+    # Raises when a live Method or UnboundMethod keeps the original definition
+    # (see {.retained_hook_def?}), so the child scores the mutant `error`.
+    #
+    # @param source_file [String] the file the mutant replaces.
+    # @param line [Integer] the original def's first line.
+    # @param name [Symbol] the original method name.
+    # @raise [RuntimeError] when such a handle is live.
+    # @return [nil]
+    def self.refuse_retained_hook_def(source_file:, line:, name:)
+      return unless retained_hook_def?(source_file: source_file, line: line, name: name)
+
+      raise "mutineer: could not place the mutant of #{name} (#{source_file}:#{line}): the original is " \
+            "retained in a Method or UnboundMethod object, so the mutant scores error."
     end
 
     # True when a live Method or UnboundMethod keeps the original definition.

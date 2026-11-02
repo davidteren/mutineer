@@ -115,6 +115,20 @@ class DaemonServerHookDefTest < Minitest::Test
     assert_predicate result, :survived?, "the load-time call must get the mutated prepended def"
   end
 
+  # #348: placement runs during the load, so a handle the file holds across
+  # its hook call and drops by the end must not score error. The kept-handle
+  # check runs after the load.
+  def test_apply_payload_places_a_hook_def_despite_a_handle_released_by_load_end
+    sent = payload("x * 5")
+    sent["code"] = "held = ConcernProduct.instance_method(:doubled)\n#{sent["code"]}\nheld = nil\n"
+    result = Mutineer::Isolation.run do
+      require FIXTURE
+      Mutineer::DaemonServer.send(:apply_payload, sent)
+      ConcernProduct.new.doubled(2) == 10 ? 0 : 1
+    end
+    assert_predicate result, :survived?, "a handle gone after the load must not block placement"
+  end
+
   def test_apply_payload_scores_an_aliased_wrapper_as_error
     sent = payload("x * 5")
     result = Mutineer::Isolation.run do
