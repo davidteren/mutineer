@@ -21,8 +21,9 @@ module Mutineer
     # an `@`, a `:`, a space, or a quote `inspect` escaped (`\"`) is hidden
     # too, so when the two goals conflict, hiding wins: in
     # `u:pw@h/x and y@h2/db` the text up to `h2` is hidden. One case still
-    # shows part of a password: one that holds an `@`, a host, a `/` and a
-    # space (`a@b/c d`), in a URL whose own host has no port, path or query.
+    # shows part of a password: one that holds an `@`, a host, a `/`, `:`,
+    # `?` or `#`, and a space (`a@b/c d`), in a URL whose own host has no
+    # port, path or query.
     URL_PASSWORD = %r{
       ([a-z][a-z0-9+.\-]*://[^\s:/@"'\\]*):
       (?:
@@ -41,10 +42,12 @@ module Mutineer
     # characters. A longer form with a non-word character is hidden wherever
     # it appears, because its edges are no reliable token boundary.
     SHORT_FORM = 3
-    # An escape that glues a word character to the left of a password form in
-    # a message: `%40`, `\x41`, `\u0041`, `\u{41}`, `\101`, `\n`. A form right
-    # after one is still a whole token.
-    ESCAPE = /%\h{2}|\\x\h{2}|\\u(?:\h{4}|\{\h+\})|\\[0-7]{1,3}|\\[a-z]/.source
+    # An escape or prefix that glues a word character to the left of a
+    # password form in a message: `%40`, `\x41`, `\u0041`, `\u{41}`, `\101`,
+    # `\n`, an ANSI colour code (raw or `inspect` escaped, as Rails logs
+    # colour a span), or a `-p` flag (`mysql -ps3cret`). A form right after
+    # one is still a whole token.
+    ESCAPE = /%\h{2}|\\x\h{2}|\\u(?:\h{4}|\{\h+\})|\\[0-7]{1,3}|(?:\e|\\e)\[[0-9;]*m|\\[a-z]|(?<!\S)-p/.source
 
     module_function
 
