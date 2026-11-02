@@ -16,6 +16,11 @@ All notable changes to this project are documented here. The format is based on
   the tests run. Warnings that the tests raise still print. Other warnings
   raised while the mutant file loads, such as an unused variable under `-w`,
   no longer print either. Scores and the JSON report do not change.
+- **The "not green" message says it once (#360).** When the clean run of a
+  file's tests failed, the message said "the unmutated suite is not green"
+  twice. It now says it once and ends with `Failed:` and the test files.
+  The failing test names and the first error are still not shown; #360
+  tracks that.
 
 ## [1.8.0] - 2026-10-29
 
