@@ -484,15 +484,7 @@ module Mutineer
           f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
           f.write(payload.fetch("code"))
           f.flush
-          ConcernBlocks.replace(payload.fetch("source_file")) do
-            # The load assigns each constant again, so warnings are off for the load only (#364).
-            verbose, $VERBOSE = $VERBOSE, nil
-            begin
-              load f.path
-            ensure
-              $VERBOSE = verbose
-            end
-          end
+          ConcernBlocks.load_mutant(payload.fetch("source_file"), f.path)
         end
         hook = payload["hook_def"] or return
 

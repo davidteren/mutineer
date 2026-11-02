@@ -46,6 +46,25 @@ module Mutineer
       end
     end
 
+    # Loads the mutant file at `path` over `source_file`, through {.replace}.
+    # The load assigns each of the file's constants a second time, so Ruby
+    # would warn twice per constant, per mutant (#364). Warnings are off for
+    # the load only, and back on before the tests run.
+    #
+    # @param source_file [String] the file the mutant replaces.
+    # @param path [String] the mutant file to load.
+    # @return [Object] what `load` returns.
+    def self.load_mutant(source_file, path)
+      replace(source_file) do
+        verbose, $VERBOSE = $VERBOSE, nil
+        begin
+          load path
+        ensure
+          $VERBOSE = verbose
+        end
+      end
+    end
+
     # Removes every stored `included` and `prepended` block that the source
     # file defined, from every concern. Blocks from other files stay.
     #
