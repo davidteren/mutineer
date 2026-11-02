@@ -10,6 +10,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`--test-command` warns about a random test order (#338).** Mutineer
+  sets no seed for your command, so the clean run and each mutant run can
+  run the tests in different orders. An order-dependent suite can then fail
+  a mutant run for a reason the mutant did not cause, and that mutant
+  scores a false `killed`. When the clean run prints a random seed
+  (Minitest `Run options: --seed N`, RSpec `Randomized with seed N`) and
+  no seed is set, Mutineer now prints one warning with the fix: set `SEED`
+  for Minitest, or pass `--order defined` to RSpec. The docs for
+  `--test-command` say the same. Mutineer does not set the seed itself, so
+  scores do not change. It cannot see a seed that a wrapper script sets,
+  so the warning still prints there.
 - **No "already initialized constant" warnings under reload (#364).** Each
   mutant loads its whole file again, so every constant in the file was
   assigned twice. Ruby then printed two warning lines per constant, per

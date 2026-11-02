@@ -61,6 +61,12 @@ module Mutineer
     RSPEC_OUTSIDE_ERROR = /errors? occurred outside of examples/
     # ANSI colour codes, removed before matching so a coloured summary still counts.
     ANSI_CODE = /\e\[[\d;]*m/
+    # The seed line Minitest ("Run options: --seed N") and RSpec ("Randomized
+    # with seed N") print when they shuffle the tests. Captures the seed.
+    RANDOM_ORDER = /^(?:Run options:.*--seed|Randomized with seed) (\d+)/
+    # A seed given on the command or in TESTOPTS or SPEC_OPTS. Minitest prints
+    # the seed line for a fixed seed too, so the line alone cannot tell.
+    SEED_GIVEN = /\bSEED=|--seed\b/
 
     # PATH entries that pin a concrete Ruby under a version manager (ahead of
     # shims). Optional trailing slash; normal bins are left alone.
@@ -286,20 +292,42 @@ module Mutineer
       output.b.gsub(ANSI_CODE, "")
     end
 
+    # The seed of a random test order the output shows, or nil. Nil also when
+    # the order looks fixed: SEED is set in Mutineer's environment, or the
+    # command, TESTOPTS or SPEC_OPTS names a seed. RSpec `--order defined`
+    # prints no seed line. Ceiling: a seed that a wrapper script sets, or
+    # Minitest's `test_order`, is not seen, so the warning still prints (#338).
+    #
+    # @api private
+    # @param command [String] the --test-command template.
+    # @param text [String] output from {summary_text}.
+    # @return [String, nil] the seed the clean run used.
+    def self.random_order_seed(command, text)
+      return nil unless ENV["SEED"].to_s.empty?
+      return nil if [command, ENV["TESTOPTS"], ENV["SPEC_OPTS"]].any? { |s| s.to_s.match?(SEED_GIVEN) }
+
+      text[RANDOM_ORDER, 1]
+    end
+
     # Pre-flight: run the command once against the UNMUTATED tree. Green (exit 0)
-    # returns the elapsed seconds (used to calibrate the per-mutant timeout) and
+    # returns the elapsed seconds (used to calibrate the per-mutant timeout),
     # whether the output has a Minitest or RSpec summary line (used to turn on
-    # the summary check in {run}); anything else raises SmokeCheckError so the
-    # run aborts before scoring.
+    # the summary check in {run}), and the seed of a random test order (see
+    # {random_order_seed}); anything else raises SmokeCheckError so the run
+    # aborts before scoring.
     #
     # @param command [String] the --test-command template.
     # @param files [Array<String>] test file paths.
     # @param timeout [Numeric] ceiling for the calibration run.
-    # @return [Array(Float, Boolean)] `[elapsed_seconds, summary_seen]`.
+    # @return [Array(Float, Boolean, String, nil)]
+    #   `[elapsed_seconds, summary_seen, random_seed]`.
     # @raise [Mutineer::SmokeCheckError] when the clean suite is not green.
     def self.smoke_check!(command, files, timeout: SMOKE_TIMEOUT)
       kind, code, output, elapsed = spawn_capture(command, files, timeout)
-      return [elapsed, summary_line?(summary_text(output))] if kind == :exited && code&.zero?
+      if kind == :exited && code&.zero?
+        text = summary_text(output)
+        return [elapsed, summary_line?(text), random_order_seed(command, text)]
+      end
 
       reason =
         if kind == :timeout then "did not finish within #{timeout}s"
