@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_533ed13f8f67ea::t_91558ea537e525 22-25
+docs/index.html
+  s_533ed13f8f67ea::t_6ed2e5538a3175 187
+docs/json-schema.md
+  s_533ed13f8f67ea::t_d35c7b69ac2e9c 22,98-99
+docs/sample-report.html
+  s_533ed13f8f67ea::t_5e30c256f65c74 56
+test/baseline_test.rb
+  s_533ed13f8f67ea::t_d9d8f4502f21b7 38-39,128-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "05198cd7b43ab115ae2e4d50aabe9a6896d95683",
+  "prompts": {},
+  "sessions": {
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

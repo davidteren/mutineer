@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_1e16fc3c31aa20::t_b5854cb5d642d8 38-42
+docs/plans/2026-10-24-001-fix-shared-minitest-seed-plan.md
+  s_1e16fc3c31aa20::t_37a1a3c37b0168 93-94,159-161,230-231,260-263
+lib/mutineer/coverage_map.rb
+  s_1e16fc3c31aa20::t_77e034170da9e4 470,1360-1361
+test/coverage_map_test.rb
+  s_1e16fc3c31aa20::t_00f4e422b0cba6 463,639-656
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5efa9c235fb48c2f6fb2ae3af81b2d7219e6012f",
+  "prompts": {},
+  "sessions": {
+    "s_1e16fc3c31aa20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

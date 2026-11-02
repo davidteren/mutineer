@@ -1,0 +1,26 @@
+CHANGELOG.md
+  s_533ed13f8f67ea::t_6c51ebd7a6b3ec 41-43
+test/daemon_temp_sweep_test.rb
+  s_533ed13f8f67ea::t_51955877cdf752 162
+  s_533ed13f8f67ea::t_ce5ab1eb14e8a4 128-151
+test/daemon_backend_contract_test.rb
+  s_533ed13f8f67ea::t_51955877cdf752 387,705
+lib/mutineer/orphan_guard.rb
+  s_533ed13f8f67ea::t_6c51ebd7a6b3ec 16-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "beb4fc04335e9fc9eb5c7fa30f7873c8108e9107",
+  "prompts": {},
+  "sessions": {
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

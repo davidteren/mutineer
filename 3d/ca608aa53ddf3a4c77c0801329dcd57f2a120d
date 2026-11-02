@@ -1,0 +1,25 @@
+docs/agentic-coding.html
+  s_533ed13f8f67ea::t_6ce4004a0a9d27 97,99,103
+docs/agentic-coding.md
+  s_533ed13f8f67ea::t_2c86d44193e437 61-66,70,86
+docs/rails.html
+  s_533ed13f8f67ea::t_a7e839da49b034 86
+docs/rails.md
+  s_533ed13f8f67ea::t_4f43311f00c688 47-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3dca608aa53ddf3a4c77c0801329dcd57f2a120d",
+  "prompts": {},
+  "sessions": {
+    "s_533ed13f8f67ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ddc-da7c-77b0-adfc-402e78a786c8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
