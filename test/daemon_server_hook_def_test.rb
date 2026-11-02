@@ -104,6 +104,17 @@ class DaemonServerHookDefTest < Minitest::Test
     assert_predicate result, :survived?, "the load-time call must get the mutated def"
   end
 
+  def test_apply_payload_places_a_prepended_hook_def_before_later_load_time_calls
+    fixture = File.expand_path("fixtures/singleton/hook_load_time.rb", __dir__)
+    sent = payload("x + 8", fixture: fixture, only: "HookLoadTimeWrap#bumped")
+    result = Mutineer::Isolation.run do
+      require fixture
+      Mutineer::DaemonServer.send(:apply_payload, sent)
+      HOOK_LOAD_TIME_BUMPED == 10 ? 0 : 1
+    end
+    assert_predicate result, :survived?, "the load-time call must get the mutated prepended def"
+  end
+
   def test_apply_payload_scores_an_aliased_wrapper_as_error
     sent = payload("x * 5")
     result = Mutineer::Isolation.run do

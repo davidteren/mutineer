@@ -65,6 +65,7 @@ module Mutineer
     # @return [Object] what `load` returns.
     def self.load_mutant(source_file, path, hook_def: nil)
       @hook_target = hook_def && { source_file: source_file, **hook_def }
+      @hook_def = nil
       loaded = replace(source_file) do
         verbose, $VERBOSE = $VERBOSE, nil
         begin
@@ -117,9 +118,11 @@ module Mutineer
     # @return [nil]
     def self.store_hook_def(&block)
       @hook_def = block
-      target, @hook_target = @hook_target, nil
-      place_hook_def(**target) if target
-      nil
+      return unless @hook_target
+
+      place_hook_def(**@hook_target)
+      # Cleared only after placement, so a raise the file rescues still errors after the load.
+      @hook_target = nil
     end
 
     # Takes the def {.store_hook_def} kept, clears it, and runs it with

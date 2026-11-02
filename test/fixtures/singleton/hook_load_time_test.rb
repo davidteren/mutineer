@@ -9,4 +9,8 @@ class HookLoadTimeTest < Minitest::Test
   def test_total_computed_at_load
     assert_equal 4, HOOK_LOAD_TIME_TOTAL
   end
+
+  def test_bumped_computed_at_load
+    assert_equal 3, HOOK_LOAD_TIME_BUMPED
+  end
 end

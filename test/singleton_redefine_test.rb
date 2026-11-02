@@ -271,13 +271,14 @@ class SingletonRedefineTest < Minitest::Test
     end
   end
 
-  # #348: the fixture's last line calls the hook-block def while the file
-  # loads. Reload must place the mutant before that line runs, so the test
+  # #348: the fixture's last lines call the included and prepended hook-block
+  # defs while the file loads. Reload must place the mutant before that line runs, so the test
   # that checks the load-time value kills it. Placed after the load, the
   # mutant survived and then scored ran_at_load.
   def test_reload_places_a_hook_def_before_later_load_time_calls
     agg = run_redefine("hook_load_time.rb", "hook_load_time_test.rb", strategy: "reload")
-    assert_operator agg.killed_count, :>, 0
+    assert_equal %w[HookLoadTime#doubled HookLoadTimeWrap#bumped],
+                 agg.results.select(&:killed?).map { |r| r.subject.qualified_name }.uniq.sort
     assert_equal 0, agg.survived_count
     assert_equal 0, agg.ran_at_load_count
     assert_equal 0, agg.errored_count

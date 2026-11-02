@@ -14,8 +14,20 @@ module HookLoadTime
   end
 end
 
+module HookLoadTimeWrap
+  extend ActiveSupport::Concern
+
+  prepended do
+    def bumped(x)
+      x + 1
+    end
+  end
+end
+
 class HookLoadTimeHost
   include HookLoadTime
+  prepend HookLoadTimeWrap
 end
 
 HOOK_LOAD_TIME_TOTAL = HookLoadTimeHost.new.doubled(2)
+HOOK_LOAD_TIME_BUMPED = HookLoadTimeHost.new.bumped(2)
