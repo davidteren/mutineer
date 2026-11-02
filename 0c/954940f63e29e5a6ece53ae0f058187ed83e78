@@ -1,0 +1,27 @@
+lib/mutineer/concern_blocks.rb
+  s_e2e69250347479::t_bf1030d0e0bb7d 68,121-125
+test/singleton_redefine_test.rb
+  s_e2e69250347479::t_bf1030d0e0bb7d 274-275,280-281
+test/daemon_server_hook_def_test.rb
+  s_e2e69250347479::t_68eace6c709f06 107-117
+test/fixtures/singleton/hook_load_time_test.rb
+  s_e2e69250347479::t_68eace6c709f06 12-15
+test/fixtures/singleton/hook_load_time.rb
+  s_e2e69250347479::t_68eace6c709f06 17-26,29,33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0c954940f63e29e5a6ece53ae0f058187ed83e78",
+  "prompts": {},
+  "sessions": {
+    "s_e2e69250347479": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3626bcfd-9dac-4321-b987-e5c3596a1aa3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
