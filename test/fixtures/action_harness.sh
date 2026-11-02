@@ -204,3 +204,23 @@ after=$(cksum "$weird")
 [ "$before" = "$after" ] && echo "  OK: escaped-path baseline kept" || echo "  FAIL: escaped-path baseline was replaced"
 [ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on an escaped path" || echo "  OK: escaped path rejected before running"
 grep '::error::' "$SCRATCH/case17/stdout.txt"
+
+echo; echo "== 18: output under missing .mutineer cache dir (expects mkdir + delivered file) (#340) =="
+rm -rf .mutineer
+rm -f .mutineer.yml
+run_step case18 STUB_EXIT=0 OUTPUT=".mutineer/pr.json"
+[ -d .mutineer ] && echo "  OK: cache dir created" || echo "  FAIL: cache dir missing"
+[ -s .mutineer/pr.json ] && echo "  OK: output delivered into fresh cache dir" || echo "  FAIL: output not delivered"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  OK: mutineer ran after mkdir" || echo "  FAIL: mutineer never ran"
+
+echo; echo "== 18b: output under other missing dir still exits 2 (#340) =="
+run_step case18b STUB_EXIT=0 OUTPUT="reports/pr.json"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran for a non-cache missing parent" || echo "  OK: non-cache missing parent rejected"
+grep -q 'cannot write output' "$SCRATCH/case18b/stdout.txt" && echo "  OK: missing-dir error" || echo "  FAIL: missing-dir error absent"
+
+echo; echo "== 18c: output under missing custom cache-dir from yml (#340) =="
+printf 'cache_dir: mcache\n' > .mutineer.yml
+run_step case18c STUB_EXIT=0 OUTPUT="mcache/pr.json"
+[ -d mcache ] && echo "  OK: yml cache dir created" || echo "  FAIL: yml cache dir missing"
+[ -s mcache/pr.json ] && echo "  OK: output delivered into yml cache dir" || echo "  FAIL: yml cache output missing"
+rm -f .mutineer.yml
