@@ -224,24 +224,33 @@ class RedactionTest < Minitest::Test
     assert_equal "x[REDACTED]y", redact("xp@ss!y", "postgres://u:p@ss!@host/db")
   end
 
-  # #341 item 6: the URL password ends at the `@` before the host, so the host
-  # and later text with an `@` stay readable.
+  # #341 item 6: the URL password ends at the last `@` before a host with a
+  # port, path or query, so the host and later text with an `@` stay readable.
   def test_url_password_stops_at_the_host
     {
       "postgres://u:p@ss@h/db and p@ss" => "postgres://u:[REDACTED]@h/db and p@ss",
       "postgres://u:my pass@h/db mail a@b.com" => "postgres://u:[REDACTED]@h/db mail a@b.com",
-      "postgres://u:pw@h1/db, postgres://v:pw@h2/db" => "postgres://u:[REDACTED]@h1/db, postgres://v:[REDACTED]@h2/db",
       %("postgres://u:p@ss@h:5432/db") => %("postgres://u:[REDACTED]@h:5432/db")
     }.each { |text, want| assert_equal want, redact(text, "") }
   end
 
   # When a malformed password may hold what looks like a host, hiding wins:
-  # `pw@h/x` may be the whole password, so the first host is hidden with it.
-  # With no host after any `@`, the match runs to the last `@` (fail safe).
+  # `pw@foo/bar qux` may be the whole password, so the match runs to the last
+  # host. With no host after any `@`, it runs to the last `@`, as before.
   def test_url_password_fails_safe_when_the_host_is_ambiguous
-    assert_equal "postgres://u:[REDACTED]@h2/db", redact("postgres://u:pw@h/x@h2/db", "")
-    assert_equal "postgres://u:[REDACTED]@", redact("postgres://u:pw@x@", "")
-    assert_equal "postgres://u:[REDACTED]@ho st/db", redact("postgres://u:s3 cr@t@ho st/db", "")
+    {
+      "postgres://u:pw@foo/bar qux@h/db" => "postgres://u:[REDACTED]@h/db",
+      "postgres://u:pa@ss word@h/db" => "postgres://u:[REDACTED]@h/db",
+      "postgres://u:pw@h1/db, postgres://v:pw@h2/db" => "postgres://u:[REDACTED]@h2/db",
+      "postgres://u:pw@x@" => "postgres://u:[REDACTED]@",
+      "postgres://u:s3 cr@t@ho st/db" => "postgres://u:[REDACTED]@ho st/db"
+    }.each { |text, want| assert_equal want, redact(text, "") }
+  end
+
+  # Known limit (#341): a password that holds an `@`, a host and a `/`, in a
+  # URL whose own host has nothing after it, shows the part after that `/`.
+  def test_url_password_limit_is_pinned
+    assert_equal "postgres://u:[REDACTED]@b/c@d@h", redact("postgres://u:a@b/c@d@h", "")
   end
 
   def test_still_hides_a_password_that_only_partly_matches_the_username

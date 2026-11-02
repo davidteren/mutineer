@@ -50,7 +50,7 @@ module Mutineer
     DRAIN_GRACE = 1
     # Seconds the stderr drain waits for output before it checks whether the
     # daemon has exited. A grandchild that holds the pipe open never sends EOF.
-    DRAIN_POLL = 0.05
+    DRAIN_POLL = 0.1
     # Bundler's marker for a variable that was unset before it activated.
     BUNDLER_UNSET = "BUNDLER_ENVIRONMENT_PRESERVER_INTENTIONALLY_NIL"
 

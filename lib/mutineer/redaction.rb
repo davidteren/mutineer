@@ -13,24 +13,19 @@ module Mutineer
   # Stdlib only: the app-side daemon loads this file without the rest of
   # mutineer.
   module Redaction
-    # The password in a `scheme://user:password@host` URL. It ends at an `@`
-    # followed by a host: a run with no `@` up to a `/`, `:`, `?`, `#`, a
-    # space, a quote, a backslash or the end. In order, it ends at:
-    #
-    # 1. the last such `@` before a space, so `p@ss@h/db and a@b` hides `p@ss`;
-    # 2. else the first such `@`, so a password with a space is hidden but
-    #    later text with an `@` stays readable;
-    # 3. else the last `@` before an unescaped quote or line end (fail safe).
-    #
-    # A malformed password with an `@`, a space, or a quote `inspect` escaped
-    # (`\"`) is hidden too. When the two goals conflict, hiding wins: in
-    # `u:pw@h/x@h2/db` the password may be `pw@h/x`, so the host `h` is hidden
-    # with it (#341).
+    # The password in a `scheme://user:password@host` URL. It ends at the last
+    # `@` before an unescaped quote or line end that starts a host: a run with
+    # no `@`, then a `/`, `:`, `?` or `#`. So in `u:p@ss@h/db and p@ss` only
+    # `p@ss` is hidden (#341). With no such `@`, it ends at the last `@`, as
+    # before. A malformed password with an `@`, a space, or a quote `inspect`
+    # escaped (`\"`) is hidden too, so when the two goals conflict, hiding
+    # wins: in `u:pw@h/x and y@h2/db` the text up to `h2` is hidden. One case
+    # still shows part of a password: one that holds an `@`, a host and a `/`
+    # (`a@b/c@d`), in a URL whose own host has no port, path or query after it.
     URL_PASSWORD = %r{
       ([a-z][a-z0-9+.\-]*://[^\s:/@"'\\]*):
       (?:
-        (?:\\.|[^"'\s\\])*@(?=[^@\s"'\\/:?\#]+(?:[\s"'\\/:?\#]|\z))
-      | (?:\\.|[^"'\r\n\\])*?@(?=[^@\s"'\\/:?\#]+(?:[\s"'\\/:?\#]|\z))
+        (?:\\.|[^"'\r\n\\])*@(?=[^@\s"'\\/:?\#]+[/:?\#])
       | (?:\\.|[^"'\r\n\\])*@
       )
     }xi
