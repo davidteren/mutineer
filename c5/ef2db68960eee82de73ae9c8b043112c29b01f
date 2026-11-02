@@ -1,0 +1,19 @@
+CHANGELOG.md
+  s_a73b5274fea120::t_682bd30fbd01d4 25-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c5ef2db68960eee82de73ae9c8b043112c29b01f",
+  "prompts": {},
+  "sessions": {
+    "s_a73b5274fea120": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b72fec05-766c-47d0-89bd-4b6c38c74d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
