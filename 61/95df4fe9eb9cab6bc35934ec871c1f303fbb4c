@@ -1,0 +1,32 @@
+docs/rails.md
+  s_2c953e24b9e1fe::t_4ab6554cf484e5 25
+docs/quick-start.md
+  s_2c953e24b9e1fe::t_17dec83020c599 27-28
+docs/rails-setup.md
+  s_2c953e24b9e1fe::t_17dec83020c599 15-17
+docs/ci.md
+  s_2c953e24b9e1fe::t_17dec83020c599 78-108,111-112,142
+docs/rails.html
+  s_2c953e24b9e1fe::t_4ab6554cf484e5 78
+  s_2c953e24b9e1fe::t_58effa5cc008bf 75,104-105,107-108,116-134
+docs/getting-started.md
+  s_2c953e24b9e1fe::t_17dec83020c599 21-42,119,164-165
+docs/results.md
+  s_2c953e24b9e1fe::t_17dec83020c599 34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6195df4fe9eb9cab6bc35934ec871c1f303fbb4c",
+  "prompts": {},
+  "sessions": {
+    "s_2c953e24b9e1fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9ab16ac-735f-4ebc-ae8f-635a479e989d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
