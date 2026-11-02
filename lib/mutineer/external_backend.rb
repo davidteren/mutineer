@@ -61,11 +61,12 @@ module Mutineer
     RSPEC_OUTSIDE_ERROR = /errors? occurred outside of examples/
     # ANSI colour codes, removed before matching so a coloured summary still counts.
     ANSI_CODE = /\e\[[\d;]*m/
-    # The seed line Minitest ("Run options: --seed N") and RSpec ("Randomized
-    # with seed N") print when they shuffle the tests. Captures the seed.
-    RANDOM_ORDER = /^(?:Run options:.*--seed|Randomized with seed) (\d+)/
-    # A seed given on the command or in TESTOPTS or SPEC_OPTS. Minitest prints
-    # the seed line for a fixed seed too, so the line alone cannot tell.
+    # The seed line Minitest prints before every run. Captures the seed.
+    MINITEST_SEED = /^Run options:.*--seed (\d+)/
+    # The seed line RSpec prints when it shuffles the tests. Captures the seed.
+    RSPEC_SEED = /^Randomized with seed (\d+)/
+    # A seed given on the command or in TESTOPTS or SPEC_OPTS. Both runners
+    # print the seed line for a fixed seed too, so the line alone cannot tell.
     SEED_GIVEN = /\bSEED=|--seed\b/
 
     # PATH entries that pin a concrete Ruby under a version manager (ahead of
@@ -293,20 +294,24 @@ module Mutineer
     end
 
     # The seed of a random test order the output shows, or nil. Nil also when
-    # the order looks fixed: SEED is set in Mutineer's environment, or the
-    # command, TESTOPTS or SPEC_OPTS names a seed. RSpec `--order defined`
-    # prints no seed line. Ceiling: a seed that a wrapper script sets, or
-    # Minitest's `test_order`, is not seen, so the warning still prints (#338).
+    # the order looks fixed: the command names a seed, or, for Minitest, SEED
+    # or TESTOPTS sets one, or, for RSpec, SPEC_OPTS does. RSpec `--order
+    # defined` prints no seed line. Ceiling: a seed set in a wrapper script or
+    # `.rspec`, or Minitest's `test_order`, is not seen, so the warning still
+    # prints (#338).
     #
     # @api private
     # @param command [String] the --test-command template.
     # @param text [String] output from {summary_text}.
     # @return [String, nil] the seed the clean run used.
     def self.random_order_seed(command, text)
-      return nil unless ENV["SEED"].to_s.empty?
-      return nil if [command, ENV["TESTOPTS"], ENV["SPEC_OPTS"]].any? { |s| s.to_s.match?(SEED_GIVEN) }
+      return nil if command.match?(SEED_GIVEN)
 
-      text[RANDOM_ORDER, 1]
+      if (seed = text[MINITEST_SEED, 1])
+        seed if ENV["SEED"].to_s.empty? && !ENV["TESTOPTS"].to_s.match?(SEED_GIVEN)
+      elsif (seed = text[RSPEC_SEED, 1])
+        seed unless ENV["SPEC_OPTS"].to_s.match?(SEED_GIVEN)
+      end
     end
 
     # Pre-flight: run the command once against the UNMUTATED tree. Green (exit 0)

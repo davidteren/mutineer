@@ -281,6 +281,7 @@ class ExternalBackendTest < Minitest::Test
 
   def test_random_order_seed_is_nil_when_the_order_is_fixed
     text = "Run options: --seed 4242\n"
+    rspec = "Randomized with seed 4242\n"
     with_env("SEED" => nil, "TESTOPTS" => nil, "SPEC_OPTS" => nil) do
       assert_nil Backend.random_order_seed("rspec --order defined %{files}", "3 examples, 0 failures\n")
       assert_nil Backend.random_order_seed("ruby %{files} --seed 7", text)
@@ -288,7 +289,14 @@ class ExternalBackendTest < Minitest::Test
       assert_equal "4242", Backend.random_order_seed("ruby %{files}", text)
       with_env("SEED" => "7") { assert_nil Backend.random_order_seed("ruby %{files}", text) }
       with_env("TESTOPTS" => "--seed=7") { assert_nil Backend.random_order_seed("rake test", text) }
-      with_env("SPEC_OPTS" => "--seed 7") { assert_nil Backend.random_order_seed("rspec %{files}", text) }
+      with_env("SPEC_OPTS" => "--seed 7") { assert_nil Backend.random_order_seed("rspec %{files}", rspec) }
+    end
+  end
+
+  # RSpec ignores SEED and TESTOPTS, so they do not hide its random order.
+  def test_random_order_seed_ignores_minitest_settings_under_rspec
+    with_env("SEED" => "7", "TESTOPTS" => "--seed=7", "SPEC_OPTS" => nil) do
+      assert_equal "4242", Backend.random_order_seed("rspec %{files}", "Randomized with seed 4242\n")
     end
   end
 
