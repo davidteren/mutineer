@@ -184,7 +184,7 @@ module Mutineer
 
       begin
         parser.parse!(argv)
-      rescue OptionParser::InvalidOption, OptionParser::MissingArgument, Mutineer::ConfigError => e
+      rescue OptionParser::ParseError, Mutineer::ConfigError => e
         warn "mutineer: #{e.message}"
         exit 2
       end
@@ -241,11 +241,17 @@ module Mutineer
         warn "mutineer: unknown command '#{argv.first}'"
         exit 2
       end
-    rescue StandardError => e
+    rescue StandardError, ScriptError => e
       # Last resort (#341): an error no handler above expects would otherwise
       # reach Ruby's default printer, which shows its message unredacted. Same
-      # exit 1 as that printer, with the message and backtrace redacted.
-      warn "mutineer: #{Redaction.text(e.full_message(highlight: false))}"
+      # exit 1 as that printer, with the message and backtrace redacted. A
+      # message that raises while it is built is not shown at all.
+      details = begin
+        e.full_message(highlight: false)
+      rescue StandardError
+        Redaction::FAILED
+      end
+      warn "mutineer: #{Redaction.text(details)}"
       exit 1
     end
 
