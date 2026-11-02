@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Redaction no longer hides a password inside other words (#341).** A
+  form of the database password (raw, decoded or escaped) longer than 3
+  characters, made only of ASCII letters, digits and underscores, is now
+  hidden only as a whole word, like a short one. With
+  password `test`, the backtrace path `user_test.rb` stays readable. Such a
+  password inside a longer word is no longer hidden. The word `test` on its
+  own is still hidden, also right after an escape such as `%40` or `\n`, a
+  colour code, or a `-p` flag. That escape rule now covers short forms
+  too. A longer form with any
+  other character is still hidden wherever it appears.
+- **Redaction keeps the host after a password with an `@` (#341).** In
+  `postgres://u:p@ss@h/db and p@ss`, only `p@ss` is hidden now. Before, the
+  host and the rest of the line were hidden too. One known limit: in a URL
+  other than DATABASE_URL, a password that holds an `@`, a host, a `/`, `:`,
+  `?` or `#`, and a space, shows the part after that `@` when the URL's own
+  host has nothing after it, or has an `@` in its path or query. #341 tracks
+  it.
+- **Daemon shutdown no longer waits a second (#341).** A process the app
+  started could keep the daemon's error output open. Each quit or respawn of
+  `--daemon` then waited one second. Mutineer now stops waiting once the
+  daemon has exited and its output is read.
+
 ## [1.8.1] - 2026-11-02
 
 ### Fixed
