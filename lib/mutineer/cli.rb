@@ -241,6 +241,12 @@ module Mutineer
         warn "mutineer: unknown command '#{argv.first}'"
         exit 2
       end
+    rescue StandardError => e
+      # Last resort (#341): an error no handler above expects would otherwise
+      # reach Ruby's default printer, which shows its message unredacted. Same
+      # exit 1 as that printer, with the message and backtrace redacted.
+      warn "mutineer: #{Redaction.text(e.full_message(highlight: false))}"
+      exit 1
     end
 
     # Rewrites old-format ids in the loaded `.mutineer.yml` `ignore:` list.

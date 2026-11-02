@@ -956,6 +956,31 @@ class CliTest < Minitest::Test
     err.lines.grep(/\A\s/)
   end
 
+  # #341: an unexpected error is printed redacted, with exit 1, instead of
+  # reaching Ruby's default printer with the raw password.
+  def test_unexpected_error_is_redacted_and_exits_1
+    cli = Mutineer::CLI.singleton_class
+    original = Mutineer::CLI.method(:run)
+    cli.send(:define_method, :run) { |_config| raise "cannot connect: s3cret" }
+    previous = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = BAD_DATABASE_URL
+    with_project do |proj|
+      status = nil
+      _, err = capture_io do
+        status = assert_raises(SystemExit) do
+          Dir.chdir(proj) { Mutineer::CLI.start(["run", "calculator.rb", "--test", "calculator_strong_test.rb"]) }
+        end
+      end
+      assert_equal 1, status.status
+      assert_includes err, "mutineer: "
+      assert_includes err, "cannot connect: [REDACTED]"
+      refute_includes err, "s3cret"
+    end
+  ensure
+    cli.send(:define_method, :run, original)
+    previous ? ENV["DATABASE_URL"] = previous : ENV.delete("DATABASE_URL")
+  end
+
   def test_boot_error_hides_the_database_password
     _, err, status = run_with_boot(URI_BOOT)
 

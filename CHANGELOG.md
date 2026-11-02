@@ -21,6 +21,11 @@ All notable changes to this project are documented here. The format is based on
   twice. It now says it once and ends with `Failed:` and the test files.
   The failing test names and the first error are still not shown; #360
   tracks that.
+- **An unexpected error no longer prints an unredacted message (#341).**
+  An error that no other handler expected went to Ruby's default printer,
+  which did not hide a database password in its message. The CLI now prints
+  that error with the password hidden, with its backtrace, and exits 1, as
+  before. No known path raised such an error with the password.
 
 ## [1.8.0] - 2026-10-29
 
