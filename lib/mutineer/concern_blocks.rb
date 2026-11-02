@@ -56,8 +56,10 @@ module Mutineer
     #
     # With a `hook_def`, the file's {.store_hook_def} call places the mutated
     # def during the load (#348). A load that never reached that call raises.
-    # The kept-handle check runs after the load, so a handle the file holds
-    # only while it loads does not count.
+    # When a handle to the original is live at placement, the kept-handle
+    # check runs again after the load, so a handle the file holds only while
+    # it loads does not count. Placement leaves no other way to reach the
+    # original, so no handle seen then means none after the load.
     #
     # @param source_file [String] the file the mutant replaces.
     # @param path [String] the mutant file to load.
@@ -68,6 +70,7 @@ module Mutineer
     def self.load_mutant(source_file, path, hook_def: nil)
       @hook_target = hook_def && { source_file: source_file, **hook_def }
       @hook_def = nil
+      @handle_at_placement = false
       loaded = replace(source_file) do
         verbose, $VERBOSE = $VERBOSE, nil
         begin
@@ -79,7 +82,7 @@ module Mutineer
       if @hook_target
         # Still set: the load did not reach store_hook_def, so this raises.
         place_hook_def(**@hook_target)
-      elsif hook_def
+      elsif @handle_at_placement
         refuse_retained_hook_def(source_file: source_file, line: hook_def[:line], name: hook_def[:name])
       end
       loaded
@@ -126,7 +129,10 @@ module Mutineer
       @hook_def = block
       return unless @hook_target
 
-      place_hook_def(**@hook_target, check_retained: false) # load_mutant checks after the load
+      target = @hook_target
+      # A handle may be one the file drops before its load ends: load_mutant checks again then.
+      @handle_at_placement = method_handle_at?(real_path(target[:source_file]), target[:line], target[:name])
+      place_hook_def(**target, check_retained: false)
       # Cleared only after placement, so a raise the file rescues still errors after the load.
       @hook_target = nil
     end

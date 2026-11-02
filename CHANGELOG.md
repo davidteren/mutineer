@@ -18,7 +18,8 @@ All notable changes to this project are documented here. The format is based on
   now places the mutated method when the load reaches the hook call, before
   the rest of the file runs, in-process and on `--daemon`. Such a mutant can
   now be killed where it used to survive or score `ran_at_load`, so the
-  score of an affected file can change. The alias and kept-method checks
+  score of an affected file can change. A mutant that raises in such a
+  load-time call now scores `error`. The alias and kept-method checks
   still score `error`. The kept-method check runs after the load, so a
   method handle the file holds only while it loads does not count.
 
