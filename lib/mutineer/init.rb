@@ -31,7 +31,7 @@ module Mutineer
       end
       begin
         parser.parse!(argv)
-      rescue OptionParser::InvalidOption, OptionParser::MissingArgument => e
+      rescue OptionParser::ParseError => e
         err.puts "mutineer: #{e.message}"
         return 2
       end

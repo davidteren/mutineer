@@ -1010,6 +1010,15 @@ class CliTest < Minitest::Test
     assert_match(/\Amutineer: ambiguous option: --ver/, err)
   end
 
+  # The subcommands parse their own options; a malformed one exits 2 there too.
+  def test_malformed_subcommand_options_are_usage_errors
+    [%w[init --force=1], %w[triage report.json --all=1]].each do |argv|
+      _, err, status = mutineer(*argv)
+      assert_equal 2, status.exitstatus, "#{argv.join(' ')}: #{err}"
+      assert_match(/\Amutineer: needless argument: --(force|all)=1/, err)
+    end
+  end
+
   def test_boot_error_hides_the_database_password
     _, err, status = run_with_boot(URI_BOOT)
 

@@ -31,7 +31,8 @@ All notable changes to this project are documented here. The format is based on
   that matches more than one flag, such as `--ver` (`--verbose` or
   `--version`), or a value given to a flag that takes none, such as
   `--verbose=1`, crashed with a backtrace and exit 1. It now prints one line
-  and exits 2, like every other bad option.
+  and exits 2, like every other bad option. This holds for `init` and
+  `triage` too.
 
 ## [1.8.0] - 2026-10-29
 
