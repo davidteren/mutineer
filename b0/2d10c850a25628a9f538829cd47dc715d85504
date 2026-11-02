@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_e2e69250347479::t_8cceaf46cce376 21-22
+lib/mutineer/concern_blocks.rb
+  s_e2e69250347479::t_8cceaf46cce376 59-62,73,85,132-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b02d10c850a25628a9f538829cd47dc715d85504",
+  "prompts": {},
+  "sessions": {
+    "s_e2e69250347479": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3626bcfd-9dac-4321-b987-e5c3596a1aa3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
