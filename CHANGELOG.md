@@ -27,10 +27,11 @@ All notable changes to this project are documented here. The format is based on
   which did not hide a database password in its message. The CLI now prints
   that error with the password hidden, with its backtrace, and exits 1, as
   before. No known path raised such an error with the password.
-- **An ambiguous option is a usage error (exit 2).** An option that matches
-  more than one flag, such as `--ver` (`--verbose` or `--version`), crashed
-  with a backtrace and exit 1. It now prints one line and exits 2, like
-  every other bad option.
+- **An ambiguous or malformed option is a usage error (exit 2).** An option
+  that matches more than one flag, such as `--ver` (`--verbose` or
+  `--version`), or a value given to a flag that takes none, such as
+  `--verbose=1`, crashed with a backtrace and exit 1. It now prints one line
+  and exits 2, like every other bad option.
 
 ## [1.8.0] - 2026-10-29
 
