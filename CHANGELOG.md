@@ -6,6 +6,37 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **No "already initialized constant" warnings under reload (#364).** Each
+  mutant loads its whole file again, so every constant in the file was
+  assigned twice. Ruby then printed two warning lines per constant, per
+  mutant, on stderr. Mutineer now turns warnings off while it loads the
+  mutant file, in-process and on `--daemon`, and turns them back on before
+  the tests run. Warnings that the tests raise still print. Other warnings
+  raised while the mutant file loads, such as an unused variable under `-w`,
+  no longer print either. Scores and the JSON report do not change.
+- **The "not green" message says it once (#360).** When the clean run of a
+  file's tests failed, the message said "the unmutated suite is not green"
+  twice. It now says it once, then names the test files after `Failed:`.
+  A failure that only the check of all test files together finds is listed
+  as `Failed: combined suite`.
+  Under Minitest, the seed hint follows them.
+  The message itself still does not name the failing tests or the first
+  error; #360 tracks that. On the default in-process path, the failing
+  test's own report still prints on stderr before the message.
+- **An unexpected error no longer prints an unredacted message (#341).**
+  An error that no other handler expected went to Ruby's default printer,
+  which did not hide a database password in its message. The CLI now prints
+  that error with the password hidden, with its backtrace, and exits 1, as
+  before. No known path raised such an error with the password.
+- **An ambiguous or malformed option is a usage error (exit 2).** An option
+  that matches more than one flag, such as `--ver` (`--verbose` or
+  `--version`), or a value given to a flag that takes none, such as
+  `--verbose=1`, crashed with a backtrace and exit 1. It now prints one line
+  and exits 2, like every other bad option. This holds for `init` and
+  `triage` too.
+
 ## [1.8.0] - 2026-10-29
 
 ### Highlights

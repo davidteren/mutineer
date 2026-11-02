@@ -956,6 +956,84 @@ class CliTest < Minitest::Test
     err.lines.grep(/\A\s/)
   end
 
+  # #341: an unexpected error is printed redacted, with exit 1, instead of
+  # reaching Ruby's default printer with the raw password.
+  def test_unexpected_error_is_redacted_and_exits_1
+    cli = Mutineer::CLI.singleton_class
+    original = Mutineer::CLI.method(:run)
+    cli.send(:define_method, :run) { |_config| raise "cannot connect: s3cret" }
+    previous = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = BAD_DATABASE_URL
+    with_project do |proj|
+      status = nil
+      _, err = capture_io do
+        status = assert_raises(SystemExit) do
+          Dir.chdir(proj) { Mutineer::CLI.start(["run", "calculator.rb", "--test", "calculator_strong_test.rb"]) }
+        end
+      end
+      assert_equal 1, status.status
+      assert_includes err, "mutineer: "
+      assert_includes err, "cannot connect: [REDACTED]"
+      refute_includes err, "s3cret"
+    end
+  ensure
+    cli.send(:define_method, :run, original)
+    previous ? ENV["DATABASE_URL"] = previous : ENV.delete("DATABASE_URL")
+  end
+
+  # A ScriptError (NotImplementedError here) is caught by the last-resort
+  # handler too, so it cannot reach Ruby's printer unredacted (#341).
+  def test_unexpected_script_error_is_redacted_and_exits_1
+    cli = Mutineer::CLI.singleton_class
+    original = Mutineer::CLI.method(:run)
+    cli.send(:define_method, :run) { |_config| raise NotImplementedError, "adapter: s3cret" }
+    previous = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = BAD_DATABASE_URL
+    with_project do |proj|
+      status = nil
+      _, err = capture_io do
+        status = assert_raises(SystemExit) do
+          Dir.chdir(proj) { Mutineer::CLI.start(["run", "calculator.rb", "--test", "calculator_strong_test.rb"]) }
+        end
+      end
+      assert_equal 1, status.status
+      assert_includes err, "adapter: [REDACTED]"
+      refute_includes err, "s3cret"
+    end
+  ensure
+    cli.send(:define_method, :run, original)
+    previous ? ENV["DATABASE_URL"] = previous : ENV.delete("DATABASE_URL")
+  end
+
+  # #364 repro (the reporter's files): a run under the default reload
+  # strategy kills its one mutant and prints no constant-redefinition warning.
+  def test_reload_run_prints_no_constant_redefinition_warnings
+    Dir.mktmpdir("mutineer-proj") do |proj|
+      %w[constant_reload.rb constant_reload_test.rb].each { |f| FileUtils.cp(File.join(FIXTURES, f), proj) }
+      out, err, status = mutineer("run", "constant_reload.rb", "--test", "constant_reload_test.rb",
+                                  "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      summary = JSON.parse(out).fetch("summary")
+      assert_equal [1, 1, 0], summary.values_at("total", "killed", "survived")
+      refute_match(/already initialized constant|previous definition of/, err)
+    end
+  end
+
+  def test_ambiguous_option_is_a_usage_error
+    _, err, status = mutineer("--ver")
+    assert_equal 2, status.exitstatus
+    assert_match(/\Amutineer: ambiguous option: --ver/, err)
+  end
+
+  # The subcommands parse their own options; a malformed one exits 2 there too.
+  def test_malformed_subcommand_options_are_usage_errors
+    [%w[init --force=1], %w[triage report.json --all=1]].each do |argv|
+      _, err, status = mutineer(*argv)
+      assert_equal 2, status.exitstatus, "#{argv.join(' ')}: #{err}"
+      assert_match(/\Amutineer: needless argument: --(force|all)=1/, err)
+    end
+  end
+
   def test_boot_error_hides_the_database_password
     _, err, status = run_with_boot(URI_BOOT)
 

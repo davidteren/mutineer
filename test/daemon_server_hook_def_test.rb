@@ -37,6 +37,20 @@ class DaemonServerHookDefTest < Minitest::Test
     assert_predicate result, :survived?, "the existing class must get the mutated def"
   end
 
+  # #364: the daemon child loads the whole file again, so each constant is
+  # assigned twice. That must not print Ruby's redefinition warnings.
+  def test_apply_payload_does_not_warn_about_reassigned_constants
+    Dir.mktmpdir do |dir|
+      sent = { "code" => "module Daemon364; LIMIT = 10; end\n", "source_file" => File.join(dir, "x.rb") }
+      result = Mutineer::Isolation.run do
+        $VERBOSE = false
+        _, err = capture_io { 2.times { Mutineer::DaemonServer.send(:apply_payload, sent) } }
+        $VERBOSE == false && !err.match?(/already initialized constant|previous definition/) ? 0 : 1
+      end
+      assert_predicate result, :survived?, "no redefinition warning, and $VERBOSE restored"
+    end
+  end
+
   def test_apply_payload_raises_when_the_hook_def_did_not_load
     sent = payload("x * 5").merge("code" => "# no stored def\n")
     result = Mutineer::Isolation.run do

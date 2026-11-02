@@ -473,6 +473,15 @@ class RunnerTest < Minitest::Test
     assert_nil Mutineer::JobPlan.abort_if_unclean!(map)
   end
 
+  # #360: the files are named once, and the opening sentence is not repeated.
+  def test_abort_if_unclean_says_not_green_once_and_names_the_files
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], failed_clean_tests: ["test/a_test.rb", "test/b_test.rb"],
+                                          project_root: ROOT)
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map, framework: "rspec") }
+    assert_equal 1, err.message.scan("not green").size, err.message
+    assert_includes err.message, "Failed: test/a_test.rb, test/b_test.rb."
+  end
+
   def test_abort_if_unclean_names_the_minitest_seed
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], failed_clean_tests: ["test/a_test.rb"],
                                           project_root: ROOT)

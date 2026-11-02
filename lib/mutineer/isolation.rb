@@ -196,12 +196,15 @@ module Mutineer
     # text from {JobPlan.hook_mutant} and then calls
     # {ConcernBlocks.place_hook_def} (#297).
     #
+    # {ConcernBlocks.load_mutant} turns Ruby's warnings off for the load, so
+    # the constants it assigns again do not warn (#364).
+    #
     # @api private
     # @param mutated [String] mutated source text.
     # @param source_file [String] original source file path.
     # @return [Object] whatever `load` returns.
     def self.apply_whole_file(mutated, source_file)
-      write_beside(mutated, source_file) { |path| ConcernBlocks.replace(source_file) { load path } }
+      write_beside(mutated, source_file) { |path| ConcernBlocks.load_mutant(source_file, path) }
     end
 
     # Writes `code` to a hidden `.mutineer_mutant` file beside `source_file`,

@@ -183,9 +183,10 @@ module Mutineer
       return if files.empty?
 
       seed_hint = TestRunners.for(framework) == TestRunners::Minitest ? minitest_seed_hint : ""
+      # The hint opens with "the unmutated suite is not green", so the files
+      # follow it rather than repeat that sentence (#360).
       raise SmokeCheckError,
-            "the unmutated suite is not green (#{files.join(', ')}) — " \
-            "#{ExternalBackend.generic_env_hint}.#{seed_hint}"
+            "#{ExternalBackend.generic_env_hint}. Failed: #{files.join(', ')}.#{seed_hint}"
     end
 
     # Names the configured seed, and accounts for helper overrides.
