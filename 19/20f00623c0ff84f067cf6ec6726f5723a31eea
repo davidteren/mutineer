@@ -1,0 +1,19 @@
+docs/getting-started.md
+  s_2c953e24b9e1fe::t_9bad56b18fcccb 165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1920f00623c0ff84f067cf6ec6726f5723a31eea",
+  "prompts": {},
+  "sessions": {
+    "s_2c953e24b9e1fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9ab16ac-735f-4ebc-ae8f-635a479e989d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
