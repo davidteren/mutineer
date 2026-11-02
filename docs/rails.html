@@ -72,10 +72,10 @@
       <p>See the <a href="https://github.com/davidteren/mutineer/blob/main/docs/ci.md#github-action">CI guide</a> and <a href="agentic-coding.html#action">agent recipes</a> for all Action inputs.</p>
 
       <h2 id="one-model">One model locally</h2>
-      <p>Add <code>gem "mutineer", group: :test</code> to your Gemfile and run <code>bundle install</code>. Create the configuration, then run Mutineer on one model and its test:</p>
+      <p>Add <code>gem "mutineer", group: :test, require: false</code> to your Gemfile and run <code>bundle install</code>. Create the configuration, then run Mutineer on one model and its test:</p>
       <pre><code>RAILS_ENV=test bundle exec mutineer init --rails
 RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/models/order_test.rb</code></pre>
-      <p>Review each survivor. Add a test for a missed behaviour, or record why the change is equivalent before ignoring it. Start without a score threshold.</p>
+      <p>Review each survivor. Add a test for a missed behaviour, or record why the change is equivalent before ignoring it. Start without a score threshold. Full first-run steps: <a href="https://github.com/davidteren/mutineer/blob/main/docs/getting-started.md">First run to steady state</a>.</p>
 
       <h2 id="report-only">Report-only in CI</h2>
       <p>Run Mutineer in CI and keep the report. Leave the score gate off (<code>threshold</code> stays 0). A red test suite still fails. A surviving mutant does not.</p>
@@ -101,7 +101,11 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
+      # A database-backed app also needs the database service and a
+      # `bin/rails db:prepare` step from your test workflow.
       - uses: davidteren/mutineer@v1
+        env:
+          RAILS_ENV: test
         with:
           sources: app/models
           since: none
@@ -109,6 +113,25 @@ jobs:
           use-bundler: true
           extra-args: "--no-fail-fast"</code></pre>
       <p>For report-only CI, leave <code>threshold</code> at 0 and <code>baseline</code> unset in both the workflow and <code>.mutineer.yml</code>. To reject new survivors, first save a full run from the default branch as <code>.mutineer/baseline.json</code> and make that file available in CI. Then set <code>baseline: .mutineer/baseline.json</code> in the Action's <code>with:</code> inputs. Keep the key unset in <code>.mutineer.yml</code>. Keep <code>since: none</code> to scan all chosen sources on every pull request, including when only tests change. This avoids a workflow edit for each PR, but can take longer than a scan of changed source lines. Add a <code>threshold</code> when the chosen folders are ready.</p>
+      <pre><code>name: Mutation testing
+"on": pull_request
+jobs:
+  mutineer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - uses: davidteren/mutineer@v1
+        with:
+          sources: app/models
+          since: none
+          rails: true
+          use-bundler: true
+          baseline: .mutineer/baseline.json
+          extra-args: "--no-fail-fast"</code></pre>
       <p>On <code>pull_request</code> events, omitting <code>since:</code> normally scans changed source lines against the PR's base commit. The Action tries the base branch tip if needed. If neither base resolves, it warns and supplies no <code>--since</code> override; any <code>since:</code> setting in <code>.mutineer.yml</code> can still apply. <code>since: none</code> forces a full scan.</p>
 
       <h2 id="gitlab-ci">GitLab CI</h2>

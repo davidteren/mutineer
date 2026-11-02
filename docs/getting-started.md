@@ -18,6 +18,28 @@ bundle install
 RAILS_ENV=test bundle exec mutineer init --rails
 ```
 
+`init` leaves an existing `.mutineer.yml` unchanged unless you pass `--force`. Generated config:
+
+```yaml
+# Mutineer config. Command-line flags override this file.
+# These operators are the default set.
+operators:
+  - arithmetic
+  - comparison
+  - boolean_connector
+  - boolean_literal
+  - statement_removal
+
+# since: origin/main
+# Leave this commented so the first run is a full scan.
+
+rails: true
+
+# daemon: true
+# Leave this commented until the support matrix says the daemon fits.
+# The matrix is on https://davidteren.github.io/mutineer/rails.html#daemon
+```
+
 Exclude the coverage cache in `.gitignore`, but keep the baseline you add in step 6:
 
 ```gitignore
@@ -94,11 +116,7 @@ ignore:
     reason: x / 1 equals x * 1 for numbers
 ```
 
-**Prompt for your coding agent**
-
-```text
-Run RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --format json --output report.json. For each entry in survivors[], read the diff and write a test that passes on the original code and fails on the mutant. Do not edit the source file. If you believe a mutant is equivalent, do not write a test: explain why and propose an ignore: entry with a reason. Re-run Mutineer and report the new score.
-```
+For a coding-agent prompt that fixes each survivor in `report.json`, see [Reading results: what to do with a survivor](results.md#what-to-do-with-a-survivor).
 
 ## 5. Widen the run
 
@@ -143,72 +161,14 @@ Use matching sources, tests, and operators in CI.
 
 ## 7. Check only new and changed code in CI
 
-Add `.github/workflows/mutineer.yml`:
-
-```yaml
-name: Mutineer
-on: pull_request
-
-jobs:
-  mutineer:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: ruby/setup-ruby@v1
-        with: { bundler-cache: true }
-      - uses: davidteren/mutineer@v1
-        env:
-          RAILS_ENV: test
-        with:
-          sources: app/models
-          rails: "true"
-          use-bundler: "true"
-          baseline: .mutineer/baseline.json
-          extra-args: "--no-fail-fast"
-```
+Add `.github/workflows/mutineer.yml` from the [CI guide: Rails workflow](ci.md#rails-workflow).
+For PostgreSQL, use [Rails with PostgreSQL](ci.md#rails-with-postgresql) instead: it adds the database service and prepares the schema before the Mutineer step.
 
 On `pull_request`, the Action tests changed lines. With `baseline:` set, only new survivors fail.
 
 Changed-lines runs miss weakened tests for unchanged code.
 For any PR that changes tests, including one that also changes source, scan fully with `since: none`
 (see [Rails rollout: report-only CI](rails.md#report-only-in-ci)).
-
-For PostgreSQL, add a database service and prepare the schema before the Mutineer step.
-Match names and versions to your test workflow:
-
-```yaml
-jobs:
-  mutineer:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd pg_isready --health-interval 10s
-          --health-timeout 5s --health-retries 5
-    env:
-      RAILS_ENV: test
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/app_test
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: ruby/setup-ruby@v1
-        with: { bundler-cache: true }
-      - run: bin/rails db:prepare
-      - uses: davidteren/mutineer@v1
-        with:
-          sources: app/models
-          rails: "true"
-          use-bundler: "true"
-          baseline: .mutineer/baseline.json
-          extra-args: "--no-fail-fast"
-```
-
-More options: [CI guide](ci.md).
 
 **Prompt for your coding agent**
 
