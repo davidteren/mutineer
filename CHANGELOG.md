@@ -6,8 +6,6 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-## [1.8.1] - 2026-11-02
-
 ### Fixed
 
 - **`--test-command` warns about a random test order (#338).** Mutineer
@@ -23,6 +21,11 @@ All notable changes to this project are documented here. The format is based on
   change. It cannot see a seed set in a wrapper script or `.rspec`, or a
   Minitest `test_order`, so the warning can print when the order is
   already fixed. #368 tracks these limits.
+
+## [1.8.1] - 2026-11-02
+
+### Fixed
+
 - **No "already initialized constant" warnings under reload (#364).** Each
   mutant loads its whole file again, so every constant in the file was
   assigned twice. Ruby then printed two warning lines per constant, per

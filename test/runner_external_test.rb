@@ -160,7 +160,7 @@ class RunnerExternalTest < Minitest::Test
   def test_random_order_on_clean_run_warns_once
     with_order_dependent_project do |proj|
       out, err, status = mutineer("run", "ledger.rb", "--test", "ledger_test.rb", "--format", "json",
-                                  "--test-command", "#{RUBY} %{files}", chdir: proj, env: { "SEED" => nil })
+                                  "--test-command", "#{RUBY} %{files}", chdir: proj, env: { "SEED" => nil, "TESTOPTS" => nil })
       assert_equal 0, status.exitstatus, err
       assert_equal 1, err.scan("printed a Minitest seed (1)").size, err
       assert_includes err, "set SEED=1 before the mutineer command"
@@ -173,7 +173,7 @@ class RunnerExternalTest < Minitest::Test
   def test_fixed_seed_on_clean_run_does_not_warn
     with_order_dependent_project do |proj|
       out, err, status = mutineer("run", "ledger.rb", "--test", "ledger_test.rb", "--format", "json",
-                                  "--test-command", "#{RUBY} %{files}", chdir: proj, env: { "SEED" => "1" })
+                                  "--test-command", "#{RUBY} %{files}", chdir: proj, env: { "SEED" => "1", "TESTOPTS" => nil })
       assert_equal 0, status.exitstatus, err
       refute_includes err, "seed (1)"
       assert_equal 1, JSON.parse(out).dig("summary", "killed"), err
@@ -185,7 +185,7 @@ class RunnerExternalTest < Minitest::Test
   def test_order_dependent_fixture_fails_in_another_order
     with_order_dependent_project do |proj|
       _out, err, status = mutineer("run", "ledger.rb", "--test", "ledger_test.rb",
-                                   "--test-command", "#{RUBY} %{files}", chdir: proj, env: { "SEED" => "2" })
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj, env: { "SEED" => "2", "TESTOPTS" => nil })
       assert_equal 1, status.exitstatus, err
       assert_match(/unmutated suite is not green/, err)
     end
