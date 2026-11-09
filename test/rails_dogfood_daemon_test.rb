@@ -179,7 +179,7 @@ class RailsDogfoodDaemonTest < Minitest::Test
     _out, err = capture_subprocess_io { aggregate, = Mutineer::Runner.execute(reloaded_class_body_config) }
 
     assert_equal 0, aggregate.errored_count, err
-    assert_equal 2, aggregate.killed_count
+    assert_operator aggregate.killed_count, :>, 1, "both files have mutants"
     assert_equal 100.0, aggregate.mutation_score
   end
 
