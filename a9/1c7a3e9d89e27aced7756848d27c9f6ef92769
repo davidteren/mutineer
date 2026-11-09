@@ -1,0 +1,25 @@
+test/reload_guards_test.rb
+  s_8e9ddd58442ff3::t_89b4530ee33761 35-42,44,96,104-114
+  s_8e9ddd58442ff3::t_f1c31300f3d2c1 115
+lib/mutineer/reload_guards.rb
+  s_8e9ddd58442ff3::t_89b4530ee33761 13-15,45-48,57-58,97-110
+  s_8e9ddd58442ff3::t_5dd34f869214c4 111-112
+CHANGELOG.md
+  s_8e9ddd58442ff3::t_ff93e5c71ee281 18-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a91c7a3e9d89e27aced7756848d27c9f6ef92769",
+  "prompts": {},
+  "sessions": {
+    "s_8e9ddd58442ff3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61a348f1-4d94-47d2-9493-69df5bc07370",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
