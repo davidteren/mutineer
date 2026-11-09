@@ -1,0 +1,40 @@
+lib/mutineer/parser.rb
+  s_8e9ddd58442ff3::t_c4daf54bf35cc8 36-54
+lib/mutineer/runner.rb
+  s_8e9ddd58442ff3::t_c4daf54bf35cc8 307,367-368
+CHANGELOG.md
+  s_8e9ddd58442ff3::t_f07ea91d121af0 9-22
+test/mutation_test.rb
+  s_8e9ddd58442ff3::t_87c946d4bc3666 31-41
+lib/mutineer/isolation.rb
+  s_8e9ddd58442ff3::t_c4daf54bf35cc8 268-273,278-282
+lib/mutineer/daemon_backend.rb
+  s_8e9ddd58442ff3::t_c4daf54bf35cc8 428
+test/parser_test.rb
+  s_8e9ddd58442ff3::t_87c946d4bc3666 28-47
+test/prism_errors_test.rb
+  s_8e9ddd58442ff3::t_e016e27bedfbfd 4
+  s_8e9ddd58442ff3::t_912ac966cb4ed9 12-14,22,24,40-41,43-44,46,54-56
+  s_8e9ddd58442ff3::t_c4daf54bf35cc8 42,45
+  s_8e9ddd58442ff3::t_e28e20f45a6828 1-3,5-11,15-21,23,25-39,47-53,57-85
+lib/mutineer/mutation.rb
+  s_8e9ddd58442ff3::t_c4daf54bf35cc8 19-20,23,25
+test/mutators/operator_assignment_test.rb
+  s_8e9ddd58442ff3::t_55668c6a694fef 24-33,152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "450d33bb548919ea748ff53c756c0d2e65f376aa",
+  "prompts": {},
+  "sessions": {
+    "s_8e9ddd58442ff3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61a348f1-4d94-47d2-9493-69df5bc07370",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
