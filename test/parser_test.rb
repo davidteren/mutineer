@@ -48,6 +48,18 @@ class ParserTest < Minitest::Test
     assert Mutineer::Parser.new_errors?(BROKEN, BROKEN.sub("def a(x, x)", "def a(y, y)"))
   end
 
+  # cubic: the same message over identical text, moved by one edit, is new.
+  def test_new_errors_reports_the_same_error_moved_by_the_edit
+    moved = BROKEN.sub("def a(x, x)\nend\n\ndef b\n", "def a(x)\nend\n\ndef b(x, x)\n")
+    assert Mutineer::Parser.new_errors?(BROKEN, moved)
+  end
+
+  # An error after the edit keeps its identity although its offsets move.
+  def test_new_errors_ignores_an_existing_error_after_the_edit
+    source = "x = 1 + 2\ndef a(y, y)\nend\n"
+    refute Mutineer::Parser.new_errors?(source, source.sub("1 + 2", "10000 - 20000"))
+  end
+
   def test_new_errors_is_false_for_clean_source
     refute Mutineer::Parser.new_errors?("1 + 2", "1 - 2")
   end
