@@ -269,7 +269,11 @@ runs:
           # Action preflights the caller's path before handing the CLI a temp
           # file, so the CLI's mkdir never runs for this input. Other missing
           # parents still exit 2.
-          out_dir="$(dirname "$OUTPUT")"
+          # dirname ends its answer with one newline; the "." guard keeps $( )
+          # from also dropping a newline that ends the folder name.
+          out_dir="$(dirname -- "$OUTPUT"; printf .)"
+          out_dir="${out_dir%.}"
+          out_dir="${out_dir%$'\n'}"
           if [ ! -d "$out_dir" ]; then
             # #394: ask the installed CLI for its resolved cache_dir.
             if cli_setting cache_dir; then
@@ -325,9 +329,9 @@ runs:
                 done
               fi
             fi
-            cache_abs="$(ruby -e 'print File.expand_path(ARGV[0])' "$cache_dir")"
-            out_abs="$(ruby -e 'print File.expand_path(ARGV[0])' "$out_dir")"
-            if [ "$out_abs" = "$cache_abs" ]; then
+            # Compare in Ruby and answer with the exit code: a path read
+            # back through $( ) would lose a trailing newline.
+            if ruby -e 'exit(File.expand_path(ARGV[0]) == File.expand_path(ARGV[1]))' "$out_dir" "$cache_dir"; then
               if ! mkdir -p "$out_dir" 2>/dev/null; then
                 echo "::error::mutineer: cannot write output '$SAFE_OUT': could not create cache directory."
                 exit 2

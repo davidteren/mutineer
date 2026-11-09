@@ -245,6 +245,14 @@ run_step case18c STUB_EXIT=0 OUTPUT="mcache/pr.json"
 [ -s mcache/pr.json ] && echo "  OK: output delivered into yml cache dir" || echo "  FAIL: yml cache output missing"
 rm -f .mutineer.yml
 
+echo; echo "== 18i: cache dir whose name ends in a newline (#394 review) =="
+printf 'cache_dir: "nlcache\\n"\n' > .mutineer.yml
+nl_out="nlcache"$'\n'"/pr.json"
+run_step case18i STUB_EXIT=0 OUTPUT="$nl_out"
+[ -s "$nl_out" ] && echo "  OK: newline-ended cache dir created" || echo "  FAIL: newline-ended cache dir output missing"
+[ -e nlcache ] && echo "  FAIL: created the cache dir without its newline" || echo "  OK: no truncated cache dir"
+rm -f .mutineer.yml
+
 echo; echo "== 18d: cache dir from extra-args, as two words (#340) =="
 run_step case18d STUB_EXIT=0 OUTPUT="xcache/pr.json" EXTRA_ARGS="--cache-dir xcache"
 [ -s xcache/pr.json ] && echo "  OK: extra-args cache dir created" || echo "  FAIL: extra-args cache dir output missing"
