@@ -239,9 +239,15 @@ runs:
         # Released versions do not change, so that copy stays correct for them.
         # shortcut: the copies stay until the version floor reaches the first
         # release with `mutineer config`; delete them then.
+        # Sets CLI_VALUE to the setting the installed CLI resolves; fails when
+        # the CLI cannot answer (an older CLI has no `config`). The CLI ends the
+        # value with exactly one newline, and the trailing "." stops $( ) from
+        # dropping newlines that belong to the value (a path can end in one).
         cli_setting() {
           # shellcheck disable=SC2086
-          "${runner[@]}" config "$@" $EXTRA_ARGS 2>/dev/null
+          CLI_VALUE="$("${runner[@]}" config "$@" $EXTRA_ARGS 2>/dev/null; status=$?; printf .; exit "$status")" || return
+          CLI_VALUE="${CLI_VALUE%.}"
+          CLI_VALUE="${CLI_VALUE%$'\n'}"
         }
 
         # Mutineer preflights ITS --output path (the temp file), so a bad
@@ -266,7 +272,9 @@ runs:
           out_dir="$(dirname "$OUTPUT")"
           if [ ! -d "$out_dir" ]; then
             # #394: ask the installed CLI for its resolved cache_dir.
-            if ! cache_dir="$(cli_setting cache_dir)"; then
+            if cli_setting cache_dir; then
+              cache_dir="$CLI_VALUE"
+            else
               cache_dir=".mutineer"
               cache_dir="$(ruby -ryaml -e '
                 dir = File.expand_path(Dir.pwd)
@@ -289,8 +297,9 @@ runs:
                   value = raw["cache_dir"] if raw.is_a?(Hash)
                 end
                 value = ARGV[0] if [nil, true, false].include?(value) || value.to_s.strip.empty?
-                print value.to_s
+                print value.to_s, "."
               ' "$cache_dir")"
+              cache_dir="${cache_dir%.}"
               if [ -n "$EXTRA_ARGS" ]; then
                 pending=""
                 for extra_arg in $EXTRA_ARGS; do
@@ -341,7 +350,9 @@ runs:
           # --baseline in extra-args wins, as in the run below.
           baseline_args=()
           [ -n "$BASELINE" ] && baseline_args=(--baseline "$BASELINE")
-          if ! baseline_path="$(cli_setting baseline "${baseline_args[@]}")"; then
+          if cli_setting baseline "${baseline_args[@]}"; then
+            baseline_path="$CLI_VALUE"
+          else
             baseline_path="$BASELINE"
             if [ -n "$EXTRA_ARGS" ]; then
               pending=""
@@ -385,8 +396,9 @@ runs:
                 raw = YAML.safe_load(File.read(file)) rescue exit(0)
                 exit 0 unless raw.is_a?(Hash)
                 value = raw["baseline"]
-                print value.to_s unless [nil, true, false].include?(value) || value.to_s.empty?
+                print value.to_s, "." unless [nil, true, false].include?(value) || value.to_s.empty?
               ')"
+              baseline_path="${baseline_path%.}"
             fi
           fi
         fi

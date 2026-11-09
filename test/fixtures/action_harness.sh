@@ -215,6 +215,16 @@ after=$(cksum "$weird")
 [ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on an escaped path" || echo "  OK: escaped path rejected before running"
 grep '::error::' "$SCRATCH/case17/stdout.txt"
 
+echo; echo "== 17b: same-file path that ends in a newline (expects exit 2) (#394 review) =="
+mkdir -p "$SCRATCH/case17b"
+trailing="$SCRATCH/case17b/same.json"$'\n'
+cp "$SCRATCH/report.json" "$trailing"
+before=$(cksum "$trailing")
+run_step case17b STUB_EXIT=1 OUTPUT="$trailing" BASELINE="$trailing"
+after=$(cksum "$trailing")
+[ "$before" = "$after" ] && echo "  OK: trailing-newline baseline kept" || echo "  FAIL: trailing-newline baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on a trailing-newline path" || echo "  OK: trailing-newline path rejected before running"
+
 echo; echo "== 18: output under missing .mutineer cache dir (expects mkdir + delivered file) (#340) =="
 rm -rf .mutineer
 rm -f .mutineer.yml

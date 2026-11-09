@@ -1969,6 +1969,15 @@ class CliTest < Minitest::Test
     end
   end
 
+  # Qodo: a value that ends in a newline keeps it; the CLI adds exactly one
+  # more, so the Action can strip that one and see the real path.
+  def test_config_ends_a_value_with_exactly_one_newline
+    Dir.mktmpdir("mutineer-config") do |dir|
+      File.write(File.join(dir, ".mutineer.yml"), %(baseline: "b.json\\n"\n))
+      assert_equal "b.json\n\n", mutineer("config", "baseline", chdir: dir).first
+    end
+  end
+
   def test_config_with_an_unknown_or_missing_key_is_a_usage_error
     [%w[config threshold], %w[config]].each do |args|
       out, err, status = mutineer(*args)

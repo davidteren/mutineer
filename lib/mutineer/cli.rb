@@ -279,7 +279,9 @@ module Mutineer
         exit 2
       end
       value = config[key.to_sym]
-      puts value unless value.nil?
+      # Exactly one newline, even after a value that ends in one (puts would
+      # add none), so a caller can strip it and keep the value whole.
+      print value, "\n" unless value.nil?
       exit 0
     end
 
