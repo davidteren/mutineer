@@ -1,0 +1,57 @@
+lib/mutineer/concern_blocks.rb
+  s_e18bc297170be2::t_338c27cb3a0fa9 62
+lib/mutineer/reload_guards.rb
+  s_8e9ddd58442ff3::t_1f471be895a9d2 144-148,236-244
+  s_8e9ddd58442ff3::t_85c4b6cff6e78c 149-150,246-247
+  s_8e9ddd58442ff3::t_5dd34f869214c4 270-271
+  s_e18bc297170be2::t_a071b9c27b5893 81-82,85,88,91,94-96,101-131,136-137
+  s_8e9ddd58442ff3::t_67c969cc5f6fad 245
+  s_e18bc297170be2::t_18d9a7b34b1b24 26-33
+  s_e18bc297170be2::t_aa0481c61a5748 132-134,141,168-207,210-235
+  s_8e9ddd58442ff3::t_9ce7ca73bb82b1 138,142,151,248-254,258,260-262,264-269
+  s_8e9ddd58442ff3::t_89b4530ee33761 139,255-257,259,263
+  s_e18bc297170be2::t_3f23f0b1fee091 143
+  s_8e9ddd58442ff3::t_869026aef389d9 152-167,208-209,272-310,312-314
+  s_e18bc297170be2::t_e7b9c0f49aca78 135
+  s_e18bc297170be2::t_230c7feb9a4e97 140,311,315-441
+test/rails_dogfood_daemon_test.rb
+  s_8e9ddd58442ff3::t_eb56d8be198108 205-206
+  s_e18bc297170be2::t_0dd8f4a502b8fa 194-204
+CHANGELOG.md
+  s_e18bc297170be2::t_abb01cb6f39f1d 23-36
+test/fixtures/rails_app/bin/dogfood
+  s_e18bc297170be2::t_23460a80aecd07 85-95
+test/fixtures/rails_app/test/models/parcel_test.rb
+  s_e18bc297170be2::t_221c28b52d3a64 1-17
+test/fixtures/rails_app/app/models/parcel.rb
+  s_e18bc297170be2::t_ca919d7d18bfdd 1-20
+test/reload_guards_test.rb
+  s_e18bc297170be2::t_464a35cd42efdf 147-215,237-238,243-244,251,257,270,277,286,292,304,310,319,325,332,343,349,359,365
+  s_e18bc297170be2::t_7f022087d102c5 216-236,239-242,245-250,252-256,258-269,271-276,278-285,287-291,305,309,320,322,360,364
+  s_e18bc297170be2::t_7ecd3d67863b03 293-303,306-308,311-318,321,323-324,362
+  s_e18bc297170be2::t_5cb5895a3786f0 326-331,333-342,344-348,350-358,361,363
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "47ccdd148179c022fcc8744336852f1a27d32288",
+  "prompts": {},
+  "sessions": {
+    "s_8e9ddd58442ff3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61a348f1-4d94-47d2-9493-69df5bc07370",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_e18bc297170be2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3c0b053-0921-491b-bd29-b8372eabdad8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
