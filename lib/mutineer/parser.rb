@@ -48,6 +48,9 @@ module Mutineer
       errors = parse_string(mutated).errors
       return false if errors.empty? # the usual case costs one parse, as before
 
+      # shortcut: one edit that removes an error and adds another with the same
+      # message passes; that mutant fails to load and scores error, never a false
+      # verdict. Match by location too if an operator ever makes such edits.
       baseline = parse_string(original).errors.map(&:message).tally
       errors.map(&:message).tally.any? { |message, count| count > baseline.fetch(message, 0) }
     end

@@ -8,7 +8,7 @@ module Mutineer
   #                  run's first failure was a database connection or lock
   #                  error (#296): exit status 2.
   #   timeout      - the parent SIGKILLed a child that overran its wall clock.
-  #   skipped      - the mutated source failed to re-parse (invalid); no fork.
+  #   skipped      - the mutation added a parse error the source lacks (invalid); no fork.
   #   no_coverage  - no test exercises the mutated line; not run, not scored.
   #                  Also a mutant on a later line of a multi-line statement,
   #                  in code that runs only sometimes, that the statement's
