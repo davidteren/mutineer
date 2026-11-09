@@ -1,0 +1,43 @@
+CHANGELOG.md
+  s_e18bc297170be2::t_c8baf19bb33cd6 54-66
+docs/json-schema.md
+  s_e18bc297170be2::t_b32cc292e8c406 62
+lib/mutineer/daemon_backend.rb
+  s_e18bc297170be2::t_8066effb97e9bf 420-421,428
+lib/mutineer/isolation.rb
+  s_e18bc297170be2::t_f9274c11837aa9 269-274,279-283
+lib/mutineer/mutation.rb
+  s_e18bc297170be2::t_ae066c86bea146 19-20,23,25
+lib/mutineer/parser.rb
+  s_e18bc297170be2::t_258a04cf592eff 36-95
+lib/mutineer/reporter.rb
+  s_e18bc297170be2::t_38be077c8d728c 140-141,880-881
+lib/mutineer/result.rb
+  s_e18bc297170be2::t_f34d06a0cd83c5 11
+lib/mutineer/runner.rb
+  s_e18bc297170be2::t_ae331aa8701072 297-298,307,367-368
+test/mutation_test.rb
+  s_e18bc297170be2::t_e206c082e8d385 31-41
+test/parser_test.rb
+  s_e18bc297170be2::t_162d7cca170abf 28-88
+test/prism_errors_test.rb
+  s_e18bc297170be2::t_81415f5b473c59 1-103
+test/reporter_test.rb
+  s_e18bc297170be2::t_6bdcd286d22df6 561
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6167aef56c4318d5f2441040e347fb633e24b2e5",
+  "prompts": {},
+  "sessions": {
+    "s_e18bc297170be2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3c0b053-0921-491b-bd29-b8372eabdad8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
