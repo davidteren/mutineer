@@ -38,8 +38,9 @@ module Mutineer
     # bare-constant operator write inside a method (`T += 1`) as a dynamic
     # constant assignment, as Ruby's parse.y does, while the Prism 1 that
     # Ruby 3.4 and 4.0 load with accepts it. Such an error must not make
-    # every mutant of the file invalid. Errors compare by message and count,
-    # because an edit moves the offsets of everything after it.
+    # every mutant of the file invalid. Errors compare by message and the source
+    # text they mark, with counts, because an edit moves the offsets of
+    # everything after it but not that text.
     #
     # @param original [String] the source before the edit.
     # @param mutated [String] the source after the edit.
@@ -48,12 +49,9 @@ module Mutineer
       errors = parse_string(mutated).errors
       return false if errors.empty? # the usual case costs one parse, as before
 
-      # shortcut: one edit that removes an error and adds another with the same
-      # message passes. That mutant fails to load: it scores error, or a false
-      # killed under --test-command with the summary check off. No operator
-      # makes such an edit; match by location too if one ever does.
-      baseline = parse_string(original).errors.map(&:message).tally
-      errors.map(&:message).tally.any? { |message, count| count > baseline.fetch(message, 0) }
+      key = ->(error) { [error.message, error.location.slice] }
+      baseline = parse_string(original).errors.map(&key).tally
+      errors.map(&key).tally.any? { |error, count| count > baseline.fetch(error, 0) }
     end
 
     # The comments of source text, without building its syntax tree: a few

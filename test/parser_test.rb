@@ -42,6 +42,12 @@ class ParserTest < Minitest::Test
     assert Mutineer::Parser.new_errors?(BROKEN, BROKEN.sub("1 + 2", "def c(y, y); end"))
   end
 
+  # cubic: one edit that removes the existing error and adds another with the
+  # same message elsewhere is still a new error.
+  def test_new_errors_reports_a_same_message_error_that_replaces_the_old_one
+    assert Mutineer::Parser.new_errors?(BROKEN, BROKEN.sub("def a(x, x)", "def a(y, y)"))
+  end
+
   def test_new_errors_is_false_for_clean_source
     refute Mutineer::Parser.new_errors?("1 + 2", "1 - 2")
   end
