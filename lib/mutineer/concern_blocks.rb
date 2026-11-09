@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "reload_guards"
+
 module Mutineer
   # Lets the reload strategy load a concern file a second time (#256).
   #
@@ -46,21 +48,25 @@ module Mutineer
       end
     end
 
-    # Loads the mutant file at `path` over `source_file`, through {.replace}.
-    # The load assigns each of the file's constants a second time, so Ruby
-    # would warn twice per constant, per mutant (#364). Warnings are off for
-    # the load only, and back on before the tests run.
+    # Loads the mutant file at `path` over `source_file`, through {.replace}
+    # inside {ReloadGuards.during_load}, so Rails macros in the class body can
+    # run a second time (#378, #383, #384). The load assigns each of the file's
+    # constants a second time, so Ruby would warn twice per constant, per
+    # mutant (#364). Warnings are off for the load only, and back on before
+    # the tests run.
     #
     # @param source_file [String] the file the mutant replaces.
     # @param path [String] the mutant file to load.
     # @return [Object] what `load` returns.
     def self.load_mutant(source_file, path)
-      replace(source_file) do
-        verbose, $VERBOSE = $VERBOSE, nil
-        begin
-          load path
-        ensure
-          $VERBOSE = verbose
+      ReloadGuards.during_load(source_file) do
+        replace(source_file) do
+          verbose, $VERBOSE = $VERBOSE, nil
+          begin
+            load path
+          ensure
+            $VERBOSE = verbose
+          end
         end
       end
     end
@@ -134,7 +140,7 @@ module Mutineer
 
       # ponytail: one ObjectSpace walk per mutant (about 11 ms with Rails loaded);
       # index modules by method name if a large app makes it slow.
-      modules = ObjectSpace.each_object(Module).to_a
+      modules = ObjectSpace.each_object(Module).reject { |mod| deprecation_proxy?(mod) }
       found = owners(modules, source_file: source_file, line: line, name: name, singleton: singleton)
       mod, other = aliases(modules, source_file: source_file, line: line, name: name, singleton: singleton).first
       if mod
@@ -247,6 +253,22 @@ module Mutineer
         end
       end
     end
+
+    # True for Rails' `DeprecatedConstantProxy`: a Module that forwards every
+    # call to its target and prints a deprecation warning, so asking it for
+    # methods would print one per mutant (#387). `Kernel#class` reads its real
+    # class without forwarding.
+    #
+    # @param mod [Module] a module from the ObjectSpace walk.
+    # @return [Boolean]
+    def self.deprecation_proxy?(mod)
+      return false unless defined?(::ActiveSupport::Deprecation::DeprecatedConstantProxy)
+
+      KERNEL_CLASS.bind_call(mod) <= ::ActiveSupport::Deprecation::DeprecatedConstantProxy
+    end
+
+    # `Kernel#class`, unbound, so a proxy that redefines `class` cannot answer.
+    KERNEL_CLASS = ::Kernel.instance_method(:class)
 
     # The file's real path, so a symlinked or relative path matches the path
     # Ruby recorded when it loaded the file.

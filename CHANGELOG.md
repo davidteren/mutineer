@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Reload runs a Rails class body a second time without errors (#378,
+  #384).** Reload loads the mutant file over the class that is already
+  defined, so its body runs again. A model that declares an `enum`, and a
+  class that calls `skip_callback` (a controller's `skip_before_action` or
+  `allow_unauthenticated_access` calls it), raised on that second run, and
+  every mutant in the file scored `error`. While the mutant file loads, an
+  enum the class already has now skips Rails' conflict check, and a skip of a
+  callback that is already gone does nothing. Both checks run as usual while
+  the tests run. This holds on `--daemon` and with `--strategy reload`.
+- **Concern mutants load when the test app loads lazily (#383).** With
+  `eager_load` off (the Rails test default), the mutant's load was the first
+  use of the concern, so Rails loaded the original file inside it. The
+  original `included` block then came back, and the mutant's block raised
+  `MultipleIncludedBlocks`. Mutineer now loads the original file first, through
+  the app's autoloader, so the mutant's block replaces it.
+- **The pending-migration check no longer trips `shared_databases` (#385).**
+  `rails/test_help` checks every database for pending migrations when the
+  tests load, shared ones too. A parallel `--daemon` run then reported the
+  shared database as used and scored every mutant `error`. Mutant forks of a
+  run with `shared_databases` now turn that check off. The clean check, which
+  runs before any mutant, still makes it.
+- **No Rails deprecation warning from concern mutants (#387).** Placing a
+  mutant inside an `included` block looked at every module. Rails 8.2 keeps a
+  deprecated constant as a module that warns on every call, so each such
+  mutant printed `LoadInterlockAwareMonitor is deprecated`. Mutineer now skips
+  that module.
+
 ## [1.8.1] - 2026-11-02
 
 ### Fixed

@@ -15,6 +15,7 @@ module Dummy
     config.eager_load = false
     # Schema is loaded explicitly from db/schema.rb (no migrations dir), so skip
     # Rails' pending-migration check that would otherwise abort the suite.
-    config.active_record.maintain_test_schema = false
+    # MUTINEER_MAINTAIN_SCHEMA=1 turns it on, as in a new Rails app (#385).
+    config.active_record.maintain_test_schema = ENV["MUTINEER_MAINTAIN_SCHEMA"] == "1"
   end
 end

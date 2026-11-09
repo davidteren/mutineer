@@ -73,6 +73,15 @@ ruby -rjson -e 's = JSON.parse(File.read(ARGV[0]))["summary"]
   abort "FAIL: expected every billing/fee mutant killed, got #{s.inspect}" unless s["killed"] > 1 && s.values_at("survived", "errored", "no_coverage") == [0, 0, 0]' "$REPORT"
 echo "ok: billing/fee mutants are killed"
 
+echo "== a class body with enum, skip_callback, and a lazy concern reloads (#378, #383, #384) =="
+REPORT="$(mktemp)"
+expect_exit 0 "shipment + trackable --rails --no-daemon --strategy reload --threshold 100" -- \
+  bundle exec mutineer run app/models/shipment.rb app/models/concerns/trackable.rb \
+  --rails --no-daemon --strategy reload --threshold 100 --format json --output "$REPORT"
+ruby -rjson -e 's = JSON.parse(File.read(ARGV[0]))["summary"]
+  abort "FAIL: expected both mutants killed, got #{s.inspect}" unless s.values_at("killed", "survived", "errored", "no_coverage") == [2, 0, 0, 0]' "$REPORT"
+echo "ok: shipment and trackable mutants are killed"
+
 echo "== Rails parallelize creates no worker database =="
 rails_worker_dbs
 if (( ${#found[@]} )); then

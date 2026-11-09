@@ -360,7 +360,10 @@ module Mutineer
               apply_payload(req["payload"])
               # A parallel worker records each pool that runs SQL, so a test
               # that closes its shared connection is still caught below.
-              @worker_db.watch_sql if @worker_db && @shared_databases&.any?
+              if @worker_db && @shared_databases&.any?
+                @worker_db.skip_schema_check!
+                @worker_db.watch_sql
+              end
               result = run_tests(Array(req["tests"]))
               check_shared_databases!
               result
