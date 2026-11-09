@@ -1,0 +1,27 @@
+action.yml
+  s_8e9ddd58442ff3::t_64ca2d9defdd99 242-245,248-250,275-277,300,302,353-355,399,401
+lib/mutineer/cli.rb
+  s_8e9ddd58442ff3::t_99622d9bbcd9e0 282-284
+test/action_harness_test.rb
+  s_8e9ddd58442ff3::t_ca6081685e3248 31,39-40
+test/cli_test.rb
+  s_8e9ddd58442ff3::t_7272ead5a7dce2 1972-1980
+test/fixtures/action_harness.sh
+  s_8e9ddd58442ff3::t_68f4734086811b 218-227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0cb44ac6e5c0df79212b3f53e278a6e15fee2042",
+  "prompts": {},
+  "sessions": {
+    "s_8e9ddd58442ff3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61a348f1-4d94-47d2-9493-69df5bc07370",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
