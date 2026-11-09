@@ -21,7 +21,16 @@ class OperatorAssignmentTest < Minitest::Test
     assert_equal token, source[m.start_offset...m.end_offset]
     assert_equal replacement, m.replacement
     assert_equal :operator_assignment, m.operator
-    assert m.valid?(source), "mutated #{body.inspect} should re-parse"
+    assert_parses_like_original(m, source, body)
+  end
+
+  # The mutant parses exactly as the original does. Prism 2 reports a bare
+  # constant op-assign inside a def as "dynamic constant assignment" (Prism 1
+  # and Ruby 3.4 accept it), so the original's errors are the baseline.
+  def assert_parses_like_original(mutation, source, body)
+    original = Mutineer::Parser.parse_string(source).errors.map(&:message)
+    mutant = Mutineer::Parser.parse_string(mutation.apply(source)).errors.map(&:message)
+    assert_equal original, mutant, "mutated #{body.inspect} should parse as the original does"
   end
 
   def test_plus_assign_to_minus_assign
@@ -140,7 +149,7 @@ class OperatorAssignmentTest < Minitest::Test
      "a[] += 1", "s += <<~TEXT\n    hi\n  TEXT"].each do |body|
       mutations, source = run_mutator(body)
       assert_equal 1, mutations.size, "expected 1 mutation for #{body.inspect}"
-      assert mutations.first.valid?(source), "mutated #{body.inspect} should re-parse"
+      assert_parses_like_original(mutations.first, source, body)
     end
   end
 end

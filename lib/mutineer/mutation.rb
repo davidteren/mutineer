@@ -16,12 +16,13 @@ module Mutineer
       source.byteslice(0, start_offset) + replacement + source.byteslice(end_offset..)
     end
 
-    # Checks whether the mutated source still parses cleanly.
+    # Checks whether the mutated source parses as well as the original: it
+    # adds no parse error (see {Parser.new_errors?}).
     #
     # @param source [String] original source text.
-    # @return [Boolean] true when the mutated source re-parses without errors.
+    # @return [Boolean] true when the mutation adds no parse error.
     def valid?(source)
-      Parser.parse_string(apply(source)).errors.empty?
+      !Parser.new_errors?(source, apply(source))
     end
   end
 end

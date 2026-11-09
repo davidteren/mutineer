@@ -28,6 +28,17 @@ class MutationTest < Minitest::Test
     refute m.valid?(source)
   end
 
+  # #392: an unrelated error the original already has does not make the
+  # mutant invalid; a new one still does.
+  def test_valid_ignores_an_error_the_original_already_has
+    source = "def a(x, x)\nend\nc = a + b\n"
+    plus = source.index("+")
+    keep = Mutineer::Mutation.new(start_offset: plus, end_offset: plus + 1, replacement: "-", operator: :arithmetic)
+    broken = Mutineer::Mutation.new(start_offset: plus, end_offset: plus + 1, replacement: "(", operator: :arithmetic)
+    assert keep.valid?(source)
+    refute broken.valid?(source)
+  end
+
   # C1: Prism offsets are BYTE offsets. A multibyte char before the mutation
   # point shifts char index off byte offset; byte-correct apply must still splice
   # the right token. With char slicing this corrupts the output.

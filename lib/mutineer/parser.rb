@@ -33,6 +33,25 @@ module Mutineer
       Prism.parse(source)
     end
 
+    # True when `mutated` has a parse error that `original` does not have. A
+    # file can carry an error Ruby itself still loads: Prism 2 reports a
+    # bare-constant operator write inside a method (`T += 1`) as a dynamic
+    # constant assignment, as Ruby's parse.y does, while the Prism 1 that
+    # Ruby 3.4 and 4.0 load with accepts it. Such an error must not make
+    # every mutant of the file invalid. Errors compare by message and count,
+    # because an edit moves the offsets of everything after it.
+    #
+    # @param original [String] the source before the edit.
+    # @param mutated [String] the source after the edit.
+    # @return [Boolean]
+    def self.new_errors?(original, mutated)
+      errors = parse_string(mutated).errors
+      return false if errors.empty? # the usual case costs one parse, as before
+
+      baseline = parse_string(original).errors.map(&:message).tally
+      errors.map(&:message).tally.any? { |message, count| count > baseline.fetch(message, 0) }
+    end
+
     # The comments of source text, without building its syntax tree: a few
     # times cheaper than {.parse_string} for a caller that needs only these.
     #

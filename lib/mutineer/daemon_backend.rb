@@ -425,7 +425,7 @@ module Mutineer
       # (fallback, not narrowed).
       sel = coverage_map && !coverage_map.map.empty? && JobPlan.coverage_selection(subject.file, mutation, subject, source, coverage_map)
       r =
-        if Parser.parse_string(mutated).errors.any?
+        if Parser.new_errors?(source, mutated)
           Result.skipped
         elsif sel && sel[0] == :verdict
           sel[1]
