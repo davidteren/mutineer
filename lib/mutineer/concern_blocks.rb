@@ -59,7 +59,7 @@ module Mutineer
     # @param path [String] the mutant file to load.
     # @return [Object] what `load` returns.
     def self.load_mutant(source_file, path)
-      ReloadGuards.during_load(source_file) do
+      ReloadGuards.during_load(source_file, path) do
         replace(source_file) do
           verbose, $VERBOSE = $VERBOSE, nil
           begin

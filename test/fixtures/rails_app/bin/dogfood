@@ -82,6 +82,17 @@ ruby -rjson -e 's = JSON.parse(File.read(ARGV[0]))["summary"]
   abort "FAIL: expected every shipment and trackable mutant killed, got #{s.inspect}" unless s["killed"] > 1 && s.values_at("survived", "errored", "no_coverage") == [0, 0, 0]' "$REPORT"
 echo "ok: shipment and trackable mutants are killed"
 
+echo "== reload runs each validator and block callback once, like redefine (#390) =="
+for strategy in reload redefine; do
+  REPORT="$(mktemp)"
+  expect_exit 0 "parcel --rails --no-daemon --strategy $strategy" -- \
+    bundle exec mutineer run app/models/parcel.rb --test test/models/parcel_test.rb \
+    --rails --no-daemon --strategy "$strategy" --format json --output "$REPORT"
+  ruby -rjson -e 's = JSON.parse(File.read(ARGV[0]))["summary"]
+    abort "FAIL: expected every mutant to run and survive under #{ARGV[1]}, got #{s.inspect}" unless s["survived"] > 0 && s["survived"] == s["total"]' "$REPORT" "$strategy"
+done
+echo "ok: parcel mutants survive under reload and redefine"
+
 echo "== Rails parallelize creates no worker database =="
 rails_worker_dbs
 if (( ${#found[@]} )); then

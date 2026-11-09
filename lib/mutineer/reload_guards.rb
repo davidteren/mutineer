@@ -23,6 +23,14 @@ module Mutineer
   # {ConcernBlocks.forget}, so the concern's original `included` block would
   # come back and the mutant's block would raise `MultipleIncludedBlocks`.
   #
+  # A second run of the class body also adds each block callback, lambda
+  # callback and validator again. Rails replaces a repeated callback only when
+  # it names a method. So {.during_load} removes the original's copy of each
+  # one the load added again (see {RepeatedCallbacks}, #390). Otherwise a
+  # `validates` or a `before_save do ... end` would run twice in every mutant
+  # of the file, and a test that counts errors or side effects would give a
+  # false kill.
+  #
   # Call it only in a forked child that loads the mutant: it prepends onto
   # Rails modules in that process. Without Rails it only runs the block.
   #
@@ -70,19 +78,365 @@ module Mutineer
     end
 
     # Loads the original file if the app autoloads it, then runs the block that
-    # loads the mutant with the guards on.
+    # loads the mutant with the guards on. After the block, removes the
+    # original's copy of each callback and validator the load added again.
     #
     # @param source_file [String] the file the mutant replaces.
+    # @param mutant_path [String, nil] the file the block loads.
     # @yield the mutant's load.
     # @return [Object] what the block returns.
-    def self.during_load(source_file)
+    def self.during_load(source_file, mutant_path = nil)
       install!
       load_original(source_file)
+      before = RepeatedCallbacks.snapshot
       @enums_before_load = {}
       @loading = true
-      yield
+      result = yield
+      RepeatedCallbacks.remove(before, [source_file, mutant_path].compact)
+      result
     ensure
       @loading = false
+    end
+
+    # Puts back one copy of each callback and validator that a second run of a
+    # class body added again (#390).
+    #
+    # Each class body the load runs again appends its block callbacks, lambda
+    # callbacks and validators a second time. Rails drops the old copy only of
+    # a callback that names a method, and appends the new one at the end. For
+    # each class whose chains the load changed, {.replacements} pairs each
+    # entry the load added to the class's own chain with the class's own entry
+    # from before the load that it repeats. {.restore} then puts each new entry
+    # where its old entry was and drops the old one, in every changed chain and
+    # in `_validators`. So each macro runs once, in its original order.
+    #
+    # An included concern adds its entries to the class, and the reload does
+    # not run its block again, so it adds no new copy of them. Its entries can
+    # look like the class body's own, so an entry pairs first with an old
+    # entry that is the same ({.same?}): a validator with equivalent options,
+    # a lambda that captured equivalent values, a block from the same place in
+    # the code. An entry left over, such as a `validates` whose options come
+    # from a method the mutant changed, pairs by {.key} only when no concern
+    # entry could be the one it repeats ({.by_key}). Otherwise both copies stay,
+    # as before this fix.
+    #
+    # ActiveSupport gives a class a new chain object each time a callback is
+    # added or skipped, so a class whose chain objects all stay the same was
+    # not changed by the load and is skipped.
+    module RepeatedCallbacks
+      # Every loaded class with ActiveSupport callbacks, with its chain objects.
+      #
+      # @return [Hash{Class => Hash{Symbol => Object}}] empty without ActiveSupport.
+      def self.snapshot
+        return {} unless defined?(::ActiveSupport::Callbacks)
+
+        classes = ObjectSpace.each_object(Class).select { |klass| klass < ::ActiveSupport::Callbacks }
+        classes.to_h { |klass| [klass, klass.__callbacks.dup] }
+      end
+
+      # Keeps one copy of each entry the load added again.
+      #
+      # @param before [Hash] the {.snapshot} from before the load.
+      # @param files [Array<String>] the source file and the mutant file. A
+      #   block from either one counts as a block from the same file.
+      # @return [void]
+      def self.remove(before, files)
+        changed = before.keys.reject { |klass| same_chains?(klass.__callbacks, before[klass]) }
+        return if changed.empty?
+
+        reloaded = files.map { |file| real_path(file) }
+        # Each class's entries before the load, copied only for the classes asked.
+        old = Hash.new { |copies, klass| copies[klass] = before.fetch(klass, {}).transform_values(&:to_a) }
+        pairs = changed.flat_map { |klass| replacements(klass, old, reloaded) }
+        return if pairs.empty?
+
+        swap = {}.compare_by_identity
+        pairs.each { |old_entry, new_entry| swap[old_entry] = new_entry }
+        restore(changed, old, swap)
+      end
+
+      # @param now [Hash{Symbol => Object}] a class's chains after the load.
+      # @param before [Hash{Symbol => Object}] its chains before the load.
+      # @return [Boolean] true when every chain is the same object as before.
+      def self.same_chains?(now, before)
+        now.size == before.size && now.all? { |name, chain| before[name].equal?(chain) }
+      end
+
+      # Pairs each entry the load added to `klass`'s own chains with the old
+      # entry it repeats: first with an old entry that is the same, then by key.
+      #
+      # @param klass [Class] a class whose chains the load changed.
+      # @param old [Hash{Class => Hash{Symbol => Array}}] each class's entries before the load.
+      # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @return [Array<Array(Object, Object)>] each old entry and the new entry that replaces it.
+      def self.replacements(klass, old, reloaded)
+        parent = klass.superclass
+        parent_now = parent.respond_to?(:__callbacks) ? parent.__callbacks : {}
+        parent_old = old[parent]
+        klass.__callbacks.flat_map do |name, chain|
+          before = old[klass].fetch(name, [])
+          added = without(without(chain.to_a, before), parent_now[name].to_a)
+          next [] if added.empty?
+
+          pool = without(before, parent_old.fetch(name, []))
+          seen = {}
+          exact, leftover = added.map do |new_entry|
+            [take(pool) { |entry| same?(entry, new_entry, reloaded, seen) }, new_entry]
+          end.partition(&:first)
+          exact + by_key(leftover.map(&:last), pool, reloaded)
+        end
+      end
+
+      # Pairs the entries no exact match took, by {.key}, but only for a key
+      # with as many old entries left as new ones. More old entries means an
+      # included concern added some of them, and a guess could drop the
+      # concern's entry. Those keep both copies, as before #390.
+      #
+      # @param added [Array] new entries with no exact match.
+      # @param pool [Array] old entries no exact match took.
+      # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @return [Array<Array(Object, Object)>] each old entry and the new entry that replaces it.
+      def self.by_key(added, pool, reloaded)
+        old_by_key = pool.group_by { |entry| key(entry, reloaded) }
+        added.group_by { |entry| key(entry, reloaded) }.flat_map do |k, new_entries|
+          old_entries = old_by_key.fetch(k, [])
+          old_entries.size == new_entries.size ? old_entries.zip(new_entries) : []
+        end
+      end
+
+      # Removes and returns the first entry of `pool` the block accepts.
+      #
+      # @param pool [Array]
+      # @return [Object, nil]
+      def self.take(pool, &)
+        index = pool.index(&)
+        index && pool.delete_at(index)
+      end
+
+      # Rebuilds each changed chain in its order from before the load, with
+      # each old entry swapped for its new entry, and entries the load added
+      # unpaired at the end. Swaps each validator in `_validators` the same way.
+      #
+      # @param changed [Array<Class>] the classes whose chains the load changed.
+      # @param old [Hash{Class => Hash{Symbol => Array}}] each class's entries before the load.
+      # @param swap [Hash{Object => Object}] each old entry to its new entry.
+      # @return [void]
+      def self.restore(changed, old, swap)
+        seen = {}.compare_by_identity
+        changed.each do |klass|
+          klass.__callbacks.each do |name, chain|
+            next if seen[chain]
+
+            seen[chain] = true
+            now = chain.to_a
+            order = reorder(old[klass].fetch(name, []), now, swap)
+            next if order.size == now.size && order.zip(now).all? { |a, b| a.equal?(b) }
+
+            chain.clear
+            chain.append(*order)
+          end
+        end
+        # A validator is the filter of its `validate` callback.
+        validators = {}.compare_by_identity
+        swap.each { |old_entry, new_entry| validators[old_entry.filter] = new_entry.filter }
+        lists = changed.select { |klass| klass.respond_to?(:_validators) }.flat_map { |klass| klass._validators.values }
+        lists.uniq(&:object_id).each do |list|
+          list.map! { |validator| validators.fetch(validator, validator) }
+          list.uniq!(&:object_id)
+        end
+      end
+
+      # @param old [Array] the chain's entries before the load.
+      # @param now [Array] its entries after the load.
+      # @param swap [Hash{Object => Object}] each old entry to its new entry.
+      # @return [Array] `old` with each new entry swapped in, then the other new entries.
+      def self.reorder(old, now, swap)
+        present = identity_set(now)
+        order = old.filter_map do |entry|
+          new_entry = swap[entry]
+          new_entry && present.include?(new_entry) ? new_entry : (entry if present.include?(entry))
+        end
+        order + without(now, order).reject { |entry| swap.key?(entry) }
+      end
+
+      # True when two entries come from the same macro call with the same
+      # arguments: the same kind, and filters that are {.equivalent?}.
+      #
+      # @param old_entry [Object] an ActiveSupport callback from before the load.
+      # @param new_entry [Object] one the load added.
+      # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @param seen [Hash] answers already found ({.equivalent?}).
+      # @return [Boolean]
+      def self.same?(old_entry, new_entry, reloaded, seen = {})
+        old_entry.kind == new_entry.kind && equivalent?(old_entry.filter, new_entry.filter, reloaded, 0, seen)
+      end
+
+      # How deep {.equivalent?} looks into objects before it gives up.
+      EQUIVALENT_DEPTH = 6
+
+      # True when two values would make the same callback or validator. Each
+      # run of a class body builds new blocks, so a block matches another
+      # from the same place in the code ({.block_key}) that captured
+      # equivalent values. Hashes and arrays match element by element. A class
+      # or module matches only itself. Other objects, such as a validator or a
+      # callback object, match when they are equal, or of one class with
+      # equivalent instance variables. Past {EQUIVALENT_DEPTH} levels nothing
+      # matches, so a deep object pairs only by key ({.by_key}).
+      #
+      # A pair already being compared, such as a lambda that captures itself
+      # (Rails's `belongs_to touch:` lambda does), counts as a match: nothing
+      # else in it differs. Each answer is kept in `seen`, so a value many
+      # blocks capture is compared once. A value that cannot be compared, such
+      # as the proxy `with_options` yields, matches nothing, so both copies stay.
+      #
+      # @param left [Object]
+      # @param right [Object]
+      # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @param depth [Integer] levels already compared.
+      # @param seen [Hash{Array => Boolean, Symbol}] each pair's answer, or
+      #   `:open` while it is being compared, by object id.
+      # @return [Boolean]
+      def self.equivalent?(left, right, reloaded, depth = 0, seen = {})
+        return true if SAME_OBJECT.bind_call(left, right)
+
+        pair = [left.__id__, right.__id__]
+        return seen[pair] != false if seen.key?(pair)
+        return false if depth > EQUIVALENT_DEPTH || !INSTANCE_OF.bind_call(left, KERNEL_CLASS.bind_call(right))
+
+        seen[pair] = :open
+        same = ->(a, b) { equivalent?(a, b, reloaded, depth + 1, seen) }
+        seen[pair] = case left
+                     when Module then false
+                     when Proc then same_block?(left, right, reloaded, same)
+                     when Hash then left.keys == right.keys && left.all? { |k, v| same.(v, right[k]) }
+                     when Array then left.size == right.size && left.zip(right).all? { |a, b| same.(a, b) }
+                     else left == right || same_state?(left, right, same)
+                     end
+      rescue StandardError
+        seen[pair] = false if pair
+        false
+      end
+
+      # `BasicObject#equal?`, unbound, so a proxy cannot answer for its target.
+      SAME_OBJECT = ::BasicObject.instance_method(:equal?)
+
+      # `Kernel#instance_of?`, unbound, for the same reason.
+      INSTANCE_OF = ::Kernel.instance_method(:instance_of?)
+
+      # `Kernel#class`, unbound, for the same reason.
+      KERNEL_CLASS = ::Kernel.instance_method(:class)
+
+      # @param left [Object]
+      # @param right [Object] an object of the same class.
+      # @param same [Proc] compares two values one level deeper.
+      # @return [Boolean] true when the instance variables both have are
+      #   equivalent. One of them can hold a value the other has not cached
+      #   yet, such as a Rails reflection's memoized lookups, so the others are
+      #   skipped.
+      def self.same_state?(left, right, same)
+        names = left.instance_variables & right.instance_variables
+        return false if names.empty?
+
+        names.all? { |name| same.(left.instance_variable_get(name), right.instance_variable_get(name)) }
+      end
+
+      # @param left [Proc]
+      # @param right [Proc]
+      # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @param same [Proc] compares two values one level deeper.
+      # @return [Boolean] true for blocks from the same place in the code that
+      #   captured equivalent values. A block with no source, such as
+      #   `&:save` or `method(:x).to_proc`, matches only itself.
+      def self.same_block?(left, right, reloaded, same)
+        return false unless left.source_location && right.source_location
+
+        block_key(left, reloaded) == block_key(right, reloaded) && same_captures?(left, right, same)
+      end
+
+      # @param left [Proc]
+      # @param right [Proc] a block from the same place in the code.
+      # @param same [Proc] compares two values one level deeper.
+      # @return [Boolean] true when both captured equivalent values. The list
+      #   itself is not a level, so blocks that capture each other in a loop
+      #   reach the pair already being compared before the depth limit.
+      def self.same_captures?(left, right, same)
+        mine = captured(left)
+        theirs = captured(right)
+        return false unless mine && theirs && mine.size == theirs.size
+
+        mine.zip(theirs).all? { |a, b| same.(a, b) }
+      end
+
+      # The values a block captured, or nil when Ruby cannot show them.
+      #
+      # @param block [Proc]
+      # @return [Array, nil]
+      def self.captured(block)
+        scope = block.binding
+        scope.local_variables.map { |name| scope.local_variable_get(name) }
+      rescue ArgumentError
+        nil
+      end
+
+      # Where a block sits in the code: the file and Ruby's label for it, such
+      # as "block in <class:Parcel>", plus the line for a file the load did
+      # not run. The source file and the mutant file count as one file, and
+      # their lines are left out, because a mutant can move lines.
+      #
+      # @param block [Proc]
+      # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @return [Array]
+      def self.block_key(block, reloaded)
+        file, line = block.source_location
+        # CRuby only; elsewhere blocks match by file and line alone.
+        label = RubyVM::InstructionSequence.of(block)&.label if defined?(::RubyVM::InstructionSequence)
+        reloaded.include?(file && real_path(file)) ? [:reloaded, label] : [file, line, label]
+      end
+
+      # What two entries share when they are copies of one macro call, apart
+      # from its arguments. A callback that names a method matches the same
+      # name. A block or lambda matches by {.block_key}. A validator matches by
+      # class and attributes.
+      #
+      # @param callback [Object] an ActiveSupport callback.
+      # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @return [Array]
+      def self.key(callback, reloaded)
+        filter = callback.filter
+        filter_key = case filter
+                     when Symbol, Module then filter
+                     when Proc then block_key(filter, reloaded)
+                     else [filter.class, filter.respond_to?(:attributes) ? filter.attributes : nil]
+                     end
+        [callback.kind, filter_key]
+      end
+
+      # @param list [Array]
+      # @param others [Array]
+      # @return [Array] the entries of `list` that are not in `others`, by identity.
+      def self.without(list, others)
+        others = identity_set(others)
+        list.reject { |entry| others.include?(entry) }
+      end
+
+      # A set that compares by identity. Building it first keeps entries that
+      # are equal by value but not the same object.
+      #
+      # @param list [Array]
+      # @return [Set]
+      def self.identity_set(list)
+        Set.new.compare_by_identity.merge(list)
+      end
+
+      # @param file [String]
+      # @return [String] the real path, so a symlinked path still matches.
+      def self.real_path(file)
+        (@real_paths ||= {})[file] ||= begin
+          File.realpath(file)
+        rescue SystemCallError
+          File.expand_path(file)
+        end
+      end
     end
 
     # Whether `klass` had the enum before this load. Rails records a new enum

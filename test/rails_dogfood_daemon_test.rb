@@ -191,6 +191,19 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_equal 100.0, aggregate.mutation_score
   end
 
+  # #390: the daemon reloads Parcel's whole file, so its class body runs again
+  # and appended a second validator, block callback and `validate` block.
+  # ParcelTest counts them, so every `heavy?` mutant was a false kill. The
+  # test never checks `heavy?`, so each mutant must survive, as it does under
+  # in-process redefine (bin/dogfood compares the two).
+  def test_the_daemon_runs_each_validator_and_block_callback_once
+    aggregate = nil
+    capture_subprocess_io { aggregate, = Mutineer::Runner.execute(config_for(1, model: "parcel")) }
+
+    assert_operator aggregate.survived_count, :>, 0
+    assert_equal aggregate.total, aggregate.survived_count, "every mutant must run and survive"
+  end
+
   # #385: with Rails' pending-migration check on (a new app's default),
   # rails/test_help queries every database when the tests load, shared ones
   # too. Mutant forks turn the check off, so the shared database stays unused.

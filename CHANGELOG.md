@@ -20,6 +20,20 @@ All notable changes to this project are documented here. The format is based on
   parent class or an included concern. A skip that names no such method or
   parent callback still raises. Both checks run as usual while the tests
   run. This holds on `--daemon` and with `--strategy reload`.
+- **Reload no longer runs validators and block callbacks twice (#390).**
+  The second run of a class body added a second copy of each `validates`,
+  each `validate` block, and each callback written as a block or a lambda,
+  such as `before_save do ... end`. Rails removes a repeated callback only
+  when it names a method. A test that counts errors or side effects then
+  failed for every mutant in the file, so those mutants scored `killed`
+  falsely. After the mutant file loads, Mutineer now keeps one copy of each:
+  the new one, in the place of the old one, so the order of callbacks does
+  not change. Entries from an included concern stay, because the reload does
+  not run the concern's block again. When Mutineer cannot tell which old
+  entry a new one repeats, it keeps both, as before. This holds on
+  `--daemon` and with `--strategy reload`.
+  **Score change:** a Rails model with such a test can now show survivors
+  that were false kills before, so its score can go down.
 - **Concern mutants load when the test app loads lazily (#383).** With
   `eager_load` off (the Rails test default), the mutant's load was the first
   use of the concern, so Rails loaded the original file inside it. The

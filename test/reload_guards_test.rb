@@ -144,4 +144,223 @@ class ReloadGuardsTest < Minitest::Test
     assert_raises(RuntimeError) { Mutineer::ReloadGuards.during_load("unused.rb") { raise "boom" } }
     refute Mutineer::ReloadGuards.loading?
   end
+
+  # Stands in for an ActiveSupport callback chain.
+  class Chain
+    include Enumerable
+
+    def initialize(*callbacks) = (@callbacks = callbacks)
+    def each(&) = @callbacks.each(&)
+    def clear = @callbacks.clear
+    def append(*callbacks) = @callbacks.concat(callbacks)
+  end
+
+  # Stands in for an ActiveModel validator: one class, its attributes and
+  # options, kept in instance variables as Rails keeps them.
+  class Validator
+    attr_reader :attributes, :options
+
+    def initialize(attributes, options)
+      @attributes = attributes
+      @options = options
+    end
+  end
+
+  # A class with callback chains and validators, as ActiveSupport keeps them.
+  def callback_class(parent = Object)
+    Class.new(parent) do
+      singleton_class.attr_accessor :__callbacks, :_validators
+      self._validators = {}
+    end
+  end
+
+  def assert_same_list(expected, actual)
+    assert_equal expected.map(&:object_id), actual.to_a.map(&:object_id)
+  end
+
+  # #390: a second run of the class body appended a new copy of the validator
+  # (with a mutated option), the block, and the method callback; Rails already
+  # dropped the old method callback. One copy of each stays, in its old place.
+  def test_a_reload_keeps_one_copy_of_each_callback_and_validator_in_the_original_order
+    old_validator = Validator.new([:weight], { greater_than: 0 })
+    new_validator = Validator.new([:weight], { greater_than: 5 })
+    old = [Callback.new(:before, old_validator), Callback.new(:before, proc {}), Callback.new(:before, :check)]
+    new = [Callback.new(:before, new_validator), Callback.new(:before, proc {}), Callback.new(:before, :check)]
+    klass = callback_class
+    klass.__callbacks = { validate: Chain.new(old[0], old[1], new[0], new[1], new[2]) }
+    klass._validators = { weight: [old_validator, new_validator] }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { validate: old } }, [__FILE__])
+
+    assert_same_list new, klass.__callbacks[:validate]
+    assert_same_list [new_validator], klass._validators[:weight]
+  end
+
+  # Only the parent's body ran again. Its new block reached the subclass too;
+  # the subclass's own callback, which the load did not repeat, stays in place.
+  def test_a_class_the_load_did_not_run_again_keeps_its_own_callbacks
+    old_block = Callback.new(:before, proc {})
+    new_block = Callback.new(:before, proc {})
+    own = Callback.new(:before, proc {})
+    parent = callback_class
+    child = callback_class(parent)
+    parent.__callbacks = { save: Chain.new(old_block, new_block) }
+    child.__callbacks = { save: Chain.new(old_block, own, new_block) }
+    before = { parent => { save: [old_block] }, child => { save: [old_block, own] } }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove(before, [__FILE__])
+
+    assert_same_list [new_block], parent.__callbacks[:save]
+    assert_same_list [new_block, own], child.__callbacks[:save]
+  end
+
+  # A block in the class body.
+  def body_block = proc {}
+
+  # A block an included concern's `included` block made.
+  def concern_block = proc {}
+
+  # Stands in for a lambda a library builds on one line, such as Rails's
+  # `has_many dependent:` lambda: each captures its association name.
+  def library_lambda(name) = -> { name }
+
+  # Stands in for Rails's `belongs_to touch:` lambda, which captures itself.
+  def self_lambda(name)
+    callback = nil
+    callback = -> { [name, callback] }
+  end
+
+  # One reloaded file defines a parent and its subclass. The subclass's old
+  # chain holds the parent's block too, so its own new block must pair with
+  # its own old block, and each class's validators get the new validator.
+  def test_a_parent_and_subclass_in_one_file_keep_one_copy_each
+    old_validator = Validator.new([:weight], { greater_than: 0 })
+    new_validator = Validator.new([:weight], { greater_than: 5 })
+    parent_old = Callback.new(:before, old_validator)
+    parent_new = Callback.new(:before, new_validator)
+    child_old = Callback.new(:before, body_block)
+    child_new = Callback.new(:before, body_block)
+    parent = callback_class
+    child = callback_class(parent)
+    parent.__callbacks = { validate: Chain.new(parent_old, parent_new) }
+    child.__callbacks = { validate: Chain.new(parent_old, child_old, parent_new, child_new) }
+    parent._validators = { weight: [old_validator, new_validator] }
+    child._validators = { weight: [old_validator] }
+    before = { parent => { validate: [parent_old] }, child => { validate: [parent_old, child_old] } }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove(before, [__FILE__])
+
+    assert_same_list [parent_new], parent.__callbacks[:validate]
+    assert_same_list [parent_new, child_new], child.__callbacks[:validate]
+    assert_same_list [new_validator], parent._validators[:weight]
+    assert_same_list [new_validator], child._validators[:weight]
+  end
+
+  # An included concern from another file added a library lambda and a
+  # validator that look like the class body's own. The reload does not run the
+  # concern's block again, so only the class body's entries repeat, and only
+  # they are swapped: the concern's entries stay.
+  def test_a_concern_lambda_and_validator_like_the_class_body_ones_stay
+    concern_entries = [Callback.new(:before, library_lambda(:comments)),
+                       Callback.new(:before, Validator.new([:title], { maximum: 5 }))]
+    old_body = [Callback.new(:before, library_lambda(:tags)),
+                Callback.new(:before, Validator.new([:title], { minimum: 2 }))]
+    new_body = [Callback.new(:before, library_lambda(:tags)),
+                Callback.new(:before, Validator.new([:title], { minimum: 2 }))]
+    klass = callback_class
+    klass.__callbacks = { save: Chain.new(*concern_entries, *old_body, *new_body) }
+
+    # The reloaded file is another one, so these lambdas count as library code.
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: concern_entries + old_body } }, ["model.rb"])
+
+    assert_same_list concern_entries + new_body, klass.__callbacks[:save]
+  end
+
+  # The reloaded file also defines the concern. Its `included` block made a
+  # block that the reload does not make again, so the class body's new block
+  # must pair with the class body's old block, not with the concern's.
+  def test_a_concern_block_from_the_reloaded_file_stays
+    concern_entry = Callback.new(:before, concern_block)
+    old_body = Callback.new(:before, body_block)
+    new_body = Callback.new(:before, body_block)
+    klass = callback_class
+    klass.__callbacks = { save: Chain.new(concern_entry, old_body, new_body) }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_body] } }, [__FILE__])
+
+    assert_same_list [concern_entry, new_body], klass.__callbacks[:save]
+  end
+
+  # The class's validator has an `if:` block, which is new on each run, so
+  # only an equivalent block makes it the same validator. A self-capturing
+  # library lambda is matched by what it captured. The concern's look-alikes stay.
+  def test_entries_holding_blocks_match_by_where_the_block_is_and_what_it_captured
+    concern_entries = [Callback.new(:before, Validator.new([:title], { maximum: 5 })),
+                       Callback.new(:after, self_lambda(:parent_a))]
+    old_body = [Callback.new(:before, Validator.new([:title], { minimum: 2, if: body_block })),
+                Callback.new(:after, self_lambda(:parent_b))]
+    new_body = [Callback.new(:before, Validator.new([:title], { minimum: 2, if: body_block })),
+                Callback.new(:after, self_lambda(:parent_b))]
+    klass = callback_class
+    klass.__callbacks = { save: Chain.new(*concern_entries, *old_body, *new_body) }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: concern_entries + old_body } }, [__FILE__])
+
+    assert_same_list concern_entries + new_body, klass.__callbacks[:save]
+  end
+
+  # A new entry with no equivalent old one pairs by key only when that pairing
+  # is certain. Here a concern and the class body each had a validator of that
+  # kind, so a guess could drop the concern's: both old ones stay.
+  def test_an_unmatched_entry_with_two_candidates_keeps_every_copy
+    concern_entry = Callback.new(:before, Validator.new([:title], { maximum: 5 }))
+    old_body = Callback.new(:before, Validator.new([:title], { minimum: 2 }))
+    new_body = Callback.new(:before, Validator.new([:title], { minimum: 3 }))
+    klass = callback_class
+    klass.__callbacks = { save: Chain.new(concern_entry, old_body, new_body) }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_body] } }, [__FILE__])
+
+    assert_same_list [concern_entry, old_body, new_body], klass.__callbacks[:save]
+  end
+
+  # Stands in for ActiveSupport::OptionMerger, which `with_options` yields: it
+  # forwards every call, so asking it `equal?` or `==` raises.
+  class Proxy < BasicObject
+    def method_missing(*) = ::Kernel.raise(::ArgumentError, "forwarded")
+    def respond_to_missing?(*) = true
+  end
+
+  # A block made inside `with_options do |o|` captures the proxy.
+  def proxy_block(proxy) = proc { proxy }
+
+  # A value that cannot be compared matches nothing, so the reload keeps both
+  # copies instead of failing every mutant of the file.
+  def test_a_block_that_captured_a_proxy_keeps_both_copies_without_raising
+    old_entry = Callback.new(:before, proxy_block(Proxy.new))
+    new_entry = Callback.new(:before, proxy_block(Proxy.new))
+    other = Callback.new(:before, proxy_block(Proxy.new))
+    klass = callback_class
+    klass.__callbacks = { save: Chain.new(other, old_entry, new_entry) }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [other, old_entry] } }, [__FILE__])
+
+    assert_same_list [other, old_entry, new_entry], klass.__callbacks[:save]
+  end
+
+  # `&:name` blocks have no source and capture nothing, and callback classes
+  # can share class-level state. Each matches only itself, so the concern's
+  # entry stays. Rails caches `&:name` per symbol, so a real repeat still
+  # matches.
+  def test_symbol_blocks_and_callback_classes_match_only_themselves
+    concern_entries = [Callback.new(:before, :concern_hook.to_proc), Callback.new(:after, Class.new)]
+    old_body = [Callback.new(:before, :own_hook.to_proc), Callback.new(:after, Class.new)]
+    new_body = [Callback.new(:before, :own_hook.to_proc), Callback.new(:after, old_body[1].filter)]
+    klass = callback_class
+    klass.__callbacks = { save: Chain.new(*concern_entries, *old_body, *new_body) }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: concern_entries + old_body } }, [__FILE__])
+
+    assert_same_list concern_entries + new_body, klass.__callbacks[:save]
+  end
 end
