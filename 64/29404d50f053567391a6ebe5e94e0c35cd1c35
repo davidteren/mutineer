@@ -1,0 +1,21 @@
+test/concern_blocks_test.rb
+  s_8e9ddd58442ff3::t_e7b8a4d8b77d1a 154,158
+test/mutators/operator_assignment_test.rb
+  s_8e9ddd58442ff3::t_32ea077fc2ad9c 24-33,152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6429404d50f053567391a6ebe5e94e0c35cd1c35",
+  "prompts": {},
+  "sessions": {
+    "s_8e9ddd58442ff3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61a348f1-4d94-47d2-9493-69df5bc07370",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
