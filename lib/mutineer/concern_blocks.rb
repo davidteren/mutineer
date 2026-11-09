@@ -264,7 +264,7 @@ module Mutineer
     def self.deprecation_proxy?(mod)
       return false unless defined?(::ActiveSupport::Deprecation::DeprecatedConstantProxy)
 
-      KERNEL_CLASS.bind_call(mod) <= ::ActiveSupport::Deprecation::DeprecatedConstantProxy
+      (KERNEL_CLASS.bind_call(mod) <= ::ActiveSupport::Deprecation::DeprecatedConstantProxy) == true
     end
 
     # `Kernel#class`, unbound, so a proxy that redefines `class` cannot answer.
