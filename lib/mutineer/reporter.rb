@@ -877,8 +877,8 @@ module Mutineer
     # mutant ran its statement's tests but is not a verdict), so counting them
     # would dilute the share and let a broken run slip under the limit.
     #
-    # skipped-invalid is excluded from both sides: it means a mutant did not
-    # re-parse and was correctly never run, which is a validity outcome rather
+    # skipped-invalid is excluded from both sides: it means a mutant added a
+    # parse error and was correctly never run, which is a validity outcome rather
     # than a broken harness. Its own signal is the unrun-share warning
     # ({#warn_unrun_share}), together with unplaceable.
     #
