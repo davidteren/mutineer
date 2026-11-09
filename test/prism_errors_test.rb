@@ -50,10 +50,15 @@ class PrismErrorsTest < Minitest::Test
   def test_an_error_ruby_still_loads_does_not_skip_the_files_other_mutants
     skip "this Prism accepts a constant op-assign in a method" if Mutineer::Parser.parse_string(SOURCE).errors.empty?
 
+    # Devin: each mutant must be killed by the test of its own method, so a
+    # load failure that fails every test cannot pass for a kill.
+    add = "ConstBumpCalculatorTest#test_add"
+    bump = "ConstBumpCalculatorTest#test_bump"
     %w[reload redefine].each do |strategy|
-      results = run_strategy(strategy).sort
-      assert_equal [["ConstBumpCalculator#add", "killed"], ["ConstBumpCalculator#bump", "killed"],
-                    ["ConstBumpCalculator#bump", "killed"]], results, strategy
+      assert_equal [["ConstBumpCalculator#add", "arithmetic", "killed", [add]],
+                    ["ConstBumpCalculator#bump", "comparison", "killed", [bump]],
+                    ["ConstBumpCalculator#bump", "statement_removal", "killed", [bump]]],
+                   run_strategy(strategy).sort, strategy
     end
   end
 
@@ -69,8 +74,9 @@ class PrismErrorsTest < Minitest::Test
 
   private
 
-  # Runs Mutineer in a child Ruby (it loads the fixture's classes) and returns
-  # each result as [subject, status].
+  # Runs Mutineer in a child Ruby (it loads the fixture's classes) with
+  # `matrix`, and returns each result as [subject, operator, status, the tests
+  # that killed it].
   def run_strategy(strategy)
     Dir.mktmpdir("mutineer-prism-errors") do |root|
       FileUtils.mkdir_p(File.join(root, "lib"))
@@ -83,9 +89,11 @@ class PrismErrorsTest < Minitest::Test
         config = Mutineer::Config.new(sources: ["lib/const_bump_calculator.rb"],
                                       tests: ["test/const_bump_calculator_test.rb"],
                                       strategy: #{strategy.inspect}, project_root: #{root.inspect},
-                                      cache_dir: #{File.join(root, "cache").inspect}, jobs: 1)
+                                      cache_dir: #{File.join(root, "cache").inspect}, jobs: 1, matrix: true)
         agg = Mutineer::Runner.execute(config).first
-        $stdout.puts JSON.generate(agg.results.map { |r| [r.subject.qualified_name, r.status] })
+        $stdout.puts JSON.generate(agg.results.map { |r|
+          [r.subject.qualified_name, r.mutation.operator, r.status, Array(r.kills&.killed_by).map { |row| row[1] }]
+        })
       RUBY
       out, err, status = Open3.capture3(RbConfig.ruby, "-I#{LIB}", "-e", script, chdir: root)
       assert status.success?, "#{strategy} run failed: #{err}"
