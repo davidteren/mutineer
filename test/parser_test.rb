@@ -60,6 +60,21 @@ class ParserTest < Minitest::Test
     refute Mutineer::Parser.new_errors?(source, source.sub("1 + 2", "10000 - 20000"))
   end
 
+  # predictability: an existing error that encloses the edit is not new. Every
+  # Prism marks a constant write in a def whole, as Prism 2 marks `T += 1`.
+  def test_new_errors_ignores_an_existing_error_that_encloses_the_edit
+    source = "def m\n  B = 1 + 2\nend\n"
+    refute Mutineer::Parser.new_errors?(source, source.sub("1 + 2", "1 - 2"))
+    refute Mutineer::Parser.new_errors?(source, source.sub("1 + 2", "10 + 20"))
+  end
+
+  # The same error growing past the original's end still encloses the edit;
+  # one that now starts inside the edit is new.
+  def test_new_errors_reports_an_error_that_starts_inside_the_edit
+    source = "def m\n  B = 1\nend\n"
+    assert Mutineer::Parser.new_errors?(source, source.sub("  B = 1", "  x = 1; C = 1"))
+  end
+
   def test_new_errors_is_false_for_clean_source
     refute Mutineer::Parser.new_errors?("1 + 2", "1 - 2")
   end

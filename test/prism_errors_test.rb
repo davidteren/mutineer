@@ -57,6 +57,16 @@ class PrismErrorsTest < Minitest::Test
     end
   end
 
+  # predictability: Prism 2 marks the whole `LIMIT += 1` write as the error, so
+  # an edit inside it must not count as a new error.
+  def test_an_edit_inside_the_line_prism_rejects_is_not_a_new_error
+    skip "this Prism accepts a constant op-assign in a method" if Mutineer::Parser.parse_string(SOURCE).errors.empty?
+
+    ["LIMIT -= 1", "LIMIT += 2"].each do |edit|
+      refute Mutineer::Parser.new_errors?(SOURCE, SOURCE.sub("LIMIT += 1", edit)), edit
+    end
+  end
+
   private
 
   # Runs Mutineer in a child Ruby (it loads the fixture's classes) and returns

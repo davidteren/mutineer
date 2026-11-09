@@ -42,9 +42,11 @@ module Mutineer
     #
     # The edit is the span between the bytes both texts share at the start and
     # at the end. A mutant error wholly before it keeps its offsets, one wholly
-    # after it moves by the length change, and one that touches it is new. The
-    # mutant adds an error unless each of its errors maps onto the same error
-    # (message and offsets) in the original.
+    # after it moves by the length change, and one that encloses it keeps its
+    # start and moves its end (an edit inside `T += 1`, which Prism 2 marks
+    # whole). One that only partly overlaps it is new. The mutant adds an error
+    # unless each of its errors maps onto the same error (message and offsets)
+    # in the original.
     #
     # @param original [String] the source before the edit.
     # @param mutated [String] the source after the edit.
@@ -61,7 +63,8 @@ module Mutineer
         to = error.location.end_offset
         if to <= head then [error.message, from, to]
         elsif from >= edit_end then [error.message, from + shift, to + shift]
-        else return true # the error touches the edit
+        elsif from <= head && to >= edit_end then [error.message, from, to + shift]
+        else return true # the error partly overlaps the edit
         end
       end
       baseline = parse_string(original).errors.map { |e| [e.message, e.location.start_offset, e.location.end_offset] }.tally
