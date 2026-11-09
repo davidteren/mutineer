@@ -15,8 +15,9 @@ All notable changes to this project are documented here. The format is based on
   `allow_unauthenticated_access` calls it), raised on that second run, and
   every mutant in the file scored `error`. While the mutant file loads, an
   enum the class had before the load now skips Rails' conflict check, and
-  `skip_callback` does not raise for a callback it cannot find. Both checks
-  run as usual while the tests run. This holds on `--daemon` and with `--strategy reload`.
+  `skip_callback` does not raise for a callback that the parent class still
+  has. Any other skip still raises. Both checks run as usual while the tests
+  run. This holds on `--daemon` and with `--strategy reload`.
 - **Concern mutants load when the test app loads lazily (#383).** With
   `eager_load` off (the Rails test default), the mutant's load was the first
   use of the concern, so Rails loaded the original file inside it. The

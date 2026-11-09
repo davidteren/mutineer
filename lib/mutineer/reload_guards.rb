@@ -10,8 +10,9 @@ module Mutineer
   # - `skip_callback` (and `skip_before_action`, which calls it) raises because
   #   the first run already removed the callback (#384).
   #
-  # While {.during_load} runs, an `enum` the class already has skips its
-  # conflict check, and `skip_callback` does not raise for a missing callback.
+  # While {.during_load} runs, an `enum` the class had before the load skips
+  # its conflict check, and `skip_callback` does not raise for a callback that
+  # only the superclass still has.
   # The original file ran the same macros once with the full checks, so the
   # second run repeats work Rails already accepted. Outside the load, for
   # example while the tests run, both macros check as usual.
@@ -41,7 +42,10 @@ module Mutineer
       end
     end
 
-    # Makes a repeated skip a no-op, during a mutant load only.
+    # Makes a repeated skip a no-op, during a mutant load only. A skip counts
+    # as repeated when the superclass still has every callback it names: the
+    # first run of the class body removed them from this class only. Any other
+    # skip keeps Rails' check, so a wrong one still raises (scored `error`).
     module CallbackReskipping
       # @param name [Symbol] the callback chain, such as `:save`.
       # @param filter_list [Array] the kind, the filters, and options.
@@ -50,7 +54,8 @@ module Mutineer
         return super unless ReloadGuards.loading?
 
         options = filter_list.last.is_a?(Hash) ? filter_list.pop : {}
-        super(name, *filter_list, { raise: false }.merge(options), &block)
+        options = { raise: false }.merge(options) if ReloadGuards.inherited_callbacks?(self, name, *filter_list)
+        super(name, *filter_list, options, &block)
       end
     end
 
@@ -87,6 +92,22 @@ module Mutineer
     def self.enum_existed?(klass, enum_name)
       key = [klass, enum_name.to_s]
       @enums_before_load.fetch(key) { @enums_before_load[key] = klass.defined_enums.key?(key.last) }
+    end
+
+    # True when `klass`'s superclass has a `kind` callback on chain `name` for
+    # every filter. With no filters there is nothing to compare, so false.
+    #
+    # @param klass [Class] the class calling `skip_callback`.
+    # @param name [Symbol] the callback chain, such as `:save`.
+    # @param kind [Symbol] `:before`, `:after` or `:around`.
+    # @param filters [Array] the callbacks to skip, usually method names.
+    # @return [Boolean]
+    def self.inherited_callbacks?(klass, name, kind = nil, *filters)
+      parent = klass.superclass
+      return false if filters.empty? || !parent.respond_to?(:__callbacks)
+
+      chain = parent.__callbacks[name] or return false
+      filters.all? { |filter| chain.any? { |callback| callback.kind == kind && callback.filter == filter } }
     end
 
     # Prepends the guards once, onto the Rails modules this process has loaded.

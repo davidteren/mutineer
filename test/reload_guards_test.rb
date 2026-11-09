@@ -32,8 +32,16 @@ class ReloadGuardsTest < Minitest::Test
     EnumHost.reset!
   end
 
+  # Stands in for a callback in ActiveSupport::Callbacks.
+  Callback = Struct.new(:kind, :filter)
+
+  # Stands in for a Rails parent that defines `before save :check`.
+  class CallbackParent
+    def self.__callbacks = { save: [Callback.new(:before, :check)] }
+  end
+
   # Stands in for ActiveSupport::Callbacks::ClassMethods#skip_callback.
-  class CallbackHost
+  class CallbackHost < CallbackParent
     class << self
       attr_reader :options
 
@@ -85,12 +93,24 @@ class ReloadGuardsTest < Minitest::Test
     Object.send(:remove_const, :Zeitwerk) if Object.const_defined?(:Zeitwerk, false)
   end
 
-  def test_skip_callback_does_not_raise_for_a_missing_callback_only_during_a_load
+  def test_skipping_a_parent_callback_again_does_not_raise_only_during_a_load
     CallbackHost.skip_callback(:save, :before, :check)
     assert_equal({}, CallbackHost.options)
 
     Mutineer::ReloadGuards.during_load("unused.rb") { CallbackHost.skip_callback(:save, :before, :check, if: :x) }
     assert_equal({ raise: false, if: :x }, CallbackHost.options)
+  end
+
+  # cubic: a skip the parent cannot explain keeps Rails' check during a load.
+  def test_a_skip_of_a_callback_the_parent_lacks_keeps_its_check_during_a_load
+    Mutineer::ReloadGuards.during_load("unused.rb") do
+      CallbackHost.skip_callback(:save, :before, :other)
+      assert_equal({}, CallbackHost.options)
+      CallbackHost.skip_callback(:save, :after, :check)
+      assert_equal({}, CallbackHost.options)
+      CallbackHost.skip_callback(:create, :before, :check)
+      assert_equal({}, CallbackHost.options)
+    end
   end
 
   def test_an_explicit_raise_option_wins_during_a_load
