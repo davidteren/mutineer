@@ -83,6 +83,20 @@ class ParserTest < Minitest::Test
     assert Mutineer::Parser.new_errors?(source, source.sub("if B = 1", "if !(B = 1 + (C = 2))"))
   end
 
+  # Found by parse_error_metamorphic_test: after a deletion, an existing error
+  # that ends where the edit starts may enclose it, not lie before it.
+  def test_new_errors_ignores_an_existing_error_that_a_deletion_shrinks
+    source = "def m(a)\n  C = [a].map { |v| v }\nend\n"
+    refute Mutineer::Parser.new_errors?(source, source.sub(".map { |v| v }", ""))
+  end
+
+  # The other direction: a deletion that makes a new error at its boundary is
+  # still new, though the original has an error of its own elsewhere.
+  def test_new_errors_reports_a_new_error_a_deletion_makes_at_its_boundary
+    source = "def m(a, a)\n  xC = 1\nend\n"
+    assert Mutineer::Parser.new_errors?(source, source.sub("xC", "C"))
+  end
+
   def test_new_errors_is_false_for_clean_source
     refute Mutineer::Parser.new_errors?("1 + 2", "1 - 2")
   end

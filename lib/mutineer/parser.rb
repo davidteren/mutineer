@@ -63,18 +63,32 @@ module Mutineer
       # Where the original's edited text sits, unchanged, inside the new text:
       # nil unless the edit only wraps it.
       kept = mutated.byteslice(head...edit_end).byteindex(original.byteslice(head...(original.bytesize - tail)))
-      mapped = errors.map do |error|
+      # An error at a boundary can fit more than one place: after a deletion,
+      # an error that ends where the edit starts may lie before it or enclose
+      # it (`C = [a].map { }` to `C = [a]`). Each fit is a candidate.
+      candidates = errors.map do |error|
         from = error.location.start_offset
         to = error.location.end_offset
-        if to <= head then [error.message, from, to]
-        elsif from >= edit_end then [error.message, from + shift, to + shift]
-        elsif from <= head && to >= edit_end then [error.message, from, to + shift]
-        elsif kept && from >= head && to <= edit_end then [error.message, from - kept, to - kept]
-        else return true # the error overlaps text the edit changed
-        end
+        fits = []
+        fits << [from, to] if to <= head
+        fits << [from + shift, to + shift] if from >= edit_end
+        fits << [from, to + shift] if from <= head && to >= edit_end
+        fits << [from - kept, to - kept] if kept && from >= head && to <= edit_end
+        return true if fits.empty? # the error overlaps text the edit changed
+
+        fits.map { |start, finish| [error.message, start, finish] }
       end
       baseline = parse_string(original).errors.map { |e| [e.message, e.location.start_offset, e.location.end_offset] }.tally
-      mapped.tally.any? { |error, count| count > baseline.fetch(error, 0) }
+      # shortcut: the first fit still free wins, so two same-message boundary
+      # errors that compete for one fit match in candidate order; switch to a
+      # full matching if a real case ever needs it.
+      candidates.each do |fits|
+        match = fits.find { |fit| baseline.fetch(fit, 0).positive? }
+        return true unless match
+
+        baseline[match] -= 1
+      end
+      false
     end
 
     # The byte lengths of the longest shared start and the longest shared end
