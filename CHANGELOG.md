@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Action creates the cache folder when `output` points into it
+  (#340).** On a fresh checkout, `output: .mutineer/pr.json` exited 2,
+  because `.mutineer/` did not exist yet. The CLI already created that
+  folder (#270), but the Action checks the path itself before it runs the
+  CLI. The Action now creates the cache folder when it is the missing parent
+  of `output`: `.mutineer` by default, the `cache_dir` from `.mutineer.yml`,
+  or a `--cache-dir` in `extra-args` (any short form the CLI accepts, such
+  as `--cache`). Any other missing folder still exits 2.
+
 ## [1.8.1] - 2026-11-02
 
 ### Fixed

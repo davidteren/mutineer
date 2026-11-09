@@ -224,3 +224,15 @@ run_step case18c STUB_EXIT=0 OUTPUT="mcache/pr.json"
 [ -d mcache ] && echo "  OK: yml cache dir created" || echo "  FAIL: yml cache dir missing"
 [ -s mcache/pr.json ] && echo "  OK: output delivered into yml cache dir" || echo "  FAIL: yml cache output missing"
 rm -f .mutineer.yml
+
+echo; echo "== 18d: cache dir from extra-args, as two words (#340) =="
+run_step case18d STUB_EXIT=0 OUTPUT="xcache/pr.json" EXTRA_ARGS="--cache-dir xcache"
+[ -s xcache/pr.json ] && echo "  OK: extra-args cache dir created" || echo "  FAIL: extra-args cache dir output missing"
+
+echo; echo "== 18e: cache dir from extra-args, with = (#340) =="
+run_step case18e STUB_EXIT=0 OUTPUT="ecache/pr.json" EXTRA_ARGS="--cache-dir=ecache"
+[ -s ecache/pr.json ] && echo "  OK: extra-args = cache dir created" || echo "  FAIL: extra-args = cache dir output missing"
+
+echo; echo "== 18f: cache dir from a short extra-args form the CLI accepts (#340) =="
+run_step case18f STUB_EXIT=0 OUTPUT="scache/pr.json" EXTRA_ARGS="--cache=scache"
+[ -s scache/pr.json ] && echo "  OK: short-form cache dir created" || echo "  FAIL: short-form cache dir output missing"

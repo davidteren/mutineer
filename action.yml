@@ -273,8 +273,9 @@ runs:
             for extra_arg in $EXTRA_ARGS; do
               key="${extra_arg%%=*}"
               case "$key" in
-                # Unique prefixes of --cache-dir (avoid --ca* colliding with --capture-timeout).
-                --cache-dir | --cache-di | --cache-d)
+                # Every unique prefix of --cache-dir that the CLI accepts. --ca is
+                # left out: it is ambiguous with --capture-timeout.
+                --cache-dir | --cache-di | --cache-d | --cache- | --cache | --cach | --cac)
                   if [ "$extra_arg" = "$key" ]; then
                     pending=1
                   else
