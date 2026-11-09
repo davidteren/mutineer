@@ -1,0 +1,28 @@
+test/parser_test.rb
+  s_8e9ddd58442ff3::t_c2eb0ba3d84c58 86-92
+  s_8e9ddd58442ff3::t_987c18cceb5923 93-99
+test/parse_error_metamorphic_test.rb
+  s_8e9ddd58442ff3::t_a4c6276c39f4e7 72-78
+  s_8e9ddd58442ff3::t_10fd802ae00013 82
+  s_8e9ddd58442ff3::t_c6534a573e14dc 1-4,9,17-21,38-39,42-47,49-50,52-53,55-59,83-85,105,107-108,110-111,113-114
+  s_8e9ddd58442ff3::t_30b1f73c073095 5-8,10-16,22-37,40-41,48,51,54,60-71,79-81,86-104,106,109,112
+lib/mutineer/parser.rb
+  s_8e9ddd58442ff3::t_ec9711de251283 66-69,72-79,86,90
+  s_8e9ddd58442ff3::t_29296cefa186e3 82-85,87-89,91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "93d5f1c312cc3557db1e6ceb0650fba8a244c25e",
+  "prompts": {},
+  "sessions": {
+    "s_8e9ddd58442ff3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61a348f1-4d94-47d2-9493-69df5bc07370",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
