@@ -151,10 +151,11 @@ class ConcernBlocksTest < Minitest::Test
     ActiveSupport.const_set(:Deprecation, deprecation)
     proxy = proxy_class.new
     with_hook_concern("def tag = :original") do |source, line|
-      Class.new { include HookPlaced }
+      host = Class.new { include HookPlaced } # held, so a GC during placement keeps it
       Mutineer::ConcernBlocks.store_hook_def { def tag = :mutant }
 
       assert_equal 1, place(source, line, :tag)
+      assert_equal :mutant, host.new.tag
       assert_equal 0, proxy.calls
     end
   ensure
