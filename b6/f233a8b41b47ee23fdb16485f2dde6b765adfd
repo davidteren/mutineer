@@ -1,0 +1,54 @@
+test/reload_guards_test.rb
+  s_e18bc297170be2::t_464a35cd42efdf 147-207,223-224,229-230,237,243,256,263,272,278
+  s_e18bc297170be2::t_7f022087d102c5 208-222,225-228,231-236,238-242,244-255,257-262,264-271,273-277
+test/fixtures/rails_app/test/models/parcel_test.rb
+  s_e18bc297170be2::t_221c28b52d3a64 1-17
+lib/mutineer/reload_guards.rb
+  s_8e9ddd58442ff3::t_869026aef389d9 186-218,220-222,272-310,313-314
+  s_e18bc297170be2::t_e7b9c0f49aca78 157
+  s_e18bc297170be2::t_18d9a7b34b1b24 26-33
+  s_8e9ddd58442ff3::t_9ce7ca73bb82b1 172-176,185,248-254,258,260-262,264-269,312
+  s_e18bc297170be2::t_a071b9c27b5893 81-82,85,88,91,94-96,101-156,158-167,219
+  s_8e9ddd58442ff3::t_67c969cc5f6fad 170,245
+  s_8e9ddd58442ff3::t_89b4530ee33761 177-181,255-257,259,263
+  s_8e9ddd58442ff3::t_85c4b6cff6e78c 171,246-247
+  s_8e9ddd58442ff3::t_1f471be895a9d2 168-169,236-244
+  s_e18bc297170be2::t_1dab340d52c09c 223-235
+  s_8e9ddd58442ff3::t_5dd34f869214c4 270-271
+  s_e18bc297170be2::t_3f23f0b1fee091 182-184,311,315-330
+test/fixtures/rails_app/app/models/parcel.rb
+  s_e18bc297170be2::t_ca919d7d18bfdd 1-20
+test/rails_dogfood_daemon_test.rb
+  s_8e9ddd58442ff3::t_eb56d8be198108 205-206
+  s_e18bc297170be2::t_9f9db8444ec8f1 194-204
+test/fixtures/rails_app/bin/dogfood
+  s_e18bc297170be2::t_23460a80aecd07 85-95
+lib/mutineer/concern_blocks.rb
+  s_e18bc297170be2::t_338c27cb3a0fa9 62
+CHANGELOG.md
+  s_e18bc297170be2::t_abb01cb6f39f1d 23-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b6f233a8b41b47ee23fdb16485f2dde6b765adfd",
+  "prompts": {},
+  "sessions": {
+    "s_8e9ddd58442ff3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61a348f1-4d94-47d2-9493-69df5bc07370",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_e18bc297170be2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3c0b053-0921-491b-bd29-b8372eabdad8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
