@@ -1,0 +1,28 @@
+test/reload_guards_test.rb
+  s_8e9ddd58442ff3::t_33a6d3b5ce0f98 25-26,51-52,54,57-68
+  s_8e9ddd58442ff3::t_1f471be895a9d2 9-10,13-21,31-33,69-85
+  s_8e9ddd58442ff3::t_9a6f326ef9fb74 34
+lib/mutineer/reload_guards.rb
+  s_8e9ddd58442ff3::t_1f471be895a9d2 30-31,38,73,80-92
+  s_8e9ddd58442ff3::t_85c4b6cff6e78c 93-94
+test/rails_dogfood_daemon_test.rb
+  s_8e9ddd58442ff3::t_9639882e1a361d 182
+test/fixtures/rails_app/bin/dogfood
+  s_8e9ddd58442ff3::t_9639882e1a361d 82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2a1ce6355f0856329d9e55f2f2758b2426a3e5ec",
+  "prompts": {},
+  "sessions": {
+    "s_8e9ddd58442ff3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61a348f1-4d94-47d2-9493-69df5bc07370",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
