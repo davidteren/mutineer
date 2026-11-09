@@ -179,7 +179,15 @@ class RailsDogfoodDaemonTest < Minitest::Test
     _out, err = capture_subprocess_io { aggregate, = Mutineer::Runner.execute(reloaded_class_body_config) }
 
     assert_equal 0, aggregate.errored_count, err
-    assert_operator aggregate.killed_count, :>, 1, "both files have mutants"
+    # cubic: each source must score on its own, so losing the concern's
+    # mutants cannot hide behind the model's.
+    by_source = aggregate.by_source.to_h { |file, agg| [File.basename(file), agg] }
+    assert_equal %w[shipment.rb trackable.rb], by_source.keys.sort
+    by_source.each do |file, agg|
+      assert_operator agg.killed_count, :>, 0, file
+      assert_equal 0, agg.errored_count, file
+      assert_equal 100.0, agg.mutation_score, file
+    end
     assert_equal 100.0, aggregate.mutation_score
   end
 

@@ -35,19 +35,29 @@ class ReloadGuardsTest < Minitest::Test
   # Stands in for a callback in ActiveSupport::Callbacks.
   Callback = Struct.new(:kind, :filter)
 
-  # Stands in for a Rails parent that defines `before save :check`.
+  # Stands in for a Rails parent that defines `before save :check`. It has no
+  # `check` method, so only its callback chain can explain a skip of it.
   class CallbackParent
     def self.__callbacks = { save: [Callback.new(:before, :check)] }
   end
 
-  # Stands in for ActiveSupport::Callbacks::ClassMethods#skip_callback.
+  # Stands in for a class whose first run already skipped its callbacks: like
+  # Rails, a skip raises unless it passes `raise: false`. `concern_check`
+  # stands for a callback method an included concern installed.
   class CallbackHost < CallbackParent
     class << self
       attr_reader :options
 
-      def skip_callback(_name, *filters) = (@options = filters.last.is_a?(Hash) ? filters.last : {})
+      def skip_callback(_name, *filters)
+        @options = filters.last.is_a?(Hash) ? filters.last : {}
+        raise ArgumentError, "callback has not been defined" unless @options[:raise] == false
+      end
     end
     singleton_class.prepend(Mutineer::ReloadGuards::CallbackReskipping)
+
+    private
+
+    def concern_check = nil
   end
 
   def test_an_enum_the_class_has_skips_its_conflict_check_only_during_a_load
@@ -94,27 +104,39 @@ class ReloadGuardsTest < Minitest::Test
   end
 
   def test_skipping_a_parent_callback_again_does_not_raise_only_during_a_load
-    CallbackHost.skip_callback(:save, :before, :check)
-    assert_equal({}, CallbackHost.options)
+    assert_raises(ArgumentError) { CallbackHost.skip_callback(:save, :before, :check) }
 
     Mutineer::ReloadGuards.during_load("unused.rb") { CallbackHost.skip_callback(:save, :before, :check, if: :x) }
     assert_equal({ raise: false, if: :x }, CallbackHost.options)
   end
 
-  # cubic: a skip the parent cannot explain keeps Rails' check during a load.
-  def test_a_skip_of_a_callback_the_parent_lacks_keeps_its_check_during_a_load
+  # Qodo, cubic: Rails defaults a missing kind to `:before`.
+  def test_a_skip_without_a_kind_counts_as_before
+    Mutineer::ReloadGuards.during_load("unused.rb") { CallbackHost.skip_callback(:save, :check) }
+    assert_equal({ raise: false }, CallbackHost.options)
+  end
+
+  # Devin, cubic: a concern's included block installed the callback on the
+  # class itself, and a reload does not run that block again.
+  def test_skipping_a_callback_named_by_a_method_of_the_class_does_not_raise_during_a_load
+    Mutineer::ReloadGuards.during_load("unused.rb") { CallbackHost.skip_callback(:save, :before, :concern_check) }
+    assert_equal({ raise: false }, CallbackHost.options)
+  end
+
+  # A skip that names no method of the class and no parent callback keeps
+  # Rails' check during a load, so a typo still raises.
+  def test_a_skip_nothing_explains_still_raises_during_a_load
     Mutineer::ReloadGuards.during_load("unused.rb") do
-      CallbackHost.skip_callback(:save, :before, :other)
-      assert_equal({}, CallbackHost.options)
-      CallbackHost.skip_callback(:save, :after, :check)
-      assert_equal({}, CallbackHost.options)
-      CallbackHost.skip_callback(:create, :before, :check)
-      assert_equal({}, CallbackHost.options)
+      assert_raises(ArgumentError) { CallbackHost.skip_callback(:save, :before, :typo) }
+      assert_raises(ArgumentError) { CallbackHost.skip_callback(:save, :after, :check) }
+      assert_raises(ArgumentError) { CallbackHost.skip_callback(:create, :before, :check) }
     end
   end
 
   def test_an_explicit_raise_option_wins_during_a_load
-    Mutineer::ReloadGuards.during_load("unused.rb") { CallbackHost.skip_callback(:save, :before, :check, raise: true) }
+    assert_raises(ArgumentError) do
+      Mutineer::ReloadGuards.during_load("unused.rb") { CallbackHost.skip_callback(:save, :before, :check, raise: true) }
+    end
     assert_equal({ raise: true }, CallbackHost.options)
   end
 

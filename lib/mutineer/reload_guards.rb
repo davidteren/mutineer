@@ -11,8 +11,8 @@ module Mutineer
   #   the first run already removed the callback (#384).
   #
   # While {.during_load} runs, an `enum` the class had before the load skips
-  # its conflict check, and `skip_callback` does not raise for a callback that
-  # only the superclass still has.
+  # its conflict check, and `skip_callback` does not raise for a callback the
+  # first run already removed (see {CallbackReskipping}).
   # The original file ran the same macros once with the full checks, so the
   # second run repeats work Rails already accepted. Outside the load, for
   # example while the tests run, both macros check as usual.
@@ -42,10 +42,13 @@ module Mutineer
       end
     end
 
-    # Makes a repeated skip a no-op, during a mutant load only. A skip counts
-    # as repeated when the superclass still has every callback it names: the
-    # first run of the class body removed them from this class only. Any other
-    # skip keeps Rails' check, so a wrong one still raises (scored `error`).
+    # Makes a repeated skip a no-op, during a mutant load only. The class body
+    # outside methods is the original's, and the original's first run already
+    # removed the callback from this class, so a skip there is a repeat. It
+    # counts as one when each filter is a method the class has (a callback the
+    # parent or an included concern installed) or a callback the parent still
+    # has. A skip that names neither keeps Rails' check and still raises
+    # (scored `error`), so a typo is not hidden.
     module CallbackReskipping
       # @param name [Symbol] the callback chain, such as `:save`.
       # @param filter_list [Array] the kind, the filters, and options.
@@ -54,7 +57,7 @@ module Mutineer
         return super unless ReloadGuards.loading?
 
         options = filter_list.last.is_a?(Hash) ? filter_list.pop : {}
-        options = { raise: false }.merge(options) if ReloadGuards.inherited_callbacks?(self, name, *filter_list)
+        options = { raise: false }.merge(options) if ReloadGuards.repeated_skip?(self, name, *filter_list)
         super(name, *filter_list, options, &block)
       end
     end
@@ -94,20 +97,28 @@ module Mutineer
       @enums_before_load.fetch(key) { @enums_before_load[key] = klass.defined_enums.key?(key.last) }
     end
 
-    # True when `klass`'s superclass has a `kind` callback on chain `name` for
-    # every filter. With no filters there is nothing to compare, so false.
+    # The callback kinds `skip_callback` takes before its filters.
+    CALLBACK_KINDS = %i[before after around].freeze
+
+    # True when every filter of this skip is a method `klass` has, or a callback
+    # of that kind on chain `name` that the superclass still has. The kind is
+    # optional and defaults to `:before`, as in Rails. With no filters there is
+    # nothing to compare, so false.
     #
     # @param klass [Class] the class calling `skip_callback`.
     # @param name [Symbol] the callback chain, such as `:save`.
-    # @param kind [Symbol] `:before`, `:after` or `:around`.
-    # @param filters [Array] the callbacks to skip, usually method names.
+    # @param args [Array] the optional kind, then the filters.
     # @return [Boolean]
-    def self.inherited_callbacks?(klass, name, kind = nil, *filters)
-      parent = klass.superclass
-      return false if filters.empty? || !parent.respond_to?(:__callbacks)
+    def self.repeated_skip?(klass, name, *args)
+      kind = CALLBACK_KINDS.include?(args.first) ? args.shift : :before
+      return false if args.empty?
 
-      chain = parent.__callbacks[name] or return false
-      filters.all? { |filter| chain.any? { |callback| callback.kind == kind && callback.filter == filter } }
+      parent = klass.superclass
+      chain = parent.respond_to?(:__callbacks) ? parent.__callbacks[name] : nil
+      args.all? do |filter|
+        (filter.is_a?(Symbol) && (klass.method_defined?(filter) || klass.private_method_defined?(filter))) ||
+          chain&.any? { |callback| callback.kind == kind && callback.filter == filter }
+      end
     end
 
     # Prepends the guards once, onto the Rails modules this process has loaded.

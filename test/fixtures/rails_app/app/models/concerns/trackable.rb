@@ -8,9 +8,18 @@ module Trackable
 
   included do
     scope :express_only, -> { where(express: true) }
+    before_save :require_tracking
   end
 
   def light?
     weight_grams < 100
+  end
+
+  private
+
+  # Shipment skips this callback, which this block installed on Shipment
+  # itself. A reload does not run the block again (#384 review).
+  def require_tracking
+    throw :abort
   end
 end
