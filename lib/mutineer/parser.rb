@@ -44,9 +44,11 @@ module Mutineer
     # at the end. A mutant error wholly before it keeps its offsets, one wholly
     # after it moves by the length change, and one that encloses it keeps its
     # start and moves its end (an edit inside `T += 1`, which Prism 2 marks
-    # whole). One that only partly overlaps it is new. The mutant adds an error
-    # unless each of its errors maps onto the same error (message and offsets)
-    # in the original.
+    # whole). When the edit keeps the original's edited text whole and only
+    # wraps it (condition negation turns `T += 1` into `!(T += 1)`), an error
+    # wholly inside the edit maps back through that kept text. Any other error
+    # that overlaps the edit is new. The mutant adds an error unless each of
+    # its errors maps onto the same error (message and offsets) in the original.
     #
     # @param original [String] the source before the edit.
     # @param mutated [String] the source after the edit.
@@ -58,13 +60,17 @@ module Mutineer
       head, tail = shared_ends(original, mutated)
       shift = original.bytesize - mutated.bytesize
       edit_end = mutated.bytesize - tail
+      # Where the original's edited text sits, unchanged, inside the new text:
+      # nil unless the edit only wraps it.
+      kept = mutated.byteslice(head...edit_end).byteindex(original.byteslice(head...(original.bytesize - tail)))
       mapped = errors.map do |error|
         from = error.location.start_offset
         to = error.location.end_offset
         if to <= head then [error.message, from, to]
         elsif from >= edit_end then [error.message, from + shift, to + shift]
         elsif from <= head && to >= edit_end then [error.message, from, to + shift]
-        else return true # the error partly overlaps the edit
+        elsif kept && from >= head && to <= edit_end then [error.message, from - kept, to - kept]
+        else return true # the error overlaps text the edit changed
         end
       end
       baseline = parse_string(original).errors.map { |e| [e.message, e.location.start_offset, e.location.end_offset] }.tally

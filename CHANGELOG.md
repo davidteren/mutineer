@@ -18,7 +18,9 @@ All notable changes to this project are documented here. The format is based on
   parse error that the original source does not have. This holds in the dry
   run, in process, on `--daemon`, and for the redefine strategy's method
   snippet. A project gets Prism 2 when its bundle loads it, for example
-  through minitest 6.1.
+  through minitest 6.1. On Prism 2, the mutants of such a file that were
+  skipped now get a verdict, so the score, the counts, and the JSON report
+  can change for those projects. Prism 1 runs do not change.
 
 ## [1.8.1] - 2026-11-02
 

@@ -43,7 +43,7 @@ class ParserTest < Minitest::Test
   end
 
   # cubic: one edit that removes the existing error and adds another with the
-  # same message elsewhere is still a new error.
+  # same message in the same declaration is still a new error.
   def test_new_errors_reports_a_same_message_error_that_replaces_the_old_one
     assert Mutineer::Parser.new_errors?(BROKEN, BROKEN.sub("def a(x, x)", "def a(y, y)"))
   end
@@ -73,6 +73,14 @@ class ParserTest < Minitest::Test
   def test_new_errors_reports_an_error_that_starts_inside_the_edit
     source = "def m\n  B = 1\nend\n"
     assert Mutineer::Parser.new_errors?(source, source.sub("  B = 1", "  x = 1; C = 1"))
+  end
+
+  # cubic: condition negation wraps an existing error, so the error lies wholly
+  # inside the edit; with the same message and text it is not new.
+  def test_new_errors_ignores_an_existing_error_the_edit_wraps
+    source = "def m\n  if B = 1\n    2\n  end\nend\n"
+    refute Mutineer::Parser.new_errors?(source, source.sub("if B = 1", "if !(B = 1)"))
+    assert Mutineer::Parser.new_errors?(source, source.sub("if B = 1", "if !(B = 1 + (C = 2))"))
   end
 
   def test_new_errors_is_false_for_clean_source
