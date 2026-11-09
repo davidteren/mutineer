@@ -35,7 +35,7 @@ module Mutineer
       # @param enum_name [Symbol, String] the enum being declared.
       # @return [void]
       def detect_enum_conflict!(enum_name, *)
-        return if ReloadGuards.loading? && ReloadGuards.enum_existed?(self, enum_name) { defined_enums.key?(enum_name.to_s) }
+        return if ReloadGuards.loading? && ReloadGuards.enum_existed?(self, enum_name)
 
         super
       end
@@ -83,13 +83,10 @@ module Mutineer
     #
     # @param klass [Class] the model declaring the enum.
     # @param enum_name [Symbol, String] the enum being declared.
-    # @yieldreturn [Boolean] whether the class has the enum now.
     # @return [Boolean]
     def self.enum_existed?(klass, enum_name)
       key = [klass, enum_name.to_s]
-      return @enums_before_load[key] if @enums_before_load.key?(key)
-
-      @enums_before_load[key] = yield
+      @enums_before_load.fetch(key) { @enums_before_load[key] = klass.defined_enums.key?(key.last) }
     end
 
     # Prepends the guards once, onto the Rails modules this process has loaded.
