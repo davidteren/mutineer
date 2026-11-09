@@ -22,6 +22,16 @@ cat > "$SCRATCH/bin/mutineer" <<STUB
 #!/usr/bin/env bash
 # The action's version-floor check asks for --version before running.
 if [ "\${1:-}" = "--version" ]; then echo "1.0.0"; exit 0; fi
+# The action asks \`mutineer config KEY\` for resolved settings (#394).
+# STUB_CONFIG unset: answer with this checkout's real CLI. "old": act as a
+# release without the command. Any other value: print that value.
+if [ "\${1:-}" = "config" ]; then
+  case "\${STUB_CONFIG:-}" in
+    "") exec ruby -I"$ROOT/lib" "$ROOT/bin/mutineer" "\$@" ;;
+    old) echo "mutineer: unknown command 'config'" >&2; exit 2 ;;
+    *) echo "\$STUB_CONFIG"; exit 0 ;;
+  esac
+fi
 echo "STUB-ARGS: \$*" >> "$SCRATCH/stub-args.txt"
 out=""
 prev=""
@@ -236,3 +246,25 @@ run_step case18e STUB_EXIT=0 OUTPUT="ecache/pr.json" EXTRA_ARGS="--cache-dir=eca
 echo; echo "== 18f: cache dir from a short extra-args form the CLI accepts (#340) =="
 run_step case18f STUB_EXIT=0 OUTPUT="scache/pr.json" EXTRA_ARGS="--cache=scache"
 [ -s scache/pr.json ] && echo "  OK: short-form cache dir created" || echo "  FAIL: short-form cache dir output missing"
+
+echo; echo "== 18g: the CLI names the cache dir (#394) =="
+run_step case18g STUB_EXIT=0 OUTPUT="zcache/pr.json" STUB_CONFIG="zcache"
+[ -s zcache/pr.json ] && echo "  OK: CLI-named cache dir created" || echo "  FAIL: the action did not ask the CLI for cache_dir"
+
+echo; echo "== 18h: an older CLI without the config command falls back (#394) =="
+run_step case18h STUB_EXIT=0 OUTPUT="ocache/pr.json" EXTRA_ARGS="--cache=ocache" STUB_CONFIG="old"
+[ -s ocache/pr.json ] && echo "  OK: fallback cache dir created" || echo "  FAIL: fallback cache dir output missing"
+
+echo; echo "== 13b: the CLI names the baseline, output is that file (#394) =="
+mkdir -p "$SCRATCH/case13b"
+cp "$SCRATCH/report.json" "$SCRATCH/case13b/baseline.json"
+before=$(cksum "$SCRATCH/case13b/baseline.json")
+run_step case13b STUB_EXIT=1 OUTPUT="$SCRATCH/case13b/baseline.json" STUB_CONFIG="$SCRATCH/case13b/baseline.json"
+[ "$(cksum "$SCRATCH/case13b/baseline.json")" = "$before" ] && echo "  OK: CLI-named baseline kept" || echo "  FAIL: CLI-named baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: the action did not ask the CLI for baseline" || echo "  OK: CLI-named baseline rejected before running"
+
+echo; echo "== 14c: an older CLI without the config command, abbreviated baseline (#394) =="
+before=$(cksum "$SCRATCH/case14/baseline.json")
+run_step case14c STUB_EXIT=1 OUTPUT="$SCRATCH/case14/baseline.json" EXTRA_ARGS="--base $SCRATCH/case14/baseline.json" STUB_CONFIG="old"
+[ "$(cksum "$SCRATCH/case14/baseline.json")" = "$before" ] && echo "  OK: fallback baseline kept" || echo "  FAIL: fallback baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on the fallback baseline" || echo "  OK: fallback baseline rejected before running"

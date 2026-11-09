@@ -1940,4 +1940,42 @@ class CliTest < Minitest::Test
       refute File.exist?(File.join(dir, ".mutineer.yml"))
     end
   end
+
+  # #394: `config KEY` prints what `run` would use (flag > .mutineer.yml >
+  # default), so the GitHub Action can ask instead of copying these rules.
+  def test_config_prints_cache_dir_by_precedence
+    Dir.mktmpdir("mutineer-config") do |dir|
+      out, err, status = mutineer("config", "cache_dir", chdir: dir)
+      assert_equal [0, ".mutineer\n"], [status.exitstatus, out], err
+
+      File.write(File.join(dir, ".mutineer.yml"), "cache_dir: ycache\n")
+      assert_equal "ycache\n", mutineer("config", "cache_dir", chdir: dir).first
+      # A short form the option parser accepts, and a source argument, as a run passes them.
+      out, err, status = mutineer("config", "cache_dir", "lib/a.rb", "--cac=zcache", chdir: dir)
+      assert_equal [0, "zcache\n"], [status.exitstatus, out], err
+      assert_equal %w[.mutineer.yml], Dir.children(dir), "config must not create the cache folder"
+    end
+  end
+
+  def test_config_prints_the_last_baseline_flag_else_the_file_else_nothing
+    Dir.mktmpdir("mutineer-config") do |dir|
+      out, err, status = mutineer("config", "baseline", chdir: dir)
+      assert_equal [0, ""], [status.exitstatus, out], err
+
+      File.write(File.join(dir, ".mutineer.yml"), "baseline: file.json\n")
+      assert_equal "file.json\n", mutineer("config", "baseline", chdir: dir).first
+      out, = mutineer("config", "baseline", "--baseline", "a.json", "--base", "b.json", chdir: dir)
+      assert_equal "b.json\n", out
+    end
+  end
+
+  def test_config_with_an_unknown_or_missing_key_is_a_usage_error
+    [%w[config threshold], %w[config]].each do |args|
+      out, err, status = mutineer(*args)
+      assert_equal 2, status.exitstatus, args.inspect
+      assert_empty out
+      assert_includes err, "cache_dir, baseline"
+      refute_includes err, "unknown command"
+    end
+  end
 end

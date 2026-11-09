@@ -38,6 +38,7 @@ Other commands:
 - `mutineer init [--rails] [--force]`
 - `mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)`
 - `mutineer migrate <source...> [--dry-run] [--operators LIST]`
+- `mutineer config cache_dir|baseline [run options]`: print the value `run` would use with these options and `.mutineer.yml`. An unset baseline prints nothing. It writes nothing. The GitHub Action uses it.
 
 Exit codes: [README](https://github.com/davidteren/mutineer#exit-codes).
 

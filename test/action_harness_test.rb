@@ -10,7 +10,9 @@ require "open3"
 # pull_request_target guard, since: none), report freshness vs staleness,
 # summary/annotation rendering (workflow-command escaping included), the
 # extra-args --format/--output guard, the old-format id warning (#126), and a
-# failing run whose output and baseline are the same file (#160).
+# failing run whose output and baseline are the same file (#160). The stub
+# answers `mutineer config` with the real CLI, a fixed value, or as an older
+# release without that command (#394).
 class ActionHarnessTest < Minitest::Test
   HARNESS = File.expand_path("fixtures/action_harness.sh", __dir__)
 
@@ -27,7 +29,8 @@ class ActionHarnessTest < Minitest::Test
       "case10" => 1, "case11" => 2, "case11b" => 2, "case12" => 1,
       "case13" => 2, "case14" => 2, "case14b" => 2, "case15" => 1,
       "case16" => 2, "case17" => 2, "case18" => 0, "case18b" => 2, "case18c" => 0,
-      "case18d" => 0, "case18e" => 0, "case18f" => 0 }.each do |c, code|
+      "case18d" => 0, "case18e" => 0, "case18f" => 0, "case18g" => 0, "case18h" => 0,
+      "case13b" => 2, "case14c" => 2 }.each do |c, code|
       assert_includes out, "#{c}: exit=#{code}", "#{c} exit code drifted:\n#{out}"
     end
     assert_includes out, "OK: abbreviation rejected"
@@ -41,6 +44,12 @@ class ActionHarnessTest < Minitest::Test
     assert_includes out, "OK: extra-args cache dir created"
     assert_includes out, "OK: extra-args = cache dir created"
     assert_includes out, "OK: short-form cache dir created"
+    assert_includes out, "OK: CLI-named cache dir created"
+    assert_includes out, "OK: fallback cache dir created"
+    assert_includes out, "OK: CLI-named baseline kept"
+    assert_includes out, "OK: CLI-named baseline rejected before running"
+    assert_includes out, "OK: fallback baseline kept"
+    assert_includes out, "OK: fallback baseline rejected before running"
     assert_includes out, "OK: scoped to base.sha"
     assert_includes out, "OK: stale file NOT deleted (baseline-safe)"
     assert_includes out, "OK: rejected before running"

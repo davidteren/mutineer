@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`mutineer config KEY` prints a resolved setting (#394).** It prints the
+  `cache_dir` or `baseline` that `mutineer run` would use with the same
+  options and `.mutineer.yml`. It writes nothing. An unknown key exits 2. The
+  GitHub Action now asks the installed CLI for these two settings, so it no
+  longer copies the CLI's rules. With an older installed CLI that does not
+  have the command, the Action uses its own copy of the rules, as before.
+
 ### Fixed
 
 - **The Action creates the cache folder when `output` points into it
