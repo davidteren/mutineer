@@ -1,0 +1,38 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 9-26
+README.md
+  h_e8a5bb9272fa34 194
+STABILITY.md
+  h_e8a5bb9272fa34 81-85
+action.yml
+  h_e8a5bb9272fa34 18-21
+docs/ci.md
+  h_e8a5bb9272fa34 138,155-161
+docs/cli.md
+  h_e8a5bb9272fa34 9,36-46
+docs/index.md
+  h_e8a5bb9272fa34 71
+docs/rails-setup.md
+  h_e8a5bb9272fa34 27-28,34-40
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 53,154,216-218,224-226,634-712
+lib/mutineer/pairing.rb
+  h_e8a5bb9272fa34 7,10-12,54-155
+test/cli_daemon_test.rb
+  h_e8a5bb9272fa34 6-7,120-137
+test/cli_test.rb
+  h_e8a5bb9272fa34 234,1421-1576
+test/pairing_test.rb
+  h_e8a5bb9272fa34 172-221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0cf99517cfa004cfb9df9235b6750ef9b3065474",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
