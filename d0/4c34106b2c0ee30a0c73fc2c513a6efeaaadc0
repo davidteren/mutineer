@@ -1,0 +1,19 @@
+test/reload_guards_test.rb
+  s_94fbd16fe63aa6::t_42cc057ac2d7c1 164-165,167-168,173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d04c34106b2c0ee30a0c73fc2c513a6efeaaadc0",
+  "prompts": {},
+  "sessions": {
+    "s_94fbd16fe63aa6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4fc166c9-015a-4e0c-a4f1-c3e86990aa27",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
