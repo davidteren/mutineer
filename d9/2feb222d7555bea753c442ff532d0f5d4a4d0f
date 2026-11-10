@@ -1,0 +1,125 @@
+CHANGELOG.md
+  s_a6bec147e40415::t_5f9ac036990412 33-34,38-100,109-153,2010
+README.md
+  s_a6bec147e40415::t_68173875dd1d11 143
+docs/cli.md
+  s_a6bec147e40415::t_ef787b8cb75271 22
+docs/index.md
+  s_a6bec147e40415::t_cb9a4c079b67df 88-90
+docs/rails-setup.md
+  s_a6bec147e40415::t_095e5d43c76597 228
+lib/mutineer/cli.rb
+  s_a6bec147e40415::t_2f71a6238337ee 86-89
+lib/mutineer/concern_blocks.rb
+  s_a6bec147e40415::t_d1ee005952deec 3-4,20-26,54-66,70-72,74-85,88-96,127-129,131-132,136-143,156-157,163,173,177,256-270,306-321
+lib/mutineer/daemon_backend.rb
+  s_a6bec147e40415::t_07c4a173cbe310 428
+lib/mutineer/daemon_client.rb
+  s_a6bec147e40415::t_4fe7c6b20a774a 47-49,51-53,356-358,426-434,440-460,462,468-479,492-494
+lib/mutineer/daemon_server.rb
+  s_a6bec147e40415::t_8bc634c51535c5 363-366,479-481,483-484,492
+lib/mutineer/external_backend.rb
+  s_a6bec147e40415::t_c0f2324aa7787e 64-74,300-324,326,328-330,335-336,340-343
+lib/mutineer/isolation.rb
+  s_a6bec147e40415::t_41b008cabe259b 196-197,205,207-208,277
+lib/mutineer/job_plan.rb
+  s_a6bec147e40415::t_22ee2559210f02 209-211
+lib/mutineer/mutation.rb
+  s_a6bec147e40415::t_aee5ecf4ebd945 19-20,23,25
+lib/mutineer/parser.rb
+  s_a6bec147e40415::t_93097ee9039d81 36-74
+lib/mutineer/rails_worker_db.rb
+  s_a6bec147e40415::t_75917084993708 491-500
+lib/mutineer/redaction.rb
+  s_a6bec147e40415::t_5b071e7b7cd79c 8-11,16-33,41-43,45-52,59-61,94-95,120-123,129-131
+lib/mutineer/reload_guards.rb
+  s_a6bec147e40415::t_c6945949c88e55 1-564
+lib/mutineer/reporter.rb
+  s_a6bec147e40415::t_0eb32606815e50 142-143
+lib/mutineer/runner.rb
+  s_a6bec147e40415::t_aa7f47d33f606b 267,277-292,323,384,410
+lib/mutineer/version.rb
+  s_a6bec147e40415::t_1e97230061c054 5
+test/concern_blocks_test.rb
+  s_a6bec147e40415::t_2133876fc4f46b 138-164
+test/daemon_backend_contract_test.rb
+  s_a6bec147e40415::t_8e6eba0c80b7a1 955-968
+test/daemon_redaction_test.rb
+  s_a6bec147e40415::t_5347ea42e0f08a 205-208,247-296
+test/daemon_server_hook_def_test.rb
+  s_a6bec147e40415::t_12b2319a1f4616 94-131
+test/daemon_shared_databases_test.rb
+  s_a6bec147e40415::t_1eb73d75bc7d2a 39-43
+test/external_backend_test.rb
+  s_a6bec147e40415::t_ce3511f9f5d483 270-317
+test/fixtures/order_dependent/ledger.rb
+  s_a6bec147e40415::t_eac0535372f17f 1-20
+test/fixtures/order_dependent/ledger_test.rb
+  s_a6bec147e40415::t_581b0dc7337a1e 1-21
+test/fixtures/rails_app/app/models/concerns/trackable.rb
+  s_a6bec147e40415::t_2ce0e207cd1623 1-25
+test/fixtures/rails_app/app/models/parcel.rb
+  s_a6bec147e40415::t_96b41658b47d13 1-20
+test/fixtures/rails_app/app/models/shipment.rb
+  s_a6bec147e40415::t_f1a23494f20fbf 1-16
+test/fixtures/rails_app/app/models/shipping_record.rb
+  s_a6bec147e40415::t_039813a48ae719 1-14
+test/fixtures/rails_app/bin/dogfood
+  s_a6bec147e40415::t_3129166b6c540d 76-105
+test/fixtures/rails_app/config/application.rb
+  s_a6bec147e40415::t_27acf617b06b17 18-19
+test/fixtures/rails_app/db/schema.rb
+  s_a6bec147e40415::t_e67113d67ee2d6 13-19
+test/fixtures/rails_app/test/models/concerns/trackable_test.rb
+  s_a6bec147e40415::t_30ec46f8335b9c 1-10
+test/fixtures/rails_app/test/models/parcel_test.rb
+  s_a6bec147e40415::t_6472a6116e81b6 1-17
+test/fixtures/rails_app/test/models/shipment_test.rb
+  s_a6bec147e40415::t_620028e8595e20 1-18
+test/fixtures/rails_app/test/models/shipment_weak_test.rb
+  s_a6bec147e40415::t_b7714e9c9d0737 1-20
+test/fixtures/singleton/hook_load_time.rb
+  s_a6bec147e40415::t_96eb4699c10cbd 1-33
+test/fixtures/singleton/hook_load_time_test.rb
+  s_a6bec147e40415::t_6a5335931d489c 1-16
+test/isolation_test.rb
+  s_a6bec147e40415::t_19bd2b05b00e5d 550-576
+test/mutation_test.rb
+  s_a6bec147e40415::t_49b2c6c7a2830c 31-41
+test/parse_error_metamorphic_test.rb
+  s_a6bec147e40415::t_ca345bdac68e71 1-115
+test/parser_test.rb
+  s_a6bec147e40415::t_b42a3370e9fbc0 4,29-80
+test/prism_errors_test.rb
+  s_a6bec147e40415::t_ea169ac8910885 1-103
+test/rails_dogfood_daemon_test.rb
+  s_a6bec147e40415::t_0915fc8ad68333 162-238
+test/redaction_test.rb
+  s_a6bec147e40415::t_daf6f5894081f7 125-134,209-210,214-215,223-272
+test/reload_guards_test.rb
+  s_a6bec147e40415::t_154c4e66bf7f76 1-539
+test/reporter_test.rb
+  s_a6bec147e40415::t_86540823aa7c67 563-564
+test/runner_external_test.rb
+  s_a6bec147e40415::t_d04c9d0bb3fdf6 157-201,266-282
+test/singleton_redefine_test.rb
+  s_a6bec147e40415::t_8bd76304e948fb 267,274-289
+test/test_helper.rb
+  s_a6bec147e40415::t_4bc004eef09d47 95-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d92feb222d7555bea753c442ff532d0f5d4a4d0f",
+  "prompts": {},
+  "sessions": {
+    "s_a6bec147e40415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70696613-345c-4c5a-a1b7-097a86354e05",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
