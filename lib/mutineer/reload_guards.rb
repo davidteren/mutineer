@@ -151,12 +151,13 @@ module Mutineer
         reloaded = files.map { |file| real_path(file) }
         # Each class's entries before the load, copied only for the classes asked.
         old = Hash.new { |copies, klass| copies[klass] = before.fetch(klass, {}).transform_values(&:to_a) }
-        pairs = changed.flat_map { |klass| replacements(klass, old, reloaded) }
-        return if pairs.empty?
-
-        swap = {}.compare_by_identity
-        pairs.each { |old_entry, new_entry| swap[old_entry] = new_entry }
-        restore(changed, old, swap)
+        by_chain = {}
+        changed.each do |klass|
+          replacements(klass, old, reloaded).each do |name, pairs|
+            by_chain[[klass, name]] = pairs
+          end
+        end
+        restore(changed, old, by_chain) unless by_chain.empty?
       end
 
       # @param now [Hash{Symbol => Object}] a class's chains after the load.
@@ -173,20 +174,24 @@ module Mutineer
       # @param klass [Class] a class whose chains the load changed.
       # @param old [Hash{Class => Hash{Symbol => Array}}] each class's entries before the load.
       # @param reloaded [Array<String>] real paths of the source and mutant files.
-      # @return [Array<Array(Object, Object)>] each old entry and the new entry that replaces it.
+      # @return [Hash{Symbol => Array<Array(Object, Object)>}] for each chain
+      #   name, each old entry and the new entry that replaces it.
       def self.replacements(klass, old, reloaded)
         parent = klass.superclass
         parent_now = parent.respond_to?(:__callbacks) ? parent.__callbacks : {}
         parent_old = old[parent]
-        klass.__callbacks.flat_map do |name, chain|
+        pairs = {}
+        klass.__callbacks.each do |name, chain|
           before = old[klass].fetch(name, [])
           added = without(without(chain.to_a, before), parent_now[name].to_a)
-          next [] if added.empty?
+          next if added.empty?
 
           pool = without(before, parent_old.fetch(name, []))
           exact = exact_pairs(added, pool, reloaded)
-          exact + by_key(without(added, exact.map(&:last)), pool, reloaded)
+          matched = exact + by_key(without(added, exact.map(&:last)), pool, reloaded)
+          pairs[name] = matched unless matched.empty?
         end
+        pairs
       end
 
       # Pairs new entries with the old entries that are the same ({.same?}),
@@ -238,9 +243,10 @@ module Mutineer
       #
       # @param changed [Array<Class>] the classes whose chains the load changed.
       # @param old [Hash{Class => Hash{Symbol => Array}}] each class's entries before the load.
-      # @param swap [Hash{Object => Object}] each old entry to its new entry.
+      # @param by_chain [Hash{Array(Class, Symbol) => Array<Array(Object, Object)>}]
+      #   each class and chain name, with the old and new entries paired there.
       # @return [void]
-      def self.restore(changed, old, swap)
+      def self.restore(changed, old, by_chain)
         seen = {}.compare_by_identity
         changed.each do |klass|
           klass.__callbacks.each do |name, chain|
@@ -248,16 +254,19 @@ module Mutineer
 
             seen[chain] = true
             now = chain.to_a
-            order = reorder(old[klass].fetch(name, []), now, swap)
+            order = reorder(old[klass].fetch(name, []), now, swap_for(klass, name, by_chain))
             next if order.size == now.size && order.zip(now).all? { |a, b| a.equal?(b) }
 
             chain.clear
             chain.append(*order)
           end
         end
-        # A validator is the filter of its `validate` callback.
+        # A validator is the filter of its `validate` callback. The same
+        # validator object can sit on a subclass, so every pair counts here.
         validators = {}.compare_by_identity
-        swap.each { |old_entry, new_entry| validators[old_entry.filter] = new_entry.filter }
+        by_chain.each_value do |pairs|
+          pairs.each { |old_entry, new_entry| validators[old_entry.filter] = new_entry.filter }
+        end
         lists = changed.select { |klass| klass.respond_to?(:_validators) }.flat_map { |klass| klass._validators.values }
         lists.uniq(&:object_id).each do |list|
           list.map! { |validator| validators.fetch(validator, validator) }
@@ -265,12 +274,15 @@ module Mutineer
         end
       end
 
-      # A paired new entry whose old entry this chain did not have came from a
-      # parent's class body only. Rails appends a parent's callback to every
-      # loaded subclass, so it also reached a subclass that skipped it (#414).
-      # Such an entry is dropped. When Rails dropped the subclass's own copy
-      # as a duplicate of it, such as the conditional copy that a
-      # `skip_callback ... if:` leaves, that copy comes back.
+      # A paired new entry whose old entry this chain did not have came from an
+      # ancestor's class body, for this same chain name. Rails appends a
+      # parent's callback to every loaded subclass, so it also reached a
+      # subclass that skipped it (#414). Such an entry is dropped. A
+      # replacement on another chain name, or on a class that is not an
+      # ancestor, is not such an entry: that chain keeps it. When Rails
+      # dropped the subclass's own copy as a duplicate, such as the
+      # conditional copy that a `skip_callback ... if:` leaves, that copy
+      # comes back.
       #
       # @param old [Array] the chain's entries before the load.
       # @param now [Array] its entries after the load.
@@ -288,6 +300,36 @@ module Mutineer
           entry if present.include?(entry) || stray.any? { |other| displaced?(entry, other) }
         end
         order + without(now, order).reject { |entry| swap.key?(entry) || paired.include?(entry) }
+      end
+
+      # Pairs for `name` on `klass` and on each of its ancestors. Rails appends
+      # one reloaded callback onto descendants of that class, and only onto
+      # this chain name. A pair from any other chain must not drop an entry
+      # here.
+      #
+      # @param klass [Class] the class whose chain is being rebuilt.
+      # @param name [Symbol] the chain name, such as `:save`.
+      # @param by_chain [Hash{Array(Class, Symbol) => Array<Array(Object, Object)>}]
+      #   see {restore}.
+      # @return [Hash{Object => Object}] each old entry to its new entry.
+      def self.swap_for(klass, name, by_chain)
+        swap = {}.compare_by_identity
+        owners(klass).each do |owner|
+          by_chain[[owner, name]]&.each { |old_entry, new_entry| swap[old_entry] = new_entry }
+        end
+        swap
+      end
+
+      # @param klass [Class]
+      # @return [Array<Class>] `klass` and its ancestors, furthest first.
+      def self.owners(klass)
+        owners = []
+        current = klass
+        while current.is_a?(Class)
+          owners << current
+          current = current.superclass
+        end
+        owners.reverse
       end
 
       # @param entry [Object] an old ActiveSupport callback.

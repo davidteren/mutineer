@@ -343,6 +343,28 @@ class ReloadGuardsTest < Minitest::Test
     assert_same_list [conditional], narrowed.__callbacks[:save]
   end
 
+  # The new `:save` callback is the same object as a new `:validate` callback,
+  # and the same object as a new callback on a class that is not a subclass.
+  # Neither chain loses it. A parent reload still drops it from a subclass
+  # that skipped it.
+  def test_a_replacement_on_one_chain_stays_on_every_other_chain
+    save_old = Callback.new(:before, :check)
+    shared = Callback.new(:before, :check)
+    validate_old = Callback.new(:before, :weigh)
+    other_old = Callback.new(:before, :weigh)
+    klass = callback_class
+    other = callback_class
+    klass.__callbacks = { save: Chain.new(save_old, shared), validate: Chain.new(validate_old, shared) }
+    other.__callbacks = { save: Chain.new(other_old, shared) }
+    before = { klass => { save: [save_old], validate: [validate_old] }, other => { save: [other_old] } }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove(before, [__FILE__])
+
+    assert_same_list [shared], klass.__callbacks[:save]
+    assert_same_list [validate_old, shared], klass.__callbacks[:validate]
+    assert_same_list [other_old, shared], other.__callbacks[:save]
+  end
+
   # A block in the class body.
   def body_block = proc {}
 

@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format is based on
   appended the parent's `before_save` again, including onto a subclass
   that had skipped it. Saves then failed, and a weak test looked strong.
   Reload, redefine, and the daemon now leave each subclass chain as it was.
+  A callback replaced on one chain stays on every other chain.
 
 ## [1.8.2] - 2026-11-10
 
