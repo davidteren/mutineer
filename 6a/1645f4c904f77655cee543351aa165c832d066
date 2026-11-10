@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_a6bec147e40415::t_9ee79a6799c94f 16-18
+action.yml
+  s_a6bec147e40415::t_408fec543d284e 270,272,303-309,378-381,383
+test/action_harness_test.rb
+  s_a6bec147e40415::t_f5d7497eb58763 99-102
+test/fixtures/action_harness.sh
+  s_a6bec147e40415::t_d6d142bbc229e1 277-280,345-363
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6a1645f4c904f77655cee543351aa165c832d066",
+  "prompts": {},
+  "sessions": {
+    "s_a6bec147e40415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70696613-345c-4c5a-a1b7-097a86354e05",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
