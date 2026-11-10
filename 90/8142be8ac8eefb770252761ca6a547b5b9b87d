@@ -1,0 +1,23 @@
+rake/fizzy_sample.rb
+  s_a6bec147e40415::t_5b66864b7edfbc 54,56,58,63,338-340
+Rakefile
+  s_a6bec147e40415::t_5b66864b7edfbc 86
+AGENTS.md
+  s_a6bec147e40415::t_7d1c85e12843a8 174-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "908142be8ac8eefb770252761ca6a547b5b9b87d",
+  "prompts": {},
+  "sessions": {
+    "s_a6bec147e40415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70696613-345c-4c5a-a1b7-097a86354e05",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
