@@ -1520,7 +1520,7 @@ class CoverageMapTest < Minitest::Test
       Dir.mktmpdir do |dir|
         map, src = concern_namespace_capture(dir, test_rel)
         assert map.uncapturable_source?(src), test_rel
-        assert map.method_uncapturable?(src, 1..3), test_rel
+        assert map.method_uncapturable?(src, 3..5), test_rel
       end
     end
   end
@@ -1530,7 +1530,7 @@ class CoverageMapTest < Minitest::Test
     Dir.mktmpdir do |dir|
       map, src = concern_namespace_capture(dir, "test/models/other/totaled_test.rb")
       refute map.uncapturable_source?(src)
-      refute map.method_uncapturable?(src, 1..3)
+      refute map.method_uncapturable?(src, 3..5)
     end
   end
 
@@ -1539,7 +1539,22 @@ class CoverageMapTest < Minitest::Test
     Dir.mktmpdir do |dir|
       map, src = concern_namespace_capture(dir, "test/models/storage/totaled_bytes_test.rb")
       refute map.uncapturable_source?(src)
-      refute map.method_uncapturable?(src, 1..3)
+      refute map.method_uncapturable?(src, 3..5)
+    end
+  end
+
+  # A test at the concerns path wins, so a failed namespace test does not
+  # mark the concern. Pairing would not run the namespace test for it.
+  def test_failing_namespace_test_does_not_taint_a_concern_with_its_own_test
+    %w[test/models/concerns/storage/totaled_test.rb
+       test/models/concerns/storage/totaled_sum_test.rb].each do |own|
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, File.dirname(own)))
+        File.write(File.join(dir, own), "# exists\n")
+        map, src = concern_namespace_capture(dir, "test/models/storage/totaled_test.rb")
+        refute map.uncapturable_source?(src), own
+        refute map.method_uncapturable?(src, 3..5), own
+      end
     end
   end
 
@@ -1681,7 +1696,7 @@ class CoverageMapTest < Minitest::Test
       File.write(src, "class Bar; def n; 1; end; end\n")
       map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["test/foo/bar_extra_test.rb"],
                                             project_root: dir)
-      assert map.method_uncapturable?(src, 1..3)
+      assert map.method_uncapturable?(src, 3..5)
     end
   end
 

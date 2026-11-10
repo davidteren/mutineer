@@ -24,9 +24,11 @@ All notable changes to this project are documented here. The format is based on
   Those mutants move from `no_coverage` to `uncapturable`.
   A `nil` score then fails the gate.
   The broken share also rises.
-  An Action with an empty `version` installs the latest gem.
+  With `use-bundler: false`, an Action with an empty `version` installs the latest gem.
   Pin `version`, or refresh the baseline, before the next run.
+  With `use-bundler: true`, the Gemfile picks the version.
   A split name pairs only at the `concerns/` path.
+  A failed namespace test does not mark a concern that has a test at its `concerns/` path.
   Namespace split names are issue #408 (pair split test files at a concern's namespace path).
   Until pull request #391 (the reload fix for Rails class bodies) lands, a lazy concern can score `error`.
 

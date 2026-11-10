@@ -271,7 +271,8 @@ module Mutineer
     # this source. An `app/` or `lib/` source only accepts a `test/` or
     # `spec/` file from its mirrored directory, so
     # `test/foo/bar_upsert_test.rb` does not taint `app/other/bar_upsert.rb`.
-    # A concern also accepts the same names at its namespace path.
+    # A concern also accepts the same names at its namespace path, but only
+    # when it has no test at its `concerns/` path, as in {Pairing.infer_tests}.
     # Any other source still matches by basename. A fixture under
     # `test/fixtures/` and an explicit test both name their source that way.
     #
@@ -281,6 +282,7 @@ module Mutineer
       name = File.basename(source_rel, ".rb")
       base, lib = Pairing.logical_path(source_rel)
       ns = Pairing.namespace_base(source_rel)
+      ns = nil if ns && own_concern_test?(source_rel, ns)
       @failed_test_files.any? do |test_path|
         next false unless failed_test_target_name(test_path) == name
 
@@ -306,6 +308,17 @@ module Mutineer
 
       dirs = [Pairing.mirror_dir("test", ns_base), Pairing.mirror_dir("spec", ns_base)]
       dirs.include?(File.dirname(test_rel))
+    end
+
+    # True when pairing finds a test for this concern at its `concerns/`
+    # path, so a test at its namespace path is not paired with it.
+    #
+    # @param source_rel [String] project-relative concern path.
+    # @param ns_base [String] namespace base from {Pairing.namespace_base}.
+    # @return [Boolean]
+    def own_concern_test?(source_rel, ns_base)
+      Pairing.infer_tests(source_rel, project_root: @project_root)
+             .any? { |t| !namespace_mirror?(t, ns_base) }
     end
 
     # True when pairing gives this source a mirrored test directory.
