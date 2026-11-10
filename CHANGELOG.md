@@ -8,6 +8,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Reload places a hook-block mutant before the rest of its file runs
+  (#348).** Under `--strategy reload`, a placeable mutated method from a
+  concern's `included` or `prepended` block reached the classes that include
+  or prepend the concern only after the whole mutant file loaded. Methods
+  that reload cannot place still score `unplaceable`. A later line in the same
+  file that called the method while the file loaded, such as
+  `TOTAL = Host.new.doubled(2)`, still used the original method. Mutineer
+  now places the mutated method when the load reaches the hook call, before
+  the rest of the file runs, in-process and on `--daemon`. Such a mutant can
+  now be killed where it used to survive or score `ran_at_load`, so the
+  score of an affected file can change. A mutant that raises in such a
+  load-time call now scores `error`. The alias and kept-method checks
+  still score `error`. The kept-method check runs after the load, so a
+  method handle the file holds only while it loads does not count.
 - **The Action creates the cache folder when `output` points into it
   (#340).** On a fresh checkout, `output: .mutineer/pr.json` exited 2,
   because `.mutineer/` did not exist yet. The CLI already created that
