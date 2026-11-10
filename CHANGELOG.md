@@ -14,7 +14,10 @@ All notable changes to this project are documented here. The format is based on
   characters, for example `ArgumentError: enum declared twice`. Before, it
   said only `child exited with status 2` or `daemon verdict: error`, and the
   cause was on stderr alone. The line is redacted in the child, and every
-  `details` value is redacted again when the report is written.
+  `details` value is redacted again when the report is written. Other
+  errors (a database error inside a test, RSpec errors outside examples, the
+  `--matrix` early end, a daemon crash, `--test-command`) keep their fixed
+  text; #417 tracks them.
 - **`no_verdict[]` entries gain `operator` and `token` (#388),** as in
   `no_coverage[]`. Both are `null` for an entry with no mutant. Schema
   `1.10`.
