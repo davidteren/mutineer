@@ -1,0 +1,23 @@
+CHANGELOG.md
+  s_a6bec147e40415::t_1840819f7639ed 16
+lib/mutineer/reload_guards.rb
+  s_a6bec147e40415::t_d163ae9ec068a4 154-160,177-178,183-184,187,191-192,194,246-247,249,257,264-265,267-269,277-285,305-334
+test/reload_guards_test.rb
+  s_a6bec147e40415::t_ea818a50320931 346-367
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6cd7154ecb7d816a4a68ab7197f8cb30033e8bf6",
+  "prompts": {},
+  "sessions": {
+    "s_a6bec147e40415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70696613-345c-4c5a-a1b7-097a86354e05",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
