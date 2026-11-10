@@ -1,0 +1,43 @@
+lib/mutineer/reporter.rb
+  s_a6bec147e40415::t_11b5aa175412d1 162-163
+  s_a6bec147e40415::t_c116f7ef5d915b 223-225,227-228
+  s_a6bec147e40415::t_44ff4719a09802 820-822
+  s_a6bec147e40415::t_d02df0f589b00b 64-65
+  s_a6bec147e40415::t_4475a96e1f79c7 68,78,165,230,271,824
+  s_a6bec147e40415::t_fc817a0a0d0d20 846-850
+  s_a6bec147e40415::t_44a8fa07fd3c1d 844-845
+docs/json-schema.md
+  s_a6bec147e40415::t_873c2ecfb0b179 190-191
+  s_a6bec147e40415::t_e0152625abadc6 68-69,186
+docs/llms.txt
+  s_a6bec147e40415::t_f6804191ecaf3e 36
+CHANGELOG.md
+  s_a6bec147e40415::t_873c2ecfb0b179 18
+rake/site_docs.rb
+  s_a6bec147e40415::t_f6804191ecaf3e 43
+test/daemon_backend_contract_test.rb
+  s_a6bec147e40415::t_76f4c6d6e04eec 561-563,569,590-591
+test/json_reporter_test.rb
+  s_a6bec147e40415::t_1f77a21cfe5ee4 480
+  s_a6bec147e40415::t_02fbbbcc4c9b98 477-479,481-494
+test/reporter_test.rb
+  s_a6bec147e40415::t_7208c52b28e040 614-620
+README.md
+  s_a6bec147e40415::t_873c2ecfb0b179 225-226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a56406123e124f323d8e4e989a660a9b875d1edf",
+  "prompts": {},
+  "sessions": {
+    "s_a6bec147e40415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70696613-345c-4c5a-a1b7-097a86354e05",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
