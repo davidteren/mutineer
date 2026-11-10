@@ -92,7 +92,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: ruby/setup-ruby@v1
-        with: { bundler-cache: true }
+        with: { ruby-version: "3.4", bundler-cache: true }
       - uses: davidteren/mutineer@v1
         env:
           RAILS_ENV: test
@@ -129,7 +129,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: ruby/setup-ruby@v1
-        with: { bundler-cache: true }
+        with: { ruby-version: "3.4", bundler-cache: true }
       - run: bin/rails db:prepare
       - uses: davidteren/mutineer@v1
         with:
@@ -182,7 +182,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
-        with: { bundler-cache: true }
+        with: { ruby-version: "3.4", bundler-cache: true }
       # A database-backed app also needs the database service, DATABASE_URL and
       # `bin/rails db:prepare` steps from the PostgreSQL recipe above.
       - uses: davidteren/mutineer@v1

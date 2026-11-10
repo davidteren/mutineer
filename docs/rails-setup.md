@@ -12,8 +12,9 @@ Check this Rails app for Mutineer's --daemon backend. Report: the test framework
 
 ## Set up
 
-Install Mutineer, create `.mutineer.yml` and run one model with
-[First run to steady state, steps 1 and 2](getting-started.md#1-install).
+Install Mutineer and create `.mutineer.yml` with
+[First run to steady state, step 1](getting-started.md#1-install).
+Run one model with [step 2](getting-started.md#2-first-run-on-one-file).
 Run inside the project bundle (`bundle exec`). Add `--test FILE` to select tests.
 
 | Setting | Behaviour |
