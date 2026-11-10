@@ -96,5 +96,9 @@ class ActionHarnessTest < Minitest::Test
     gaps = table.scan(/TABLE-GAP: (\S+)/).flatten
     assert_equal %w[yml-baseline/newline], gaps, "known gaps drifted:\n#{table}"
     assert_equal 31 - gaps.size, table.scan("TABLE-OK:").size, "a table cell did not run:\n#{table}"
+    near = sec.call("19b:")
+    assert_includes near, "OK: newline parent is not the cache dir"
+    assert_includes near, "OK: newline cache dir created"
+    refute_includes near, "FAIL:"
   end
 end

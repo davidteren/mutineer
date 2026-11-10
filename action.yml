@@ -267,7 +267,9 @@ runs:
             end
             value = ARGV[0] if [nil, true, false].include?(value) || value.to_s.strip.empty?
             print value.to_s
+            print "."
           ' "$cache_dir")"
+          cache_dir="${cache_dir%.}"
           if [ -n "$EXTRA_ARGS" ]; then
             pending=""
             for extra_arg in $EXTRA_ARGS; do
@@ -298,8 +300,13 @@ runs:
           out_dir="${out_dir%.}"
           out_dir="${out_dir%$'\n'}"
           if [ ! -d "$out_dir" ]; then
-            cache_abs="$(ruby -e 'print File.expand_path(ARGV[0])' -- "$cache_dir")"
-            out_abs="$(ruby -e 'print File.expand_path(ARGV[0])' -- "$out_dir")"
+            # The sentinel keeps a trailing newline that $( ) would strip, so a
+            # parent that differs from the cache directory only by a newline
+            # is not created.
+            cache_abs="$(ruby -e 'print File.expand_path(ARGV[0]), "."' -- "$cache_dir")"
+            cache_abs="${cache_abs%.}"
+            out_abs="$(ruby -e 'print File.expand_path(ARGV[0]), "."' -- "$out_dir")"
+            out_abs="${out_abs%.}"
             if [ "$out_abs" = "$cache_abs" ]; then
               if ! mkdir -p -- "$out_dir" 2>/dev/null; then
                 echo "::error::mutineer: cannot write output '$SAFE_OUT': could not create cache directory."
@@ -368,8 +375,12 @@ runs:
           same_path="$(ruby -e '
             left = ARGV[0]
             right = ARGV[1]
-            print File.realpath(left) if File.exist?(left) && File.exist?(right) && File.identical?(left, right)
+            if File.exist?(left) && File.exist?(right) && File.identical?(left, right)
+              print File.realpath(left)
+              print "."
+            end
           ' -- "$OUTPUT" "$baseline_path")"
+          same_path="${same_path%.}"
           if [ -n "$same_path" ]; then
             SAFE_SAME="${same_path//%/%25}"
             SAFE_SAME="${SAFE_SAME//$'\r'/%0D}"

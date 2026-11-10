@@ -13,7 +13,9 @@ All notable changes to this project are documented here. The format is based on
   `dirname` or `ruby` usage error, so a same-file `baseline` was not checked.
   An `output` folder or file name that ended in a newline lost it, so the
   report went to the wrong place or the `report` output named the wrong
-  path. The Action test now runs one table of unusual names (space, newline,
+  path. A folder that differs from the cache directory only by a newline
+  is not created. The same-file error keeps a newline in the path.
+  The Action test now runs one table of unusual names (space, newline,
   leading dash, `*`, non-ASCII) through every path input. One known gap
   stays: a `.mutineer.yml` baseline that ends in a newline. #394 tracks it.
 

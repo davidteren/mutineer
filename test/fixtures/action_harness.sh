@@ -274,7 +274,10 @@ table_row() { # row, label, name, the row's function
 baseline_rejected() { # name: the baseline is untouched and the run refused
   [ "$(cat -- "./$1")" = "{}" ] || why "baseline was replaced" || return
   [ -s "$SCRATCH/stub-args.txt" ] && { why "mutineer ran on a same-file baseline"; return; }
-  grep -q 'are the same file' "$SCRATCH/t/stdout.txt" || why "no same-file error"
+  grep -q 'are the same file' "$SCRATCH/t/stdout.txt" || why "no same-file error" || return
+  case "$1" in
+    *$'\n'*) grep -q '%0A' "$SCRATCH/t/stdout.txt" || why "same-file error dropped a newline" ;;
+  esac
 }
 
 # output: a folder and a file with the name.
@@ -339,3 +342,22 @@ for i in "${!TABLE_NAMES[@]}"; do
       ;;
   esac
 done
+
+# A cache directory and an output parent that differ only by a newline are
+# not the same folder. Creating the parent would put the report beside the
+# cache, not in it.
+echo; echo "== 19b: cache dir and output parent differ by a newline =="
+rm -rf .mutineer.yml plain $'plain\n'
+ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => "plain"}.to_yaml)'
+run_step t19b STUB_EXIT=0 OUTPUT=$'plain\n/pr.json'
+if [ -d $'plain\n' ] || [ -d plain ]; then
+  echo "  FAIL: created a folder that is not the cache dir"
+elif grep -q 'no such directory' "$SCRATCH/t19b/stdout.txt"; then
+  echo "  OK: newline parent is not the cache dir"
+else
+  echo "  FAIL: expected a missing-directory error"
+fi
+ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => ARGV[0]}.to_yaml)' -- $'plain\n'
+run_step t19c STUB_EXIT=0 OUTPUT=$'plain\n/pr.json'
+[ -s $'plain\n/pr.json' ] && echo "  OK: newline cache dir created" || echo "  FAIL: newline cache dir not created"
+rm -rf -- plain $'plain\n' .mutineer.yml
