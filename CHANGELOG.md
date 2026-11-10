@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.8.2] - 2026-11-10
+
 ### Fixed
 
 - **Redaction no longer hides a password inside other words (#341).** A
@@ -1980,6 +1982,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.8.2]: https://github.com/davidteren/mutineer/releases/tag/v1.8.2
 [1.8.1]: https://github.com/davidteren/mutineer/releases/tag/v1.8.1
 [1.8.0]: https://github.com/davidteren/mutineer/releases/tag/v1.8.0
 [1.7.0]: https://github.com/davidteren/mutineer/releases/tag/v1.7.0
