@@ -139,7 +139,8 @@ module Mutineer
       if @agg.skipped_invalid_count.positive?
         message << " A mutant skipped (invalid) did not re-parse after mutation. If its source file " \
                    "parses on its own, that is a mutineer bug: please report it at " \
-                   "https://github.com/davidteren/mutineer/issues."
+                   "https://github.com/davidteren/mutineer/issues, with the source file and " \
+                   "these versions: Ruby #{RUBY_VERSION}, Prism #{Prism::VERSION}."
       end
       err.puts message
     end
