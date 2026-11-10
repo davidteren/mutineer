@@ -128,7 +128,7 @@ This gap is common in rushed tests and tests written by AI agents.
 1. **Parse.** [Prism](https://github.com/ruby/prism), included in Ruby 3.4, parses source files. Mutineer uses only Prism and the standard library.
 2. **Mutate.** Operators make one change per mutant. Mutineer parses each result again and skips invalid Ruby.
 3. **Map coverage and check unchanged tests.** Each test file runs with coverage to map lines to tests.
-   `.mutineer/coverage.json` caches the map; source and test changes rebuild it. A fresh capture runs every
+   `.mutineer/coverage.json` caches the map; a change to a source, a test or a project file the tests load rebuilds it. A fresh capture runs every
    test alone; a failure stops the run. With a cached map, only the tests that cover the sources run again,
    alone and together, because a mutant runs only those tests.
 4. **Run each mutant in a fork.** The parent loads code once, including the app with `--rails`.

@@ -737,10 +737,25 @@ class CoverageMapTest < Minitest::Test
       map = nil
       capture_io { map = shared_map(%w[alpha.rb beta.rb], dir) }
       checked = map.send(:clean_check_test_paths).map { |t| map.send(:relativize, t) }
-      selectable = map.map.keys.flat_map { |key| map.tests_for(*key.split(":").then { |f, l| [f, l.to_i] }) }.uniq
+      # A mutant lives in a source, so only source keys can give it tests.
+      keys = map.map.keys.select { |key| %w[alpha.rb beta.rb].include?(key.split(":").first) }
+      selectable = keys.flat_map { |key| map.tests_for(*key.split(":").then { |f, l| [f, l.to_i] }) }.uniq
       refute_empty selectable
-      assert_empty selectable - checked
+      assert_equal selectable.sort, checked.sort, "the check runs exactly the tests a mutant can be given"
     end
+  end
+
+  # Standalone capture also maps the other project files a test ran, its own
+  # file too. No mutant lives there, so those keys must not pick a test.
+  def test_the_clean_check_reads_only_source_keys
+    map = Mutineer::CoverageMap.new(source_paths: %w[price.rb], test_paths: %w[price_test.rb mail_test.rb],
+                                    project_root: Dir.pwd)
+    map.instance_variable_set(:@map, { "price.rb:3" => %w[price_test.rb], "mail_test.rb:1" => %w[mail_test.rb] })
+    assert_equal %w[price_test.rb], map.send(:clean_check_test_paths)
+
+    map.instance_variable_set(:@map, { "mail_test.rb:1" => %w[mail_test.rb] })
+    assert_equal %w[price_test.rb mail_test.rb], map.send(:clean_check_test_paths),
+                 "no source key: every test, as for an empty map"
   end
 
   # --- #187: lines that ran at load ---------------------------------------

@@ -422,17 +422,22 @@ module Mutineer
     # The tests the clean check runs: the tests that cover a line of this run's
     # sources (#398). A mutant runs only tests from the map
     # ({JobPlan.coverage_selection}), so a test outside this set never runs
-    # with a mutant and cannot change a verdict. An empty map keeps every test,
-    # because the daemon then runs every test for each mutant. A new way to
-    # choose a mutant's tests must add those tests here, or a red test could
-    # reach a mutant run.
+    # with a mutant and cannot change a verdict. Mutants exist only in the
+    # sources, so only source keys count: standalone capture also maps the
+    # other project files a test ran, its own file too. A map with no source
+    # key keeps every test, because the daemon then runs every test for each
+    # mutant. A new way to choose a mutant's tests must add those tests here,
+    # or a red test could reach a mutant run.
     #
     # @api private
     # @return [Array<String>] the `--test` paths in this set, in their order.
     def clean_check_test_paths
-      return @test_paths if @map.empty?
+      @source_rels ||= @source_paths.to_set { |p| relativize(absolute(p)) }
+      covering = @map.each_with_object(Set.new) do |(key, tests), set|
+        set.merge(tests) if @source_rels.include?(key_source(key))
+      end
+      return @test_paths if covering.empty?
 
-      covering = @map.values.flatten.to_set
       @test_paths.select { |t| covering.include?(relativize(t)) }
     end
 
