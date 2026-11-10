@@ -139,7 +139,7 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 
 | Database | Worker provisioning and cleanup |
 | --- | --- |
-| SQLite | Copies each worker file on first use. Worker files use `<base>-<N>.sqlite3`. The run lock is `<base file>-mutineer.lock`. |
+| SQLite | Copies each worker file on first use. For `storage/test.sqlite3`, worker files are `storage/test-<N>.sqlite3` and the run lock is `storage/test.sqlite3-mutineer.lock`. |
 | SQLite lock file | The lock file never goes stale. Do not delete it while a run is active. Wait for the other run to finish, or stop it. Add `<base file>-mutineer.lock` to `.gitignore` unless your rules already cover `storage/*`. A `file:` database name takes no lock (#412). Other known gaps are tracked in #416. |
 | PostgreSQL | Copies the test database before workers start. Names use `<base>-mutineer-<N>`, shortened to fit 63 bytes. Databases remain after the run. |
 | PostgreSQL cleanup | Run `DROP DATABASE "myapp_test-mutineer-0";`, using your test database name and worker slot. |

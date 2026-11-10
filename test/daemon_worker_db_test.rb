@@ -226,7 +226,6 @@ class DaemonWorkerDbTest < Minitest::Test
       Mutineer::RailsWorkerDb.prepare_worker!
       child = fork do
         Mutineer::RailsWorkerDb.forget_lock_connection_after_fork!
-        3.times { Array.new(100_000) { "x" * 10 } && GC.start(full_mark: true, immediate_sweep: true) }
         exit!(0)
       end
       Process.wait(child)
@@ -255,26 +254,20 @@ class DaemonWorkerDbTest < Minitest::Test
     RUBY
     stop_holder(holder, signal: "KILL")
     holder = nil
-    log = File.join(Dir.tmpdir, "mutineer-sqlite-lock-#{Process.pid}.log")
-    pid = spawn_logged_run(log, jobs: 1)
-    seen = false
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 90
-    until Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-      seen = true if sqlite_lock_exclusive_busy?
-      break if seen || !process_alive?(pid)
-
-      sleep 0.05
+    Dir.mktmpdir do |dir|
+      log = File.join(dir, "next.log")
+      pid = spawn_logged_run(log, jobs: 1, require_paths: [write_hold_file(dir)])
+      seen = run_holds_sqlite_lock?(pid, log)
+      status = wait_child(pid, timeout: 180)
+      out = File.read(log)
+      assert seen, "the next run never held the lock\n#{out}"
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "SCORE=100.0"
+      refute_includes out, "another Mutineer run"
+      assert File.exist?(SQLITE_LOCK)
     end
-    status = wait_child(pid, timeout: 180)
-    out = File.read(log)
-    assert seen, "the next run never held the lock\n#{out}"
-    assert_equal 0, status.exitstatus, out
-    assert_includes out, "SCORE=100.0"
-    refute_includes out, "another Mutineer run"
-    assert File.exist?(SQLITE_LOCK)
   ensure
     stop_holder(holder)
-    File.delete(log) if log && File.exist?(log)
   end
 
   # Two real CLI runs overlap. Run B stops. Run A's verdicts match a solo run.
@@ -282,29 +275,12 @@ class DaemonWorkerDbTest < Minitest::Test
     skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
 
     Dir.mktmpdir do |dir|
-      sleep_file = File.join(dir, "hold.rb")
-      File.write(sleep_file, <<~RUBY)
-        require "minitest"
-        module MutineerHoldOpen
-          def before_setup
-            sleep 0.5
-            super
-          end
-        end
-        Minitest::Test.prepend(MutineerHoldOpen)
-      RUBY
+      sleep_file = write_hold_file(dir)
       a_json = File.join(dir, "a.json")
       solo_json = File.join(dir, "solo.json")
       log = File.join(dir, "a.log")
       pid = spawn_logged_run(log, jobs: 1, require_paths: [sleep_file], output: a_json, format: "json")
-      seen = false
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 90
-      until Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-        seen = true if sqlite_lock_exclusive_busy?
-        break if seen || !process_alive?(pid)
-
-        sleep 0.05
-      end
+      seen = run_holds_sqlite_lock?(pid, log)
       assert seen, "run A never held the lock\n#{File.read(log)}"
       out, status = run_cli(1)
       assert_equal 1, status.exitstatus, out
@@ -327,8 +303,10 @@ class DaemonWorkerDbTest < Minitest::Test
     write.close
     line = read.gets
     read.close
-    flunk("holder did not start: #{line.inspect}") unless line&.start_with?("READY")
-    pid
+    return pid if line&.start_with?("READY")
+
+    stop_holder(pid, signal: "KILL")
+    flunk("holder did not start: #{line.inspect}")
   end
 
   def stop_holder(pid, signal: "TERM")
@@ -382,6 +360,37 @@ class DaemonWorkerDbTest < Minitest::Test
 
   def app_env
     Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+  end
+
+  # A --require file that slows each test, so a run stays in its mutant phase
+  # long enough to probe its lock.
+  def write_hold_file(dir)
+    path = File.join(dir, "hold.rb")
+    File.write(path, <<~RUBY)
+      require "minitest"
+      module MutineerHoldOpen
+        def before_setup
+          sleep 0.5
+          super
+        end
+      end
+      Minitest::Test.prepend(MutineerHoldOpen)
+    RUBY
+    path
+  end
+
+  # Wait for the run's first mutant progress line, then probe. By then the run
+  # took its lock. An earlier probe holds the exclusive lock for a moment and
+  # could make the run's own exclusive request fail.
+  def run_holds_sqlite_lock?(pid, log)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 90
+    until Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      return false unless process_alive?(pid)
+      return sqlite_lock_exclusive_busy? if File.exist?(log) && File.read(log).match?(%r{\d+/\d+ mutants})
+
+      sleep 0.05
+    end
+    false
   end
 
   # True only when another process holds a conflicting lock.
