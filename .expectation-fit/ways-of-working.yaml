@@ -40,8 +40,9 @@ conventions:
     - 'Shell passes values, never parses them: New or changed Bash in
       action.yml passes values to the CLI and checks exit codes. It never
       rereads paths as text and never copies a CLI rule (#395). Older Bash
-      there still resolves the cache folder and baseline itself; issue #394
-      tracks that. Reading fields from the JSON report with jq is allowed,
+      there still resolves the cache folder and baseline itself (issue #394)
+      and splits the output path with dirname and basename (issue #401
+      tests those path inputs). Reading fields from the JSON report with jq is allowed,
       because the report is CLI output, not a copied rule.'
     - 'Pin the dependency you test: A CI job that tests a dependency
       version pins it in its own gemfile, at least to the major version
