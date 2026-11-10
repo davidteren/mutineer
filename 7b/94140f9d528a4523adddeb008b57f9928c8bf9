@@ -1,0 +1,31 @@
+Rakefile
+  s_a6bec147e40415::t_5fea4557ed89f0 84-102
+rake/fizzy_sample.json
+  s_a6bec147e40415::t_7c634dc0d15672 1-14
+rake/fizzy_sample.rb
+  s_a6bec147e40415::t_c22fbff61dca9e 1-361,363-365
+  s_a6bec147e40415::t_b1ca0fef5aec43 362
+AGENTS.md
+  s_a6bec147e40415::t_fee22e0a654a49 167-176
+test/fizzy_sample_test.rb
+  s_a6bec147e40415::t_cc1305b7c2d749 1-43,45-51,53-63,65-76,78-92,94-183
+  s_a6bec147e40415::t_ae318c80d874f4 44,52,64,77,93
+test/release_workflow_test.rb
+  s_a6bec147e40415::t_ec1e7751dfbb7e 545-546
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7b94140f9d528a4523adddeb008b57f9928c8bf9",
+  "prompts": {},
+  "sessions": {
+    "s_a6bec147e40415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70696613-345c-4c5a-a1b7-097a86354e05",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
