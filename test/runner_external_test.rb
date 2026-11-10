@@ -154,6 +154,51 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
+  # #338: an order-dependent suite (fixtures/order_dependent) under a command
+  # with no fixed seed. Mutineer cannot see the fixture's own default seed, so
+  # it warns once, names the seed, and still scores the run.
+  def test_random_order_on_clean_run_warns_once
+    with_order_dependent_project do |proj|
+      out, err, status = mutineer("run", "ledger.rb", "--test", "ledger_test.rb", "--format", "json",
+                                  "--test-command", "#{RUBY} %{files}", chdir: proj, env: { "SEED" => nil, "TESTOPTS" => nil })
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, err.scan("printed a Minitest seed (1)").size, err
+      assert_includes err, "set SEED=1 before the mutineer command"
+      assert_equal 1, JSON.parse(out).dig("summary", "killed"), err
+    end
+  end
+
+  # #338: SEED in Mutineer's environment fixes the order for the clean run and
+  # every mutant run, so no warning prints and the verdict is the same.
+  def test_fixed_seed_on_clean_run_does_not_warn
+    with_order_dependent_project do |proj|
+      out, err, status = mutineer("run", "ledger.rb", "--test", "ledger_test.rb", "--format", "json",
+                                  "--test-command", "#{RUBY} %{files}", chdir: proj, env: { "SEED" => "1", "TESTOPTS" => nil })
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "seed (1)"
+      assert_equal 1, JSON.parse(out).dig("summary", "killed"), err
+    end
+  end
+
+  # #338: the fixture really depends on order. Seed 2 runs test_total first,
+  # so the clean run fails and the run stops before scoring.
+  def test_order_dependent_fixture_fails_in_another_order
+    with_order_dependent_project do |proj|
+      _out, err, status = mutineer("run", "ledger.rb", "--test", "ledger_test.rb",
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj, env: { "SEED" => "2", "TESTOPTS" => nil })
+      assert_equal 1, status.exitstatus, err
+      assert_match(/unmutated suite is not green/, err)
+    end
+  end
+
+  # Copies the order-dependent fixture into a temp project.
+  def with_order_dependent_project
+    Dir.mktmpdir("mutineer-ext-order") do |proj|
+      FileUtils.cp(Dir.glob(File.join(FIXTURES, "order_dependent", "*.rb")), proj)
+      yield proj
+    end
+  end
+
   # PR #183 review: --test-command never reads --timeout, so it says so.
   def test_timeout_flag_warns_that_it_has_no_effect
     with_project("calculator_strong_test.rb") do |proj|
