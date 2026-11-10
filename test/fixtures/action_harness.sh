@@ -204,3 +204,35 @@ after=$(cksum "$weird")
 [ "$before" = "$after" ] && echo "  OK: escaped-path baseline kept" || echo "  FAIL: escaped-path baseline was replaced"
 [ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on an escaped path" || echo "  OK: escaped path rejected before running"
 grep '::error::' "$SCRATCH/case17/stdout.txt"
+
+echo; echo "== 18: output under missing .mutineer cache dir (expects mkdir + delivered file) (#340) =="
+rm -rf .mutineer
+rm -f .mutineer.yml
+run_step case18 STUB_EXIT=0 OUTPUT=".mutineer/pr.json"
+[ -d .mutineer ] && echo "  OK: cache dir created" || echo "  FAIL: cache dir missing"
+[ -s .mutineer/pr.json ] && echo "  OK: output delivered into fresh cache dir" || echo "  FAIL: output not delivered"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  OK: mutineer ran after mkdir" || echo "  FAIL: mutineer never ran"
+
+echo; echo "== 18b: output under other missing dir still exits 2 (#340) =="
+run_step case18b STUB_EXIT=0 OUTPUT="reports/pr.json"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran for a non-cache missing parent" || echo "  OK: non-cache missing parent rejected"
+grep -q 'cannot write output' "$SCRATCH/case18b/stdout.txt" && echo "  OK: missing-dir error" || echo "  FAIL: missing-dir error absent"
+
+echo; echo "== 18c: output under missing custom cache-dir from yml (#340) =="
+printf 'cache_dir: mcache\n' > .mutineer.yml
+run_step case18c STUB_EXIT=0 OUTPUT="mcache/pr.json"
+[ -d mcache ] && echo "  OK: yml cache dir created" || echo "  FAIL: yml cache dir missing"
+[ -s mcache/pr.json ] && echo "  OK: output delivered into yml cache dir" || echo "  FAIL: yml cache output missing"
+rm -f .mutineer.yml
+
+echo; echo "== 18d: cache dir from extra-args, as two words (#340) =="
+run_step case18d STUB_EXIT=0 OUTPUT="xcache/pr.json" EXTRA_ARGS="--cache-dir xcache"
+[ -s xcache/pr.json ] && echo "  OK: extra-args cache dir created" || echo "  FAIL: extra-args cache dir output missing"
+
+echo; echo "== 18e: cache dir from extra-args, with = (#340) =="
+run_step case18e STUB_EXIT=0 OUTPUT="ecache/pr.json" EXTRA_ARGS="--cache-dir=ecache"
+[ -s ecache/pr.json ] && echo "  OK: extra-args = cache dir created" || echo "  FAIL: extra-args = cache dir output missing"
+
+echo; echo "== 18f: cache dir from a short extra-args form the CLI accepts (#340) =="
+run_step case18f STUB_EXIT=0 OUTPUT="scache/pr.json" EXTRA_ARGS="--cache=scache"
+[ -s scache/pr.json ] && echo "  OK: short-form cache dir created" || echo "  FAIL: short-form cache dir output missing"
