@@ -512,6 +512,8 @@ module Mutineer
     # @return [void]
     def self.load_original(source_file)
       return unless defined?(::Rails) && ::Rails.respond_to?(:autoloaders) && defined?(::Zeitwerk::Error)
+      # A library can load railties with no Rails app; `Rails.autoloaders` then raises.
+      return unless ::Rails.respond_to?(:application) && ::Rails.application
 
       ::Rails.autoloaders.each do |loader|
         next unless loader.respond_to?(:load_file)

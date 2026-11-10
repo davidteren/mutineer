@@ -93,11 +93,28 @@ class ReloadGuardsTest < Minitest::Test
     unmanaged = Object.new.tap { |l| l.define_singleton_method(:load_file) { |path| asked << [:once, path]; raise Zeitwerk::Error } }
     main = Object.new.tap { |l| l.define_singleton_method(:load_file) { |path| asked << [:main, path] } }
     Object.const_set(:Zeitwerk, Module.new.tap { |z| z.const_set(:Error, Class.new(StandardError)) })
-    Object.const_set(:Rails, Module.new.tap { |r| r.define_singleton_method(:autoloaders) { [unmanaged, main] } })
+    rails = Module.new.tap { |r| r.define_singleton_method(:autoloaders) { [unmanaged, main] } }
+    rails.define_singleton_method(:application) { Object.new }
+    Object.const_set(:Rails, rails)
 
     Mutineer::ReloadGuards.load_original("app/models/a.rb")
     path = File.expand_path("app/models/a.rb")
     assert_equal [[:once, path], [:main, path]], asked
+  ensure
+    Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails, false)
+    Object.send(:remove_const, :Zeitwerk) if Object.const_defined?(:Zeitwerk, false)
+  end
+
+  # A library or gem can load railties and Zeitwerk with no Rails app. Rails
+  # then has no application, and `Rails.autoloaders` raises NoMethodError, so
+  # nothing is asked and the load goes on.
+  def test_load_original_asks_nothing_without_a_rails_application
+    Object.const_set(:Zeitwerk, Module.new.tap { |z| z.const_set(:Error, Class.new(StandardError)) })
+    rails = Module.new.tap { |r| r.define_singleton_method(:application) { nil } }
+    rails.define_singleton_method(:autoloaders) { application.autoloaders }
+    Object.const_set(:Rails, rails)
+
+    assert_nil Mutineer::ReloadGuards.load_original("lib/a.rb")
   ensure
     Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails, false)
     Object.send(:remove_const, :Zeitwerk) if Object.const_defined?(:Zeitwerk, false)
