@@ -284,14 +284,6 @@ class DaemonClientEnvTest < Minitest::Test
     }
   end
 
-  def with_env(updates)
-    prior = updates.each_key.to_h { |key| [key, ENV[key]] }
-    updates.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
-    yield
-  ensure
-    prior&.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
-  end
-
   def observe(client, root)
     script = <<~'RUBY'
       require "json"
