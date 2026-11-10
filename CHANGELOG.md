@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **The Action creates the cache folder when `output` points into it
+  (#340).** On a fresh checkout, `output: .mutineer/pr.json` exited 2,
+  because `.mutineer/` did not exist yet. The CLI already created that
+  folder (#270), but the Action checks the path itself before it runs the
+  CLI. The Action now creates the cache folder when it is the missing parent
+  of `output`: `.mutineer` by default, the `cache_dir` from `.mutineer.yml`,
+  or a `--cache-dir` in `extra-args` (or a prefix of it down to `--cac`, such as
+  `--cache`). Any other missing folder still exits 2.
 - **Reload runs a Rails class body a second time without errors (#378,
   #384).** Reload loads the mutant file over the class that is already
   defined, so its body runs again. A model that declares an `enum`, and a
