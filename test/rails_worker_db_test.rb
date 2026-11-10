@@ -1157,10 +1157,12 @@ class RailsWorkerDbTest < Minitest::Test
     assert_nil db.instance_variable_get(:@sqlite_lock_file)
   end
 
+  # A stand-in for an ActiveRecord SQLite config with this database name.
   def sqlite_db_config(database)
     Struct.new(:adapter, :database).new("sqlite3", database)
   end
 
+  # Start a plain Ruby process that holds `mode` on `lock_path` until stopped.
   def spawn_sqlite_holder(lock_path, mode)
     read, write = IO.pipe
     pid = Process.spawn(RbConfig.ruby, "-e", <<~RUBY, out: write)
@@ -1178,6 +1180,7 @@ class RailsWorkerDbTest < Minitest::Test
     pid
   end
 
+  # Stop a holder from spawn_sqlite_holder and reap it.
   def stop_sqlite_holder(pid)
     return unless pid
 
@@ -1187,6 +1190,7 @@ class RailsWorkerDbTest < Minitest::Test
     nil
   end
 
+  # From another process, try a shared then an exclusive lock; return what each gave.
   def sqlite_lock_probe(lock_path)
     Open3.capture2(RbConfig.ruby, "-e", <<~RUBY)
       file = File.open(#{lock_path.inspect}, File::RDONLY)

@@ -147,7 +147,7 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 | MySQL recovery | Does not recopy after an error or timeout. Databases remain after the run; the next run drops and rebuilds them. |
 | MySQL cleanup | Run ``DROP DATABASE `myapp_test-mutineer-0`;``. MySQL requires backticks around the name. |
 | `:memory:` | Not supported by `--daemon`. |
-| Concurrent runs | A second run on the same test database stops with `another Mutineer run is using <base>`. This covers SQLite, PostgreSQL, and MySQL. |
+| Concurrent runs | A second run on the same test database stops with `another Mutineer run is using <base>`. This covers PostgreSQL, MySQL, and file-backed SQLite databases (not `file:` names). |
 
 | MySQL requirement or limit | Detail |
 | --- | --- |

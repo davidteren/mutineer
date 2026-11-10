@@ -339,9 +339,10 @@ module Mutineer
       hold_sqlite_lock(lock, base, shared: true)
     end
 
-    # Take the shared run lock and drop this process's connection to the test
-    # database. Worker daemons call this at boot. They do not create databases.
-    # SQLite takes the shared run lock here. The file copy still happens in {after_fork}.
+    # Take the shared run lock. Worker daemons call this at boot. They do not
+    # create databases. Postgres and MySQL also drop this process's connection
+    # to the test database. SQLite only takes the lock: the file copy still
+    # happens in {after_fork}.
     #
     # @return [void]
     # @raise [RuntimeError] when another run holds the exclusive lock.

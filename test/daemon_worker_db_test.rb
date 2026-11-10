@@ -254,6 +254,7 @@ class DaemonWorkerDbTest < Minitest::Test
     RUBY
     stop_holder(holder, signal: "KILL")
     holder = nil
+    pid = nil
     Dir.mktmpdir do |dir|
       log = File.join(dir, "next.log")
       pid = spawn_logged_run(log, jobs: 1, require_paths: [write_hold_file(dir)])
@@ -268,12 +269,14 @@ class DaemonWorkerDbTest < Minitest::Test
     end
   ensure
     stop_holder(holder)
+    stop_holder(pid, signal: "KILL")
   end
 
   # Two real CLI runs overlap. Run B stops. Run A's verdicts match a solo run.
   def test_overlapping_sqlite_runs_stop_and_keep_the_same_verdicts
     skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
 
+    pid = solo = nil
     Dir.mktmpdir do |dir|
       sleep_file = write_hold_file(dir)
       a_json = File.join(dir, "a.json")
@@ -294,8 +297,13 @@ class DaemonWorkerDbTest < Minitest::Test
       assert_equal 0, solo_status.exitstatus, File.read(solo_log)
       assert_equal verdict_pairs(solo_json), verdict_pairs(a_json)
     end
+  ensure
+    # A failed assertion must not leave a run holding the lock for later tests.
+    stop_holder(pid, signal: "KILL")
+    stop_holder(solo, signal: "KILL")
   end
 
+  # Start a process under the fixture bundle that runs `script` and wait for its READY line.
   def spawn_holder(script)
     read, write = IO.pipe
     pid = Process.spawn(app_env, "bundle", "exec", "ruby", "-e", script,
@@ -309,6 +317,7 @@ class DaemonWorkerDbTest < Minitest::Test
     flunk("holder did not start: #{line.inspect}")
   end
 
+  # Signal a process group and reap its leader. A missing pid does nothing.
   def stop_holder(pid, signal: "TERM")
     return unless pid
 
@@ -318,6 +327,7 @@ class DaemonWorkerDbTest < Minitest::Test
     nil
   end
 
+  # Run the CLI on the fixture and return its combined output and status.
   def run_cli(jobs)
     script = <<~RUBY
       require "mutineer"
@@ -333,6 +343,7 @@ class DaemonWorkerDbTest < Minitest::Test
     Open3.capture2e(ENV.to_h, "bundle", "exec", "ruby", "-Ilib", "-e", script, chdir: ROOT)
   end
 
+  # Start a daemon run on the fixture in its own process group, logging to `log`.
   def spawn_logged_run(log, jobs:, require_paths: [], output: nil, format: "human")
     finish = if output
                "Mutineer::CLI.run(config)"
@@ -358,6 +369,7 @@ class DaemonWorkerDbTest < Minitest::Test
                   chdir: ROOT, out: log, err: log, pgroup: true)
   end
 
+  # The environment a daemon gets under the fixture bundle.
   def app_env
     Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
   end
@@ -407,6 +419,7 @@ class DaemonWorkerDbTest < Minitest::Test
     status.exitstatus == 2
   end
 
+  # Per-mutant verdicts and summary counts from a JSON report, for comparing runs.
   def verdict_pairs(path)
     doc = JSON.parse(File.read(path))
     rows = []
