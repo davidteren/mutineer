@@ -493,4 +493,17 @@ class JsonReporterTest < Minitest::Test
     doc = JSON.parse(out.string)
     assert_equal [3, 0, []], [doc["summary"]["subjects"], doc["summary"]["unmutated_subjects"], doc["unmutated_subjects"]]
   end
+
+  # The two values are one unit: half of them is unknown, never a count next
+  # to a null.
+  def test_unmutated_subjects_are_null_when_only_half_is_supplied
+    entry = { subject: "Day#day", file: FILE, line: 2 }
+    [{ unmutated_subjects: [entry] }, { subjects: 2 }].each do |half|
+      out = StringIO.new
+      Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+                        .report(out: out, err: StringIO.new, format: "json", **half)
+      doc = JSON.parse(out.string)
+      assert_equal [nil, nil, nil], [doc["summary"]["subjects"], doc["summary"]["unmutated_subjects"], doc["unmutated_subjects"]], half.inspect
+    end
+  end
 end

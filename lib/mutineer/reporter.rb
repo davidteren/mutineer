@@ -62,10 +62,12 @@ module Mutineer
     # `subjects` (methods discovered) and `unmutated_subjects` (one
     # `{subject:, file:, line:}` hash per method the operators did not mutate,
     # from {JobPlan.collect_jobs}, #386) feed the same two reports. Left out,
-    # they are unknown: JSON reports null and the human report has no row.
+    # they are unknown: JSON reports null and the human report has no row. The
+    # two are one unit: when either is left out, both are unknown.
     def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil,
                baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 }, declined: {},
                subjects: nil, unmutated_subjects: nil)
+      subjects = unmutated_subjects = nil if subjects.nil? || unmutated_subjects.nil?
       rendered =
         if format == "json"
           json_report(baseline, scoped: scoped, legacy_id_matches: legacy_id_matches, declined: declined,
