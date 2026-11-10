@@ -88,8 +88,9 @@ module Mutineer
     attr_reader :databases
 
     # Why the last {#request} answered `"error"`: the redacted `Class: message`
-    # line from the daemon's child (#388). nil when that reply carried none,
-    # or the last request answered anything else. Read it right after
+    # line from the daemon's child (#388), or `daemon crashed` / `daemon
+    # stopped answering` when no reply came. nil when the reply carried no
+    # cause, or the last request answered anything else. Read it right after
     # {#request}: a client serves one worker thread at a time
     # ({DaemonBackend} gives each thread its own), so no other request can
     # replace it in between.
@@ -129,6 +130,8 @@ module Mutineer
     #   reply's cause is in {#last_cause}.
     def request(id:, payload:, tests:, timeout:, worker: 0)
       @last_cause = nil
+      # A write that fails reads no reply, so a stale flag must not name it a hang.
+      @timed_out = false
       # close_io nils the pipes, so a client whose respawn never completed would
       # otherwise fail per-mutant forever (NoMethodError on nil) and let the backend
       # score every remaining mutant against nothing. Deadness is a property of the
@@ -151,6 +154,7 @@ module Mutineer
         return reply["verdict"]
       end
 
+      @last_cause = @timed_out ? "daemon stopped answering" : "daemon crashed"
       restart!
       "error"
     end

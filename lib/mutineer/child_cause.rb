@@ -27,7 +27,12 @@ module Mutineer
     # @return [String]
     def line(error)
       name = Redaction.text(error.class)
-      first = Redaction.text(error.message).lines.map(&:strip).find { |l| !l.empty? }
+      first = nil
+      Redaction.text(error.message).each_line("\n") do |l|
+        first = l.strip
+        break unless first.empty?
+      end
+      first = nil if first&.empty?
       text = first.nil? || first == name ? name : "#{name}: #{first}"
       text.length > LIMIT ? "#{text[0, LIMIT - 3]}..." : text
     rescue StandardError
@@ -65,8 +70,8 @@ module Mutineer
 
         buffer << chunk
       end
-      last = buffer.lines.reverse.find { |l| l.end_with?("\n") }
-      last && Redaction.utf8(last.chomp.force_encoding(Encoding::UTF_8))
+      last = buffer.lines("\n").reverse.find { |l| l.end_with?("\n") }
+      last && Redaction.utf8(last.chomp("\n").force_encoding(Encoding::UTF_8))
     rescue StandardError
       nil
     end

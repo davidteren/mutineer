@@ -16,8 +16,11 @@ All notable changes to this project are documented here. The format is based on
   cause was on stderr alone. The line is redacted in the child, and every
   `details` value is redacted again when the report is written. Other
   errors (a database error inside a test, RSpec errors outside examples, the
-  `--matrix` early end, a daemon crash, `--test-command`) keep their fixed
+  `--matrix` early end, `--test-command`) keep their fixed
   text; #417 tracks them.
+- **A daemon crash names itself in `details` (#388).** A mutant whose daemon
+  died or did not reply in time now has `daemon crashed` or `daemon stopped
+  answering`, not `daemon verdict: error`.
 - **`no_verdict[]` entries gain `operator` and `token` (#388),** as in
   `no_coverage[]`. Both are `null` for an entry with no mutant. Schema
   `1.10`.
