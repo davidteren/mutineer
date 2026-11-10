@@ -943,7 +943,93 @@ class RunnerTest < Minitest::Test
     assert_equal({ line: 23, name: :doubled, singleton: false }, hook_def)
   end
 
+  def test_unpaired_counts_counts_each_source
+    in_project do |dir|
+      File.write("orphan.rb", "class Orphan; def z(a); a + 1; end; end\n")
+      File.write("blank.rb", "class Blank; end\n")
+      config = Mutineer::Config.new(unpaired_sources: %w[orphan.rb blank.rb], project_root: dir)
+      counts, failures = Mutineer::JobPlan.unpaired_counts(config, arithmetic_ops)
+      assert_equal({ "orphan.rb" => 1, "blank.rb" => 0 }, counts)
+      assert_empty failures
+      assert_equal [], config.sources
+    end
+  end
+
+  def test_unpaired_counts_match_collect_jobs
+    in_project do |dir|
+      File.write("orphan.rb", "class Orphan; def z(a); a + 1; end; end\n")
+      config = Mutineer::Config.new(unpaired_sources: ["orphan.rb"], project_root: dir)
+      counts, = Mutineer::JobPlan.unpaired_counts(config, arithmetic_ops)
+      jobs, = Mutineer::JobPlan.collect_jobs(
+        Mutineer::Config.new(sources: ["orphan.rb"], project_root: dir), arithmetic_ops
+      )
+      assert_equal jobs.size, counts["orphan.rb"]
+    end
+  end
+
+  def test_unpaired_counts_follow_only
+    in_project do |dir|
+      File.write("orphan.rb", "class Orphan; def z(a); a + 1; end; end\n")
+      hit = Mutineer::Config.new(unpaired_sources: ["orphan.rb"], project_root: dir, only: "Orphan#z")
+      miss = Mutineer::Config.new(unpaired_sources: ["orphan.rb"], project_root: dir, only: "Other#x")
+      assert_equal 1, Mutineer::JobPlan.unpaired_counts(hit, arithmetic_ops).first["orphan.rb"]
+      assert_equal 0, Mutineer::JobPlan.unpaired_counts(miss, arithmetic_ops).first["orphan.rb"]
+    end
+  end
+
+  def test_unpaired_counts_follow_since
+    in_project do |dir|
+      File.write("orphan.rb", "class Orphan\n  def z(a)\n    a + 1\n  end\n  def y(a)\n    a + 2\n  end\nend\n")
+      File.write("quiet.rb", "class Quiet; def z(a); a + 1; end; end\n")
+      git_commit_all(dir)
+      File.write("orphan.rb", File.read("orphan.rb").sub("a + 1", "a + 3"))
+      config = Mutineer::Config.new(unpaired_sources: %w[orphan.rb quiet.rb], project_root: dir, since: "HEAD")
+      counts, failures = Mutineer::JobPlan.unpaired_counts(config, arithmetic_ops)
+      assert_empty failures
+      assert_equal 1, counts["orphan.rb"]
+      assert_equal 0, counts["quiet.rb"]
+      assert_equal %w[orphan.rb quiet.rb], counts.keys
+    end
+  end
+
+  def test_unpaired_counts_leave_out_suppressed_mutants
+    in_project do |dir|
+      File.write("orphan.rb", "class Orphan; def z(a); a + 1 # mutineer:disable-line\n end; end\n")
+      config = Mutineer::Config.new(unpaired_sources: ["orphan.rb"], project_root: dir)
+      counts, = Mutineer::JobPlan.unpaired_counts(config, arithmetic_ops)
+      assert_equal 0, counts["orphan.rb"]
+    end
+  end
+
+  def test_unpaired_counts_give_nil_for_a_source_they_cannot_read
+    in_project do |dir|
+      Dir.mkdir("odd.rb")
+      config = Mutineer::Config.new(unpaired_sources: ["odd.rb"], project_root: dir)
+      counts, failures = Mutineer::JobPlan.unpaired_counts(config, arithmetic_ops)
+      assert_nil counts["odd.rb"]
+      assert_equal ["odd.rb"], failures.map { |row| row[:file] }
+      assert_match(/ParseError/, failures.first[:error])
+    end
+  end
+
   private
+
+  def in_project
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) { yield dir }
+    end
+  end
+
+  def arithmetic_ops
+    Mutineer::MutatorRegistry.resolve(["arithmetic"])
+  end
+
+  def git_commit_all(dir)
+    [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+     %w[add .], %w[commit -qm base]].each do |args|
+      assert system("git", "-C", dir, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+    end
+  end
 
   def with_rails_env(value)
     orig = ENV["RAILS_ENV"]

@@ -33,6 +33,13 @@ class JsonReporterTest < Minitest::Test
     JSON.parse(out.string)
   end
 
+  def report_unpaired(results, unpaired)
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { FILE => SRC }, unpaired: unpaired)
+                      .report(out: out, err: StringIO.new, format: "json")
+    JSON.parse(out.string)
+  end
+
   def test_schema_version_is_the_reporter_constant
     assert_equal Mutineer::Reporter::SCHEMA_VERSION, render([survivor])["schema_version"]
   end
@@ -58,12 +65,37 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.9", doc["schema_version"] # 1.9 adds summary.declined and declined_by_operator; 1.8 added reason on ignored[]
+    assert_equal "1.10", doc["schema_version"] # 1.10 adds unpaired counts; 1.9 adds summary.declined
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
     assert doc["summary"].key?("timeout")
     assert_equal false, doc["summary"]["scoped"], "unscoped run records scoped: false"
+  end
+
+  def test_summary_reports_unpaired_sources_and_mutants
+    doc = report_unpaired([Mutineer::Result.killed], { "lib/b.rb" => 2, "lib/a.rb" => 0 })
+    assert_equal 2, doc["summary"]["unpaired_sources"]
+    assert_equal 2, doc["summary"]["unpaired_mutants"]
+    assert_equal 1, doc["summary"]["total"]
+    assert_equal [
+      { "file" => "lib/a.rb", "mutants" => 0 },
+      { "file" => "lib/b.rb", "mutants" => 2 }
+    ], doc["unpaired_sources"]
+  end
+
+  def test_unpaired_defaults_to_zero_and_an_empty_list
+    doc = render([Mutineer::Result.killed])
+    assert_equal 0, doc["summary"]["unpaired_sources"]
+    assert_equal 0, doc["summary"]["unpaired_mutants"]
+    assert_equal [], doc["unpaired_sources"]
+  end
+
+  def test_unknown_unpaired_count_is_null_and_left_out_of_the_sum
+    doc = report_unpaired([Mutineer::Result.killed], { "a.rb" => nil, "b.rb" => 2 })
+    assert_nil doc["unpaired_sources"].find { |row| row["file"] == "a.rb" }["mutants"]
+    assert_equal 2, doc["summary"]["unpaired_sources"]
+    assert_equal 2, doc["summary"]["unpaired_mutants"]
   end
 
   # #126: the report names its id format, so a later --baseline load knows its

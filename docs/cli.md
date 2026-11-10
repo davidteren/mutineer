@@ -6,7 +6,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `--test FILE` | Test file; repeat for each file | Paired with each source by convention; unmatched sources are skipped; `--dry-run` with `--rails` or `--boot` still needs `--test` |
+| `--test FILE` | Test file; repeat for each file | Paired with each source by convention; unmatched sources are skipped and counted in the report; `--dry-run` with `--rails` or `--boot` still needs `--test` (#410) |
 | `--framework minitest\|rspec` | Test framework | `rspec` if most tests end in `_spec.rb`; otherwise `minitest` |
 | `--operators LIST` | Comma-separated operator names | Tier-1 (default) set; see `mutineer --list-operators` |
 | `--only NAME` | Mutate one subject, such as `Calculator#add` | All subjects |

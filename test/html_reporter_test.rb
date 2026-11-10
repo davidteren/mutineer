@@ -25,9 +25,9 @@ class HtmlReporterTest < Minitest::Test
                                    id: "pricing-total-comparison-1")
   end
 
-  def render(results, source_map = { FILE => SRC })
+  def render(results, source_map = { FILE => SRC }, unpaired: {})
     out = StringIO.new
-    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), source_map)
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), source_map, unpaired: unpaired)
                       .report(out: out, err: StringIO.new, format: "html")
     out.string
   end
@@ -57,6 +57,21 @@ class HtmlReporterTest < Minitest::Test
   def test_summary_counts_ran_at_load
     assert_includes render([Mutineer::Result.killed, Mutineer::Result.ran_at_load]),
                     "<span><strong>1</strong> ran_at_load</span>"
+  end
+
+  def test_summary_counts_unpaired_and_lists_the_sources
+    html = render([Mutineer::Result.killed], unpaired: { "lib/b.rb" => 2, "lib/<a>.rb" => nil })
+    assert_includes html, "<span><strong>2</strong> unpaired</span>"
+    assert_includes html, "Sources with no paired test"
+    assert_includes html, "lib/&lt;a&gt;.rb"
+    assert_includes html, "unknown"
+    assert_includes html, "lib/b.rb"
+  end
+
+  def test_unpaired_heading_is_absent_when_no_source_was_skipped
+    html = render([Mutineer::Result.killed])
+    assert_includes html, "<span><strong>0</strong> unpaired</span>"
+    refute_includes html, "Sources with no paired test"
   end
 
   def test_source_is_html_escaped_not_raw

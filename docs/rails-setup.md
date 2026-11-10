@@ -34,7 +34,7 @@ Check this Rails app for Mutineer's --daemon backend. Report: the test framework
 | --- | --- |
 | `--rails` | Boots `config/environment` once. Each mutant forks from that process and reconnects ActiveRecord for a safe database connection. |
 | `--boot FILE` | Boots another entry point. |
-| Tests | Boot mode requires a conventionally found test or `--test`. A `--dry-run` skips pairing and requires `--test`. Mutants run only tests covering their line. |
+| Tests | Boot mode requires a conventionally found test or `--test`. A dry run with `--rails` or `--boot` still requires `--test`. A dry run without boot counts mutants in sources with no paired test. Mutants run only tests covering their line. |
 | Coverage | Captured in a fork of the booted app, then cached. |
 | Default strategy | `redefine` without `--daemon`; `reload` with `--daemon`. |
 | `redefine` | Reloads the mutated method and each directly enclosing method, not the whole file. |

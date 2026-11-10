@@ -92,6 +92,10 @@ module Mutineer
   # e.g. Rails, is booted before forking; sources are then NOT manually required)
   # and rails (sugar: defaults boot to config/environment, prefers redefine without
   # a daemon, and reconnects ActiveRecord per fork).
+  #
+  # `unpaired_sources` is code only. Pairing stores each source it skips
+  # because no conventional test exists. An explicit test list leaves it empty.
+  # There is no flag and no config-file key.
   Config = Struct.new(
     :sources, :tests, :operators, :threshold, :only, :dry_run,
     :cache_dir, :project_root, :load_paths,
@@ -99,9 +103,10 @@ module Mutineer
     :boot, :rails, :since, :framework, :verbose, :ignore, :ignore_reasons,
     # :daemon is user-facing (--daemon flag + KNOWN_KEYS + boolean coerce).
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
+    # :unpaired_sources stays programmatic (set by pairing; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
     :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix, :allow_empty, :coverage_from,
-    :shared_databases,
+    :shared_databases, :unpaired_sources,
     keyword_init: true
   ) do
     # Config file name.
@@ -139,6 +144,7 @@ module Mutineer
       self.matrix        = false if matrix.nil?
       self.allow_empty   = false if allow_empty.nil?
       self.shared_databases ||= []
+      self.unpaired_sources ||= []
     end
 
     # True when the user wrote `key`, on the command line or in the config

@@ -14,6 +14,10 @@ Read report rows, fix survivors, suppress equivalent mutants, and check which te
 | Ignored | You marked the mutant as equivalent. | No |
 | Skipped | The change produced invalid Ruby and did not run. | No |
 
+A source with no paired test is skipped.
+The report counts that source and its mutants.
+Those mutants are not in the score.
+
 The [JSON schema](https://davidteren.github.io/mutineer/json-schema.html#summary) explains the rarer Uncapturable, Unplaceable, and Ran at load results.
 
 **Mutation score:** `killed / (killed + survived)`. All other rows are excluded. An empty denominator produces an empty score (`null` in JSON), not 0.

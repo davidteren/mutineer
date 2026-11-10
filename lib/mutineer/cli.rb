@@ -31,6 +31,10 @@ module Mutineer
   #   2  usage / flag error (unknown subcommand, invalid flag, unknown operator,
   #      out-of-range threshold)
   class CLI
+    # How to run a source that pairing skipped.
+    # The reporter keeps its own copy of the longer hint.
+    UNPAIRED_RUN_HINT = "Add a test at the conventional path, or run those sources in a separate command with --test."
+
     # Command-line usage banner.
     BANNER = <<~USAGE
       Usage: mutineer [options] <command> [args]
@@ -626,14 +630,38 @@ module Mutineer
       exit 2
     end
 
+    # Pairs each source with its conventional tests.
+    # A source with no test is unpaired. Source order is kept.
+    # This does not change `config`.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Array(Array<Array(String, Array<String>)>, Array<String>)]
+    #   paired rows of [source, tests], then unpaired paths.
+    def self.convention_pairs(config)
+      paired = []
+      unpaired = []
+      config.sources.each do |source|
+        tests = Pairing.infer_tests(source, project_root: config.project_root, prefer: config.framework)
+        if tests.empty?
+          unpaired << source
+        else
+          paired << [source, tests]
+        end
+      end
+      [paired, unpaired]
+    end
+
     # Auto-pair sources to tests by path convention when no --test was given
     # (explicit --test wins). Each source with at least one inferred test on
     # disk joins the run; a source with none is dropped with a one-line stderr
-    # warning and the run continues with the rest. Split files for one source
-    # are all kept (#87). If every source is dropped: in boot mode the
-    # dedicated --boot/--rails-requires-test check reports it; otherwise exit 2
-    # with a usage message. The framework is re-detected from the inferred set
-    # unless it was set explicitly (a spec-only project loads/reports as rspec).
+    # warning and stored on `config.unpaired_sources`. The run continues with
+    # the rest. Split files for one source are all kept (#87). If every source
+    # is dropped: in boot mode the dedicated --boot/--rails-requires-test check
+    # reports it; otherwise exit 2 with a usage message. The framework is
+    # re-detected from the inferred set unless it was set explicitly (a
+    # spec-only project loads/reports as rspec). An explicit test list leaves
+    # `unpaired_sources` empty and does not drop sources.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -641,13 +669,11 @@ module Mutineer
     def self.autopair!(config)
       return unless config.tests.empty?
 
-      paired = config.sources.filter_map do |s|
-        tests = Pairing.infer_tests(s, project_root: config.project_root, prefer: config.framework)
-        [s, tests] unless tests.empty?
+      paired, unpaired = convention_pairs(config)
+      unpaired.each do |source|
+        warn "[mutineer] no test found by convention for #{source}; skipping"
       end
-      (config.sources - paired.map(&:first)).each do |s|
-        warn "[mutineer] no test found by convention for #{s}; skipping"
-      end
+      config.unpaired_sources = unpaired
       config.sources = paired.map(&:first)
       config.tests   = paired.flat_map(&:last).uniq
       config.framework = Config.detect_framework(config.tests) unless config.explicit?(:framework)
@@ -735,10 +761,15 @@ module Mutineer
         exit 2
       end
 
+      operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
+      unpaired, failures = JobPlan.unpaired_counts(config, operator_classes)
+      warn_unpaired_count_failures(failures)
+
       aggregate, source_map, extras = Runner.execute(config)
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
       matrix = KillMatrix.new(aggregate.results) if config.matrix
-      reporter = Reporter.new(aggregate, source_map, matrix: matrix)
+      reporter = Reporter.new(aggregate, source_map, matrix: matrix, unpaired: unpaired,
+                              fail_fast: config.fail_fast)
 
       # Diff the current run against the baseline (preflighted above) by the
       # stable survivor id. The delta is rendered inline (human section / additive
@@ -760,7 +791,7 @@ module Mutineer
                       format: config.format, output: config.output, baseline: delta,
                       scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches,
                       declined: extras.fetch(:declined, {}))
-      warn_empty_run(config, extras) if aggregate.total.zero?
+      warn_empty_run(config, extras, unpaired) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
@@ -799,8 +830,21 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @param extras [Hash] the run extras; `:unscoped_mutants` counts the mutants (run and
     #   suppressed) before --since, and `:declined` the candidates each operator did not mutate.
+    # @param unpaired [Hash{String => Integer, nil}] file => mutant count for sources
+    #   pairing skipped. nil means the count failed.
     # @return [void]
-    def self.warn_empty_run(config, extras)
+    def self.warn_empty_run(config, extras, unpaired = {})
+      known = unpaired.each_value.sum { |count| count.is_a?(Integer) ? count : 0 }
+      if known.positive?
+        body = if known == 1
+                 "1 mutant is in a source with no paired test"
+               else
+                 "#{known} mutants are in sources with no paired test"
+               end
+        warn "mutineer: no mutant ran. #{body} (unpaired_sources[] in --format json). #{UNPAIRED_RUN_HINT}"
+        return
+      end
+
       # Mutants existed before --since narrowed them: the changes held none.
       if config.since && extras[:unscoped_mutants].to_i.positive?
         warn "mutineer: nothing to test in the changes since #{config.since}"
@@ -925,8 +969,48 @@ module Mutineer
       summary = breakdown.empty? ? "" : "#{breakdown} — "
       puts "#{summary}#{total} mutations (dry run, not executed); " \
            "#{skipped} skipped (invalid); #{ignored} ignored (suppressed); " \
-           "#{declined_summary(extras[:declined], since: config.since)}"
+           "#{declined_summary(extras[:declined], since: config.since)}; " \
+           "#{dry_run_unpaired_clause(config, jobs)}"
       exit 0
+    end
+
+    # The dry-run unpaired clause. A run with tests, or with no unpaired
+    # source, prints `0 unpaired`. A run with no tests counts jobs in the
+    # unpaired sources. It does not drop those sources from the list above.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @param jobs [Array] scheduled jobs after `--since`.
+    # @return [String] the clause, without a leading semicolon.
+    def self.dry_run_unpaired_clause(config, jobs)
+      return "0 unpaired" unless config.tests.empty?
+
+      _paired, unpaired = convention_pairs(config)
+      return "0 unpaired" if unpaired.empty?
+
+      root = config.project_root
+      unpaired_abs = unpaired.map { |file| File.expand_path(file, root) }
+      count = jobs.count do |subject,|
+        unpaired_abs.include?(File.expand_path(subject.file, root))
+      end
+      noun = unpaired.size == 1 ? "source has" : "sources have"
+      "#{count} unpaired (#{unpaired.size} #{noun} no paired test; a run without --test skips them)"
+    end
+
+    # Prints one stderr line per source whose mutant count failed.
+    # The report still lists that source with no count. The run continues.
+    #
+    # @api private
+    # @param failures [Array<Hash>] `{file:, error:}` rows from {JobPlan.unpaired_counts}.
+    # @return [void]
+    def self.warn_unpaired_count_failures(failures)
+      failures.each do |failure|
+        warn Redaction.text(
+          "[mutineer] could not count the mutants in #{failure[:file]} (#{failure[:error]}). " \
+          "The report lists it with no count.",
+          env: ENV
+        )
+      end
     end
 
     # Formats the dry run's declined count: the total, then each operator's

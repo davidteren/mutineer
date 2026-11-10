@@ -709,6 +709,9 @@ class CliTest < Minitest::Test
       assert_includes out, "mutations (dry run, not executed)"
       assert_includes out, "arithmetic:"
       assert_includes out, "0 declined"
+      mutations = out[/(\d+) mutations \(dry run/, 1]
+      unpaired = out[/(\d+) unpaired \(1 source has no paired test/, 1]
+      assert_equal mutations, unpaired
     end
   end
 
@@ -914,7 +917,7 @@ class CliTest < Minitest::Test
                               "--format", "json", "--output", "report.json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(File.read(File.join(proj, "report.json")))
-      assert_equal "1.9", doc["schema_version"]
+      assert_equal "1.10", doc["schema_version"] # 1.10 adds unpaired counts; 1.9 adds declined
       assert_equal 100.0, doc["summary"]["score"]
     end
   end
@@ -1325,7 +1328,7 @@ class CliTest < Minitest::Test
       out, _, status = mutineer("run", "lib", "--format", "json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(out)
-      assert_equal "1.9", doc["schema_version"]
+      assert_equal "1.10", doc["schema_version"] # 1.10 adds unpaired counts; 1.9 adds declined
       per = doc["per_source"].sort_by { |h| h["file"] }
       assert_equal ["lib/calc.rb", "lib/greeter.rb"], per.map { |h| h["file"] }
       assert_equal 100.0, per.find { |h| h["file"] == "lib/greeter.rb" }["score"]
@@ -1351,6 +1354,165 @@ class CliTest < Minitest::Test
                                        "--format", "json", chdir: proj)
       assert_equal 0, status.exitstatus, err
       assert_equal JSON.parse(single)["summary"], JSON.parse(explicit)["summary"]
+    end
+  end
+
+  def test_autopair_records_unpaired_sources
+    Dir.mktmpdir do |proj|
+      FileUtils.mkdir_p(File.join(proj, "app/foo"))
+      FileUtils.mkdir_p(File.join(proj, "test/foo"))
+      File.write(File.join(proj, "app/foo/bar.rb"), "class Bar; def n(a); a + 1; end; end\n")
+      File.write(File.join(proj, "test/foo/bar_test.rb"), "class BarTest; end\n")
+      File.write(File.join(proj, "app/foo/lone.rb"), "class Lone; def n(a); a + 1; end; end\n")
+      cfg = Mutineer::Config.new(sources: ["app/foo/bar.rb", "app/foo/lone.rb"], project_root: proj)
+      _out, err = capture_io { Mutineer::CLI.autopair!(cfg) }
+      assert_equal ["app/foo/bar.rb"], cfg.sources
+      assert_equal ["app/foo/lone.rb"], cfg.unpaired_sources
+      assert_includes err, "app/foo/lone.rb"
+    end
+  end
+
+  def test_autopair_with_explicit_test_records_no_unpaired_source
+    Dir.mktmpdir do |proj|
+      FileUtils.mkdir_p(File.join(proj, "app/foo"))
+      File.write(File.join(proj, "app/foo/lone.rb"), "class Lone; def n(a); a + 1; end; end\n")
+      cfg = Mutineer::Config.new(sources: ["app/foo/lone.rb"], tests: ["test/foo/bar_test.rb"], project_root: proj)
+      Mutineer::CLI.autopair!(cfg)
+      assert_equal [], cfg.unpaired_sources
+      assert_equal ["app/foo/lone.rb"], cfg.sources
+    end
+  end
+
+  def test_unpaired_sources_are_counted_on_every_backend
+    with_autopair_project do |proj|
+      File.write(File.join(proj, "lib/orphan.rb"), "class Orphan; def z(a); a + 1; end; end\n")
+      File.write(File.join(proj, "lib/blank.rb"), "class Blank; end\n")
+      [[], ["--test-command", "true %{files}"]].each do |backend|
+        out, err, status = mutineer("run", "lib", "--format", "json", *backend, chdir: proj)
+        assert_equal 0, status.exitstatus, err
+        doc = JSON.parse(out)
+        assert_equal 2, doc["summary"]["unpaired_sources"]
+        assert_equal 1, doc["summary"]["unpaired_mutants"]
+        assert_equal [
+          { "file" => "lib/blank.rb", "mutants" => 0 },
+          { "file" => "lib/orphan.rb", "mutants" => 1 }
+        ], doc["unpaired_sources"]
+        assert_equal 2, doc["summary"]["total"]
+        assert_equal ["lib/calc.rb", "lib/greeter.rb"], doc["per_source"].map { |row| row["file"] }.sort
+        assert_includes err, "lib/orphan.rb"
+        assert_includes err, "lib/blank.rb"
+      end
+    end
+  end
+
+  def test_explicit_test_leaves_no_unpaired_source
+    with_autopair_project do |proj|
+      File.write(File.join(proj, "lib/orphan.rb"), "class Orphan; def z(a); a + 1; end; end\n")
+      out, err, status = mutineer("run", "lib", "--test", "test/calc_test.rb", "--format", "json",
+                                  "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal 0, doc["summary"]["unpaired_sources"]
+      assert_equal 0, doc["summary"]["unpaired_mutants"]
+      assert_equal [], doc["unpaired_sources"]
+      assert_includes doc["per_source"].map { |row| row["file"] }, "lib/orphan.rb"
+    end
+  end
+
+  def test_unpaired_count_failure_does_not_fail_the_run
+    with_autopair_project do |proj|
+      Dir.mkdir(File.join(proj, "lib/odd.rb"))
+      out, err, status = mutineer("run", "lib", "--format", "json", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      row = doc["unpaired_sources"].find { |item| item["file"] == "lib/odd.rb" }
+      assert_nil row["mutants"]
+      assert_includes err, "lib/odd.rb"
+      assert_includes err, "could not count the mutants"
+      assert_includes err, "no test found by convention for lib/odd.rb"
+    end
+  end
+
+  def test_empty_run_names_unpaired_mutants
+    Dir.mktmpdir do |proj|
+      FileUtils.mkdir_p(File.join(proj, "lib"))
+      FileUtils.mkdir_p(File.join(proj, "test"))
+      File.write(File.join(proj, "lib/plain.rb"), "class Plain; def n(a); a + 1; end; end\n")
+      File.write(File.join(proj, "test/plain_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "../lib/plain"
+        class PlainTest < Minitest::Test
+          def test_n
+            assert_equal 2, Plain.new.n(1)
+          end
+        end
+      RUBY
+      File.write(File.join(proj, "lib/orphan.rb"), "class Orphan; def z(a, b, c); [a > 1, b < 2, c == 3]; end; end\n")
+      _out, err, status = mutineer("run", "lib", "--operators", "comparison", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "no mutant ran. 3 mutants are in sources with no paired test"
+      refute_includes err, "no mutants were generated"
+      refute_includes err, "were not run"
+    end
+  end
+
+  def test_since_run_counts_unpaired_mutants_on_changed_lines
+    with_autopair_project do |proj|
+      File.write(File.join(proj, "lib/orphan.rb"), "class Orphan; def z(a); a + 1; end; end\n")
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      File.write(File.join(proj, "lib/orphan.rb"), "class Orphan; def z(a); a + 2; end; end\n")
+      out, err, status = mutineer("run", "lib", "--since", "HEAD", "--format", "json",
+                                  "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal 1, doc["summary"]["unpaired_mutants"]
+      assert_equal [{ "file" => "lib/orphan.rb", "mutants" => 1 }], doc["unpaired_sources"]
+
+      File.write(File.join(proj, "lib/orphan.rb"), "class Orphan; def z(a); a + 1; end; end\n")
+      greeter = File.join(proj, "lib/greeter.rb")
+      File.write(greeter, File.read(greeter).sub("def double(n)", "def double(n) # touched"))
+      out, err, status = mutineer("run", "lib", "--since", "HEAD", "--format", "json",
+                                  "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal 0, doc["summary"]["unpaired_mutants"]
+      assert_equal [{ "file" => "lib/orphan.rb", "mutants" => 0 }], doc["unpaired_sources"]
+    end
+  end
+
+  def test_dry_run_counts_unpaired_mutants
+    with_autopair_project do |proj|
+      File.write(File.join(proj, "lib/orphan.rb"), "class Orphan; def z(a); a + 1; end; end\n")
+      File.write(File.join(proj, "lib/blank.rb"), "class Blank; end\n")
+      out, err, status = mutineer("run", "lib", "--dry-run", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "lib/orphan.rb"
+      assert_includes out, "1 unpaired (2 sources have no paired test; a run without --test skips them)"
+    end
+  end
+
+  def test_dry_run_unpaired_count_matches_the_run
+    with_autopair_project do |proj|
+      File.write(File.join(proj, "lib/orphan.rb"), "class Orphan; def z(a); a + 1; end; end\n")
+      File.write(File.join(proj, "lib/blank.rb"), "class Blank; end\n")
+      dry, err, status = mutineer("run", "lib", "--dry-run", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      out, err, status = mutineer("run", "lib", "--format", "json", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      listed = dry[/(\d+) unpaired \(2 sources have no paired test/]
+      assert_equal JSON.parse(out)["summary"]["unpaired_mutants"], listed.to_i
+    end
+  end
+
+  def test_dry_run_with_explicit_test_reports_zero_unpaired
+    with_autopair_project do |proj|
+      out, err, status = mutineer("run", "lib", "--test", "test/calc_test.rb", "--dry-run",
+                                  "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "; 0 unpaired"
     end
   end
 

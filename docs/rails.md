@@ -141,7 +141,8 @@ mutineer:
 ```
 
 Models without a conventionally named test are skipped with a warning, even if
-other tests cover them. To include a model covered by differently named tests,
+other tests cover them. The report counts those models and their mutants.
+To include a model covered by differently named tests,
 pass the relevant test files explicitly. For example:
 
 ```sh
