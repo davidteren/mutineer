@@ -1,0 +1,111 @@
+AGENTS.md
+  s_25a04190228b12::t_24d2b80b0360d1 328-341
+CHANGELOG.md
+  s_25a04190228b12::t_b128426fe2f8eb 11-52
+README.md
+  s_25a04190228b12::t_30e54ce709932e 143
+STATUS.md
+  s_25a04190228b12::t_865f5c85ff17a6 1-16
+docs/cli.md
+  s_25a04190228b12::t_c725b343f82e73 22
+docs/index.md
+  s_25a04190228b12::t_c0792ea1627252 88-90
+docs/plans/2026-11-10-349-chore-measure-unrun-share-on-real-rails-app-plan.md
+  s_25a04190228b12::t_376c8151b11bb2 1-265
+docs/plans/2026-11-10-379-feat-pair-concern-with-namespace-test-plan.md
+  s_25a04190228b12::t_e3f08b8397a641 1-386
+docs/plans/2026-11-10-380-feat-test-option-directory-or-glob-plan.md
+  s_25a04190228b12::t_a9b33fa9aa558e 1-352
+docs/plans/2026-11-10-381-feat-count-unpaired-sources-and-mutants-plan.md
+  s_25a04190228b12::t_f045ae00e098a1 1-447
+docs/plans/2026-11-10-382-feat-tests-map-in-config-plan.md
+  s_25a04190228b12::t_683aea23719b1e 1-519
+docs/plans/2026-11-10-386-feat-default-mutants-for-bare-if-and-rescue-bodies-plan.md
+  s_25a04190228b12::t_1691215b56296c 1-464
+docs/plans/2026-11-10-388-feat-json-errored-mutant-list-plan.md
+  s_25a04190228b12::t_e7cadec6aef020 1-439
+docs/plans/2026-11-10-389-feat-rails-full-reload-strategy-plan.md
+  s_25a04190228b12::t_83f45e0bd5d752 1-464
+docs/plans/2026-11-10-397-feat-class-body-macro-mutants-plan.md
+  s_25a04190228b12::t_cb31e0ad7cccb1 1-485
+docs/plans/2026-11-10-398-feat-coverage-cache-hit-clean-check-plan.md
+  s_25a04190228b12::t_4ab6c940e606f2 1-328
+docs/plans/2026-11-10-399-docs-triage-present-to-receiver-survivor-plan.md
+  s_25a04190228b12::t_c009511cf2f640 1-175
+docs/plans/2026-11-10-402-chore-pre-release-fizzy-sample-check-plan.md
+  s_25a04190228b12::t_2a9c38c47e5bfa 1-321
+docs/plans/2026-11-10-404-fix-sqlite-run-lock-plan.md
+  s_25a04190228b12::t_e3a332373b4da9 1-256
+docs/rails-setup.md
+  s_25a04190228b12::t_7ef3d46e4318f2 225
+lib/mutineer/cli.rb
+  s_25a04190228b12::t_6e548c04ad439c 86-89
+lib/mutineer/concern_blocks.rb
+  s_25a04190228b12::t_29e221ad5ae216 20-26,61-67,70-72,74-78,88-96,127-129,131-132,136-143,156-157,163,173,256-270
+lib/mutineer/daemon_backend.rb
+  s_25a04190228b12::t_2e8b0dc5fd4eb5 428
+lib/mutineer/daemon_server.rb
+  s_25a04190228b12::t_3256711c30ec78 479-481,483-484,492
+lib/mutineer/external_backend.rb
+  s_25a04190228b12::t_442a375ed1bb9c 64-74,300-324,326,328-330,335-336,340-343
+lib/mutineer/isolation.rb
+  s_25a04190228b12::t_7fa90c659f4473 196-197,205,207-208,277
+lib/mutineer/job_plan.rb
+  s_25a04190228b12::t_c85af4cdd7d36a 209-211
+lib/mutineer/mutation.rb
+  s_25a04190228b12::t_0b5d4c3df08cba 19-20,23,25
+lib/mutineer/parser.rb
+  s_25a04190228b12::t_5c823fe90aae6d 36-74
+lib/mutineer/reporter.rb
+  s_25a04190228b12::t_fabfad6bded4ca 142-143
+lib/mutineer/runner.rb
+  s_25a04190228b12::t_20831cb93f96fe 267,277-292,323,384,410
+test/daemon_backend_contract_test.rb
+  s_25a04190228b12::t_746b2f88cc8926 955-968
+test/daemon_server_hook_def_test.rb
+  s_25a04190228b12::t_2b8219ec883464 94-131
+test/external_backend_test.rb
+  s_25a04190228b12::t_9b8ba06796994c 270-317
+test/fixtures/order_dependent/ledger.rb
+  s_25a04190228b12::t_38d7d18916a5d1 1-20
+test/fixtures/order_dependent/ledger_test.rb
+  s_25a04190228b12::t_b0e4f3fee0c0ed 1-21
+test/fixtures/singleton/hook_load_time.rb
+  s_25a04190228b12::t_8e6003f6a6322b 1-33
+test/fixtures/singleton/hook_load_time_test.rb
+  s_25a04190228b12::t_886b76a801c757 1-16
+test/isolation_test.rb
+  s_25a04190228b12::t_8ac286cfa48877 550-576
+test/mutation_test.rb
+  s_25a04190228b12::t_27a50728849c9a 31-41
+test/parse_error_metamorphic_test.rb
+  s_25a04190228b12::t_914f37c7226e47 1-115
+test/parser_test.rb
+  s_25a04190228b12::t_a694651e0013cb 4,29-80
+test/prism_errors_test.rb
+  s_25a04190228b12::t_6c02106d87081c 1-103
+test/reporter_test.rb
+  s_25a04190228b12::t_b5fb73a6cf5e13 563-564
+test/runner_external_test.rb
+  s_25a04190228b12::t_2f17153106c8d5 157-201,266-282
+test/singleton_redefine_test.rb
+  s_25a04190228b12::t_1326bad609e02b 267,274-289
+test/test_helper.rb
+  s_25a04190228b12::t_db7376dfd2604e 95-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bc968ff2a6680531be2f58ce31878294ea8379c4",
+  "prompts": {},
+  "sessions": {
+    "s_25a04190228b12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2a1ff16-74b8-4a80-aeb6-3abfb6639c69",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
