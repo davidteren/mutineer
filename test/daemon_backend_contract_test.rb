@@ -584,6 +584,10 @@ class DaemonBackendContractTest < Minitest::Test
         # The --baseline diff needs every new id's old id to read an old-format baseline.
         refute_empty extras[:id_map]
         assert_equal extras[:id_map], run_extras[:id_map]
+        # The method counts (#386) reach every backend's report unchanged.
+        assert_operator extras[:subjects], :>, 0
+        assert_equal extras[:subjects], run_extras[:subjects]
+        assert_equal extras[:unmutated_subjects], run_extras[:unmutated_subjects]
       end
     end
   end

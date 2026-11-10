@@ -19,6 +19,7 @@ module DocsContract
     "`no_verdict[]` (array of object)" => "no-verdict",
     "`ignored[]` (array of object)" => "ignored",
     "`per_source[]` (array of object)" => "per-source",
+    "`unmutated_subjects[]` (array of object)" => "unmutated-subjects",
     "`matrix` (object, only with `--matrix`)" => "matrix",
     "`baseline` (object, only with `--baseline`)" => "baseline",
     "Exit codes" => "exit-codes"
@@ -43,6 +44,7 @@ module DocsContract
     "no-verdict" => "no_verdict[]",
     "ignored" => "ignored[]",
     "per-source" => "per_source[]",
+    "unmutated-subjects" => "unmutated_subjects[]",
     "matrix" => "matrix",
     "baseline" => "baseline",
     "exit-codes" => "Exit codes"

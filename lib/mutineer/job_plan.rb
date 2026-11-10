@@ -48,6 +48,13 @@ module Mutineer
     # operator outside the registry. `--only` narrows `declined`, and `--since`
     # does not: a declined candidate has no mutation to place on a line.
     #
+    # The extras also hold `subjects` (how many methods were discovered, each
+    # counted once across path spellings) and `unmutated_subjects` (#386): one
+    # `{subject:, file:, line:}` hash per method the selected operators gave no
+    # mutation, an empty method included, sorted by file, line and name. It is
+    # decided before suppression and repeat removal, so a method whose mutants
+    # are all ignored is not listed. `--only` narrows both; `--since` does not.
+    #
     # Mutations are collected in {MutatorRegistry::ALL} order, whatever the
     # order of `operator_classes`. Two operators can give the same mutated
     # source (#275), and the copy of the registry-first operator is the one
@@ -62,7 +69,8 @@ module Mutineer
     # @param operator_classes [Array<Class>] resolved operators.
     # @return [Array(Array, Array<Result>, Hash<String,String>, Hash{Symbol => Hash})]
     #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`,
-    #   `:id_map`, `:dropped_id_map`, `:declined`).
+    #   `:id_map`, `:dropped_id_map`, `:declined`, `:subjects`,
+    #   `:unmutated_subjects`).
     def self.collect_jobs(config, operator_classes)
       # Registry order, so a repeat across operators keeps the registry-first
       # copy (#275). A class outside ALL goes last; ties keep the input order.
@@ -85,6 +93,8 @@ module Mutineer
       id_map = {}
       dropped_id_map = {}
       declined = Hash.new(0)
+      # [id_path, def offset] => nil, or the method's entry when it got no mutation.
+      subjects = {}
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file, encoding: "UTF-8"))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
@@ -98,6 +108,10 @@ module Mutineer
         id_path = (id_paths[subject.file] ||= ProjectPath.relative(subject.file, config.project_root))
         decls = name_decls[[id_path, subject.qualified_name]]
         ordinal = (decls[subject.def_node.location.start_offset] ||= decls.size)
+        subjects[[id_path, subject.def_node.location.start_offset]] ||=
+          if mutations.empty?
+            { subject: subject.qualified_name, file: subject.file, line: subject.def_node.location.start_line }
+          end
         ids = MutantId.for_subject(subject, source, mutations, path: id_path, subject_ordinal: ordinal)
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
         lines = mutations.map { |m| source.byteslice(0, m.start_offset).count("\n") + 1 }
@@ -132,8 +146,10 @@ module Mutineer
         end
       end
       declined = declined.select { |_, count| count.positive? }.sort.to_h
+      unmutated = subjects.values.compact.sort_by { |h| [h[:file], h[:line], h[:subject]] }
       [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map,
-                                            dropped_id_map: dropped_id_map, declined: declined }]
+                                            dropped_id_map: dropped_id_map, declined: declined,
+                                            subjects: subjects.size, unmutated_subjects: unmutated }]
     end
 
     # One key per mutation; two mutations share a key exactly when they are on

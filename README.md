@@ -220,6 +220,17 @@ List with `mutineer --list-operators`. Enable specific operators with `--operato
 | Tier 1 (default) | `arithmetic`, `comparison`, `boolean_connector`, `boolean_literal`, `statement_removal` |
 | Tier 2 (opt-in) | `return_nil`, `literal_mutation`, `condition_negation`, `string_literal`, `regex`, `collection_method`, `safe_navigation`, `range`, `negation_removal`, `chain_link`, `call_to_receiver`, `operand_removal`, `array_literal`, `condition_true`, `condition_false`, `operator_assignment` |
 
+The default operators give no mutant to some methods, such as a method whose body is one `if` with a `rescue`.
+The report counts these methods on its `No mutants:` line. `--dry-run --verbose` and the JSON report list them.
+A method listed there is not proven tested. To force its branches, add `condition_true` and `condition_false`.
+The `--operators` list replaces the default set, so name the default operators too:
+
+```sh
+mutineer run lib --operators arithmetic,comparison,boolean_connector,boolean_literal,statement_removal,condition_true,condition_false
+```
+
+No operator mutates a one-statement `rescue` body yet (#418).
+
 ## Documentation
 
 | Guide | What it covers |

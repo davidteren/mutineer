@@ -58,7 +58,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.9", doc["schema_version"] # 1.9 adds summary.declined and declined_by_operator; 1.8 added reason on ignored[]
+    assert_equal "1.10", doc["schema_version"] # 1.10 adds summary.subjects, unmutated_subjects; 1.9 adds summary.declined and declined_by_operator; 1.8 added reason on ignored[]
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
@@ -461,5 +461,23 @@ class JsonReporterTest < Minitest::Test
     summary = render([Mutineer::Result.killed])["summary"]
     assert_equal 0, summary["declined"]
     assert_equal({}, summary["declined_by_operator"])
+  end
+
+  def test_summary_reports_unmutated_subjects
+    out = StringIO.new
+    entry = { subject: "Day#day", file: FILE, line: 2 }
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json", subjects: 2, unmutated_subjects: [entry])
+    doc = JSON.parse(out.string)
+    assert_equal 2, doc["summary"]["subjects"]
+    assert_equal 1, doc["summary"]["unmutated_subjects"]
+    assert_equal [{ "subject" => "Day#day", "file" => FILE, "line" => 2 }], doc["unmutated_subjects"]
+  end
+
+  def test_unmutated_subjects_default_to_none
+    doc = render([Mutineer::Result.killed])
+    assert_equal 0, doc["summary"]["subjects"]
+    assert_equal 0, doc["summary"]["unmutated_subjects"]
+    assert_equal [], doc["unmutated_subjects"]
   end
 end

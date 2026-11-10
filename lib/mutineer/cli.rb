@@ -762,7 +762,8 @@ module Mutineer
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
                       scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches,
-                      declined: extras.fetch(:declined, {}))
+                      declined: extras.fetch(:declined, {}), subjects: extras.fetch(:subjects, 0),
+                      unmutated_subjects: extras.fetch(:unmutated_subjects, []))
       warn_empty_run(config, extras) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
@@ -801,7 +802,8 @@ module Mutineer
     #
     # @param config [Mutineer::Config] run configuration.
     # @param extras [Hash] the run extras; `:unscoped_mutants` counts the mutants (run and
-    #   suppressed) before --since, and `:declined` the candidates each operator did not mutate.
+    #   suppressed) before --since, `:declined` the candidates each operator did not mutate,
+    #   and `:subjects` the methods found (#386).
     # @return [void]
     def self.warn_empty_run(config, extras)
       # Mutants existed before --since narrowed them: the changes held none.
@@ -809,12 +811,24 @@ module Mutineer
         warn "mutineer: nothing to test in the changes since #{config.since}"
       elsif !config.allow_empty
         declined = extras.fetch(:declined, {}).values.sum
-        cause = if declined.positive?
-                  "#{declined} #{declined == 1 ? 'candidate was' : 'candidates were'} declined " \
+        methods = extras.fetch(:subjects, 0)
+        causes = []
+        if declined.positive?
+          causes << "#{declined} #{declined == 1 ? 'candidate was' : 'candidates were'} declined " \
                     "(--dry-run shows the count per operator)."
-                else
-                  "Check that the sources contain code the operators mutate."
-                end
+        end
+        # Name the methods the operators passed over (#386), so an empty run on
+        # real code points at the operator set, not at the paths.
+        causes << if methods == 1
+                    "1 method was found, and the selected operators made no mutant in it " \
+                      "(--list-operators shows the others)."
+                  elsif methods > 1
+                    "#{methods} methods were found, and the selected operators made no mutant in any of them " \
+                      "(--list-operators shows the others)."
+                  end
+        causes.compact!
+        causes << "Check that the sources contain code the operators mutate." if causes.empty?
+        cause = causes.join(" ")
         warn "mutineer: no mutants were generated. #{cause} The run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \
              "Pass --allow-empty (or allow_empty: true) if an empty run is expected."
       end
@@ -923,13 +937,33 @@ module Mutineer
              "#{subject.file}:#{line}  `#{original}` -> `#{mutation.replacement}`"
       end
 
+      # One line per method with no mutants, only with --verbose: on a Rails app
+      # they can be most methods (#386). No brackets, so `^\[` still counts mutations.
+      unmutated = extras[:unmutated_subjects]
+      if config.verbose
+        unmutated.each { |entry| puts "no mutants: #{entry[:subject]}  #{entry[:file]}:#{entry[:line]}" }
+      end
+
       total = per_operator.values.sum
       breakdown = per_operator.map { |op, n| "#{op}: #{n}" }.join(", ")
       summary = breakdown.empty? ? "" : "#{breakdown} — "
       puts "#{summary}#{total} mutations (dry run, not executed); " \
            "#{skipped} skipped (invalid); #{ignored} ignored (suppressed); " \
-           "#{declined_summary(extras[:declined], since: config.since)}"
+           "#{declined_summary(extras[:declined], since: config.since)}; " \
+           "#{unmutated_summary(unmutated.size, extras[:subjects], since: config.since)}"
       exit 0
+    end
+
+    # Formats the dry run's count of methods with no mutants (#386). `--since`
+    # does not narrow the count, so under `--since` the text says so.
+    #
+    # @param unmutated [Integer] methods the selected operators did not mutate.
+    # @param subjects [Integer] methods discovered.
+    # @param since [String, nil] the `--since` ref, when set.
+    # @return [String] e.g. `no mutants in 1 of 2 methods`.
+    def self.unmutated_summary(unmutated, subjects, since:)
+      text = "no mutants in #{unmutated} of #{subjects} methods"
+      since ? "#{text} (not narrowed by --since)" : text
     end
 
     # Formats the dry run's declined count: the total, then each operator's

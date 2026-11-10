@@ -918,6 +918,147 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # #386: method shapes the five default operators give no mutant. `day` is the
+  # Fizzy shape (a bare if/else with a def-level rescue); the rest are its
+  # siblings. `total` holds `a + b`, so arithmetic mutates it.
+  DAY_SHAPES = <<~RUBY
+    class Day
+      def day
+        if @day
+          Time.parse(@day)
+        else
+          Time.now
+        end
+      rescue ArgumentError
+        :not_found
+      end
+
+      def total(a, b)
+        a + b
+      end
+
+      def noop; end
+
+      def bare_rescue
+        Integer(@day)
+      rescue ArgumentError
+        :invalid
+      end
+
+      def bare_unless
+        unless @day
+          Time.now
+        end
+      end
+
+      def bare_case
+        case @day
+        when Symbol then Time.now
+        else Time.parse(@day)
+        end
+      end
+
+      def ternary
+        @day ? Time.parse(@day) : Time.now
+      end
+
+      def modifier_if
+        Time.now if @day
+      end
+
+      def begin_ensure
+        begin
+          Time.now
+        ensure
+          @day = :done
+        end
+      end
+    end
+  RUBY
+
+  # The default list of DAY_SHAPES, by name and def line: every method but `total`.
+  DAY_SHAPES_UNMUTATED = [["Day#day", 2], ["Day#noop", 16], ["Day#bare_rescue", 18],
+                          ["Day#bare_unless", 24], ["Day#bare_case", 30], ["Day#ternary", 37],
+                          ["Day#modifier_if", 41], ["Day#begin_ensure", 45]].freeze
+
+  # Writes DAY_SHAPES and returns collect_jobs' extras for the operator names.
+  def day_shapes_extras(names)
+    Dir.mktmpdir do |root|
+      path = File.join(root, "day.rb")
+      File.write(path, DAY_SHAPES)
+      config = Mutineer::Config.new(sources: [path], project_root: root)
+      _jobs, _ignored, _map, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(names))
+      yield extras, path
+    end
+  end
+
+  def test_collect_jobs_lists_methods_with_no_mutants
+    day_shapes_extras(Mutineer::MutatorRegistry::DEFAULT_NAMES) do |extras, path|
+      assert_equal 9, extras[:subjects]
+      assert_equal(DAY_SHAPES_UNMUTATED.map { |name, line| { subject: name, file: path, line: line } },
+                   extras[:unmutated_subjects])
+    end
+  end
+
+  def test_collect_jobs_lists_no_method_an_operator_reaches
+    day_shapes_extras(%w[condition_false]) do |extras, _path|
+      listed = extras[:unmutated_subjects].map { |h| h[:subject] }
+      # condition_false forces each if, unless, ternary and modifier condition.
+      assert_equal %w[Day#total Day#noop Day#bare_rescue Day#bare_case Day#begin_ensure], listed
+    end
+  end
+
+  def test_collect_jobs_lists_a_method_whose_candidates_were_all_declined
+    Dir.mktmpdir do |root|
+      path = File.join(root, "notes.rb")
+      File.write(path, "class Notes\n  def note(x)\n    if x == <<~S\n      hi\n    S\n      1\n    end\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: root)
+      _, _, _, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[condition_true]))
+      assert_equal({ "condition_true" => 1 }, extras[:declined])
+      assert_equal ["Notes#note"], extras[:unmutated_subjects].map { |h| h[:subject] }
+      _, _, _, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[condition_true comparison]))
+      assert_empty extras[:unmutated_subjects]
+    end
+  end
+
+  def test_collect_jobs_does_not_list_a_method_with_only_ignored_mutants
+    Dir.mktmpdir do |root|
+      path = File.join(root, "sum.rb")
+      File.write(path, "class Sum\n  def total(a, b)\n    a + b # mutineer:disable-line\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: root)
+      jobs, ignored, _, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic]))
+      assert_empty jobs
+      refute_empty ignored
+      assert_equal 1, extras[:subjects]
+      assert_empty extras[:unmutated_subjects]
+    end
+  end
+
+  def test_collect_jobs_sorts_unmutated_subjects
+    Dir.mktmpdir do |root|
+      b = File.join(root, "b.rb")
+      a = File.join(root, "a.rb")
+      File.write(b, "class B\n  def two; end\n  def one; end\nend\n")
+      File.write(a, "class A\n  def z; end\nend\n")
+      config = Mutineer::Config.new(sources: [b, a], project_root: root)
+      _, _, _, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic]))
+      assert_equal [[a, 2], [b, 2], [b, 3]], extras[:unmutated_subjects].map { |h| [h[:file], h[:line]] }
+    end
+  end
+
+  def test_collect_jobs_counts_a_method_once_across_path_spellings
+    root = File.expand_path("..", __dir__)
+    one = Mutineer::Config.new(sources: ["lib/mutineer/mutant_id.rb"], project_root: root)
+    three = Mutineer::Config.new(sources: ["lib/mutineer/mutant_id.rb", "./lib/mutineer/mutant_id.rb",
+                                           File.join(root, "lib/mutineer/mutant_id.rb")], project_root: root)
+    ops = Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::DEFAULT_NAMES)
+    expected = Mutineer::JobPlan.collect_jobs(one, ops).last
+    actual = Mutineer::JobPlan.collect_jobs(three, ops).last
+    assert_operator expected[:subjects], :>, 0
+    assert_equal expected[:subjects], actual[:subjects]
+    assert_equal expected[:unmutated_subjects].size, actual[:unmutated_subjects].size
+  end
+
   def test_collect_jobs_reports_no_declined_when_none
     config = Mutineer::Config.new(sources: [CALC], project_root: File.dirname(CALC))
     _jobs, _ignored, _map, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic]))

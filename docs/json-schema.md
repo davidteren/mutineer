@@ -7,11 +7,12 @@ inputs and results, JSON output is byte-identical. Results can still vary if
 the tests or environment change. `survivors[]` sorts by
 `(file, line, operator)`; `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
 add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`;
-`no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`.
+`no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`;
+`unmutated_subjects[]` by `(file, line, subject)`.
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.9"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.10"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -19,6 +20,7 @@ The top-level `schema_version` (a string, e.g. `"1.9"`) follows these rules:
   version (`1.x` → `2.0`).
 
 A consumer should accept any `1.x` document and read only the keys it knows.
+Compare versions as two integers, major then minor, not as decimals: `1.10` comes after `1.9`.
 
 Mutant `id` values are opaque identifiers. How an id is derived is versioned by
 `summary.id_format`, not by `schema_version`: when `id_format` changes, every id
@@ -33,7 +35,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 
 ```jsonc
 {
-  "schema_version": "1.9",
+  "schema_version": "1.10",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch; review for test gaps or equivalent behaviour */ ],
   "no_coverage":  [ /* mutants on lines no test exercises, or that the statement's tests may not reach (#254, #289) */ ],
@@ -43,6 +45,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
   "no_verdict":   [ /* mutants that were attempted and produced no verdict */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
   "per_source":   [ /* per-file roll-up */ ],
+  "unmutated_subjects": [ /* methods the selected operators did not mutate */ ],
   "matrix":       { /* present ONLY with --matrix: which tests kill which mutants */ },
   "baseline":     { /* present ONLY with --baseline: the delta vs a prior run */ }
 }
@@ -62,6 +65,8 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). Counted in the unrun share: when `unplaceable + skipped_invalid` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid`, stderr warns on every format. The warning does not change the exit code (schema `1.9`, #291). |
 | `declined` | int | Candidates the operators found and did not mutate, so they are not in `total`: a heredoc the edit would split, or an equivalent skip listed on the [equivalent-skips page](equivalent-skips.md). Counted per operator, so a candidate two operators decline counts twice. Counted before `# mutineer:disable-line` and `ignore:` apply. `--only` narrows it; `--since` does not. Additive key (schema `1.9`, #291). |
 | `declined_by_operator` | object | The same count per operator name, operator name => int, only operators above zero, keys sorted. `{}` when none. Additive key (schema `1.9`, #291). |
+| `subjects` | int | Methods found in the run's sources, each counted once. Methods, not mutants, so not in `total`. Additive key (schema `1.10`, #386). |
+| `unmutated_subjects` | int | Methods the selected operators gave no mutant, an empty method included. `unmutated_subjects[]` below lists them. Additive key (schema `1.10`, #386). |
 | `errored` | int | Mutants whose run crashed, or whose first failed Minitest test had a database connection or lock error (excluded). |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). Under `--since`, only those on changed lines. |
@@ -175,6 +180,16 @@ Suppressed (equivalent) mutants, so you can audit what's silenced: `{ subject, f
 Per-file roll-up: `{ file, total, killed, survived, no_coverage, score }` (`score` is `float | null` as above).
 `total` counts classified results for that file. A `--fail-fast` report is partial:
 unscheduled candidates are omitted from these counts and from the top-level totals.
+
+### `unmutated_subjects[]` (array of object)
+
+Each entry is `{ subject, file, line }`: a method the selected operators gave no mutant, and the line of its
+`def`. `subject` and `file` read as in `survivors[]`. An empty method is listed too. The list is made before
+`# mutineer:disable-line` and `ignore:` apply, so a method whose mutants are all ignored is not listed. A method
+whose candidates were all declined is listed, and `summary.declined` counts those candidates. `--only` narrows
+the list; `--since` does not (#420). A real run skips a source with no paired test, so its methods are not
+listed (#381); a dry run does not skip such sources, so without `--test` its count can be larger. Additive key
+(schema `1.10`, #386). `mutineer run --dry-run --verbose` prints the same list as `no mutants:` lines.
 
 ### `matrix` (object, only with `--matrix`)
 
