@@ -417,15 +417,15 @@ module Mutineer
       subject, mutation, id = job
       source  = source_map[subject.file]
       mutated = mutation.apply(source)
-      # Skip an invalid mutant (it adds a parse error the source lacks) tool-side:
-      # never ship a payload that would fail to load and read as a false `killed`.
+      # Skip an invalid mutant tool-side: never ship a payload that would fail to
+      # load and read as a false `killed`.
       # Narrow to covering tests (shared with the in-process path via
       # JobPlan.coverage_selection, so scores match). :verdict = no_coverage/uncapturable,
       # no fork. No map, or an empty one (build failed) → run the full --test set
       # (fallback, not narrowed).
       sel = coverage_map && !coverage_map.map.empty? && JobPlan.coverage_selection(subject.file, mutation, subject, source, coverage_map)
       r =
-        if Parser.new_errors?(source, mutated)
+        if Parser.invalid?(mutated)
           Result.skipped
         elsif sel && sel[0] == :verdict
           sel[1]

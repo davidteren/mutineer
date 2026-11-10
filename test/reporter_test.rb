@@ -558,7 +558,7 @@ class ReporterTest < Minitest::Test
   def test_unrun_warning_names_skipped_invalid
     err = unrun_err(Array.new(2) { Mutineer::Result.killed } + Array.new(2) { Mutineer::Result.skipped })
     assert_includes err, "(2 skipped (invalid); 50.0%"
-    assert_includes err, "added a parse error that its source file does not have"
+    assert_includes err, "did not re-parse"
     assert_includes err, "https://github.com/davidteren/mutineer/issues"
     refute_includes err, "unplaceable"
   end

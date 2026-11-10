@@ -2,39 +2,40 @@
 
 require_relative "test_helper"
 
-# #392, metamorphic checks of Parser.new_errors?. Example tests in
-# parser_test.rb pin known cases; these check the rule across every operator's
-# real edits. Each test runs a mutant twice, once on clean source and once on
-# source that carries a parse error, and requires the same valid result.
+# #392, metamorphic checks of Parser.invalid?. Example tests in parser_test.rb
+# pin known cases; these check the rule across every operator's real edits.
+# Each test runs a mutant twice, once on clean source and once on source that
+# carries a line Prism 2 reports and Ruby loads, and requires the same valid
+# result.
 class ParseErrorMetamorphicTest < Minitest::Test
   # Small files, so the test stays fast while every operator meets many shapes
   # of Ruby.
   CORPUS = Dir[File.expand_path("fixtures/*.rb", __dir__)].sort.freeze
 
-  # Methods that are a parse error on every Prism version: a duplicated
-  # argument and a constant write in a method body. The last one is an error
-  # only on Prism 2 and later (#392); on Prism 1 that case compares clean with
-  # clean, which must also agree.
+  # Methods with a constant operator write: a parse error on Prism 2 and later
+  # (#392), which Ruby loads. On Prism 1 each case compares clean with clean,
+  # which must also agree.
   BROKEN = [
-    "def __mutineer_broken(x, x)\nend\n",
-    "def __mutineer_broken\n  B = 1 + 2\nend\n",
-    "def __mutineer_broken\n  T += 1\nend\n"
+    "def __mutineer_broken\n  T += 1\nend\n",
+    "def __mutineer_broken\n  T ||= 1\nend\n"
   ].freeze
 
-  # Method bodies whose edits fall inside a constant write in a method, a
-  # dynamic constant assignment on every Prism. `C` stands for the constant;
+  # Method bodies whose edits fall inside a constant operator write in a
+  # method, which Prism 2 reports and Ruby loads. `C` stands for the constant;
   # the clean twin uses the local `c`, which has the same length, so each
-  # mutant has the same offsets in both. Covers an error that encloses the
-  # edit (`C = 1 + 2` to `C = 1 - 2`) and one the edit wraps (condition
-  # negation turns `if C = ...` into `if !(C = ...)`).
+  # mutant has the same offsets in both. Covers an edit inside the write, one
+  # that wraps it (condition negation), and one that keeps only the operand
+  # holding it (operand removal).
   ENCLOSING = [
-    "C = 1 + 2 * 3",
-    "C = (a > b) && true",
-    "C = [a, b].map { |v| v - 1 }",
-    "if C = a + 1\n    b\n  end",
-    "return 1 unless C = a == b",
-    "C = a ? b + 1 : nil",
-    "x = C = a - b"
+    "C += 1 + 2 * 3",
+    "C ||= (a > b) && true",
+    "C &&= [a, b].map { |v| v - 1 }",
+    "if C ||= a + 1\n    b\n  end",
+    "return 1 unless C ||= a == b",
+    "C ||= a ? b + 1 : nil",
+    "x = C += a - b",
+    "a || (C ||= b)",
+    "(C &&= a) && b"
   ].freeze
 
   # An error the original already has, away from the edit, before or after
@@ -66,7 +67,7 @@ class ParseErrorMetamorphicTest < Minitest::Test
     ENCLOSING.each do |body|
       dirty = "def m(a, b)\n  #{body}\nend\n"
       clean = dirty.gsub(/\bC\b/, "c")
-      refute_empty Mutineer::Parser.parse_string(dirty).errors, "#{body.inspect} must carry the error"
+      refute Mutineer::Parser.invalid?(dirty), "#{body.inspect}: Ruby must load the original"
       assert_empty Mutineer::Parser.parse_string(clean).errors, "#{body.inspect} twin must parse clean"
 
       mutations = mutations_in("snippet.rb", dirty)

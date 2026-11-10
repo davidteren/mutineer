@@ -265,21 +265,15 @@ module Mutineer
       # falsely survives. Re-open the singleton class so the redefinition lands on
       # the same method the test calls. `def self.foo` already carries its
       # receiver, so it is left as-is (wrapping it would mis-target).
-      wrap = lambda do |edit|
-        inner = mutated_def(edit, subject, source)
-        inner = "#{subject.block_owner}.class_eval do\n#{inner}\nend" if subject.block_owner
-        "#{prefix}#{inner}#{"\nend" * keywords.size}"
-      end
-      wrapped = wrap.call(mutation)
+      inner = mutated_def(mutation, subject, source)
+      inner = "#{subject.block_owner}.class_eval do\n#{inner}\nend" if subject.block_owner
+      wrapped = "#{prefix}#{inner}#{"\nend" * keywords.size}"
 
       # A snippet that fails to reparse must NOT silently fall through to
       # running the ORIGINAL method (C2 false-survived). Raise -> the fork
       # block aborts before any test runs -> Result.error, never a bogus
-      # `survived`. The baseline is the same snippet around the original
-      # method (an empty edit), so an error the method already has does not
-      # count (see Parser.new_errors?).
-      original = wrap.call(mutation.with(end_offset: mutation.start_offset, replacement: ""))
-      raise "surgical snippet failed to reparse" if Parser.new_errors?(original, wrapped)
+      # `survived`.
+      raise "surgical snippet failed to reparse" if Parser.invalid?(wrapped)
 
       # Preserve original visibility — class/module bodies define methods
       # public, but 7a's `load` would re-apply the file's private/protected

@@ -294,8 +294,8 @@ module Mutineer
     end
 
     # Runs one mutant through the external backend: apply the whole-file mutation
-    # on disk, run the command, restore. An invalid mutant (it adds a parse
-    # error) would fail to load (scored `error`, or a false `killed` without the summary
+    # on disk, run the command, restore. An invalid (non-reparsing) mutant would
+    # fail to load (scored `error`, or a false `killed` without the summary
     # check), so skip it tool-side (Prism, already cheap) and never write the file, preserving the `skipped` verdict the
     # in-process path gives at the pre-fork check.
     #
@@ -304,7 +304,7 @@ module Mutineer
     def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:)
       source  = File.read(subject.file, encoding: "UTF-8")
       mutated = mutation.apply(source)
-      return Result.skipped if Parser.new_errors?(source, mutated)
+      return Result.skipped if Parser.invalid?(mutated)
 
       FileSwap.with(subject.file, mutated) do
         ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose, check_summary: check_summary)
@@ -364,8 +364,8 @@ module Mutineer
       source  = File.read(source_file, encoding: "UTF-8")
       mutated = mutation.apply(source)
 
-      # Validity rule: a mutant that adds a parse error is skipped before forking.
-      return Result.skipped if Parser.new_errors?(source, mutated)
+      # Validity rule: a mutant that does not re-parse is skipped before forking.
+      return Result.skipped if Parser.invalid?(mutated)
 
       # Coverage selection (both standalone and boot mode): a mutation on a line
       # no test exercises is :no_coverage (no fork); otherwise exactly the

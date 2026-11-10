@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "minitest/mock"
 
 class ParserTest < Minitest::Test
   FIXTURE = File.expand_path("fixtures/calculator.rb", __dir__)
@@ -26,78 +27,55 @@ class ParserTest < Minitest::Test
     refute_empty Mutineer::Parser.parse_string("def foo").errors
   end
 
-  # #392: an error the original already has does not count against the edit.
-  # `def a(x, x)` is an error on every Prism version, so these hold on all.
-  BROKEN = "def a(x, x)\nend\n\ndef b\n  1 + 2\nend\n"
-
-  def test_new_errors_ignores_an_error_the_original_already_has
-    refute Mutineer::Parser.new_errors?(BROKEN, BROKEN.sub("1 + 2", "1 - 2"))
+  # #392: a parse error alone does not make source invalid. Ruby must also
+  # refuse to compile it. These hold on every Prism version.
+  def test_invalid_is_false_for_clean_source
+    refute Mutineer::Parser.invalid?("1 - 2")
   end
 
-  def test_new_errors_reports_a_new_kind_of_error
-    assert Mutineer::Parser.new_errors?(BROKEN, BROKEN.sub("1 + 2", "1 + ("))
+  def test_invalid_is_true_for_a_syntax_error
+    assert Mutineer::Parser.invalid?("def m\n  1 + (\nend\n")
   end
 
-  def test_new_errors_reports_a_second_error_with_the_same_message
-    assert Mutineer::Parser.new_errors?(BROKEN, BROKEN.sub("1 + 2", "def c(y, y); end"))
+  # Prism 2 reports this line as a dynamic constant assignment; Ruby loads it.
+  def test_invalid_is_false_for_a_constant_op_assign_in_a_method
+    refute Mutineer::Parser.invalid?("def m\n  T += 1\n  T ||= 2\n  T &&= 3\nend\n")
   end
 
-  # cubic: one edit that removes the existing error and adds another with the
-  # same message in the same declaration is still a new error.
-  def test_new_errors_reports_a_same_message_error_that_replaces_the_old_one
-    assert Mutineer::Parser.new_errors?(BROKEN, BROKEN.sub("def a(x, x)", "def a(y, y)"))
+  # An existing error that Ruby itself rejects still makes every mutant
+  # invalid, as before #392.
+  def test_invalid_is_true_when_ruby_rejects_an_existing_error
+    assert Mutineer::Parser.invalid?("def a(x, x)\nend\n\ndef b\n  1 - 2\nend\n")
   end
 
-  # cubic: the same message over identical text, moved by one edit, is new.
-  def test_new_errors_reports_the_same_error_moved_by_the_edit
-    moved = BROKEN.sub("def a(x, x)\nend\n\ndef b\n", "def a(x)\nend\n\ndef b(x, x)\n")
-    assert Mutineer::Parser.new_errors?(BROKEN, moved)
+  # The same message after the edit is not enough: Ruby refuses `T = a` in a
+  # method, though Prism 2 reports it as it reports `T += a`.
+  def test_invalid_is_true_when_an_edit_swaps_in_an_error_ruby_rejects
+    assert Mutineer::Parser.invalid?("def m(a)\n  T = a\nend\n")
   end
 
-  # An error after the edit keeps its identity although its offsets move.
-  def test_new_errors_ignores_an_existing_error_after_the_edit
-    source = "x = 1 + 2\ndef a(y, y)\nend\n"
-    refute Mutineer::Parser.new_errors?(source, source.sub("1 + 2", "10000 - 20000"))
+  # operand_removal keeps the operand with the constant write; Ruby loads it.
+  def test_invalid_is_false_when_an_edit_keeps_a_loadable_error
+    refute Mutineer::Parser.invalid?("def m(a, b)\n  ((T ||= b))\nend\n")
   end
 
-  # predictability: an existing error that encloses the edit is not new. Every
-  # Prism marks a constant write in a def whole, as Prism 2 marks `T += 1`.
-  def test_new_errors_ignores_an_existing_error_that_encloses_the_edit
-    source = "def m\n  B = 1 + 2\nend\n"
-    refute Mutineer::Parser.new_errors?(source, source.sub("1 + 2", "1 - 2"))
-    refute Mutineer::Parser.new_errors?(source, source.sub("1 + 2", "10 + 20"))
+  # `--daemon` checks mutants on several threads, so overlapping compiles must
+  # still leave the caller's warning setting in place. The stubbed compile
+  # yields to the other threads while warnings are off.
+  def test_invalid_restores_the_warning_setting_across_threads
+    verbose = $VERBOSE
+    $VERBOSE = false
+    RubyVM::InstructionSequence.stub(:compile, ->(_source) { Thread.pass }) do
+      8.times.map { Thread.new { 20.times { Mutineer::Parser.send(:compiles?, "1") } } }.each(&:join)
+    end
+    assert_equal false, $VERBOSE
+  ensure
+    $VERBOSE = verbose
   end
 
-  # The same error growing past the original's end still encloses the edit;
-  # one that now starts inside the edit is new.
-  def test_new_errors_reports_an_error_that_starts_inside_the_edit
-    source = "def m\n  B = 1\nend\n"
-    assert Mutineer::Parser.new_errors?(source, source.sub("  B = 1", "  x = 1; C = 1"))
-  end
-
-  # cubic: condition negation wraps an existing error, so the error lies wholly
-  # inside the edit; with the same message and text it is not new.
-  def test_new_errors_ignores_an_existing_error_the_edit_wraps
-    source = "def m\n  if B = 1\n    2\n  end\nend\n"
-    refute Mutineer::Parser.new_errors?(source, source.sub("if B = 1", "if !(B = 1)"))
-    assert Mutineer::Parser.new_errors?(source, source.sub("if B = 1", "if !(B = 1 + (C = 2))"))
-  end
-
-  # Found by parse_error_metamorphic_test: after a deletion, an existing error
-  # that ends where the edit starts may enclose it, not lie before it.
-  def test_new_errors_ignores_an_existing_error_that_a_deletion_shrinks
-    source = "def m(a)\n  C = [a].map { |v| v }\nend\n"
-    refute Mutineer::Parser.new_errors?(source, source.sub(".map { |v| v }", ""))
-  end
-
-  # The other direction: a deletion that makes a new error at its boundary is
-  # still new, though the original has an error of its own elsewhere.
-  def test_new_errors_reports_a_new_error_a_deletion_makes_at_its_boundary
-    source = "def m(a, a)\n  xC = 1\nend\n"
-    assert Mutineer::Parser.new_errors?(source, source.sub("xC", "C"))
-  end
-
-  def test_new_errors_is_false_for_clean_source
-    refute Mutineer::Parser.new_errors?("1 + 2", "1 - 2")
+  # A compile warning (an assignment in a condition) does not reach stderr.
+  def test_invalid_prints_no_compile_warning
+    _out, err = capture_io { refute Mutineer::Parser.invalid?("def m(a)\n  T += 1 if a = 1\nend\n") }
+    assert_empty err
   end
 end

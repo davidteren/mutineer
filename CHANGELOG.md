@@ -14,10 +14,11 @@ All notable changes to this project are documented here. The format is based on
   assignment. Ruby's `parse.y` does the same, but Ruby 3.4 and 4.0 load such
   a file with their own Prism 1. Mutineer kept a mutant only when the mutated
   file parsed with no errors, so on Prism 2 every mutant of that file was
-  counted as `skipped (invalid)`. A mutant is now invalid only when it adds a
-  parse error that the original source does not have. This holds in the dry
-  run, in process, on `--daemon`, and for the redefine strategy's method
-  snippet. A project gets Prism 2 when its bundle loads it, for example
+  counted as `skipped (invalid)`. When Prism reports an error, Mutineer now
+  asks the running Ruby to compile the mutant, and skips it only when Ruby
+  cannot. This holds in the dry run, in process, with `--test-command`, on
+  `--daemon`, and for the redefine strategy's method snippet. A project gets
+  Prism 2 when its bundle loads it, for example
   through minitest 6.1. On Prism 2, the mutants of such a file that were
   skipped now get a verdict, so the score, the counts, and the JSON report
   can change for those projects. Prism 1 runs do not change.

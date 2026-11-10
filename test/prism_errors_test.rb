@@ -68,7 +68,7 @@ class PrismErrorsTest < Minitest::Test
     skip "this Prism accepts a constant op-assign in a method" if Mutineer::Parser.parse_string(SOURCE).errors.empty?
 
     ["LIMIT -= 1", "LIMIT += 2"].each do |edit|
-      refute Mutineer::Parser.new_errors?(SOURCE, SOURCE.sub("LIMIT += 1", edit)), edit
+      refute Mutineer::Parser.invalid?(SOURCE.sub("LIMIT += 1", edit)), edit
     end
   end
 
