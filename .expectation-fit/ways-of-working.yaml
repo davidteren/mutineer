@@ -40,6 +40,7 @@ conventions:
       values to the CLI and checks exit codes. It never rereads paths as
       text and never copies a CLI rule (#394, #395).'
     - 'Pin the dependency you test: A CI job that tests a dependency
-      version pins that version in its own gemfile. CI resolves gems again
-      on each run, so an unpinned gemfile can test a different version and
-      give false coverage (#400).'
+      version pins it in its own gemfile, at least to the major version
+      it tests (for example `~> 2.0`). CI resolves gems again on each run,
+      so an unpinned gemfile can test a different version and give false
+      coverage (#400).'
