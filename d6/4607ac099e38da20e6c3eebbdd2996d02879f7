@@ -1,0 +1,19 @@
+test/prism_errors_test.rb
+  s_a12e4330c42b30::t_178778fbeac259 65-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d64607ac099e38da20e6c3eebbdd2996d02879f7",
+  "prompts": {},
+  "sessions": {
+    "s_a12e4330c42b30": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9d2c16-0f97-4f2e-8126-710411fe79ea",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
