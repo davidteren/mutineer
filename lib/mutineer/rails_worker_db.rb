@@ -488,6 +488,16 @@ module Mutineer
       end
     end
 
+    # Turns off Rails' pending-migration check in this mutant fork (#385).
+    # `rails/test_help` runs it when the tests load, and it queries every
+    # database, shared ones too, so {touched_shared_databases} would flag every
+    # mutant. The clean check still runs it, before any mutant.
+    #
+    # @return [void]
+    def self.skip_schema_check!
+      ActiveRecord.maintain_test_schema = false if ActiveRecord.respond_to?(:maintain_test_schema=)
+    end
+
     # Names from `shared` whose database this fork used. Run in a fork after
     # its tests: a name here means a test used a database that parallel
     # workers share, so the verdict cannot be trusted. A pool counts when it

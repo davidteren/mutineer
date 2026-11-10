@@ -560,6 +560,8 @@ class ReporterTest < Minitest::Test
     assert_includes err, "(2 skipped (invalid); 50.0%"
     assert_includes err, "did not re-parse"
     assert_includes err, "https://github.com/davidteren/mutineer/issues"
+    # #392: the parser version decides validity, so the report must name it.
+    assert_includes err, "with the source file and these versions: Ruby #{RUBY_VERSION}, Prism #{Prism::VERSION}."
     refute_includes err, "unplaceable"
   end
 

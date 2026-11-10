@@ -206,8 +206,9 @@ module Mutineer
     # block (#297): the mutated file with one statement added just before the
     # hook call, `::Mutineer::ConcernBlocks.store_hook_def do <mutated def> end`.
     # The statement sits in the same body as the hook call, so the stored def has
-    # the block's constant scope. After the load, the child passes the hook-def
-    # values to {ConcernBlocks.place_hook_def}. Shared by {Runner.run} and
+    # the block's constant scope. The child passes the hook-def values to
+    # {ConcernBlocks.load_mutant}, which places the def when the load reaches
+    # that statement (#348). Shared by {Runner.run} and
     # {DaemonBackend.job_result}, so both build the same text. The hook call starts
     # before the def, so the mutation does not move its offset. A bad insert is
     # not checked here: the child's `load` raises `SyntaxError` before any test
