@@ -1,0 +1,19 @@
+lib/mutineer/reload_guards.rb
+  s_e18bc297170be2::t_f50d42b07b0a3d 239-241,254
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5cef8b334a29854e4c8d50e44bda72d9789677e3",
+  "prompts": {},
+  "sessions": {
+    "s_e18bc297170be2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3c0b053-0921-491b-bd29-b8372eabdad8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
