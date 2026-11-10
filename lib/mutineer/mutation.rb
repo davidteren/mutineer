@@ -16,12 +16,13 @@ module Mutineer
       source.byteslice(0, start_offset) + replacement + source.byteslice(end_offset..)
     end
 
-    # Checks whether the mutated source still parses cleanly.
+    # Checks whether the running Ruby can still load the mutated source (see
+    # {Parser.invalid?}).
     #
     # @param source [String] original source text.
-    # @return [Boolean] true when the mutated source re-parses without errors.
+    # @return [Boolean] true when the mutated source re-parses.
     def valid?(source)
-      Parser.parse_string(apply(source)).errors.empty?
+      !Parser.invalid?(apply(source))
     end
   end
 end

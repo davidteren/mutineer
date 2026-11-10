@@ -28,6 +28,17 @@ class MutationTest < Minitest::Test
     refute m.valid?(source)
   end
 
+  # #392: a line Prism 2 reports but Ruby loads does not make the mutant
+  # invalid; an edit Ruby cannot load still does.
+  def test_valid_ignores_an_error_ruby_still_loads
+    source = "def a\n  T += 1\nend\nc = a + b\n"
+    plus = source.rindex("+")
+    keep = Mutineer::Mutation.new(start_offset: plus, end_offset: plus + 1, replacement: "-", operator: :arithmetic)
+    broken = Mutineer::Mutation.new(start_offset: plus, end_offset: plus + 1, replacement: "(", operator: :arithmetic)
+    assert keep.valid?(source)
+    refute broken.valid?(source)
+  end
+
   # C1: Prism offsets are BYTE offsets. A multibyte char before the mutation
   # point shifts char index off byte offset; byte-correct apply must still splice
   # the right token. With char slicing this corrupts the output.

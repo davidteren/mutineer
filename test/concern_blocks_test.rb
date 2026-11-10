@@ -135,6 +135,33 @@ class ConcernBlocksTest < Minitest::Test
     end
   end
 
+  # #387: Rails' DeprecatedConstantProxy is a Module that forwards every call
+  # to its target and warns. Placing a hook def must not ask it for methods.
+  def test_place_hook_def_does_not_ask_a_deprecation_proxy_for_methods
+    proxy_class = Class.new(Module) do
+      attr_reader :calls
+
+      def initialize = (@calls = 0)
+      def class = Monitor # forwards, as the real proxy does
+      def method_defined?(*) = (@calls += 1) && false
+      def private_method_defined?(*) = (@calls += 1) && false
+    end
+    deprecation = Module.new
+    deprecation.const_set(:DeprecatedConstantProxy, proxy_class)
+    ActiveSupport.const_set(:Deprecation, deprecation)
+    proxy = proxy_class.new
+    with_hook_concern("def tag = :original") do |source, line|
+      host = Class.new { include HookPlaced } # held, so a GC during placement keeps it
+      Mutineer::ConcernBlocks.store_hook_def { def tag = :mutant }
+
+      assert_equal 1, place(source, line, :tag)
+      assert_equal :mutant, host.new.tag
+      assert_equal 0, proxy.calls
+    end
+  ensure
+    ActiveSupport.send(:remove_const, :Deprecation) if ActiveSupport.const_defined?(:Deprecation, false)
+  end
+
   def test_place_hook_def_skips_an_override_and_an_inheritor
     with_hook_concern("def tag = :original") do |source, line|
       host = Class.new { include HookPlaced }

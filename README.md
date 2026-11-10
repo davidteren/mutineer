@@ -140,7 +140,7 @@ This gap is common in rushed tests and tests written by AI agents.
 | Alternative backend | Changes to step 4 |
 |---|---|
 | `--daemon` | Boots Rails once in a persistent process; isolates each worker's test database |
-| `--test-command` | Runs tests in another Ruby subprocess; writes mutants to the real file, then restores it |
+| `--test-command` | Runs tests in another Ruby subprocess; writes mutants to the real file, then restores it. Run the tests in a fixed order (`SEED=1 mutineer run ...` for Minitest, `--order defined` for RSpec, with no `--order rand` in `SPEC_OPTS`) |
 
 | At a glance | |
 |---|---|

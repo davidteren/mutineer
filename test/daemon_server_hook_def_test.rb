@@ -91,6 +91,44 @@ class DaemonServerHookDefTest < Minitest::Test
     assert_predicate result, :survived?, "the object must dispatch to its singleton class's mutated method"
   end
 
+  # #348: the fixture's last line calls the def while the file loads, so the
+  # daemon must place the mutant before that line runs.
+  def test_apply_payload_places_the_hook_def_before_later_load_time_calls
+    fixture = File.expand_path("fixtures/singleton/hook_load_time.rb", __dir__)
+    sent = payload("x * 5", fixture: fixture, only: "HookLoadTime#doubled")
+    result = Mutineer::Isolation.run do
+      require fixture
+      Mutineer::DaemonServer.send(:apply_payload, sent)
+      HOOK_LOAD_TIME_TOTAL == 10 ? 0 : 1
+    end
+    assert_predicate result, :survived?, "the load-time call must get the mutated def"
+  end
+
+  def test_apply_payload_places_a_prepended_hook_def_before_later_load_time_calls
+    fixture = File.expand_path("fixtures/singleton/hook_load_time.rb", __dir__)
+    sent = payload("x + 8", fixture: fixture, only: "HookLoadTimeWrap#bumped")
+    result = Mutineer::Isolation.run do
+      require fixture
+      Mutineer::DaemonServer.send(:apply_payload, sent)
+      HOOK_LOAD_TIME_BUMPED == 10 ? 0 : 1
+    end
+    assert_predicate result, :survived?, "the load-time call must get the mutated prepended def"
+  end
+
+  # #348: placement runs during the load, so a handle the file holds across
+  # its hook call and drops by the end must not score error. The kept-handle
+  # check runs after the load.
+  def test_apply_payload_places_a_hook_def_despite_a_handle_released_by_load_end
+    sent = payload("x * 5")
+    sent["code"] = "held = ConcernProduct.instance_method(:doubled)\n#{sent["code"]}\nheld = nil\n"
+    result = Mutineer::Isolation.run do
+      require FIXTURE
+      Mutineer::DaemonServer.send(:apply_payload, sent)
+      ConcernProduct.new.doubled(2) == 10 ? 0 : 1
+    end
+    assert_predicate result, :survived?, "a handle gone after the load must not block placement"
+  end
+
   def test_apply_payload_scores_an_aliased_wrapper_as_error
     sent = payload("x * 5")
     result = Mutineer::Isolation.run do
