@@ -59,9 +59,11 @@ jobs:
     name: test (ruby 3.4, prism 2)
     runs-on: ubuntu-latest
     # Ruby 3.4 ships Prism 1. This job pins Prism 2, so the Prism 2 tests in
-    # test/prism_errors_test.rb run instead of skipping (#392, #400).
+    # test/prism_errors_test.rb run. MUTINEER_REQUIRE_PRISM_ERRORS turns their
+    # skip into a failure, so the job cannot pass without them (#392, #400).
     env:
       BUNDLE_GEMFILE: ${{ github.workspace }}/gemfiles/prism2.gemfile
+      MUTINEER_REQUIRE_PRISM_ERRORS: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1
@@ -72,8 +74,6 @@ jobs:
       # processes fall back to the root Gemfile. Install that bundle too.
       - name: Install root bundle
         run: BUNDLE_GEMFILE="$GITHUB_WORKSPACE/Gemfile" bundle install
-      - name: Check that Prism 2 is loaded
-        run: bundle exec ruby -e 'require "prism"; puts Prism::VERSION; abort "expected Prism 2" unless Prism::VERSION.start_with?("2.")'
       - name: Run tests
         run: bundle exec rake test
 

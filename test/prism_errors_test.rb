@@ -12,7 +12,7 @@ require "tmpdir"
 # Prism 1. A mutant elsewhere in that file, and one in the same method (the
 # redefine snippet holds that line too), must still run and get a verdict, on
 # both strategies. The test runs where the loaded Prism reports the error
-# (CI's Prism 2 job pins it, #400) and skips on Prism 1.
+# (CI's Prism 2 job pins it and fails on a skip, #400) and skips on Prism 1.
 class PrismErrorsTest < Minitest::Test
   LIB = File.expand_path("../lib", __dir__)
 
@@ -48,7 +48,7 @@ class PrismErrorsTest < Minitest::Test
   RUBY
 
   def test_an_error_ruby_still_loads_does_not_skip_the_files_other_mutants
-    skip "this Prism accepts a constant op-assign in a method" if Mutineer::Parser.parse_string(SOURCE).errors.empty?
+    skip_unless_prism_reports_the_error
 
     # Devin: each mutant must be killed by the test of its own method, so a
     # load failure that fails every test cannot pass for a kill.
@@ -65,7 +65,7 @@ class PrismErrorsTest < Minitest::Test
   # Prism 2 marks the whole `LIMIT += 1` write as the error, and Ruby still
   # loads an edit inside it, so that mutant is valid.
   def test_an_edit_inside_the_line_prism_rejects_is_still_valid
-    skip "this Prism accepts a constant op-assign in a method" if Mutineer::Parser.parse_string(SOURCE).errors.empty?
+    skip_unless_prism_reports_the_error
 
     ["LIMIT -= 1", "LIMIT += 2"].each do |edit|
       refute Mutineer::Parser.invalid?(SOURCE.sub("LIMIT += 1", edit)), edit
@@ -73,6 +73,16 @@ class PrismErrorsTest < Minitest::Test
   end
 
   private
+
+  # Skips on a Prism that accepts the line. CI's Prism 2 job sets
+  # MUTINEER_REQUIRE_PRISM_ERRORS, so there a skip fails the run instead (#400).
+  def skip_unless_prism_reports_the_error
+    return unless Mutineer::Parser.parse_string(SOURCE).errors.empty?
+
+    message = "Prism #{Prism::VERSION} accepts a constant op-assign in a method"
+    flunk "#{message}, but MUTINEER_REQUIRE_PRISM_ERRORS is set" if ENV["MUTINEER_REQUIRE_PRISM_ERRORS"]
+    skip message
+  end
 
   # Runs Mutineer in a child Ruby (it loads the fixture's classes) with
   # `matrix`, and returns each result as [subject, operator, status, the tests
