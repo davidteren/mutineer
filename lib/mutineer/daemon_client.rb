@@ -89,7 +89,10 @@ module Mutineer
 
     # Why the last {#request} answered `"error"`: the redacted `Class: message`
     # line from the daemon's child (#388). nil when that reply carried none,
-    # or the last request answered anything else.
+    # or the last request answered anything else. Read it right after
+    # {#request}: a client serves one worker thread at a time
+    # ({DaemonBackend} gives each thread its own), so no other request can
+    # replace it in between.
     #
     # @return [String, nil]
     attr_reader :last_cause
