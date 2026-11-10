@@ -819,14 +819,14 @@ module Mutineer
         end
         # Name the methods the operators passed over (#386), so an empty run on
         # real code points at the operator set, not at the paths.
-        causes << if methods == 1
-                    "1 method was found, and the selected operators made no mutant in it " \
-                      "(--list-operators shows the others)."
-                  elsif methods > 1
-                    "#{methods} methods were found, and the selected operators made no mutant in any of them " \
-                      "(--list-operators shows the others)."
+        if methods.positive?
+          found = if methods == 1
+                    "1 method was found, and the selected operators made no mutant in it"
+                  else
+                    "#{methods} methods were found, and the selected operators made no mutant in any of them"
                   end
-        causes.compact!
+          causes << "#{found} (--list-operators shows the others)."
+        end
         causes << "Check that the sources contain code the operators mutate." if causes.empty?
         cause = causes.join(" ")
         warn "mutineer: no mutants were generated. #{cause} The run exits 0, and #{BECOMES_ERROR_IN_2_0}. " \

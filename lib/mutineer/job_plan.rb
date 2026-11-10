@@ -108,10 +108,14 @@ module Mutineer
         id_path = (id_paths[subject.file] ||= ProjectPath.relative(subject.file, config.project_root))
         decls = name_decls[[id_path, subject.qualified_name]]
         ordinal = (decls[subject.def_node.location.start_offset] ||= decls.size)
-        subjects[[id_path, subject.def_node.location.start_offset]] ||=
-          if mutations.empty?
-            { subject: subject.qualified_name, file: subject.file, line: subject.def_node.location.start_line }
-          end
+        # The first path spelling of a def wins; later spellings are the same method.
+        key = [id_path, subject.def_node.location.start_offset]
+        unless subjects.key?(key)
+          subjects[key] = if mutations.empty?
+                            { subject: subject.qualified_name, file: subject.file,
+                              line: subject.def_node.location.start_line }
+                          end
+        end
         ids = MutantId.for_subject(subject, source, mutations, path: id_path, subject_ordinal: ordinal)
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
         lines = mutations.map { |m| source.byteslice(0, m.start_offset).count("\n") + 1 }

@@ -1043,6 +1043,8 @@ class RunnerTest < Minitest::Test
       config = Mutineer::Config.new(sources: [b, a], project_root: root)
       _, _, _, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic]))
       assert_equal [[a, 2], [b, 2], [b, 3]], extras[:unmutated_subjects].map { |h| [h[:file], h[:line]] }
+      again = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic])).last
+      assert_equal JSON.generate(extras[:unmutated_subjects]), JSON.generate(again[:unmutated_subjects])
     end
   end
 
