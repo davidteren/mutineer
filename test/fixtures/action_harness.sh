@@ -236,3 +236,106 @@ run_step case18e STUB_EXIT=0 OUTPUT="ecache/pr.json" EXTRA_ARGS="--cache-dir=eca
 echo; echo "== 18f: cache dir from a short extra-args form the CLI accepts (#340) =="
 run_step case18f STUB_EXIT=0 OUTPUT="scache/pr.json" EXTRA_ARGS="--cache=scache"
 [ -s scache/pr.json ] && echo "  OK: short-form cache dir created" || echo "  FAIL: short-form cache dir output missing"
+
+# == 19: one table of unusual path names, run through every path input (#401) ==
+# Each name goes through every input that takes a path. A row asserts the
+# files and folders the Action leaves, not only its exit code. extra-args is
+# split on whitespace by design, so names with a space or a newline skip the
+# extra-args rows. A known gap prints TABLE-GAP while it fails, and FAIL once
+# it passes, so the list cannot go stale.
+echo; echo "== 19: unusual path names through every path input (#401) =="
+rm -rf .mutineer .mutineer.yml
+TABLE_LABELS=(space newline dash glob unicode)
+TABLE_NAMES=("sp ace" "nl"$'\n' "-dash" "gl*ob" "ünï")
+# " row/label=#issue " entries, space-separated. The newline baseline from
+# .mutineer.yml loses its newline in $( ); PR #395 fixes it for #394.
+KNOWN_GAPS=" yml-baseline/newline=#394 "
+children() { ruby -e 'print Dir.children(".").sort.inspect'; }
+CLEAN_TREE="$(children; printf .)"
+why() { echo "$*" > "$SCRATCH/table-why"; return 1; }
+# Runs one row, removes what it made, and checks that nothing else was left.
+table_row() { # row, label, name, the row's function
+  local row=$1 label=$2 name=$3 fn=$4 ok=0 gap=""
+  : > "$SCRATCH/table-why"
+  rm -rf "$SCRATCH/t"
+  "$fn" "$name" > "$SCRATCH/table-row.log" 2>&1 || ok=1
+  rm -rf -- "./$name" .mutineer.yml
+  if [ "$ok" = 0 ] && [ "$(children; printf .)" != "$CLEAN_TREE" ]; then
+    why "left a stray entry: $(children)"; ok=1
+  fi
+  rm -rf -- "${name%%[[:space:]]*}"
+  case "$KNOWN_GAPS" in *" $row/$label="*) gap="${KNOWN_GAPS#*" $row/$label="}"; gap="${gap%% *}" ;; esac
+  if [ "$ok" = 0 ] && [ -z "$gap" ]; then echo "  TABLE-OK: $row/$label"
+  elif [ "$ok" = 0 ]; then echo "  FAIL: $row/$label passes now; remove it from KNOWN_GAPS ($gap)"
+  elif [ -n "$gap" ]; then echo "  TABLE-GAP: $row/$label ($gap)"
+  else echo "  FAIL: $row/$label: $(cat "$SCRATCH/table-why")"
+  fi
+}
+baseline_rejected() { # name: the baseline is untouched and the run refused
+  [ "$(cat -- "./$1")" = "{}" ] || why "baseline was replaced" || return
+  [ -s "$SCRATCH/stub-args.txt" ] && { why "mutineer ran on a same-file baseline"; return; }
+  grep -q 'are the same file' "$SCRATCH/t/stdout.txt" || why "no same-file error"
+}
+
+# output: a folder and a file with the name.
+row_output() {
+  mkdir -- "./$1"
+  run_step t STUB_EXIT=0 OUTPUT="$1/$1"
+  [ -s "./$1/$1" ] || why "report not delivered to output" || return
+  local got
+  got="$(ruby -e 'print File.read(ARGV[0])[/^report<<(\S+)\n(.*)\n\1$/m, 2], "."' "$SCRATCH/t/gh-output.txt")"
+  [ "${got%.}" = "$(pwd -P)/$1/$1" ] || why "report= is not the output path"
+}
+# output under a missing cache folder that .mutineer.yml names.
+row_yml_cache() {
+  ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => ARGV[0]}.to_yaml)' -- "$1"
+  run_step t STUB_EXIT=0 OUTPUT="$1/pr.json"
+  [ -s "./$1/pr.json" ] || why "cache folder not created or report not delivered"
+}
+# output under a missing cache folder that extra-args names.
+row_args_cache() {
+  run_step t STUB_EXIT=0 OUTPUT="$1/pr.json" EXTRA_ARGS="--cache-dir=$1"
+  [ -s "./$1/pr.json" ] || why "cache folder not created or report not delivered"
+}
+# baseline input, output the same file.
+row_baseline() {
+  echo "{}" > "./$1"
+  run_step t STUB_EXIT=1 OUTPUT="$1" BASELINE="$1"
+  baseline_rejected "$1"
+}
+# baseline from .mutineer.yml, output the same file.
+row_yml_baseline() {
+  echo "{}" > "./$1"
+  ruby -ryaml -e 'File.write(".mutineer.yml", {"baseline" => ARGV[0]}.to_yaml)' -- "$1"
+  run_step t STUB_EXIT=1 OUTPUT="$1"
+  baseline_rejected "$1"
+}
+# baseline from extra-args, output the same file.
+row_args_baseline() {
+  echo "{}" > "./$1"
+  run_step t STUB_EXIT=1 OUTPUT="$1" EXTRA_ARGS="--baseline=$1"
+  baseline_rejected "$1"
+}
+# working-directory: the annotation file= field keeps the escaped name.
+row_workdir() {
+  run_step t WORKING_DIRECTORY="$1"
+  local want="${1//%/%25}"
+  want="${want//$'\n'/ }"; want="${want//:/%3A}"; want="${want//,/%2C}"
+  grep -qF -- "::error file=$want/lib/calc.rb,line=20," "$SCRATCH/t/stdout.txt" || why "annotation file= lost the name"
+}
+
+for i in "${!TABLE_NAMES[@]}"; do
+  name="${TABLE_NAMES[$i]}" label="${TABLE_LABELS[$i]}"
+  table_row output "$label" "$name" row_output
+  table_row yml-cache "$label" "$name" row_yml_cache
+  table_row baseline "$label" "$name" row_baseline
+  table_row yml-baseline "$label" "$name" row_yml_baseline
+  table_row workdir "$label" "$name" row_workdir
+  case "$name" in
+    *[[:space:]]*) echo "  TABLE-SKIP: args-cache/$label, args-baseline/$label (extra-args splits on whitespace)" ;;
+    *)
+      table_row args-cache "$label" "$name" row_args_cache
+      table_row args-baseline "$label" "$name" row_args_baseline
+      ;;
+  esac
+done

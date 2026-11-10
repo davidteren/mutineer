@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Action accepts an `output` path that starts with a dash or ends in a
+  newline (#401).** Before, `output: -dash/pr.json` stopped the step with a
+  `dirname` or `ruby` usage error, so a same-file `baseline` was not checked.
+  An `output` folder or file name that ended in a newline lost it, so the
+  report went to the wrong place or the `report` output named the wrong
+  path. The Action test now runs one table of unusual names (space, newline,
+  leading dash, `*`, non-ASCII) through every path input. One known gap
+  stays: a `.mutineer.yml` baseline that ends in a newline. #394 tracks it.
+
 ## [1.8.2] - 2026-11-10
 
 ### Fixed
