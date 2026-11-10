@@ -1,0 +1,14 @@
+{
+  "repo": "https://github.com/palkan/fizzy.git",
+  "commit": "f220e4832bf40b6f4d4f944253d7a7731d366d37",
+  "files": [
+    "app/models/magic_link.rb",
+    "app/models/user/role.rb",
+    "app/controllers/join_codes_controller.rb",
+    "app/models/card/postponable.rb",
+    "app/models/card/stallable.rb",
+    "app/models/card/statuses.rb",
+    "app/models/account/import.rb",
+    "app/models/account/join_code.rb"
+  ]
+}

@@ -164,6 +164,16 @@ default flip must never reach them without opting in.
 The release procedure. A maintainer owns every step. An agent may do steps
 1 to 4 after that maintainer agrees to this release:
 
+Before step 1, run the Fizzy sample check on current `main` (issue #402):
+`bundle exec rake fizzy:sample`. It runs this checkout on a pinned commit of
+Fizzy, a real Rails 8 app, and compares the counts with
+`rake/fizzy_sample.json`. It needs Fizzy's Ruby through rbenv or asdf and
+network access for the first clone and gem install. It writes nothing on
+GitHub, so an agent may run it. If it fails, explain each difference by the
+merged pull request that caused it, in a pull request that runs
+`bundle exec rake fizzy:record`. A new `errored` count blocks the release
+until it is fixed. Merge that pull request before step 1.
+
 1. Prepare the pull request when they want a batch, from `main`:
    ```sh
    gh workflow run release-pr.yml --ref main
