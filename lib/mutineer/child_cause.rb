@@ -34,13 +34,19 @@ module Mutineer
       Redaction::FAILED
     end
 
-    # Write {line} for `error` to the pipe. Never raises: a failed write only
-    # loses the cause, never the verdict.
+    # Write {line} for `error` to the pipe, but only from the mutant's child
+    # itself. A grandchild made with a bare `fork` (no block) runs the child's
+    # code after the fork, so its error can reach the same rescue; it writes
+    # nothing, so `details` never names another process's error. Never
+    # raises: a failed write only loses the cause, never the verdict.
     #
     # @param io [IO] the pipe's write end, with `sync` on (the child ends with `exit!`).
     # @param error [Exception]
+    # @param owner [Integer] the pid of the mutant's child.
     # @return [void]
-    def write(io, error)
+    def write(io, error, owner)
+      return unless Process.pid == owner
+
       io.write("#{line(error)}\n")
     rescue StandardError
       nil

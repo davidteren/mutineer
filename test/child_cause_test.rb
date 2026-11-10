@@ -60,7 +60,7 @@ class ChildCauseTest < Minitest::Test
     wr.sync = true
     pid = fork do
       rd.close
-      Mutineer::ChildCause.write(wr, RuntimeError.new("café"))
+      Mutineer::ChildCause.write(wr, RuntimeError.new("café"), Process.pid)
       exit!(2)
     end
     wr.close
@@ -70,6 +70,28 @@ class ChildCauseTest < Minitest::Test
     assert_equal "RuntimeError: café", line
     assert_equal Encoding::UTF_8, line.encoding
     JSON.generate("details" => line)
+  ensure
+    rd&.close
+    wr&.close unless wr&.closed?
+  end
+
+  # A bare `fork` copies the child's stack, so a grandchild's error can reach
+  # the child's rescue. Only the child itself may write.
+  def test_a_grandchild_cannot_write
+    rd, wr = IO.pipe
+    wr.sync = true
+    pid = fork do
+      rd.close
+      child = Process.pid
+      grandchild = fork
+      Mutineer::ChildCause.write(wr, RuntimeError.new(grandchild ? "child" : "grandchild"), child)
+      Process.wait(grandchild) if grandchild
+      exit!(2)
+    end
+    wr.close
+    Process.wait(pid)
+
+    assert_equal "RuntimeError: child", Mutineer::ChildCause.read(rd)
   ensure
     rd&.close
     wr&.close unless wr&.closed?

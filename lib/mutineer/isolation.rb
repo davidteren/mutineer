@@ -56,6 +56,7 @@ module Mutineer
       cause_rd, cause_wr = IO.pipe
       cause_wr.sync = true
       pid = fork do
+        child = Process.pid
         rd&.close
         cause_rd.close
         # Own process group so a timeout kill can reap grandchildren (match
@@ -73,7 +74,7 @@ module Mutineer
         rescue Exception => e # rubocop:disable Lint/RescueException
           # STDERR, not `warn`: a test may have left `$stderr` as a StringIO.
           STDERR.puts "[mutineer-child] #{Redaction.describe(e)}"
-          ChildCause.write(cause_wr, e)
+          ChildCause.write(cause_wr, e, child)
           code = 2
         end
         STDERR.flush

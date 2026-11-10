@@ -349,6 +349,7 @@ module Mutineer
         cause_rd, cause_wr = IO.pipe
         cause_wr.sync = true
         pid = fork do
+          child = Process.pid
           cause_rd.close
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
           # and silence the child's stdout so test output stays out of the diagnostics.
@@ -374,7 +375,7 @@ module Mutineer
               result
             rescue Exception => e # rubocop:disable Lint/RescueException
               @errio.puts("[daemon-child] #{describe_error(e)}")
-              ChildCause.write(cause_wr, e)
+              ChildCause.write(cause_wr, e, child)
               2
             end
           exit!(code)
