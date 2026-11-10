@@ -401,4 +401,102 @@ class PairingTest < Minitest::Test
       refute flagged?("user_test.rb", ["user_test_session_test.rb"], root: root)
     end
   end
+
+  # A concern source is app/<dir>/concerns/<rest>.rb. The namespace base drops concerns/.
+  def test_namespace_base
+    pair = Mutineer::Pairing
+    assert_equal "models/storage/totaled", pair.namespace_base("app/models/concerns/storage/totaled.rb")
+    assert_equal "controllers/authentication", pair.namespace_base("app/controllers/concerns/authentication.rb")
+    [ "lib/concerns/foo.rb", "app/concerns/baz.rb", "app/models/billing/concerns/bar.rb",
+      "concerns/qux.rb", "app/models/concerns.rb", "models/concerns/x.rb", "app/models/user.rb"
+    ].each do |path|
+      assert_nil pair.namespace_base(path), path
+    end
+  end
+
+  # The namespace test pairs when the concerns/ path has no test.
+  def test_concern_pairs_with_the_test_at_its_namespace_path
+    source = "app/models/concerns/storage/totaled.rb"
+    with_tree(source, "test/models/storage/totaled_test.rb") do |root|
+      assert_equal ["test/models/storage/totaled_test.rb"], infer_tests(source, root)
+    end
+  end
+
+  # A test at the concerns/ path wins. The namespace file is not added.
+  def test_concerns_path_wins_over_the_namespace_path
+    source = "app/models/concerns/storage/totaled.rb"
+    with_tree(source, "test/models/concerns/storage/totaled_test.rb",
+              "test/models/storage/totaled_test.rb") do |root|
+      assert_equal ["test/models/concerns/storage/totaled_test.rb"], infer_tests(source, root)
+    end
+  end
+
+  # A split file at the concerns/ path blocks the namespace fallback.
+  def test_split_file_at_the_concerns_path_blocks_the_namespace_fallback
+    source = "app/models/concerns/storage/totaled.rb"
+    with_tree(source, "test/models/concerns/storage/totaled_bytes_test.rb",
+              "test/models/storage/totaled_test.rb") do |root|
+      assert_equal ["test/models/concerns/storage/totaled_bytes_test.rb"], infer_tests(source, root)
+    end
+  end
+
+  # A controller concern uses the namespace path under test/controllers.
+  def test_controller_concern_pairs_at_the_top_level_namespace_path
+    source = "app/controllers/concerns/authentication.rb"
+    with_tree(source, "test/controllers/authentication_test.rb") do |root|
+      assert_equal ["test/controllers/authentication_test.rb"], infer_tests(source, root)
+    end
+  end
+
+  # A spec and a test_ prefix name are exact namespace names.
+  def test_concern_namespace_fallback_accepts_spec_and_test_prefix_names
+    source = "app/models/concerns/storage/totaled.rb"
+    with_tree(source, "spec/models/storage/totaled_spec.rb") do |root|
+      assert_equal ["spec/models/storage/totaled_spec.rb"], infer_tests(source, root)
+      assert_equal ["spec/models/storage/totaled_spec.rb"], infer_tests(source, root, prefer: "rspec")
+    end
+    with_tree(source, "test/models/storage/test_totaled.rb") do |root|
+      assert_equal ["test/models/storage/test_totaled.rb"], infer_tests(source, root)
+    end
+  end
+
+  # A split name at the namespace path does not pair. Issue #408 tracks that.
+  def test_split_file_at_the_namespace_path_does_not_pair_a_concern
+    source = "app/models/concerns/storage/totaled.rb"
+    with_tree(source, "test/models/storage/totaled_bytes_test.rb") do |root|
+      assert_empty infer_tests(source, root)
+    end
+  end
+
+  # Only app/<dir>/concerns/ falls back. Nested and other roots do not.
+  def test_only_a_concerns_dir_directly_below_an_app_dir_falls_back
+    with_tree("lib/concerns/foo.rb", "test/foo_test.rb",
+              "app/concerns/baz.rb", "test/baz_test.rb",
+              "app/models/billing/concerns/bar.rb", "test/models/billing/bar_test.rb",
+              "concerns/qux.rb", "test/qux_test.rb") do |root|
+      assert_empty infer_tests("lib/concerns/foo.rb", root)
+      assert_empty infer_tests("app/concerns/baz.rb", root)
+      assert_empty infer_tests("app/models/billing/concerns/bar.rb", root)
+      assert_empty infer_tests("concerns/qux.rb", root)
+    end
+  end
+
+  # The model keeps its split file. The concern may use that same test.
+  def test_model_keeps_its_split_file_when_a_concern_shares_it
+    with_tree("app/models/user.rb", "app/models/concerns/user_authentication.rb",
+              "test/models/user_test.rb", "test/models/user_authentication_test.rb") do |root|
+      assert_equal ["test/models/user_test.rb", "test/models/user_authentication_test.rb"],
+                   infer_tests("app/models/user.rb", root)
+      assert_equal ["test/models/user_authentication_test.rb"],
+                   infer_tests("app/models/concerns/user_authentication.rb", root)
+    end
+  end
+
+  # test_helper.rb is a support file. A concern named helper does not pair with it.
+  def test_helper_concern_does_not_pair_with_test_helper
+    source = "app/models/concerns/helper.rb"
+    with_tree(source, "test/models/test_helper.rb") do |root|
+      assert_empty infer_tests(source, root)
+    end
+  end
 end

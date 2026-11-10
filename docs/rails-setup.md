@@ -40,6 +40,9 @@ Check this Rails app for Mutineer's --daemon backend. Report: the test framework
 | `redefine` | Reloads the mutated method and each directly enclosing method, not the whole file. |
 | Methods nested in blocks | A method inside a block such as `define_method` can falsely survive. Use `--strategy reload`. |
 
+A file at `app/<dir>/concerns/` pairs with an exact namespace test when the `concerns/` path has none.
+See the [pairing table](ci.md).
+
 Both strategies write a hidden `.mutineer_mutant*.rb` beside the source.
 Under `--strategy redefine`, a read-only directory falls back to a system temporary file; `reload` needs a writable source directory.
 Mutineer warns that `__dir__` or `require_relative` can then cause false kills and an inflated score.

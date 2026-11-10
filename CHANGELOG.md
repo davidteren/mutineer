@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **A concern pairs with the test that mirrors its namespace (#379).**
+  `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_test.rb`.
+  That path matches `Storage::Totaled`.
+  The `concerns/` path still wins when it has a test.
+  Existing pairs stay the same.
+  Before this, the concern was skipped and added no score.
+  The skip line was `no test found by convention`.
+  A concern that was skipped can now run.
+  That can change a score or a gate.
+  `--baseline` treats new survivors as new.
+  Refresh the baseline.
+  See `docs/ci.md`, "Refresh the baseline".
+  A failed namespace load can move a `--threshold` run from exit 0 to exit 1.
+  Those mutants move from `no_coverage` to `uncapturable`.
+  A `nil` score then fails the gate.
+  The broken share also rises.
+  An Action with an empty `version` installs the latest gem.
+  Pin `version`, or refresh the baseline, before the next run.
+  A split name pairs only at the `concerns/` path.
+  Namespace split names are issue #408 (pair split test files at a concern's namespace path).
+  Until pull request #391 (the reload fix for Rails class bodies) lands, a lazy concern can score `error`.
+
 ### Fixed
 
 - **The Action creates the cache folder when `output` points into it

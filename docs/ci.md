@@ -36,6 +36,7 @@ Directories or multiple sources run in one boot, with results per source. Tests 
 | Source or condition | Pairing |
 |---------------------|---------|
 | `app/foo/bar.rb` | `test/foo/bar_test.rb` and unclaimed `test/foo/bar_*_test.rb`, such as `bar_upsert_test.rb` |
+| `app/models/concerns/storage/totaled.rb` | Prefer `test/models/concerns/storage/totaled_test.rb`. With no test there, try `test/models/storage/totaled_test.rb`, `test_totaled.rb`, or `spec/models/storage/totaled_spec.rb`. Split files pair only at the `concerns/` path (issue #408). A concern that was skipped can now run and change a score. |
 | `user_session.rb` exists beside `user_session_test.rb` | The test stays with `user_session.rb` |
 | `bar_upsert.rb` exists | `bar_upsert_guards_test.rb` stays with `bar_upsert.rb` |
 | A spec already pairs | It stays as that one file |
