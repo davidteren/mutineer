@@ -781,13 +781,13 @@ module Mutineer
     # @return [Hash] no-verdict JSON object.
     def no_verdict_json(result)
       file = result.subject&.file
-      # Like result_line: diff_for needs the source, so both need a file.
+      # As in result_line: diff_for needs the source, so a mutation needs a file.
       m = result.mutation if file
-      _line, _orig, _mut, token = diff_for(m, source_for(file)) if m
+      line, _orig, _mut, token = diff_for(m, source_for(file)) if m
       {
         subject: result.subject&.qualified_name,
         file: file,
-        line: result_line(result),
+        line: line,
         operator: m&.operator&.to_s,
         token: token,
         id: result.id,
