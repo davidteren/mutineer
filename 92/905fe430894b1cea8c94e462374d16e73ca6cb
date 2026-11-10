@@ -1,0 +1,24 @@
+test/fizzy_sample_test.rb
+  s_a6bec147e40415::t_2aa67ee173da68 102-103
+test/release_workflow_test.rb
+  s_a6bec147e40415::t_237b431091aa26 546
+rake/fizzy_sample.rb
+  s_a6bec147e40415::t_8b0598144a0ac4 160
+  s_a6bec147e40415::t_e2ea5999abd69c 330-331,338-339
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "92905fe430894b1cea8c94e462374d16e73ca6cb",
+  "prompts": {},
+  "sessions": {
+    "s_a6bec147e40415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70696613-345c-4c5a-a1b7-097a86354e05",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
