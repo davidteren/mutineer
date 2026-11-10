@@ -456,16 +456,10 @@ module Mutineer
              else
                "never #{one ? 'runs' : 'run'} with a mutant and #{one ? 'was' : 'were'} not checked"
              end
-      warn "[mutineer] #{label}: the #{miss ? 'together' : 'clean'} check ran the #{test_files(checked)} " \
-           "that #{checked == 1 ? 'covers' : 'cover'} the sources; #{others} other #{one ? 'test file' : 'test files'} #{tail}."
+      ran = checked == 1 ? "1 test file that covers" : "#{checked} test files that cover"
+      warn "[mutineer] #{label}: the #{miss ? 'together' : 'clean'} check ran the #{ran} the sources; " \
+           "#{others} other #{one ? 'test file' : 'test files'} #{tail}."
     end
-
-    # "1 test file" or "N test files".
-    #
-    # @api private
-    # @param count [Integer]
-    # @return [String]
-    def test_files(count) = count == 1 ? "1 test file" : "#{count} test files"
 
     # Takes the map from the `--coverage-from` capture instead of capturing,
     # keeping only this run's sources, then runs the tests clean. A mutant runs
