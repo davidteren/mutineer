@@ -155,6 +155,9 @@ From [`action.yml`](https://github.com/davidteren/mutineer/blob/main/action.yml)
 The `test` input accepts files and directories.
 A directory needs mutineer 1.9.0 or later.
 An older gem rejects a directory.
+Without Bundler, the `version` input sets the gem version.
+With `use-bundler: "true"`, `Gemfile.lock` sets it.
+If a directory is rejected, check that version.
 Bash expands a glob in `test` and in `extra-args`.
 `**` matches one directory level.
 That limit is issue #406 (Action globs match one directory level).

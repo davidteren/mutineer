@@ -218,6 +218,8 @@ module Mutineer
         warn_config_root_mismatch(file_path, config.project_root) if file_path
         # Expand --test before the guard. The guard reads config.tests.
         # migrate and config do not call this (#380).
+        # A bad --test-command is reported first, not hidden by a --test error.
+        validate_test_command_shape!(config) if config.test_command
         expand_tests!(config) if config.explicit?(:tests)
         tests_as_sources = argv[1..].select do |arg|
           Pairing.test_given_as_source?(arg, project_root: config.project_root, tests: config.tests)
@@ -462,14 +464,7 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.validate_test_command!(config)
-      if config.test_command.strip.empty?
-        warn "mutineer: --test-command must not be empty"
-        exit 2
-      end
-      unless config.test_command.include?("%{files}")
-        warn "mutineer: --test-command must contain %{files} (where the --test paths are substituted)"
-        exit 2
-      end
+      validate_test_command_shape!(config)
       if config.boot
         warn "mutineer: --test-command cannot be combined with --boot/--rails " \
              "(the external subprocess boots the app itself)"
@@ -485,6 +480,23 @@ module Mutineer
 
       warn "[mutineer] --test-command runs serially (no per-worker DB isolation yet); forcing --jobs 1."
       config.jobs = 1
+    end
+
+    # The --test-command text must not be blank and must contain %{files}.
+    # It prints nothing when the text is valid, so a second call is safe.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.validate_test_command_shape!(config)
+      if config.test_command.strip.empty?
+        warn "mutineer: --test-command must not be empty"
+        exit 2
+      end
+      return if config.test_command.include?("%{files}")
+
+      warn "mutineer: --test-command must contain %{files} (where the --test paths are substituted)"
+      exit 2
     end
 
     # --daemon selects the persistent-daemon backend (boot once, fork per mutant,

@@ -1567,6 +1567,17 @@ class CliTest < Minitest::Test
     end
   end
 
+  # A bad --test-command is reported before an unmatched --test glob.
+  def test_test_command_error_comes_before_a_test_glob_error
+    with_test_expand_project do |proj|
+      _, err, status = mutineer("run", "lib/calc.rb", "--test", "nowhere/*_test.rb",
+                                "--test-command", "rake test", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "must contain %{files}"
+      refute_includes err, "matched no test files"
+    end
+  end
+
   # With --test-command, an empty directory stays one path. The run does not exit 2.
   def test_test_command_keeps_an_empty_directory
     with_test_expand_project do |proj|

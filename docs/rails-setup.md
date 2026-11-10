@@ -32,10 +32,12 @@ Check this Rails app for Mutineer's --daemon backend. Report: the test framework
    ```
 
    `--test test` also selects files under `test/system/`.
-   To skip system tests, pass this glob and any other file:
+   To skip system tests, list each test directory you use.
+   The glob selects only the directories it names.
+   Add any other directory, such as `test/services`, and each root-level test file:
 
    ```sh
-   --test 'test/{channels,controllers,helpers,integration,jobs,lib,mailers,middleware,models}/**/*_test.rb' --test test/routes_test.rb
+   RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --test 'test/{channels,controllers,helpers,integration,jobs,lib,mailers,middleware,models}/**/*_test.rb' --test test/routes_test.rb
    ```
 
 | Setting | Behaviour |
