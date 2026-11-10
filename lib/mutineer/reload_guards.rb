@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "set" # loads on its own only from Ruby 3.2; the daemon runs on the app's Ruby
+
 module Mutineer
   # Lets the reload strategy run a Rails class body a second time.
   #
@@ -208,8 +210,8 @@ module Mutineer
       #
       # @param pool [Array]
       # @return [Object, nil]
-      def self.take(pool, &)
-        index = pool.index(&)
+      def self.take(pool, &block)
+        index = pool.index(&block)
         index && pool.delete_at(index)
       end
 
@@ -260,7 +262,9 @@ module Mutineer
       end
 
       # True when two entries come from the same macro call with the same
-      # arguments: the same kind, and filters that are {.equivalent?}.
+      # arguments: the same kind, and filters and `if:`/`unless:` conditions
+      # that are {.equivalent?}. A concern and the class body can add one
+      # callback class under different conditions; those are different entries.
       #
       # @param old_entry [Object] an ActiveSupport callback from before the load.
       # @param new_entry [Object] one the load added.
@@ -268,7 +272,15 @@ module Mutineer
       # @param seen [Hash] answers already found ({.equivalent?}).
       # @return [Boolean]
       def self.same?(old_entry, new_entry, reloaded, seen = {})
-        old_entry.kind == new_entry.kind && equivalent?(old_entry.filter, new_entry.filter, reloaded, 0, seen)
+        old_entry.kind == new_entry.kind && equivalent?(old_entry.filter, new_entry.filter, reloaded, 0, seen) &&
+          equivalent?(conditions(old_entry), conditions(new_entry), reloaded, 0, seen)
+      end
+
+      # @param callback [Object] an ActiveSupport callback.
+      # @return [Array] its `if:` and `unless:` conditions, as ActiveSupport
+      #   keeps them (empty lists when it keeps none).
+      def self.conditions(callback)
+        %i[@if @unless].map { |name| callback.instance_variable_get(name) || [] }
       end
 
       # How deep {.equivalent?} looks into objects before it gives up.

@@ -363,4 +363,31 @@ class ReloadGuardsTest < Minitest::Test
 
     assert_same_list concern_entries + new_body, klass.__callbacks[:save]
   end
+
+  # Stands in for an ActiveSupport callback with `if:` conditions, which
+  # ActiveSupport keeps in `@if`.
+  class GuardedCallback
+    attr_reader :kind, :filter
+
+    def initialize(kind, filter, condition)
+      @kind = kind
+      @filter = filter
+      @if = [condition]
+    end
+  end
+
+  # A concern and the class body add one callback class under different
+  # conditions. Only the class body's repeats, so the concern's stays.
+  def test_one_callback_class_under_different_conditions_keeps_the_concern_entry
+    stamp = Class.new
+    concern_entry = GuardedCallback.new(:before, stamp, :draft?)
+    old_body = GuardedCallback.new(:before, stamp, :published?)
+    new_body = GuardedCallback.new(:before, stamp, :published?)
+    klass = callback_class
+    klass.__callbacks = { save: Chain.new(concern_entry, old_body, new_body) }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_body] } }, [__FILE__])
+
+    assert_same_list [concern_entry, new_body], klass.__callbacks[:save]
+  end
 end
