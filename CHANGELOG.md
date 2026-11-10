@@ -8,6 +8,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`--test-command` warns about a random test order (#338).** Mutineer
+  sets no seed for your command, so the clean run and each mutant run can
+  run the tests in different orders. An order-dependent suite can then fail
+  a mutant run for a reason the mutant did not cause, and that mutant
+  scores a false `killed`. When the clean run prints a random seed
+  (Minitest `Run options: --seed N`, RSpec `Randomized with seed N`) and
+  Mutineer finds no fixed seed, it now prints one warning with the fix for
+  that runner: put `SEED=1` before the `mutineer` command for Minitest, or
+  add `--order defined` to an RSpec command and keep `--order rand` out of
+  `SPEC_OPTS`, which RSpec reads after the command. The docs for
+  `--test-command` say the same. Mutineer does not set the seed itself, so scores do not
+  change. It cannot see a seed set in a wrapper script or `.rspec`, or a
+  Minitest `test_order`, so the warning can print when the order is
+  already fixed. #368 tracks these limits.
 - **Reload places a hook-block mutant before the rest of its file runs
   (#348).** Under `--strategy reload`, a placeable mutated method from a
   concern's `included` or `prepended` block reached the classes that include
