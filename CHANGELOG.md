@@ -58,6 +58,51 @@ All notable changes to this project are documented here. The format is based on
   of `output`: `.mutineer` by default, the `cache_dir` from `.mutineer.yml`,
   or a `--cache-dir` in `extra-args` (or a prefix of it down to `--cac`, such as
   `--cache`). Any other missing folder still exits 2.
+- **Reload runs a Rails class body a second time without errors (#378,
+  #384).** Reload loads the mutant file over the class that is already
+  defined, so its body runs again. A model that declares an `enum`, and a
+  class that calls `skip_callback` (a controller's `skip_before_action` or
+  `allow_unauthenticated_access` calls it), raised on that second run, and
+  every mutant in the file scored `error`. While the mutant file loads, an
+  enum the class had before the load now skips Rails' conflict check, and
+  `skip_callback` does not raise for a callback the first run already
+  removed: one named by a method the class has, such as a callback from the
+  parent class or an included concern. A skip that names no such method or
+  parent callback still raises. Both checks run as usual while the tests
+  run. This holds on `--daemon` and with `--strategy reload`.
+- **Reload no longer runs validators and block callbacks twice (#390).**
+  The second run of a class body added a second copy of each `validates`,
+  each `validate` block, and each callback written as a block or a lambda,
+  such as `before_save do ... end`. Rails removes a repeated callback only
+  when it names a method. A test that counts errors or side effects then
+  failed for every mutant in the file, so those mutants scored `killed`
+  falsely. After the mutant file loads, Mutineer now keeps one copy of each:
+  the new one, in the place of the old one, so the order of callbacks does
+  not change. Entries from an included concern stay, because the reload does
+  not run the concern's block again. When Mutineer cannot tell which old
+  entry a new one repeats, it keeps both, as before (#413). This holds on
+  `--daemon` and with `--strategy reload`. With eager loading on, a mutant
+  of a parent class file still adds a callback back to each subclass that
+  skipped it (#414).
+  **Score change:** a Rails model with such a test can now show survivors
+  that were false kills before, so its score can go down.
+- **Concern mutants load when the test app loads lazily (#383).** With
+  `eager_load` off (the Rails test default), the mutant's load was the first
+  use of the concern, so Rails loaded the original file inside it. The
+  original `included` block then came back, and the mutant's block raised
+  `MultipleIncludedBlocks`. Mutineer now loads the original file first, through
+  the app's autoloader, so the mutant's block replaces it.
+- **The pending-migration check no longer trips `shared_databases` (#385).**
+  `rails/test_help` checks every database for pending migrations when the
+  tests load, shared ones too. A parallel `--daemon` run then reported the
+  shared database as used and scored every mutant `error`. Mutant forks of a
+  run with `shared_databases` now turn that check off. The clean check, which
+  runs before any mutant, still makes it.
+- **No Rails deprecation warning from concern mutants (#387).** Placing a
+  mutant inside an `included` block looked at every module. Rails 8.2 keeps a
+  deprecated constant as a module that warns on every call, so each such
+  mutant printed `LoadInterlockAwareMonitor is deprecated`. Mutineer now skips
+  that module.
 
 ## [1.8.1] - 2026-11-02
 
