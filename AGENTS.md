@@ -171,8 +171,10 @@ Fizzy, a real Rails 8 app, and compares the counts with
 network access for the first clone and gem install. It writes nothing on
 GitHub, so an agent may run it. If it fails, explain each difference by the
 merged pull request that caused it, in a pull request that runs
-`bundle exec rake fizzy:record`. A new `errored` count blocks the release
-until it is fixed. Merge that pull request before step 1.
+`bundle exec rake fizzy:record`. A difference that no merged pull request
+explains is a bug: file an issue and fix it before the release. A new
+`errored` count also blocks the release until it is fixed. Merge that pull
+request before step 1.
 
 1. Prepare the pull request when they want a batch, from `main`:
    ```sh

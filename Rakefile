@@ -83,7 +83,7 @@ end
 
 namespace :fizzy do
   desc "Run this checkout on the pinned Fizzy sample and compare counts (clone and gems cache in " \
-       "$XDG_CACHE_HOME or ~/.cache/mutineer/fizzy-sample; the first run clones and installs gems, so it takes longer)"
+       "$XDG_CACHE_HOME/mutineer/fizzy-sample, or ~/.cache/mutineer/fizzy-sample when it is unset; the first run clones and installs gems, so it takes longer)"
   task :sample do
     require_relative "rake/fizzy_sample"
     FizzySample.sample!

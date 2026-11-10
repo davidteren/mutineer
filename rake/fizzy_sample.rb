@@ -5,7 +5,6 @@ require "yaml"
 require "fileutils"
 require "open3"
 require "rbconfig"
-require "time"
 require_relative "../lib/mutineer"
 
 # The pre-release check on a real Rails 8 app (#402). `rake fizzy:sample` runs
@@ -52,15 +51,16 @@ module FizzySample
         step("database")
         sh!(clone, "bin/rails", "db:test:prepare")
         step("run (log: #{log})")
+        head = git_head # before the run, so the meta names the code that produced the counts
         status = run!(clone, data["files"], report_path, log)
-        raise Error, "Mutineer did not complete (exit #{status.inspect}).\n#{log_tail(log)}" unless completed?(status, report_path)
+        raise Error, "Mutineer did not complete (#{status ? "exit #{status}" : "killed by a signal"}).\n#{log_tail(log)}" unless completed?(status, report_path)
 
-        File.write(meta_path, JSON.pretty_generate(meta(data, git_head, ruby)) + "\n")
+        File.write(meta_path, JSON.pretty_generate(meta(data, head, ruby)) + "\n")
         step("compare")
         report = JSON.parse(File.read(report_path))
         failures, notes = compare(data, report)
         notes.each { |line| puts line }
-        raise Error, ([*failures, *no_verdict_lines(report), "Run log: #{log}"].join("\n") + "\n#{log_tail(log)}") if failures.any?
+        raise Error, ([*failures, *no_verdict_lines(report), "Explain each difference by its merged pull request, then run `bundle exec rake fizzy:record`.", "Run log: #{log}"].join("\n") + "\n#{log_tail(log)}") if failures.any?
 
         rec = data["recorded"]
         puts "Fizzy sample matches the counts recorded with #{rec["mutineer_version"]} at #{rec["mutineer_sha"]}"
@@ -335,7 +335,9 @@ module FizzySample
       out, status = Open3.capture2e("git", "rev-parse", "HEAD", chdir: ROOT)
       raise Error, "git rev-parse HEAD failed: #{out}" unless status.success?
 
-      changes, = Open3.capture2e("git", "status", "--porcelain", "--untracked-files=no", chdir: ROOT)
+      changes, status = Open3.capture2e("git", "status", "--porcelain", "--untracked-files=no", chdir: ROOT)
+      raise Error, "git status failed: #{changes}" unless status.success?
+
       changes.strip.empty? ? out.strip : "#{out.strip}-dirty"
     end
 
