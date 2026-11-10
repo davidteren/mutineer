@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **A coverage cache hit checks only the tests that cover the sources
+  (#398).** Before, a hit ran every `--test` file alone and then all of them
+  together. Now it runs only the files that cover a line of the run's
+  sources. A mutant runs only those files, so the other files cannot change
+  a result. A red covering test still stops the run. A file whose capture
+  was retried on the hit does not run alone a second time. The together
+  check after a fresh capture and with `--coverage-from` also uses the
+  covering files only. Mutineer prints one stderr line with the number of
+  files it did not check. When no test covers a source line, every file is
+  still checked.
+- **Behaviour change.** On a cache hit, a red test that covers no source
+  line no longer stops the run. A fresh capture still stops on it, because
+  capture runs every test (#96). So the same red test can stop a cold run
+  and pass a warm one.
+- An edit to a source, a test or a loaded file still rebuilds the whole
+  map. #421 tracks per-test invalidation.
+
 ## [1.8.2] - 2026-11-10
 
 ### Fixed

@@ -369,7 +369,8 @@ module Mutineer
 
     # Shared cache dance for both build paths: hit the digest-keyed cache, else
     # yield to populate @map and persist it. A digest match is not proof that
-    # today's unmutated suite still passes — re-check on a cache hit.
+    # today's unmutated suite still passes, so a hit re-checks the tests a
+    # mutant can run ({#clean_check_test_paths}), alone and then together (#398).
     #
     # @param after_fork [Proc, nil] boot-mode fork hook forwarded to a clean re-check.
     # @yield when the cache is missing or stale.
@@ -399,27 +400,80 @@ module Mutineer
         @failed_test_files = cached["failed_test_files"] || []
         @failed_clean_tests = []
         @loaded_dependencies = cached["dependencies"] || {}
-        retry_failed_captures(after_fork)
+        recaptured = retry_failed_captures(after_fork)
         warn_incomplete unless @failed_test_files.empty?
-        verify_cached_clean(after_fork: after_fork)
+        checked = clean_check_test_paths
+        # A retried capture already ran its test clean, so it does not run alone again.
+        verify_cached_clean(after_fork: after_fork,
+                            test_paths: checked.reject { |t| recaptured.include?(relativize(t)) })
         verify_combined_clean(after_fork: after_fork)
+        warn_unchecked("coverage cache hit", checked.size)
         save
         return self
       end
 
       yield
-      verify_combined_clean(after_fork: after_fork)
+      # Capture ran every test alone, so only the together check leaves tests out.
+      combined = verify_combined_clean(after_fork: after_fork)
+      warn_unchecked("coverage capture", clean_check_test_paths.size, miss: true) if combined
       save
       self
     end
+
+    # The tests the clean check runs: the tests that cover a line of this run's
+    # sources (#398). A mutant runs only tests from the map
+    # ({JobPlan.coverage_selection}), so a test outside this set never runs
+    # with a mutant and cannot change a verdict. An empty map keeps every test,
+    # because the daemon then runs every test for each mutant. A new way to
+    # choose a mutant's tests must add those tests here, or a red test could
+    # reach a mutant run.
+    #
+    # @api private
+    # @return [Array<String>] the `--test` paths in this set, in their order.
+    def clean_check_test_paths
+      return @test_paths if @map.empty?
+
+      covering = @map.values.flatten.to_set
+      @test_paths.select { |t| covering.include?(relativize(t)) }
+    end
+
+    # Tells the user on stderr how many test files the clean check left out
+    # (#398). Prints nothing when it left out none.
+    #
+    # @api private
+    # @param label [String] what the run did: "coverage cache hit",
+    #   "--coverage-from" or "coverage capture".
+    # @param checked [Integer] the number of test files the check ran.
+    # @param miss [Boolean] true after a fresh capture, which ran every test alone.
+    # @return [void]
+    def warn_unchecked(label, checked, miss: false)
+      others = @test_paths.size - checked
+      return unless others.positive?
+
+      one = others == 1
+      tail = if miss
+               "ran alone only"
+             else
+               "never #{one ? 'runs' : 'run'} with a mutant and #{one ? 'was' : 'were'} not checked"
+             end
+      warn "[mutineer] #{label}: the #{miss ? 'together' : 'clean'} check ran the #{test_files(checked)} " \
+           "that #{checked == 1 ? 'covers' : 'cover'} the sources; #{others} other #{one ? 'test file' : 'test files'} #{tail}."
+    end
+
+    # "1 test file" or "N test files".
+    #
+    # @api private
+    # @param count [Integer]
+    # @return [String]
+    def test_files(count) = count == 1 ? "1 test file" : "#{count} test files"
 
     # Takes the map from the `--coverage-from` capture instead of capturing,
     # keeping only this run's sources, then runs the tests clean. A mutant runs
     # only the tests that cover its line, often one file alone, so each test
     # that covers one of this run's sources runs alone, as on a cache hit: a
-    # test that fails alone here would otherwise kill every mutant it runs. The
-    # other tests never run alone in this run, so only the combined check
-    # covers them.
+    # test that fails alone here would otherwise kill every mutant it runs.
+    # Those tests then run together. The other tests never run with a mutant
+    # in this run, so they are not checked (#398).
     #
     # @api private
     # @param after_fork [Proc, nil] boot-mode fork hook.
@@ -433,10 +487,10 @@ module Mutineer
       @failed_test_files = []
       @failed_clean_tests = []
       @loaded_dependencies = cached["dependencies"]
-      covering = @map.values.flatten.to_set
-      verify_cached_clean(after_fork: after_fork,
-                          test_paths: @test_paths.select { |t| covering.include?(relativize(t)) })
+      checked = clean_check_test_paths
+      verify_cached_clean(after_fork: after_fork, test_paths: checked)
       verify_combined_clean(after_fork: after_fork)
+      warn_unchecked("--coverage-from", checked.size)
       save
       self
     end
@@ -789,13 +843,14 @@ module Mutineer
 
     # Re-runs tests whose previous capture crashed. A fixed helper is invisible
     # to the source/test digest when that capture never recorded `loaded_files`.
+    # A capture runs its test, so a red test lands in {#failed_clean_tests} here.
     #
     # @api private
     # @param after_fork [Proc, nil] boot-mode fork hook.
-    # @return [void]
+    # @return [Array<String>] the project-relative tests it captured again.
     def retry_failed_captures(after_fork)
       pending = @failed_test_files.dup
-      return if pending.empty?
+      return pending if pending.empty?
 
       @failed_test_files = []
       abs_sources = abs_source_paths
@@ -808,18 +863,20 @@ module Mutineer
           accept_capture_payload(test_path, payload) if payload
         end
       end
+      pending
     end
 
-    # Runs every successfully captured test together. Per-file capture can miss a
-    # failure that only appears when covering files share one process.
+    # Runs every successfully captured test of {#clean_check_test_paths}
+    # together. Per-file capture can miss a failure that only appears when
+    # covering files share one process.
     #
     # @api private
     # @param after_fork [Proc, nil] boot-mode fork hook.
-    # @return [void]
+    # @return [Boolean] true when the combined run happened, false when it was skipped.
     def verify_combined_clean(after_fork: nil)
-      runnable = @test_paths.reject { |t| @failed_test_files.include?(relativize(t)) }
-      return if runnable.size < 2
-      return unless @failed_clean_tests.empty?
+      runnable = clean_check_test_paths.reject { |t| @failed_test_files.include?(relativize(t)) }
+      return false if runnable.size < 2
+      return false unless @failed_clean_tests.empty?
 
       ok = if @boot_path
              fork_clean_pass?(runnable.map { |t| absolute(t) }, after_fork)
@@ -827,6 +884,7 @@ module Mutineer
              subprocess_clean_pass?(runnable)
            end
       @failed_clean_tests << "combined suite" unless ok
+      true
     end
 
     # Runs test files in a fresh interpreter and returns whether they passed.

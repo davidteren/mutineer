@@ -95,7 +95,16 @@ threshold: 90
 rails: true
 ```
 
-Coverage uses a digest-keyed cache at `.mutineer/coverage.json`, rebuilt automatically when sources change.
+Coverage uses a digest-keyed cache at `.mutineer/coverage.json`. Mutineer rebuilds it when a source, a test,
+or a project file the tests load changes. The run then captures every test again (#421 tracks a per-test rebuild).
+
+Before the mutants run, Mutineer checks that the unchanged tests pass:
+
+- **Fresh capture.** Every test file runs alone. A failure stops the run. The test files that cover a
+  source line then run together.
+- **Cache hit.** Only the test files that cover a source line run, alone and then together. A mutant runs
+  only those files, so a red test outside them cannot change a result. Mutineer prints how many files it
+  did not check. When no test covers a source line, every test file runs.
 
 Add `.mutineer/` and any in-project `--cache-dir` directory to `.gitignore`:
 
