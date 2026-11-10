@@ -193,8 +193,8 @@ module Mutineer
     # A concern's stored `included` and `prepended` blocks from the source file
     # are forgotten around the load, so ActiveSupport accepts the blocks the
     # temp file stores (#256). For a def in such a block, the caller passes the
-    # text from {JobPlan.hook_mutant} and then calls
-    # {ConcernBlocks.place_hook_def} (#297).
+    # text and `hook_def` from {JobPlan.hook_mutant}, and the load places the
+    # mutated def (#297, #348).
     #
     # {ConcernBlocks.load_mutant} turns Ruby's warnings off for the load, so
     # the constants it assigns again do not warn (#364).
@@ -202,9 +202,10 @@ module Mutineer
     # @api private
     # @param mutated [String] mutated source text.
     # @param source_file [String] original source file path.
+    # @param hook_def [Hash{Symbol => Object}, nil] see {ConcernBlocks.load_mutant}.
     # @return [Object] whatever `load` returns.
-    def self.apply_whole_file(mutated, source_file)
-      write_beside(mutated, source_file) { |path| ConcernBlocks.load_mutant(source_file, path) }
+    def self.apply_whole_file(mutated, source_file, hook_def: nil)
+      write_beside(mutated, source_file) { |path| ConcernBlocks.load_mutant(source_file, path, hook_def: hook_def) }
     end
 
     # Writes `code` to a hidden `.mutineer_mutant` file beside `source_file`,
