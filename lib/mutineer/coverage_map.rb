@@ -413,9 +413,8 @@ module Mutineer
       end
 
       yield
-      # Capture ran every test alone, so only the together check leaves tests out.
-      combined = verify_combined_clean(after_fork: after_fork)
-      warn_unchecked("coverage capture", clean_check_test_paths.size, miss: true) if combined
+      verify_combined_clean(after_fork: after_fork)
+      warn_unchecked("coverage capture", clean_check_test_paths.size, miss: true)
       save
       self
     end
@@ -443,22 +442,24 @@ module Mutineer
     # @api private
     # @param label [String] what the run did: "coverage cache hit",
     #   "--coverage-from" or "coverage capture".
-    # @param checked [Integer] the number of test files the check ran.
-    # @param miss [Boolean] true after a fresh capture, which ran every test alone.
+    # @param checked [Integer] the number of test files in {#clean_check_test_paths}.
+    # @param miss [Boolean] true after a fresh capture, which ran every test
+    #   alone, so only the together check leaves files out.
     # @return [void]
     def warn_unchecked(label, checked, miss: false)
       others = @test_paths.size - checked
       return unless others.positive?
 
       one = others == 1
-      tail = if miss
-               "ran alone only"
-             else
-               "never #{one ? 'runs' : 'run'} with a mutant and #{one ? 'was' : 'were'} not checked"
-             end
-      ran = checked == 1 ? "1 test file that covers" : "#{checked} test files that cover"
-      warn "[mutineer] #{label}: the #{miss ? 'together' : 'clean'} check ran the #{ran} the sources; " \
-           "#{others} other #{one ? 'test file' : 'test files'} #{tail}."
+      covering = checked == 1 ? "1 test file that covers" : "#{checked} test files that cover"
+      head, tail =
+        if miss
+          ["the together check covers only the #{covering}", "ran alone only"]
+        else
+          ["the clean check ran the #{covering}",
+           "never #{one ? 'runs' : 'run'} with a mutant and #{one ? 'was' : 'were'} not checked"]
+        end
+      warn "[mutineer] #{label}: #{head} the sources; #{others} other #{one ? 'test file' : 'test files'} #{tail}."
     end
 
     # Takes the map from the `--coverage-from` capture instead of capturing,
@@ -866,11 +867,11 @@ module Mutineer
     #
     # @api private
     # @param after_fork [Proc, nil] boot-mode fork hook.
-    # @return [Boolean] true when the combined run happened, false when it was skipped.
+    # @return [void]
     def verify_combined_clean(after_fork: nil)
       runnable = clean_check_test_paths.reject { |t| @failed_test_files.include?(relativize(t)) }
-      return false if runnable.size < 2
-      return false unless @failed_clean_tests.empty?
+      return if runnable.size < 2
+      return unless @failed_clean_tests.empty?
 
       ok = if @boot_path
              fork_clean_pass?(runnable.map { |t| absolute(t) }, after_fork)
@@ -878,7 +879,6 @@ module Mutineer
              subprocess_clean_pass?(runnable)
            end
       @failed_clean_tests << "combined suite" unless ok
-      true
     end
 
     # Runs test files in a fresh interpreter and returns whether they passed.

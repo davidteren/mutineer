@@ -101,7 +101,7 @@ or a project file the tests load changes. The run then captures every test again
 Before the mutants run, Mutineer checks that the unchanged tests pass:
 
 - **Fresh capture.** Every test file runs alone. A failure stops the run. The test files that cover a
-  source line then run together.
+  source line then run together. Mutineer prints how many files the together check left out.
 - **Cache hit.** Only the test files that cover a source line run, alone and then together. A mutant runs
   only those files, so a red test outside them cannot change a result. Mutineer prints how many files it
   did not check. When no test covers a source line, every test file runs.

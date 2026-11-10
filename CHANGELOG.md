@@ -18,7 +18,7 @@ All notable changes to this project are documented here. The format is based on
   covering files only. Mutineer prints one stderr line with the number of
   files it did not check. When no test covers a source line, every file is
   still checked.
-- **Behaviour change.** On a cache hit, a red test that covers no source
+- **Behavior change.** On a cache hit, a red test that covers no source
   line no longer stops the run. A fresh capture still stops on it, because
   capture runs every test (#96). So the same red test can stop a cold run
   and pass a warm one.

@@ -635,13 +635,6 @@ class CoverageMapTest < Minitest::Test
     ENV.delete("MUTINEER_SENTINEL")
   end
 
-  def with_env(name)
-    ENV[name] = "1"
-    yield
-  ensure
-    ENV.delete(name)
-  end
-
   # The booted parent, as `--boot` loads it: beta.rb then reads
   # SharedAlpha.widen at boot, so only alpha_test.rb covers alpha.rb.
   def boot_shared
@@ -654,13 +647,15 @@ class CoverageMapTest < Minitest::Test
     Dir.mktmpdir do |dir|
       cache = File.join(dir, "cache")
       first = nil
-      misses = sentinel_processes(dir) { capture_io { first = shared_map(%w[alpha.rb], cache) } }
+      err = nil
+      misses = sentinel_processes(dir) { _, err = capture_io { first = shared_map(%w[alpha.rb], cache) } }
       assert first.phase_a_ran
       assert_equal [%w[alpha_test.rb], %w[beta_test.rb]], misses,
                    "a miss captures each test alone; one covering test leaves no combined run"
+      assert_includes err, "[mutineer] coverage capture: the together check covers only the 1 test file that " \
+                           "covers the sources; 1 other test file ran alone only."
 
       hit = nil
-      err = nil
       hits = sentinel_processes(dir) { _, err = capture_io { hit = shared_map(%w[alpha.rb], cache) } }
       refute hit.phase_a_ran
       assert_equal [%w[alpha_test.rb]], hits, "beta_test.rb covers no line of alpha.rb, so it is not run"
@@ -676,7 +671,7 @@ class CoverageMapTest < Minitest::Test
       cache = File.join(dir, "cache")
       capture_io { shared_map(%w[alpha.rb], cache) }
       hit = nil
-      with_env("MUTINEER_FLUNK") { capture_io { hit = shared_map(%w[alpha.rb], cache) } }
+      with_env("MUTINEER_FLUNK" => "1") { capture_io { hit = shared_map(%w[alpha.rb], cache) } }
       refute hit.phase_a_ran
       assert_equal %w[alpha_test.rb], hit.failed_clean_tests
     end
@@ -691,7 +686,7 @@ class CoverageMapTest < Minitest::Test
       capture_io { shared_map(%w[alpha.rb], cache) }
       hit = nil
       miss = nil
-      with_env("MUTINEER_FLUNK_BETA") do
+      with_env("MUTINEER_FLUNK_BETA" => "1") do
         capture_io { hit = shared_map(%w[alpha.rb], cache) }
         capture_io { miss = shared_map(%w[alpha.rb], File.join(dir, "fresh")) }
       end
