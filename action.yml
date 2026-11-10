@@ -239,7 +239,70 @@ runs:
             echo "::error::mutineer: output '$SAFE_OUT' is a directory; pass a file path."
             exit 2
           fi
+          # #340 / CLI #270: when `output`'s parent is the cache directory and
+          # that dir does not exist yet (fresh checkout), create it here. The
+          # Action preflights the caller's path before handing the CLI a temp
+          # file, so the CLI's mkdir never runs for this input. Other missing
+          # parents still exit 2.
+          cache_dir=".mutineer"
+          cache_dir="$(ruby -ryaml -e '
+            dir = File.expand_path(Dir.pwd)
+            home = File.expand_path("~")
+            file = nil
+            loop do
+              candidate = File.join(dir, ".mutineer.yml")
+              if File.file?(candidate)
+                file = candidate
+                break
+              end
+              break if dir == home
+              parent = File.dirname(dir)
+              break if parent == dir
+              dir = parent
+            end
+            value = nil
+            if file
+              raw = YAML.safe_load(File.read(file)) rescue nil
+              value = raw["cache_dir"] if raw.is_a?(Hash)
+            end
+            value = ARGV[0] if [nil, true, false].include?(value) || value.to_s.strip.empty?
+            print value.to_s
+          ' "$cache_dir")"
+          if [ -n "$EXTRA_ARGS" ]; then
+            pending=""
+            for extra_arg in $EXTRA_ARGS; do
+              key="${extra_arg%%=*}"
+              case "$key" in
+                # Every unique prefix of --cache-dir that the CLI accepts. --ca is
+                # left out: it is ambiguous with --capture-timeout.
+                --cache-dir | --cache-di | --cache-d | --cache- | --cache | --cach | --cac)
+                  if [ "$extra_arg" = "$key" ]; then
+                    pending=1
+                  else
+                    cache_dir="${extra_arg#*=}"
+                    pending=""
+                  fi
+                  ;;
+                *)
+                  if [ -n "$pending" ]; then
+                    cache_dir="$extra_arg"
+                    pending=""
+                  fi
+                  ;;
+              esac
+            done
+          fi
           out_dir="$(dirname "$OUTPUT")"
+          if [ ! -d "$out_dir" ]; then
+            cache_abs="$(ruby -e 'print File.expand_path(ARGV[0])' "$cache_dir")"
+            out_abs="$(ruby -e 'print File.expand_path(ARGV[0])' "$out_dir")"
+            if [ "$out_abs" = "$cache_abs" ]; then
+              if ! mkdir -p "$out_dir" 2>/dev/null; then
+                echo "::error::mutineer: cannot write output '$SAFE_OUT': could not create cache directory."
+                exit 2
+              fi
+            fi
+          fi
           if [ ! -d "$out_dir" ] || [ ! -w "$out_dir" ]; then
             echo "::error::mutineer: cannot write output '$SAFE_OUT': no such directory or not writable."
             exit 2
