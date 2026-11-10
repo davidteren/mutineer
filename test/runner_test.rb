@@ -944,6 +944,7 @@ class RunnerTest < Minitest::Test
   end
 
   def test_runner_execute_refuses_macro_operators_on_every_backend
+    prior = ENV["PARALLEL_WORKERS"]
     path = File.join(Dir.tmpdir, "macro-refuse.rb")
     File.write(path, "class Card\n  validates :name, presence: true\nend\n")
     message = "EnumRedeclaration, CallbackReskipping, RepeatedCallbacks"
@@ -953,6 +954,7 @@ class RunnerTest < Minitest::Test
       { strategy: "redefine" },
       { daemon: true }
     ]
+    ENV["PARALLEL_WORKERS"] = "4"
     Mutineer::RailsRunEnv.stub(:pin_process!, boom) do
       Mutineer::DaemonBackend.stub(:execute, boom) do
         Mutineer::Isolation.stub(:run, boom) do
@@ -965,11 +967,14 @@ class RunnerTest < Minitest::Test
               error = assert_raises(ArgumentError, message) { Mutineer::Runner.execute(config) }
               assert_includes error.message, "--test-command"
               assert_includes error.message, "#389"
+              assert_equal "4", ENV["PARALLEL_WORKERS"]
             end
           end
         end
       end
     end
+  ensure
+    prior.nil? ? ENV.delete("PARALLEL_WORKERS") : ENV["PARALLEL_WORKERS"] = prior
   end
 
   private
