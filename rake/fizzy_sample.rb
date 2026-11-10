@@ -231,6 +231,16 @@ module FizzySample
       raise Error, "Fizzy needs Ruby #{want} (.ruby-version), but its bundle ran Ruby #{got}." unless want == got
     end
 
+    # True when the clone already has the commit object, so the fetch can be skipped.
+    #
+    # @param clone [String]
+    # @param sha [String] a full commit SHA.
+    # @return [Boolean]
+    def commit?(clone, sha)
+      _, status = Open3.capture2e("git", "cat-file", "-e", "#{sha}^{commit}", chdir: clone)
+      status.success?
+    end
+
     # Hold an exclusive lock on the cache for the block. A second task fails at once.
     #
     # @param cache [String]
@@ -267,7 +277,8 @@ module FizzySample
       step("fetch #{data["repo"]} #{data["commit"]}")
       FileUtils.mkdir_p(clone)
       sh!(clone, "git", "init", "-q") unless File.directory?(File.join(clone, ".git"))
-      sh!(clone, "git", "fetch", "-q", "--depth", "1", data["repo"], data["commit"])
+      # A warm cache already has the pinned commit, so later runs need no network.
+      sh!(clone, "git", "fetch", "-q", "--depth", "1", data["repo"], data["commit"]) unless commit?(clone, data["commit"])
       sh!(clone, "git", "checkout", "-q", "--force", data["commit"])
       # Removes old logs, worker databases and the coverage cache, which could hide a regression.
       sh!(clone, "git", "clean", "-q", "-fdx")

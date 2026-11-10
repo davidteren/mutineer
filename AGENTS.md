@@ -161,9 +161,6 @@ Semver: **new feature → minor bump, fix → patch.** A behavior change to the
 GitHub Action's defaults is a **major** bump: consumers pin `@v<major>`, and a
 default flip must never reach them without opting in.
 
-The release procedure. A maintainer owns every step. An agent may do steps
-1 to 4 after that maintainer agrees to this release:
-
 Before step 1, run the Fizzy sample check on current `main` (issue #402):
 `bundle exec rake fizzy:sample`. It runs this checkout on a pinned commit of
 Fizzy, a real Rails 8 app, and compares the counts with
@@ -174,7 +171,11 @@ merged pull request that caused it, in a pull request that runs
 `bundle exec rake fizzy:record`. A difference that no merged pull request
 explains is a bug: file an issue and fix it before the release. A new
 `errored` count also blocks the release until it is fixed. Merge that pull
-request before step 1.
+request, then run `bundle exec rake fizzy:sample` again on the merged
+`main`. It must pass before step 1.
+
+The release procedure. A maintainer owns every step. An agent may do steps
+1 to 4 after that maintainer agrees to this release:
 
 1. Prepare the pull request when they want a batch, from `main`:
    ```sh

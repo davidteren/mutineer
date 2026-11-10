@@ -177,6 +177,17 @@ class FizzySampleTest < Minitest::Test
     end
   end
 
+  def test_commit_is_found_in_a_warm_clone_so_the_fetch_is_skipped
+    Dir.mktmpdir do |clone|
+      git = ->(*args) { system("git", *args, chdir: clone, out: File::NULL, err: File::NULL) }
+      git.call("init", "-q")
+      git.call("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x")
+      sha = IO.popen(["git", "rev-parse", "HEAD"], chdir: clone, &:read).strip
+      assert FizzySample.commit?(clone, sha)
+      refute FizzySample.commit?(clone, "0" * 40)
+    end
+  end
+
   def test_stored_pin_has_a_full_commit_and_files
     stored = JSON.parse(File.read(FizzySample::DATA))
     assert_match(/\A\h{40}\z/, stored["commit"])
