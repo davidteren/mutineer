@@ -1,0 +1,112 @@
+CHANGELOG.md
+  h_e8a5bb9272fa34 9-22
+README.md
+  h_e8a5bb9272fa34 149,222-260
+Rakefile
+  h_e8a5bb9272fa34 16
+STABILITY.md
+  h_e8a5bb9272fa34 26-37
+docs/assets/mutineer.css
+  h_e8a5bb9272fa34 158
+docs/cli.md
+  h_e8a5bb9272fa34 36-43
+docs/comparison.md
+  h_e8a5bb9272fa34 35
+docs/equivalent-skips.html
+  h_e8a5bb9272fa34 53,99-105
+docs/equivalent-skips.md
+  h_e8a5bb9272fa34 7,101-122
+docs/index.html
+  h_e8a5bb9272fa34 80,228-229,259-260
+docs/index.md
+  h_e8a5bb9272fa34 112-115
+docs/json-schema.md
+  h_e8a5bb9272fa34 81
+docs/llms.txt
+  h_e8a5bb9272fa34 14
+docs/rails-setup.md
+  h_e8a5bb9272fa34 272-278
+docs/rails.html
+  h_e8a5bb9272fa34 79
+docs/rails.md
+  h_e8a5bb9272fa34 26-33
+lib/mutineer.rb
+  h_e8a5bb9272fa34 37-38
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 421-423,906-909
+lib/mutineer/job_plan.rb
+  h_e8a5bb9272fa34 88-90,102
+lib/mutineer/mutator_registry.rb
+  h_e8a5bb9272fa34 24-25,58-60,70-72,96-98,119-145
+lib/mutineer/mutators/base.rb
+  h_e8a5bb9272fa34 24-28
+lib/mutineer/mutators/macro_base.rb
+  h_e8a5bb9272fa34 1-31
+lib/mutineer/mutators/macro_option_removal.rb
+  h_e8a5bb9272fa34 1-79
+lib/mutineer/mutators/macro_removal.rb
+  h_e8a5bb9272fa34 1-26
+lib/mutineer/mutators/return_nil.rb
+  h_e8a5bb9272fa34 20-22
+lib/mutineer/project.rb
+  h_e8a5bb9272fa34 16-18,20,23,26,28,178-196,222,229-230,256-257,284-287,295-298,344-348,463-549
+lib/mutineer/runner.rb
+  h_e8a5bb9272fa34 68-70
+lib/mutineer/subject.rb
+  h_e8a5bb9272fa34 27-29,31,34-38,40-59,85-86,88
+test/browser/site.spec.js
+  h_e8a5bb9272fa34 10,74,114
+test/cli_test.rb
+  h_e8a5bb9272fa34 136-147,1946-2001
+test/docs_contract_test.rb
+  h_e8a5bb9272fa34 163,166,171-173
+test/fixtures/rails_app/app/models/crate.rb
+  h_e8a5bb9272fa34 1-6
+test/fixtures/rails_app/app/models/crate_item.rb
+  h_e8a5bb9272fa34 1-5
+test/fixtures/rails_app/bin/rails
+  h_e8a5bb9272fa34 1-6
+test/fixtures/rails_app/db/schema.rb
+  h_e8a5bb9272fa34 20-29
+test/fixtures/rails_app/test/models/crate_strong_test.rb
+  h_e8a5bb9272fa34 1-18
+test/fixtures/rails_app/test/models/crate_weak_test.rb
+  h_e8a5bb9272fa34 1-10
+test/fixtures/widget.rb
+  h_e8a5bb9272fa34 1-18
+test/fixtures/widget_strong_test.rb
+  h_e8a5bb9272fa34 1-9
+test/fixtures/widget_weak_test.rb
+  h_e8a5bb9272fa34 1-8
+test/mutant_id_test.rb
+  h_e8a5bb9272fa34 223-258
+test/mutator_registry_test.rb
+  h_e8a5bb9272fa34 100-111
+test/mutators/def_body_invariant_test.rb
+  h_e8a5bb9272fa34 1-39
+test/mutators/macro_option_removal_test.rb
+  h_e8a5bb9272fa34 1-104
+test/mutators/macro_removal_test.rb
+  h_e8a5bb9272fa34 1-66
+test/project_test.rb
+  h_e8a5bb9272fa34 1576-1647
+test/rails_macro_test_command_test.rb
+  h_e8a5bb9272fa34 1-67
+test/runner_external_test.rb
+  h_e8a5bb9272fa34 283-342
+test/runner_test.rb
+  h_e8a5bb9272fa34 946-974
+test/subject_test.rb
+  h_e8a5bb9272fa34 62-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3bf5ff9f2131f9622d2c159ddda6c8cba385126a",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
