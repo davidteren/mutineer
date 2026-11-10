@@ -96,7 +96,7 @@
 
     <h3 id="triage-a-present-survivor">Triage a <code>present?</code> survivor</h3>
     <p><code>call_to_receiver</code> is not a default operator. This mutant appears only when you select that operator. Select it with the CLI flag <code>--operators</code>. Select it with the <code>.mutineer.yml</code> key <code>operators:</code>. Select it with the Action input <code>operators</code>. The Action passes that input to the CLI as <code>--operators</code>. The <code>--operators</code> list replaces the default set. See <a href="#endless-range">Endless range</a>.</p>
-    <p>The mutant is equivalent in one case. The receiver is always a non-blank object, such as a record, or it is <code>nil</code> or <code>false</code>. The code uses the result only as a condition.</p>
+    <p>The mutant is equivalent in one case. The receiver is always a non-blank object, or it is <code>nil</code> or <code>false</code>. A record is one example. A non-blank string is another, when the call is only a condition. The code uses the result only as a condition.</p>
     <p>These cases are real gaps:</p>
     <ul>
       <li>A blank string or a blank param, such as <code>""</code> or <code>" "</code>.</li>
@@ -115,10 +115,10 @@ ignore:
     reason: the receiver is a record or nil, and the result is only a condition</code></pre>
     <p><code>mutineer triage REPORT.json --id ID --reason TEXT</code> prints one mapping. Repeat <code>--id</code> for each site you judge equivalent. Do not use <code>--all</code>. <code>--all</code> also maps survivors that are real gaps.</p>
     <p>An <code>ignore:</code> id changes after a file move. It also changes after a method rename or a class rename. The survivor then returns. See <a href="https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids">Mutant ids</a>.</p>
-    <p>A line marker hides every <code>call_to_receiver</code> mutant on that line.</p>
-    <pre><code>account.name if account.present? # mutineer:disable-line call_to_receiver -- record or nil</code></pre>
-    <p>That marker also suppresses <code>account.name</code> to <code>account</code>. An <code>ignore:</code> id for the <code>present?</code> mutant suppresses only that mutant. A disable marker moves with its line.</p>
-    <p><code>present?</code> stays off the skip list. The operator checks the method name only. It cannot inspect the receiver. Issue #399 records this decision. This page promises no later name rule for <code>present?</code>.</p>
+    <p>Do not use a line marker for this site. The marker hides every <code>call_to_receiver</code> mutant on that line. It also hides <code>account.name</code> becoming <code>account</code>. That second mutant is not equivalent. Use the <code>ignore:</code> id above for the <code>present?</code> mutant only.</p>
+    <pre><code>account.name if account.present? # mutineer:disable-line call_to_receiver</code></pre>
+    <p>A disable marker moves with its line.</p>
+    <p><code>present?</code> stays off the skip list. The operator checks the method name only. It cannot inspect the receiver, so a name skip would also hide real gaps.</p>
 
     <h2 id="endless-range">Endless range</h2>
     <p>The <code>range</code> operator is not in the default set. Add it to the <code>operators:</code> list in <code>.mutineer.yml</code>, or pass <code>--operators</code>. The <code>--operators</code> list replaces the default set, so name the default operators too.</p>

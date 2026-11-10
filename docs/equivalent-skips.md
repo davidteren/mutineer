@@ -85,7 +85,9 @@ The `--operators` list replaces the default set.
 See [Endless range](#endless-range).
 
 The mutant is equivalent in one case.
-The receiver is always a non-blank object, such as a record, or it is `nil` or `false`.
+The receiver is always a non-blank object, or it is `nil` or `false`.
+A record is one example.
+A non-blank string is another, when the call is only a condition.
 The code uses the result only as a condition.
 
 These cases are real gaps:
@@ -127,21 +129,21 @@ It also changes after a method rename or a class rename.
 The survivor then returns.
 See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids).
 
-A line marker hides every `call_to_receiver` mutant on that line.
+Do not use a line marker for this site.
+The marker hides every `call_to_receiver` mutant on that line.
+It also hides `account.name` becoming `account`.
+That second mutant is not equivalent.
+Use the `ignore:` id above for the `present?` mutant only.
 
 ```ruby
-account.name if account.present? # mutineer:disable-line call_to_receiver -- record or nil
+account.name if account.present? # mutineer:disable-line call_to_receiver
 ```
 
-That marker also suppresses `account.name` to `account`.
-An `ignore:` id for the `present?` mutant suppresses only that mutant.
 A disable marker moves with its line.
 
 `present?` stays off the skip list.
 The operator checks the method name only.
-It cannot inspect the receiver.
-Issue #399 records this decision.
-This page promises no later name rule for `present?`.
+It cannot inspect the receiver, so a name skip would also hide real gaps.
 
 ## Endless range
 
