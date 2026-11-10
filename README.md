@@ -222,7 +222,8 @@ List with `mutineer --list-operators`. Enable specific operators with `--operato
 
 The default operators give no mutant to some methods, such as a method whose body is one `if` with a `rescue`.
 The report counts these methods on its `No mutants:` line. `--dry-run --verbose` and the JSON report list them.
-A method listed there is not proven tested. To force its branches, add `condition_true` and `condition_false`.
+A method listed there is not proven tested. For a method with an `if`, `unless`, ternary or modifier condition,
+add `condition_true` and `condition_false` to force its branches. They do not help an empty method or a `case`.
 The `--operators` list replaces the default set, so name the default operators too:
 
 ```sh

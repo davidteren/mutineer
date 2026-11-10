@@ -611,6 +611,13 @@ class ReporterTest < Minitest::Test
     assert_includes out.string, "list them; not narrowed by --since)\n"
   end
 
+  def test_human_summary_leaves_out_the_no_mutants_row_when_counts_are_unknown
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new)
+    refute_includes out.string, "No mutants:"
+    assert_includes out.string, "Declined:"
+  end
+
   private
 
   def matrix_report(results)

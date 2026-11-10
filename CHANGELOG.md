@@ -15,7 +15,7 @@ All notable changes to this project are documented here. The format is based on
   prints one `no mutants:` line per method. The human report has a
   `No mutants:` row. The JSON report adds `summary.subjects`,
   `summary.unmutated_subjects` and a top-level `unmutated_subjects[]`
-  list, and `schema_version` is now `1.10`. An empty run names the
+  list, and `schema_version` is now `1.10`. An empty run says how many
   methods it found and points to `--list-operators`. Scores, exit codes,
   the mutants that run and the default operators do not change. The
   README names `condition_true` and `condition_false` for these methods.

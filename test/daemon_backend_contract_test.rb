@@ -558,13 +558,15 @@ class DaemonBackendContractTest < Minitest::Test
   def test_backends_carry_the_collect_jobs_ids_and_legacy_matches
     Dir.mktmpdir("mutineer-ids") do |root|
       source = File.join(root, "order.rb")
-      File.binwrite(source, SOURCE)
+      # `label` has no arithmetic, so it is the one method with no mutants (#386).
+      text = SOURCE.sub(/end\n\z/, "\n  def label\n    :order\n  end\nend\n")
+      File.binwrite(source, text)
       ops = Mutineer::MutatorRegistry.resolve(%w[arithmetic])
       probe = Mutineer::Config.new(sources: [source], project_root: root)
       jobs, = Mutineer::JobPlan.collect_jobs(probe, ops)
       refute_empty jobs
       subject = jobs.first[0]
-      legacy = Mutineer::MutantId.legacy_for_subject(subject, SOURCE, jobs.select { |j| j[0] == subject }.map { |j| j[1] })
+      legacy = Mutineer::MutantId.legacy_for_subject(subject, text, jobs.select { |j| j[0] == subject }.map { |j| j[1] })
       ignore = legacy + jobs.reject { |j| j[0] == subject }.map { |j| j[2] }
 
       config = ->(**kw) { Mutineer::Config.new(sources: [source], project_root: root, framework: "minitest",
@@ -585,7 +587,8 @@ class DaemonBackendContractTest < Minitest::Test
         refute_empty extras[:id_map]
         assert_equal extras[:id_map], run_extras[:id_map]
         # The method counts (#386) reach every backend's report unchanged.
-        assert_operator extras[:subjects], :>, 0
+        assert_equal 2, extras[:subjects]
+        assert_equal [{ subject: "Order#label", file: source, line: 6 }], extras[:unmutated_subjects]
         assert_equal extras[:subjects], run_extras[:subjects]
         assert_equal extras[:unmutated_subjects], run_extras[:unmutated_subjects]
       end

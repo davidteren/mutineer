@@ -474,10 +474,23 @@ class JsonReporterTest < Minitest::Test
     assert_equal [{ "subject" => "Day#day", "file" => FILE, "line" => 2 }], doc["unmutated_subjects"]
   end
 
-  def test_unmutated_subjects_default_to_none
-    doc = render([Mutineer::Result.killed])
-    assert_equal 0, doc["summary"]["subjects"]
-    assert_equal 0, doc["summary"]["unmutated_subjects"]
-    assert_equal [], doc["unmutated_subjects"]
+  # A caller that passes no method counts gets null, not a made-up 0 next to
+  # real mutants (unknown is nil, never 0).
+  def test_unmutated_subjects_are_null_when_not_supplied
+    doc = render([survivor])
+    assert_equal 1, doc["summary"]["total"]
+    %w[subjects unmutated_subjects].each { |key| assert doc["summary"].key?(key) }
+    assert_nil doc["summary"]["subjects"]
+    assert_nil doc["summary"]["unmutated_subjects"]
+    assert doc.key?("unmutated_subjects")
+    assert_nil doc["unmutated_subjects"]
+  end
+
+  def test_unmutated_subjects_report_zero_when_supplied_empty
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json", subjects: 3, unmutated_subjects: [])
+    doc = JSON.parse(out.string)
+    assert_equal [3, 0, []], [doc["summary"]["subjects"], doc["summary"]["unmutated_subjects"], doc["unmutated_subjects"]]
   end
 end

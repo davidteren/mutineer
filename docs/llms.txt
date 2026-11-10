@@ -33,7 +33,7 @@ Key facts:
 - [CI: changed code and baselines](https://davidteren.github.io/mutineer/ci.md): `--since`, `--baseline`, the GitHub Action and its inputs, baseline refresh, and timeouts.
 - [CLI reference](https://davidteren.github.io/mutineer/cli.md): every `mutineer run` flag with its default, and the `.mutineer.yml` keys.
 - [Ruby mutation-testing tools compared](https://davidteren.github.io/mutineer/comparison.md): Mutineer, Mutant, and other Ruby tools, plus a fit-check prompt for your coding agent.
-- [JSON report schema](https://davidteren.github.io/mutineer/json-schema.html): the versioned JSON contract — `summary`, `survivors[]`, `no_coverage[]`, `uncapturable[]`, `unplaceable[]`, `ran_at_load[]`, `no_verdict[]`, `ignored[]`, `per_source[]`, and the `baseline` and `matrix` blocks.
+- [JSON report schema](https://davidteren.github.io/mutineer/json-schema.html): the versioned JSON contract — `summary`, `survivors[]`, `no_coverage[]`, `uncapturable[]`, `unplaceable[]`, `ran_at_load[]`, `no_verdict[]`, `ignored[]`, `per_source[]`, `unmutated_subjects[]`, and the `baseline` and `matrix` blocks.
 - [Ruby API (YARD)](https://davidteren.github.io/mutineer/api/): class reference generated from the website build’s source revision.
 - [Sample HTML report](https://davidteren.github.io/mutineer/sample-report.html): example report data displayed in the website theme; the CLI’s self-contained HTML output has a different presentation.
 <!-- /site-catalog:docs -->
