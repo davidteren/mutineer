@@ -325,3 +325,17 @@ A new status for a mutant that exists but could not run ships with a count in th
 place in the unrun share (`AggregateResult#unrun_count`, the stderr warning above 10%). A new place
 where an operator declines a candidate calls `decline` (`Mutators::Base`), so it is counted in
 `summary.declined_by_operator`.
+
+## Multi-agent hand-off
+
+Adopted. Claude Code, Codex and Grok Bot share work through `STATUS.md`.
+
+- Claude Code: builds features and reviews code in this repo.
+- Codex: second-opinion reviews and doc polish.
+- Grok Bot: research and X (Twitter) work.
+
+At session start, read "Open for ..." in `STATUS.md` and take items addressed
+to you. When you leave work for another agent, add it under that agent's
+heading: one line, what to do, and where (file, branch, PR or issue).
+Remove an item when it is done. Shared facts go to MemPalace, not to one
+agent's private memory. Keep approval prompts on.
