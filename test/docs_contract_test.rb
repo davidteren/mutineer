@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "timeout"
 require_relative "../rake/docs_contract"
 require_relative "../rake/site_docs"
 
@@ -101,6 +102,16 @@ class DocsContractTest < Minitest::Test
     refute_nil threshold, "the self-dogfood job needs a --threshold"
     assert_includes readme, "mutation%20score-at%20least%20#{threshold}%25"
     assert_includes readme, "mutation score at least #{threshold}%"
+  end
+
+  # A paragraph line that starts with `#` but is no heading (`#417 tracks ...`)
+  # once matched no branch, so the renderer never advanced and ran out of memory.
+  def test_schema_article_renders_a_paragraph_line_that_starts_with_a_hash
+    body, = Timeout.timeout(5) do
+      DocsContract.send(:render_schema_article, "Intro text.\n#417 tracks the rest.\n")
+    end
+
+    assert_includes body, "<p>#417 tracks the rest.</p>"
   end
 
   def test_json_schema_page_and_source_name_the_reporter_schema_version

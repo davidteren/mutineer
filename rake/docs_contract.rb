@@ -368,7 +368,10 @@ module DocsContract
           lis = items.map { |item| "<li>#{inline(item)}</li>" }.join
           chunks << "<ul>#{lis}</ul>"
         else
-          para = []
+          # Take the first line whatever it starts with: a line such as `#417 ...`
+          # matches no branch above, and leaving it unread looped forever.
+          para = [line]
+          i += 1
           while i < lines.length && !lines[i].empty? && !lines[i].start_with?("#", "|", "- ", "```", "<!--")
             para << lines[i]
             i += 1

@@ -164,8 +164,8 @@ When the mutant's child raised (under `reload`, `redefine` or the daemon), `deta
 most 500 characters (a longer line is cut and ends in `...`). Example:
 `"ArgumentError: enum declared twice"` (schema `1.10`, #388). Other errors keep their fixed text,
 such as `child exited with status 2`, `daemon verdict: error` or `worker crashed: Class: message`.
-#417 tracks a cause for those: a database error inside a test, RSpec errors outside examples, the
-`--matrix` early end, a daemon crash, and `--test-command`.
+Issue #417 tracks a cause for those: a database error inside a test, RSpec errors outside examples,
+the `--matrix` early end, a daemon crash, and `--test-command`.
 
 `details` is redacted: a database password is replaced by `[REDACTED]`. Redaction hides only database
 passwords, and an exception message can hold other secrets, so treat the report like a log. A message
