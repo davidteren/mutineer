@@ -547,4 +547,31 @@ class IsolationTest < Minitest::Test
   ensure
     ENV["DATABASE_URL"] = saved
   end
+
+  # #392: a redefine snippet that Ruby cannot load raises the guard's own error
+  # before `load`, so the fork scores `error` and runs no test.
+  def test_apply_surgical_rejects_a_snippet_ruby_cannot_load
+    source = "def mutineer_surgical_probe(a)\n  a + 1\nend\n"
+    Dir.mktmpdir("mutineer-surgical") do |dir|
+      path = File.join(dir, "probe.rb")
+      File.write(path, source)
+      subject = Mutineer::Project.discover([path]).first
+      mutation = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source).first.with(replacement: "(")
+      error = assert_raises(RuntimeError) { Mutineer::Isolation.apply_surgical(mutation, subject, source) }
+      assert_equal "surgical snippet failed to reparse", error.message
+
+      # In the fork, the raise stops the block before the tests would run.
+      marker = File.join(dir, "tests_ran")
+      result = nil
+      capture_subprocess_io do
+        result = Mutineer::Isolation.run do
+          Mutineer::Isolation.apply_surgical(mutation, subject, source)
+          File.write(marker, "1")
+          0
+        end
+      end
+      assert_predicate result, :error?
+      refute_path_exists marker
+    end
+  end
 end

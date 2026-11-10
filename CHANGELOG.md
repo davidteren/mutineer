@@ -8,6 +8,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **One line that Prism 2 rejects no longer skips every mutant in the file
+  (#392).** Prism 2.0 and later report an operator write to a bare constant
+  inside a method (`T += 1`, `T ||= 1`, `T &&= 1`) as a dynamic constant
+  assignment. Ruby's `parse.y` does the same, but Ruby 3.4 and 4.0 load such
+  a file with their own Prism 1. Mutineer kept a mutant only when the mutated
+  file parsed with no errors, so on Prism 2 every mutant of that file was
+  counted as `skipped (invalid)`. When Prism reports an error, Mutineer now
+  asks the running Ruby to compile the mutant, and skips it only when Ruby
+  cannot. This holds in the dry run, in process, with `--test-command`, on
+  `--daemon`, and for the redefine strategy's method snippet. A project gets
+  Prism 2 when its bundle loads it, for example
+  through minitest 6.1. On Prism 2, the mutants of such a file that were
+  skipped now get a verdict, so the score, the counts, and the JSON report
+  can change for those projects. Prism 1 runs do not change.
 - **`--test-command` warns about a random test order (#338).** Mutineer
   sets no seed for your command, so the clean run and each mutant run can
   run the tests in different orders. An order-dependent suite can then fail

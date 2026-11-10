@@ -274,7 +274,7 @@ module Mutineer
       # running the ORIGINAL method (C2 false-survived). Raise -> the fork
       # block aborts before any test runs -> Result.error, never a bogus
       # `survived`.
-      raise "surgical snippet failed to reparse" if Parser.parse_string(wrapped).errors.any?
+      raise "surgical snippet failed to reparse" if Parser.invalid?(wrapped)
 
       # Preserve original visibility — class/module bodies define methods
       # public, but 7a's `load` would re-apply the file's private/protected

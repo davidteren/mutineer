@@ -952,6 +952,20 @@ class DaemonBackendContractTest < Minitest::Test
     assert_equal %i[worker_start prepare_quit], order
   end
 
+  # #392: a mutant that Ruby cannot load is skipped tool-side and never sent to
+  # the daemon, where it would fail to load.
+  def test_a_mutant_ruby_cannot_load_is_skipped_without_a_daemon_request
+    with_jobs do |jobs, config, source_map|
+      subject, mutation, = jobs[0]
+      client = Object.new
+      def client.request(**) = raise("the daemon must not receive an invalid mutant")
+      job = [subject, mutation.with(replacement: "("), "id-0"]
+      result = Mutineer::DaemonBackend.send(:job_result, job, 0, client, 0, config, nil, [], source_map)
+      assert_predicate result, :skipped?
+      assert_equal "id-0", result.id
+    end
+  end
+
   private
 
   # @return [Integer] DaemonBackend.worker_count_for, a private helper.
