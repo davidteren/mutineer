@@ -76,6 +76,7 @@
       <pre><code>RAILS_ENV=test bundle exec mutineer init --rails
 RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/models/order_test.rb</code></pre>
       <p>Review each survivor. Add a test for a missed behaviour, or record why the change is equivalent before ignoring it. Start without a score threshold.</p>
+      <p><code>macro_removal</code> and <code>macro_option_removal</code> mutate listed class-body calls. A real run needs <code>--test-command</code>. Reload and the daemon exit 2 and name #389. A removal that raises while the file loads can score <code>error</code>. Removing <code>belongs_to :crate</code> did not fail the strong test in the Rails 7.2.4 check. That held with eager load off and with eager load on. The strong test never called the inverse.</p>
 
       <h2 id="report-only">Report-only in CI</h2>
       <p>Run Mutineer in CI and keep the report. Leave the score gate off (<code>threshold</code> stays 0). A red test suite still fails. A surviving mutant does not.</p>

@@ -160,15 +160,17 @@ class DocsContractTest < Minitest::Test
   def test_operator_pages_name_every_registered_operator
     defaults = Mutineer::MutatorRegistry::DEFAULT_NAMES
     tier2 = Mutineer::MutatorRegistry::TIER2_NAMES
+    macros = Mutineer::MutatorRegistry::MACRO_NAMES
     %w[README.md docs/index.md docs/index.html].each do |path|
       text = File.read(path)
-      (defaults + tier2).each do |name|
+      (defaults + tier2 + macros).each do |name|
         assert text.include?("`#{name}`") || text.include?(%(<td class="op">#{name}</td>)),
           "#{path} does not list the #{name} operator"
       end
     end
-    total = defaults.size + tier2.size
-    assert_includes File.read("README.md"), "| Operators | #{total} (#{defaults.size} by default, #{tier2.size} opt-in) |"
+    total = Mutineer::MutatorRegistry::ALL.size
+    opt_in = total - defaults.size
+    assert_includes File.read("README.md"), "| Operators | #{total} (#{defaults.size} by default, #{opt_in} opt-in) |"
     assert_includes File.read("docs/index.html"), %(<b class="odo" data-from="0">#{total}</b> types of code change)
     assert_includes File.read("docs/llms.txt"), "#{total} mutation operators"
   end

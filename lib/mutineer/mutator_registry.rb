@@ -21,6 +21,8 @@ require_relative "mutators/operand_removal"
 require_relative "mutators/array_literal"
 require_relative "mutators/condition_forcing"
 require_relative "mutators/operator_assignment"
+require_relative "mutators/macro_removal"
+require_relative "mutators/macro_option_removal"
 
 module Mutineer
   # Maps operator names to operator classes.
@@ -53,7 +55,9 @@ module Mutineer
       "array_literal"      => Mutators::ArrayLiteral,
       "condition_true"     => Mutators::ConditionTrue,
       "condition_false"    => Mutators::ConditionFalse,
-      "operator_assignment" => Mutators::OperatorAssignment
+      "operator_assignment" => Mutators::OperatorAssignment,
+      "macro_removal" => Mutators::MacroRemoval,
+      "macro_option_removal" => Mutators::MacroOptionRemoval
     }.freeze
 
     # The default Tier-1 operator set.
@@ -63,6 +67,9 @@ module Mutineer
                        safe_navigation range negation_removal
                        chain_link call_to_receiver operand_removal array_literal
                        condition_true condition_false operator_assignment].freeze
+    # Class-body macro operators. They are opt-in and need --test-command (#397).
+    # Membership in this list is the only test for a macro operator.
+    MACRO_NAMES = %w[macro_removal macro_option_removal].freeze
 
     # Short human-readable descriptions for each operator.
     DESCRIPTIONS = {
@@ -86,7 +93,9 @@ module Mutineer
       "array_literal"      => "[a, b] -> []",
       "condition_true"     => "if/elsif/unless/ternary/modifier/case-in guard condition -> true",
       "condition_false"    => "if/elsif/unless/ternary/modifier/case-in guard condition -> false",
-      "operator_assignment" => "+= <-> -=, *= <-> /=, %= -> *=, **= -> *= (not ||=, &&=)"
+      "operator_assignment" => "+= <-> -=, *= <-> /=, %= -> *=, **= -> *= (not ||=, &&=)",
+      "macro_removal" => "replace a class-body macro call with nil (--test-command only)",
+      "macro_option_removal" => "replace one keyword option with an empty splat (--test-command only)"
     }.freeze
 
     # Resolves operator names to classes.
@@ -107,7 +116,32 @@ module Mutineer
     # Returns the tier number for an operator name.
     #
     # @param name [String] operator name.
-    # @return [Integer] 2 for Tier-2 operators, otherwise 1.
-    def self.tier(name)     = TIER2_NAMES.include?(name) ? 2 : 1
+    # @return [Integer] 3 for a macro operator, 2 for a Tier-2 operator, otherwise 1.
+    def self.tier(name)
+      return 3 if MACRO_NAMES.include?(name)
+
+      TIER2_NAMES.include?(name) ? 2 : 1
+    end
+
+    # Raises when a real run selects a macro operator without --test-command.
+    #
+    # A dry run lists the mutants and continues. Reload and the daemon run the
+    # class body again on the loaded class, so a removed macro stays in effect.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    # @raise [ArgumentError] when a macro operator is selected and the run is
+    #   neither a dry run nor a --test-command run.
+    def self.check_macro_backend!(config)
+      return if config.dry_run || config.test_command
+
+      names = config.operators || DEFAULT_NAMES
+      return unless names.any? { |name| MACRO_NAMES.include?(name) }
+
+      raise ArgumentError, "the macro operators (macro_removal, macro_option_removal) need --test-command. " \
+                           "Reload and the daemon run the class body again on the loaded class, so a removed macro " \
+                           "stays in effect (#389 tracks full reload). Add --test-command \"bin/rails test %{files}\", " \
+                           "or remove macro_removal and macro_option_removal from --operators or .mutineer.yml."
+    end
   end
 end

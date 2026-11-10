@@ -17,6 +17,9 @@ module Mutineer
         @source = source
         @mutations = []
         @declined = 0
+        # See {Base#mutations_for}. This override does not call super.
+        return [] if subject.def_node.nil?
+
         @body = subject.def_node.body
         if @body
           @body.accept(self)       # rule 1 (explicit return nodes in this body)

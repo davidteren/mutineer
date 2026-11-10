@@ -23,6 +23,18 @@ It does not remove one or change what an existing one means.
 A fix to how Mutineer names a method can change the ids of mutants in that
 method, and of a method with the same name in the same file.
 The CHANGELOG names each such fix.
+
+### Macro subject names
+
+This rule starts in the release that adds `macro_removal` and `macro_option_removal`.
+It is not part of 1.8.0.
+A macro name ends with `)`.
+The separator is a dot, as in `Card.has_many(:entropies)`.
+A call with no symbol argument is `Card.before_save()`.
+Two calls with the same name in one file get ordinals in source order.
+Inserting another same-name block callback changes the later ids.
+One example is a second `before_save` with no symbol argument.
+
 The JSON rules are in [docs/json-schema.md](docs/json-schema.md).
 The JSON `schema_version` is not the gem version.
 Each number moves on its own.

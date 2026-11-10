@@ -23,6 +23,14 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/models/o
 Review each survivor. Add a test for a missed behaviour, or record why the change
 is equivalent before ignoring it. Start without a score threshold.
 
+`macro_removal` and `macro_option_removal` mutate listed class-body calls.
+A real run needs `--test-command`.
+Reload and the daemon exit 2 and name #389.
+A removal that raises while the file loads can score `error`.
+Removing `belongs_to :crate` did not fail the strong test in the Rails 7.2.4 check.
+That held with eager load off and with eager load on.
+The strong test never called the inverse.
+
 ## Report-only in CI
 
 Run Mutineer in CI and keep the report.

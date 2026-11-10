@@ -280,4 +280,64 @@ class RunnerExternalTest < Minitest::Test
       assert_equal source, File.read(path)
     end
   end
+
+  def with_widget(test_file)
+    Dir.mktmpdir("mutineer-widget") do |proj|
+      FileUtils.cp(File.join(FIXTURES, "widget.rb"), File.join(proj, "widget.rb"))
+      FileUtils.cp(File.join(FIXTURES, test_file), File.join(proj, test_file))
+      yield proj
+    end
+  end
+
+  def widget_rows(proj)
+    path = File.join(proj, "widget.rb")
+    source = File.read(path)
+    config = Mutineer::Config.new(sources: [path], project_root: proj,
+                                  operators: %w[macro_removal macro_option_removal])
+    jobs, = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[macro_removal macro_option_removal]))
+    jobs.map do |subject, mutation, id|
+      token = source.byteslice(mutation.start_offset...mutation.end_offset).gsub(/\s+/, " ").strip
+      { "id" => id, "subject" => subject.qualified_name, "operator" => mutation.operator.to_s, "token" => token }
+    end
+  end
+
+  def test_macro_mutants_are_killed_by_a_checking_test
+    with_widget("widget_strong_test.rb") do |proj|
+      expected = widget_rows(proj)
+      identity = expected.map { |row| [row["subject"], row["operator"], row["token"]] }
+      assert_equal [
+        ["Widget.has_many(:parts)", "macro_option_removal", "dependent: :destroy"],
+        ["Widget.has_many(:parts)", "macro_removal", "has_many :parts, dependent: :destroy"],
+        ["Widget.validates(:name)", "macro_removal", "validates :name, presence: true"]
+      ], identity.sort
+
+      out, err, status = mutineer("run", "widget.rb", "--test", "widget_strong_test.rb",
+                                  "--operators", "macro_removal,macro_option_removal",
+                                  "--test-command", "#{RUBY} %{files}", "--format", "json",
+                                  "--jobs", "1", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      report = JSON.parse(out)
+      assert_equal 3, report.dig("summary", "killed")
+      assert_equal 0, report.dig("summary", "survived")
+      assert_in_delta 100.0, report.dig("summary", "score"), 0.001
+      assert_empty report["survivors"]
+    end
+  end
+
+  def test_macro_mutants_survive_an_unchecking_test
+    with_widget("widget_weak_test.rb") do |proj|
+      expected = widget_rows(proj)
+      out, err, status = mutineer("run", "widget.rb", "--test", "widget_weak_test.rb",
+                                  "--operators", "macro_removal,macro_option_removal",
+                                  "--test-command", "#{RUBY} %{files}", "--format", "json",
+                                  "--jobs", "1", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      report = JSON.parse(out)
+      assert_equal 0, report.dig("summary", "killed")
+      assert_equal 3, report.dig("summary", "survived")
+      assert_in_delta 0.0, report.dig("summary", "score"), 0.001
+      actual = report["survivors"].map { |row| row.slice("id", "subject", "operator", "token") }
+      assert_equal expected.sort_by { |row| row["id"] }, actual.sort_by { |row| row["id"] }
+    end
+  end
 end

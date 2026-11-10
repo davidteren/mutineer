@@ -13,15 +13,19 @@ module Mutineer
     #
     # @param paths [Array<String>] source file paths.
     # @param only [String, nil] optional qualified-name filter.
+    # @param macros [Boolean] when true, also return class-body macro subjects.
+    #   Default runs stay method-only so a macro call does not change the
+    #   method count (#397).
     # @return [Array<Mutineer::Subject>] discovered subjects.
-    def self.discover(paths, only: nil)
+    def self.discover(paths, only: nil, macros: false)
       subjects = Array(paths).flat_map do |path|
         result = Parser.parse_file(path)
-        visitor = SubjectVisitor.new(path, plain_path_calls(result.value))
+        visitor = SubjectVisitor.new(path, plain_path_calls(result.value), macros: macros)
         visitor.visit(result.value)
         visitor.promote_module_functions!
+        # Macro subjects stay out of this pass. It reads each def node.
         exclude_ambiguous_hook_defs!(visitor.subjects, result.value)
-        visitor.subjects
+        visitor.subjects + visitor.macro_subjects
       end
       only ? subjects.select { |s| s.qualified_name == only } : subjects
     end
@@ -171,6 +175,25 @@ module Mutineer
       # ActiveSupport::Concern calls whose block another module or class runs (see {#concern_block}).
       CONCERN_BLOCKS = %i[class_methods included prepended].freeze
 
+      # Receiver-less class-body calls that become macro subjects (#397).
+      # `validates_*_of` matches that prefix and suffix. `before_`, `after_` and
+      # `around_` match {MACRO_CALLBACK_EVENTS}. The `after_*_commit` names are
+      # listed whole because their suffix is not one of those events.
+      MACRO_CALLS = %i[
+        validates validate validates_with validates_associated
+        has_many has_one belongs_to has_and_belongs_to_many
+        scope
+        after_create_commit after_update_commit after_destroy_commit after_save_commit
+      ].freeze
+
+      # Events that complete a `before_`, `after_` or `around_` callback name.
+      MACRO_CALLBACK_EVENTS = %w[
+        validation save create update destroy commit rollback initialize find touch action
+      ].freeze
+
+      # Prefixes of a callback macro name. The event is the rest of the name.
+      MACRO_CALLBACK_PREFIXES = %w[before_ after_ around_].freeze
+
       # Calls whose first argument names a method they reach (see {#placeable_hook}).
       NAME_TAKERS = %i[method instance_method send public_send __send__].freeze
 
@@ -196,14 +219,15 @@ module Mutineer
         end
       end
 
-      attr_reader :subjects
+      attr_reader :subjects, :macro_subjects
 
       # Builds a subject visitor.
       #
       # @param file [String] source file path being visited.
       # @param plain_calls [Set<Prism::CallNode>] the file's call statements on a
       #   plain path (see {Project.plain_path_calls}); only these hook calls can be placed.
-      def initialize(file, plain_calls = Set.new)
+      # @param macros [Boolean] when true, record class-body macro subjects.
+      def initialize(file, plain_calls = Set.new, macros: false)
         @file = file
         @plain_calls = plain_calls
         @namespace_stack = []
@@ -229,6 +253,8 @@ module Mutineer
         @enclosing_subject = nil     # the subject of the def being visited, for a nested def (#290)
         @hook_call = nil             # that block's call node, when reload can place its defs (see {#placeable_hook})
         @hook_uses = Set.new         # the names that block calls outside its def bodies
+        @macro_subjects = []         # class-body macro calls, kept out of @subjects until the def passes finish
+        @record_macros = macros
         super()
       end
 
@@ -255,7 +281,10 @@ module Mutineer
       # @param node [Prism::ClassNode] class node.
       # @return [void]
       def visit_class_node(node)
-        with_namespace(node.constant_path) { super }
+        with_namespace(node.constant_path) do
+          record_macro_statements(node.body)
+          super
+        end
       end
 
       # Visits module nodes and tracks namespace nesting.
@@ -263,7 +292,10 @@ module Mutineer
       # @param node [Prism::ModuleNode] module node.
       # @return [void]
       def visit_module_node(node)
-        with_namespace(node.constant_path) { super }
+        with_namespace(node.constant_path) do
+          record_macro_statements(node.body)
+          super
+        end
       end
 
       # Track `module_function` so its methods are recorded as singletons (#20) —
@@ -309,6 +341,11 @@ module Mutineer
             @hook_block ||= hook
             @hook_call, @hook_uses = placeable_hook(node) if hook
             @owner_unknown = true
+            # Record after owner_unknown is set, and only for a real concern
+            # hook. A plain `included` block and a `class_methods` block are not
+            # macro scopes. Direct statements only: a def inside the block is
+            # not a call, and super walks nested scopes later.
+            record_macro_statements(node.block&.body) if hook
             super
           end
         when :class_methods
@@ -422,6 +459,93 @@ module Mutineer
       end
 
       private
+
+      # Records receiver-less macro calls among the direct statements of a
+      # class body, a module body, or a concern `included` or `prepended` block.
+      #
+      # A `class << self` body is not visited here. Calls inside a def are not
+      # direct statements of the class. {#macro_call?} drops unlisted names
+      # such as `include` and `self.table_name=`.
+      #
+      # @param body [Prism::Node, nil] statement list, or one bare call.
+      # @return [void]
+      def record_macro_statements(body)
+        return unless @record_macros
+        return if @singleton_depth.positive? || @self_unknown
+
+        statement_list(body).each do |node|
+          next unless macro_call?(node)
+
+          @macro_subjects << macro_subject(node)
+        end
+      end
+
+      # The direct statements of a body. A bare call is one statement.
+      #
+      # @param body [Prism::Node, nil] body node.
+      # @return [Array<Prism::Node>]
+      def statement_list(body)
+        case body
+        when Prism::StatementsNode then body.body
+        when Prism::CallNode then [body]
+        else []
+        end
+      end
+
+      # True for a receiver-less call on the fixed macro list.
+      #
+      # @param node [Prism::Node] statement to test.
+      # @return [Boolean]
+      def macro_call?(node)
+        return false unless node.is_a?(Prism::CallNode) && node.receiver.nil?
+
+        name = node.name
+        text = name.to_s
+        return true if MACRO_CALLS.include?(name)
+        return true if text.start_with?("validates_") && text.end_with?("_of")
+
+        MACRO_CALLBACK_PREFIXES.any? do |prefix|
+          text.start_with?(prefix) && MACRO_CALLBACK_EVENTS.include?(text.delete_prefix(prefix))
+        end
+      end
+
+      # Builds one macro subject from a call in the current namespace.
+      #
+      # `singleton` stays false. `hook_block` stays false: this is not a def
+      # inside the hook. `owner_unknown` is copied so a concern hook keeps it.
+      #
+      # @param node [Prism::CallNode] macro call.
+      # @return [Mutineer::Subject]
+      def macro_subject(node)
+        Subject.new(
+          file: @file,
+          namespace: (@block_namespace || @namespace_stack).dup,
+          lexical: @lexical_stack.dup,
+          block_owner: @block_owner,
+          owner_unknown: @owner_unknown,
+          hook_block: false,
+          reload_hook_call: nil,
+          name: macro_subject_name(node),
+          singleton: false,
+          def_node: nil,
+          macro_node: node,
+          enclosing_subject: nil
+        )
+      end
+
+      # `has_many(:entropies)` when the first argument is a symbol literal.
+      # Otherwise `before_save()`.
+      #
+      # @param node [Prism::CallNode] macro call.
+      # @return [String]
+      def macro_subject_name(node)
+        first = node.arguments&.arguments&.first
+        if first.is_a?(Prism::SymbolNode)
+          "#{node.name}(:#{first.value})"
+        else
+          "#{node.name}()"
+        end
+      end
 
       # The module a `module_function` call and a def are matched by: its joined
       # namespace, so a module reopened later in the file matches (#216), and

@@ -59,4 +59,15 @@ class SubjectTest < Minitest::Test
                             name: :empty, singleton: false, def_node: def_node("def empty; end"))
     assert_nil s.body_loc
   end
+
+  def test_macro_subject_has_no_body_loc
+    call = Mutineer::Parser.parse_string("has_many :entropies, dependent: :destroy\n").value.statements.body.first
+    subject = Mutineer::Subject.new(file: "f.rb", namespace: ["Card"], name: "has_many(:entropies)",
+                                   singleton: false, def_node: nil, macro_node: call)
+    assert_nil subject.body_loc
+    assert_same call, subject.node
+    assert_equal "Card.has_many(:entropies)", subject.qualified_name
+    assert_predicate subject, :macro?
+    refute subject.singleton
+  end
 end

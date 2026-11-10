@@ -943,6 +943,35 @@ class RunnerTest < Minitest::Test
     assert_equal({ line: 23, name: :doubled, singleton: false }, hook_def)
   end
 
+  def test_runner_execute_refuses_macro_operators_on_every_backend
+    path = File.join(Dir.tmpdir, "macro-refuse.rb")
+    File.write(path, "class Card\n  validates :name, presence: true\nend\n")
+    message = "EnumRedeclaration, CallbackReskipping, RepeatedCallbacks"
+    boom = ->(*) { flunk message }
+    configs = [
+      { strategy: "reload" },
+      { strategy: "redefine" },
+      { daemon: true }
+    ]
+    Mutineer::RailsRunEnv.stub(:pin_process!, boom) do
+      Mutineer::DaemonBackend.stub(:execute, boom) do
+        Mutineer::Isolation.stub(:run, boom) do
+          Mutineer::ConcernBlocks.stub(:load_mutant, boom) do
+            configs.each do |extra|
+              config = Mutineer::Config.new(
+                sources: [path], tests: [], operators: ["macro_removal"],
+                jobs: 1, cache_dir: Dir.tmpdir, project_root: Dir.tmpdir, **extra
+              )
+              error = assert_raises(ArgumentError, message) { Mutineer::Runner.execute(config) }
+              assert_includes error.message, "--test-command"
+              assert_includes error.message, "#389"
+            end
+          end
+        end
+      end
+    end
+  end
+
   private
 
   def with_rails_env(value)

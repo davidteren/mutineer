@@ -220,4 +220,40 @@ class MutantIdTest < Minitest::Test
       assert_equal ids_for(root, "spec/r.rb", :index), [jobs.first[2]]
     end
   end
+
+  def test_two_identical_macros_get_distinct_ids
+    Dir.mktmpdir do |root|
+      path = File.join(root, "card.rb")
+      source = "class Card\n  validates :name, presence: true\n  validates :name, presence: true\nend\n"
+      File.write(path, source)
+      config = Mutineer::Config.new(sources: [path], project_root: root, operators: %w[macro_removal])
+      jobs, = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[macro_removal]))
+      assert_equal 2, jobs.size
+      assert_equal ["Card.validates(:name)"], jobs.map { |job| job[0].qualified_name }.uniq
+      relative = Mutineer::ProjectPath.relative(path, root)
+      jobs.each_with_index do |(subject, mutation, id), ordinal|
+        assert_equal ID.for(subject, mutation, source, path: relative, subject_ordinal: ordinal), id
+      end
+      refute_equal jobs[0][2], jobs[1][2]
+    end
+  end
+
+  def test_existing_ids_do_not_change_with_macro_operators
+    Dir.mktmpdir do |root|
+      source = File.read(File.expand_path("fixtures/calculator.rb", __dir__))
+      source = source.sub("class Calculator\n", "class Calculator\n  validates :name, presence: true\n")
+      path = File.join(root, "calculator.rb")
+      File.write(path, source)
+      config = Mutineer::Config.new(sources: [path], project_root: root)
+      defaults = Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::DEFAULT_NAMES)
+      both = Mutineer::MutatorRegistry.resolve(
+        Mutineer::MutatorRegistry::DEFAULT_NAMES + Mutineer::MutatorRegistry::MACRO_NAMES
+      )
+      default_jobs, = Mutineer::JobPlan.collect_jobs(config, defaults)
+      both_jobs, = Mutineer::JobPlan.collect_jobs(config, both)
+      def_ids = both_jobs.reject { |subject, _, _| subject.macro? }.map { |_, _, id| id }
+      assert_equal default_jobs.map { |_, _, id| id }, def_ids
+      assert both_jobs.any? { |subject, _, _| subject.macro? }
+    end
+  end
 end

@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Class-body macro operators (#397).** Two opt-in operators mutate listed
+  Rails calls. The calls sit in a class body, a module body, or a concern
+  `included` or `prepended` block. `macro_removal` replaces one call, and its
+  block, with `nil`. `macro_option_removal` replaces one keyword option with
+  `**{}`. A real run needs `--test-command`. Reload, redefine, and the daemon
+  exit 2 and name #389. A dry run lists the mutants and prints a note. Daemon
+  macro support waits for #389. A maintainer must file the other follow-up
+  issues before merge. One topic is scope lambda bodies. Another is the next
+  macro set: `enum`, `normalizes`, `encrypts`, `delegate`, `has_one_attached`,
+  and `broadcasts*`. The rest are the equivalent share of option removal,
+  eager-load verdicts, and ids of same-name block callbacks.
+
 ## [1.8.2] - 2026-11-10
 
 ### Fixed

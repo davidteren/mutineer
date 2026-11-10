@@ -155,6 +155,7 @@ td.rule { font: 12px/1.7 var(--mono); color: var(--fg-dim); }
 .pill { display: inline-block; font: 10px/1.7 var(--mono); padding: 2px 6px; border: 1px solid var(--border); white-space: nowrap; }
 .pill.t1 { color: var(--killed); }
 .pill.t2 { color: var(--fg-dim); }
+.pill.t3 { color: var(--accent); }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
 .two-col > div { min-width: 0; }
 .codeblock { position: relative; background: var(--bg-2); border: 1px solid var(--border); border-left: 3px solid var(--accent); padding: 20px 90px 20px 18px; font: 12px/1.8 var(--mono); overflow-x: auto; white-space: pre; }

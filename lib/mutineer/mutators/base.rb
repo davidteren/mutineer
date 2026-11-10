@@ -21,6 +21,11 @@ module Mutineer
         @source = source
         @mutations = []
         @declined = 0
+        # A subject with no def node is a class-body macro. Def operators return
+        # nothing for it. EnumRedeclaration, CallbackReskipping and RepeatedCallbacks
+        # (#391) rely on def operators never editing the class body (#397).
+        return [] if subject.def_node.nil?
+
         @body = subject.def_node.body
         @body&.accept(self)
         drop_dangling_heredocs

@@ -65,6 +65,9 @@ module Mutineer
     # @return [Array(Mutineer::AggregateResult, Hash<String, String>, Hash)] aggregate,
     #   source map, and run extras.
     def self.execute(config)
+      # Before boot, coverage, or a daemon. A removed macro stays active when
+      # the class body runs again on the loaded class (#397).
+      MutatorRegistry.check_macro_backend!(config)
       # Rails reads PARALLEL_WORKERS when a test helper calls parallelize.
       # Set it before any boot or child spawn, then put the caller's value back.
       previous_parallel_workers = ENV["PARALLEL_WORKERS"]

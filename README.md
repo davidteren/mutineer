@@ -146,7 +146,7 @@ This gap is common in rushed tests and tests written by AI agents.
 |---|---|
 | Parser | Prism, with no runtime gem dependencies |
 | Ruby | 3.4 or later; older apps use `--test-command` |
-| Operators | 21 (5 by default, 16 opt-in) |
+| Operators | 23 (5 by default, 18 opt-in) |
 | Isolation | One fork per mutant on Linux and macOS |
 | Report formats | human, JSON (versioned schema), HTML |
 
@@ -219,6 +219,45 @@ List with `mutineer --list-operators`. Enable specific operators with `--operato
 |---|---|
 | Tier 1 (default) | `arithmetic`, `comparison`, `boolean_connector`, `boolean_literal`, `statement_removal` |
 | Tier 2 (opt-in) | `return_nil`, `literal_mutation`, `condition_negation`, `string_literal`, `regex`, `collection_method`, `safe_navigation`, `range`, `negation_removal`, `chain_link`, `call_to_receiver`, `operand_removal`, `array_literal`, `condition_true`, `condition_false`, `operator_assignment` |
+| Class-body (opt-in) | `macro_removal`, `macro_option_removal` |
+
+### Class-body macros
+
+Two opt-in operators mutate listed Rails calls.
+They run in a class body, a module body, or a concern `included` or `prepended` block.
+`macro_removal` replaces one call, and its block, with `nil`.
+`macro_option_removal` replaces one keyword option with `**{}`.
+A real run needs `--test-command`.
+Reload, redefine, and the daemon exit 2 and name [#389](https://github.com/davidteren/mutineer/issues/389).
+A dry run lists the mutants and prints a note.
+
+The list covers validations, associations, callbacks, and `scope`.
+Validations are `validates`, `validates_*_of`, `validate`, `validates_with`, and `validates_associated`.
+Associations are `has_many`, `has_one`, `belongs_to`, and `has_and_belongs_to_many`.
+Callbacks start with `before_`, `after_`, or `around_`.
+The event is `validation`, `save`, `create`, `update`, `destroy`, `commit`, `rollback`, `initialize`, `find`, `touch`, or `action`.
+`after_create_commit`, `after_update_commit`, `after_destroy_commit`, and `after_save_commit` are included.
+A call inside a method, or inside `class << self`, is not mutated.
+
+A macro name uses a dot and ends with `)`.
+One example is `Card.has_many(:entropies)`.
+A call with no symbol argument is `Card.before_save()`.
+Quote the shell argument: `--only 'Card.has_many(:entropies)'`.
+Same-name macros are selected together.
+Hide one line with `# mutineer:disable-line`.
+
+Fizzy models gain about 600 mutants from these operators.
+A strong Rails 7.2.4 test took 1.18 seconds of wall time.
+A weak test took 0.79 seconds.
+About 600 mutants at 1.18 seconds is about 12 minutes.
+Use `--only` or a small `--test` set.
+
+A removal that raises while the file loads can score `error`.
+Those errors sit in the broken share.
+`--threshold` can then exit 1 even when the score passes.
+Removing `belongs_to :crate` did not fail the strong test in that Rails 7.2.4 check.
+The same result held with eager load off and with eager load on.
+The strong test never called the inverse.
 
 ## Documentation
 

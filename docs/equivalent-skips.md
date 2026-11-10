@@ -4,7 +4,7 @@ Mutineer skips some code changes to reduce results that rarely help improve test
 These built-in skips cannot be turned off. Chain-call skips and the endless-range
 skip use the method name only, so they are not always equivalent.
 Mutineer counts every skip on this page when its operator runs. The chain-link,
-call-to-receiver and range operators are not in the default set, so their skips
+call-to-receiver, range and macro_option_removal operators are not in the default set, so their skips
 are counted only when `--operators` selects them. The dry run prints the count,
 and the JSON report gives it in `summary.declined_by_operator`.
 
@@ -98,3 +98,25 @@ For a slice of an Array or String, `(1..)` and `(1...)` select the same elements
 Every other endless range is swapped. This includes the assigned value in `h[:k] = 1..nil` and a range in parentheses, as in `list[(1..)]`. `(1..)` and `(1...)` differ on `==`, `eql?`, `hash`, `exclude_end?`, `to_s`, `inspect` and `cover?(1..)`, so a test that compares, stores or prints the range can kill the mutant.
 
 Some of these mutants are equivalent: a range in parentheses inside a slice, or a range used only with `include?`, `===`, `case`/`when`, a `case`/`in` pattern or `clamp`. In a Rails app, a range in an Active Record query, as in `where(created_at: time..)`, also gives an equivalent mutant, because both ranges become the same `>=` SQL condition. So does `validates :age, inclusion: { in: 18.. }`. Suppress such a mutant with `# mutineer:disable-line` or an `ignore:` entry, as described at the top of the page.
+
+## Macro option removal
+
+`macro_option_removal` is not in the default set.
+A real run needs `--test-command`.
+It replaces one keyword option with `**{}`.
+
+Rails rejects `validates` when no validator key remains.
+Mutineer declines that removal, so the file still loads.
+The count is in `summary.declined_by_operator`.
+
+These keys are not validators: `if`, `unless`, `on`, `allow_blank`, `allow_nil`, `strict`, and `except_on`.
+Removing the last validator key is declined.
+Removing one of those keys is kept when a validator key remains.
+`validates_with` takes a positional validator, so it never declines.
+
+Fizzy models at `f220e4832` had 12 `validates` calls with only one key.
+Each of those calls declines its option removal.
+
+Some other removals leave the tests green.
+`inverse_of:` and `class_name:` often do.
+Hide one line with `# mutineer:disable-line macro_option_removal`.

@@ -1573,4 +1573,76 @@ class ProjectTest < Minitest::Test
       assert_empty Mutineer::Project.discover([path])
     end
   end
+
+  # Default discovery stays method-only. A class-body macro must not add a subject.
+  def test_discover_finds_no_macro_subjects_by_default
+    source = "class Card\n  validates :name, presence: true\n  def total; end\nend\n"
+    with_source(source) do |path|
+      subjects = Mutineer::Project.discover([path])
+      assert_equal [:total], subjects.map(&:name)
+    end
+  end
+
+  def test_discover_names_macro_subjects
+    source = <<~RUBY
+      class Card
+        has_many :entropies, dependent: :destroy
+        before_save { x }
+        self.table_name = "x"
+        include Foo
+      end
+    RUBY
+    with_source(source) do |path|
+      macros = Mutineer::Project.discover([path], macros: true).select(&:macro?)
+      assert_equal ["Card.has_many(:entropies)", "Card.before_save()"], macros.map(&:qualified_name)
+      assert(macros.none?(&:singleton))
+    end
+  end
+
+  def test_discover_finds_macros_in_a_concern_included_block
+    source = <<~RUBY
+      module Card::Closeable
+        extend ActiveSupport::Concern
+        included do
+          has_one :closure
+        end
+      end
+    RUBY
+    with_source(source) do |path|
+      macros = Mutineer::Project.discover([path], macros: true).select(&:macro?)
+      assert_equal ["Card::Closeable.has_one(:closure)"], macros.map(&:qualified_name)
+    end
+  end
+
+  def test_discover_skips_macros_in_methods_and_singleton_bodies
+    source = <<~RUBY
+      class Card
+        def save
+          validates :name, presence: true
+        end
+        class << self
+          validates :name, presence: true
+        end
+      end
+    RUBY
+    with_source(source) do |path|
+      subjects = Mutineer::Project.discover([path], macros: true)
+      assert(subjects.none?(&:macro?))
+      assert_equal [:save], subjects.map(&:name)
+    end
+  end
+
+  def test_only_selects_every_same_name_macro
+    source = <<~RUBY
+      class Card
+        validates :name, presence: true
+        validates :name, presence: true
+      end
+    RUBY
+    with_source(source) do |path|
+      subjects = Mutineer::Project.discover([path], only: "Card.validates(:name)", macros: true)
+      assert_equal 2, subjects.size
+      assert(subjects.all? { |subject| subject.qualified_name == "Card.validates(:name)" })
+    end
+  end
 end

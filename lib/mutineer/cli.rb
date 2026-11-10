@@ -418,6 +418,9 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.validate!(config)
+      # Before the Rails notice and every other check. A macro run without
+      # --test-command is a usage error (#397).
+      MutatorRegistry.check_macro_backend!(config)
       # First, so a conflict is reported before another check rewrites the config.
       validate_matrix!(config) if config.matrix
       validate_test_command!(config) if config.test_command
@@ -900,6 +903,10 @@ module Mutineer
     # @return [void]
     def self.dry_run(config)
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
+      names = config.operators || MutatorRegistry::DEFAULT_NAMES
+      if names.any? { |name| MutatorRegistry::MACRO_NAMES.include?(name) }
+        warn "mutineer: real runs of these macro operators require --test-command"
+      end
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
       # Narrow jobs and ignored the same way a real run does, so the summary

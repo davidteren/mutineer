@@ -97,4 +97,16 @@ class MutatorRegistryTest < Minitest::Test
     err = assert_raises(ArgumentError) { Mutineer::MutatorRegistry.resolve(["zzzzzz"]) }
     assert_equal 'Unknown operator: "zzzzzz"', err.message
   end
+
+  def test_macro_names_are_neither_default_nor_tier2
+    registry = Mutineer::MutatorRegistry
+    assert_empty registry::MACRO_NAMES & registry::DEFAULT_NAMES
+    assert_empty registry::MACRO_NAMES & registry::TIER2_NAMES
+    assert_equal 3, registry.tier("macro_removal")
+    assert_equal 3, registry.tier("macro_option_removal")
+    refute registry.default?("macro_removal")
+    assert registry::DESCRIPTIONS["macro_removal"].end_with?("(--test-command only)")
+    assert registry::DESCRIPTIONS["macro_option_removal"].end_with?("(--test-command only)")
+    assert_equal registry::DEFAULT_NAMES + registry::TIER2_NAMES + registry::MACRO_NAMES, registry::ALL.keys
+  end
 end

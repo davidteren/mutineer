@@ -33,6 +33,14 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--verbose` (alias `--debug`) | Full error details | Off |
 | `--list-operators`, `--version`, `--help` | Print and exit | |
 
+`macro_removal` and `macro_option_removal` are opt-in.
+They are not in the default set, and the tier-2 hint does not name them.
+`--list-operators` shows each one as tier 3 and disabled.
+A real run needs `--test-command`.
+Without it, the run exits 2 and names #389.
+A dry run still lists those mutants and prints a note.
+Quote a macro `--only` value, as in `--only 'Card.has_many(:entropies)'`.
+
 Other commands:
 
 - `mutineer init [--rails] [--force]`

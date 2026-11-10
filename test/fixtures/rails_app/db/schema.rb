@@ -17,4 +17,14 @@ ActiveRecord::Schema.define(version: 1) do
     t.boolean :express, null: false, default: false
     t.timestamps
   end
+
+  create_table :crates, force: true do |t|
+    t.string :label
+    t.timestamps
+  end
+
+  create_table :crate_items, force: true do |t|
+    t.integer :crate_id
+    t.timestamps
+  end
 end

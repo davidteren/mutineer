@@ -269,6 +269,13 @@ When Bundler prints `RubyVersionMismatch`, Mutineer reports that cause instead o
 | Smoke check | Aborts before mutation if the unmutated suite fails. |
 | Score comparison | Uncovered mutants count as survivors. Do not compare with in-process scores. Mutineer prints this warning every run. |
 
+`macro_removal` and `macro_option_removal` need this command for a real run.
+Reload and the daemon exit 2 and name #389.
+A removal that raises while the file loads can score `error`.
+Removing `belongs_to :crate` did not fail the strong test in the Rails 7.2.4 check.
+That held with eager load off and with eager load on.
+The strong test never called the inverse.
+
 | Subprocess result | Verdict |
 | --- | --- |
 | Exit code other than 1, or a signal | `error`, except for the SimpleCov case below. |

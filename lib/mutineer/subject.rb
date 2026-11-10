@@ -24,13 +24,39 @@ module Mutineer
   # when `hook_block` is true (see docs/json-schema.md for the cases).
   # `enclosing_subject` is the subject of the `def` whose body holds this one,
   # or nil, so the redefine strategy can load each enclosing method too (#290).
+  # `macro_node` is the class-body call when this subject is a macro, not a
+  # method. It is nil for a `def`. A macro keeps `def_node` nil and `singleton`
+  # false. Its qualified name uses `.` (#397).
   Subject = Struct.new(:file, :namespace, :name, :singleton, :def_node, :lexical, :block_owner, :owner_unknown,
-                       :hook_block, :reload_hook_call, :enclosing_subject, keyword_init: true) do
+                       :hook_block, :reload_hook_call, :enclosing_subject, :macro_node, keyword_init: true) do
     # Returns the fully-qualified subject name.
     #
-    # @return [String] namespaced method name like `Billing::Invoice#total`.
+    # A method uses `#` or `.` from {#singleton}. A macro always uses `.`,
+    # because `singleton` stays false for a class-body call.
+    #
+    # @return [String] namespaced name like `Billing::Invoice#total` or
+    #   `Card.has_many(:entropies)`.
     def qualified_name
-      namespace.join("::") + (singleton ? "." : "#") + name.to_s
+      separator = macro_node ? "." : (singleton ? "." : "#")
+      namespace.join("::") + separator + name.to_s
+    end
+
+    # True when this subject is a class-body macro call.
+    #
+    # @return [Boolean]
+    def macro?
+      !macro_node.nil?
+    end
+
+    # The node whose source location identifies this subject.
+    #
+    # A method uses its def node. A macro uses its call node. Callers that
+    # only need a location, such as the subject ordinal, use this. Callers
+    # that edit a method body keep using {#def_node}.
+    #
+    # @return [Prism::Node, nil]
+    def node
+      def_node || macro_node
     end
 
     # Class/module chain as written in the source, for textual wrappers. Falls
@@ -56,9 +82,10 @@ module Mutineer
 
     # Returns the body location for the subject, if any.
     #
-    # @return [Prism::Location, nil] body location or nil for empty methods.
+    # @return [Prism::Location, nil] body location, or nil for an empty method
+    #   or a macro subject.
     def body_loc
-      def_node.body&.location
+      def_node&.body&.location
     end
   end
 end

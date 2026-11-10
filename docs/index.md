@@ -109,6 +109,10 @@ Tier 2 (off until `--operators`): `return_nil`, `literal_mutation`, `condition_n
 `negation_removal`, `chain_link`, `call_to_receiver`, `operand_removal`,
 `array_literal`, `condition_true`, `condition_false`, `operator_assignment`.
 
+Class-body (opt-in, `--test-command` only): `macro_removal`, `macro_option_removal`.
+A real run of those two needs `--test-command`.
+Reload, redefine, and the daemon exit 2 and name #389.
+
 `mutineer --list-operators` prints the live set.
 
 ## Mutineer and Mutant

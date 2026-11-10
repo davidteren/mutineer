@@ -85,7 +85,9 @@ module Mutineer
       id_map = {}
       dropped_id_map = {}
       declined = Hash.new(0)
-      Project.discover(config.sources, only: config.only).each do |subject|
+      # A class outside ALL has no name, so it counts as a def operator.
+      macros = operator_classes.any? { |klass| MutatorRegistry::MACRO_NAMES.include?(MutatorRegistry::ALL.key(klass)) }
+      Project.discover(config.sources, only: config.only, macros: macros).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file, encoding: "UTF-8"))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
         # A repeated operator name runs once, so its declines count once.
@@ -97,7 +99,7 @@ module Mutineer
         end
         id_path = (id_paths[subject.file] ||= ProjectPath.relative(subject.file, config.project_root))
         decls = name_decls[[id_path, subject.qualified_name]]
-        ordinal = (decls[subject.def_node.location.start_offset] ||= decls.size)
+        ordinal = (decls[subject.node.location.start_offset] ||= decls.size)
         ids = MutantId.for_subject(subject, source, mutations, path: id_path, subject_ordinal: ordinal)
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
         lines = mutations.map { |m| source.byteslice(0, m.start_offset).count("\n") + 1 }

@@ -133,6 +133,18 @@ class CliTest < Minitest::Test
     assert_match(/condition_negation\s+tier 2\s+disabled/, out)
   end
 
+  def test_list_operators_marks_macro_operators
+    out, _, status = mutineer("--list-operators")
+    assert_equal 0, status.exitstatus
+    assert_match(/macro_removal\s+tier 3\s+disabled.*--test-command only/, out)
+    assert_match(/macro_option_removal\s+tier 3\s+disabled.*--test-command only/, out)
+  end
+
+  def test_tier2_hint_never_names_a_macro_operator
+    hint = Mutineer::CLI.tier2_hint(nil)
+    refute_includes hint, "macro_"
+  end
+
   # C7: every flag/usage failure exits 2 (usage), distinct from exit 1 (tests too
   # weak) and exit 0 (success).
   def test_jobs_zero_exits_two
@@ -1931,6 +1943,62 @@ class CliTest < Minitest::Test
     [JSON.parse(out).fetch("ignored").map { |row| row.fetch("id") }.sort, err, status]
   end
   # init is a command. A bad flag is a usage error, not an unknown command.
+  def test_macro_operator_without_test_command_is_a_usage_error
+    Dir.mktmpdir("mutineer-macro-cli") do |dir|
+      path = File.join(dir, "card.rb")
+      File.write(path, "class Card\n  validates :name, presence: true\n  def total(a, b)\n    a + b\n  end\nend\n")
+      config = Mutineer::Config.new(
+        sources: [path], operators: ["macro_removal"], project_root: dir,
+        rails: true, framework: "minitest"
+      )
+      status = nil
+      _out, err = capture_io do
+        Mutineer::Runner.stub(:execute, ->(*) { flunk "refused before boot" }) do
+          status = assert_raises(SystemExit, "EnumRedeclaration, CallbackReskipping, RepeatedCallbacks") do
+            Mutineer::CLI.run(config)
+          end
+        end
+      end
+      assert_equal 2, status.status
+      assert_includes err, "--test-command"
+      assert_includes err, "#389"
+      assert_includes err, "bin/rails test %{files}"
+      refute_includes err, "in Mutineer 2.0, --rails uses --daemon"
+    end
+  end
+
+  def test_dry_run_lists_macro_mutants_with_a_note
+    Dir.mktmpdir("mutineer-macro-dry") do |dir|
+      File.write(File.join(dir, "widget.rb"), <<~RUBY)
+        class Widget
+          validates :name, presence: true
+          has_many :parts, dependent: :destroy
+        end
+      RUBY
+      out, err, status = mutineer("run", "widget.rb", "--dry-run", "--operators", "macro_removal", chdir: dir)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 2, out.scan("[macro_removal]").size
+      assert_includes err, "mutineer: real runs of these macro operators require --test-command"
+    end
+  end
+
+  def test_runs_without_macro_operators_are_unchanged
+    Dir.mktmpdir("mutineer-macro-default") do |dir|
+      plain = "class Card\n  def total(a, b)\n    a + b\n  end\nend\n"
+      with_macro = "class Card\n  validates :name, presence: true\n  def total(a, b)\n    a + b\n  end\nend\n"
+      File.write(File.join(dir, "plain.rb"), plain)
+      File.write(File.join(dir, "card.rb"), with_macro)
+      plain_out, plain_err, plain_status = mutineer("run", "plain.rb", "--dry-run", chdir: dir)
+      out, err, status = mutineer("run", "card.rb", "--dry-run", chdir: dir)
+      assert_equal 0, plain_status.exitstatus, plain_err
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "macro operators"
+      refute_includes out, "macro_removal"
+      refute_includes out, "[macro_option_removal]"
+      assert_equal plain_out.scan("[arithmetic]").size, out.scan("[arithmetic]").size
+    end
+  end
+
   def test_init_flag_is_usage_not_an_unknown_command
     Dir.mktmpdir("mutineer-init-cli") do |dir|
       _out, err, status = mutineer("init", "--nope", chdir: dir)
