@@ -1,0 +1,36 @@
+CHANGELOG.md
+  s_a6bec147e40415::t_493b1207936046 9-19
+action.yml
+  s_a6bec147e40415::t_2579ba1f5c0ffb 562,564
+  s_a6bec147e40415::t_ad0fd5f39a0f41 295-299
+  s_a6bec147e40415::t_bcfbf75547c22d 301-302,372,563
+  s_a6bec147e40415::t_ca63443413b7ad 304
+  s_a6bec147e40415::t_39282269a4e63e 450
+test/action_harness_test.rb
+  s_a6bec147e40415::t_f40b641ee9561c 92-98
+  s_a6bec147e40415::t_04d05f482663f1 13-14
+test/fixtures/action_harness.sh
+  s_a6bec147e40415::t_b3efba8c16303e 250-252
+  s_a6bec147e40415::t_f4bd2295c12cb2 264
+  s_a6bec147e40415::t_158511ba5e526d 285-287
+  s_a6bec147e40415::t_714f97290c6f02 291,309
+  s_a6bec147e40415::t_81adb36b71b7e6 260
+  s_a6bec147e40415::t_0a076608361166 253
+  s_a6bec147e40415::t_f7cf7477ee6cb6 239-249,254-259,261-263,265-284,288-290,292-308,310-341
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3905d8ce539a0f2f479eeba13a4f05dde6e12c09",
+  "prompts": {},
+  "sessions": {
+    "s_a6bec147e40415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70696613-345c-4c5a-a1b7-097a86354e05",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
