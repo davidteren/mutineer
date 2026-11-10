@@ -319,6 +319,30 @@ class ReloadGuardsTest < Minitest::Test
     assert_same_list [new_block, own], child.__callbacks[:save]
   end
 
+  # #414: only the parent's body ran again. Rails appended its new `:check`
+  # to every loaded subclass, also to one that skipped it and to one that kept
+  # only a conditional copy, which Rails then dropped as a duplicate. Each
+  # subclass must end as it was: no `:check`, or its own conditional copy.
+  def test_a_parent_reload_keeps_each_subclass_skip
+    old_check = Callback.new(:before, :check)
+    new_check = Callback.new(:before, :check)
+    conditional = Callback.new(:before, :check).tap { |c| c.instance_variable_set(:@unless, [:express?]) }
+    own = Callback.new(:before, proc {})
+    parent = callback_class
+    skipped = callback_class(parent)
+    narrowed = callback_class(parent)
+    parent.__callbacks = { save: Chain.new(new_check) }
+    skipped.__callbacks = { save: Chain.new(own, new_check) }
+    narrowed.__callbacks = { save: Chain.new(new_check) }
+    before = { parent => { save: [old_check] }, skipped => { save: [own] }, narrowed => { save: [conditional] } }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove(before, [__FILE__])
+
+    assert_same_list [new_check], parent.__callbacks[:save]
+    assert_same_list [own], skipped.__callbacks[:save]
+    assert_same_list [conditional], narrowed.__callbacks[:save]
+  end
+
   # A block in the class body.
   def body_block = proc {}
 

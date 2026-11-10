@@ -265,17 +265,37 @@ module Mutineer
         end
       end
 
+      # A paired new entry whose old entry this chain did not have came from a
+      # parent's class body only. Rails appends a parent's callback to every
+      # loaded subclass, so it also reached a subclass that skipped it (#414).
+      # Such an entry is dropped. When Rails dropped the subclass's own copy
+      # as a duplicate of it, such as the conditional copy that a
+      # `skip_callback ... if:` leaves, that copy comes back.
+      #
       # @param old [Array] the chain's entries before the load.
       # @param now [Array] its entries after the load.
       # @param swap [Hash{Object => Object}] each old entry to its new entry.
       # @return [Array] `old` with each new entry swapped in, then the other new entries.
       def self.reorder(old, now, swap)
         present = identity_set(now)
+        paired = identity_set(swap.values)
+        kept = identity_set(old.filter_map { |entry| swap[entry] })
+        stray = now.select { |entry| paired.include?(entry) && !kept.include?(entry) }
         order = old.filter_map do |entry|
           new_entry = swap[entry]
-          new_entry && present.include?(new_entry) ? new_entry : (entry if present.include?(entry))
+          next new_entry if new_entry && present.include?(new_entry)
+
+          entry if present.include?(entry) || stray.any? { |other| displaced?(entry, other) }
         end
-        order + without(now, order).reject { |entry| swap.key?(entry) }
+        order + without(now, order).reject { |entry| swap.key?(entry) || paired.include?(entry) }
+      end
+
+      # @param entry [Object] an old ActiveSupport callback.
+      # @param other [Object] a new one.
+      # @return [Boolean] true when Rails drops `entry` on appending `other`:
+      #   both name the same method, with the same kind.
+      def self.displaced?(entry, other)
+        entry.filter.is_a?(Symbol) && entry.kind == other.kind && entry.filter == other.filter
       end
 
       # True when two entries come from the same macro call with the same
