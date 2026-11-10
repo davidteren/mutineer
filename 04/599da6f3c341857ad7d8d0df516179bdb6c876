@@ -1,0 +1,46 @@
+test/fixtures/shared_capture/beta_test.rb
+  s_a6bec147e40415::t_3b944390b1c7b3 11
+CHANGELOG.md
+  s_a6bec147e40415::t_e33cec686ea48c 9-25,27
+  s_a6bec147e40415::t_a6a22d08149eaf 26
+test/daemon_coverage_test.rb
+  s_a6bec147e40415::t_47607c01f715a9 152-154,157-158,160
+  s_a6bec147e40415::t_e3abb6c44fe62b 151,155-156,159,161-180
+test/fixtures/rails_app/test/models/price_list_test.rb
+  s_a6bec147e40415::t_e5c47f4baf2e82 8
+test/coverage_map_test.rb
+  s_a6bec147e40415::t_2555ad95653143 510-512
+  s_a6bec147e40415::t_effe87cf312786 624-644,652,654-673,675-687,689-722,724-739,741-750
+  s_a6bec147e40415::t_b361b0f9d24b8f 653,674,688,723,740
+  s_a6bec147e40415::t_2fb3c1952a922f 645-651
+docs/cli.md
+  s_a6bec147e40415::t_c3840b8b0b49c1 98,100-107
+  s_a6bec147e40415::t_34c84e830431a8 99
+README.md
+  s_a6bec147e40415::t_a67c21ec491099 131-133
+lib/mutineer/coverage_map.rb
+  s_a6bec147e40415::t_86e1006bc44551 846,850,853
+  s_a6bec147e40415::t_93303f1fc8e3f8 866,869-871,875,877-879,887
+  s_a6bec147e40415::t_7cbfdb4937290c 416-418
+  s_a6bec147e40415::t_cff246c546644d 490-491,493
+  s_a6bec147e40415::t_611f32fd924807 372-373
+  s_a6bec147e40415::t_e4146a0a3db574 474-476
+  s_a6bec147e40415::t_f0d235633fdc70 403,405-408,410,423-468
+  s_a6bec147e40415::t_37e26de6f35d88 469
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "04599da6f3c341857ad7d8d0df516179bdb6c876",
+  "prompts": {},
+  "sessions": {
+    "s_a6bec147e40415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70696613-345c-4c5a-a1b7-097a86354e05",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
