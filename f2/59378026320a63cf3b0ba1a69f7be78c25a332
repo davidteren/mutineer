@@ -1,0 +1,24 @@
+docs/json-schema.md
+  s_a6bec147e40415::t_e70e2b2405f1ca 167-168
+rake/docs_contract.rb
+  s_a6bec147e40415::t_e70e2b2405f1ca 371-374
+test/docs_contract_test.rb
+  s_a6bec147e40415::t_f2c3c314feda2a 4,107-114
+  s_a6bec147e40415::t_88acea7837daac 115-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f259378026320a63cf3b0ba1a69f7be78c25a332",
+  "prompts": {},
+  "sessions": {
+    "s_a6bec147e40415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70696613-345c-4c5a-a1b7-097a86354e05",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
