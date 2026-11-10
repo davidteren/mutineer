@@ -1,0 +1,64 @@
+AGENTS.md
+  h_e8a5bb9272fa34 324-327
+CHANGELOG.md
+  h_e8a5bb9272fa34 9-26
+README.md
+  h_e8a5bb9272fa34 194
+STABILITY.md
+  h_e8a5bb9272fa34 16
+docs/ci.md
+  h_e8a5bb9272fa34 43-44
+docs/cli.md
+  h_e8a5bb9272fa34 9
+docs/json-schema.md
+  h_e8a5bb9272fa34 10-11,15,24-25,39,49,59,64,66,78-79,185-198
+docs/rails-setup.md
+  h_e8a5bb9272fa34 37
+docs/rails.md
+  h_e8a5bb9272fa34 144-145
+docs/results.md
+  h_e8a5bb9272fa34 17-20
+lib/mutineer/cli.rb
+  h_e8a5bb9272fa34 34-37,633-654,658-664,672-674,676,764-767,771-772,794,833-834,836-847,972-973,977-1015
+lib/mutineer/config.rb
+  h_e8a5bb9272fa34 95-98,106,109,147
+lib/mutineer/job_plan.rb
+  h_e8a5bb9272fa34 452-533
+lib/mutineer/reporter.rb
+  h_e8a5bb9272fa34 28-31,35-40,53-57,61-62,139-140,145,147-148,159,266-270,309-312,369,387-388,844,858,917-919,924-926,930-1022
+lib/mutineer/result.rb
+  h_e8a5bb9272fa34 215-216
+rake/docs_contract.rb
+  h_e8a5bb9272fa34 22,47
+skills/mutineer/SKILL.md
+  h_e8a5bb9272fa34 21
+test/baseline_test.rb
+  h_e8a5bb9272fa34 254
+test/cli_test.rb
+  h_e8a5bb9272fa34 712-714,920,1331,1360-1518
+test/config_test.rb
+  h_e8a5bb9272fa34 402-406
+test/equivalent_mutant_test.rb
+  h_e8a5bb9272fa34 308
+test/html_reporter_test.rb
+  h_e8a5bb9272fa34 28,30,62-76
+test/json_reporter_test.rb
+  h_e8a5bb9272fa34 36-42,68,76-100
+test/reporter_test.rb
+  h_e8a5bb9272fa34 584-666,696-711
+test/runner_daemon_test.rb
+  h_e8a5bb9272fa34 61-75
+test/runner_test.rb
+  h_e8a5bb9272fa34 946-1014,1017-1033
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "545b21ec3b20811134fc4f41af5f779a110852bb",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
