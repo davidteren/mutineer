@@ -31,7 +31,7 @@ For example, replacing `x * 1` with `x / 1` gives the same result when `x` is a 
 **Prompt for your coding agent**
 
 ```text
-Read report.json from Mutineer (--format json). For each survivor, show the source line, the mutant diff, and the behaviour the change breaks. Write one test per survivor that passes on the original code and fails on the mutant. Do not edit the source. If a mutant cannot be killed because it does not change behaviour, explain why and propose an ignore: entry with a reason instead of a test. Re-run the same Mutineer command, with the same sources, tests and flags, and report summary.score.
+Read report.json from Mutineer (--format json). For each survivor, show the source line, the mutant diff, and the behaviour the change breaks. Write one test per survivor that passes on the original code and fails on the mutant. Do not edit the source. If a mutant cannot be killed because it does not change behaviour, explain why and propose an ignore: entry with a reason instead of a test. Re-run the same Mutineer command with the same sources and flags. If you created a new test file and the command lists tests with --test, add a --test for that file. Report summary.score.
 ```
 
 ## Suppressing equivalent mutants
