@@ -10,5 +10,48 @@
     "app/models/card/statuses.rb",
     "app/models/account/import.rb",
     "app/models/account/join_code.rb"
+  ],
+  "recorded": {
+    "mutineer_version": "1.8.2",
+    "mutineer_sha": "7b94140f9d528a4523adddeb008b57f9928c8bf9",
+    "app_ruby": "3.4.8",
+    "date": "2026-11-10"
+  },
+  "counts": {
+    "total": 63,
+    "killed": 41,
+    "survived": 16,
+    "no_coverage": 6,
+    "uncapturable": 0,
+    "unplaceable": 0,
+    "ran_at_load": 0,
+    "skipped_invalid": 0,
+    "errored": 0,
+    "timeout": 0,
+    "ignored": 0,
+    "attempted": 57,
+    "no_verdict": 0,
+    "id_format": 2,
+    "legacy_id_matches.ignore": 0,
+    "legacy_id_matches.baseline": 0,
+    "declined": 0
+  },
+  "survivors": [
+    "000480487545",
+    "06ad47d140eb",
+    "0f4c1d568bfa",
+    "1842d65051b9",
+    "244d3d666d5a",
+    "250c272e9d42",
+    "261012a27506",
+    "38f3f66c45f3",
+    "4fc438f80f0f",
+    "51d8773fc0c2",
+    "53b2ae500039",
+    "9419baae0821",
+    "ba75283aeca4",
+    "c113e6b6377a",
+    "d58844c74ed0",
+    "e5852991afc5"
   ]
 }
