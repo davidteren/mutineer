@@ -1,0 +1,24 @@
+.github/workflows/ci.yml
+  s_a6bec147e40415::t_6eba6c3ed677f3 62-63,66
+test/prism_errors_test.rb
+  s_a6bec147e40415::t_6eba6c3ed677f3 15,51,68,77-85
+  s_a6bec147e40415::t_515c7d2ce13eef 86
+AGENTS.md
+  s_a6bec147e40415::t_6eba6c3ed677f3 35-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "564b28b5fc0c073145052a3bc34ebf52418f988d",
+  "prompts": {},
+  "sessions": {
+    "s_a6bec147e40415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70696613-345c-4c5a-a1b7-097a86354e05",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
