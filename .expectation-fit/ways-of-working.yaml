@@ -3,7 +3,8 @@
 # Every lens treats each note below as a repo rule; the convention lens reports a
 # breach as a finding. The notes come from the 2026-10 shift-left audit of all
 # merged PRs (postmortem of issues #252/#253/#254 and issues #279-#293).
-# The last three notes come from the review rounds of PRs #393 and #395 (#403).
+# The last three notes come from the review rounds of PRs #393 and #395 and
+# from issues #394 and #400 (#403).
 version: 1
 
 conventions:
@@ -36,9 +37,11 @@ conventions:
       real inputs, not one chosen case. test/parse_error_metamorphic_test.rb
       checks the mutants of every operator with and without existing parse
       errors (#393).'
-    - 'Shell passes values, never parses them: Bash in action.yml passes
-      values to the CLI and checks exit codes. It never rereads paths as
-      text and never copies a CLI rule (#394, #395).'
+    - 'Shell passes values, never parses them: New or changed Bash in
+      action.yml passes values to the CLI and checks exit codes. It never
+      rereads paths as text and never copies a CLI rule (#395). Older Bash
+      there still splits paths and reads the JSON report with jq; issue
+      #394 tracks that.'
     - 'Pin the dependency you test: A CI job that tests a dependency
       version pins it in its own gemfile, at least to the major version
       it tests (for example `~> 2.0`). CI resolves gems again on each run,
