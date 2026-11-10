@@ -107,6 +107,8 @@ Before the mutants run, Mutineer checks that the unchanged tests pass:
   did not check. A test file whose last capture failed is captured again, which also runs it. When no test
   covers any source line, every test file runs. In a standalone run (no boot file), each test loads every
   source and so covers it, and every test file runs (#426).
+- **`--coverage-from`.** As on a cache hit: only the test files that cover a source line run, alone and then
+  together, so a red test outside them does not stop the run. Mutineer prints how many files it did not check.
 - **`--test-command`.** No coverage map is built. The clean run runs every `--test` file.
 
 Add `.mutineer/` and any in-project `--cache-dir` directory to `.gitignore`:
