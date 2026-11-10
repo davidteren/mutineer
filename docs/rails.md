@@ -33,6 +33,12 @@ A redefine run exits 2.
 The daemon exits 2 too.
 The message names #389.
 A `--test-command` run is the path that works.
+This command exits 2 when `.mutineer.yml` sets `rails: true`.
+`init --rails` writes that line.
+The run then sets a boot file and `strategy: redefine`.
+`--test-command` exits 2 when either is set.
+There is no flag that turns `rails` off.
+Comment that line out before you run the command.
 
 ```sh
 RAILS_ENV=test bundle exec mutineer run app/models/order.rb \

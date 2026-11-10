@@ -231,6 +231,12 @@ A real run needs `--test-command`.
 The two operators stay off until `--operators` names them.
 That flag replaces the default operator list.
 Keep the five default names in the list.
+This command exits 2 when `.mutineer.yml` sets `rails: true`.
+`init --rails` writes that line.
+The run then sets a boot file and `strategy: redefine`.
+`--test-command` exits 2 when either is set.
+There is no flag that turns `rails` off.
+Comment that line out before you run the command.
 
 ```sh
 RAILS_ENV=test bundle exec mutineer run app/models/order.rb \

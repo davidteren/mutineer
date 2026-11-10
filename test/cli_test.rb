@@ -447,6 +447,18 @@ class CliTest < Minitest::Test
     assert_includes err, "cannot be combined with --boot/--rails"
   end
 
+  # init --rails writes rails: true. That line sets a boot file and strategy redefine.
+  # The class-body sample then exits 2 until that line is commented out.
+  def test_test_command_with_rails_true_in_the_config_exits_two
+    Dir.mktmpdir("mutineer-rails-cmd") do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "rails: true\n")
+      _, err, status = mutineer("run", "x.rb", "--test", "t.rb",
+                                "--test-command", "bundle exec rails test %{files}", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "cannot be combined with --boot/--rails"
+    end
+  end
+
   # --matrix runs in-process and needs every covering test, so each conflict is
   # a usage error named before any other check runs.
   def test_matrix_with_daemon_exits_two

@@ -293,6 +293,12 @@ A removal that raises while the file loads can score `error`.
 Removing `belongs_to :crate` did not fail the strong test in the Rails 7.2.4 check.
 That held with eager load off and with eager load on.
 The strong test never called the inverse.
+This command exits 2 when `.mutineer.yml` sets `rails: true`.
+`init --rails` writes that line.
+The run then sets a boot file and `strategy: redefine`.
+`--test-command` exits 2 when either is set.
+There is no flag that turns `rails` off.
+Comment that line out before you run the command.
 
 ```sh
 RAILS_ENV=test bundle exec mutineer run app/models/order.rb \
