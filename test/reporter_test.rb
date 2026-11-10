@@ -607,21 +607,27 @@ class ReporterTest < Minitest::Test
     refute_includes line, "%"
   end
 
+  def test_empty_human_report_keeps_the_unpaired_line
+    text, err = unpaired_report([], { "lib/a.rb" => 2 })
+    assert_match(/\AUnpaired:\s+2\s+\(mutants not run; 1 source has no paired test; 100\.0% of the mutants in scope\)\n\z/, text)
+    assert_empty err
+  end
+
   def test_score_line_lists_unpaired
     text, = unpaired_report([Mutineer::Result.killed], { "lib/a.rb" => 2 })
     assert_includes text, "2 unpaired"
+    assert_includes text, "Mutation score: 100.0%"
   end
 
   def test_unpaired_mutants_join_the_unrun_share
     _text, err = unpaired_report(Array.new(2) { Mutineer::Result.killed }, { "lib/a.rb" => 3 })
-    assert_includes err, "3 of the 5 mutants in scope were not run"
+    assert_includes err, "3 of the 5 mutants mutineer tried to score were not run"
     assert_includes err, "(3 in sources with no paired test; 60.0%, limit 10%)"
     assert_includes err, "unpaired_sources[]"
     assert_includes err, "run those sources in a separate command with --test"
     refute_includes err, "or pass --test"
     refute_includes err, "unplaceable[]"
     refute_includes err, "re-parse"
-    refute_includes err, "tried to score"
   end
 
   def test_fail_fast_leaves_unpaired_out_of_the_unrun_share

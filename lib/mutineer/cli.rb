@@ -848,6 +848,15 @@ module Mutineer
         return
       end
 
+      # Every unpaired count failed: the mutants may exist, so do not call the run empty.
+      unknown = unpaired.count { |_file, count| count.nil? }
+      if unknown.positive?
+        subject = unknown == 1 ? "1 source has" : "#{unknown} sources have"
+        warn "mutineer: no mutant ran. #{subject} no paired test, and the mutant count is unavailable " \
+             "(unpaired_sources[] in --format json). #{UNPAIRED_RUN_HINT}"
+        return
+      end
+
       # Mutants existed before --since narrowed them: the changes held none.
       if config.since && extras[:unscoped_mutants].to_i.positive?
         warn "mutineer: nothing to test in the changes since #{config.since}"

@@ -40,7 +40,7 @@ Directories or multiple sources run in one boot, with results per source. Tests 
 | `bar_upsert.rb` exists | `bar_upsert_guards_test.rb` stays with `bar_upsert.rb` |
 | A spec already pairs | It stays as that one file |
 
-A source with no paired test is skipped and counted in the report.
+A source with no paired test is skipped. Its mutants are counted in the report, excluded from the score, and join the unrun-share warning unless `--fail-fast` is set.
 
 ### GitHub Action
 

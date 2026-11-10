@@ -213,7 +213,7 @@ module Mutineer
     def ignored_count         = count(:ignored)
     # Mutants that exist but did not run: unplaceable plus skipped invalid.
     # Neither is in the score. The reporter adds unpaired mutants to the
-    # unrun share. This count stays the row total only.
+    # unrun share unless `--fail-fast` is set. `unrun_count` excludes them.
     #
     # @return [Integer] unplaceable plus skipped-invalid count.
     def unrun_count           = unplaceable_count + skipped_invalid_count

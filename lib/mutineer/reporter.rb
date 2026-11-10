@@ -144,8 +144,7 @@ module Mutineer
       parts << "#{@agg.skipped_invalid_count} skipped (invalid)" if @agg.skipped_invalid_count.positive?
       parts << "#{unpaired_mutant_count} in sources with no paired test" if include_unpaired
       pct = (unrun * 100.0 / tried).round(1)
-      subject = include_unpaired ? "mutants in scope" : "mutants mutineer tried to score"
-      message = +"[mutineer] #{unrun} of the #{tried} #{subject} were not run " \
+      message = +"[mutineer] #{unrun} of the #{tried} mutants mutineer tried to score were not run " \
                  "(#{parts.join(', ')}; #{pct}%, limit #{(UNRUN_SHARE_LIMIT * 100).round}%). " \
                  "The score leaves them out. This warning does not change the exit code."
       if @agg.unplaceable_count.positive?
@@ -171,7 +170,11 @@ module Mutineer
     # @return [void]
     def human_report(out, err, threshold, declined: {}, scoped: false)
       # The CLI explains an empty run for every format (CLI.warn_empty_run).
-      return if @agg.total.zero?
+      # A saved report still carries the unpaired counts.
+      if @agg.total.zero?
+        out.puts unpaired_line(scoped) unless @unpaired.empty?
+        return
+      end
 
       out.puts "Mutineer — Mutation Results"
       out.puts "========================="

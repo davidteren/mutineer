@@ -12,6 +12,9 @@ All notable changes to this project are documented here. The format is based on
   The report names each skipped source and how many mutants it holds.
   JSON adds `summary.unpaired_sources`, `summary.unpaired_mutants`, and `unpaired_sources[]`.
   The human report, the HTML report, and the dry run show the same counts.
+  Unpaired mutants are excluded from the score and cannot fail `--threshold`.
+  They join the unrun-share stderr warning, except under `--fail-fast`.
+  That warning does not change the exit code.
   Schema version is `1.10`.
   Compare it as two integers, so `1.10` follows `1.9`.
   On Fizzy at `d5b7b749d`, 106 sources and 312 mutants were unpaired.

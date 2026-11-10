@@ -1456,6 +1456,14 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_empty_run_with_failed_unpaired_count_does_not_say_no_mutants
+    _out, err = capture_io do
+      Mutineer::CLI.warn_empty_run(Mutineer::Config.new, {}, { "lib/odd.rb" => nil })
+    end
+    assert_includes err, "no mutant ran. 1 source has no paired test, and the mutant count is unavailable"
+    refute_includes err, "no mutants were generated"
+  end
+
   def test_since_run_counts_unpaired_mutants_on_changed_lines
     with_autopair_project do |proj|
       File.write(File.join(proj, "lib/orphan.rb"), "class Orphan; def z(a); a + 1; end; end\n")
