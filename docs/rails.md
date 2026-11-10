@@ -24,8 +24,23 @@ Review each survivor. Add a test for a missed behaviour, or record why the chang
 is equivalent before ignoring it. Start without a score threshold.
 
 `macro_removal` and `macro_option_removal` mutate listed class-body calls.
+They stay off until `--operators` names them.
+That flag replaces the default operator list.
+Keep the five default names in the list.
 A real run needs `--test-command`.
-Reload and the daemon exit 2 and name #389.
+An in-process run exits 2.
+A redefine run exits 2.
+The daemon exits 2 too.
+The message names #389.
+A `--test-command` run is the path that works.
+
+```sh
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb \
+  --test test/models/order_test.rb \
+  --operators arithmetic,comparison,boolean_connector,boolean_literal,statement_removal,macro_removal,macro_option_removal \
+  --test-command "bundle exec rails test %{files}"
+```
+
 A removal that raises while the file loads can score `error`.
 Removing `belongs_to :crate` did not fail the strong test in the Rails 7.2.4 check.
 That held with eager load off and with eager load on.

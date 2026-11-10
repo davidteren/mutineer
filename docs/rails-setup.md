@@ -269,13 +269,6 @@ When Bundler prints `RubyVersionMismatch`, Mutineer reports that cause instead o
 | Smoke check | Aborts before mutation if the unmutated suite fails. |
 | Score comparison | Uncovered mutants count as survivors. Do not compare with in-process scores. Mutineer prints this warning every run. |
 
-`macro_removal` and `macro_option_removal` need this command for a real run.
-Reload and the daemon exit 2 and name #389.
-A removal that raises while the file loads can score `error`.
-Removing `belongs_to :crate` did not fail the strong test in the Rails 7.2.4 check.
-That held with eager load off and with eager load on.
-The strong test never called the inverse.
-
 | Subprocess result | Verdict |
 | --- | --- |
 | Exit code other than 1, or a signal | `error`, except for the SimpleCov case below. |
@@ -286,5 +279,26 @@ The strong test never called the inverse.
 | SimpleCov `minimum_coverage` failure with its gate message and a recognised summary | Summary decides: a failing test is a kill; all tests passing means `survived`. |
 | SimpleCov without a recognised summary, or with `print_error_status = false` | The coverage gate's exit scores `error`. |
 | Clean run prints no summary | Warns once, then counts every exit 1 as a kill. |
+
+`macro_removal` and `macro_option_removal` need this command for a real run.
+They stay off until `--operators` names them.
+That flag replaces the default operator list.
+Keep the five default names in the list.
+An in-process run exits 2.
+A redefine run exits 2.
+The daemon exits 2 too.
+The message names #389.
+A `--test-command` run is the path that works.
+A removal that raises while the file loads can score `error`.
+Removing `belongs_to :crate` did not fail the strong test in the Rails 7.2.4 check.
+That held with eager load off and with eager load on.
+The strong test never called the inverse.
+
+```sh
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb \
+  --test test/models/order_test.rb \
+  --operators arithmetic,comparison,boolean_connector,boolean_literal,statement_removal,macro_removal,macro_option_removal \
+  --test-command "bundle exec rails test %{files}"
+```
 
 For Ruby ≥ 3.4 with Minitest and a supported database, use [the daemon backend](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#faster-parallel-safe-rails-the---daemon-backend) for safe parallelism. RSpec and other serial-only setups use `--rails` without `--daemon`.

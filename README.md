@@ -228,6 +228,17 @@ They run in a class body, a module body, or a concern `included` or `prepended` 
 `macro_removal` replaces one call, and its block, with `nil`.
 `macro_option_removal` replaces one keyword option with `**{}`.
 A real run needs `--test-command`.
+The two operators stay off until `--operators` names them.
+That flag replaces the default operator list.
+Keep the five default names in the list.
+
+```sh
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb \
+  --test test/models/order_test.rb \
+  --operators arithmetic,comparison,boolean_connector,boolean_literal,statement_removal,macro_removal,macro_option_removal \
+  --test-command "bundle exec rails test %{files}"
+```
+
 Reload, redefine, and the daemon exit 2 and name [#389](https://github.com/davidteren/mutineer/issues/389).
 A dry run lists the mutants and prints a note.
 
