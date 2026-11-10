@@ -14,8 +14,8 @@ All notable changes to this project are documented here. The format is based on
   folder (#270), but the Action checks the path itself before it runs the
   CLI. The Action now creates the cache folder when it is the missing parent
   of `output`: `.mutineer` by default, the `cache_dir` from `.mutineer.yml`,
-  or a `--cache-dir` in `extra-args` (any short form the CLI accepts, such
-  as `--cache`). Any other missing folder still exits 2.
+  or a `--cache-dir` in `extra-args` (or a prefix of it down to `--cac`, such as
+  `--cache`). Any other missing folder still exits 2.
 
 ## [1.8.1] - 2026-11-02
 
