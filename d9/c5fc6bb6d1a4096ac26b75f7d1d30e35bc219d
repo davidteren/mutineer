@@ -1,0 +1,22 @@
+README.md
+  h_e8a5bb9272fa34 234-239
+docs/rails-setup.md
+  h_e8a5bb9272fa34 296-301
+docs/rails.html
+  h_e8a5bb9272fa34 79
+docs/rails.md
+  h_e8a5bb9272fa34 36-41
+test/cli_test.rb
+  h_e8a5bb9272fa34 450-461
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d9c5fc6bb6d1a4096ac26b75f7d1d30e35bc219d",
+  "prompts": {},
+  "humans": {
+    "h_e8a5bb9272fa34": {
+      "author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
