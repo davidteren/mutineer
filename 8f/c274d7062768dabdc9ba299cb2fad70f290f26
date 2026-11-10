@@ -1,0 +1,23 @@
+test/daemon_worker_db_test.rb
+  s_a6bec147e40415::t_d4d5d5b7b942a9 257-267,278,283,365-379,382-385,389
+  s_a6bec147e40415::t_1e1b41527131fa 306-309,380-381,386-388,390-394
+  s_a6bec147e40415::t_eadcea9eab1fa1 395
+docs/rails-setup.md
+  s_a6bec147e40415::t_878ecfec8daa20 142
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8fc274d7062768dabdc9ba299cb2fad70f290f26",
+  "prompts": {},
+  "sessions": {
+    "s_a6bec147e40415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70696613-345c-4c5a-a1b7-097a86354e05",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
