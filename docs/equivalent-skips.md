@@ -88,11 +88,11 @@ The mutant is equivalent in one case.
 The receiver is always a non-blank object, such as a record, or it is `nil` or `false`.
 The code uses the result only as a condition.
 
-These receivers are real gaps:
+These cases are real gaps:
 
-- A string or a param, including `""` and `" "`.
-- An array.
-- A hash.
+- A blank string or a blank param, such as `""` or `" "`.
+- An empty array.
+- An empty hash.
 - An empty relation.
 - A method that returns the `present?` result.
 
