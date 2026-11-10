@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_94fbd16fe63aa6::t_fc6ce3546aba26 9-32
+docs/ci.md
+  s_94fbd16fe63aa6::t_bb3ef05ca95bd4 39
+docs/rails-setup.md
+  s_94fbd16fe63aa6::t_efbdb19e175099 43-45
+lib/mutineer/coverage_map.rb
+  s_94fbd16fe63aa6::t_4470ccfc26c933 274,283,290-291,298-310
+lib/mutineer/pairing.rb
+  s_94fbd16fe63aa6::t_2f129bed3b963f 16-17,99-101,111-116,118-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "84f385a1dbe32721353d4e75611e58a178105048",
+  "prompts": {},
+  "sessions": {
+    "s_94fbd16fe63aa6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4fc166c9-015a-4e0c-a4f1-c3e86990aa27",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
