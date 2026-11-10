@@ -1,0 +1,21 @@
+docs/equivalent-skips.html
+  s_c847a5be4f740c::t_fa641850475cb2 99,118-121
+docs/equivalent-skips.md
+  s_c847a5be4f740c::t_b4253a5088016f 88-90,132-136,139,146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "60909b6c5bd43e62ae08ae182598da584efdaed4",
+  "prompts": {},
+  "sessions": {
+    "s_c847a5be4f740c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "200454c3-822c-42bb-b6d4-0e520e4f7349",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
