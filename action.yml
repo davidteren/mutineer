@@ -15,8 +15,10 @@ inputs:
     required: true
   test:
     description: >-
-      Space-separated test files covering the sources. Optional — when omitted,
-      Mutineer auto-pairs each source to its test by convention.
+      Space-separated test files or directories covering the sources.
+      A directory needs mutineer 1.9.0 or later. An older gem rejects it.
+      Optional. When omitted, Mutineer pairs each source to its test
+      by convention.
     required: false
     default: ""
   since:

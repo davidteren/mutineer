@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`--test` accepts a file, a directory, or a quoted glob (#380).**
+  A directory selects `*_test.rb`, `*_spec.rb`, and `test_*.rb` files.
+  It skips `test_helper.rb`.
+  A blank value exits 2.
+  A directory or glob with no test file exits 2.
+  Each expanded directory or glob prints its file count on stderr.
+  The Action `test` input accepts a directory.
+  A directory needs mutineer 1.9.0 or later.
+
+### Changed
+
+- **The test-file guard names three fixes (#380).**
+  Quote the glob, pass the directory, or repeat `--test`.
+- **`--dry-run` exits 2 for a blank `--test` or a directory with no test file (#380).**
+  Those values used to exit 0 on a dry run.
+
 ### Fixed
 
 - **The Action creates the cache folder when `output` points into it

@@ -4,9 +4,12 @@ require_relative "project_path"
 
 module Mutineer
   # Source -> test pairing by path convention (#11). Pure stdlib path logic:
-  # no Rails, no class loading, no process. Three jobs:
+  # no Rails, no class loading, no process. Four jobs:
   #   * expand_sources — a directory argument becomes its sorted **/*.rb files;
   #                     a file inside the root becomes its root-relative path.
+  #   * expand_test: one --test value (#380). A directory becomes the test
+  #                     files under it. A glob becomes the files it matches.
+  #                     An existing file stays as typed.
   #   * infer_tests    — a source's test files by convention (app/ and lib/
   #                     sources map to test/.../_test.rb, test/.../<name>_*_test.rb,
   #                     test/.../test_*.rb or spec/.../_spec.rb), preserving
@@ -46,6 +49,108 @@ module Mutineer
           [(existing_relative(abs, roots) if File.exist?(abs)) || arg]
         end
       end.uniq
+    end
+
+    # Characters that make a --test value a glob when no path has that name.
+    # An existing file is never read as a glob, so a name may contain these.
+    TEST_GLOB_MARK = /[*?\[{]/
+
+    # How one --test value is read. Blank is not a directory: File.expand_path
+    # of "" is the project root, and that would select every test.
+    #
+    # @param value [String] one --test value, as typed.
+    # @param project_root [String] repository root.
+    # @return [Symbol] :blank, :directory, :file, :glob, or :plain.
+    def classify_test_value(value, project_root:)
+      return :blank if value.nil? || value.strip.empty?
+
+      abs = File.expand_path(value, project_root)
+      return :directory if File.directory?(abs)
+      return :file if File.exist?(abs)
+      return :glob if value.match?(TEST_GLOB_MARK)
+
+      :plain
+    end
+
+    # One --test value, as paths. [] means a directory or glob matched nothing.
+    # A file stays as typed. A missing plain path stays as typed, so the CLI
+    # can still say "no such file". Paths from a directory or glob are sorted.
+    # Inside the project they are root-relative. Outside it they are absolute.
+    #
+    # @param value [String] one --test value, as typed.
+    # @param project_root [String] repository root.
+    # @return [Array<String>] matching paths, or [value] when it is not expanded.
+    def expand_test(value, project_root:)
+      root = File.expand_path(project_root)
+      roots = [root, ProjectPath.root_real(root)].uniq
+      case classify_test_value(value, project_root: project_root)
+      when :directory
+        directory_test_files(File.expand_path(value, root), root, roots)
+      when :glob
+        glob_test_files(value, root, roots)
+      else
+        [value]
+      end
+    end
+
+    # Test files under a directory. The name rule is {TEST_NAME}. Dot entries
+    # stay out, because Dir.glob skips them. The result is sorted.
+    #
+    # @param abs [String] absolute directory path.
+    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
+    # @return [Array<String>] root-relative paths, or absolute paths outside the root.
+    def directory_test_files(abs, root, roots)
+      listed = if (rel = root_relative(abs, roots))
+                 Dir.glob(File.join(rel, "**", "*.rb"), base: root)
+               else
+                 Dir.glob(File.join(abs, "**", "*.rb"))
+               end
+      listed.filter_map { |match| named_test_file(match, root, roots) }.sort
+    end
+
+    # Files a glob matches from the project root. Directories are ignored.
+    # There is no test-name filter. An absolute pattern ignores base.
+    # Dir.glob keeps a leading "./"; the path is then made root-relative.
+    #
+    # @param pattern [String] glob as typed.
+    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
+    # @return [Array<String>] sorted matching file paths.
+    def glob_test_files(pattern, root, roots)
+      listed = if File.absolute_path?(pattern)
+                 Dir.glob(pattern)
+               else
+                 Dir.glob(pattern, base: root)
+               end
+      listed.filter_map { |match| glob_file(match, root, roots) }.sort
+    end
+
+    # A directory match whose basename is a test name, as a stored path.
+    #
+    # @param match [String] path from Dir.glob.
+    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
+    # @return [String, nil] stored path, or nil when the match is not a test file.
+    def named_test_file(match, root, roots)
+      full = File.absolute_path?(match) ? match : File.expand_path(match, root)
+      return unless File.file?(full)
+      return unless File.basename(full).match?(TEST_NAME)
+
+      existing_relative(full, roots) || full
+    end
+
+    # A glob match that is a file, as a stored path. Directories are dropped.
+    #
+    # @param match [String] path from Dir.glob.
+    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
+    # @return [String, nil] stored path, or nil when the match is not a file.
+    def glob_file(match, root, roots)
+      full = File.absolute_path?(match) ? match : File.expand_path(match, root)
+      return unless File.file?(full)
+
+      existing_relative(full, roots) || full
     end
 
     # An existing file's root-relative path, or nil outside the root. Tries the

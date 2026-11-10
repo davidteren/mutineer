@@ -24,10 +24,18 @@ Check this Rails app for Mutineer's --daemon backend. Report: the test framework
    RAILS_ENV=test bundle exec mutineer init --rails
    ```
 
-3. Run one model inside the project's bundle. Add `--test FILE` to select tests.
+3. Run one model inside the project's bundle.
+   Add `--test PATH` for a file, a directory, or a quoted glob.
 
    ```sh
    RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
+   ```
+
+   `--test test` also selects files under `test/system/`.
+   To skip system tests, pass this glob and any other file:
+
+   ```sh
+   --test 'test/{channels,controllers,helpers,integration,jobs,lib,mailers,middleware,models}/**/*_test.rb' --test test/routes_test.rb
    ```
 
 | Setting | Behaviour |
