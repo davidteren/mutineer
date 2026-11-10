@@ -360,7 +360,10 @@ module Mutineer
               apply_payload(req["payload"])
               # A parallel worker records each pool that runs SQL, so a test
               # that closes its shared connection is still caught below.
-              @worker_db.watch_sql if @worker_db && @shared_databases&.any?
+              if @worker_db && @shared_databases&.any?
+                @worker_db.skip_schema_check!
+                @worker_db.watch_sql
+              end
               result = run_tests(Array(req["tests"]))
               check_shared_databases!
               result
@@ -473,10 +476,12 @@ module Mutineer
       # removes orphans and never touches a live file. Same path for reload
       # (whole file) and redefine (wrapped snippet). The backend sends the whole
       # file, so the concern blocks it stores replace the forgotten ones (#256).
-      # With a `"hook_def"`, the loaded file stored a mutated hook-block def, and
-      # {ConcernBlocks.place_hook_def} loads it into each class that has the
-      # method; it raises when none was stored, so the mutant scores `error` (#297).
+      # With a `"hook_def"`, the load places the mutated hook-block def into each
+      # class that has the method, before the rest of the file runs; it raises
+      # when none was stored, so the mutant scores `error` (#297, #348).
       def apply_payload(payload)
+        hook = payload["hook_def"]
+        hook &&= { line: hook.fetch("line"), name: hook.fetch("name").to_sym, singleton: hook.fetch("singleton") }
         dir = File.dirname(File.expand_path(payload.fetch("source_file")))
         Tempfile.create([".mutineer_daemon", ".rb"], dir) do |f|
           # Held until this block ends, including SIGKILL (the kernel drops it).
@@ -484,12 +489,8 @@ module Mutineer
           f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
           f.write(payload.fetch("code"))
           f.flush
-          ConcernBlocks.load_mutant(payload.fetch("source_file"), f.path)
+          ConcernBlocks.load_mutant(payload.fetch("source_file"), f.path, hook_def: hook)
         end
-        hook = payload["hook_def"] or return
-
-        ConcernBlocks.place_hook_def(source_file: payload.fetch("source_file"), line: hook.fetch("line"),
-                                     name: hook.fetch("name").to_sym, singleton: hook.fetch("singleton"))
       end
 
       # Load the covering test files and run them; 0 = all passed (survived),

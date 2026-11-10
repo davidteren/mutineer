@@ -36,6 +36,11 @@ class DaemonSharedDatabasesTest < Minitest::Test
       @watching = true
     end
 
+    # Runs in the fork, so the parent cannot see it. The Rails dogfood test
+    # checks its effect (#385).
+    # @return [void]
+    def self.skip_schema_check!; end
+
     # @return [void]
     def self.after_fork(*, **); end
   end

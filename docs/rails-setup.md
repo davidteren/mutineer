@@ -208,6 +208,7 @@ RAILS_ENV=test mutineer run app/models/order.rb \
 | App Ruby selection | Use `.ruby-version` or a wrapper. Do not rely on `RBENV_VERSION=…` on the Mutineer command. |
 | `KEY=val` inside `--test-command` | Unsupported. Without a shell, it becomes the program name. |
 | Forced child settings | Replaces existing values with `PARALLEL_WORKERS=1`, `DISABLE_SPRING=1`, and `DISABLE_BOOTSNAP_COMPILE_CACHE=1`. |
+| Test order | Must be fixed. Mutineer sets no seed, so each run picks its own order. An order-dependent suite can then fail a mutant run for a reason the mutant did not cause, a false kill. For Minitest, put `SEED=1` before the `mutineer` command (`SEED=1 mutineer run ...`), not inside `--test-command`. For RSpec, add `--order defined` to the command, and keep `--order rand` out of `SPEC_OPTS`, which RSpec reads after the command. When the clean run prints a random seed and Mutineer finds no fixed one, it prints one warning. It cannot see a seed set in a wrapper script or `.rspec`, or a Minitest `test_order`, so the warning can print when the order is already fixed ([#368](https://github.com/davidteren/mutineer/issues/368)). |
 
 See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#rails-parallel-tests-spring-bootsnap-and-redis) for wrapper behaviour.
 

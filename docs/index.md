@@ -85,7 +85,9 @@ Typed flags override `.mutineer.yml`. Every flag with its default: [CLI referenc
 
 `--test-command` forces one Mutineer worker. It also sets `PARALLEL_WORKERS=1`
 for Rails tests. A script that sets this variable again can start Rails test
-workers.
+workers. The command must run the tests in a fixed order: put `SEED=1` before
+the `mutineer` command for Minitest, or add `--order defined` to an RSpec
+command and keep `--order rand` out of `SPEC_OPTS`. Otherwise an order-dependent suite can give false kills.
 
 ## Exit codes
 
