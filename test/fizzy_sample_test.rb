@@ -99,6 +99,8 @@ class FizzySampleTest < Minitest::Test
     assert_includes err.message, "old"
     assert_includes err.message, "head"
     assert_raises(FizzySample::Error) { FizzySample.recorded(data, report, meta(commit: "zzz"), "head") }
+    dirty = assert_raises(FizzySample::Error) { FizzySample.recorded(data, report, meta("head-dirty"), "head-dirty") }
+    assert_includes dirty.message, "uncommitted"
     assert_raises(FizzySample::Error) { FizzySample.recorded(data, report, meta(files: ["b.rb"]), "head") }
   end
 

@@ -157,6 +157,7 @@ module FizzySample
       now = counts(report["summary"])
       raise Error, "Refusing to record: errored is #{now["errored"]}, not 0." if now["errored"].to_i.positive?
       raise Error, "Refusing to record: the report ran a different Fizzy commit or file list." unless meta.values_at("commit", "files") == data.values_at("commit", "files")
+      raise Error, "Refusing to record: the report ran uncommitted changes (#{meta["mutineer_sha"]}). Commit, then run fizzy:sample again." if meta["mutineer_sha"].to_s.end_with?("-dirty")
       raise Error, "Refusing to record: the report ran mutineer #{meta["mutineer_sha"]}, but HEAD is #{head}." unless meta["mutineer_sha"] == head
 
       data.merge(
@@ -326,14 +327,16 @@ module FizzySample
       out
     end
 
-    # This checkout's commit.
+    # This checkout's commit, with a `-dirty` suffix when tracked files have
+    # uncommitted changes, so {recorded} never stores a SHA that did not produce the counts.
     #
     # @return [String]
     def git_head
       out, status = Open3.capture2e("git", "rev-parse", "HEAD", chdir: ROOT)
       raise Error, "git rev-parse HEAD failed: #{out}" unless status.success?
 
-      out.strip
+      changes, = Open3.capture2e("git", "status", "--porcelain", "--untracked-files=no", chdir: ROOT)
+      changes.strip.empty? ? out.strip : "#{out.strip}-dirty"
     end
 
     # The environment without this tool's bundle.
