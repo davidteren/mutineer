@@ -1,0 +1,67 @@
+README.md
+  s_a6bec147e40415::t_110c6f56a21945 223-233
+test/cli_test.rb
+  s_a6bec147e40415::t_70d402498d5171 712-788
+  s_a6bec147e40415::t_caca9d3f6416ad 994,1405
+test/json_reporter_test.rb
+  s_a6bec147e40415::t_caca9d3f6416ad 61
+  s_a6bec147e40415::t_407aefd2eba696 465-482
+CHANGELOG.md
+  s_a6bec147e40415::t_068a3ecd31fed9 9-26
+test/daemon_backend_contract_test.rb
+  s_a6bec147e40415::t_347216bc4c9d03 587-590
+docs/json-schema.md
+  s_a6bec147e40415::t_cc62d373950e4b 10-11,15,23,38,48,68-69,184-192
+  s_a6bec147e40415::t_8a46db6773c4ef 193
+test/baseline_test.rb
+  s_a6bec147e40415::t_caca9d3f6416ad 254
+test/reporter_test.rb
+  s_a6bec147e40415::t_f4c4f9a6b18cab 599-613
+lib/mutineer/job_plan.rb
+  s_a6bec147e40415::t_c2f497e09df84c 51-57,72-73,96-97,111-114,149,151-152
+lib/mutineer/runner.rb
+  s_a6bec147e40415::t_c2f497e09df84c 56-57
+test/equivalent_mutant_test.rb
+  s_a6bec147e40415::t_caca9d3f6416ad 308
+lib/mutineer/reporter.rb
+  s_a6bec147e40415::t_9d0b9056f63b8c 816-818,820
+  s_a6bec147e40415::t_d954f7ad8bc8b9 34
+  s_a6bec147e40415::t_fdf8b309219497 264-268
+  s_a6bec147e40415::t_68ae59e949b8d1 161-162,164,171
+  s_a6bec147e40415::t_590f82bbf33174 222-227
+  s_a6bec147e40415::t_b15240f3a77a47 840-843
+  s_a6bec147e40415::t_4172f250a592c2 62-64,66-67,70-71,76-77
+  s_a6bec147e40415::t_6abb74487a9b23 307-310
+test/runner_test.rb
+  s_a6bec147e40415::t_822613902d8d75 921-944,946-955,957-972,974-978,983-996,998-1061
+  s_a6bec147e40415::t_869c7a4861f6af 956
+  s_a6bec147e40415::t_90e3215a6f90c7 973,979-982
+  s_a6bec147e40415::t_616d0641e60884 945
+  s_a6bec147e40415::t_43ea258d3f3c10 997
+lib/mutineer/cli.rb
+  s_a6bec147e40415::t_1619be71766260 940-946,952-953,957-966
+  s_a6bec147e40415::t_e7c56d4bc620ba 814-817,819-831
+  s_a6bec147e40415::t_6ed7a1903cc40d 805-806
+  s_a6bec147e40415::t_1f1ebcf286551d 765-766
+  s_a6bec147e40415::t_17cf7196c55196 967-968
+STABILITY.md
+  s_a6bec147e40415::t_cc62d373950e4b 16
+rake/docs_contract.rb
+  s_a6bec147e40415::t_cc62d373950e4b 22,47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "26d745857d24ddda15bb7e155c9252f4db598011",
+  "prompts": {},
+  "sessions": {
+    "s_a6bec147e40415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70696613-345c-4c5a-a1b7-097a86354e05",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
