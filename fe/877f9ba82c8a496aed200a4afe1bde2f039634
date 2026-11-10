@@ -1,0 +1,37 @@
+docs/equivalent-skips.md
+  s_c847a5be4f740c::t_35e6a78a3c19eb 62-65,76-145
+docs/results.md
+  s_c847a5be4f740c::t_93bbd8395fad1f 76-77
+test/browser/site.spec.js
+  s_c847a5be4f740c::t_d4888e6918f880 25
+test/mutators/call_to_receiver_test.rb
+  s_c847a5be4f740c::t_cba77f57df0bec 97-102
+test/site_docs_test.rb
+  s_c847a5be4f740c::t_2bea275a991b4e 108-139
+docs/equivalent-skips.html
+  s_527e6a730d26cb::t_4ea49c60028683 58,81,84-85,95-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fe877f9ba82c8a496aed200a4afe1bde2f039634",
+  "prompts": {},
+  "sessions": {
+    "s_527e6a730d26cb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-af12d9f638e675ba3",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_c847a5be4f740c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "200454c3-822c-42bb-b6d4-0e520e4f7349",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
