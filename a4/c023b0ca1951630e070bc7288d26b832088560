@@ -1,0 +1,37 @@
+CHANGELOG.md
+  s_25a04190228b12::t_a3d2033c075b5e 25-38
+lib/mutineer/concern_blocks.rb
+  s_25a04190228b12::t_e0159c4edab811 18-24,57-63,66-68,70-74,82-90,121-123,125-126,130-137,150-151,157,167,250-264
+lib/mutineer/daemon_server.rb
+  s_25a04190228b12::t_a89e66e47a8b23 476-478,480-481,489
+lib/mutineer/isolation.rb
+  s_25a04190228b12::t_cf679fb0e16b50 196-197,205,207-208
+lib/mutineer/job_plan.rb
+  s_25a04190228b12::t_19fc4cbdf132d0 209-211
+lib/mutineer/runner.rb
+  s_25a04190228b12::t_5c8efea55a45ca 410
+test/daemon_server_hook_def_test.rb
+  s_25a04190228b12::t_b51ac151f1f86f 94-131
+test/fixtures/singleton/hook_load_time.rb
+  s_25a04190228b12::t_8fc6bc6d241372 1-33
+test/fixtures/singleton/hook_load_time_test.rb
+  s_25a04190228b12::t_b47f5579e0d432 1-16
+test/singleton_redefine_test.rb
+  s_25a04190228b12::t_74c366d55859a1 267,274-289
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a4c023b0ca1951630e070bc7288d26b832088560",
+  "prompts": {},
+  "sessions": {
+    "s_25a04190228b12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2a1ff16-74b8-4a80-aeb6-3abfb6639c69",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
