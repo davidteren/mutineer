@@ -87,6 +87,13 @@ module Mutineer
     # @return [Hash, nil]
     attr_reader :databases
 
+    # Why the last {#request} answered `"error"`: the redacted `Class: message`
+    # line from the daemon's child (#388). nil when that reply carried none,
+    # or the last request answered anything else.
+    #
+    # @return [String, nil]
+    attr_reader :last_cause
+
     # Ask the daemon to create `slots` worker databases. Raises when the copy
     # fails or another run holds the database, so the caller stops before any
     # mutant is scored.
@@ -115,8 +122,10 @@ module Mutineer
     # @param timeout [Numeric] per-mutant wall-clock timeout (seconds).
     # @param worker [Integer] worker slot; the daemon routes the fork to
     #   `<db>-<worker>` for isolation. Defaults to 0 (serial).
-    # @return [String] one of survived/killed/error/timeout.
+    # @return [String] one of survived/killed/error/timeout. An `"error"`
+    #   reply's cause is in {#last_cause}.
     def request(id:, payload:, tests:, timeout:, worker: 0)
+      @last_cause = nil
       # close_io nils the pipes, so a client whose respawn never completed would
       # otherwise fail per-mutant forever (NoMethodError on nil) and let the backend
       # score every remaining mutant against nothing. Deadness is a property of the
@@ -134,7 +143,10 @@ module Mutineer
         rescue Errno::EPIPE, IOError
           nil
         end
-      return reply["verdict"] if reply && reply["id"] == id
+      if reply && reply["id"] == id
+        @last_cause = reply["details"] if reply["verdict"] == "error"
+        return reply["verdict"]
+      end
 
       restart!
       "error"

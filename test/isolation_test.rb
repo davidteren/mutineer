@@ -28,6 +28,20 @@ class IsolationTest < Minitest::Test
     end
   end
 
+  # #388: the cause reaches `details`, not only stderr.
+  def test_unhandled_exception_names_its_cause
+    result = nil
+    capture_subprocess_io do
+      result = Mutineer::Isolation.run { raise ArgumentError, "enum declared twice" }
+    end
+
+    assert_equal "ArgumentError: enum declared twice", result.details
+  end
+
+  def test_exit_two_without_a_cause_keeps_its_details
+    assert_equal "child exited with status 2", Mutineer::Isolation.run { 2 }.details
+  end
+
   # --- stdout silencing at the fork boundary ------------------------------
   # The test runners do not silence output; Isolation.run does it once, right
   # after fork. These cases replace the runner-level silencing tests.
@@ -544,6 +558,7 @@ class IsolationTest < Minitest::Test
     assert_predicate result, :error?
     assert_includes err, "[mutineer-child] RuntimeError: no connection: postgres://u:[REDACTED]@ho st/db"
     refute_includes err, "s3cret"
+    assert_equal "RuntimeError: no connection: postgres://u:[REDACTED]@ho st/db", result.details
   ensure
     ENV["DATABASE_URL"] = saved
   end

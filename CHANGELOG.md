@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **The JSON report names why a mutant errored (#388).** When the mutant's
+  child raises, under `reload`, `redefine` or the daemon,
+  `no_verdict[].details` now holds `Class: first message line`, at most 500
+  characters, for example `ArgumentError: enum declared twice`. Before, it
+  said only `child exited with status 2` or `daemon verdict: error`, and the
+  cause was on stderr alone. The line is redacted in the child, and every
+  `details` value is redacted again when the report is written.
+- **`no_verdict[]` entries gain `operator` and `token` (#388),** as in
+  `no_coverage[]`. Both are `null` for an entry with no mutant. Schema
+  `1.10`.
+
 ## [1.8.2] - 2026-11-10
 
 ### Fixed
