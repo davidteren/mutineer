@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **A second SQLite daemon run stops instead of sharing worker files (#404).**
+  Two `--rails --daemon` runs in one checkout used the same worker database
+  files, and both could stop with a false "the unmutated suite is not green".
+  A run now holds a lock on `<base file>-mutineer.lock` beside the database
+  file, and a second run stops with `another Mutineer run is using <base>`,
+  as PostgreSQL and MySQL runs already do. Mutineer never deletes the lock
+  file. A `file:` database name still takes no lock (#412).
+
 ## [1.8.2] - 2026-11-10
 
 ### Fixed

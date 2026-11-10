@@ -2,7 +2,11 @@
 
 require_relative "test_helper"
 require "mutineer/daemon_client"
+require "mutineer/cli"
+require "mutineer/runner"
+require "json"
 require "open3"
+require "tmpdir"
 
 # #26/U5 — per-worker DB routing, proven end-to-end against the bundled fixture app.
 # Drives the daemon directly (via DaemonClient) so it can exercise MORE THAN ONE
@@ -13,8 +17,12 @@ require "open3"
 # concurrent `--jobs N == --jobs 1` gate is U6).
 class DaemonWorkerDbTest < Minitest::Test
   APP   = File.expand_path("fixtures/rails_app", __dir__)
+  ROOT  = File.expand_path("..", __dir__)
   ORDER = File.join(APP, "app/models/order.rb")
   TEST  = File.join(APP, "test/models/order_test.rb")
+  WORKER_DB = File.expand_path("../lib/mutineer/rails_worker_db.rb", __dir__)
+  SQLITE_BASE = File.expand_path("storage/test.sqlite3", APP)
+  SQLITE_LOCK = "#{SQLITE_BASE}-mutineer.lock"
 
   def boot_config
     {
@@ -182,5 +190,230 @@ class DaemonWorkerDbTest < Minitest::Test
                      "arithmetic mutant is killed on worker #{w}'s DB"
       end
     end
+  end
+
+  # A holder that already took the shared lock must stop a second CLI run.
+  def test_a_second_sqlite_run_stops_while_the_first_holds_the_lock
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    holder = spawn_holder(<<~RUBY)
+      require "./config/environment"
+      require #{WORKER_DB.inspect}
+      Mutineer::RailsWorkerDb.prepare_worker!
+      $stdout.puts "READY"
+      $stdout.flush
+      sleep 180
+    RUBY
+    out, status = run_cli(1)
+    assert_equal 1, status.exitstatus, out
+    assert_includes out, "another Mutineer run is using #{SQLITE_BASE}"
+    refute_includes out, "mutation score"
+    refute_includes out, "not green"
+    assert File.exist?(SQLITE_LOCK)
+    assert system("git", "-C", APP, "check-ignore", "-q", "--", "storage/test.sqlite3-mutineer.lock"),
+           "the fixture gitignore does not cover the lock file"
+  ensure
+    stop_holder(holder)
+  end
+
+  # A mutant fork closes its copy of the lock file. The parent's lock stays.
+  def test_the_sqlite_lock_survives_a_fork_child_that_frees_its_copy
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    holder = spawn_holder(<<~RUBY)
+      require "./config/environment"
+      require #{WORKER_DB.inspect}
+      Mutineer::RailsWorkerDb.prepare_worker!
+      child = fork do
+        Mutineer::RailsWorkerDb.forget_lock_connection_after_fork!
+        3.times { Array.new(100_000) { "x" * 10 } && GC.start(full_mark: true, immediate_sweep: true) }
+        exit!(0)
+      end
+      Process.wait(child)
+      $stdout.puts "READY"
+      $stdout.flush
+      sleep 180
+    RUBY
+    out, status = run_cli(1)
+    assert_equal 1, status.exitstatus, out
+    assert_includes out, "another Mutineer run is using #{SQLITE_BASE}"
+  ensure
+    stop_holder(holder)
+  end
+
+  # A killed holder releases the lock. The next run takes it again while mutants run.
+  def test_a_killed_sqlite_run_does_not_block_the_next_run
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    holder = spawn_holder(<<~RUBY)
+      require "./config/environment"
+      require #{WORKER_DB.inspect}
+      Mutineer::RailsWorkerDb.provision(2)
+      $stdout.puts "READY"
+      $stdout.flush
+      sleep 180
+    RUBY
+    stop_holder(holder, signal: "KILL")
+    holder = nil
+    log = File.join(Dir.tmpdir, "mutineer-sqlite-lock-#{Process.pid}.log")
+    pid = spawn_logged_run(log, jobs: 1)
+    seen = false
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 90
+    until Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      seen = true if sqlite_lock_exclusive_busy?
+      break if seen || !process_alive?(pid)
+
+      sleep 0.05
+    end
+    status = wait_child(pid, timeout: 180)
+    out = File.read(log)
+    assert seen, "the next run never held the lock\n#{out}"
+    assert_equal 0, status.exitstatus, out
+    assert_includes out, "SCORE=100.0"
+    refute_includes out, "another Mutineer run"
+    assert File.exist?(SQLITE_LOCK)
+  ensure
+    stop_holder(holder)
+    File.delete(log) if log && File.exist?(log)
+  end
+
+  # Two real CLI runs overlap. Run B stops. Run A's verdicts match a solo run.
+  def test_overlapping_sqlite_runs_stop_and_keep_the_same_verdicts
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    Dir.mktmpdir do |dir|
+      sleep_file = File.join(dir, "hold.rb")
+      File.write(sleep_file, <<~RUBY)
+        require "minitest"
+        module MutineerHoldOpen
+          def before_setup
+            sleep 0.5
+            super
+          end
+        end
+        Minitest::Test.prepend(MutineerHoldOpen)
+      RUBY
+      a_json = File.join(dir, "a.json")
+      solo_json = File.join(dir, "solo.json")
+      log = File.join(dir, "a.log")
+      pid = spawn_logged_run(log, jobs: 1, require_paths: [sleep_file], output: a_json, format: "json")
+      seen = false
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 90
+      until Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+        seen = true if sqlite_lock_exclusive_busy?
+        break if seen || !process_alive?(pid)
+
+        sleep 0.05
+      end
+      assert seen, "run A never held the lock\n#{File.read(log)}"
+      out, status = run_cli(1)
+      assert_equal 1, status.exitstatus, out
+      assert_includes out, "another Mutineer run is using #{SQLITE_BASE}"
+      refute_includes out, "not green"
+      a_status = wait_child(pid, timeout: 240)
+      assert_equal 0, a_status.exitstatus, File.read(log)
+      solo_log = File.join(dir, "solo.log")
+      solo = spawn_logged_run(solo_log, jobs: 1, require_paths: [sleep_file], output: solo_json, format: "json")
+      solo_status = wait_child(solo, timeout: 240)
+      assert_equal 0, solo_status.exitstatus, File.read(solo_log)
+      assert_equal verdict_pairs(solo_json), verdict_pairs(a_json)
+    end
+  end
+
+  def spawn_holder(script)
+    read, write = IO.pipe
+    pid = Process.spawn(app_env, "bundle", "exec", "ruby", "-e", script,
+                        chdir: APP, unsetenv_others: true, out: write, pgroup: true)
+    write.close
+    line = read.gets
+    read.close
+    flunk("holder did not start: #{line.inspect}") unless line&.start_with?("READY")
+    pid
+  end
+
+  def stop_holder(pid, signal: "TERM")
+    return unless pid
+
+    Process.kill(signal, -pid)
+    Process.wait(pid)
+  rescue Errno::ESRCH, Errno::EPERM, Errno::ECHILD
+    nil
+  end
+
+  def run_cli(jobs)
+    script = <<~RUBY
+      require "mutineer"
+      config = Mutineer::Config.new(
+        sources: [#{ORDER.inspect}],
+        tests: [#{TEST.inspect}],
+        project_root: #{APP.inspect},
+        boot: "config/environment",
+        rails: true, daemon: true, strategy: "reload", framework: "minitest", jobs: #{jobs}
+      )
+      Mutineer::CLI.run(config)
+    RUBY
+    Open3.capture2e(ENV.to_h, "bundle", "exec", "ruby", "-Ilib", "-e", script, chdir: ROOT)
+  end
+
+  def spawn_logged_run(log, jobs:, require_paths: [], output: nil, format: "human")
+    finish = if output
+               "Mutineer::CLI.run(config)"
+             else
+               "aggregate, = Mutineer::Runner.execute(config)\nwarn \"SCORE=\#{aggregate.mutation_score}\""
+             end
+    script = <<~RUBY
+      require "mutineer"
+      config = Mutineer::Config.new(
+        sources: [#{ORDER.inspect}],
+        tests: [#{TEST.inspect}],
+        project_root: #{APP.inspect},
+        boot: "config/environment",
+        rails: true, daemon: true, strategy: "reload", framework: "minitest",
+        jobs: #{jobs},
+        require_paths: #{require_paths.inspect},
+        format: #{format.inspect},
+        output: #{output.inspect}
+      )
+      #{finish}
+    RUBY
+    Process.spawn(ENV.to_h, "bundle", "exec", "ruby", "-Ilib", "-e", script,
+                  chdir: ROOT, out: log, err: log, pgroup: true)
+  end
+
+  def app_env
+    Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+  end
+
+  # True only when another process holds a conflicting lock.
+  # A missing file is not a held lock.
+  def sqlite_lock_exclusive_busy?
+    _out, status = Open3.capture2(RbConfig.ruby, "-e", <<~RUBY)
+      begin
+        file = File.open(#{SQLITE_LOCK.inspect}, File::RDONLY)
+      rescue Errno::ENOENT
+        exit 1
+      end
+      exit(file.flock(File::LOCK_EX | File::LOCK_NB) ? 0 : 2)
+    RUBY
+    status.exitstatus == 2
+  end
+
+  def verdict_pairs(path)
+    doc = JSON.parse(File.read(path))
+    rows = []
+    %w[survivors no_coverage uncapturable unplaceable ran_at_load ignored].each do |key|
+      Array(doc[key]).each { |row| rows << [row["id"], key] }
+    end
+    Array(doc["no_verdict"]).each { |row| rows << [row["id"], row["status"]] }
+    summary = doc.fetch("summary")
+    {
+      "rows" => rows.sort,
+      "killed" => summary["killed"],
+      "survived" => summary["survived"],
+      "errored" => summary["errored"],
+      "timeout" => summary["timeout"],
+      "score" => summary["score"],
+      "total" => summary["total"]
+    }
   end
 end

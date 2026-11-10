@@ -139,12 +139,15 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 
 | Database | Worker provisioning and cleanup |
 | --- | --- |
+| SQLite | Copies each worker file on first use. Worker files use `<base>-<N>.sqlite3`. The run lock is `<base file>-mutineer.lock`. |
+| SQLite lock file | The lock file never goes stale. Do not delete it while a run is active. Wait for the other run to finish, or stop it. Add `<base file>-mutineer.lock` to `.gitignore` unless your rules already cover `storage/*`. A `file:` database name takes no lock (#412). Other known gaps are tracked in #416. |
 | PostgreSQL | Copies the test database before workers start. Names use `<base>-mutineer-<N>`, shortened to fit 63 bytes. Databases remain after the run. |
 | PostgreSQL cleanup | Run `DROP DATABASE "myapp_test-mutineer-0";`, using your test database name and worker slot. |
 | MySQL 8 | Creates `<base>-mutineer-<N>`, shortened to fit 64 bytes. Loads `schema.rb` or `structure.sql`, then copies rows before workers start. |
 | MySQL recovery | Does not recopy after an error or timeout. Databases remain after the run; the next run drops and rebuilds them. |
 | MySQL cleanup | Run ``DROP DATABASE `myapp_test-mutineer-0`;``. MySQL requires backticks around the name. |
 | `:memory:` | Not supported by `--daemon`. |
+| Concurrent runs | A second run on the same test database stops with `another Mutineer run is using <base>`. This covers SQLite, PostgreSQL, and MySQL. |
 
 | MySQL requirement or limit | Detail |
 | --- | --- |
@@ -154,7 +157,6 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 | Test database permissions | Needs SELECT. |
 | Another account's trigger DEFINER | Also needs SET_USER_ID. |
 | `structure.sql` | Requires the `mysql` client on `PATH`. |
-| Concurrent runs | A second run using the same test database stops with `another Mutineer run is using <base>`. |
 | Worker limit | At most 256 workers. |
 | MySQL older than 8.0, including 5.7 | Unsupported. Stops before copying with `could not provision <base>: MySQL <version> is not supported`. |
 | Older MySQL fallback | Use `--no-daemon` or `daemon: false`. The run is serial. |
