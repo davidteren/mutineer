@@ -1567,6 +1567,17 @@ class CliTest < Minitest::Test
     end
   end
 
+  # With --test-command, an empty directory stays one path. The run does not exit 2.
+  def test_test_command_keeps_an_empty_directory
+    with_test_expand_project do |proj|
+      FileUtils.mkdir_p(File.join(proj, "empty"))
+      _, err, status = mutineer("run", "--dry-run", "lib/calc.rb", "--test", "empty",
+                                "--test-command", "true %{files}", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "matched no test files"
+    end
+  end
+
   def test_help_names_a_test_directory
     out, _, status = mutineer("--help")
     assert_equal 0, status.exitstatus

@@ -209,12 +209,37 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # A directory name is literal. Pattern characters do not select a sibling.
+  def test_expand_test_reads_a_directory_name_as_literal
+    with_tree(
+      "test[a]/a_test.rb", "testa/nested/wrong_test.rb",
+      "br{ace}/a_test.rb", "a?b/a_test.rb", "axb/wrong_test.rb",
+      "star*/a_test.rb", "starX/wrong_test.rb"
+    ) do |root|
+      pair = Mutineer::Pairing
+      assert_equal ["test[a]/a_test.rb"], pair.expand_test("test[a]", project_root: root)
+      assert_equal ["br{ace}/a_test.rb"], pair.expand_test("br{ace}", project_root: root)
+      assert_equal ["a?b/a_test.rb"], pair.expand_test("a?b", project_root: root)
+      assert_equal ["star*/a_test.rb"], pair.expand_test("star*", project_root: root)
+    end
+  end
+
   # A directory outside the project stays absolute.
   def test_expand_test_keeps_an_outside_directory_absolute
     with_tree("proj/test/a_test.rb", "other/b_test.rb") do |dir|
       root = File.join(dir, "proj")
       other = File.join(dir, "other")
       assert_equal [File.join(other, "b_test.rb")],
+                   Mutineer::Pairing.expand_test(other, project_root: root)
+    end
+  end
+
+  # An outside directory whose name is a pattern still lists only its own files.
+  def test_expand_test_reads_an_outside_directory_name_as_literal
+    with_tree("proj/lib/a.rb", "out[a]/a_test.rb", "outa/nested/wrong_test.rb") do |dir|
+      root = File.join(dir, "proj")
+      other = File.join(dir, "out[a]")
+      assert_equal [File.join(other, "a_test.rb")],
                    Mutineer::Pairing.expand_test(other, project_root: root)
     end
   end

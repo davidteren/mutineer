@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format is based on
   It skips `test_helper.rb`.
   A blank value exits 2.
   A directory or glob with no test file exits 2.
+  With `--test-command`, an empty directory stays as typed.
   Each expanded directory or glob prints its file count on stderr.
   The Action `test` input accepts a directory.
   A directory needs mutineer 1.9.0 or later.
@@ -23,6 +24,7 @@ All notable changes to this project are documented here. The format is based on
   Quote the glob, pass the directory, or repeat `--test`.
 - **`--dry-run` exits 2 for a blank `--test` or a directory with no test file (#380).**
   Those values used to exit 0 on a dry run.
+  With `--test-command`, an empty directory stays as typed.
 
 ### Fixed
 

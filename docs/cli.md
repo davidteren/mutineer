@@ -39,7 +39,7 @@ A directory selects `*_test.rb`, `*_spec.rb`, and `test_*.rb` files.
 It skips `test_helper.rb`.
 It includes system tests and `test_` support files, such as `test/support/test_helpers.rb`.
 Quote a glob, or the shell expands it first.
-This selects Rails tests without system tests: `--test 'test/{models,controllers}/**/*_test.rb'`.
+This selects the files under `test/models` and `test/controllers`: `--test 'test/{models,controllers}/**/*_test.rb'`.
 With `--test-command`, a directory is passed as typed.
 That run prints no count for the directory.
 A glob still expands.

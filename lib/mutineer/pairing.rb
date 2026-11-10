@@ -93,8 +93,21 @@ module Mutineer
       end
     end
 
+    # Characters Dir.glob reads as a pattern. A real directory name may
+    # contain them. They are escaped so the name stays a literal prefix.
+    GLOB_META = /([*?\[\]{}\\])/
+
+    # A path used as a literal prefix in Dir.glob.
+    #
+    # @param path [String] directory path, relative or absolute.
+    # @return [String] the same path with pattern characters escaped.
+    def glob_literal(path)
+      path.gsub(GLOB_META) { "\\#{Regexp.last_match(1)}" }
+    end
+
     # Test files under a directory. The name rule is {TEST_NAME}. Dot entries
     # stay out, because Dir.glob skips them. The result is sorted.
+    # The directory name is literal, even when it contains a pattern character.
     #
     # @param abs [String] absolute directory path.
     # @param root [String] expanded project root.
@@ -102,9 +115,9 @@ module Mutineer
     # @return [Array<String>] root-relative paths, or absolute paths outside the root.
     def directory_test_files(abs, root, roots)
       listed = if (rel = root_relative(abs, roots))
-                 Dir.glob(File.join(rel, "**", "*.rb"), base: root)
+                 Dir.glob(File.join(glob_literal(rel), "**", "*.rb"), base: root)
                else
-                 Dir.glob(File.join(abs, "**", "*.rb"))
+                 Dir.glob(File.join(glob_literal(abs), "**", "*.rb"))
                end
       listed.filter_map { |match| named_test_file(match, root, roots) }.sort
     end
