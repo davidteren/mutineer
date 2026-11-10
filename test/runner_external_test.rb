@@ -218,4 +218,21 @@ class RunnerExternalTest < Minitest::Test
   ensure
     ENV["DATABASE_URL"] = saved
   end
+
+  # #392: a mutant that Ruby cannot load is skipped before the file swap, so
+  # the command never runs and the source file keeps its text.
+  def test_a_mutant_ruby_cannot_load_is_skipped_without_running_the_command
+    with_project("calculator_strong_test.rb") do |proj|
+      path = File.join(proj, "calculator.rb")
+      source = File.read(path)
+      subject = Mutineer::Project.discover([path]).find { |s| Mutineer::Mutators::Arithmetic.new.mutations_for(s, source).any? }
+      broken = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source).first.with(replacement: "(")
+      marker = File.join(proj, "command_ran")
+      command = "#{RUBY} -e #{Shellwords.escape("File.write(#{marker.inspect}, 1)")}"
+      result = Mutineer::Runner.run_external(subject, broken, command, [], timeout: 30, verbose: false, check_summary: false)
+      assert_predicate result, :skipped?
+      refute_path_exists marker, "the command must not run for an invalid mutant"
+      assert_equal source, File.read(path)
+    end
+  end
 end
