@@ -161,8 +161,9 @@ Semver: **new feature → minor bump, fix → patch.** A behavior change to the
 GitHub Action's defaults is a **major** bump: consumers pin `@v<major>`, and a
 default flip must never reach them without opting in.
 
-Before step 1, run the Fizzy sample check on current `main` (issue #402):
-`bundle exec rake fizzy:sample`. It runs this checkout on a pinned commit of
+Before step 1, run the Fizzy sample check on a clean checkout of current
+`main` (pull first; issue #402): `bundle exec rake fizzy:sample`. The task
+refuses uncommitted changes. It runs this checkout on a pinned commit of
 Fizzy, a real Rails 8 app, and compares the counts with
 `rake/fizzy_sample.json`. It needs Fizzy's Ruby through rbenv or asdf and
 network access for the first clone and gem install. It writes nothing on

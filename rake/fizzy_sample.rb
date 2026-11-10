@@ -46,12 +46,12 @@ module FizzySample
       cache = cache_dir
       with_lock(cache) do
         report_path, meta_path, log = paths(cache)
+        head = clean_head!(git_head) # before the run, so the meta names the code that produced the counts
         clone = prepare!(data, cache, [report_path, meta_path])
         ruby = check_ruby!(clone)
         step("database")
         sh!(clone, "bin/rails", "db:test:prepare")
         step("run (log: #{log})")
-        head = git_head # before the run, so the meta names the code that produced the counts
         status = run!(clone, data["files"], report_path, log)
         raise Error, "Mutineer did not complete (#{status ? "exit #{status}" : "killed by a signal"}).\n#{log_tail(log)}" unless completed?(status, report_path)
 
@@ -156,6 +156,7 @@ module FizzySample
     def recorded(data, report, meta, head)
       now = counts(report["summary"])
       raise Error, "Refusing to record: errored is #{now["errored"]}, not 0." if now["errored"].to_i.positive?
+      raise Error, "Refusing to record: no_verdict is #{now["no_verdict"]}, not 0 (timeouts or uncapturable mutants)." if now["no_verdict"].to_i.positive?
       raise Error, "Refusing to record: the report ran a different Fizzy commit or file list." unless meta.values_at("commit", "files") == data.values_at("commit", "files")
       raise Error, "Refusing to record: the report ran uncommitted changes (#{meta["mutineer_sha"]}). Commit, then run fizzy:sample again." if meta["mutineer_sha"].to_s.end_with?("-dirty")
       raise Error, "Refusing to record: the report ran mutineer #{meta["mutineer_sha"]}, but HEAD is #{head}." unless meta["mutineer_sha"] == head
@@ -229,6 +230,17 @@ module FizzySample
     # @raise [Error]
     def verify_ruby!(want, got)
       raise Error, "Fizzy needs Ruby #{want} (.ruby-version), but its bundle ran Ruby #{got}." unless want == got
+    end
+
+    # The check runs only committed code, so its result names a real commit.
+    #
+    # @param head [String] {git_head} output.
+    # @return [String] the same SHA.
+    # @raise [Error] when the checkout has uncommitted changes.
+    def clean_head!(head)
+      raise Error, "This checkout has uncommitted changes (#{head}). Commit or stash them, then run fizzy:sample again." if head.end_with?("-dirty")
+
+      head
     end
 
     # True when the clone already has the commit object, so the fetch can be skipped.

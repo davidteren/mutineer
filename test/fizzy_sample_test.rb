@@ -94,6 +94,19 @@ class FizzySampleTest < Minitest::Test
     assert_includes err.message, "errored is 2"
   end
 
+  def test_record_refuses_timeouts_and_other_no_verdict_mutants
+    err = assert_raises(FizzySample::Error) do
+      FizzySample.recorded(data, report({ "timeout" => 3, "no_verdict" => 3 }), meta, "head")
+    end
+    assert_includes err.message, "no_verdict is 3"
+  end
+
+  def test_sample_refuses_a_dirty_checkout
+    err = assert_raises(FizzySample::Error) { FizzySample.clean_head!("abc-dirty") }
+    assert_includes err.message, "uncommitted"
+    assert_equal "abc", FizzySample.clean_head!("abc")
+  end
+
   def test_record_refuses_a_report_from_another_commit_and_names_both
     err = assert_raises(FizzySample::Error) { FizzySample.recorded(data, report, meta("old"), "head") }
     assert_includes err.message, "old"
@@ -104,10 +117,10 @@ class FizzySampleTest < Minitest::Test
     assert_raises(FizzySample::Error) { FizzySample.recorded(data, report, meta(files: ["b.rb"]), "head") }
   end
 
-  def test_record_allows_timeouts_and_stores_sorted_ids_and_provenance
+  def test_record_stores_sorted_ids_and_provenance
     out = FizzySample.recorded({ "commit" => "abc", "files" => ["a.rb"] },
-                               report({ "timeout" => 3 }, survivors: %w[z a]), meta, "head")
-    assert_equal 3, out["counts"]["timeout"]
+                               report({ "timeout" => 0 }, survivors: %w[z a]), meta, "head")
+    assert_equal 0, out["counts"]["timeout"]
     assert_equal %w[a z], out["survivors"]
     assert_equal Mutineer::VERSION, out["recorded"]["mutineer_version"]
     assert_equal "head", out["recorded"]["mutineer_sha"]
