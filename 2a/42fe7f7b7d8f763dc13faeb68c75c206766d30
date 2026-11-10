@@ -1,0 +1,57 @@
+AGENTS.md
+  s_c847a5be4f740c::t_cedf81c6c6c6a7 328-341
+CHANGELOG.md
+  s_c847a5be4f740c::t_4423fb1b7f9949 25-32
+STATUS.md
+  s_c847a5be4f740c::t_4f2a223369cfa4 1-16
+action.yml
+  s_c847a5be4f740c::t_058128ee844cea 242-294,296-305
+docs/plans/2026-11-10-349-chore-measure-unrun-share-on-real-rails-app-plan.md
+  s_c847a5be4f740c::t_fc399eff653b2b 1-265
+docs/plans/2026-11-10-379-feat-pair-concern-with-namespace-test-plan.md
+  s_c847a5be4f740c::t_30c0fe6a416fe9 1-386
+docs/plans/2026-11-10-380-feat-test-option-directory-or-glob-plan.md
+  s_c847a5be4f740c::t_bc3816bff77280 1-352
+docs/plans/2026-11-10-381-feat-count-unpaired-sources-and-mutants-plan.md
+  s_c847a5be4f740c::t_09250a48895b1e 1-447
+docs/plans/2026-11-10-382-feat-tests-map-in-config-plan.md
+  s_c847a5be4f740c::t_2965e83fc63e9d 1-519
+docs/plans/2026-11-10-386-feat-default-mutants-for-bare-if-and-rescue-bodies-plan.md
+  s_c847a5be4f740c::t_2bc35b7eb7843c 1-464
+docs/plans/2026-11-10-388-feat-json-errored-mutant-list-plan.md
+  s_c847a5be4f740c::t_a4afe523dd8504 1-439
+docs/plans/2026-11-10-389-feat-rails-full-reload-strategy-plan.md
+  s_c847a5be4f740c::t_b2b937b884fd39 1-464
+docs/plans/2026-11-10-397-feat-class-body-macro-mutants-plan.md
+  s_c847a5be4f740c::t_505e6526f51876 1-485
+docs/plans/2026-11-10-398-feat-coverage-cache-hit-clean-check-plan.md
+  s_c847a5be4f740c::t_bfef7c9367e8e7 1-328
+docs/plans/2026-11-10-399-docs-triage-present-to-receiver-survivor-plan.md
+  s_c847a5be4f740c::t_1a06f06c96f3e7 1-175
+docs/plans/2026-11-10-402-chore-pre-release-fizzy-sample-check-plan.md
+  s_c847a5be4f740c::t_5042152200241d 1-321
+docs/plans/2026-11-10-404-fix-sqlite-run-lock-plan.md
+  s_c847a5be4f740c::t_fafacb5796d3be 1-256
+test/action_harness_test.rb
+  s_c847a5be4f740c::t_74fe74b60d3630 29-30,36-43
+test/fixtures/action_harness.sh
+  s_c847a5be4f740c::t_670862d73cf2a8 207-238
+test/mutators/operator_assignment_test.rb
+  s_c847a5be4f740c::t_920dde62967ca3 24-33,152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2a42fe7f7b7d8f763dc13faeb68c75c206766d30",
+  "prompts": {},
+  "sessions": {
+    "s_c847a5be4f740c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "200454c3-822c-42bb-b6d4-0e520e4f7349",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
