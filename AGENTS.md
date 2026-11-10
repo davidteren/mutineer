@@ -171,10 +171,11 @@ GitHub, so an agent may run it. If it fails, explain each difference by the
 merged pull request that caused it, in a pull request that runs
 `bundle exec rake fizzy:record`. A difference that no merged pull request
 explains is a bug: file an issue and fix it before the release. A
-`no_verdict` count above 0 (errored, timeout or uncapturable mutants) also
-blocks the release: `fizzy:record` refuses it, so fix the cause first. Merge that pull
-request, then run `bundle exec rake fizzy:sample` again on the merged
-`main`. It must pass before step 1.
+`no_verdict` count above 0 also blocks the release. That count is an
+errored mutant, a timeout, or an uncapturable mutant. `fizzy:record`
+refuses it, so it cannot be recorded. Fix the cause and merge that fix.
+Then run `bundle exec rake fizzy:sample` again on the merged `main`.
+It must pass before step 1.
 
 The release procedure. A maintainer owns every step. An agent may do steps
 1 to 4 after that maintainer agrees to this release:
