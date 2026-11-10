@@ -161,12 +161,16 @@ class ReloadGuardsTest < Minitest::Test
     Object.send(:remove_const, :Zeitwerk) if Object.const_defined?(:Zeitwerk, false)
   end
 
-  # Runs the block with a stand-in `ActiveSupport` module.
+  # Runs the block with a stand-in `ActiveSupport` module, then puts back the
+  # one an earlier test defined, so later tests in any order still see it.
   def with_active_support(active_support)
+    previous = Object.const_get(:ActiveSupport, false) if Object.const_defined?(:ActiveSupport, false)
+    Object.send(:remove_const, :ActiveSupport) if previous
     Object.const_set(:ActiveSupport, active_support)
     yield
   ensure
     Object.send(:remove_const, :ActiveSupport) if Object.const_defined?(:ActiveSupport, false)
+    Object.const_set(:ActiveSupport, previous) if previous
   end
 
   # A process that only set ActiveSupport::Callbacks to autoload has not loaded
