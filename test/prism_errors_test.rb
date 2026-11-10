@@ -12,7 +12,7 @@ require "tmpdir"
 # Prism 1. A mutant elsewhere in that file, and one in the same method (the
 # redefine snippet holds that line too), must still run and get a verdict, on
 # both strategies. The test runs where the loaded Prism reports the error
-# (CI's Minitest 6 job loads Prism 2) and skips on Prism 1.
+# (CI's Prism 2 job pins it, #400) and skips on Prism 1.
 class PrismErrorsTest < Minitest::Test
   LIB = File.expand_path("../lib", __dir__)
 
