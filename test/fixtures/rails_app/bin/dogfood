@@ -82,6 +82,16 @@ ruby -rjson -e 's = JSON.parse(File.read(ARGV[0]))["summary"]
   abort "FAIL: expected every shipment and trackable mutant killed, got #{s.inspect}" unless s["killed"] > 1 && s.values_at("survived", "errored", "no_coverage") == [0, 0, 0]' "$REPORT"
 echo "ok: shipment and trackable mutants are killed"
 
+echo "== a weak test lets every shipment and trackable mutant survive under reload (#378, #383, #384) =="
+REPORT="$(mktemp)"
+expect_exit 0 "shipment + trackable weak --rails --no-daemon --strategy reload" -- \
+  bundle exec mutineer run app/models/shipment.rb app/models/concerns/trackable.rb \
+  --test test/models/shipment_weak_test.rb \
+  --rails --no-daemon --strategy reload --format json --output "$REPORT"
+ruby -rjson -e 's = JSON.parse(File.read(ARGV[0]))["summary"]
+  abort "FAIL: expected every shipment and trackable mutant to run and survive, got #{s.inspect}" unless s["survived"] > 1 && s["survived"] == s["total"]' "$REPORT"
+echo "ok: shipment and trackable mutants survive a weak test"
+
 echo "== reload runs each validator and block callback once, like redefine (#390) =="
 for strategy in reload redefine; do
   REPORT="$(mktemp)"

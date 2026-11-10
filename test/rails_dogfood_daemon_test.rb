@@ -191,6 +191,20 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_equal 100.0, aggregate.mutation_score
   end
 
+  # The check above passes even if every mutant is a false kill. With a weak
+  # test that checks only the enum, the skips and the concern's scope, every
+  # mutant must run and survive: a broken class body would error or kill.
+  def test_a_reloaded_class_body_keeps_its_enum_skips_and_scope_on_the_daemon
+    config = reloaded_class_body_config
+    config.tests = [File.join(APP, "test/models/shipment_weak_test.rb")]
+    aggregate = nil
+    _out, err = capture_subprocess_io { aggregate, = Mutineer::Runner.execute(config) }
+
+    assert_equal 0, aggregate.errored_count, err
+    assert_operator aggregate.survived_count, :>, 1
+    assert_equal aggregate.total, aggregate.survived_count, "every mutant must run and survive"
+  end
+
   # #390: the daemon reloads Parcel's whole file, so its class body runs again
   # and appended a second validator, block callback and `validate` block.
   # ParcelTest counts them, so every `heavy?` mutant was a false kill. The

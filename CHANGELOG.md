@@ -38,8 +38,10 @@ All notable changes to this project are documented here. The format is based on
   the new one, in the place of the old one, so the order of callbacks does
   not change. Entries from an included concern stay, because the reload does
   not run the concern's block again. When Mutineer cannot tell which old
-  entry a new one repeats, it keeps both, as before. This holds on
-  `--daemon` and with `--strategy reload`.
+  entry a new one repeats, it keeps both, as before (#413). This holds on
+  `--daemon` and with `--strategy reload`. With eager loading on, a mutant
+  of a parent class file still adds a callback back to each subclass that
+  skipped it (#414).
   **Score change:** a Rails model with such a test can now show survivors
   that were false kills before, so its score can go down.
 - **Concern mutants load when the test app loads lazily (#383).** With

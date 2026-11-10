@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "mutineer/reload_guards"
+require "tmpdir"
 
 # #378, #384: the guards relax two Rails macros only while a mutant loads.
 # Stand-ins replace the Rails modules, so the suite stays Rails-free.
@@ -118,6 +119,89 @@ class ReloadGuardsTest < Minitest::Test
   ensure
     Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails, false)
     Object.send(:remove_const, :Zeitwerk) if Object.const_defined?(:Zeitwerk, false)
+  end
+
+  # A managed file that does not define the constant Zeitwerk expects raises
+  # Zeitwerk::NameError, a NameError. The mutant load goes on, as before #383.
+  def test_load_original_goes_on_when_a_loader_raises_name_error
+    asked = []
+    misnamed = Object.new.tap { |l| l.define_singleton_method(:load_file) { |path| asked << path; raise NameError, "expected A" } }
+    Object.const_set(:Zeitwerk, Module.new.tap { |z| z.const_set(:Error, Class.new(StandardError)) })
+    rails = Module.new.tap { |r| r.define_singleton_method(:autoloaders) { [misnamed] } }
+    rails.define_singleton_method(:application) { Object.new }
+    Object.const_set(:Rails, rails)
+
+    Mutineer::ReloadGuards.load_original("lib/core_ext/a.rb")
+    assert_equal [File.expand_path("lib/core_ext/a.rb")], asked
+  ensure
+    Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails, false)
+    Object.send(:remove_const, :Zeitwerk) if Object.const_defined?(:Zeitwerk, false)
+  end
+
+  # Autoload roots are real paths, so a source path through a symlink must
+  # reach the loaders as the real path, or none manages it.
+  def test_load_original_passes_the_real_path_of_a_symlinked_file
+    Dir.mktmpdir do |dir|
+      real = File.join(dir, "real.rb")
+      File.write(real, "")
+      link = File.join(dir, "link.rb")
+      File.symlink(real, link)
+      asked = []
+      main = Object.new.tap { |l| l.define_singleton_method(:load_file) { |path| asked << path } }
+      Object.const_set(:Zeitwerk, Module.new.tap { |z| z.const_set(:Error, Class.new(StandardError)) })
+      rails = Module.new.tap { |r| r.define_singleton_method(:autoloaders) { [main] } }
+      rails.define_singleton_method(:application) { Object.new }
+      Object.const_set(:Rails, rails)
+
+      Mutineer::ReloadGuards.load_original(link)
+      assert_equal [File.realpath(real)], asked
+    end
+  ensure
+    Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails, false)
+    Object.send(:remove_const, :Zeitwerk) if Object.const_defined?(:Zeitwerk, false)
+  end
+
+  # Runs the block with a stand-in `ActiveSupport` module.
+  def with_active_support(active_support)
+    Object.const_set(:ActiveSupport, active_support)
+    yield
+  ensure
+    Object.send(:remove_const, :ActiveSupport) if Object.const_defined?(:ActiveSupport, false)
+  end
+
+  # A process that only set ActiveSupport::Callbacks to autoload has not loaded
+  # it. Neither the snapshot nor the guards may load it, or the mutant run
+  # would see methods the clean run did not have.
+  def test_an_autoloaded_callbacks_module_stays_unloaded
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "callbacks.rb")
+      File.write(path, "raise 'ActiveSupport::Callbacks loaded'")
+      active_support = Module.new
+      active_support.autoload(:Callbacks, path)
+      with_active_support(active_support) do
+        assert_equal({}, Mutineer::ReloadGuards::RepeatedCallbacks.snapshot)
+        Mutineer::ReloadGuards.install!
+        assert_equal path, active_support.autoload?(:Callbacks)
+      end
+    end
+  end
+
+  # A class can define its own class-level `<`, as `extend Comparable` does.
+  # The snapshot asks the module instead, so that class does not raise.
+  def test_the_snapshot_handles_a_class_that_defines_its_own_comparison
+    callbacks = Module.new
+    active_support = Module.new.tap { |m| m.const_set(:Callbacks, callbacks) }
+    klass = Class.new do
+      include callbacks
+      extend Comparable
+      def self.<=>(_other) = nil
+      def self.__callbacks = { save: [] }
+    end
+
+    with_active_support(active_support) do
+      assert_raises(ArgumentError) { klass < callbacks }
+      assert_equal({ save: [] }, Mutineer::ReloadGuards::RepeatedCallbacks.snapshot.fetch(klass))
+    end
   end
 
   def test_skipping_a_parent_callback_again_does_not_raise_only_during_a_load
@@ -404,6 +488,47 @@ class ReloadGuardsTest < Minitest::Test
     klass.__callbacks = { save: Chain.new(concern_entry, old_body, new_body) }
 
     Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_body] } }, [__FILE__])
+
+    assert_same_list [concern_entry, new_body], klass.__callbacks[:save]
+  end
+
+  # The class body adds one callback only on its first run (`@done ||= ...`).
+  # Three old look-alikes and two new ones cannot pair for certain, so every
+  # copy stays, as before #390. As many old ones as new ones pair in order.
+  def test_look_alike_blocks_pair_only_when_the_counts_match
+    old = Array.new(3) { Callback.new(:before, body_block) }
+    new = Array.new(2) { Callback.new(:before, body_block) }
+    klass = callback_class
+    klass.__callbacks = { save: Chain.new(*old, *new) }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: old } }, [__FILE__])
+
+    assert_same_list old + new, klass.__callbacks[:save]
+
+    old = Array.new(2) { Callback.new(:before, body_block) }
+    klass.__callbacks = { save: Chain.new(*old, *new) }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: old } }, [__FILE__])
+
+    assert_same_list new, klass.__callbacks[:save]
+  end
+
+  # A callback object whose `call` method is the callback.
+  class Stamp
+    def initialize(name) = (@name = name)
+    def call = @name
+  end
+
+  # `before_save(&Stamp.new(:x).method(:call))`: each block comes from one
+  # method, so only the receiver tells the concern's and the class body's apart.
+  def test_method_blocks_of_different_receivers_are_different_entries
+    concern_entry = Callback.new(:before, Stamp.new(:concern).method(:call).to_proc)
+    old_body = Callback.new(:before, Stamp.new(:body).method(:call).to_proc)
+    new_body = Callback.new(:before, Stamp.new(:body).method(:call).to_proc)
+    klass = callback_class
+    klass.__callbacks = { save: Chain.new(concern_entry, old_body, new_body) }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_body] } }, ["model.rb"])
 
     assert_same_list [concern_entry, new_body], klass.__callbacks[:save]
   end

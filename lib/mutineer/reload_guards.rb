@@ -88,8 +88,8 @@ module Mutineer
     # @yield the mutant's load.
     # @return [Object] what the block returns.
     def self.during_load(source_file, mutant_path = nil)
-      install!
       load_original(source_file)
+      install!
       before = RepeatedCallbacks.snapshot
       @enums_before_load = {}
       @loading = true
@@ -114,10 +114,11 @@ module Mutineer
     #
     # An included concern adds its entries to the class, and the reload does
     # not run its block again, so it adds no new copy of them. Its entries can
-    # look like the class body's own, so an entry pairs first with an old
-    # entry that is the same ({.same?}): a validator with equivalent options,
-    # a lambda that captured equivalent values, a block from the same place in
-    # the code. An entry left over, such as a `validates` whose options come
+    # look like the class body's own, so entries pair first with old entries
+    # that are the same ({.same?}): a validator with equivalent options, a
+    # lambda that captured equivalent values, a block from the same place in
+    # the code. They pair only when there are as many old ones as new ones
+    # ({.exact_pairs}). An entry left over, such as a `validates` whose options come
     # from a method the mutant changed, pairs by {.key} only when no concern
     # entry could be the one it repeats ({.by_key}). Otherwise both copies stay,
     # as before this fix.
@@ -130,9 +131,10 @@ module Mutineer
       #
       # @return [Hash{Class => Hash{Symbol => Object}}] empty without ActiveSupport.
       def self.snapshot
-        return {} unless defined?(::ActiveSupport::Callbacks)
+        return {} unless ReloadGuards.callbacks_loaded?
 
-        classes = ObjectSpace.each_object(Class).select { |klass| klass < ::ActiveSupport::Callbacks }
+        # Asks the module: a class can define its own `<` (`extend Comparable`).
+        classes = ObjectSpace.each_object(Class).select { |klass| ::ActiveSupport::Callbacks > klass }
         classes.to_h { |klass| [klass, klass.__callbacks.dup] }
       end
 
@@ -165,7 +167,8 @@ module Mutineer
       end
 
       # Pairs each entry the load added to `klass`'s own chains with the old
-      # entry it repeats: first with an old entry that is the same, then by key.
+      # entry it repeats: first with old entries that are the same
+      # ({.exact_pairs}), then by key.
       #
       # @param klass [Class] a class whose chains the load changed.
       # @param old [Hash{Class => Hash{Symbol => Array}}] each class's entries before the load.
@@ -181,12 +184,35 @@ module Mutineer
           next [] if added.empty?
 
           pool = without(before, parent_old.fetch(name, []))
-          seen = {}
-          exact, leftover = added.map do |new_entry|
-            [take(pool) { |entry| same?(entry, new_entry, reloaded, seen) }, new_entry]
-          end.partition(&:first)
-          exact + by_key(leftover.map(&:last), pool, reloaded)
+          exact = exact_pairs(added, pool, reloaded)
+          exact + by_key(without(added, exact.map(&:last)), pool, reloaded)
         end
+      end
+
+      # Pairs new entries with the old entries that are the same ({.same?}),
+      # in order, but only when there are as many old ones as new ones. The
+      # class body can add a callback once only (`@done ||= ...`), or a
+      # concern can hold a look-alike, so a different count keeps both
+      # copies, as before #390. Removes the paired old entries from `pool`.
+      #
+      # @param added [Array] the entries the load added.
+      # @param pool [Array] the old entries that could be repeated.
+      # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @return [Array<Array(Object, Object)>] each old entry and the new entry that replaces it.
+      def self.exact_pairs(added, pool, reloaded)
+        seen = {}
+        rest = added
+        pairs = []
+        until rest.empty?
+          first = rest.first
+          group, rest = rest.partition { |entry| same?(entry, first, reloaded, seen) }
+          olds = pool.select { |entry| same?(entry, first, reloaded, seen) }
+          next unless olds.size == group.size
+
+          pool.replace(without(pool, olds))
+          pairs.concat(olds.zip(group))
+        end
+        pairs
       end
 
       # Pairs the entries no exact match took, by {.key}, but only for a key
@@ -204,15 +230,6 @@ module Mutineer
           old_entries = old_by_key.fetch(k, [])
           old_entries.size == new_entries.size ? old_entries.zip(new_entries) : []
         end
-      end
-
-      # Removes and returns the first entry of `pool` the block accepts.
-      #
-      # @param pool [Array]
-      # @return [Object, nil]
-      def self.take(pool, &block)
-        index = pool.index(&block)
-        index && pool.delete_at(index)
       end
 
       # Rebuilds each changed chain in its order from before the load, with
@@ -379,13 +396,15 @@ module Mutineer
         mine.zip(theirs).all? { |a, b| same.(a, b) }
       end
 
-      # The values a block captured, or nil when Ruby cannot show them.
+      # The block's receiver and the values it captured, or nil when Ruby
+      # cannot show them. The receiver tells apart `method(:x).to_proc` of
+      # two objects; a class body's blocks share the class as receiver.
       #
       # @param block [Proc]
       # @return [Array, nil]
       def self.captured(block)
         scope = block.binding
-        scope.local_variables.map { |name| scope.local_variable_get(name) }
+        [scope.receiver] + scope.local_variables.map { |name| scope.local_variable_get(name) }
       rescue ArgumentError
         nil
       end
@@ -488,13 +507,25 @@ module Mutineer
     end
 
     # Prepends the guards once, onto the Rails modules this process has loaded.
+    # A module Rails only set to autoload stays unloaded, so the mutant run
+    # sees the same Ruby as the clean run.
     #
     # @return [void]
     def self.install!
-      prepend_once(::ActiveRecord::Enum, EnumRedeclaration) if defined?(::ActiveRecord::Enum)
-      return unless defined?(::ActiveSupport::Callbacks::ClassMethods)
+      if defined?(::ActiveRecord::Enum) && !::ActiveRecord.autoload?(:Enum)
+        prepend_once(::ActiveRecord::Enum, EnumRedeclaration)
+      end
+      return unless callbacks_loaded?
 
       prepend_once(::ActiveSupport::Callbacks::ClassMethods, CallbackReskipping)
+    end
+
+    # `defined?` does not load an autoloaded constant, but using it does.
+    #
+    # @return [Boolean] true when `ActiveSupport::Callbacks` is loaded, not
+    #   only set to autoload.
+    def self.callbacks_loaded?
+      !!defined?(::ActiveSupport::Callbacks) && !::ActiveSupport.autoload?(:Callbacks)
     end
 
     # @param target [Module] the Rails module.
@@ -506,7 +537,10 @@ module Mutineer
 
     # Asks each Rails autoloader for the constant `source_file` defines. A
     # loader that does not manage the file raises `Zeitwerk::Error`; the next
-    # one is asked. A file already loaded only costs a constant lookup.
+    # one is asked. A managed file that does not define the constant Zeitwerk
+    # expects raises `Zeitwerk::NameError`, a `NameError`; the mutant load goes
+    # on as before. A file already loaded only costs a constant lookup.
+    # Autoload roots are real paths, so the loaders get the real path.
     #
     # @param source_file [String] the file the mutant replaces.
     # @return [void]
@@ -519,9 +553,9 @@ module Mutineer
         next unless loader.respond_to?(:load_file)
 
         begin
-          loader.load_file(File.expand_path(source_file))
+          loader.load_file(RepeatedCallbacks.real_path(source_file))
           return
-        rescue ::Zeitwerk::Error
+        rescue ::Zeitwerk::Error, ::NameError
           next
         end
       end
