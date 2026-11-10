@@ -288,6 +288,9 @@ class ExternalBackendTest < Minitest::Test
       assert_nil Backend.random_order("env SEED=7 ruby %{files}", text)
       assert_nil Backend.random_order("rspec --seed 7 %{files}", rspec)
       assert_nil Backend.random_order("ruby %{files} -s 7", text)
+      assert_nil Backend.random_order("ruby %{files} -s7", text)
+      with_env("TESTOPTS" => "-s7") { assert_nil Backend.random_order("rake test", text) }
+      refute_nil Backend.random_order("ruby %{files} -skip", text)
       assert_nil Backend.random_order("rspec --order rand:7 %{files}", rspec)
       assert_equal [:minitest, "4242"], Backend.random_order("ruby %{files}", text)
       with_env("SEED" => "7") { assert_nil Backend.random_order("ruby %{files}", text) }

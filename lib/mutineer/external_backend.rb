@@ -66,9 +66,9 @@ module Mutineer
     # The seed line RSpec prints when it shuffles the tests. Captures the seed.
     RSPEC_SEED = /^Randomized with seed (\d+)/
     # A Minitest seed given on the command or in TESTOPTS (`SEED=N`, `--seed N`
-    # or `-s N`). Minitest prints its seed line for a fixed seed too, so the
-    # line alone cannot tell.
-    MINITEST_SEED_GIVEN = /\bSEED=|--seed\b|(?:\A|\s)-s\b/
+    # `-s N` or `-sN`). Minitest prints its seed line for a fixed seed too, so
+    # the line alone cannot tell.
+    MINITEST_SEED_GIVEN = /\bSEED=|--seed\b|(?:\A|\s)-s(?![A-Za-z_])/
     # An RSpec seed given on the command or in SPEC_OPTS (`--seed N` or
     # `--order rand:N`). RSpec ignores SEED.
     RSPEC_SEED_GIVEN = /--seed\b|\brand(?:om)?:\d/
