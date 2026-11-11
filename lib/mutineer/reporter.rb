@@ -254,8 +254,10 @@ module Mutineer
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },
         # Additive (1.10, #361): every killed mutant's lean identity so two runs
         # can be joined by id without subtracting every unscored category.
+        # to_s/to_i: lean_mutant_json can leave null fields when a stub result
+        # lacks a subject (same rule as no_verdict[]).
         killed: @agg.results.select(&:killed?).map { |r| mutant_json(r) }
-                    .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
+                    .sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s, h[:id].to_s] },
         # id extends the key to a total order: several mutants share a line.
         no_coverage: @agg.results.select(&:no_coverage?).map { |r| mutant_json(r) }
                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
@@ -772,8 +774,10 @@ module Mutineer
 
     # JSON for `--dry-run --format json`: every valid candidate with its stable
     # id, plus summary totals. Ids match a later real run of the same JobPlan.
+    # Callers partition with {Mutation#valid?} once and pass only valid jobs;
+    # this method does not re-validate.
     #
-    # @param jobs [Array<Array>] `(subject, mutation, id)` triples from
+    # @param jobs [Array<Array>] valid `(subject, mutation, id)` triples from
     #   {JobPlan.collect_jobs} (after {JobPlan.scope_since}).
     # @param source_map [Hash{String => String}] source file path => source text.
     # @param declined [Hash{String => Integer}] operator name => declined count.
@@ -783,15 +787,11 @@ module Mutineer
     def self.dry_run_json(jobs, source_map, declined: {}, skipped_invalid: 0, ignored: 0)
       reporter = new(AggregateResult.new([]), source_map)
       by_operator = Hash.new(0)
-      mutants = []
-      jobs.each do |subject, mutation, id|
-        source = source_map[subject.file]
-        next unless mutation.valid?(source)
-
+      mutants = jobs.map do |subject, mutation, id|
         by_operator[mutation.operator.to_s] += 1
-        mutants << reporter.__send__(:lean_mutant_json, subject, mutation, id)
+        reporter.__send__(:lean_mutant_json, subject, mutation, id)
       end
-      mutants.sort_by! { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] }
+      mutants.sort_by! { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s, h[:id].to_s] }
       doc = {
         schema_version: SCHEMA_VERSION,
         summary: {

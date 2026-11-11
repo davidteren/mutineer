@@ -30,6 +30,7 @@ module DocsContract
   TABLE_ARIA = {
     "summary" => "Summary fields",
     "survivors" => "Survivor fields",
+    "killed" => "Killed fields",
     "matrix" => "Matrix fields",
     "baseline" => "Baseline fields",
     "exit-codes" => "Exit codes"

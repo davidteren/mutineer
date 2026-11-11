@@ -87,11 +87,11 @@ class JsonReporterTest < Minitest::Test
   end
 
   def test_killed_array_sorted_by_file_line_operator_id
-    lit = killed_mutant(token: "100", replacement: "0", operator: :literal_mutation, id: "zid")
-    cmp = killed_mutant(token: ">=", replacement: ">", operator: :comparison, id: "aid")
-    # Input order is literal then comparison; comparison sorts first by operator.
-    ids = render([lit, cmp])["killed"].map { |h| h.values_at("operator", "id") }
-    assert_equal [%w[comparison aid], %w[literal_mutation zid]], ids
+    zid = killed_mutant(token: "100", replacement: "0", operator: :literal_mutation, id: "zid")
+    aid = killed_mutant(token: "100", replacement: "1", operator: :literal_mutation, id: "aid")
+    # Same file/line/operator; input order is zid then aid — sort by id.
+    ids = render([zid, aid])["killed"].map { |h| h.values_at("operator", "id") }
+    assert_equal [%w[literal_mutation aid], %w[literal_mutation zid]], ids
   end
 
   # #126: the report names its id format, so a later --baseline load knows its

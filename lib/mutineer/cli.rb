@@ -423,9 +423,17 @@ module Mutineer
       validate_test_command!(config) if config.test_command
 
       validate_since!(config) if config.since
-      preflight_output!(config.output, config) if config.output
+      # Non-JSON dry runs ignore --output (warn_unused_dry_run_settings); skip
+      # the path check so a missing parent does not exit 2 before that warning.
+      if config.output && (!config.dry_run || config.format == "json")
+        preflight_output!(config.output, config)
+      end
       preflight_baseline!(config.baseline) if config.baseline
-      preflight_same_file!(config) if config.output && config.baseline && !config.dry_run
+      # Human dry runs write nothing; JSON dry runs write --output (#362), so
+      # they need the same-file guard that blocks overwriting a baseline (#281).
+      if config.output && config.baseline && (!config.dry_run || config.format == "json")
+        preflight_same_file!(config)
+      end
 
       # When --test is omitted, infer each source's test by convention. Autopair
       # also re-detects framework from inferred tests when --framework was not set.
@@ -703,7 +711,8 @@ module Mutineer
     # output is expanded the way Reporter#report writes it, so `x/../b.json`
     # with a missing `x/` still matches `b.json`. File.identical? is false when
     # either file is missing, so a new output path never matches.
-    # Unlike the Action's guard, a dry run skips this check: it writes no report.
+    # Unlike the Action's guard, a human dry run skips this check: it writes no
+    # report. JSON dry runs write `--output`, so they call this guard (#362).
     #
     # @api private
     # @param config [Mutineer::Config] run configuration (output and baseline set).
@@ -929,10 +938,14 @@ module Mutineer
       # matches the printed list.
       jobs, ignored_results, = JobPlan.scope_since(jobs, ignored_results, source_map, config)
       ignored = ignored_results.size
-      skipped = jobs.count { |subject, mutation, _id| !mutation.valid?(source_map[subject.file]) }
+      # One valid? pass for both formats: Mutation#valid? re-parses the whole file.
+      valid, invalid = jobs.partition do |subject, mutation, _id|
+        mutation.valid?(source_map[subject.file])
+      end
+      skipped = invalid.size
 
       if config.format == "json"
-        rendered = Reporter.dry_run_json(jobs, source_map, declined: extras[:declined] || {},
+        rendered = Reporter.dry_run_json(valid, source_map, declined: extras[:declined] || {},
                                          skipped_invalid: skipped, ignored: ignored)
         if config.output
           abs = File.expand_path(config.output)
@@ -945,10 +958,8 @@ module Mutineer
       end
 
       per_operator = Hash.new(0)
-      jobs.each do |subject, mutation, _id|
+      valid.each do |subject, mutation, _id|
         source = source_map[subject.file]
-        next unless mutation.valid?(source)
-
         line = source.byteslice(0, mutation.start_offset).count("\n") + 1
         per_operator[mutation.operator] += 1
         original = source.byteslice(mutation.start_offset...mutation.end_offset)

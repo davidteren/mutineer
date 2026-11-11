@@ -1614,6 +1614,45 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #362 writes --output on JSON dry runs, so the same-file guard must fire (#281).
+  def test_json_dry_run_rejects_output_same_file_as_baseline
+    with_project do |proj|
+      baseline = File.join(proj, "base.json")
+      before = JSON.generate("schema_version" => "1.8", "survivors" => [])
+      File.write(baseline, before)
+      File.symlink("base.json", File.join(proj, "link.json"))
+
+      [[], ["--baseline", "base.json"]].each do |flags|
+        File.write(File.join(proj, ".mutineer.yml"), "baseline: base.json\n") if flags.empty?
+        File.write(File.join(proj, ".mutineer.yml"), "threshold: 0\n") unless flags.empty?
+
+        %w[base.json link.json].each do |output|
+          _, err, status = mutineer(
+            "run", "calculator.rb", "--dry-run", "--format", "json",
+            "--output", output, *flags, chdir: proj
+          )
+          assert_equal 2, status.exitstatus, "flags=#{flags.inspect} output=#{output}"
+          assert_includes err, "are the same file"
+          assert_equal before, File.read(baseline)
+        end
+      end
+    end
+  end
+
+  # Non-JSON dry runs ignore --output; a missing parent must not exit 2 first.
+  def test_human_dry_run_ignores_output_with_missing_parent
+    with_project do |proj|
+      out, err, status = mutineer(
+        "run", "calculator.rb", "--dry-run",
+        "--output", "missing-parent/dry.json", chdir: proj
+      )
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "mutations (dry run, not executed)"
+      assert_includes err, "has no effect with --dry-run"
+      refute_path_exists File.join(proj, "missing-parent")
+    end
+  end
+
   # #281: --output naming the baseline file (directly or via a link) is a
   # usage error, so a failing run cannot replace its own baseline.
   def test_output_same_file_as_baseline_exits_two
