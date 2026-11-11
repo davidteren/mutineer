@@ -54,6 +54,9 @@ module Mutineer
     ].freeze
     # Infix that keeps a worker database off Rails' own `<base>-<n>` names.
     WORKER_NAME_MARK = "-mutineer-"
+    # Suffix of the SQLite run lock beside the base database file.
+    # The file stays. The kernel frees the lock when the last holder exits.
+    SQLITE_LOCK_SUFFIX = "-mutineer.lock"
     # Database we connect to while the test database is a template. Advisory
     # locks are per database, so every run must take them here, not on a slot.
     MAINTENANCE_DATABASE = "postgres"
@@ -287,7 +290,7 @@ module Mutineer
     end
 
     # Create each worker database before any worker daemon starts.
-    # SQLite is a no-op: the file is copied on first use. Postgres drops and
+    # SQLite takes the run lock and copies files on first use. Postgres drops and
     # recreates each exact slot name from the test database. MySQL creates each
     # slot, loads the schema, and copies rows. The caller must be the only
     # daemon connected to that test database.
@@ -301,7 +304,10 @@ module Mutineer
 
       count = Integer(slots)
       return if count < 1
-      return if sqlite_adapter?(current_adapter)
+      if sqlite_adapter?(current_adapter)
+        provision_sqlite
+        return
+      end
 
       if postgres_adapter?(current_adapter)
         provision_postgres(count)
@@ -316,15 +322,37 @@ module Mutineer
             "worker-DB isolation does not support adapter #{current_adapter.inspect} yet."
     end
 
-    # Take the shared run lock and drop this process's connection to the test
-    # database. Worker daemons call this at boot. They do not create databases.
-    # SQLite has no lock here. The file copy still happens in {after_fork}.
+    # Take the SQLite run lock for this process.
+    # Ask for it alone, then share it so worker daemons can join.
+    # A failed share raises the same message as a failed exclusive request.
+    #
+    # @return [void]
+    # @raise [RuntimeError] when another run holds the lock.
+    # @raise [SystemCallError] when the lock file cannot be opened.
+    def self.provision_sqlite
+      config = primary_db_config
+      lock = sqlite_lock_path(config)
+      return unless lock
+
+      base = sqlite_file(config)
+      hold_sqlite_lock(lock, base, shared: false)
+      hold_sqlite_lock(lock, base, shared: true)
+    end
+
+    # Take the shared run lock. Worker daemons call this at boot. They do not
+    # create databases. Postgres and MySQL also drop this process's connection
+    # to the test database. SQLite only takes the lock: the file copy still
+    # happens in {after_fork}.
     #
     # @return [void]
     # @raise [RuntimeError] when another run holds the exclusive lock.
+    # @raise [SystemCallError] when the SQLite lock file cannot be opened.
     def self.prepare_worker!
       return unless available?
-      return if sqlite_adapter?(current_adapter)
+      if sqlite_adapter?(current_adapter)
+        prepare_sqlite_worker!
+        return
+      end
 
       if mysql_adapter?(current_adapter)
         prepare_mysql_worker!
@@ -342,6 +370,20 @@ module Mutineer
 
       @lock_connection = conn
       disconnect_app!
+    end
+
+    # Take the shared SQLite run lock. A worker daemon calls this at boot.
+    # No file means there is nothing to lock (`:memory:`, blank, or `file:`).
+    #
+    # @return [void]
+    # @raise [RuntimeError] when another run holds the exclusive lock.
+    # @raise [SystemCallError] when the lock file cannot be opened.
+    def self.prepare_sqlite_worker!
+      config = primary_db_config
+      lock = sqlite_lock_path(config)
+      return unless lock
+
+      hold_sqlite_lock(lock, sqlite_file(config), shared: true)
     end
 
     # Point this process at one worker database. Postgres and MySQL only connect.
@@ -373,6 +415,13 @@ module Mutineer
     # @return [String]
     def self.primary_database_name
       ActiveRecord::Base.connection_db_config.name
+    end
+
+    # The database config `ActiveRecord::Base` is using.
+    #
+    # @return [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    def self.primary_db_config
+      ActiveRecord::Base.connection_db_config
     end
 
     # The test environment's database configs, hidden ones and replicas included.
@@ -609,6 +658,65 @@ module Mutineer
     # @return [Boolean]
     def self.sqlite_adapter?(adapter)
       adapter.start_with?("sqlite")
+    end
+
+    # True for a SQLite config with a database file: not `:memory:`, not a
+    # `file:` URI, not blank.
+    #
+    # @param config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    # @return [Boolean]
+    def self.sqlite_file_config?(config)
+      database = config.database.to_s
+      sqlite_adapter?(config.adapter.to_s) && !database.empty? && database != ":memory:" && !database.start_with?("file:")
+    end
+
+    # Absolute path of a SQLite config's file, resolved as the Rails adapter
+    # does: against `Rails.root` when it is set.
+    #
+    # @param config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    # @return [String]
+    def self.sqlite_file(config)
+      root = defined?(Rails.root) && Rails.root
+      root ? File.expand_path(config.database, root.to_s) : File.expand_path(config.database)
+    end
+
+    # Absolute path of the SQLite run lock, or nil when the config has no file.
+    # Blank names, `:memory:`, and `file:` URIs have no lock.
+    #
+    # @param config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    # @return [String, nil]
+    def self.sqlite_lock_path(config)
+      return unless sqlite_file_config?(config)
+
+      "#{sqlite_file(config)}#{SQLITE_LOCK_SUFFIX}"
+    end
+
+    # Open the SQLite run lock once and take it.
+    # A second open in this process would fight the first, so the same file is reused.
+    # Never unlocks the file. The kernel frees the lock when the last holder exits.
+    #
+    # @param lock_path [String] absolute path of the lock file.
+    # @param base [String] absolute database path, named in the stop message.
+    # @param shared [Boolean] shared lock when true, exclusive when false.
+    # @return [void]
+    # @raise [ArgumentError] when this process already has the lock open for another path.
+    # @raise [RuntimeError] when another run holds a conflicting lock.
+    # @raise [SystemCallError] when the lock file cannot be opened.
+    def self.hold_sqlite_lock(lock_path, base, shared:)
+      file = @sqlite_lock_file
+      if file && !file.closed?
+        current = file.path
+        unless current == lock_path
+          raise ArgumentError, "sqlite run lock is already open for #{current}, not #{lock_path}"
+        end
+      else
+        file = File.open(lock_path, File::RDONLY | File::CREAT, 0o644)
+        @sqlite_lock_file = file
+      end
+      mode = shared ? File::LOCK_SH : File::LOCK_EX
+      return if file.flock(mode | File::LOCK_NB)
+
+      raise "another Mutineer run is using #{base}"
     end
 
     # @param adapter [String]
@@ -883,11 +991,17 @@ module Mutineer
 
     # The child inherited the parent's lock session. Drop the Ruby wrapper
     # without sending a disconnect, so the parent's locks stay held.
+    # Close the SQLite lock file when it is open. Never unlock it.
+    # A second call in this process does nothing for that file.
     # Clearing the held-name list stops the child from sending RELEASE_LOCK
     # on that shared session.
     #
     # @return [void]
     def self.forget_lock_connection_after_fork!
+      file = @sqlite_lock_file
+      @sqlite_lock_file = nil
+      file.close if file && !file.closed?
+
       @mysql_held_locks = []
       conn = @lock_connection
       @lock_connection = nil
