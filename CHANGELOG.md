@@ -26,6 +26,90 @@ All notable changes to this project are documented here. The format is based on
   (#419), and `--since` does not narrow it (#420). #386 stays open for
   the default-operator decision.
 
+- **`mutineer config KEY` prints a resolved setting (#394).** It prints the
+  `cache_dir` or `baseline` that `mutineer run` would use with the same
+  options and `.mutineer.yml`. It writes nothing. An unknown key exits 2. The
+  GitHub Action now asks the installed CLI for these two settings, so it no
+  longer copies the CLI's rules. With an older installed CLI that does not
+  have the command, the Action uses its own copy of the rules, as before.
+
+- **The JSON report names why a mutant errored (#388).** When the mutant's
+  child raises, under `reload`, `redefine` or the daemon,
+  `no_verdict[].details` now holds `Class: first message line`, at most 500
+  characters, for example `ArgumentError: enum declared twice`. Before, it
+  said only `child exited with status 2` or `daemon verdict: error`, and the
+  cause was on stderr alone. The line is redacted in the child, and every
+  `details` value is redacted again when the report is written. Other
+  errors (a database error inside a test, RSpec errors outside examples, the
+  `--matrix` early end, `--test-command`) keep their fixed
+  text; #417 tracks them.
+- **A daemon crash names itself in `details` (#388).** A mutant whose daemon
+  died or did not reply in time now has `daemon crashed` or `daemon stopped
+  answering`, not `daemon verdict: error`.
+- **`no_verdict[]` entries gain `operator` and `token` (#388),** as in
+  `no_coverage[]`. Both are `null` for an entry with no mutant. Schema
+  `1.10`.
+- **`.mutineer.yml` accepts a `tests:` map (#382).**
+  Each entry names `sources` and `tests` patterns.
+  When the run holds a matching source, those test files join the run's test list beside convention-paired tests.
+  Coverage still picks the tests for each mutant.
+  `--test` replaces pairing and the map.
+  A malformed map exits 2; without `--test`, a pattern that matches no file exits 2 (including `--dry-run`).
+- **`--test` accepts a file, a directory, or a quoted glob (#380).**
+  A directory selects `*_test.rb`, `*_spec.rb`, and `test_*.rb` files.
+  It skips `test_helper.rb`.
+  A blank value exits 2.
+  A directory or glob with no test file exits 2.
+  With `--test-command`, an empty directory stays as typed.
+  Each expanded directory or glob prints its file count on stderr.
+  The Action `test` input accepts a directory.
+  A directory needs mutineer 1.9.0 or later.
+- **JSON reports list every killed mutant (#361).** `--format json` adds a
+  top-level `killed[]` of lean mutant objects (`subject`, `file`, `line`,
+  `operator`, `token`, `id`), sorted like `no_coverage[]`. Its length equals
+  `summary.killed`. `schema_version` is `1.10`.
+- **`--dry-run --format json` prints candidates with stable ids (#362).** The
+  document carries `mutants[]` (same lean shape) and a summary with `total`,
+  `by_operator`, `declined`, and `declined_by_operator`. Ids match a later real
+  run of the same job plan. `--output` writes the file; `--format html` under
+  `--dry-run` stays human and warns that the format is unused.
+
+### Changed
+
+- **The test-file guard names three fixes (#380).**
+  Quote the glob, pass the directory, or repeat `--test`.
+- **`--dry-run` exits 2 for a blank `--test` or a directory with no test file (#380).**
+  Those values used to exit 0 on a dry run.
+
+### Fixed
+
+- **The Action accepts an `output` path that starts with a dash, a tilde, or
+  ends in a newline (#401).** Before, `output: -dash/pr.json` stopped the step
+  with a `dirname` or `ruby` usage error, so a same-file `baseline` was not
+  checked. Path ops use Ruby (portable on macOS BSD tools) with `--`, so a
+  leading dash stays a path. `report=` uses `File.absolute_path`, so a
+  literal `~` name is not treated as a home shortcut. An `output` folder or
+  file name that ended in a newline lost it, so the report went to the wrong
+  place or the `report` output named the wrong path. A folder that differs
+  from the cache directory only by a newline is not created. The same-file
+  error keeps a newline in the path. The Action test runs one table of
+  unusual names (space, newline, leading dash, `*`, non-ASCII, `~`) through
+  every path input. A `.mutineer.yml` baseline that ends in a newline works
+  with `mutineer config` (#394).
+- **A reload of a parent class no longer puts a skipped callback back on
+  its subclasses (#414).** With the subclasses already loaded, Rails
+  appended the parent's `before_save` again, including onto a subclass
+  that had skipped it. Saves then failed, and a weak test looked strong.
+  Reload, redefine, and the daemon now leave each subclass chain as it was.
+  A callback replaced on one chain stays on every other chain.
+- **A second SQLite daemon run stops instead of sharing worker files (#404).**
+  Two `--rails --daemon` runs in one checkout used the same worker database
+  files, and both could stop with a false "the unmutated suite is not green".
+  A run now holds a lock on `<base file>-mutineer.lock` beside the database
+  file, and a second run stops with `another Mutineer run is using <base>`,
+  as PostgreSQL and MySQL runs already do. Mutineer never deletes the lock
+  file. A `file:` database name still takes no lock (#412).
+
 ## [1.8.2] - 2026-11-10
 
 ### Fixed
@@ -99,6 +183,8 @@ All notable changes to this project are documented here. The format is based on
   folder (#270), but the Action checks the path itself before it runs the
   CLI. The Action now creates the cache folder when it is the missing parent
   of `output`: `.mutineer` by default, the `cache_dir` from `.mutineer.yml`,
+  or a `--cache-dir` in `extra-args` (any short form the CLI accepts, such
+  as `--cache`). Any other missing folder still exits 2.
   or a `--cache-dir` in `extra-args` (or a prefix of it down to `--cac`, such as
   `--cache`). Any other missing folder still exits 2.
 - **Reload runs a Rails class body a second time without errors (#378,

@@ -40,7 +40,7 @@ module MutineerSiteDocs
     Entry.new("/comparison.md", :docs, "Ruby mutation-testing tools compared",
       "Mutineer, Mutant, and other Ruby tools, plus a fit-check prompt for your coding agent.", "0.5", true),
     Entry.new("/json-schema.html", :docs, "JSON report schema",
-      "the versioned JSON contract — `summary`, `survivors[]`, `no_coverage[]`, `uncapturable[]`, `unplaceable[]`, `ran_at_load[]`, `no_verdict[]`, `ignored[]`, `per_source[]`, `unmutated_subjects[]`, and the `baseline` and `matrix` blocks.", "0.8", true),
+      "the versioned JSON contract — `summary`, `survivors[]`, `killed[]`, `no_coverage[]`, `uncapturable[]`, `unplaceable[]`, `ran_at_load[]`, `no_verdict[]`, `ignored[]`, `per_source[]`, `unmutated_subjects[]`, the `baseline` and `matrix` blocks, and dry-run JSON.", "0.8", true),
     Entry.new("/api/", :docs, "Ruby API (YARD)",
       "class reference generated from the website build’s source revision.", "0.7", true),
     Entry.new("/sample-report.html", :docs, "Sample HTML report",

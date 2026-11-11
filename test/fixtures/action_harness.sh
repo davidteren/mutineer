@@ -22,6 +22,16 @@ cat > "$SCRATCH/bin/mutineer" <<STUB
 #!/usr/bin/env bash
 # The action's version-floor check asks for --version before running.
 if [ "\${1:-}" = "--version" ]; then echo "1.0.0"; exit 0; fi
+# The action asks \`mutineer config KEY\` for resolved settings (#394).
+# STUB_CONFIG unset: answer with this checkout's real CLI. "old": act as a
+# release without the command. Any other value: print that value.
+if [ "\${1:-}" = "config" ]; then
+  case "\${STUB_CONFIG:-}" in
+    "") exec ruby -I"$ROOT/lib" "$ROOT/bin/mutineer" "\$@" ;;
+    old) echo "mutineer: unknown command 'config'" >&2; exit 2 ;;
+    *) echo "\$STUB_CONFIG"; exit 0 ;;
+  esac
+fi
 echo "STUB-ARGS: \$*" >> "$SCRATCH/stub-args.txt"
 out=""
 prev=""
@@ -205,6 +215,16 @@ after=$(cksum "$weird")
 [ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on an escaped path" || echo "  OK: escaped path rejected before running"
 grep '::error::' "$SCRATCH/case17/stdout.txt"
 
+echo; echo "== 17b: same-file path that ends in a newline (expects exit 2) (#394 review) =="
+mkdir -p "$SCRATCH/case17b"
+trailing="$SCRATCH/case17b/same.json"$'\n'
+cp "$SCRATCH/report.json" "$trailing"
+before=$(cksum "$trailing")
+run_step case17b STUB_EXIT=1 OUTPUT="$trailing" BASELINE="$trailing"
+after=$(cksum "$trailing")
+[ "$before" = "$after" ] && echo "  OK: trailing-newline baseline kept" || echo "  FAIL: trailing-newline baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on a trailing-newline path" || echo "  OK: trailing-newline path rejected before running"
+
 echo; echo "== 18: output under missing .mutineer cache dir (expects mkdir + delivered file) (#340) =="
 rm -rf .mutineer
 rm -f .mutineer.yml
@@ -225,6 +245,14 @@ run_step case18c STUB_EXIT=0 OUTPUT="mcache/pr.json"
 [ -s mcache/pr.json ] && echo "  OK: output delivered into yml cache dir" || echo "  FAIL: yml cache output missing"
 rm -f .mutineer.yml
 
+echo; echo "== 18i: cache dir whose name ends in a newline (#394 review) =="
+printf 'cache_dir: "nlcache\\n"\n' > .mutineer.yml
+nl_out="nlcache"$'\n'"/pr.json"
+run_step case18i STUB_EXIT=0 OUTPUT="$nl_out"
+[ -s "$nl_out" ] && echo "  OK: newline-ended cache dir created" || echo "  FAIL: newline-ended cache dir output missing"
+[ -e nlcache ] && echo "  FAIL: created the cache dir without its newline" || echo "  OK: no truncated cache dir"
+rm -f .mutineer.yml
+
 echo; echo "== 18d: cache dir from extra-args, as two words (#340) =="
 run_step case18d STUB_EXIT=0 OUTPUT="xcache/pr.json" EXTRA_ARGS="--cache-dir xcache"
 [ -s xcache/pr.json ] && echo "  OK: extra-args cache dir created" || echo "  FAIL: extra-args cache dir output missing"
@@ -236,3 +264,181 @@ run_step case18e STUB_EXIT=0 OUTPUT="ecache/pr.json" EXTRA_ARGS="--cache-dir=eca
 echo; echo "== 18f: cache dir from a short extra-args form the CLI accepts (#340) =="
 run_step case18f STUB_EXIT=0 OUTPUT="scache/pr.json" EXTRA_ARGS="--cache=scache"
 [ -s scache/pr.json ] && echo "  OK: short-form cache dir created" || echo "  FAIL: short-form cache dir output missing"
+
+echo; echo "== 18g: the CLI names the cache dir (#394) =="
+run_step case18g STUB_EXIT=0 OUTPUT="zcache/pr.json" STUB_CONFIG="zcache"
+[ -s zcache/pr.json ] && echo "  OK: CLI-named cache dir created" || echo "  FAIL: the action did not ask the CLI for cache_dir"
+
+echo; echo "== 18h: an older CLI without the config command falls back (#394) =="
+run_step case18h STUB_EXIT=0 OUTPUT="ocache/pr.json" EXTRA_ARGS="--cache=ocache" STUB_CONFIG="old"
+[ -s ocache/pr.json ] && echo "  OK: fallback cache dir created" || echo "  FAIL: fallback cache dir output missing"
+
+echo; echo "== 13b: the CLI names the baseline, output is that file (#394) =="
+mkdir -p "$SCRATCH/case13b"
+cp "$SCRATCH/report.json" "$SCRATCH/case13b/baseline.json"
+before=$(cksum "$SCRATCH/case13b/baseline.json")
+run_step case13b STUB_EXIT=1 OUTPUT="$SCRATCH/case13b/baseline.json" STUB_CONFIG="$SCRATCH/case13b/baseline.json"
+[ "$(cksum "$SCRATCH/case13b/baseline.json")" = "$before" ] && echo "  OK: CLI-named baseline kept" || echo "  FAIL: CLI-named baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: the action did not ask the CLI for baseline" || echo "  OK: CLI-named baseline rejected before running"
+
+echo; echo "== 14c: an older CLI without the config command, abbreviated baseline (#394) =="
+before=$(cksum "$SCRATCH/case14/baseline.json")
+run_step case14c STUB_EXIT=1 OUTPUT="$SCRATCH/case14/baseline.json" EXTRA_ARGS="--base $SCRATCH/case14/baseline.json" STUB_CONFIG="old"
+[ "$(cksum "$SCRATCH/case14/baseline.json")" = "$before" ] && echo "  OK: fallback baseline kept" || echo "  FAIL: fallback baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on the fallback baseline" || echo "  OK: fallback baseline rejected before running"
+
+# == 19: one table of unusual path names, run through every path input (#401) ==
+# Each name goes through every input that takes a path. A row asserts the
+# files and folders the Action leaves, not only its exit code. extra-args is
+# split on whitespace by design, so names with a space or a newline skip the
+# extra-args rows. A known gap prints TABLE-GAP while it fails, and FAIL once
+# it passes, so the list cannot go stale.
+echo; echo "== 19: unusual path names through every path input (#401) =="
+rm -rf .mutineer .mutineer.yml
+TABLE_LABELS=(space newline dash glob unicode tilde)
+TABLE_NAMES=("sp ace" "nl"$'\n' "-dash" "gl*ob" "ünï" "~tl")
+# " row/label=#issue " entries while a row still fails, space-separated.
+KNOWN_GAPS=""
+children() { ruby -e 'print Dir.children(".").sort.inspect'; }
+CLEAN_TREE="$(children; printf .)"
+why() { echo "$*" > "$SCRATCH/table-why"; return 1; }
+# Runs one row, removes what it made, and checks that nothing else was left.
+table_row() { # row, label, name, the row's function
+  local row=$1 label=$2 name=$3 fn=$4 ok=0 gap=""
+  : > "$SCRATCH/table-why"
+  rm -rf "$SCRATCH/t"
+  "$fn" "$name" > "$SCRATCH/table-row.log" 2>&1 || ok=1
+  rm -rf -- "./$name" .mutineer.yml
+  if [ "$ok" = 0 ] && [ "$(children; printf .)" != "$CLEAN_TREE" ]; then
+    why "left a stray entry: $(children)"; ok=1
+  fi
+  rm -rf -- "${name%%[[:space:]]*}"
+  case "$KNOWN_GAPS" in *" $row/$label="*) gap="${KNOWN_GAPS#*" $row/$label="}"; gap="${gap%% *}" ;; esac
+  if [ "$ok" = 0 ] && [ -z "$gap" ]; then echo "  TABLE-OK: $row/$label"
+  elif [ "$ok" = 0 ]; then echo "  FAIL: $row/$label passes now; remove it from KNOWN_GAPS ($gap)"
+  elif [ -n "$gap" ]; then echo "  TABLE-GAP: $row/$label ($gap)"
+  else echo "  FAIL: $row/$label: $(cat "$SCRATCH/table-why")"
+  fi
+}
+baseline_rejected() { # name: the baseline is untouched and the run refused
+  [ "$(cat -- "./$1")" = "{}" ] || why "baseline was replaced" || return
+  [ -s "$SCRATCH/stub-args.txt" ] && { why "mutineer ran on a same-file baseline"; return; }
+  grep -q 'are the same file' "$SCRATCH/t/stdout.txt" || why "no same-file error" || return
+  case "$1" in
+    *$'\n'*) grep -q '%0A' "$SCRATCH/t/stdout.txt" || why "same-file error dropped a newline" ;;
+  esac
+}
+
+# output: a folder and a file with the name.
+row_output() {
+  mkdir -- "./$1"
+  run_step t STUB_EXIT=0 OUTPUT="$1/$1"
+  [ -s "./$1/$1" ] || why "report not delivered to output" || return
+  local got
+  got="$(ruby -e 'print File.read(ARGV[0])[/^report<<(\S+)\n(.*)\n\1$/m, 2], "."' "$SCRATCH/t/gh-output.txt")"
+  [ "${got%.}" = "$(pwd -P)/$1/$1" ] || why "report= is not the output path"
+}
+# output under a missing cache folder that .mutineer.yml names.
+row_yml_cache() {
+  ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => ARGV[0]}.to_yaml)' -- "$1"
+  run_step t STUB_EXIT=0 OUTPUT="$1/pr.json"
+  [ -s "./$1/pr.json" ] || why "cache folder not created or report not delivered"
+}
+# output under a missing cache folder that extra-args names.
+row_args_cache() {
+  run_step t STUB_EXIT=0 OUTPUT="$1/pr.json" EXTRA_ARGS="--cache-dir=$1"
+  [ -s "./$1/pr.json" ] || why "cache folder not created or report not delivered"
+}
+# baseline input, output the same file.
+row_baseline() {
+  echo "{}" > "./$1"
+  run_step t STUB_EXIT=1 OUTPUT="$1" BASELINE="$1"
+  baseline_rejected "$1"
+}
+# baseline from .mutineer.yml, output the same file.
+row_yml_baseline() {
+  echo "{}" > "./$1"
+  ruby -ryaml -e 'File.write(".mutineer.yml", {"baseline" => ARGV[0]}.to_yaml)' -- "$1"
+  run_step t STUB_EXIT=1 OUTPUT="$1"
+  baseline_rejected "$1"
+}
+# baseline from extra-args, output the same file.
+row_args_baseline() {
+  echo "{}" > "./$1"
+  run_step t STUB_EXIT=1 OUTPUT="$1" EXTRA_ARGS="--baseline=$1"
+  baseline_rejected "$1"
+}
+# working-directory: the annotation file= field keeps the escaped name.
+row_workdir() {
+  run_step t WORKING_DIRECTORY="$1"
+  local want="${1//%/%25}"
+  want="${want//$'\n'/ }"; want="${want//:/%3A}"; want="${want//,/%2C}"
+  grep -qF -- "::error file=$want/lib/calc.rb,line=20," "$SCRATCH/t/stdout.txt" || why "annotation file= lost the name"
+}
+
+for i in "${!TABLE_NAMES[@]}"; do
+  name="${TABLE_NAMES[$i]}" label="${TABLE_LABELS[$i]}"
+  table_row output "$label" "$name" row_output
+  table_row baseline "$label" "$name" row_baseline
+  table_row yml-baseline "$label" "$name" row_yml_baseline
+  table_row workdir "$label" "$name" row_workdir
+  case "$name" in
+    # A leading `~` is a home shortcut for cache_dir (CLI expand_path), not a
+    # literal folder name under cwd, so the cache-dir rows do not apply.
+    "~"*) echo "  TABLE-SKIP: yml-cache/$label, args-cache/$label (~ cache_dir is home-relative)" ;;
+    *) table_row yml-cache "$label" "$name" row_yml_cache ;;
+  esac
+  case "$name" in
+    *[[:space:]]*) echo "  TABLE-SKIP: args-cache/$label, args-baseline/$label (extra-args splits on whitespace)" ;;
+    "~"*) table_row args-baseline "$label" "$name" row_args_baseline ;;
+    *)
+      table_row args-cache "$label" "$name" row_args_cache
+      table_row args-baseline "$label" "$name" row_args_baseline
+      ;;
+  esac
+done
+
+# A cache directory and an output parent that differ only by a newline are
+# not the same folder. Creating the parent would put the report beside the
+# cache, not in it.
+echo; echo "== 19b: cache dir and output parent differ by a newline =="
+rm -rf .mutineer.yml plain $'plain\n'
+ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => "plain"}.to_yaml)'
+run_step t19b STUB_EXIT=0 OUTPUT=$'plain\n/pr.json'
+if [ -d $'plain\n' ] || [ -d plain ]; then
+  echo "  FAIL: created a folder that is not the cache dir"
+elif grep -q 'no such directory' "$SCRATCH/t19b/stdout.txt"; then
+  echo "  OK: newline parent is not the cache dir"
+else
+  echo "  FAIL: expected a missing-directory error"
+fi
+ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => ARGV[0]}.to_yaml)' -- $'plain\n'
+run_step t19c STUB_EXIT=0 OUTPUT=$'plain\n/pr.json'
+[ -s $'plain\n/pr.json' ] && echo "  OK: newline cache dir created" || echo "  FAIL: newline cache dir not created"
+rm -rf -- plain $'plain\n' .mutineer.yml
+
+# A missing dash-leading parent that is not the cache dir must exit 2 without
+# creating the folder (ruby must see ARGV, not switches) (#401 OCR).
+echo; echo "== 19d: dash-leading output parent is not the cache dir =="
+rm -rf .mutineer.yml .mutineer -- -dash
+run_step t19d STUB_EXIT=0 OUTPUT="-dash/pr.json"
+if [ -d -- "-dash" ]; then
+  echo "  FAIL: created a dash-leading folder that is not the cache dir"
+elif grep -q 'no such directory' "$SCRATCH/t19d/stdout.txt"; then
+  echo "  OK: dash-leading parent is not the cache dir"
+else
+  echo "  FAIL: expected a missing-directory error"
+fi
+rm -rf -- -dash .mutineer.yml
+
+# Home-relative cache_dir (~/...) must still match an absolute output parent
+# under that home (CLI expand_path semantics) (#401 cubic).
+echo; echo "== 19e: home-relative cache_dir matches absolute output parent =="
+rm -rf .mutineer.yml
+fake_home="$SCRATCH/fake-home"
+rm -rf "$fake_home"
+mkdir -p "$fake_home"
+ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => "~/mcache"}.to_yaml)'
+HOME="$fake_home" run_step t19e STUB_EXIT=0 OUTPUT="$fake_home/mcache/pr.json"
+[ -s "$fake_home/mcache/pr.json" ] && echo "  OK: home-relative cache dir created" || echo "  FAIL: home-relative cache dir not created"
+rm -rf "$fake_home" .mutineer.yml

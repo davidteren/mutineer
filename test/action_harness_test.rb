@@ -10,7 +10,10 @@ require "open3"
 # pull_request_target guard, since: none), report freshness vs staleness,
 # summary/annotation rendering (workflow-command escaping included), the
 # extra-args --format/--output guard, the old-format id warning (#126), and a
-# failing run whose output and baseline are the same file (#160).
+# failing run whose output and baseline are the same file (#160). The stub
+# answers `mutineer config` with the real CLI, a fixed value, or as an older
+# release without that command (#394). One table of unusual path names runs
+# through every path input (#401).
 class ActionHarnessTest < Minitest::Test
   HARNESS = File.expand_path("fixtures/action_harness.sh", __dir__)
 
@@ -26,21 +29,32 @@ class ActionHarnessTest < Minitest::Test
       "case5" => 1, "case6" => 2, "case7" => 1, "case8" => 2, "case8b" => 2, "case9" => 0,
       "case10" => 1, "case11" => 2, "case11b" => 2, "case12" => 1,
       "case13" => 2, "case14" => 2, "case14b" => 2, "case15" => 1,
-      "case16" => 2, "case17" => 2, "case18" => 0, "case18b" => 2, "case18c" => 0,
-      "case18d" => 0, "case18e" => 0, "case18f" => 0 }.each do |c, code|
+      "case16" => 2, "case17" => 2, "case17b" => 2, "case18" => 0, "case18b" => 2, "case18c" => 0,
+      "case18d" => 0, "case18i" => 0, "case18e" => 0, "case18f" => 0, "case18g" => 0, "case18h" => 0,
+      "case13b" => 2, "case14c" => 2 }.each do |c, code|
       assert_includes out, "#{c}: exit=#{code}", "#{c} exit code drifted:\n#{out}"
     end
     assert_includes out, "OK: abbreviation rejected"
     assert_includes out, "OK: caller output delivered"
     assert_includes out, "OK: report output names caller path"
+    assert_includes out, "OK: trailing-newline baseline kept"
+    assert_includes out, "OK: trailing-newline path rejected before running"
     assert_includes out, "OK: cache dir created"
     assert_includes out, "OK: output delivered into fresh cache dir"
     assert_includes out, "OK: non-cache missing parent rejected"
     assert_includes out, "OK: yml cache dir created"
     assert_includes out, "OK: output delivered into yml cache dir"
+    assert_includes out, "OK: newline-ended cache dir created"
+    assert_includes out, "OK: no truncated cache dir"
     assert_includes out, "OK: extra-args cache dir created"
     assert_includes out, "OK: extra-args = cache dir created"
     assert_includes out, "OK: short-form cache dir created"
+    assert_includes out, "OK: CLI-named cache dir created"
+    assert_includes out, "OK: fallback cache dir created"
+    assert_includes out, "OK: CLI-named baseline kept"
+    assert_includes out, "OK: CLI-named baseline rejected before running"
+    assert_includes out, "OK: fallback baseline kept"
+    assert_includes out, "OK: fallback baseline rejected before running"
     assert_includes out, "OK: scoped to base.sha"
     assert_includes out, "OK: stale file NOT deleted (baseline-safe)"
     assert_includes out, "OK: rejected before running"
@@ -88,5 +102,16 @@ class ActionHarnessTest < Minitest::Test
     assert_includes args_of.call("5:"), "--no-since", "since: none must pass --no-since through"
     refute_includes args_of.call("5:"), "--since origin", "since: none must not also scope"
     assert_includes sec.call("7:"), "file=sub/lib/calc.rb", "working-directory prefix regressed"
+
+    # #401: every cell of the unusual-path table ran. 5 names x 5 rows, plus
+    # 3 names x 2 extra-args rows; the rest are known gaps with an issue.
+    table = sec.call("19:")
+    gaps = table.scan(/TABLE-GAP: (\S+)/).flatten
+    assert_equal [], gaps, "known gaps drifted:\n#{table}"
+    assert_equal 36 - gaps.size, table.scan("TABLE-OK:").size, "a table cell did not run:\n#{table}"
+    near = sec.call("19b:")
+    assert_includes near, "OK: newline parent is not the cache dir"
+    assert_includes near, "OK: newline cache dir created"
+    refute_includes near, "FAIL:"
   end
 end

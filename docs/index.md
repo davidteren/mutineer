@@ -68,7 +68,7 @@ mutineer run --dry-run lib/discount.rb
 
 | Flag | Meaning |
 |------|---------|
-| `--test FILE` | Test file covering the sources (repeatable) |
+| `--test PATH` | Test file, directory, or quoted glob (repeatable) |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when the run is incomplete (default: 0 = off) |
 | `--since REF` | Only mutate lines changed since git `REF` |
 | `--baseline FILE` | Exit 1 on new survivors / score drop versus a prior JSON run |
