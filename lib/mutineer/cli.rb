@@ -52,7 +52,8 @@ module Mutineer
       Run options:
         --test PATH          Test file, directory or quoted glob (repeat for more).
                              Omit to pair each source with its test by convention
-                             (not under --dry-run)
+                             and any tests: map in .mutineer.yml (not under
+                             --dry-run). --test replaces pairing and the map
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
         --baseline FILE      Fail (exit 1) on NEW survivors / score drop vs a prior
@@ -445,6 +446,10 @@ module Mutineer
         preflight_same_file!(config)
       end
 
+      # Resolve / warn for the tests: map before autopair. Dry-run skips
+      # autopair but still checks unmatched patterns (#382 R5, R12).
+      prepare_test_map!(config)
+
       # When --test is omitted, infer each source's test by convention. Autopair
       # also re-detects framework from inferred tests when --framework was not set.
       autopair!(config) unless config.dry_run
@@ -756,14 +761,43 @@ module Mutineer
       tests << path
     end
 
+    # Warn or resolve the optional `tests:` map before pairing. With `--test`
+    # and a non-empty map, print one line that the map has no effect (R9) and
+    # resolve nothing. Otherwise expand every pattern; an unmatched pattern is
+    # exit 2 (R5). The resolved map is stashed for {autopair!}. Dry-run still
+    # runs this check (R12) even though it skips autopair.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.prepare_test_map!(config)
+      @resolved_test_map = nil
+      return if config.test_map.empty?
+
+      if config.explicit?(:tests)
+        warn "[mutineer] #{config.origin(:test_map)} has no effect when --test is given"
+        return
+      end
+
+      resolved = Pairing.resolve_test_map(config.test_map, project_root: config.project_root)
+      unless resolved[:unmatched].empty?
+        miss = resolved[:unmatched].first
+        warn "mutineer: #{CONFIG_FILE}: tests entry #{miss[:entry]}: " \
+             "#{miss[:key]} pattern #{miss[:pattern].inspect} matched no file"
+        exit 2
+      end
+      @resolved_test_map = resolved
+    end
+
     # Auto-pair sources to tests by path convention when no --test was given
-    # (explicit --test wins). Each source with at least one inferred test on
-    # disk joins the run; a source with none is dropped with a one-line stderr
-    # warning and the run continues with the rest. Split files for one source
-    # are all kept (#87). If every source is dropped: in boot mode the
-    # dedicated --boot/--rails-requires-test check reports it; otherwise exit 2
-    # with a usage message. The framework is re-detected from the inferred set
-    # unless it was set explicitly (a spec-only project loads/reports as rspec).
+    # (explicit --test wins). Each source keeps its paired tests, then any
+    # mapped tests from the resolved `tests:` map (R6, R10). A source with
+    # neither is dropped with a one-line stderr warning and the run continues
+    # with the rest. Split files for one source are all kept (#87). If every
+    # source is dropped: in boot mode the dedicated --boot/--rails-requires-test
+    # check reports it; otherwise exit 2 with a usage message. The framework is
+    # re-detected from the inferred set unless it was set explicitly (a
+    # spec-only project loads/reports as rspec).
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -771,15 +805,23 @@ module Mutineer
     def self.autopair!(config)
       return unless config.tests.empty?
 
-      paired = config.sources.filter_map do |s|
-        tests = Pairing.infer_tests(s, project_root: config.project_root, prefer: config.framework)
+      resolved = @resolved_test_map
+      @resolved_test_map = nil
+      if resolved.nil? && !config.test_map.empty? && !config.explicit?(:tests)
+        resolved = Pairing.resolve_test_map(config.test_map, project_root: config.project_root)
+      end
+
+      kept = config.sources.filter_map do |s|
+        paired = Pairing.infer_tests(s, project_root: config.project_root, prefer: config.framework)
+        mapped = resolved ? Pairing.mapped_tests_for(s, resolved) : []
+        tests = (paired + mapped).uniq
         [s, tests] unless tests.empty?
       end
-      (config.sources - paired.map(&:first)).each do |s|
+      (config.sources - kept.map(&:first)).each do |s|
         warn "[mutineer] no test found by convention for #{s}; skipping"
       end
-      config.sources = paired.map(&:first)
-      config.tests   = paired.flat_map(&:last).uniq
+      config.sources = kept.map(&:first)
+      config.tests   = kept.flat_map(&:last).uniq
       config.framework = Config.detect_framework(config.tests) unless config.explicit?(:framework)
 
       return unless config.sources.empty?

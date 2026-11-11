@@ -1688,6 +1688,167 @@ class CliTest < Minitest::Test
     end
   end
 
+  # --- #382 tests: map in .mutineer.yml --------------------------------------
+
+  CONCERNS_TO_CONTROLLER_TESTS = <<~YAML
+    tests:
+      - sources: "app/controllers/concerns/**/*.rb"
+        tests: "test/controllers/**/*_test.rb"
+  YAML
+
+  # Copy the test_map fixture and write `.mutineer.yml` for one scenario.
+  # Always write a file so walk-up discovery cannot pick a parent `.mutineer.yml`.
+  def with_test_map_project(yaml = CONCERNS_TO_CONTROLLER_TESTS)
+    Dir.mktmpdir("mutineer-test-map") do |proj|
+      FileUtils.cp_r(File.join(FIXTURES, "test_map", "."), proj)
+      File.write(File.join(proj, ".mutineer.yml"), yaml || "threshold: 0\n")
+      yield proj
+    end
+  end
+
+  # AE1 / R6, R7: an unpaired concern joins the run via the map; the matrix
+  # names the controller test as its killer.
+  def test_tests_map_brings_an_unpaired_source_into_the_run
+    with_test_map_project do |proj|
+      out, err, status = mutineer("run", "app/controllers", "--format", "json", "--matrix",
+                                  chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      files = doc["per_source"].map { |h| h["file"] }
+      assert_includes files, "app/controllers/concerns/board_scoped.rb"
+      refute_includes err, "no test found by convention for app/controllers/concerns/board_scoped.rb"
+
+      tests = doc.dig("matrix", "tests")
+      killed = doc.dig("matrix", "mutants").select do |row|
+        row["file"] == "app/controllers/concerns/board_scoped.rb" && row["status"] == "killed"
+      end
+      refute_empty killed, "expected killed mutants in board_scoped.rb"
+      killer_files = killed.flat_map { |row| row["killed_by"] }.map { |i| tests[i]["file"] }.uniq
+      assert_includes killer_files, "test/controllers/boards_controller_test.rb"
+    end
+  end
+
+  # AE2 / R7, R11: a models-only run keeps only the paired model test.
+  def test_tests_map_adds_nothing_when_no_mapped_source_runs
+    with_test_map_project do |proj|
+      config = config_resolved_by_cli(proj, "run", "app/models")
+      Mutineer::CLI.autopair!(config)
+      assert_equal ["test/models/board_test.rb"], config.tests
+    end
+  end
+
+  # AE6 / R6, R10: paired test first, then mapped; no duplicate path.
+  def test_tests_map_keeps_paired_tests_first
+    with_test_map_project do |proj|
+      config = config_resolved_by_cli(proj, "run",
+                                     "app/controllers/concerns/authentication.rb")
+      Mutineer::CLI.autopair!(config)
+      assert_equal "test/controllers/concerns/authentication_test.rb", config.tests.first
+      assert_equal config.tests, config.tests.uniq
+      assert_operator config.tests.size, :>, 1
+    end
+  end
+
+  # AE3 / R9: --test replaces the map; reports match a run with no map, plus
+  # one "no effect" stderr line when the file holds entries.
+  def test_explicit_test_replaces_the_tests_map
+    with_test_map_project do |proj|
+      out_map, err_map, status_map = mutineer(
+        "run", "app", "--test", "test/models/board_test.rb", "--format", "json", chdir: proj
+      )
+      assert_equal 0, status_map.exitstatus, err_map
+      assert_includes err_map, "[mutineer] tests in .mutineer.yml has no effect when --test is given"
+
+      File.write(File.join(proj, ".mutineer.yml"), "threshold: 0\n")
+      out_plain, err_plain, status_plain = mutineer(
+        "run", "app", "--test", "test/models/board_test.rb", "--format", "json", chdir: proj
+      )
+      assert_equal 0, status_plain.exitstatus, err_plain
+      refute_includes err_plain, "has no effect when --test is given"
+      assert_equal JSON.parse(out_plain), JSON.parse(out_map)
+    end
+  end
+
+  # AE4 / R5: an unmatched tests pattern exits 2 for run and dry-run; --test
+  # skips the check (R9) and exits 0.
+  def test_tests_map_pattern_without_a_match_exits_two
+    yaml = <<~YAML
+      tests:
+        - sources: "app/controllers/concerns/**/*.rb"
+          tests: "test/controlers/**/*_test.rb"
+    YAML
+    with_test_map_project(yaml) do |proj|
+      _, err, status = mutineer("run", "app/controllers", "--format", "json", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "tests entry 1"
+      assert_includes err, "tests"
+      assert_includes err, "test/controlers/**/*_test.rb"
+
+      _, dry_err, dry = mutineer("run", "--dry-run", "app/controllers", chdir: proj)
+      assert_equal 2, dry.exitstatus
+      assert_includes dry_err, "tests entry 1"
+
+      out, err_ok, ok = mutineer("run", "app/models/board.rb",
+                                 "--test", "test/models/board_test.rb",
+                                 "--format", "json", chdir: proj)
+      assert_equal 0, ok.exitstatus, err_ok
+      assert_operator JSON.parse(out)["summary"]["killed"], :>, 0
+    end
+  end
+
+  # AE5 / R2: a malformed tests: value is a usage error naming the file and entry.
+  def test_malformed_tests_map_exits_two
+    with_test_map_project("tests: [test/a_test.rb]\n") do |proj|
+      _, err, status = mutineer("run", "app/models/board.rb", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, ".mutineer.yml"
+      assert_includes err, "entry 1"
+      assert_includes err, "mapping with sources and tests"
+    end
+  end
+
+  # R6: a source with neither paired nor mapped tests still gets today's skip.
+  def test_source_without_paired_or_mapped_test_is_still_skipped
+    with_test_map_project do |proj|
+      File.write(File.join(proj, "app/models/orphan.rb"),
+                 "class Orphan; def z(a); a + 1; end; end\n")
+      out, err, status = mutineer("run", "app/models", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] no test found by convention for app/models/orphan.rb; skipping"
+      refute_includes JSON.parse(out)["per_source"].map { |h| h["file"] }, "app/models/orphan.rb"
+    end
+  end
+
+  # R12: dry-run checks the map but pairs nothing; mutant listing matches no map.
+  def test_dry_run_lists_the_same_mutants_with_a_tests_map
+    with_test_map_project do |proj|
+      with_map, err_map, status_map = mutineer("run", "--dry-run", "app/models", chdir: proj)
+      assert_equal 0, status_map.exitstatus, err_map
+
+      File.write(File.join(proj, ".mutineer.yml"), "threshold: 0\n")
+      without_map, err_plain, status_plain = mutineer("run", "--dry-run", "app/models",
+                                                      chdir: proj)
+      assert_equal 0, status_plain.exitstatus, err_plain
+      assert_equal without_map, with_map
+    end
+  end
+
+  # R12: --test-command reads the same run test list the map fills.
+  def test_tests_map_applies_under_test_command
+    with_test_map_project do |proj|
+      command = "#{RbConfig.ruby} %{files}"
+      out, err, status = mutineer(
+        "run", "app/controllers/concerns/board_scoped.rb",
+        "--test-command", command, "--format", "json", chdir: proj
+      )
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal ["app/controllers/concerns/board_scoped.rb"],
+                   doc["per_source"].map { |h| h["file"] }
+      assert_operator doc["summary"]["killed"], :>, 0
+    end
+  end
+
   # --- a typed flag beats the config file, whatever the file holds (#103) ---
 
   # Runs Mutineer::CLI.start in-process inside `proj` and returns the Config it

@@ -69,4 +69,31 @@ class RunnerDaemonTest < Minitest::Test
       assert_match(/DaemonBootError/, err)
     end
   end
+
+  # #382: a mapped integration test kills mutants of a source with no paired
+  # test. Builds config like config_for (absolute paths); does not use CLI.autopair!.
+  def test_tests_map_runs_a_mapped_source_in_the_daemon
+    test_map = [{
+      sources: ["app/models/shipping_quote.rb"],
+      tests: ["test/integration/shipping_quote_flow_test.rb"]
+    }]
+    resolved = Mutineer::Pairing.resolve_test_map(test_map, project_root: APP)
+    assert_empty resolved[:unmatched]
+    mapped = Mutineer::Pairing.mapped_tests_for("app/models/shipping_quote.rb", resolved)
+    assert_equal ["test/integration/shipping_quote_flow_test.rb"], mapped
+
+    config = Mutineer::Config.new(
+      sources: [File.join(APP, "app/models/shipping_quote.rb")],
+      tests: mapped.map { |path| File.join(APP, path) },
+      project_root: APP,
+      boot: "config/environment",
+      rails: true,
+      daemon: true,
+      strategy: "reload",
+      framework: "minitest"
+    )
+    aggregate, = Mutineer::Runner.execute(config)
+    assert_equal 0, aggregate.errored_count
+    assert_operator aggregate.killed_count, :>, 0
+  end
 end
