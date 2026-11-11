@@ -56,6 +56,8 @@ Listing the primary database exits 2.
 
 `shared_databases` is new after 1.7.0. It is not in a release yet.
 
+`tests` is new in 1.9.0. An older version warns that the key is unknown and ignores it.
+
 `allow_empty` is new in 1.7.0.
 An `ignore:` entry can be a mapping with an `id` and an optional `reason` from 1.7.0.
 An older version does not ignore the mutant a mapping names, and it does not warn.

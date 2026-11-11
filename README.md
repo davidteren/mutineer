@@ -191,7 +191,7 @@ Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.c
 
 | Flag | Meaning |
 |------|---------|
-| `--test PATH` | Test file, directory, or quoted glob. Repeat the flag. Omit it to pair tests by convention |
+| `--test PATH` | Test file, directory, or quoted glob. Repeat the flag. Omit it to pair tests by convention and apply any `tests:` map |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
 | `--since REF` | Mutate only lines changed since git `REF`, such as `origin/main` |
 | `--baseline FILE` | Exit 1 for new survivors, or score drops on full runs, against a prior JSON report from a full run |
