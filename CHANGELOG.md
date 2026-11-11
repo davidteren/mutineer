@@ -83,6 +83,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **The Action accepts an `output` path that starts with a dash, a tilde, or
+  ends in a newline (#401).** Before, `output: -dash/pr.json` stopped the step
+  with a `dirname` or `ruby` usage error, so a same-file `baseline` was not
+  checked. Path ops use Ruby (portable on macOS BSD tools) with `--`, so a
+  leading dash stays a path. `report=` uses `File.absolute_path`, so a
+  literal `~` name is not treated as a home shortcut. An `output` folder or
+  file name that ended in a newline lost it, so the report went to the wrong
+  place or the `report` output named the wrong path. A folder that differs
+  from the cache directory only by a newline is not created. The same-file
+  error keeps a newline in the path. The Action test runs one table of
+  unusual names (space, newline, leading dash, `*`, non-ASCII, `~`) through
+  every path input. A `.mutineer.yml` baseline that ends in a newline works
+  with `mutineer config` (#394).
 - **A reload of a parent class no longer puts a skipped callback back on
   its subclasses (#414).** With the subclasses already loaded, Rails
   appended the parent's `before_save` again, including onto a subclass
