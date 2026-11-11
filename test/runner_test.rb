@@ -496,6 +496,22 @@ class RunnerTest < Minitest::Test
     assert_includes err.message, "Expected: 3"
   end
 
+  # #360: joined per-file reports are capped so a large unclean suite cannot flood stderr.
+  def test_abort_if_unclean_caps_joined_failure_details
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    details = {
+      "a_test.rb" => "A" * limit,
+      "b_test.rb" => "UNIQUE_TAIL_SHOULD_NOT_APPEAR"
+    }
+    map = Mutineer::CoverageMap.from_data(
+      map: {}, failed_test_files: [], failed_clean_tests: details.keys,
+      failed_clean_details: details, project_root: ROOT
+    )
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+    assert_includes err.message, "…"
+    refute_includes err.message, "UNIQUE_TAIL_SHOULD_NOT_APPEAR"
+  end
+
   def test_abort_if_unclean_names_the_minitest_seed
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], failed_clean_tests: ["test/a_test.rb"],
                                           project_root: ROOT)

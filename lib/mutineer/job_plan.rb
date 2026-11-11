@@ -227,7 +227,11 @@ module Mutineer
       end
       return "" if parts.empty?
 
-      "\n#{parts.join("\n")}"
+      text = parts.join("\n")
+      limit = CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+      return "\n#{text}" if text.length <= limit
+
+      "\n#{text[0, limit].rstrip}\n…"
     end
 
     # Names the configured seed, and accounts for helper overrides.

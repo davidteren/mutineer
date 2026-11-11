@@ -165,6 +165,19 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # A fork that raises before the reporter runs still returns a redacted error (#360).
+  def test_fork_clean_pass_preserves_a_redacted_exception_from_the_child
+    ensure_coverage_running
+    noisy = File.expand_path("fixtures/noisy_minitest_test.rb", __dir__)
+    map = fork_map(noisy, verbose: false)
+    ok = report = nil
+    after_fork = -> { raise "database postgres://u:s3cret@host/db unavailable" }
+    capture_subprocess_io { ok, report = map.send(:fork_clean_pass?, [noisy], after_fork) }
+    refute ok
+    assert_includes report, "RuntimeError: database postgres://u:[REDACTED]@host/db unavailable"
+    refute_includes report, "s3cret"
+  end
+
   def test_uncovered_line_returns_empty
     map = build([ADD_ONLY_TEST]) # add-only suite never calls #modulo
     assert_empty map.tests_for(CALC, line_of("a % b"))

@@ -1111,8 +1111,8 @@ module Mutineer
           Coverage.result(clear: true, stop: false) if Coverage.running?
           passed, report = run_clean_with_report(abs_tests)
           wr.write(Marshal.dump([passed, report]))
-        rescue Exception # rubocop:disable Lint/RescueException
-          wr.write(Marshal.dump([false, ""]))
+        rescue Exception => e # rubocop:disable Lint/RescueException
+          wr.write(Marshal.dump([false, Redaction.describe(e)]))
         ensure
           wr.close
           exit!(0)
@@ -1131,7 +1131,7 @@ module Mutineer
     end
 
     # Runs tests in the current (forked) process and returns pass plus the
-    # reporter's failure text when red (#360).
+    # redacted reporter failure text when red (#360).
     #
     # @api private
     # @param abs_tests [Array<String>] absolute test file paths.
