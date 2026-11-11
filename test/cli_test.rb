@@ -725,6 +725,83 @@ class CliTest < Minitest::Test
       assert_includes out, "mutations (dry run, not executed)"
       assert_includes out, "arithmetic:"
       assert_includes out, "0 declined"
+      assert_includes out, "no mutants in 0 of 6 methods"
+    end
+  end
+
+  # #386: the Fizzy method shape (a bare if/else with a def-level rescue),
+  # which the default operators do not mutate, beside `total`, which they do.
+  DAY_SOURCE = "class Day\n  def day\n    if @day\n      Time.parse(@day)\n    else\n      Time.now\n    end\n  " \
+               "rescue ArgumentError\n    :not_found\n  end\n\n  def total(a, b)\n    a + b\n  end\nend\n"
+
+  def test_dry_run_counts_methods_with_no_mutants
+    with_project do |proj|
+      File.write(File.join(proj, "day.rb"), DAY_SOURCE)
+      out, err, status = mutineer("run", "day.rb", "--dry-run", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "no mutants in 1 of 2 methods"
+      refute_includes out, "no mutants: "
+
+      out, err, status = mutineer("run", "day.rb", "--dry-run", "--verbose", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "no mutants: Day#day  day.rb:2\n"
+      assert_includes out, "[arithmetic] Day#total"
+    end
+  end
+
+  def test_dry_run_with_condition_false_mutates_the_bare_if
+    with_project do |proj|
+      File.write(File.join(proj, "day.rb"), DAY_SOURCE)
+      out, err, status = mutineer("run", "day.rb", "--dry-run", "--verbose", "--operators", "condition_false", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, out.scan("[condition_false] Day#day").size
+      refute_includes out, "no mutants: Day#day"
+      assert_includes out, "no mutants: Day#total  day.rb:12\n"
+    end
+  end
+
+  def test_dry_run_labels_unmutated_methods_under_since
+    with_project do |proj|
+      File.write(File.join(proj, "day.rb"), DAY_SOURCE)
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub("a + b", "a + b + 0"))
+      out, err, status = mutineer("run", "calculator.rb", "day.rb", "--dry-run", "--since", "HEAD", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "no mutants in 1 of 8 methods (not narrowed by --since)"
+    end
+  end
+
+  def test_empty_run_names_unmutated_methods
+    with_project do |proj|
+      File.write(File.join(proj, "day.rb"), DAY_SOURCE.sub(/\n  def total.*?end\n/m, ""))
+      _, err, status = mutineer("run", "day.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "1 method was found, and the selected operators made no mutant in it " \
+                           "(--list-operators shows the others)."
+      refute_includes err, "Check that the sources contain code"
+
+      File.write(File.join(proj, "day.rb"), DAY_SOURCE.sub(/  def total.*?end\n/m, "  def noop; end\n"))
+      _, err, status = mutineer("run", "day.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "2 methods were found, and the selected operators made no mutant in any of them"
+    end
+  end
+
+  def test_json_report_carries_unmutated_subjects
+    with_project do |proj|
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path).sub(/end\s*\z/, "  def note\n    if @n\n      :a\n    else\n      :b\n    end\n  end\nend\n"))
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--format", "json",
+                                "--output", "r.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(File.read(File.join(proj, "r.json")))
+      assert_equal 7, doc["summary"]["subjects"]
+      assert_equal 1, doc["summary"]["unmutated_subjects"]
+      assert_equal ["Calculator#note"], doc["unmutated_subjects"].map { |h| h["subject"] }
     end
   end
 
