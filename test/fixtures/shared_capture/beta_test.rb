@@ -8,6 +8,7 @@ File.write(ENV["MUTINEER_SENTINEL"], "#{Process.pid} #{File.basename(__FILE__)}\
 class SharedBetaTest < Minitest::Test
   def test_half
     assert_equal 2, SharedBeta.half(4)
+    refute ENV["MUTINEER_FLUNK_BETA"]
   end
 
   def test_width

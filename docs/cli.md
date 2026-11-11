@@ -139,7 +139,21 @@ Quote a pattern that starts with `*`.
 Quote a pattern with braces inside a `[...]` list.
 `--test` replaces pairing and the map.
 
-Coverage uses a digest-keyed cache at `.mutineer/coverage.json`, rebuilt automatically when sources change.
+Coverage uses a digest-keyed cache at `.mutineer/coverage.json`. Mutineer rebuilds it when a source, a test,
+or a project file the tests load changes. The run then captures every test again (#421 tracks a per-test rebuild).
+
+Before the mutants run, Mutineer checks that the unchanged tests pass:
+
+- **Fresh capture.** Every test file runs alone. A failure stops the run. The test files that cover a
+  source line then run together. Mutineer prints how many files the together check left out.
+- **Cache hit.** Only the test files that cover a source line run, alone and then together. A mutant runs
+  only those files, so a red test outside them cannot change a result. Mutineer prints how many files it
+  did not check. A test file whose last capture failed is captured again, which also runs it. When no test
+  covers any source line, every test file runs. In a standalone run (no boot file), each test loads every
+  source and so covers it, and every test file runs (#426).
+- **`--coverage-from`** (in-process `--rails` or `--boot` runs only; other runs ignore it). As on a cache hit: only the test files that cover a source line run, alone and then
+  together, so a red test outside them does not stop the run. Mutineer prints how many files it did not check.
+- **`--test-command`.** No coverage map is built. The clean run runs every `--test` file.
 
 Add `.mutineer/` and any in-project `--cache-dir` directory to `.gitignore`:
 
