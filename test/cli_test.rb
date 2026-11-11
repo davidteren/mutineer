@@ -450,6 +450,22 @@ class CliTest < Minitest::Test
     refute_includes err, "forcing --jobs 1"
   end
 
+  # #407 OCR: matrix conflicts beat early shape/expansion checks that now run
+  # before validate!, so the user still sees the --no-matrix hint first.
+  def test_matrix_beats_test_command_shape_error
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--matrix", "--test-command", "rake test")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--matrix cannot be combined with --test-command"
+    refute_includes err, "%{files}"
+  end
+
+  def test_matrix_beats_unmatched_test_glob
+    _, err, status = mutineer("run", "x.rb", "--matrix", "--daemon", "--test", "nowhere/*")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--matrix cannot be combined with --daemon"
+    refute_includes err, "matched no test files"
+  end
+
   def test_matrix_with_fail_fast_exits_two
     _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--matrix", "--fail-fast")
     assert_equal 2, status.exitstatus

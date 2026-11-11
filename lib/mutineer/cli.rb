@@ -216,9 +216,12 @@ module Mutineer
       case argv.first
       when "run"
         warn_config_root_mismatch(file_path, config.project_root) if file_path
+        # Matrix conflicts first — same order as validate! — so a --matrix
+        # clash is not hidden by a shape or expansion error (#407 OCR).
         # Expand --test before the guard. The guard reads config.tests.
         # migrate and config do not call this (#380).
-        # A bad --test-command is reported first, not hidden by a --test error.
+        # A bad --test-command is reported next, not hidden by a --test error.
+        validate_matrix!(config) if config.matrix
         validate_test_command_shape!(config) if config.test_command
         expand_tests!(config) if config.explicit?(:tests)
         tests_as_sources = argv[1..].select do |arg|
