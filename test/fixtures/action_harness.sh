@@ -22,6 +22,16 @@ cat > "$SCRATCH/bin/mutineer" <<STUB
 #!/usr/bin/env bash
 # The action's version-floor check asks for --version before running.
 if [ "\${1:-}" = "--version" ]; then echo "1.0.0"; exit 0; fi
+# The action asks \`mutineer config KEY\` for resolved settings (#394).
+# STUB_CONFIG unset: answer with this checkout's real CLI. "old": act as a
+# release without the command. Any other value: print that value.
+if [ "\${1:-}" = "config" ]; then
+  case "\${STUB_CONFIG:-}" in
+    "") exec ruby -I"$ROOT/lib" "$ROOT/bin/mutineer" "\$@" ;;
+    old) echo "mutineer: unknown command 'config'" >&2; exit 2 ;;
+    *) echo "\$STUB_CONFIG"; exit 0 ;;
+  esac
+fi
 echo "STUB-ARGS: \$*" >> "$SCRATCH/stub-args.txt"
 out=""
 prev=""
@@ -205,6 +215,16 @@ after=$(cksum "$weird")
 [ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on an escaped path" || echo "  OK: escaped path rejected before running"
 grep '::error::' "$SCRATCH/case17/stdout.txt"
 
+echo; echo "== 17b: same-file path that ends in a newline (expects exit 2) (#394 review) =="
+mkdir -p "$SCRATCH/case17b"
+trailing="$SCRATCH/case17b/same.json"$'\n'
+cp "$SCRATCH/report.json" "$trailing"
+before=$(cksum "$trailing")
+run_step case17b STUB_EXIT=1 OUTPUT="$trailing" BASELINE="$trailing"
+after=$(cksum "$trailing")
+[ "$before" = "$after" ] && echo "  OK: trailing-newline baseline kept" || echo "  FAIL: trailing-newline baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on a trailing-newline path" || echo "  OK: trailing-newline path rejected before running"
+
 echo; echo "== 18: output under missing .mutineer cache dir (expects mkdir + delivered file) (#340) =="
 rm -rf .mutineer
 rm -f .mutineer.yml
@@ -225,6 +245,14 @@ run_step case18c STUB_EXIT=0 OUTPUT="mcache/pr.json"
 [ -s mcache/pr.json ] && echo "  OK: output delivered into yml cache dir" || echo "  FAIL: yml cache output missing"
 rm -f .mutineer.yml
 
+echo; echo "== 18i: cache dir whose name ends in a newline (#394 review) =="
+printf 'cache_dir: "nlcache\\n"\n' > .mutineer.yml
+nl_out="nlcache"$'\n'"/pr.json"
+run_step case18i STUB_EXIT=0 OUTPUT="$nl_out"
+[ -s "$nl_out" ] && echo "  OK: newline-ended cache dir created" || echo "  FAIL: newline-ended cache dir output missing"
+[ -e nlcache ] && echo "  FAIL: created the cache dir without its newline" || echo "  OK: no truncated cache dir"
+rm -f .mutineer.yml
+
 echo; echo "== 18d: cache dir from extra-args, as two words (#340) =="
 run_step case18d STUB_EXIT=0 OUTPUT="xcache/pr.json" EXTRA_ARGS="--cache-dir xcache"
 [ -s xcache/pr.json ] && echo "  OK: extra-args cache dir created" || echo "  FAIL: extra-args cache dir output missing"
@@ -237,6 +265,28 @@ echo; echo "== 18f: cache dir from a short extra-args form the CLI accepts (#340
 run_step case18f STUB_EXIT=0 OUTPUT="scache/pr.json" EXTRA_ARGS="--cache=scache"
 [ -s scache/pr.json ] && echo "  OK: short-form cache dir created" || echo "  FAIL: short-form cache dir output missing"
 
+echo; echo "== 18g: the CLI names the cache dir (#394) =="
+run_step case18g STUB_EXIT=0 OUTPUT="zcache/pr.json" STUB_CONFIG="zcache"
+[ -s zcache/pr.json ] && echo "  OK: CLI-named cache dir created" || echo "  FAIL: the action did not ask the CLI for cache_dir"
+
+echo; echo "== 18h: an older CLI without the config command falls back (#394) =="
+run_step case18h STUB_EXIT=0 OUTPUT="ocache/pr.json" EXTRA_ARGS="--cache=ocache" STUB_CONFIG="old"
+[ -s ocache/pr.json ] && echo "  OK: fallback cache dir created" || echo "  FAIL: fallback cache dir output missing"
+
+echo; echo "== 13b: the CLI names the baseline, output is that file (#394) =="
+mkdir -p "$SCRATCH/case13b"
+cp "$SCRATCH/report.json" "$SCRATCH/case13b/baseline.json"
+before=$(cksum "$SCRATCH/case13b/baseline.json")
+run_step case13b STUB_EXIT=1 OUTPUT="$SCRATCH/case13b/baseline.json" STUB_CONFIG="$SCRATCH/case13b/baseline.json"
+[ "$(cksum "$SCRATCH/case13b/baseline.json")" = "$before" ] && echo "  OK: CLI-named baseline kept" || echo "  FAIL: CLI-named baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: the action did not ask the CLI for baseline" || echo "  OK: CLI-named baseline rejected before running"
+
+echo; echo "== 14c: an older CLI without the config command, abbreviated baseline (#394) =="
+before=$(cksum "$SCRATCH/case14/baseline.json")
+run_step case14c STUB_EXIT=1 OUTPUT="$SCRATCH/case14/baseline.json" EXTRA_ARGS="--base $SCRATCH/case14/baseline.json" STUB_CONFIG="old"
+[ "$(cksum "$SCRATCH/case14/baseline.json")" = "$before" ] && echo "  OK: fallback baseline kept" || echo "  FAIL: fallback baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on the fallback baseline" || echo "  OK: fallback baseline rejected before running"
+
 # == 19: one table of unusual path names, run through every path input (#401) ==
 # Each name goes through every input that takes a path. A row asserts the
 # files and folders the Action leaves, not only its exit code. extra-args is
@@ -248,8 +298,8 @@ rm -rf .mutineer .mutineer.yml
 TABLE_LABELS=(space newline dash glob unicode)
 TABLE_NAMES=("sp ace" "nl"$'\n' "-dash" "gl*ob" "ünï")
 # " row/label=#issue " entries, space-separated. The newline baseline from
-# .mutineer.yml loses its newline in $( ); PR #395 fixes it for #394.
-KNOWN_GAPS=" yml-baseline/newline=#394 "
+# KNOWN_GAPS holds " row/label=#issue " entries while a row still fails.
+KNOWN_GAPS=""
 children() { ruby -e 'print Dir.children(".").sort.inspect'; }
 CLEAN_TREE="$(children; printf .)"
 why() { echo "$*" > "$SCRATCH/table-why"; return 1; }
