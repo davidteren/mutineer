@@ -13,7 +13,7 @@ The latest published version is on [RubyGems](https://rubygems.org/gems/mutineer
 | Commands | `run`, `init`, `triage`, `migrate` | the command and its meaning |
 | CLI flags | the flags in `mutineer --help` | the flag and its meaning |
 | Exit codes | `0`, `1`, and `2` | which result uses which code |
-| JSON schema | `schema_version` `1.9` (1.7.0 reports `1.8`) | existing keys and their meaning |
+| JSON schema | `schema_version` `1.10` (1.8.2 reports `1.9`) | existing keys and their meaning |
 | Mutant ids | `summary.id_format` `2` | the same id for the same mutant |
 | Config keys | the `.mutineer.yml` keys below | the key and what a value means |
 | Action inputs | the `action.yml` inputs below | the input and its meaning |
@@ -56,6 +56,8 @@ Listing the primary database exits 2.
 
 `shared_databases` is new after 1.7.0. It is not in a release yet.
 
+`tests` is new in 1.9.0. An older version warns that the key is unknown and ignores it.
+
 `allow_empty` is new in 1.7.0.
 An `ignore:` entry can be a mapping with an `id` and an optional `reason` from 1.7.0.
 An older version does not ignore the mutant a mapping names, and it does not warn.
@@ -77,6 +79,11 @@ These inputs exist on the GitHub Action in 1.8.0:
 `sources`, `test`, `since`, `threshold`, `baseline`, `baseline-epsilon`,
 `operators`, `framework`, `strategy`, `jobs`, `rails`, `format`, `output`,
 `extra-args`, `working-directory`, `use-bundler`, `version`.
+
+From 1.9.0, the --test flag accepts a directory or a quoted glob.
+The Action test input accepts a directory.
+Mutineer 1.8.2 and earlier reject a directory in the Action test input.
+This is not in a release yet.
 
 ## 2.0 changes
 
@@ -111,7 +118,7 @@ Where it prints no warning, the item says documented only.
 - **JSON `schema_version` 2.0.** Documented only.
   No run warns about this bump.
   The schema page already says a breaking change bumps the major version.
-  1.8.0 reports `schema_version` `1.9`.
+  1.8.2 reports `schema_version` `1.9`; the next minor adds `killed[]` and dry-run JSON as `1.10`.
 - **Parallel `--rails` by default, with the `reload` strategy.** 1.8.0 warns.
   Today `--rails` without `--daemon` is serial and uses `redefine`.
   A Minitest `--rails` run with no `daemon` value prints a notice.

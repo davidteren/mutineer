@@ -169,6 +169,81 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # #380: one --test value becomes test paths. A file stays as typed.
+  def test_expand_test_selects_a_directory_a_glob_or_a_file
+    with_tree(
+      "test/a_test.rb", "test/models/b_test.rb", "test/models/deep/c_test.rb",
+      "test/test_d.rb", "test/test_helper.rb", "test/support/helper.rb",
+      "test/.hidden/e_test.rb", "spec/x_spec.rb", "spec/spec_helper.rb"
+    ) do |root|
+      pair = Mutineer::Pairing
+      dir = ["test/a_test.rb", "test/models/b_test.rb", "test/models/deep/c_test.rb", "test/test_d.rb"]
+      assert_equal dir, pair.expand_test("test", project_root: root)
+      assert_equal dir, pair.expand_test(File.join(root, "test"), project_root: root)
+      assert_equal ["spec/x_spec.rb"], pair.expand_test("spec", project_root: root)
+      assert_equal ["test/a_test.rb", "test/models/b_test.rb", "test/models/deep/c_test.rb"],
+                   pair.expand_test("test/**/*_test.rb", project_root: root)
+      assert_equal ["spec/x_spec.rb", "test/a_test.rb", "test/models/b_test.rb", "test/models/deep/c_test.rb"],
+                   pair.expand_test("{test,spec}/**/*_{test,spec}.rb", project_root: root)
+      assert_equal ["test/a_test.rb", "test/test_d.rb", "test/test_helper.rb"],
+                   pair.expand_test("test/*.rb", project_root: root)
+      assert_empty pair.expand_test("test/mod*", project_root: root)
+      assert_equal ["./test/a_test.rb"], pair.expand_test("./test/a_test.rb", project_root: root)
+      assert_equal ["test/a_test.rb"], pair.expand_test("./test/*_test.rb", project_root: root)
+      assert_equal ["test/nope_test.rb"], pair.expand_test("test/nope_test.rb", project_root: root)
+      assert_empty pair.expand_test("test/**/*_nomatch.rb", project_root: root)
+      assert_empty pair.expand_test("test/support", project_root: root)
+      FileUtils.touch(File.join(root, "test", "[x]_test.rb"))
+      assert_equal ["test/[x]_test.rb"], pair.expand_test("test/[x]_test.rb", project_root: root)
+    end
+  end
+
+  # A directory includes system tests and test_ support files.
+  # A glob of one folder does not.
+  def test_expand_test_keeps_system_tests_and_test_support_files
+    with_tree("test/models/a_test.rb", "test/system/s_test.rb", "test/support/test_helpers.rb", "test/routes_test.rb") do |root|
+      pair = Mutineer::Pairing
+      assert_equal ["test/models/a_test.rb", "test/routes_test.rb", "test/support/test_helpers.rb", "test/system/s_test.rb"],
+                   pair.expand_test("test", project_root: root)
+      assert_equal ["test/models/a_test.rb"], pair.expand_test("test/models/**/*_test.rb", project_root: root)
+    end
+  end
+
+  # A directory name is literal. Pattern characters do not select a sibling.
+  def test_expand_test_reads_a_directory_name_as_literal
+    with_tree(
+      "test[a]/a_test.rb", "testa/nested/wrong_test.rb",
+      "br{ace}/a_test.rb", "a?b/a_test.rb", "axb/wrong_test.rb",
+      "star*/a_test.rb", "starX/wrong_test.rb"
+    ) do |root|
+      pair = Mutineer::Pairing
+      assert_equal ["test[a]/a_test.rb"], pair.expand_test("test[a]", project_root: root)
+      assert_equal ["br{ace}/a_test.rb"], pair.expand_test("br{ace}", project_root: root)
+      assert_equal ["a?b/a_test.rb"], pair.expand_test("a?b", project_root: root)
+      assert_equal ["star*/a_test.rb"], pair.expand_test("star*", project_root: root)
+    end
+  end
+
+  # A directory outside the project stays absolute.
+  def test_expand_test_keeps_an_outside_directory_absolute
+    with_tree("proj/test/a_test.rb", "other/b_test.rb") do |dir|
+      root = File.join(dir, "proj")
+      other = File.join(dir, "other")
+      assert_equal [File.join(other, "b_test.rb")],
+                   Mutineer::Pairing.expand_test(other, project_root: root)
+    end
+  end
+
+  # An outside directory whose name is a pattern still lists only its own files.
+  def test_expand_test_reads_an_outside_directory_name_as_literal
+    with_tree("proj/lib/a.rb", "out[a]/a_test.rb", "outa/nested/wrong_test.rb") do |dir|
+      root = File.join(dir, "proj")
+      other = File.join(dir, "out[a]")
+      assert_equal [File.join(other, "a_test.rb")],
+                   Mutineer::Pairing.expand_test(other, project_root: root)
+    end
+  end
+
   # #87: a suite split as <basename>_*_test.rb still pairs when the exact file
   # is absent. Order is sorted so the choice is stable.
   def test_split_test_files_pair_when_no_exact_file_exists
@@ -497,6 +572,214 @@ class PairingTest < Minitest::Test
     source = "app/models/concerns/helper.rb"
     with_tree(source, "test/models/test_helper.rb") do |root|
       assert_empty infer_tests(source, root)
+    end
+  end
+
+  # #382 U3: resolve_test_map expands patterns; mapped_tests_for looks up by source.
+  def resolve_map(entries, root)
+    Mutineer::Pairing.resolve_test_map(entries, project_root: root)
+  end
+
+  def test_resolve_test_map_expands_a_sources_glob_with_recursion
+    with_tree("app/c/a.rb", "app/c/sub/b.rb", "app/other/x.rb", "test/c_test.rb") do |root|
+      got = resolve_map([{ sources: ["app/c/**/*.rb"], tests: ["test/c_test.rb"] }], root)
+      assert_equal ["app/c/a.rb", "app/c/sub/b.rb"], got[:entries].first[:sources]
+    end
+  end
+
+  def test_resolve_test_map_expands_a_brace_tests_glob_across_directories
+    with_tree(
+      "lib/a.rb",
+      "test/c/one_test.rb", "test/i/two_test.rb", "test/other/skip_test.rb"
+    ) do |root|
+      got = resolve_map(
+        [{ sources: ["lib/a.rb"], tests: ["test/{c,i}/**/*_test.rb"] }],
+        root
+      )
+      assert_equal ["test/c/one_test.rb", "test/i/two_test.rb"], got[:entries].first[:tests]
+    end
+  end
+
+  def test_resolve_test_map_sources_directory_matches_expand_sources
+    with_tree("app/a.rb", "app/sub/b.rb", "app/notruby.txt", "test/a_test.rb") do |root|
+      got = resolve_map([{ sources: ["app"], tests: ["test/a_test.rb"] }], root)
+      assert_equal Mutineer::Pairing.expand_sources(["app"], project_root: root),
+                   got[:entries].first[:sources]
+    end
+  end
+
+  def test_resolve_test_map_tests_directory_uses_test_name_filter
+    with_tree(
+      "lib/a.rb",
+      "test/x_test.rb", "test/y_spec.rb", "test/test_z.rb",
+      "test/test_helper.rb", "test/support/setup.rb"
+    ) do |root|
+      got = resolve_map([{ sources: ["lib/a.rb"], tests: ["test"] }], root)
+      assert_equal ["test/test_z.rb", "test/x_test.rb", "test/y_spec.rb"],
+                   got[:entries].first[:tests]
+    end
+  end
+
+  def test_resolve_test_map_tests_glob_keeps_test_helper
+    with_tree(
+      "lib/a.rb",
+      "test/a_test.rb", "test/test_helper.rb", "test/support/setup.rb"
+    ) do |root|
+      got = resolve_map([{ sources: ["lib/a.rb"], tests: ["test/**/*.rb"] }], root)
+      assert_equal ["test/a_test.rb", "test/support/setup.rb", "test/test_helper.rb"],
+                   got[:entries].first[:tests]
+    end
+  end
+
+  def test_resolve_test_map_normalizes_equivalent_source_paths
+    with_tree("lib/a.rb", "test/a_test.rb") do |root|
+      %w[./lib/a.rb lib//a.rb lib/a.rb].each do |pattern|
+        got = resolve_map([{ sources: [pattern], tests: ["test/a_test.rb"] }], root)
+        assert_equal ["lib/a.rb"], got[:entries].first[:sources], pattern
+      end
+    end
+  end
+
+  def test_resolve_test_map_sources_glob_expands_a_matched_directory
+    with_tree("app/c/a.rb", "app/c/sub/b.rb", "app/file.rb", "test/a_test.rb") do |root|
+      got = resolve_map([{ sources: ["app/*"], tests: ["test/a_test.rb"] }], root)
+      assert_equal ["app/c/a.rb", "app/c/sub/b.rb", "app/file.rb"],
+                   got[:entries].first[:sources]
+    end
+  end
+
+  # An existing source path with glob metacharacters is literal (#380 rule).
+  def test_resolve_test_map_keeps_a_bracketed_source_path_literal
+    with_tree("app/models/a[1].rb", "test/a_test.rb") do |root|
+      got = resolve_map([{ sources: ["app/models/a[1].rb"], tests: ["test/a_test.rb"] }], root)
+      assert_equal ["app/models/a[1].rb"], got[:entries].first[:sources]
+      assert_empty got[:unmatched]
+    end
+  end
+
+  # A directory whose name holds glob metacharacters still expands recursively.
+  def test_resolve_test_map_expands_a_bracketed_source_directory
+    with_tree("app/component[1]/x.rb", "app/component[1]/sub/y.rb", "test/a_test.rb") do |root|
+      got = resolve_map([{ sources: ["app/component[1]"], tests: ["test/a_test.rb"] }], root)
+      assert_equal ["app/component[1]/sub/y.rb", "app/component[1]/x.rb"],
+                   got[:entries].first[:sources]
+      assert_empty got[:unmatched]
+    end
+  end
+
+  # A sources glob that matches a bracketed directory keeps the files under it.
+  def test_resolve_test_map_sources_glob_keeps_files_under_a_bracketed_directory
+    with_tree(
+      "app/component[1]/x.rb", "app/other/y.rb", "test/a_test.rb"
+    ) do |root|
+      got = resolve_map([{ sources: ["app/*"], tests: ["test/a_test.rb"] }], root)
+      assert_equal ["app/component[1]/x.rb", "app/other/y.rb"],
+                   got[:entries].first[:sources]
+    end
+  end
+
+  # A tests: glob that matches directories expands them with the test-name filter.
+  def test_resolve_test_map_tests_glob_expands_matched_directories
+    with_tree(
+      "lib/a.rb",
+      "test/controllers/a_test.rb", "test/integration/b_test.rb",
+      "test/controllers/helper.rb", "test/loose.rb"
+    ) do |root|
+      got = resolve_map(
+        [{ sources: ["lib/a.rb"], tests: ["test/{controllers,integration}"] }],
+        root
+      )
+      assert_equal ["test/controllers/a_test.rb", "test/integration/b_test.rb"],
+                   got[:entries].first[:tests]
+      assert_empty got[:unmatched]
+
+      mixed = resolve_map([{ sources: ["lib/a.rb"], tests: ["test/*"] }], root)
+      assert_equal [
+        "test/controllers/a_test.rb",
+        "test/integration/b_test.rb",
+        "test/loose.rb"
+      ], mixed[:entries].first[:tests]
+    end
+  end
+
+  # Brace patterns that escape the root via `..` must not keep outside paths.
+  def test_resolve_test_map_drops_brace_patterns_that_leave_the_root
+    Dir.mktmpdir do |parent|
+      outside = File.join(parent, "outside.rb")
+      File.write(outside, "def x; 1; end\n")
+      root = File.join(parent, "proj")
+      FileUtils.mkdir_p(File.join(root, "app"))
+      FileUtils.mkdir_p(File.join(root, "test"))
+      File.write(File.join(root, "app/x.rb"), "def x; 1; end\n")
+      File.write(File.join(root, "test/a_test.rb"), "# test\n")
+      got = resolve_map([{ sources: ["{..,app}/outside.rb"], tests: ["test/a_test.rb"] }], root)
+      assert_empty got[:entries].first[:sources]
+      assert_equal [{ entry: 1, key: "sources", pattern: "{..,app}/outside.rb" }],
+                   got[:unmatched]
+    end
+  end
+
+  def test_resolve_test_map_missing_plain_test_path_is_no_match
+    with_tree("lib/a.rb") do |root|
+      got = resolve_map(
+        [{ sources: ["lib/a.rb"], tests: ["test/missing_test.rb"] }],
+        root
+      )
+      assert_empty got[:entries].first[:tests]
+      assert_equal [{ entry: 1, key: "tests", pattern: "test/missing_test.rb" }],
+                   got[:unmatched]
+    end
+  end
+
+  def test_resolve_test_map_names_entry_and_key_for_an_unmatched_pattern
+    with_tree("lib/a.rb", "lib/b.rb", "test/a_test.rb") do |root|
+      got = resolve_map(
+        [
+          { sources: ["lib/a.rb"], tests: ["test/a_test.rb"] },
+          { sources: ["lib/b.rb"], tests: ["test/nope_test.rb"] }
+        ],
+        root
+      )
+      assert_equal [{ entry: 2, key: "tests", pattern: "test/nope_test.rb" }],
+                   got[:unmatched]
+    end
+  end
+
+  def test_resolve_test_map_dedupes_overlapping_patterns_and_sorts
+    with_tree(
+      "app/a.rb", "app/b.rb",
+      "test/a_test.rb", "test/b_test.rb"
+    ) do |root|
+      got = resolve_map(
+        [{
+          sources: ["app/a.rb", "app/*.rb", "app/b.rb"],
+          tests: ["test/b_test.rb", "test/*_test.rb", "test/a_test.rb"]
+        }],
+        root
+      )
+      assert_equal ["app/a.rb", "app/b.rb"], got[:entries].first[:sources]
+      assert_equal ["test/a_test.rb", "test/b_test.rb"], got[:entries].first[:tests]
+    end
+  end
+
+  def test_mapped_tests_for_concatenates_matching_entries_in_order
+    with_tree(
+      "lib/shared.rb", "lib/other.rb",
+      "test/one_test.rb", "test/two_test.rb", "test/three_test.rb"
+    ) do |root|
+      resolved = resolve_map(
+        [
+          { sources: ["lib/shared.rb"], tests: ["test/one_test.rb"] },
+          { sources: ["lib/*.rb"], tests: ["test/two_test.rb", "test/three_test.rb"] }
+        ],
+        root
+      )
+      # Each entry's tests are sorted; entries concatenate in map order.
+      assert_equal ["test/one_test.rb", "test/three_test.rb", "test/two_test.rb"],
+                   Mutineer::Pairing.mapped_tests_for("lib/shared.rb", resolved)
+      assert_equal ["test/three_test.rb", "test/two_test.rb"],
+                   Mutineer::Pairing.mapped_tests_for("lib/other.rb", resolved)
+      assert_equal [], Mutineer::Pairing.mapped_tests_for("lib/missing.rb", resolved)
     end
   end
 end

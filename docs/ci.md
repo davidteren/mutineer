@@ -41,6 +41,9 @@ Directories or multiple sources run in one boot, with results per source. Tests 
 | `bar_upsert.rb` exists | `bar_upsert_guards_test.rb` stays with `bar_upsert.rb` |
 | A spec already pairs | It stays as that one file |
 
+A `tests:` map in `.mutineer.yml` adds its test files when the run holds a matching source; see [Extra tests for a source](cli.md#extra-tests-for-a-source).
+For a `--baseline` gate, use the sources of the run that wrote the baseline.
+
 ### GitHub Action
 
 The composite action (`action.yml`) runs the CLI:
@@ -136,7 +139,7 @@ From [`action.yml`](https://github.com/davidteren/mutineer/blob/main/action.yml)
 | Input | Default | What it does |
 |-------|---------|--------------|
 | `sources` | required | Space-separated files or directories |
-| `test` | `""` | Test files; empty pairs by convention |
+| `test` | `""` | Test files or directories. Empty pairs by convention and applies any `tests:` map in `.mutineer.yml` with Mutineer 1.9.0 or later. A directory also needs mutineer 1.9.0 or later |
 | `since` | `""` | Git ref; PR base on `pull_request`; `none` scans all |
 | `threshold` | `""` | Fail below this score |
 | `baseline` | `""` | Saved `--format json` report |
@@ -152,6 +155,16 @@ From [`action.yml`](https://github.com/davidteren/mutineer/blob/main/action.yml)
 | `working-directory` | `"."` | Project root |
 | `use-bundler` | `"false"` | Run `bundle exec mutineer`; required for `rails: true` |
 | `version` | `""` | Gem version without Bundler; empty uses latest |
+
+The `test` input accepts files and directories.
+A directory needs mutineer 1.9.0 or later.
+An older gem rejects a directory.
+Without Bundler, the `version` input sets the gem version.
+With `use-bundler: "true"`, `Gemfile.lock` sets it.
+If a directory is rejected, check that version.
+Bash expands a glob in `test` and in `extra-args`.
+`**` matches one directory level.
+That limit is issue #406 (Action globs match one directory level).
 
 ## Refresh the baseline
 

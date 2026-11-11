@@ -24,17 +24,27 @@ Check this Rails app for Mutineer's --daemon backend. Report: the test framework
    RAILS_ENV=test bundle exec mutineer init --rails
    ```
 
-3. Run one model inside the project's bundle. Add `--test FILE` to select tests.
+3. Run one model inside the project's bundle.
+   Add `--test PATH` for a file, a directory, or a quoted glob.
 
    ```sh
    RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
+   ```
+
+   `--test test` also selects files under `test/system/`.
+   To skip system tests, list each test directory you use.
+   The glob selects only the directories it names.
+   Add any other directory, such as `test/services`, and each root-level test file:
+
+   ```sh
+   RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --test 'test/{channels,controllers,helpers,integration,jobs,lib,mailers,middleware,models}/**/*_test.rb' --test test/routes_test.rb
    ```
 
 | Setting | Behaviour |
 | --- | --- |
 | `--rails` | Boots `config/environment` once. Each mutant forks from that process and reconnects ActiveRecord for a safe database connection. |
 | `--boot FILE` | Boots another entry point. |
-| Tests | Boot mode requires a conventionally found test or `--test`. A `--dry-run` skips pairing and requires `--test`. Mutants run only tests covering their line. |
+| Tests | Boot mode requires a conventionally found test, a matching `tests:` map entry, or `--test`. A `--dry-run` skips pairing and requires `--test`. Mutants run only tests covering their line. |
 | Coverage | Captured in a fork of the booted app, then cached. |
 | Default strategy | `redefine` without `--daemon`; `reload` with `--daemon`. |
 | `redefine` | Reloads the mutated method and each directly enclosing method, not the whole file. |
@@ -42,6 +52,18 @@ Check this Rails app for Mutineer's --daemon backend. Report: the test framework
 
 A file at `app/<dir>/concerns/` pairs with an exact namespace test when the `concerns/` path has none.
 See the [pairing table](ci.md).
+
+A controller concern often has no test at the conventional path.
+Map it to the controller and integration tests that exercise it:
+
+```yaml
+# .mutineer.yml
+tests:
+  - sources: app/controllers/concerns/**/*.rb
+    tests: [test/controllers/**/*_test.rb, test/integration/**/*_test.rb]
+```
+
+See [Extra tests for a source](cli.md#extra-tests-for-a-source) for cost notes.
 
 Both strategies write a hidden `.mutineer_mutant*.rb` beside the source.
 Under `--strategy redefine`, a read-only directory falls back to a system temporary file; `reload` needs a writable source directory.
@@ -142,12 +164,15 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 
 | Database | Worker provisioning and cleanup |
 | --- | --- |
+| SQLite | Copies each worker file on first use. For `storage/test.sqlite3`, worker files are `storage/test-<N>.sqlite3` and the run lock is `storage/test.sqlite3-mutineer.lock`. |
+| SQLite lock file | The lock file never goes stale. Do not delete it while a run is active. Wait for the other run to finish, or stop it. Add `<base file>-mutineer.lock` to `.gitignore` unless your rules already cover `storage/*`. A `file:` database name takes no lock (#412). Other known gaps are tracked in #416. |
 | PostgreSQL | Copies the test database before workers start. Names use `<base>-mutineer-<N>`, shortened to fit 63 bytes. Databases remain after the run. |
 | PostgreSQL cleanup | Run `DROP DATABASE "myapp_test-mutineer-0";`, using your test database name and worker slot. |
 | MySQL 8 | Creates `<base>-mutineer-<N>`, shortened to fit 64 bytes. Loads `schema.rb` or `structure.sql`, then copies rows before workers start. |
 | MySQL recovery | Does not recopy after an error or timeout. Databases remain after the run; the next run drops and rebuilds them. |
 | MySQL cleanup | Run ``DROP DATABASE `myapp_test-mutineer-0`;``. MySQL requires backticks around the name. |
 | `:memory:` | Not supported by `--daemon`. |
+| Concurrent runs | A second run on the same test database stops with `another Mutineer run is using <base>`. This covers PostgreSQL, MySQL, and file-backed SQLite databases (not `file:` names). |
 
 | MySQL requirement or limit | Detail |
 | --- | --- |
@@ -157,7 +182,6 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 | Test database permissions | Needs SELECT. |
 | Another account's trigger DEFINER | Also needs SET_USER_ID. |
 | `structure.sql` | Requires the `mysql` client on `PATH`. |
-| Concurrent runs | A second run using the same test database stops with `another Mutineer run is using <base>`. |
 | Worker limit | At most 256 workers. |
 | MySQL older than 8.0, including 5.7 | Unsupported. Stops before copying with `could not provision <base>: MySQL <version> is not supported`. |
 | Older MySQL fallback | Use `--no-daemon` or `daemon: false`. The run is serial. |
