@@ -48,7 +48,17 @@ module Mutineer
       Array(args).flat_map do |arg|
         abs = File.expand_path(arg, root)
         if File.directory?(abs)
-          Dir.glob(File.join(abs, "**", "*.rb")).sort.map { |f| existing_relative(f, roots) || f }
+          # Escape metacharacters in the directory name so `component[1]` stays
+          # literal (same rule as {directory_test_files}).
+          listed = if (rel = root_relative(abs, roots))
+                     Dir.glob(File.join(glob_literal(rel), "**", "*.rb"), base: root)
+                   else
+                     Dir.glob(File.join(glob_literal(abs), "**", "*.rb"))
+                   end
+          listed.sort.map do |f|
+            full = File.absolute_path?(f) ? f : File.expand_path(f, root)
+            existing_relative(full, roots) || full
+          end
         else
           # `..` resolves as text, as FileSwap and the daemon already read it.
           [(existing_relative(abs, roots) if File.exist?(abs)) || arg]
@@ -265,9 +275,11 @@ module Mutineer
       end.uniq.sort
     end
 
-    # One map test pattern through {expand_test}. A missing plain path is not
-    # a match. Existing files are cleaned to a root-relative path. Matches
-    # outside the project root are dropped (#382 review).
+    # One map test pattern. Directories (typed or matched by a glob) expand
+    # with the {TEST_NAME} filter, matching a typed `--test` directory. Files
+    # a glob matches stay unfiltered (including `test_helper.rb`), matching
+    # `--test` globs. A missing plain path is not a match. Matches outside the
+    # project root are dropped (#382 review).
     #
     # @api private
     # @param pattern [String] relative test pattern.
@@ -275,12 +287,48 @@ module Mutineer
     # @param roots [Array<String>] the project root, expanded and real.
     # @return [Array<String>] matching test paths, sorted.
     def expand_map_test_pattern(pattern, root, roots)
-      expand_test(pattern, project_root: root).filter_map do |path|
+      listed = case classify_test_value(pattern, project_root: root)
+               when :directory
+                 directory_test_files(File.expand_path(pattern, root), root, roots)
+               when :glob
+                 expand_map_test_glob(pattern, root, roots)
+               else
+                 # :file / :plain / :blank — same as {expand_test}, then root-filter.
+                 expand_test(pattern, project_root: root)
+               end
+      listed.filter_map do |path|
         abs = File.expand_path(path, root)
         next unless File.file?(abs)
 
         existing_relative(abs, roots)
       end.uniq.sort
+    end
+
+    # Glob matches for a map `tests:` pattern. A matched directory expands with
+    # {directory_test_files}; a matched file is kept as-is (no name filter).
+    # `--test` globs still drop directories; only the map expands them (#382).
+    #
+    # @api private
+    # @param pattern [String] relative or absolute glob.
+    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
+    # @return [Array<String>] matching test paths (may include outside-root paths).
+    def expand_map_test_glob(pattern, root, roots)
+      matches = if File.absolute_path?(pattern)
+                  Dir.glob(pattern)
+                else
+                  Dir.glob(pattern, base: root)
+                end
+      matches.flat_map do |match|
+        full = File.absolute_path?(match) ? match : File.expand_path(match, root)
+        if File.directory?(full)
+          directory_test_files(full, root, roots)
+        elsif File.file?(full)
+          [existing_relative(full, roots) || full]
+        else
+          []
+        end
+      end
     end
 
     # An existing file's root-relative path, or nil outside the root. Tries the

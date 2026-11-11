@@ -559,6 +559,51 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # A directory whose name holds glob metacharacters still expands recursively.
+  def test_resolve_test_map_expands_a_bracketed_source_directory
+    with_tree("app/component[1]/x.rb", "app/component[1]/sub/y.rb", "test/a_test.rb") do |root|
+      got = resolve_map([{ sources: ["app/component[1]"], tests: ["test/a_test.rb"] }], root)
+      assert_equal ["app/component[1]/sub/y.rb", "app/component[1]/x.rb"],
+                   got[:entries].first[:sources]
+      assert_empty got[:unmatched]
+    end
+  end
+
+  # A sources glob that matches a bracketed directory keeps the files under it.
+  def test_resolve_test_map_sources_glob_keeps_files_under_a_bracketed_directory
+    with_tree(
+      "app/component[1]/x.rb", "app/other/y.rb", "test/a_test.rb"
+    ) do |root|
+      got = resolve_map([{ sources: ["app/*"], tests: ["test/a_test.rb"] }], root)
+      assert_equal ["app/component[1]/x.rb", "app/other/y.rb"],
+                   got[:entries].first[:sources]
+    end
+  end
+
+  # A tests: glob that matches directories expands them with the test-name filter.
+  def test_resolve_test_map_tests_glob_expands_matched_directories
+    with_tree(
+      "lib/a.rb",
+      "test/controllers/a_test.rb", "test/integration/b_test.rb",
+      "test/controllers/helper.rb", "test/loose.rb"
+    ) do |root|
+      got = resolve_map(
+        [{ sources: ["lib/a.rb"], tests: ["test/{controllers,integration}"] }],
+        root
+      )
+      assert_equal ["test/controllers/a_test.rb", "test/integration/b_test.rb"],
+                   got[:entries].first[:tests]
+      assert_empty got[:unmatched]
+
+      mixed = resolve_map([{ sources: ["lib/a.rb"], tests: ["test/*"] }], root)
+      assert_equal [
+        "test/controllers/a_test.rb",
+        "test/integration/b_test.rb",
+        "test/loose.rb"
+      ], mixed[:entries].first[:tests]
+    end
+  end
+
   # Brace patterns that escape the root via `..` must not keep outside paths.
   def test_resolve_test_map_drops_brace_patterns_that_leave_the_root
     Dir.mktmpdir do |parent|

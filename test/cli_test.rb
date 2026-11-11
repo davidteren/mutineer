@@ -1834,9 +1834,16 @@ class CliTest < Minitest::Test
   end
 
   # R12: --test-command reads the same run test list the map fills.
+  # Load every %{files} path: plain `ruby a.rb b.rb` only runs `a.rb`.
   def test_tests_map_applies_under_test_command
     with_test_map_project do |proj|
-      command = "#{RbConfig.ruby} %{files}"
+      log = File.join(proj, "args.txt")
+      wrapper = File.join(proj, "run_all.rb")
+      File.write(wrapper, <<~RUBY)
+        File.open(#{log.dump}, "a") { |f| ARGV.each { |path| f.puts path } }
+        ARGV.each { |path| load path }
+      RUBY
+      command = "#{RbConfig.ruby} #{wrapper} %{files}"
       out, err, status = mutineer(
         "run", "app/controllers/concerns/board_scoped.rb",
         "--test-command", command, "--format", "json", chdir: proj
@@ -1846,6 +1853,12 @@ class CliTest < Minitest::Test
       assert_equal ["app/controllers/concerns/board_scoped.rb"],
                    doc["per_source"].map { |h| h["file"] }
       assert_operator doc["summary"]["killed"], :>, 0
+      recorded = File.read(log).lines.map { |line| File.realpath(line.strip) }.uniq.sort
+      expected = [
+        "test/controllers/boards_controller_test.rb",
+        "test/controllers/concerns/authentication_test.rb"
+      ].map { |path| File.realpath(File.join(proj, path)) }
+      assert_equal expected, recorded
     end
   end
 

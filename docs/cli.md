@@ -123,6 +123,9 @@ tests:
 ```
 
 An entry adds its tests to the whole run when the run holds one of its sources.
+A `tests:` glob that matches a directory expands that directory with the same
+name filter as a typed `--test` directory (`*_test.rb`, `*_spec.rb`, `test_*.rb`).
+A file the glob matches stays unfiltered. `--test` globs still drop directories.
 Coverage picks the tests for each mutant.
 A mapped test can thus also kill a mutant of another source in that run.
 A `--baseline` gate therefore needs the sources of the run that wrote the baseline, as [CI](ci.md#baseline) already says.
