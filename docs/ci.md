@@ -62,25 +62,6 @@ The composite action (`action.yml`) runs the CLI:
 
 On `pull_request` this normally checks changed lines only; if the PR base cannot be resolved, the Action warns and falls back to a full scan. A changed-lines run cannot see a weakened test on unchanged code, so set `since: none` for any pull request that changes tests.
 
-Rails needs `mutineer` in the Gemfile, `rails: true` and `use-bundler: true`.
-Without these inputs, the Action runs a standalone gem without booting your app.
-
-```yaml
-- uses: actions/checkout@v4
-  with: { fetch-depth: 0 }
-- uses: ruby/setup-ruby@v1
-  with: { bundler-cache: true }
-- uses: davidteren/mutineer@v1
-  env:
-    RAILS_ENV: test
-  with:
-    sources: app/models
-    rails: "true"
-    use-bundler: "true"
-    baseline: .mutineer/baseline.json
-    extra-args: "--no-fail-fast"
-```
-
 **Default change:** `pull_request` events use changed lines against the exact PR base commit. This excludes `pull_request_target`.
 The Action fetches the commit for shallow checkouts, falling back to the base branch tip.
 
@@ -98,9 +79,39 @@ The Action fetches the commit for shallow checkouts, falling back to the base br
 
 The CLI logs progress every 10%, in every format.
 
+### Rails workflow
+
+Rails needs `mutineer` in the Gemfile, `rails: true` and `use-bundler: true`.
+Without these inputs, the Action runs a standalone gem without booting your app.
+Save this as `.github/workflows/mutineer.yml`:
+
+```yaml
+name: Mutineer
+on: pull_request
+
+jobs:
+  mutineer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: ruby/setup-ruby@v1
+        with: { ruby-version: "3.4", bundler-cache: true }
+      - uses: davidteren/mutineer@v1
+        env:
+          RAILS_ENV: test
+        with:
+          sources: app/models
+          rails: "true"
+          use-bundler: "true"
+          baseline: .mutineer/baseline.json
+          extra-args: "--no-fail-fast"
+```
+
 ### Rails with PostgreSQL
 
-Before Mutineer boots Rails, add a database service, set `DATABASE_URL` and prepare the schema:
+Before Mutineer boots Rails, add a database service, set `DATABASE_URL` and prepare the schema.
+Match names and versions to your test workflow:
 
 ```yaml
 jobs:
@@ -122,7 +133,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: ruby/setup-ruby@v1
-        with: { bundler-cache: true }
+        with: { ruby-version: "3.4", bundler-cache: true }
       - run: bin/rails db:prepare
       - uses: davidteren/mutineer@v1
         with:
@@ -130,6 +141,7 @@ jobs:
           rails: "true"
           use-bundler: "true"
           baseline: .mutineer/baseline.json
+          extra-args: "--no-fail-fast"
 ```
 
 ### Action inputs
@@ -184,7 +196,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
-        with: { bundler-cache: true }
+        with: { ruby-version: "3.4", bundler-cache: true }
       # A database-backed app also needs the database service, DATABASE_URL and
       # `bin/rails db:prepare` steps from the PostgreSQL recipe above.
       - uses: davidteren/mutineer@v1

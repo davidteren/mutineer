@@ -22,6 +22,7 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/models/o
 
 Review each survivor. Add a test for a missed behaviour, or record why the change
 is equivalent before ignoring it. Start without a score threshold.
+Full first-run steps: [First run to steady state](https://github.com/davidteren/mutineer/blob/main/docs/getting-started.md).
 
 ## Report-only in CI
 
@@ -112,7 +113,11 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
+      # A database-backed app also needs the database service and a
+      # `bin/rails db:prepare` step from your test workflow.
       - uses: davidteren/mutineer@v1
+        env:
+          RAILS_ENV: test
         with:
           sources: app/models
           since: none
