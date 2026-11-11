@@ -59,9 +59,10 @@ returns, so a test can check it. Some of those mutants are equivalent, for
 example `to_s` on a value that is already a string, or inside string
 interpolation. Suppress them with `# mutineer:disable-line call_to_receiver` or an `ignore:`
 entry, as the top of the page says. Scope the marker to the operator,
-as in `# mutineer:disable-line call_to_receiver -- already a String`, so it
-does not hide other mutants on the line. An `ignore:` entry with the
-survivor `id` suppresses only that one mutant.
+as in `# mutineer:disable-line call_to_receiver -- already a String`.
+A scoped marker keeps mutants from other operators.
+It hides every `call_to_receiver` mutant on that line.
+An `ignore:` entry with the survivor `id` suppresses only that one mutant.
 
 | Name | Why it is skipped |
 |------|-------------------|
@@ -71,6 +72,78 @@ survivor `id` suppresses only that one mutant.
 | `freeze` | Returns the receiver, now frozen. A `frozen?` check or a later write shows the difference. |
 | `itself` | Returns the receiver. |
 | `to_set` | For common uses of `include?` and `empty?`, an array answers as a set does, so the mutant is often equivalent. Membership can differ: an array compares with `==` and a set with `eql?`, so `[1].include?(1.0)` is true and `Set[1].include?(1.0)` is false. The array keeps duplicates, so `size` and `each` can differ. |
+
+### Triage a `present?` survivor
+
+`call_to_receiver` is not a default operator.
+This mutant appears only when you select that operator.
+Select it with the CLI flag `--operators`.
+Select it with the `.mutineer.yml` key `operators:`.
+Select it with the Action input `operators`.
+The Action passes that input to the CLI as `--operators`.
+The `--operators` list replaces the default set.
+See [Endless range](#endless-range).
+
+The mutant is equivalent in one case.
+The receiver is always a non-blank object, or it is `nil` or `false`.
+A record is one example.
+A non-blank string is another, when the call is only a condition.
+The code uses the result only as a condition.
+
+These cases are real gaps:
+
+- A blank string or a blank param, such as `""` or `" "`.
+- An empty array.
+- An empty hash.
+- An empty relation.
+- A method that returns the `present?` result.
+
+Pass a blank value to kill a gap in a condition.
+Assert the exact value `true` or `false` when a method returns the result.
+
+`if params[:day].present?` survives a test that sends only a valid date.
+Pass `day: ""` and expect the fallback.
+That test kills the mutant.
+
+`def has_tags?(tags) = tags.present?` survives `assert has_tags?(["x"])`.
+`assert_equal true, has_tags?(["x"])` kills that mutant.
+
+Suppress one mutant with an `ignore:` mapping.
+Use the survivor `id` from the JSON report.
+Record a reason.
+
+```yaml
+# .mutineer.yml
+ignore:
+  - id: ID_FROM_THE_JSON_REPORT
+    reason: the receiver is a record or nil, and the result is only a condition
+```
+
+`mutineer triage REPORT.json --id ID --reason TEXT` prints one mapping.
+Repeat `--id` for each site you judge equivalent.
+Do not use `--all`.
+`--all` also maps survivors that are real gaps.
+
+An `ignore:` id changes after a file move.
+It also changes after a method rename or a class rename.
+The survivor then returns.
+See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids).
+
+Do not use a line marker for this site.
+The marker hides every `call_to_receiver` mutant on that line.
+It also hides `account.name` becoming `account`.
+That second mutant is not equivalent.
+Use the `ignore:` id above for the `present?` mutant only.
+
+```ruby
+account.name if account.present? # mutineer:disable-line call_to_receiver
+```
+
+A disable marker moves with its line.
+
+`present?` stays off the skip list.
+The operator checks the method name only.
+It cannot inspect the receiver, so a name skip would also hide real gaps.
 
 ## Endless range
 

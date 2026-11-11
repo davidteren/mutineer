@@ -15,8 +15,12 @@ inputs:
     required: true
   test:
     description: >-
-      Space-separated test files covering the sources. Optional — when omitted,
-      Mutineer auto-pairs each source to its test by convention.
+      Space-separated test files or directories covering the sources.
+      A directory needs mutineer 1.9.0 or later. An older gem rejects it.
+      Optional. When omitted, Mutineer pairs each source to its test
+      by convention and applies any `tests:` map in `.mutineer.yml` with
+      Mutineer 1.9.0 or later (with `use-bundler: true`, the bundle selects
+      the version; older gems warn and ignore the key).
     required: false
     default: ""
   since:
@@ -225,6 +229,31 @@ runs:
           TMP_REPORT="$(mktemp "${RUNNER_TEMP:-/tmp}/mutineer-report-XXXXXX")"
         fi
         report_ok() { [ -n "$TMP_REPORT" ] && [ -s "$TMP_REPORT" ]; }
+
+        if [ "$USE_BUNDLER" = "true" ]; then
+          runner=(bundle exec mutineer)
+        else
+          runner=(mutineer)
+        fi
+
+        # Prints a setting resolved by the installed CLI (#394). `mutineer
+        # config` applies the same flags and .mutineer.yml as the run, so the
+        # Action does not copy the CLI's rules. An older CLI has no such
+        # command and fails, so each caller then uses its own copy of the rules.
+        # Released versions do not change, so that copy stays correct for them.
+        # shortcut: the copies stay until the version floor reaches the first
+        # release with `mutineer config`; delete them then.
+        # Sets CLI_VALUE to the setting the installed CLI resolves; fails when
+        # the CLI cannot answer (an older CLI has no `config`). The CLI ends the
+        # value with exactly one newline, and the trailing "." stops $( ) from
+        # dropping newlines that belong to the value (a path can end in one).
+        cli_setting() {
+          # shellcheck disable=SC2086
+          CLI_VALUE="$("${runner[@]}" config "$@" $EXTRA_ARGS 2>/dev/null; status=$?; printf .; exit "$status")" || return
+          CLI_VALUE="${CLI_VALUE%.}"
+          CLI_VALUE="${CLI_VALUE%$'\n'}"
+        }
+
         # Mutineer preflights ITS --output path (the temp file), so a bad
         # caller path would otherwise only surface as a cp failure after the
         # whole run. Keep the documented up-front usage failure. The path is
@@ -244,59 +273,69 @@ runs:
           # Action preflights the caller's path before handing the CLI a temp
           # file, so the CLI's mkdir never runs for this input. Other missing
           # parents still exit 2.
-          cache_dir=".mutineer"
-          cache_dir="$(ruby -ryaml -e '
-            dir = File.expand_path(Dir.pwd)
-            home = File.expand_path("~")
-            file = nil
-            loop do
-              candidate = File.join(dir, ".mutineer.yml")
-              if File.file?(candidate)
-                file = candidate
-                break
-              end
-              break if dir == home
-              parent = File.dirname(dir)
-              break if parent == dir
-              dir = parent
-            end
-            value = nil
-            if file
-              raw = YAML.safe_load(File.read(file)) rescue nil
-              value = raw["cache_dir"] if raw.is_a?(Hash)
-            end
-            value = ARGV[0] if [nil, true, false].include?(value) || value.to_s.strip.empty?
-            print value.to_s
-          ' "$cache_dir")"
-          if [ -n "$EXTRA_ARGS" ]; then
-            pending=""
-            for extra_arg in $EXTRA_ARGS; do
-              key="${extra_arg%%=*}"
-              case "$key" in
-                # Every unique prefix of --cache-dir that the CLI accepts. --ca is
-                # left out: it is ambiguous with --capture-timeout.
-                --cache-dir | --cache-di | --cache-d | --cache- | --cache | --cach | --cac)
-                  if [ "$extra_arg" = "$key" ]; then
-                    pending=1
-                  else
-                    cache_dir="${extra_arg#*=}"
-                    pending=""
-                  fi
-                  ;;
-                *)
-                  if [ -n "$pending" ]; then
-                    cache_dir="$extra_arg"
-                    pending=""
-                  fi
-                  ;;
-              esac
-            done
-          fi
-          out_dir="$(dirname "$OUTPUT")"
+          # dirname ends its answer with one newline; the "." guard keeps $( )
+          # from also dropping a newline that ends the folder name.
+          out_dir="$(dirname -- "$OUTPUT"; printf .)"
+          out_dir="${out_dir%.}"
+          out_dir="${out_dir%$'\n'}"
           if [ ! -d "$out_dir" ]; then
-            cache_abs="$(ruby -e 'print File.expand_path(ARGV[0])' "$cache_dir")"
-            out_abs="$(ruby -e 'print File.expand_path(ARGV[0])' "$out_dir")"
-            if [ "$out_abs" = "$cache_abs" ]; then
+            # #394: ask the installed CLI for its resolved cache_dir.
+            if cli_setting cache_dir; then
+              cache_dir="$CLI_VALUE"
+            else
+              cache_dir=".mutineer"
+              cache_dir="$(ruby -ryaml -e '
+                dir = File.expand_path(Dir.pwd)
+                home = File.expand_path("~")
+                file = nil
+                loop do
+                  candidate = File.join(dir, ".mutineer.yml")
+                  if File.file?(candidate)
+                    file = candidate
+                    break
+                  end
+                  break if dir == home
+                  parent = File.dirname(dir)
+                  break if parent == dir
+                  dir = parent
+                end
+                value = nil
+                if file
+                  raw = YAML.safe_load(File.read(file)) rescue nil
+                  value = raw["cache_dir"] if raw.is_a?(Hash)
+                end
+                value = ARGV[0] if [nil, true, false].include?(value) || value.to_s.strip.empty?
+                print value.to_s, "."
+              ' "$cache_dir")"
+              cache_dir="${cache_dir%.}"
+              if [ -n "$EXTRA_ARGS" ]; then
+                pending=""
+                for extra_arg in $EXTRA_ARGS; do
+                  key="${extra_arg%%=*}"
+                  case "$key" in
+                    # Every unique prefix of --cache-dir that the CLI accepts. --ca is
+                    # left out: it is ambiguous with --capture-timeout.
+                    --cache-dir | --cache-di | --cache-d | --cache- | --cache | --cach | --cac)
+                      if [ "$extra_arg" = "$key" ]; then
+                        pending=1
+                      else
+                        cache_dir="${extra_arg#*=}"
+                        pending=""
+                      fi
+                      ;;
+                    *)
+                      if [ -n "$pending" ]; then
+                        cache_dir="$extra_arg"
+                        pending=""
+                      fi
+                      ;;
+                  esac
+                done
+              fi
+            fi
+            # Compare in Ruby and answer with the exit code: a path read
+            # back through $( ) would lose a trailing newline.
+            if ruby -e 'exit(File.expand_path(ARGV[0]) == File.expand_path(ARGV[1]))' "$out_dir" "$cache_dir"; then
               if ! mkdir -p "$out_dir" 2>/dev/null; then
                 echo "::error::mutineer: cannot write output '$SAFE_OUT': could not create cache directory."
                 exit 2
@@ -314,51 +353,62 @@ runs:
         # against the failed report and the gate can pass. Stop first.
         # The CLI uses the last --baseline it sees, then .mutineer.yml.
         # extra-args is appended after the input, so its flag wins.
-        baseline_path="$BASELINE"
-        if [ -n "$EXTRA_ARGS" ]; then
-          pending=""
-          for extra_arg in $EXTRA_ARGS; do
-            key="${extra_arg%%=*}"
-            case "$key" in
-              --ba | --bas | --base | --basel | --baseli | --baselin | --baseline)
-                if [ "$extra_arg" = "$key" ]; then
-                  pending=1
-                else
-                  baseline_path="${extra_arg#*=}"
-                  pending=""
-                fi
-                ;;
-              *)
-                if [ -n "$pending" ]; then
-                  baseline_path="$extra_arg"
-                  pending=""
-                fi
-                ;;
-            esac
-          done
-        fi
-        if [ -n "$OUTPUT" ] && [ -z "$baseline_path" ]; then
-          baseline_path="$(ruby -ryaml -e '
-            dir = File.expand_path(Dir.pwd)
-            home = File.expand_path("~")
-            file = nil
-            loop do
-              candidate = File.join(dir, ".mutineer.yml")
-              if File.file?(candidate)
-                file = candidate
-                break
-              end
-              break if dir == home
-              parent = File.dirname(dir)
-              break if parent == dir
-              dir = parent
-            end
-            exit 0 if file.nil?
-            raw = YAML.safe_load(File.read(file)) rescue exit(0)
-            exit 0 unless raw.is_a?(Hash)
-            value = raw["baseline"]
-            print value.to_s unless [nil, true, false].include?(value) || value.to_s.empty?
-          ')"
+        if [ -n "$OUTPUT" ]; then
+          # #394: ask the installed CLI. The baseline input goes first, so a
+          # --baseline in extra-args wins, as in the run below.
+          baseline_args=()
+          [ -n "$BASELINE" ] && baseline_args=(--baseline "$BASELINE")
+          if cli_setting baseline "${baseline_args[@]}"; then
+            baseline_path="$CLI_VALUE"
+          else
+            baseline_path="$BASELINE"
+            if [ -n "$EXTRA_ARGS" ]; then
+              pending=""
+              for extra_arg in $EXTRA_ARGS; do
+                key="${extra_arg%%=*}"
+                case "$key" in
+                  --ba | --bas | --base | --basel | --baseli | --baselin | --baseline)
+                    if [ "$extra_arg" = "$key" ]; then
+                      pending=1
+                    else
+                      baseline_path="${extra_arg#*=}"
+                      pending=""
+                    fi
+                    ;;
+                  *)
+                    if [ -n "$pending" ]; then
+                      baseline_path="$extra_arg"
+                      pending=""
+                    fi
+                    ;;
+                esac
+              done
+            fi
+            if [ -z "$baseline_path" ]; then
+              baseline_path="$(ruby -ryaml -e '
+                dir = File.expand_path(Dir.pwd)
+                home = File.expand_path("~")
+                file = nil
+                loop do
+                  candidate = File.join(dir, ".mutineer.yml")
+                  if File.file?(candidate)
+                    file = candidate
+                    break
+                  end
+                  break if dir == home
+                  parent = File.dirname(dir)
+                  break if parent == dir
+                  dir = parent
+                end
+                exit 0 if file.nil?
+                raw = YAML.safe_load(File.read(file)) rescue exit(0)
+                exit 0 unless raw.is_a?(Hash)
+                value = raw["baseline"]
+                print value.to_s, "." unless [nil, true, false].include?(value) || value.to_s.empty?
+              ')"
+              baseline_path="${baseline_path%.}"
+            fi
+          fi
         fi
         if [ -n "$OUTPUT" ] && [ -n "$baseline_path" ]; then
           same_path="$(ruby -e '
@@ -410,12 +460,6 @@ runs:
               exit 2 ;;
           esac
         done
-
-        if [ "$USE_BUNDLER" = "true" ]; then
-          runner=(bundle exec mutineer)
-        else
-          runner=(mutineer)
-        fi
 
         # The action's since plumbing (--no-since; scoped-vs-baseline
         # semantics) needs mutineer >= 1.0.0. With use-bundler the caller's

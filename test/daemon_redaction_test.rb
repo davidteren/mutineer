@@ -120,6 +120,8 @@ class DaemonRedactionTest < Minitest::Test
       result = daemon.send(:run_mutant, "id" => 1, "worker" => 0, "timeout" => 10)
 
       assert_equal "error", result["verdict"]
+      # #388: the reply names the cause, redacted.
+      assert_equal "RuntimeError: routing failed for postgres://u:[REDACTED]@ho st/db", result["details"]
       log = File.read(errio.path)
       assert_includes log, "[REDACTED]"
       refute_includes log, "s3cret"

@@ -3,6 +3,8 @@
 # Every lens treats each note below as a repo rule; the convention lens reports a
 # breach as a finding. The notes come from the 2026-10 shift-left audit of all
 # merged PRs (postmortem of issues #252/#253/#254 and issues #279-#293).
+# The last three notes come from the review rounds of PRs #393 and #395 and
+# from issues #394 and #400 (#403).
 version: 1
 
 conventions:
@@ -30,3 +32,20 @@ conventions:
       "passes", or an exit code.'
     - 'Repro becomes fixture: An externally reported bug lands its minimal
       repro as a fixture with expected verdicts in the same PR as the fix.'
+    - 'Test the rule, not the example: A test for an edit mapping or a
+      match rule (offsets, error sets, paths) checks the rule across many
+      real inputs, not one chosen case. test/parse_error_metamorphic_test.rb
+      checks the mutants of every operator with and without existing parse
+      errors (#393).'
+    - 'Shell passes values, never parses them: New or changed Bash in
+      action.yml passes values to the CLI and checks exit codes. It never
+      rereads paths as text and never copies a CLI rule (#395). Older Bash
+      there still resolves the cache folder and baseline itself (issue #394)
+      and splits the output path with dirname and basename (issue #401
+      tests those path inputs). Reading fields from the JSON report with jq is allowed,
+      because the report is CLI output, not a copied rule.'
+    - 'Pin the dependency you test: A CI job that tests a dependency
+      version pins it in its own gemfile, at least to the major version
+      it tests (for example `~> 2.0`). CI resolves gems again on each run,
+      so an unpinned gemfile can test a different version and give false
+      coverage (#400).'
