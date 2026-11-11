@@ -4,12 +4,17 @@ require_relative "project_path"
 
 module Mutineer
   # Source -> test pairing by path convention (#11). Pure stdlib path logic:
-  # no Rails, no class loading, no process. Four jobs:
+  # no Rails, no class loading, no process. Six jobs:
   #   * expand_sources — a directory argument becomes its sorted **/*.rb files;
   #                     a file inside the root becomes its root-relative path.
   #   * expand_test: one --test value (#380). A directory becomes the test
   #                     files under it. A glob becomes the files it matches.
   #                     An existing file stays as typed.
+  #   * resolve_test_map — expand each `tests:` map entry's source and test
+  #                     patterns (#382), clean and dedupe the file lists, and
+  #                     record every pattern that matched no file.
+  #   * mapped_tests_for — the mapped tests for one source from a resolved
+  #                     map, concatenated in entry order (#382).
   #   * infer_tests    — a source's test files by convention (app/ and lib/
   #                     sources map to test/.../_test.rb, test/.../<name>_*_test.rb,
   #                     test/.../test_*.rb or spec/.../_spec.rb), preserving
@@ -93,6 +98,52 @@ module Mutineer
       end
     end
 
+    # Expand every entry of a checked `test_map` into cleaned file lists.
+    # Source patterns use Dir.glob then {expand_sources}, so a directory
+    # match becomes its `.rb` files and `./lib/a.rb` / `lib//a.rb` clean to
+    # the same path. Test patterns go through {expand_test}; a missing plain
+    # path is dropped (no match). Overlapping patterns keep each file once,
+    # sorted. Patterns with no file are listed under `:unmatched` with a
+    # 1-based entry number and the key (`"sources"` or `"tests"`). Does not
+    # print or exit; the CLI reports unmatched patterns (#382).
+    #
+    # @param test_map [Array<Hash{Symbol => Array<String>}>] checked map entries
+    #   with `:sources` and `:tests` pattern lists.
+    # @param project_root [String] repository root for relative expansion.
+    # @return [Hash{Symbol => Array}] `:entries` is
+    #   `[{sources: [...], tests: [...]}, ...]`; `:unmatched` is
+    #   `[{entry: Integer, key: String, pattern: String}, ...]`.
+    def resolve_test_map(test_map, project_root:)
+      root = File.expand_path(project_root)
+      roots = [root, ProjectPath.root_real(root)].uniq
+      unmatched = []
+      entries = Array(test_map).each_with_index.map do |entry, index|
+        number = index + 1
+        sources = expand_map_patterns(Array(entry[:sources]), number, "sources", unmatched) do |pattern|
+          expand_map_source_pattern(pattern, root)
+        end
+        tests = expand_map_patterns(Array(entry[:tests]), number, "tests", unmatched) do |pattern|
+          expand_map_test_pattern(pattern, root, roots)
+        end
+        { sources: sources, tests: tests }
+      end
+      { entries: entries, unmatched: unmatched }
+    end
+
+    # Mapped test files for one source from a resolved map. Each entry whose
+    # expanded sources include `source` contributes its tests, in entry order.
+    # An unmatched source returns `[]`. Does not dedupe across entries; the
+    # CLI unions the run's test list (#382).
+    #
+    # @param source [String] root-relative source path, as in the resolved map.
+    # @param resolved [Hash{Symbol => Array}] result of {resolve_test_map}.
+    # @return [Array<String>] mapped test paths in entry order.
+    def mapped_tests_for(source, resolved)
+      Array(resolved[:entries]).each_with_object([]) do |entry, out|
+        out.concat(entry[:tests]) if entry[:sources].include?(source)
+      end
+    end
+
     # Characters Dir.glob reads as a pattern. A real directory name may
     # contain them. They are escaped so the name stays a literal prefix.
     GLOB_META = /([*?\[\]{}\\])/
@@ -164,6 +215,56 @@ module Mutineer
       return unless File.file?(full)
 
       existing_relative(full, roots) || full
+    end
+
+    # Expand each pattern for one map key. An empty expansion records the
+    # pattern under `unmatched`. Results are deduped and sorted.
+    #
+    # @api private
+    # @param patterns [Array<String>] source or test patterns from one entry.
+    # @param number [Integer] 1-based entry index.
+    # @param key [String] `"sources"` or `"tests"`.
+    # @param unmatched [Array<Hash>] accumulator for patterns with no file.
+    # @yieldparam pattern [String] one pattern to expand.
+    # @yieldreturn [Array<String>] matching file paths.
+    # @return [Array<String>] cleaned, deduped, sorted paths.
+    def expand_map_patterns(patterns, number, key, unmatched)
+      patterns.flat_map do |pattern|
+        files = yield(pattern)
+        unmatched << { entry: number, key: key, pattern: pattern } if files.empty?
+        files
+      end.uniq.sort
+    end
+
+    # One map source pattern: Dir.glob then {expand_sources}, so a matched
+    # directory becomes its `.rb` files and path spellings clean the same way.
+    #
+    # @api private
+    # @param pattern [String] relative source pattern.
+    # @param root [String] expanded project root.
+    # @return [Array<String>] matching source paths, sorted.
+    def expand_map_source_pattern(pattern, root)
+      listed = Dir.glob(pattern, base: root)
+      return [] if listed.empty?
+
+      expand_sources(listed, project_root: root).sort
+    end
+
+    # One map test pattern through {expand_test}. A missing plain path is not
+    # a match. Existing files are cleaned to a root-relative path.
+    #
+    # @api private
+    # @param pattern [String] relative test pattern.
+    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
+    # @return [Array<String>] matching test paths, sorted.
+    def expand_map_test_pattern(pattern, root, roots)
+      expand_test(pattern, project_root: root).filter_map do |path|
+        abs = File.expand_path(path, root)
+        next unless File.file?(abs)
+
+        existing_relative(abs, roots) || abs
+      end.uniq.sort
     end
 
     # An existing file's root-relative path, or nil outside the root. Tries the
