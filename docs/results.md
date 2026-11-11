@@ -73,6 +73,8 @@ ignore:
 
 [Equivalent skips](https://davidteren.github.io/mutineer/equivalent-skips.html) lists built-in skips. You cannot disable them.
 
+For a `present?` call changed to its receiver, see [Triage a `present?` survivor](https://davidteren.github.io/mutineer/equivalent-skips.html#triage-a-present-survivor).
+
 ## Mutant ids
 
 A mutant id contains 12 hex characters. Its hash uses:
