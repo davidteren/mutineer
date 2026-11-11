@@ -879,13 +879,14 @@ module Mutineer
 
     # Keeps the first failure block of a clean-failure report within
     # {CLEAN_FAILURE_DETAIL_LIMIT} characters. RSpec progress dots can fill
-    # the head of the sink; prefer the `Failures:` / `Failure:` section (#360).
+    # the head of the sink; prefer the first `Failures:` / `Failure:` /
+    # `Error:` section so a Minitest Error before a Failure is kept (#360).
     #
     # @api private
     # @param text [String] redacted reporter output.
     # @return [String]
     def truncate_clean_detail(text)
-      start = [text.index("Failures:"), text.index("Failure:")].compact.min || 0
+      start = [text.index("Failures:"), text.index("Failure:"), text.index("Error:")].compact.min || 0
       report = start.zero? ? text : text[start..]
       return report if report.length <= CLEAN_FAILURE_DETAIL_LIMIT
 

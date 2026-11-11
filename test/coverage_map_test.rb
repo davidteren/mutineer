@@ -144,6 +144,18 @@ class CoverageMapTest < Minitest::Test
     refute_includes out, dots[0, 20]
   end
 
+  # An earlier Minitest Error: must win over a later Failure: (#360).
+  def test_truncate_clean_detail_keeps_an_error_before_a_failure
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    noise = "x" * (limit + 20)
+    text = "#{noise}\n\n  1) Error:\nDbTest#test_connect:\nRuntimeError: boom\n\n  2) Failure:\nCalcTest#test_add:\nExpected: 1\n  Actual: 2\n"
+    out = map.send(:truncate_clean_detail, text)
+    assert_operator out, :start_with?, "Error:"
+    assert_includes out, "DbTest#test_connect"
+    assert_includes out, "RuntimeError: boom"
+  end
+
   # An at_exit that fails after the child wrote passed:true must still fail the
   # clean check: warm-cache scoring must not proceed on a red exit (#360).
   def test_subprocess_clean_pass_rejects_nonzero_exit_after_passed_json
