@@ -218,6 +218,23 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_equal aggregate.total, aggregate.survived_count, "every mutant must run and survive"
   end
 
+  # #414: eager load, as production does, loads the subclasses before a
+  # mutant reloads the parent. Rails then appends the parent's callback to a
+  # subclass that skipped it. The weak `heavy?` mutants must still survive.
+  def test_a_parent_reload_does_not_restore_a_skipped_subclass_callback
+    ENV["MUTINEER_EAGER_LOAD"] = "1"
+    aggregate = nil
+    _out, err = capture_subprocess_io do
+      aggregate, = Mutineer::Runner.execute(config_for(1, model: "postage"))
+    end
+
+    assert_equal 0, aggregate.errored_count, err
+    assert_operator aggregate.killed_count, :>, 0, "require_weight must still be killed"
+    assert_operator aggregate.survived_count, :>, 0, "heavy? must survive; a restored callback kills it"
+  ensure
+    ENV.delete("MUTINEER_EAGER_LOAD")
+  end
+
   # #385: with Rails' pending-migration check on (a new app's default),
   # rails/test_help queries every database when the tests load, shared ones
   # too. Mutant forks turn the check off, so the shared database stays unused.

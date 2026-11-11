@@ -103,6 +103,30 @@ for strategy in reload redefine; do
 done
 echo "ok: parcel mutants survive under reload and redefine"
 
+echo "== a parent reload does not restore a skipped callback (#414) =="
+# Eager load reaches the subclasses before the parent file reloads, as a
+# production boot does. heavy? is weak, so it survives. require_weight is
+# killed. A restored skip would kill every mutant, or the modes would disagree.
+POSTAGE_RELOAD="$(mktemp)"
+POSTAGE_REDEFINE="$(mktemp)"
+POSTAGE_DAEMON="$(mktemp)"
+expect_exit 0 "postage reload" -- \
+  env MUTINEER_EAGER_LOAD=1 bundle exec mutineer run app/models/postage.rb \
+  --test test/models/postage_test.rb --rails --no-daemon --strategy reload \
+  --format json --output "$POSTAGE_RELOAD"
+expect_exit 0 "postage redefine" -- \
+  env MUTINEER_EAGER_LOAD=1 bundle exec mutineer run app/models/postage.rb \
+  --test test/models/postage_test.rb --rails --no-daemon --strategy redefine \
+  --format json --output "$POSTAGE_REDEFINE"
+expect_exit 0 "postage daemon" -- \
+  env MUTINEER_EAGER_LOAD=1 bundle exec mutineer run app/models/postage.rb \
+  --test test/models/postage_test.rb --rails --daemon \
+  --format json --output "$POSTAGE_DAEMON"
+ruby -rjson -e 'rows = ARGV.map { |p| JSON.parse(File.read(p))["summary"].values_at("killed", "survived", "errored") }
+  abort "FAIL: postage #{rows.inspect}" unless rows.uniq.size == 1 && rows[0][0] > 0 && rows[0][1] > 0 && rows[0][2] == 0
+  puts "ok: postage reload, redefine and daemon agree (#{rows[0].join(" ")})"' \
+  "$POSTAGE_RELOAD" "$POSTAGE_REDEFINE" "$POSTAGE_DAEMON"
+
 echo "== Rails parallelize creates no worker database =="
 rails_worker_dbs
 if (( ${#found[@]} )); then
