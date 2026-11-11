@@ -63,7 +63,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([killed_mutant, survivor])
-    assert_equal "1.10", doc["schema_version"] # 1.10 adds killed[]; 1.9 added summary.declined and declined_by_operator
+    assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 1.10 = killed[] and no_verdict operator/token; 1.9 = declined
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
@@ -144,7 +144,34 @@ class JsonReporterTest < Minitest::Test
 
     assert_nil entry["file"]
     assert_nil entry["line"]
+    assert_nil entry["operator"]
+    assert_nil entry["token"]
     assert_equal "boot failed", entry["details"]
+  end
+
+  # #388: an errored mutant is named like a no_coverage one, and its cause is
+  # redacted whatever produced it.
+  def test_no_verdict_entries_name_the_mutant_and_hide_the_password
+    url = "postgres://u:s3cret@ho st/db"
+    saved = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = url
+    error = Mutineer::Result.error("RuntimeError: no connection: #{url}")
+                            .with(subject: subject, mutation: mutation_at(">=", ">", :comparison), id: "abc")
+    timeout = Mutineer::Result.timeout.with(subject: subject, mutation: mutation_at("100", "0", :literal_mutation))
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([error, timeout]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json")
+    entries = JSON.parse(out.string)["no_verdict"]
+    errored = entries.find { |e| e["status"] == "error" }
+
+    assert_equal "comparison", errored["operator"]
+    assert_equal ">=", errored["token"]
+    assert_equal "RuntimeError: no connection: postgres://u:[REDACTED]@ho st/db", errored["details"]
+    refute_includes out.string, "s3cret"
+    assert_equal "literal_mutation", entries.find { |e| e["status"] == "timeout" }["operator"]
+    assert_nil entries.find { |e| e["status"] == "timeout" }["details"]
+  ensure
+    ENV["DATABASE_URL"] = saved
   end
 
   # The gate counts uncapturable, and the docs send the user to no_verdict[] to see

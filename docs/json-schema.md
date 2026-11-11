@@ -7,7 +7,8 @@ inputs and results, JSON output is byte-identical. Results can still vary if
 the tests or environment change. `survivors[]` sorts by
 `(file, line, operator)`; `killed[]`, `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
 add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`;
-`no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`.
+`no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`. One exception:
+`details` of an errored mutant can quote run-specific text (see `no_verdict[]`).
 
 ## Versioning contract
 
@@ -63,7 +64,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). Counted in the unrun share: when `unplaceable + skipped_invalid` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid`, stderr warns on every format. The warning does not change the exit code (schema `1.9`, #291). |
 | `declined` | int | Candidates the operators found and did not mutate, so they are not in `total`: a heredoc the edit would split, or an equivalent skip listed on the [equivalent-skips page](equivalent-skips.md). Counted per operator, so a candidate two operators decline counts twice. Counted before `# mutineer:disable-line` and `ignore:` apply. `--only` narrows it; `--since` does not. Additive key (schema `1.9`, #291). |
 | `declined_by_operator` | object | The same count per operator name, operator name => int, only operators above zero, keys sorted. `{}` when none. Additive key (schema `1.9`, #291). |
-| `errored` | int | Mutants whose run crashed, or whose first failed Minitest test had a database connection or lock error (excluded). |
+| `errored` | int | Mutants whose run crashed, or whose first failed Minitest test had a database connection or lock error (excluded). Each one is in `no_verdict[]` with `status` `"error"`. |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). Under `--since`, only those on changed lines. |
 | `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 or #289 no-coverage mutant did run its statement's tests). |
@@ -159,11 +160,30 @@ The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` 
 
 ### `no_verdict[]` (array of object)
 
-Every mutant that was attempted and produced no verdict: `{ subject, file, line, id, status, details }`.
+Every mutant that was attempted and produced no verdict:
+`{ subject, file, line, operator, token, id, status, details }`.
 `status` is `"error"`, `"timeout"` or `"uncapturable"`, and its length equals `summary.no_verdict`.
+Filter on `status` `"error"` for the errored mutants: their count equals `summary.errored`.
+`operator` and `token` name the change, as in `no_coverage[]` (additive keys, schema `1.10`, #388).
 
-`details` carries the cause where there is one. For `"error"` that is the failure (a daemon crash, say);
-for `"timeout"` and `"uncapturable"` it is `null`, because the status is the whole story.
+`details` carries the cause where there is one. For `"error"` that is the failure. For
+`"timeout"` and `"uncapturable"` it is `null`, because the status is the whole story.
+
+When the mutant's child raised (under `reload`, `redefine` or the daemon), `details` is one line:
+`Class: first non-blank line of the message`, or the class alone when the message is blank, at
+most 500 characters (a longer line is cut and ends in `...`). Example:
+`"ArgumentError: enum declared twice"` (schema `1.10`, #388). Other errors keep their fixed text,
+such as `child exited with status 2`, `daemon verdict: error` or `worker crashed: Class: message`.
+A daemon that died or did not reply in time gives `daemon crashed` or `daemon stopped answering`
+(schema `1.10`, #388). Issue #417 tracks a cause for the rest: a database error inside a test, RSpec
+errors outside examples, the `--matrix` early end, and `--test-command`.
+
+`details` is redacted, but only in part. Redaction replaces the password of `DATABASE_URL`, and the
+password in any `scheme://user:password@host` URL, with `[REDACTED]`. A password that appears on its
+own, from another setting, stays visible (#341 tracks redaction gaps). An exception message can hold
+other secrets too, so treat the report like a log. A message
+can also hold an object address or a temporary file name, so `details` of an errored mutant can differ
+between two runs with the same verdicts.
 
 A failure before the mutant could be forked has no subject or mutation, so `subject`, `file`, `line` and
 `id` are `null` on that entry. It still appears, because the counts must reconcile — but that means `id`

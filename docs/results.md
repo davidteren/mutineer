@@ -10,7 +10,7 @@ Read report rows, fix survivors, suppress equivalent mutants, and check which te
 | Survived | Every test passed. Inspect the change. | Yes |
 | No coverage | No test covers the line, or its tests do not reach this mutation. Add or extend a test first. | No |
 | Timeout | Tests exceeded `--timeout`. | No |
-| Errored | Tests crashed, or the first failed Minitest test had a database connection or lock error. No verdict. | No |
+| Errored | Tests crashed, or the first failed Minitest test had a database connection or lock error. No verdict. When the mutant child raised, the JSON report names the error in `no_verdict[].details`. A database error inside a test has no named cause yet (#417). | No |
 | Ignored | You marked the mutant as equivalent. | No |
 | Skipped | The change produced invalid Ruby and did not run. | No |
 

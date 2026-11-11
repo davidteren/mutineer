@@ -7,6 +7,7 @@ require_relative "child_coverage"
 require_relative "orphan_guard"
 require_relative "concern_blocks"
 require_relative "redaction"
+require_relative "child_cause"
 
 module Mutineer
   # App-side daemon (persistent worker).
@@ -38,6 +39,7 @@ module Mutineer
   #              (a mutant of a def in a concern's hook block adds to the payload
   #               "hook_def":{"line":12,"name":"total","singleton":false}, #297)
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
+  #              (an "error" whose child raised adds "details":"Class: message", #388)
   #   quit in  : {"cmd":"quit"}
   #
   # Worker isolation: when the app is Rails, each fork is routed to its own
@@ -345,7 +347,11 @@ module Mutineer
         # Seed the slot's DB until the first killed/survived fork for this worker slot.
         first_use = @worker_db && !@slot_ready[worker]
         daemon = Process.pid
+        cause_rd, cause_wr = IO.pipe
+        cause_wr.sync = true
         pid = fork do
+          child = Process.pid
+          cause_rd.close
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
           # and silence the child's stdout so test output stays out of the diagnostics.
           Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
@@ -370,10 +376,12 @@ module Mutineer
               result
             rescue Exception => e # rubocop:disable Lint/RescueException
               @errio.puts("[daemon-child] #{describe_error(e)}")
+              ChildCause.write(cause_wr, e, child)
               2
             end
           exit!(code)
         end
+        cause_wr.close
         verdict = wait_verdict(pid, timeout)
         # Mark ready only when the child finished cleanly after seeding
         # (killed/survived). Timeout can interrupt mid-copy; error can be a
@@ -386,7 +394,13 @@ module Mutineer
         # A SIGKILLed timeout child skipped its Tempfile unlink. Sweep the orphan
         # so it cannot outlive the run.
         sweep_temps if verdict == "timeout"
-        { "id" => req["id"], "verdict" => verdict }
+        reply = { "id" => req["id"], "verdict" => verdict }
+        cause = verdict == "error" && ChildCause.read(cause_rd)
+        reply["details"] = cause if cause
+        reply
+      ensure
+        cause_rd&.close
+        cause_wr.close if cause_wr && !cause_wr.closed?
       end
 
       # Hide kept mutant files from Zeitwerk before the app builds its loaders.

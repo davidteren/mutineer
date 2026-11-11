@@ -254,7 +254,7 @@ class BaselineTest < Minitest::Test
     results = [killed, survivor("ccc")]
     doc = JSON.parse(render(results, base.diff(agg(*results)), format: "json"))
 
-    assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 1.10 = killed[]; 1.9 = declined
+    assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 1.10 = killed[] and no_verdict operator/token; 1.9 = declined
     assert doc["baseline"]["regressed"]
     assert_equal 1, doc["baseline"]["new_survivors"].size
     assert_equal "ccc", doc["baseline"]["new_survivors"].first["id"]

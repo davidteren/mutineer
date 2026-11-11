@@ -4,6 +4,7 @@ require "json"
 require "stringio"
 require "cgi"
 require_relative "mutation"
+require_relative "redaction"
 
 module Mutineer
   # Renders an AggregateResult: the summary block, mutation score, and per-file
@@ -831,19 +832,26 @@ module Mutineer
     # An entry under the JSON `no_verdict:` key: an attempted mutant with no verdict.
     # A pre-fork failure has no subject or mutation attached, so those degrade to
     # nulls rather than dropping the entry — the count must still reconcile with
-    # `summary.no_verdict`.
+    # `summary.no_verdict`. `details` is redacted here too, whatever its source
+    # (#388).
     #
     # @api private
     # @param result [Mutineer::Result] an errored or timed-out result.
     # @return [Hash] no-verdict JSON object.
     def no_verdict_json(result)
+      file = result.subject&.file
+      # As in result_line: diff_for needs the source, so a mutation needs a file.
+      m = result.mutation if file
+      line, _orig, _mut, token = diff_for(m, source_for(file)) if m
       {
         subject: result.subject&.qualified_name,
-        file: result.subject&.file,
-        line: result_line(result),
+        file: file,
+        line: line,
+        operator: m&.operator&.to_s,
+        token: token,
         id: result.id,
         status: result.status.to_s,
-        details: result.details
+        details: result.details && Redaction.text(result.details)
       }
     end
 
