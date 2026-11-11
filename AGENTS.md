@@ -310,10 +310,13 @@ every other reviewer, human or bot, applies the same file by hand. Score terms
 are defined in "Score-model discipline" below. Issue #282 tracks the remaining
 ordering gaps: RSpec random order and Minitest class order across selected files.
 
-The eight rules, by title: **Track every limitation** - **Cover the
+The eleven rules, by title: **Track every limitation** - **Cover the
 siblings** - **Gate on unrounded values** - **Count what you exclude** -
 **Estimate exclusion frequency** - **One seed contract** - **Assert the
-mechanism** - **Repro becomes fixture**.
+mechanism** - **Repro becomes fixture** - **Test the rule, not the
+example** - **Shell passes values, never parses them** - **Pin the
+dependency you test**. The last three come from the review rounds of
+pull requests #393 and #395 (issue #403).
 
 ## Score-model discipline (don't regress this)
 
