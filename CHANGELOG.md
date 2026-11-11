@@ -26,7 +26,28 @@ All notable changes to this project are documented here. The format is based on
   A disable-line warning or a git-diff warning can name them.
   The Action summary line waits on pull request #395.
   A dry run with `--rails` or `--boot` and no `--test` still exits 2 (#410).
-- **Mutineer now reports the methods that got no mutants (#386).** A
+- **A concern pairs with the test that mirrors its namespace (#379).**
+  `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_test.rb`.
+  That path matches `Storage::Totaled`.
+  The `concerns/` path still wins when it has a test.
+  Existing pairs stay the same.
+  Before this, the concern was skipped and added no score.
+  The skip line was `no test found by convention`.
+  A concern that was skipped can now run.
+  That can change a score or a gate.
+  `--baseline` treats new survivors as new.
+  Refresh the baseline.
+  See `docs/ci.md`, "Refresh the baseline".
+  A failed namespace load can move a `--threshold` run from exit 0 to exit 1.
+  Those mutants move from `no_coverage` to `uncapturable`.
+  A `nil` score then fails the gate.
+  The broken share also rises.
+  With `use-bundler: false`, an Action with an empty `version` installs the latest gem.
+  Pin `version`, or refresh the baseline, before the next run.
+  With `use-bundler: true`, the Gemfile picks the version.
+  A split name pairs only at the `concerns/` path.
+  A failed namespace test does not mark a concern that has a test at its `concerns/` path.
+  Namespace split names are issue #408 (pair split test files at a concern's namespace path).- **Mutineer now reports the methods that got no mutants (#386).** A
   method whose body is one `if` with a `rescue` gets no mutant from the
   default operators, and the run did not say so. The dry run summary now
   ends with `no mutants in N of M methods`, and `--dry-run --verbose`
@@ -43,7 +64,6 @@ All notable changes to this project are documented here. The format is based on
   the HTML report and the Action step summary do not show the count
   (#419), and `--since` does not narrow it (#420). #386 stays open for
   the default-operator decision.
-
 - **`mutineer config KEY` prints a resolved setting (#394).** It prints the
   `cache_dir` or `baseline` that `mutineer run` would use with the same
   options and `.mutineer.yml`. It writes nothing. An unknown key exits 2. The

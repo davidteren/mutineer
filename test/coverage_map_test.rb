@@ -962,6 +962,23 @@ class CoverageMapTest < Minitest::Test
     assert_equal expected, map.order_tests("lib/shop/cart.rb", tests)
   end
 
+  # A concern's namespace test runs before a cheaper unrelated file.
+  def test_order_tests_puts_a_concern_namespace_test_first
+    dir = Dir.mktmpdir("mutineer-order")
+    source = "app/models/concerns/storage/totaled.rb"
+    paired = "test/models/storage/totaled_test.rb"
+    extra = "test/other_test.rb"
+    [source, paired, extra].each do |rel|
+      path = File.join(dir, rel)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, "")
+    end
+    timings = { paired => 9.0, extra => 0.1 }
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: dir, timings: timings)
+
+    assert_equal [paired, extra], map.order_tests(File.join(dir, source), [extra, paired])
+  end
+
   def test_capture_records_a_timing_per_test_file_and_the_cache_keeps_them
     dir = Dir.mktmpdir("mutineer-cache")
     first = build_catalog(dir)
@@ -1632,6 +1649,70 @@ class CoverageMapTest < Minitest::Test
     refute map.uncapturable_source?(other)
   end
 
+  # A failed exact namespace test marks the concern. A spec does the same.
+  def test_failing_namespace_test_marks_the_concern_uncapturable
+    [
+      "test/models/storage/totaled_test.rb",
+      "spec/models/storage/totaled_spec.rb"
+    ].each do |test_rel|
+      Dir.mktmpdir do |dir|
+        map, src = concern_namespace_capture(dir, test_rel)
+        assert map.uncapturable_source?(src), test_rel
+        assert map.method_uncapturable?(src, 3..5), test_rel
+      end
+    end
+  end
+
+  # The same name outside both mirrors does not mark the concern.
+  def test_failing_same_name_outside_both_mirrors_does_not_taint_the_concern
+    Dir.mktmpdir do |dir|
+      map, src = concern_namespace_capture(dir, "test/models/other/totaled_test.rb")
+      refute map.uncapturable_source?(src)
+      refute map.method_uncapturable?(src, 3..5)
+    end
+  end
+
+  # A split name at the namespace path does not mark the concern.
+  def test_failing_split_name_at_the_namespace_path_does_not_taint_the_concern
+    Dir.mktmpdir do |dir|
+      map, src = concern_namespace_capture(dir, "test/models/storage/totaled_bytes_test.rb")
+      refute map.uncapturable_source?(src)
+      refute map.method_uncapturable?(src, 3..5)
+    end
+  end
+
+  # A test at the concerns path wins, so a failed namespace test does not
+  # mark the concern. Pairing would not run the namespace test for it.
+  def test_failing_namespace_test_does_not_taint_a_concern_with_its_own_test
+    %w[test/models/concerns/storage/totaled_test.rb
+       test/models/concerns/storage/totaled_sum_test.rb].each do |own|
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, File.dirname(own)))
+        File.write(File.join(dir, own), "# exists\n")
+        map, src = concern_namespace_capture(dir, "test/models/storage/totaled_test.rb")
+        refute map.uncapturable_source?(src), own
+        refute map.method_uncapturable?(src, 3..5), own
+      end
+    end
+  end
+
+  # Build a concern whose named test fails to load.
+  def concern_namespace_capture(dir, test_rel)
+    source = "app/models/concerns/storage/totaled.rb"
+    src = File.join(dir, source)
+    bad = File.join(dir, test_rel)
+    FileUtils.mkdir_p(File.dirname(src))
+    FileUtils.mkdir_p(File.dirname(bad))
+    File.write(src, "module Storage\n  module Totaled\n    def total(a, b)\n      a + b\n    end\n  end\nend\n")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    [map, src]
+  end
+
   # A failed test in another directory shares a basename prefix only. It must
   # not fail the gate for app/models/user.rb.
   def test_failing_split_test_outside_the_mirror_does_not_taint_the_source
@@ -1753,7 +1834,7 @@ class CoverageMapTest < Minitest::Test
       File.write(src, "class Bar; def n; 1; end; end\n")
       map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["test/foo/bar_extra_test.rb"],
                                             project_root: dir)
-      assert map.method_uncapturable?(src, 1..3)
+      assert map.method_uncapturable?(src, 3..5)
     end
   end
 

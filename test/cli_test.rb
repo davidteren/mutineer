@@ -1694,6 +1694,35 @@ class CliTest < Minitest::Test
     end
   end
 
+  # Copy the concern fixture. Its test lives at the namespace path.
+  def with_concern_namespace_project
+    Dir.mktmpdir("mutineer-concern") do |proj|
+      FileUtils.cp_r(File.join(FIXTURES, "concern_namespace", "."), proj)
+      yield proj
+    end
+  end
+
+  # A concern with only a namespace test is scored. The run does not skip it.
+  def test_concern_pairs_with_its_namespace_test_and_is_scored
+    with_concern_namespace_project do |proj|
+      out, err, status = mutineer("run", "app/models/concerns/storage/totaled.rb",
+                                  "--matrix", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "no test found by convention"
+      doc = JSON.parse(out)
+      assert_equal ["app/models/concerns/storage/totaled.rb"], doc["per_source"].map { |h| h["file"] }
+      assert_equal 1, doc.dig("summary", "total")
+      assert_equal 1, doc.dig("summary", "killed")
+      assert_equal 100.0, doc.dig("summary", "score")
+      assert_equal [{ "file" => "test/models/storage/totaled_test.rb",
+                      "name" => "TotaledTest#test_total",
+                      "id" => "TotaledTest#test_total",
+                      "kills" => 1 }], doc.dig("matrix", "tests")
+      row = doc.dig("matrix", "mutants").find { |item| item["status"] == "killed" }
+      assert_equal [0], row["killed_by"]
+    end
+  end
+
   # R3: when EVERY source lacks a test, it's a usage error (exit 2), not a crash.
   def test_all_sources_unpaired_exits_two
     Dir.mktmpdir("mutineer-notests") do |proj|
