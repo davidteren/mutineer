@@ -32,6 +32,15 @@ BUNDLE_GEMFILE=gemfiles/minitest6.gemfile bundle install
 BUNDLE_GEMFILE=gemfiles/minitest6.gemfile bundle exec rake test
 ```
 
+Ruby 3.4 and 4.0 ship Prism 1. For changes to parsing or parse errors, also
+run the suite on Prism 2. The variable makes a skipped Prism 2 test fail:
+
+```sh
+bundle install                                 # root bundle, for the child test commands
+BUNDLE_GEMFILE=gemfiles/prism2.gemfile bundle install
+MUTINEER_REQUIRE_PRISM_ERRORS=1 BUNDLE_GEMFILE=gemfiles/prism2.gemfile bundle exec rake test
+```
+
 - **`yard:strict` requires 100% documentation, including private methods AND
   constants.** Every new method and constant needs a YARD docstring / `#` comment
   or CI fails.
@@ -64,7 +73,7 @@ independent of Node and Playwright. CI runs these checks in `website browser tes
 
 ## CI gates that block merge
 
-`yard:strict` · `test` (×2 OS) · `test (minitest 6)` · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
+`yard:strict` · `test` (×2 OS) · `test (minitest 6)` · `test (ruby 3.4, prism 2)` · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
 
 ## PR review gate (before any merge)
 
