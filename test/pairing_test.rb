@@ -550,6 +550,15 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # An existing source path with glob metacharacters is literal (#380 rule).
+  def test_resolve_test_map_keeps_a_bracketed_source_path_literal
+    with_tree("app/models/a[1].rb", "test/a_test.rb") do |root|
+      got = resolve_map([{ sources: ["app/models/a[1].rb"], tests: ["test/a_test.rb"] }], root)
+      assert_equal ["app/models/a[1].rb"], got[:entries].first[:sources]
+      assert_empty got[:unmatched]
+    end
+  end
+
   def test_resolve_test_map_missing_plain_test_path_is_no_match
     with_tree("lib/a.rb") do |root|
       got = resolve_map(

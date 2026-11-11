@@ -350,7 +350,9 @@ class ConfigTest < Minitest::Test
       "tests:\n  - sources: \"\"\n    tests: a_test.rb\n",
       "tests:\n  - sources: []\n    tests: a_test.rb\n",
       "tests:\n  - sources: 42\n    tests: a_test.rb\n",
-      "tests:\n  - sources: /abs/a_test.rb\n    tests: a_test.rb\n"
+      "tests:\n  - sources: /abs/a_test.rb\n    tests: a_test.rb\n",
+      "tests:\n  - sources: ../outside.rb\n    tests: a_test.rb\n",
+      "tests:\n  - sources: a.rb\n    tests: ../outside_test.rb\n"
     ].each do |yaml|
       with_config(yaml) do |path|
         err = assert_raises(Mutineer::ConfigError, yaml) { Config.from_file(path) }

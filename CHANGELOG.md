@@ -13,7 +13,7 @@ All notable changes to this project are documented here. The format is based on
   When the run holds a matching source, those test files join the run's test list beside convention-paired tests.
   Coverage still picks the tests for each mutant.
   `--test` replaces pairing and the map.
-  A malformed map or a pattern that matches no file exits 2.
+  A malformed map exits 2; without `--test`, a pattern that matches no file exits 2 (including `--dry-run`).
 - **`--test` accepts a file, a directory, or a quoted glob (#380).**
   A directory selects `*_test.rb`, `*_spec.rb`, and `test_*.rb` files.
   It skips `test_helper.rb`.

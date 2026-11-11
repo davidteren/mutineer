@@ -782,7 +782,10 @@ module Mutineer
       resolved = Pairing.resolve_test_map(config.test_map, project_root: config.project_root)
       unless resolved[:unmatched].empty?
         miss = resolved[:unmatched].first
-        warn "mutineer: #{CONFIG_FILE}: tests entry #{miss[:entry]}: " \
+        # Prefer the loaded path: find_file can pick a home or parent config,
+        # and basename-only text hides which file failed the map check.
+        label = Config.find_file || CONFIG_FILE
+        warn "mutineer: #{label}: tests entry #{miss[:entry]}: " \
              "#{miss[:key]} pattern #{miss[:pattern].inspect} matched no file"
         exit 2
       end

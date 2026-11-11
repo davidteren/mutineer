@@ -130,7 +130,7 @@ Mutineer captures coverage for each test file in the run and checks it clean, al
 A run of one mapped source loads every test of its entries.
 `--test-command` runs every test in the run for every mutant.
 A mutant that many test files cover can pass the time limit for one mutant.
-The limit is 10 seconds in process and 60 seconds with `--daemon`.
+The in-process limit is 10 seconds by default; `--daemon` uses a separate 60-second default, and `--daemon` and `--test-command` ignore `--timeout`.
 Quote a pattern that starts with `*`.
 Quote a pattern with braces inside a `[...]` list.
 `--test` replaces pairing and the map.

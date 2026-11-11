@@ -492,6 +492,12 @@ module Mutineer
           raise ConfigError, "#{entry_origin} #{key} pattern must be relative, not absolute " \
                              "(got: #{pattern.inspect})"
         end
+        # Patterns resolve against the run directory. A `..` segment can leave
+        # that root, so reject it here the same way absolute paths are rejected.
+        if pattern.split(%r{[/\\]}).include?("..")
+          raise ConfigError, "#{entry_origin} #{key} pattern must stay under the run directory " \
+                             "(got: #{pattern.inspect})"
+        end
 
         pattern
       end

@@ -244,14 +244,22 @@ module Mutineer
     # @param root [String] expanded project root.
     # @return [Array<String>] matching source paths, sorted.
     def expand_map_source_pattern(pattern, root)
-      listed = Dir.glob(pattern, base: root)
+      # An existing file or directory is literal, even when its name holds a
+      # glob character (same rule as {classify_test_value} for --test).
+      abs = File.expand_path(pattern, root)
+      listed = if File.exist?(abs)
+                 [pattern]
+               else
+                 Dir.glob(pattern, base: root)
+               end
       return [] if listed.empty?
 
       expand_sources(listed, project_root: root).sort
     end
 
     # One map test pattern through {expand_test}. A missing plain path is not
-    # a match. Existing files are cleaned to a root-relative path.
+    # a match. Existing files are cleaned to a root-relative path. Matches
+    # outside the project root are dropped (#382 review).
     #
     # @api private
     # @param pattern [String] relative test pattern.
@@ -263,7 +271,7 @@ module Mutineer
         abs = File.expand_path(path, root)
         next unless File.file?(abs)
 
-        existing_relative(abs, roots) || abs
+        existing_relative(abs, roots)
       end.uniq.sort
     end
 
