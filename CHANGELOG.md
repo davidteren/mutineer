@@ -6,22 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Fixed
-
-- **A reload of a parent class no longer puts a skipped callback back on
-  its subclasses (#414).** With the subclasses already loaded, Rails
-  appended the parent's `before_save` again, including onto a subclass
-  that had skipped it. Saves then failed, and a weak test looked strong.
-  Reload, redefine, and the daemon now leave each subclass chain as it was.
-  A callback replaced on one chain stays on every other chain.
-- **A second SQLite daemon run stops instead of sharing worker files (#404).**
-  Two `--rails --daemon` runs in one checkout used the same worker database
-  files, and both could stop with a false "the unmutated suite is not green".
-  A run now holds a lock on `<base file>-mutineer.lock` beside the database
-  file, and a second run stops with `another Mutineer run is using <base>`,
-  as PostgreSQL and MySQL runs already do. Mutineer never deletes the lock
-  file. A `file:` database name still takes no lock (#412).
 ### Added
+
+- **`mutineer config KEY` prints a resolved setting (#394).** It prints the
+  `cache_dir` or `baseline` that `mutineer run` would use with the same
+  options and `.mutineer.yml`. It writes nothing. An unknown key exits 2. The
+  GitHub Action now asks the installed CLI for these two settings, so it no
+  longer copies the CLI's rules. With an older installed CLI that does not
+  have the command, the Action uses its own copy of the rules, as before.
 
 - **The JSON report names why a mutant errored (#388).** When the mutant's
   child raises, under `reload`, `redefine` or the daemon,
@@ -70,6 +62,23 @@ All notable changes to this project are documented here. The format is based on
   Quote the glob, pass the directory, or repeat `--test`.
 - **`--dry-run` exits 2 for a blank `--test` or a directory with no test file (#380).**
   Those values used to exit 0 on a dry run.
+
+### Fixed
+
+- **A reload of a parent class no longer puts a skipped callback back on
+  its subclasses (#414).** With the subclasses already loaded, Rails
+  appended the parent's `before_save` again, including onto a subclass
+  that had skipped it. Saves then failed, and a weak test looked strong.
+  Reload, redefine, and the daemon now leave each subclass chain as it was.
+  A callback replaced on one chain stays on every other chain.
+- **A second SQLite daemon run stops instead of sharing worker files (#404).**
+  Two `--rails --daemon` runs in one checkout used the same worker database
+  files, and both could stop with a false "the unmutated suite is not green".
+  A run now holds a lock on `<base file>-mutineer.lock` beside the database
+  file, and a second run stops with `another Mutineer run is using <base>`,
+  as PostgreSQL and MySQL runs already do. Mutineer never deletes the lock
+  file. A `file:` database name still takes no lock (#412).
+
 
 ## [1.8.2] - 2026-11-10
 
@@ -144,6 +153,8 @@ All notable changes to this project are documented here. The format is based on
   folder (#270), but the Action checks the path itself before it runs the
   CLI. The Action now creates the cache folder when it is the missing parent
   of `output`: `.mutineer` by default, the `cache_dir` from `.mutineer.yml`,
+  or a `--cache-dir` in `extra-args` (any short form the CLI accepts, such
+  as `--cache`). Any other missing folder still exits 2.
   or a `--cache-dir` in `extra-args` (or a prefix of it down to `--cac`, such as
   `--cache`). Any other missing folder still exits 2.
 - **Reload runs a Rails class body a second time without errors (#378,

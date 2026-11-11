@@ -199,6 +199,7 @@ mutineer run <source...> [--test <test>...] [options]
 mutineer init [--rails] [--force]
 mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)
 mutineer migrate <source...> [--dry-run] [--operators LIST]
+mutineer config cache_dir|baseline [run options]
 ```
 
 ### Options

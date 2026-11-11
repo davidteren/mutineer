@@ -48,6 +48,8 @@ module Mutineer
         init [--rails] [--force]                     Write .mutineer.yml and print
                                                      the first run command.
                                                      --force replaces an existing file.
+        config KEY [run options]                     Print the cache_dir or baseline
+                                                     that run would use. Writes nothing
 
       Run options:
         --test PATH          Test file, directory or quoted glob (repeat for more).
@@ -251,6 +253,8 @@ module Mutineer
         end
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
         migrate(config, file_path)
+      when "config"
+        print_setting(config, argv[1])
       else
         warn "mutineer: unknown command '#{argv.first}'"
         exit 2
@@ -267,6 +271,32 @@ module Mutineer
       end
       warn "mutineer: #{Redaction.text(details)}"
       exit 1
+    end
+
+    # Settings `mutineer config` prints. The GitHub Action asks for these
+    # (#394), so it does not copy the CLI's precedence and flag rules.
+    PRINTABLE_SETTINGS = %w[cache_dir baseline].freeze
+
+    # Prints the value `run` would use for one setting, resolved from the same
+    # flags and .mutineer.yml, and exits 0. An unset value prints nothing.
+    # Read-only: it creates no folder and writes no file. Other arguments, such
+    # as sources, are ignored, so a caller can pass a run's arguments as they are.
+    # An unknown or missing key is a usage error (exit 2).
+    #
+    # @api private
+    # @param config [Mutineer::Config] the resolved configuration.
+    # @param key [String, nil] the setting name.
+    # @return [void]
+    def self.print_setting(config, key)
+      unless PRINTABLE_SETTINGS.include?(key)
+        warn "mutineer: config needs one of #{PRINTABLE_SETTINGS.join(', ')}#{" (got '#{key}')" if key}"
+        exit 2
+      end
+      value = config[key.to_sym]
+      # Exactly one newline, even after a value that ends in one (puts would
+      # add none), so a caller can strip it and keep the value whole.
+      print value, "\n" unless value.nil?
+      exit 0
     end
 
     # Rewrites old-format ids in the loaded `.mutineer.yml` `ignore:` list.
