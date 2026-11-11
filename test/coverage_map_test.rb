@@ -120,6 +120,51 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # An at_exit that fails after the child wrote passed:true must still fail the
+  # clean check: warm-cache scoring must not proceed on a red exit (#360).
+  def test_subprocess_clean_pass_rejects_nonzero_exit_after_passed_json
+    Dir.mktmpdir("mutineer-at-exit") do |dir|
+      test = File.join(dir, "at_exit_fail_test.rb")
+      File.write(test, <<~RUBY)
+        require "minitest/test"
+        class AtExitFailTest < Minitest::Test
+          def test_ok
+            assert true
+          end
+        end
+        at_exit { exit 1 }
+      RUBY
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [test], project_root: dir)
+      ok = nil
+      capture_subprocess_io { ok, = map.send(:subprocess_clean_pass?, [test]) }
+      refute ok, "a nonzero exit after passed:true must fail the clean check"
+    end
+  end
+
+  def test_fork_clean_failure_report_hides_the_password
+    ensure_coverage_running
+    Dir.mktmpdir("mutineer-fork-redaction") do |dir|
+      test = File.join(dir, "db_fail_test.rb")
+      File.write(test, <<~RUBY)
+        require "minitest/test"
+        class DbFailTest < Minitest::Test
+          def test_connects
+            raise "database postgres://u:s3cret@host/db unavailable"
+          end
+        end
+      RUBY
+      map = Mutineer::CoverageMap.new(
+        source_paths: [CALC], test_paths: [test],
+        cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: dir
+      )
+      ok = report = nil
+      capture_subprocess_io { ok, report = map.send(:fork_clean_pass?, [test], nil) }
+      refute ok
+      assert_includes report, "database postgres://u:[REDACTED]@host/db unavailable"
+      refute_includes report, "s3cret"
+    end
+  end
+
   def test_uncovered_line_returns_empty
     map = build([ADD_ONLY_TEST]) # add-only suite never calls #modulo
     assert_empty map.tests_for(CALC, line_of("a % b"))

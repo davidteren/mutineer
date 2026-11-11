@@ -973,7 +973,9 @@ module Mutineer
       end
       return [status.success?, ""] unless data.is_a?(Hash)
 
-      [data["passed"] == true, data["failure_report"].to_s]
+      # Require the process exit too: an `at_exit` hook can fail after the
+      # child already wrote `passed: true` (#360 warm-cache clean check).
+      [status.success? && data["passed"] == true, data["failure_report"].to_s]
     end
 
     # Runs `script` in a fresh `ruby -` that reads the script from stdin. The
@@ -1137,7 +1139,7 @@ module Mutineer
     def run_clean_with_report(abs_tests)
       if @framework == "rspec"
         code = TestRunners.for(@framework).run(abs_tests)
-        [code.zero?, TestRunners::RSpec.last_output.to_s]
+        raw = TestRunners::RSpec.last_output.to_s
       else
         require "minitest"
         require "stringio"
@@ -1147,8 +1149,11 @@ module Mutineer
         end
         Minitest.extensions << "mutineer_clean_report" unless Minitest.extensions.include?("mutineer_clean_report")
         code = TestRunners.for(@framework).run(abs_tests)
-        [code.zero?, report.string]
+        raw = report.string
       end
+      # Forked children print this into SmokeCheckError; redact like the
+      # subprocess JSON path so DATABASE_URL passwords never reach stderr.
+      [code.zero?, code.zero? ? "" : Redaction.text(raw)]
     end
 
     # SIGKILLs capture child `pid` and its process group, then waits for
