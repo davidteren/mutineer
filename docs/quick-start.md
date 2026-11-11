@@ -24,58 +24,8 @@ mutineer run lib/discount.rb
 
 ## Rails app
 
-Add to your `Gemfile`:
-
-```ruby
-gem "mutineer", group: :test, require: false
-```
-
-Install:
-
-```sh
-bundle install
-```
-
-Create `.mutineer.yml`:
-
-```sh
-RAILS_ENV=test bundle exec mutineer init --rails
-```
-
-Generated config:
-
-```yaml
-# Mutineer config. Command-line flags override this file.
-# These operators are the default set.
-operators:
-  - arithmetic
-  - comparison
-  - boolean_connector
-  - boolean_literal
-  - statement_removal
-
-# since: origin/main
-# Leave this commented so the first run is a full scan.
-
-rails: true
-
-# daemon: true
-# Leave this commented until the support matrix says the daemon fits.
-# The matrix is on https://davidteren.github.io/mutineer/rails.html#daemon
-```
-
-List mutants without tests. With `--rails`, dry runs skip test pairing and require `--test`:
-
-```sh
-RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --dry-run \
-  --test test/models/order_test.rb
-```
-
-Run:
-
-```sh
-RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
-```
+Install Mutineer, create `.mutineer.yml` and run one model with
+[First run to steady state, steps 1 and 2](getting-started.md#1-install).
 
 ## Read the report
 
