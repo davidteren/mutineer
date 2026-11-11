@@ -685,6 +685,28 @@ class ReporterTest < Minitest::Test
     assert_match(/Declined:\s+2 .*not narrowed by --since/, out.string)
   end
 
+  # --- methods with no mutants (#386) ---
+
+  def test_human_summary_has_a_no_mutants_line
+    entries = [{ subject: "A#a", file: "a.rb", line: 1 }, { subject: "A#b", file: "a.rb", line: 2 }]
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new, subjects: 5, unmutated_subjects: entries)
+    assert_includes out.string, "No mutants:   2       (methods of 5 that the selected operators did not mutate; " \
+                                "--dry-run --verbose and the JSON report list them)\n"
+
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new, scoped: true, subjects: 5,
+                                               unmutated_subjects: entries)
+    assert_includes out.string, "list them; not narrowed by --since)\n"
+  end
+
+  def test_human_summary_leaves_out_the_no_mutants_row_when_counts_are_unknown
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new)
+    refute_includes out.string, "No mutants:"
+    assert_includes out.string, "Declined:"
+  end
+
   private
 
   def matrix_report(results)

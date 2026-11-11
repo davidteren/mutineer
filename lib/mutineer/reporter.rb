@@ -72,16 +72,25 @@ module Mutineer
     # old format (#126); only the JSON report records it (`summary.legacy_id_matches`).
     # `declined` (operator name => count, from {JobPlan.collect_jobs}) counts the
     # candidates the operators did not mutate; the JSON and human reports show it.
+    # `subjects` (methods discovered) and `unmutated_subjects` (one
+    # `{subject:, file:, line:}` hash per method the operators did not mutate,
+    # from {JobPlan.collect_jobs}, #386) feed the same two reports. Left out,
+    # they are unknown: JSON reports null and the human report has no row. The
+    # two are one unit: when either is left out, both are unknown.
     def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil,
-               baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 }, declined: {})
+               baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 }, declined: {},
+               subjects: nil, unmutated_subjects: nil)
+      subjects = unmutated_subjects = nil if subjects.nil? || unmutated_subjects.nil?
       rendered =
         if format == "json"
-          json_report(baseline, scoped: scoped, legacy_id_matches: legacy_id_matches, declined: declined)
+          json_report(baseline, scoped: scoped, legacy_id_matches: legacy_id_matches, declined: declined,
+                                subjects: subjects, unmutated_subjects: unmutated_subjects)
         elsif format == "html"
           html_report
         else
           sio = StringIO.new
-          human_report(sio, err, threshold, declined: declined, scoped: scoped)
+          human_report(sio, err, threshold, declined: declined, scoped: scoped,
+                                            subjects: subjects, unmutated: unmutated_subjects&.size)
           baseline_section(sio, baseline) if baseline
           sio.string
         end
@@ -168,8 +177,10 @@ module Mutineer
     # @param threshold [Float] score threshold.
     # @param declined [Hash{String => Integer}] operator name => declined count.
     # @param scoped [Boolean] the run was diff-scoped (`--since`).
+    # @param subjects [Integer, nil] methods discovered; nil when unknown.
+    # @param unmutated [Integer, nil] methods the selected operators did not mutate; nil when unknown.
     # @return [void]
-    def human_report(out, err, threshold, declined: {}, scoped: false)
+    def human_report(out, err, threshold, declined: {}, scoped: false, subjects: nil, unmutated: nil)
       # The CLI explains an empty run for every format (CLI.warn_empty_run).
       # A saved report still carries the unpaired counts.
       if @agg.total.zero?
@@ -180,7 +191,7 @@ module Mutineer
       out.puts "Mutineer — Mutation Results"
       out.puts "========================="
       out.puts
-      summary(out, declined: declined, scoped: scoped)
+      summary(out, declined: declined, scoped: scoped, subjects: subjects, unmutated: unmutated)
       out.puts
       score_line(out, err)
       per_source(out)
@@ -231,7 +242,14 @@ module Mutineer
     # @param declined [Hash{String => Integer}] operator name => count of
     #   candidates that operator did not mutate (additive `summary.declined`
     #   and `summary.declined_by_operator` keys).
-    def json_report(baseline = nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 }, declined: {})
+    # @param subjects [Integer, nil] methods discovered (additive `summary.subjects`);
+    #   nil (JSON null) when the caller did not supply it, never a made-up 0.
+    # @param unmutated_subjects [Array<Hash>, nil] `{subject:, file:, line:}` per method
+    #   the operators did not mutate, already sorted (additive
+    #   `summary.unmutated_subjects` count and top-level `unmutated_subjects[]`);
+    #   nil (JSON null for both) when not supplied.
+    def json_report(baseline = nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 }, declined: {},
+                    subjects: nil, unmutated_subjects: nil)
       killed = @agg.killed_count
       survived = @agg.survived_count
       # null (not 0.0) on an empty denominator, matching the nil-vs-0.0
@@ -272,7 +290,11 @@ module Mutineer
           # Additive (1.10, #381): sources pairing skipped, and the mutants in
           # them. A nil count is left out of the mutant sum.
           unpaired_sources: @unpaired.size,
-          unpaired_mutants: unpaired_mutant_count
+          unpaired_mutants: unpaired_mutant_count,
+          # Additive (1.10, #386): methods discovered, and how many of them the
+          # selected operators did not mutate. Not mutants, so not in `total`.
+          subjects: subjects,
+          unmutated_subjects: unmutated_subjects&.size
         },
         survivors: @agg.surviving_mutants.map { |r| survivor_json(r) }
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },
@@ -320,7 +342,10 @@ module Mutineer
                         .sort_by { |h| h[:file] },
         # Additive (1.10, #381): every source pairing skipped, sorted by file.
         # `mutants` is null when the count failed.
-        unpaired_sources: unpaired_sources_json
+        unpaired_sources: unpaired_sources_json,
+        # Additive (1.10, #386): the methods the selected operators did not
+        # mutate, sorted by (file, line, subject) in JobPlan.collect_jobs.
+        unmutated_subjects: unmutated_subjects
       }
       # Additive (1.5): the kill matrix, present only with --matrix.
       doc[:matrix] = matrix_json if @matrix
@@ -888,9 +913,12 @@ module Mutineer
     # @param out [IO] output stream.
     # @param declined [Hash{String => Integer}] operator name => declined count.
     # @param scoped [Boolean] the run was diff-scoped (`--since`), which does not
-    #   narrow the declined count.
+    #   narrow the declined count or the method count.
+    # @param subjects [Integer, nil] methods discovered; nil when unknown.
+    # @param unmutated [Integer, nil] methods the selected operators did not
+    #   mutate; nil when unknown, which leaves out the `No mutants:` row.
     # @return [void]
-    def summary(out, declined: {}, scoped: false)
+    def summary(out, declined: {}, scoped: false, subjects: nil, unmutated: nil)
       out.puts "Summary"
       out.puts "-------"
       out.puts format("Total:        %-6d  Killed:        %d", @agg.total, @agg.killed_count)
@@ -910,6 +938,13 @@ module Mutineer
       # Not mutants: candidates an operator chose not to mutate (#291).
       out.puts format("Declined:     %-6d  (candidates an operator did not mutate; --dry-run shows the count " \
                       "per operator%s)", declined.values.sum, scoped ? "; not narrowed by --since" : "")
+      # Not mutants: methods, which no operator gave a mutant (#386). Unknown
+      # (a caller passed no method counts) prints no row, never a made-up 0.
+      if subjects && unmutated
+        out.puts format("No mutants:   %-6d  (methods of %d that the selected operators did not mutate; " \
+                        "--dry-run --verbose and the JSON report list them%s)",
+                        unmutated, subjects, scoped ? "; not narrowed by --since" : "")
+      end
       # Equivalent mutants the user suppressed; excluded from the denominator.
       out.puts format("Ignored:      %-6d  (equivalent, suppressed)", @agg.ignored_count)
       out.puts unpaired_line(scoped)

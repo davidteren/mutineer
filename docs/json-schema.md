@@ -8,7 +8,7 @@ the tests or environment change. `survivors[]` sorts by
 `(file, line, operator)`; `killed[]`, `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
 add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`;
 `no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`;
-`unpaired_sources[]` by `file`. One exception:
+`unpaired_sources[]` by `file`; `unmutated_subjects[]` by `(file, line, subject)`. One exception:
 `details` of an errored mutant can quote run-specific text (see `no_verdict[]`).
 
 ## Versioning contract
@@ -21,6 +21,7 @@ The top-level `schema_version` (a string, e.g. `"1.10"`) follows these rules:
   version (`1.x` → `2.0`).
 
 A consumer should accept any `1.x` document and read only the keys it knows.
+Compare versions as two integers, major then minor, not as decimals: `1.10` comes after `1.9`.
 
 Compare `schema_version` as two integers, major then minor, so `1.10` follows `1.9`.
 
@@ -49,6 +50,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
   "per_source":   [ /* per-file roll-up */ ],
   "unpaired_sources": [ /* sources with no paired test, sorted by file */ ],
+  "unmutated_subjects": [ /* methods the selected operators did not mutate */ ],
   "matrix":       { /* present ONLY with --matrix: which tests kill which mutants */ },
   "baseline":     { /* present ONLY with --baseline: the delta vs a prior run */ }
 }
@@ -68,6 +70,8 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
 | `declined` | int | Candidates the operators found and did not mutate, so they are not in `total`: a heredoc the edit would split, or an equivalent skip listed on the [equivalent-skips page](equivalent-skips.md). Counted per operator, so a candidate two operators decline counts twice. Counted before `# mutineer:disable-line` and `ignore:` apply. `--only` narrows it; `--since` does not. Additive key (schema `1.9`, #291). |
 | `declined_by_operator` | object | The same count per operator name, operator name => int, only operators above zero, keys sorted. `{}` when none. Additive key (schema `1.9`, #291). |
+| `subjects` | int \| null | Methods found in the run's sources, each counted once. Methods, not mutants, so not in `total`. `--fail-fast` does not narrow it: it counts every method found, while `total` omits unscheduled mutants, so the two are not one denominator. `null` only when a program calls the reporter without both method counts (one alone counts as none); the CLI always fills both. Additive key (schema `1.10`, #386). |
+| `unmutated_subjects` | int \| null | Methods the selected operators gave no mutant, an empty method included. `unmutated_subjects[]` below lists them. Decided before the run, so `--fail-fast` does not narrow it either. `null` when `subjects` is `null`. Additive key (schema `1.10`, #386). |
 | `errored` | int | Mutants whose run crashed, or whose first failed Minitest test had a database connection or lock error (excluded). Each one is in `no_verdict[]` with `status` `"error"`. |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). Under `--since`, only those on changed lines. |
@@ -225,6 +229,16 @@ The human report shows `unpaired_mutants / (total - ignored + unpaired_mutants)`
 Ignored rows are not in that denominator.
 `--fail-fast` omits the percentage.
 A run with no result rows does not put these mutants in the unrun-share warning.
+
+### `unmutated_subjects[]` (array of object)
+
+The array is `null` when `summary.unmutated_subjects` is `null`. Otherwise each entry is `{ subject, file, line }`: a method the selected operators gave no mutant, and the line of its
+`def`. `subject` and `file` read as in `survivors[]`. An empty method is listed too. The list is made before
+`# mutineer:disable-line` and `ignore:` apply, so a method whose mutants are all ignored is not listed. A method
+whose candidates were all declined is listed, and `summary.declined` counts those candidates. `--only` narrows
+the list; `--since` does not (#420). Without `--test`, a real run skips a source with no paired test, so its
+methods are not listed (#381); a dry run does not skip such sources, so its count can be larger. Additive key
+(schema `1.10`, #386). `mutineer run --dry-run --verbose` prints the same list as `no mutants:` lines.
 
 ### `matrix` (object, only with `--matrix`)
 

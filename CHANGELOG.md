@@ -26,6 +26,24 @@ All notable changes to this project are documented here. The format is based on
   A disable-line warning or a git-diff warning can name them.
   The Action summary line waits on pull request #395.
   A dry run with `--rails` or `--boot` and no `--test` still exits 2 (#410).
+- **Mutineer now reports the methods that got no mutants (#386).** A
+  method whose body is one `if` with a `rescue` gets no mutant from the
+  default operators, and the run did not say so. The dry run summary now
+  ends with `no mutants in N of M methods`, and `--dry-run --verbose`
+  prints one `no mutants:` line per method. The human report has a
+  `No mutants:` row. The JSON report adds `summary.subjects`,
+  `summary.unmutated_subjects` and a top-level `unmutated_subjects[]`
+  list, and `schema_version` is now `1.10`. A program that calls
+  `Reporter#report` without the method counts gets `null` for all three,
+  not `0`; the CLI always fills them. An empty run says how many
+  methods it found and points to `--list-operators`. Scores, exit codes,
+  the mutants that run and the default operators do not change. The
+  README names `condition_true` and `condition_false` for these methods.
+  Known limits: no operator mutates a one-statement `rescue` body (#418),
+  the HTML report and the Action step summary do not show the count
+  (#419), and `--since` does not narrow it (#420). #386 stays open for
+  the default-operator decision.
+
 - **`mutineer config KEY` prints a resolved setting (#394).** It prints the
   `cache_dir` or `baseline` that `mutineer run` would use with the same
   options and `.mutineer.yml`. It writes nothing. An unknown key exits 2. The
