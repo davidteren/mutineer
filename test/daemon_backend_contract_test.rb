@@ -241,6 +241,7 @@ class DaemonBackendContractTest < Minitest::Test
       def client.start = self
       def client.quit = nil
       def client.request(id:, **) = id.zero? ? "error" : "killed"
+      def client.last_cause = nil
 
       %i[run_serial run_parallel].each do |path|
         args = path == :run_serial ? [jobs, config, [], nil, source_map] : [jobs, 2, config, [], nil, source_map]
@@ -259,6 +260,27 @@ class DaemonBackendContractTest < Minitest::Test
         assert_equal jobs[0][1], results[0].mutation
         assert_predicate results[1], :killed?
         assert_equal jobs[1][0], results[1].subject
+      end
+    end
+  end
+
+  # #388: the cause the daemon's child sent becomes the errored mutant's details.
+  def test_a_daemon_cause_reaches_the_result_on_both_paths
+    with_jobs do |jobs, config, source_map|
+      client = Object.new
+      def client.start = self
+      def client.quit = nil
+      def client.request(id:, **) = id.zero? ? "error" : "killed"
+      def client.last_cause = "ArgumentError: enum declared twice"
+
+      %i[run_serial run_parallel].each do |path|
+        args = path == :run_serial ? [jobs, config, [], nil, source_map] : [jobs, 2, config, [], nil, source_map]
+        results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+          Mutineer::DaemonBackend.send(path, *args)
+        end
+
+        assert_equal "ArgumentError: enum declared twice", results[0].details, path
+        assert_predicate results[1], :killed?
       end
     end
   end

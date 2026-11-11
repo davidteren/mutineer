@@ -5,10 +5,11 @@ whole run. Use it for CI checks, dashboards, and AI coding agents. Arrays have a
 fixed sort order, independent of `--jobs` worker completion order. For the same
 inputs and results, JSON output is byte-identical. Results can still vary if
 the tests or environment change. `survivors[]` sorts by
-`(file, line, operator)`; `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
+`(file, line, operator)`; `killed[]`, `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
 add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`;
 `no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`;
-`unpaired_sources[]` by `file`.
+`unpaired_sources[]` by `file`. One exception:
+`details` of an errored mutant can quote run-specific text (see `no_verdict[]`).
 
 ## Versioning contract
 
@@ -39,6 +40,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
   "schema_version": "1.10",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch; review for test gaps or equivalent behaviour */ ],
+  "killed":       [ /* mutants a test caught; lean ids for joining runs (#361) */ ],
   "no_coverage":  [ /* mutants on lines no test exercises, or that the statement's tests may not reach (#254, #289) */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
   "unplaceable":  [ /* mutants the strategy cannot load where the tests call them; not run */ ],
@@ -66,7 +68,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
 | `declined` | int | Candidates the operators found and did not mutate, so they are not in `total`: a heredoc the edit would split, or an equivalent skip listed on the [equivalent-skips page](equivalent-skips.md). Counted per operator, so a candidate two operators decline counts twice. Counted before `# mutineer:disable-line` and `ignore:` apply. `--only` narrows it; `--since` does not. Additive key (schema `1.9`, #291). |
 | `declined_by_operator` | object | The same count per operator name, operator name => int, only operators above zero, keys sorted. `{}` when none. Additive key (schema `1.9`, #291). |
-| `errored` | int | Mutants whose run crashed, or whose first failed Minitest test had a database connection or lock error (excluded). |
+| `errored` | int | Mutants whose run crashed, or whose first failed Minitest test had a database connection or lock error (excluded). Each one is in `no_verdict[]` with `status` `"error"`. |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). Under `--since`, only those on changed lines. |
 | `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 or #289 no-coverage mutant did run its statement's tests). |
@@ -91,6 +93,15 @@ Each surviving mutant — the records an agent or reviewer acts on:
 | `id` | string | **Offset-free id** (12 hex chars). Includes the file path relative to the project root (a source outside the root uses its absolute real path, so its ids differ between machines). Unrelated edits preserve it when the path, qualified method name, mutated token, and repeated-name/mutation order stay the same. File moves, renames, and root changes can change it. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids). Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
 | `token` | string | The exact code being mutated (whitespace-collapsed), e.g. `a + b`. |
 | `diff` | string | A unified diff with no context lines: `-original` / `+mutant` lines under a hunk header that gives each side's start line and, when it is not 1, its line count (`@@ -3,2 +3 @@`). For a `file` given relative to the project root, `git apply --unidiff-zero` run from that root accepts it. An absolute or `../` path needs `git apply --directory`/`-p` or an edit. Ready to hand to an agent as "write a test that fails under this change." |
+
+### `killed[]` (array of object)
+
+Additive key (schema `1.10`, #361). Every killed mutant as
+`{ subject, file, line, operator, token, id }`, sorted by
+`(file, line, operator, id)`. Same lean shape as `no_coverage[]` (no `diff`).
+`killed.length` equals `summary.killed`. Use this to join two runs by id
+(for example Minitest vs RSpec on the same source) without subtracting every
+unscored category from a full id list.
 
 ### `no_coverage[]`, `uncapturable[]`, `unplaceable[]` and `ran_at_load[]` (array of object)
 
@@ -155,11 +166,30 @@ The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` 
 
 ### `no_verdict[]` (array of object)
 
-Every mutant that was attempted and produced no verdict: `{ subject, file, line, id, status, details }`.
+Every mutant that was attempted and produced no verdict:
+`{ subject, file, line, operator, token, id, status, details }`.
 `status` is `"error"`, `"timeout"` or `"uncapturable"`, and its length equals `summary.no_verdict`.
+Filter on `status` `"error"` for the errored mutants: their count equals `summary.errored`.
+`operator` and `token` name the change, as in `no_coverage[]` (additive keys, schema `1.10`, #388).
 
-`details` carries the cause where there is one. For `"error"` that is the failure (a daemon crash, say);
-for `"timeout"` and `"uncapturable"` it is `null`, because the status is the whole story.
+`details` carries the cause where there is one. For `"error"` that is the failure. For
+`"timeout"` and `"uncapturable"` it is `null`, because the status is the whole story.
+
+When the mutant's child raised (under `reload`, `redefine` or the daemon), `details` is one line:
+`Class: first non-blank line of the message`, or the class alone when the message is blank, at
+most 500 characters (a longer line is cut and ends in `...`). Example:
+`"ArgumentError: enum declared twice"` (schema `1.10`, #388). Other errors keep their fixed text,
+such as `child exited with status 2`, `daemon verdict: error` or `worker crashed: Class: message`.
+A daemon that died or did not reply in time gives `daemon crashed` or `daemon stopped answering`
+(schema `1.10`, #388). Issue #417 tracks a cause for the rest: a database error inside a test, RSpec
+errors outside examples, the `--matrix` early end, and `--test-command`.
+
+`details` is redacted, but only in part. Redaction replaces the password of `DATABASE_URL`, and the
+password in any `scheme://user:password@host` URL, with `[REDACTED]`. A password that appears on its
+own, from another setting, stays visible (#341 tracks redaction gaps). An exception message can hold
+other secrets too, so treat the report like a log. A message
+can also hold an object address or a temporary file name, so `details` of an errored mutant can differ
+between two runs with the same verdicts.
 
 A failure before the mutant could be forked has no subject or mutation, so `subject`, `file`, `line` and
 `id` are `null` on that entry. It still appears, because the counts must reconcile — but that means `id`
@@ -283,3 +313,30 @@ threshold. When `summary.killed + summary.survived > 0`, check
 arithmetic for a fractional threshold (`summary.score` is rounded, and the gate does not use it). Compare
 `summary.no_verdict / summary.attempted` against 10%, and check `baseline.regressed`. A run that failed only on
 completeness is the one worth retrying rather than blaming on the tests.
+
+## Dry-run JSON (`--dry-run --format json`)
+
+Additive (schema `1.10`, #362). `mutineer run … --dry-run --format json` prints a candidate list
+instead of the human breakdown. `--output` writes that document the same way a completed run's
+report does. `--format html` under `--dry-run` stays human and warns that the format is unused.
+
+```jsonc
+{
+  "schema_version": "1.10",
+  "summary": {
+    "id_format": 2,
+    "total": 0,
+    "skipped_invalid": 0,
+    "ignored": 0,
+    "declined": 0,
+    "declined_by_operator": {},
+    "by_operator": { /* operator name => valid candidate count */ }
+  },
+  "mutants": [ /* { subject, file, line, operator, token, id }, sorted like killed[] */ ]
+}
+```
+
+`mutants[].id` values match a later real run of the same sources, operators, and ignore rules
+(both paths use `JobPlan.collect_jobs`). `summary.id_format` is `2`, the same marker a completed
+report carries, so a consumer that joins by id does not treat a missing key as the old format.
+`summary.total` equals `mutants.length`.

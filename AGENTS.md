@@ -32,6 +32,15 @@ BUNDLE_GEMFILE=gemfiles/minitest6.gemfile bundle install
 BUNDLE_GEMFILE=gemfiles/minitest6.gemfile bundle exec rake test
 ```
 
+Ruby 3.4 and 4.0 ship Prism 1. For changes to parsing or parse errors, also
+run the suite on Prism 2. The variable makes a skipped Prism 2 test fail:
+
+```sh
+bundle install                                 # root bundle, for the child test commands
+BUNDLE_GEMFILE=gemfiles/prism2.gemfile bundle install
+MUTINEER_REQUIRE_PRISM_ERRORS=1 BUNDLE_GEMFILE=gemfiles/prism2.gemfile bundle exec rake test
+```
+
 - **`yard:strict` requires 100% documentation, including private methods AND
   constants.** Every new method and constant needs a YARD docstring / `#` comment
   or CI fails.
@@ -64,7 +73,7 @@ independent of Node and Playwright. CI runs these checks in `website browser tes
 
 ## CI gates that block merge
 
-`yard:strict` · `test` (×2 OS) · `test (minitest 6)` · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
+`yard:strict` · `test` (×2 OS) · `test (minitest 6)` · `test (ruby 3.4, prism 2)` · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
 
 ## PR review gate (before any merge)
 
@@ -160,6 +169,22 @@ it back, and do not run `gh workflow enable` to restore a Monday release.
 Semver: **new feature → minor bump, fix → patch.** A behavior change to the
 GitHub Action's defaults is a **major** bump: consumers pin `@v<major>`, and a
 default flip must never reach them without opting in.
+
+Before step 1, run the Fizzy sample check on a clean checkout of current
+`main` (pull first; issue #402): `bundle exec rake fizzy:sample`. The task
+refuses uncommitted changes. It runs this checkout on a pinned commit of
+Fizzy, a real Rails 8 app, and compares the counts with
+`rake/fizzy_sample.json`. It needs Fizzy's Ruby through rbenv or asdf and
+network access for the first clone and gem install. It writes nothing on
+GitHub, so an agent may run it. If it fails, explain each difference by the
+merged pull request that caused it, in a pull request that runs
+`bundle exec rake fizzy:record`. A difference that no merged pull request
+explains is a bug: file an issue and fix it before the release. A
+`no_verdict` count above 0 also blocks the release. That count is an
+errored mutant, a timeout, or an uncapturable mutant. `fizzy:record`
+refuses it, so it cannot be recorded. Fix the cause and merge that fix.
+Then run `bundle exec rake fizzy:sample` again on the merged `main`.
+It must pass before step 1.
 
 The release procedure. A maintainer owns every step. An agent may do steps
 1 to 4 after that maintainer agrees to this release:
@@ -310,10 +335,13 @@ every other reviewer, human or bot, applies the same file by hand. Score terms
 are defined in "Score-model discipline" below. Issue #282 tracks the remaining
 ordering gaps: RSpec random order and Minitest class order across selected files.
 
-The eight rules, by title: **Track every limitation** - **Cover the
+The eleven rules, by title: **Track every limitation** - **Cover the
 siblings** - **Gate on unrounded values** - **Count what you exclude** -
 **Estimate exclusion frequency** - **One seed contract** - **Assert the
-mechanism** - **Repro becomes fixture**.
+mechanism** - **Repro becomes fixture** - **Test the rule, not the
+example** - **Shell passes values, never parses them** - **Pin the
+dependency you test**. The last three come from the review rounds of
+pull requests #393 and #395 (issue #403).
 
 ## Score-model discipline (don't regress this)
 

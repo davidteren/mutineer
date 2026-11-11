@@ -49,6 +49,16 @@ class DaemonClientDeadlineTest < Minitest::Test
     assert_equal "error", verdict
     assert_equal 7 + Mutineer::DaemonClient::REPLY_GRACE, waited
     assert restarted
+    assert_equal "daemon stopped answering", @client.last_cause
+  end
+
+  # A daemon that died reads as EOF (or a dead pipe), not a hang.
+  def test_request_names_a_daemon_crash
+    @client.define_singleton_method(:read_line) { |_timeout = nil| nil }
+    @client.define_singleton_method(:restart!) { nil }
+
+    assert_equal "error", @client.request(id: 1, payload: { "code" => "" }, tests: [], timeout: 7)
+    assert_equal "daemon crashed", @client.last_cause
   end
 
   # A mutant or capture child runs in its own process group, so killing its
