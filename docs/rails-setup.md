@@ -12,33 +12,20 @@ Check this Rails app for Mutineer's --daemon backend. Report: the test framework
 
 ## Set up
 
-1. Add Mutineer to your Gemfile's test group. Run `bundle install`.
+Install Mutineer and create `.mutineer.yml` with
+[First run to steady state, step 1](getting-started.md#1-install).
+Run one model with [step 2](getting-started.md#2-first-run-on-one-file).
+Run inside the project bundle (`bundle exec`).
+Add `--test PATH` for a file, a directory, or a quoted glob.
 
-   ```ruby
-   gem "mutineer", group: :test, require: false
-   ```
+`--test test` also selects files under `test/system/`.
+To skip system tests, list each test directory you use.
+The glob selects only the directories it names.
+Add any other directory, such as `test/services`, and each root-level test file:
 
-2. Create `.mutineer.yml` and print a first command. Existing files stay unchanged unless you pass `--force`.
-
-   ```sh
-   RAILS_ENV=test bundle exec mutineer init --rails
-   ```
-
-3. Run one model inside the project's bundle.
-   Add `--test PATH` for a file, a directory, or a quoted glob.
-
-   ```sh
-   RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
-   ```
-
-   `--test test` also selects files under `test/system/`.
-   To skip system tests, list each test directory you use.
-   The glob selects only the directories it names.
-   Add any other directory, such as `test/services`, and each root-level test file:
-
-   ```sh
-   RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --test 'test/{channels,controllers,helpers,integration,jobs,lib,mailers,middleware,models}/**/*_test.rb' --test test/routes_test.rb
-   ```
+```sh
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --test 'test/{channels,controllers,helpers,integration,jobs,lib,mailers,middleware,models}/**/*_test.rb' --test test/routes_test.rb
+```
 
 | Setting | Behaviour |
 | --- | --- |
