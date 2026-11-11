@@ -425,7 +425,7 @@ module Mutineer
       # (fallback, not narrowed).
       sel = coverage_map && !coverage_map.map.empty? && JobPlan.coverage_selection(subject.file, mutation, subject, source, coverage_map)
       r =
-        if Parser.parse_string(mutated).errors.any?
+        if Parser.invalid?(mutated)
           Result.skipped
         elsif sel && sel[0] == :verdict
           sel[1]
@@ -444,7 +444,8 @@ module Mutineer
             payload: payload, tests: sel ? sel[1] : abs_tests
           )
           # A survivor whose line ran at load, as in-process (Runner.run).
-          loaded = JobPlan.load_verdict(result_for(verdict), subject.file, mutation, subject, source, coverage_map)
+          details = client.last_cause if verdict == "error"
+          loaded = JobPlan.load_verdict(result_for(verdict, details), subject.file, mutation, subject, source, coverage_map)
           # Tests that may not have run the mutant, as in-process (#254).
           JobPlan.selection_verdict(sel && sel[0], loaded)
         end
@@ -499,14 +500,15 @@ module Mutineer
     # resolved tool-side before a request is ever sent.
     #
     # @param verdict [String] the daemon's verdict word.
+    # @param details [String, nil] the cause the daemon sent with an `"error"`.
     # @api private
     # @return [Mutineer::Result] the matching result.
-    def self.result_for(verdict)
+    def self.result_for(verdict, details = nil)
       case verdict
       when "survived" then Result.survived
       when "killed"   then Result.killed
       when "timeout"  then Result.timeout
-      else Result.error("daemon verdict: #{verdict}")
+      else Result.error(details || "daemon verdict: #{verdict}")
       end
     end
 

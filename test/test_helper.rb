@@ -92,3 +92,16 @@ module AsciiLocale
   end
 end
 Minitest::Test.include(AsciiLocale)
+
+# Sets environment variables for one block, then restores them.
+module EnvOverride
+  # Sets each key (nil unsets it) for the block, then restores the old values.
+  def with_env(updates)
+    prior = updates.each_key.to_h { |key| [key, ENV[key]] }
+    updates.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
+    yield
+  ensure
+    prior&.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
+  end
+end
+Minitest::Test.include(EnvOverride)

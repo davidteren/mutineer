@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "reload_guards"
+
 module Mutineer
   # Lets the reload strategy load a concern file a second time (#256).
   #
@@ -15,10 +17,13 @@ module Mutineer
   # ActiveSupport does not run the block again in a class that already includes
   # the concern, so that class keeps what the original block defined. For a def
   # in the block, the mutant file also passes the mutated def to
-  # {.store_hook_def}, just before the `included` or `prepended` call, and
-  # {.place_hook_def} then loads only that def into each class that has the
-  # method (#297). Nothing else in the block runs again. Discovery decides which
-  # defs can be placed this way (see {Subject#unplaceable?}).
+  # {.store_hook_def}, just before the `included` or `prepended` call. Under
+  # {.load_mutant} with a `hook_def`, {.store_hook_def} then calls
+  # {.place_hook_def} at once, which loads only that def into each class that
+  # has the method (#297). It runs before the rest of the file, so a later
+  # line of the file that calls the method while the file loads gets the
+  # mutant (#348). Nothing else in the block runs again. Discovery decides
+  # which defs can be placed this way (see {Subject#unplaceable?}).
   #
   # Call it only in a forked child that loads the mutant. Without
   # ActiveSupport, {.replace} and {.forget} do nothing; {.store_hook_def} and
@@ -46,23 +51,49 @@ module Mutineer
       end
     end
 
-    # Loads the mutant file at `path` over `source_file`, through {.replace}.
-    # The load assigns each of the file's constants a second time, so Ruby
-    # would warn twice per constant, per mutant (#364). Warnings are off for
-    # the load only, and back on before the tests run.
+    # Loads the mutant file at `path` over `source_file`, through {.replace}
+    # inside {ReloadGuards.during_load}, so Rails macros in the class body can
+    # run a second time (#378, #383, #384). The load assigns each of the file's
+    # constants a second time, so Ruby would warn twice per constant, per
+    # mutant (#364). Warnings are off for the load only, and back on before
+    # the tests run.
+    #
+    # With a `hook_def`, the file's {.store_hook_def} call places the mutated
+    # def during the load (#348). A load that never reached that call raises.
+    # When a handle to the original is live at placement, the kept-handle
+    # check runs again after the load, so a handle the file holds only while
+    # it loads does not count. Placement leaves no other way to reach the
+    # original, so no handle seen then means none after the load.
     #
     # @param source_file [String] the file the mutant replaces.
     # @param path [String] the mutant file to load.
+    # @param hook_def [Hash{Symbol => Object}, nil] the original def's `line`,
+    #   `name` and `singleton`, from {JobPlan.hook_mutant}.
+    # @raise [RuntimeError] from {.place_hook_def}, so the child scores `error`.
     # @return [Object] what `load` returns.
-    def self.load_mutant(source_file, path)
-      replace(source_file) do
-        verbose, $VERBOSE = $VERBOSE, nil
-        begin
-          load path
-        ensure
-          $VERBOSE = verbose
+    def self.load_mutant(source_file, path, hook_def: nil)
+      @hook_target = hook_def && { source_file: source_file, **hook_def }
+      @hook_def = nil
+      @handle_at_placement = false
+      loaded = ReloadGuards.during_load(source_file, path) do
+        replace(source_file) do
+          verbose, $VERBOSE = $VERBOSE, nil
+          begin
+            load path
+          ensure
+            $VERBOSE = verbose
+          end
         end
       end
+      if @hook_target
+        # Still set: the load did not reach store_hook_def, so this raises.
+        place_hook_def(**@hook_target)
+      elsif @handle_at_placement
+        refuse_retained_hook_def(source_file: source_file, line: hook_def[:line], name: hook_def[:name])
+      end
+      loaded
+    ensure
+      @hook_target = nil
     end
 
     # Removes every stored `included` and `prepended` block that the source
@@ -93,13 +124,23 @@ module Mutineer
 
     # Keeps the mutated hook-block def for {.place_hook_def}. The mutant file
     # calls it in the concern's body, just before the hook call, so the block has
-    # the same constant scope as the hook block (#297).
+    # the same constant scope as the hook block (#297). Under {.load_mutant}
+    # with a `hook_def`, it places the def now, before the rest of the file
+    # runs (#348).
     #
-    # @yield the mutated def, run later with `class_eval` in each owner.
+    # @yield the mutated def, run with `class_eval` in each owner.
+    # @raise [RuntimeError] from {.place_hook_def}.
     # @return [nil]
     def self.store_hook_def(&block)
       @hook_def = block
-      nil
+      return unless @hook_target
+
+      target = @hook_target
+      # A handle may be one the file drops before its load ends: load_mutant checks again then.
+      @handle_at_placement = method_handle_at?(real_path(target[:source_file]), target[:line], target[:name])
+      place_hook_def(**target, check_retained: false)
+      # Cleared only after placement, so a raise the file rescues still errors after the load.
+      @hook_target = nil
     end
 
     # Takes the def {.store_hook_def} kept, clears it, and runs it with
@@ -112,12 +153,14 @@ module Mutineer
     # @param line [Integer] the original def's first line.
     # @param name [Symbol] the method name.
     # @param singleton [Boolean] true for a class method.
+    # @param check_retained [Boolean] false when the caller checks for a kept
+    #   method handle itself, after the load ({.load_mutant}).
     # @raise [RuntimeError] when no def was kept (the mutant file did not reach
     #   its hook call), or when a module keeps the original under another name
     #   (see {.aliases}) or in a live method handle; the child then scores the
     #   mutant `error`.
     # @return [Integer] how many owners got the mutated def.
-    def self.place_hook_def(source_file:, line:, name:, singleton:)
+    def self.place_hook_def(source_file:, line:, name:, singleton:, check_retained: true)
       block = @hook_def
       @hook_def = nil
       where = "mutineer: could not place the mutant of #{name} (#{source_file}:#{line})"
@@ -127,14 +170,11 @@ module Mutineer
       end
 
       # Check before owner and alias lookup create temporary UnboundMethods.
-      if retained_hook_def?(source_file: source_file, line: line, name: name)
-        raise "#{where}: the original is retained in a Method or UnboundMethod object, " \
-              "so the mutant scores error."
-      end
+      refuse_retained_hook_def(source_file: source_file, line: line, name: name) if check_retained
 
       # ponytail: one ObjectSpace walk per mutant (about 11 ms with Rails loaded);
       # index modules by method name if a large app makes it slow.
-      modules = ObjectSpace.each_object(Module).to_a
+      modules = ObjectSpace.each_object(Module).reject { |mod| deprecation_proxy?(mod) }
       found = owners(modules, source_file: source_file, line: line, name: name, singleton: singleton)
       mod, other = aliases(modules, source_file: source_file, line: line, name: name, singleton: singleton).first
       if mod
@@ -213,6 +253,21 @@ module Mutineer
       method.original_name == original_name && def_line == line && !file.nil? && real_path(file) == path
     end
 
+    # Raises when a live Method or UnboundMethod keeps the original definition
+    # (see {.retained_hook_def?}), so the child scores the mutant `error`.
+    #
+    # @param source_file [String] the file the mutant replaces.
+    # @param line [Integer] the original def's first line.
+    # @param name [Symbol] the original method name.
+    # @raise [RuntimeError] when such a handle is live.
+    # @return [nil]
+    def self.refuse_retained_hook_def(source_file:, line:, name:)
+      return unless retained_hook_def?(source_file: source_file, line: line, name: name)
+
+      raise "mutineer: could not place the mutant of #{name} (#{source_file}:#{line}): the original is " \
+            "retained in a Method or UnboundMethod object, so the mutant scores error."
+    end
+
     # True when a live Method or UnboundMethod keeps the original definition.
     # A wrapper can call that handle after the named method was replaced, so
     # loading another def cannot make the wrapper test the mutant. A matching
@@ -247,6 +302,22 @@ module Mutineer
         end
       end
     end
+
+    # True for Rails' `DeprecatedConstantProxy`: a Module that forwards every
+    # call to its target and prints a deprecation warning, so asking it for
+    # methods would print one per mutant (#387). `Kernel#class` reads its real
+    # class without forwarding.
+    #
+    # @param mod [Module] a module from the ObjectSpace walk.
+    # @return [Boolean]
+    def self.deprecation_proxy?(mod)
+      return false unless defined?(::ActiveSupport::Deprecation::DeprecatedConstantProxy)
+
+      (KERNEL_CLASS.bind_call(mod) <= ::ActiveSupport::Deprecation::DeprecatedConstantProxy) == true
+    end
+
+    # `Kernel#class`, unbound, so a proxy that redefines `class` cannot answer.
+    KERNEL_CLASS = ::Kernel.instance_method(:class)
 
     # The file's real path, so a symlinked or relative path matches the path
     # Ruby recorded when it loaded the file.

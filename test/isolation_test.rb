@@ -28,6 +28,20 @@ class IsolationTest < Minitest::Test
     end
   end
 
+  # #388: the cause reaches `details`, not only stderr.
+  def test_unhandled_exception_names_its_cause
+    result = nil
+    capture_subprocess_io do
+      result = Mutineer::Isolation.run { raise ArgumentError, "enum declared twice" }
+    end
+
+    assert_equal "ArgumentError: enum declared twice", result.details
+  end
+
+  def test_exit_two_without_a_cause_keeps_its_details
+    assert_equal "child exited with status 2", Mutineer::Isolation.run { 2 }.details
+  end
+
   # --- stdout silencing at the fork boundary ------------------------------
   # The test runners do not silence output; Isolation.run does it once, right
   # after fork. These cases replace the runner-level silencing tests.
@@ -544,7 +558,35 @@ class IsolationTest < Minitest::Test
     assert_predicate result, :error?
     assert_includes err, "[mutineer-child] RuntimeError: no connection: postgres://u:[REDACTED]@ho st/db"
     refute_includes err, "s3cret"
+    assert_equal "RuntimeError: no connection: postgres://u:[REDACTED]@ho st/db", result.details
   ensure
     ENV["DATABASE_URL"] = saved
+  end
+
+  # #392: a redefine snippet that Ruby cannot load raises the guard's own error
+  # before `load`, so the fork scores `error` and runs no test.
+  def test_apply_surgical_rejects_a_snippet_ruby_cannot_load
+    source = "def mutineer_surgical_probe(a)\n  a + 1\nend\n"
+    Dir.mktmpdir("mutineer-surgical") do |dir|
+      path = File.join(dir, "probe.rb")
+      File.write(path, source)
+      subject = Mutineer::Project.discover([path]).first
+      mutation = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source).first.with(replacement: "(")
+      error = assert_raises(RuntimeError) { Mutineer::Isolation.apply_surgical(mutation, subject, source) }
+      assert_equal "surgical snippet failed to reparse", error.message
+
+      # In the fork, the raise stops the block before the tests would run.
+      marker = File.join(dir, "tests_ran")
+      result = nil
+      capture_subprocess_io do
+        result = Mutineer::Isolation.run do
+          Mutineer::Isolation.apply_surgical(mutation, subject, source)
+          File.write(marker, "1")
+          0
+        end
+      end
+      assert_predicate result, :error?
+      refute_path_exists marker
+    end
   end
 end

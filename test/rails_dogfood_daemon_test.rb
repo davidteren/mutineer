@@ -159,4 +159,98 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_equal 100.0, aggregate.mutation_score
     assert_equal 0, aggregate.errored_count
   end
+
+  # The fixture app loads lazily. Shipment's class body declares an enum and
+  # skips its parent's callback, and its concern has an `included` block.
+  # Reload runs that body a second time, which raised before #378, #383, and
+  # #384. The daemon must now score every mutant. bin/dogfood checks the
+  # in-process reload path, which needs the fixture's own bundle.
+  def reloaded_class_body_config
+    Mutineer::Config.new(
+      sources: %w[app/models/shipment.rb app/models/concerns/trackable.rb].map { |f| File.join(APP, f) },
+      tests: %w[test/models/shipment_test.rb test/models/concerns/trackable_test.rb].map { |f| File.join(APP, f) },
+      project_root: APP, boot: "config/environment",
+      rails: true, daemon: true, strategy: "reload", framework: "minitest", jobs: 2
+    )
+  end
+
+  def test_a_class_body_with_enum_skip_callback_and_lazy_concern_reloads_on_the_daemon
+    aggregate = nil
+    _out, err = capture_subprocess_io { aggregate, = Mutineer::Runner.execute(reloaded_class_body_config) }
+
+    assert_equal 0, aggregate.errored_count, err
+    # cubic: each source must score on its own, so losing the concern's
+    # mutants cannot hide behind the model's.
+    by_source = aggregate.by_source.to_h { |file, agg| [File.basename(file), agg] }
+    assert_equal %w[shipment.rb trackable.rb], by_source.keys.sort
+    by_source.each do |file, agg|
+      assert_operator agg.killed_count, :>, 0, file
+      assert_equal 0, agg.errored_count, file
+      assert_equal 100.0, agg.mutation_score, file
+    end
+    assert_equal 100.0, aggregate.mutation_score
+  end
+
+  # The check above passes even if every mutant is a false kill. With a weak
+  # test that checks only the enum, the skips and the concern's scope, every
+  # mutant must run and survive: a broken class body would error or kill.
+  def test_a_reloaded_class_body_keeps_its_enum_skips_and_scope_on_the_daemon
+    config = reloaded_class_body_config
+    config.tests = [File.join(APP, "test/models/shipment_weak_test.rb")]
+    aggregate = nil
+    _out, err = capture_subprocess_io { aggregate, = Mutineer::Runner.execute(config) }
+
+    assert_equal 0, aggregate.errored_count, err
+    assert_operator aggregate.survived_count, :>, 1
+    assert_equal aggregate.total, aggregate.survived_count, "every mutant must run and survive"
+  end
+
+  # #390: the daemon reloads Parcel's whole file, so its class body runs again
+  # and appended a second validator, block callback and `validate` block.
+  # ParcelTest counts them, so every `heavy?` mutant was a false kill. The
+  # test never checks `heavy?`, so each mutant must survive, as it does under
+  # in-process redefine (bin/dogfood compares the two).
+  def test_the_daemon_runs_each_validator_and_block_callback_once
+    aggregate = nil
+    capture_subprocess_io { aggregate, = Mutineer::Runner.execute(config_for(1, model: "parcel")) }
+
+    assert_operator aggregate.survived_count, :>, 0
+    assert_equal aggregate.total, aggregate.survived_count, "every mutant must run and survive"
+  end
+
+  # #414: eager load, as production does, loads the subclasses before a
+  # mutant reloads the parent. Rails then appends the parent's callback to a
+  # subclass that skipped it. The weak `heavy?` mutants must still survive.
+  def test_a_parent_reload_does_not_restore_a_skipped_subclass_callback
+    ENV["MUTINEER_EAGER_LOAD"] = "1"
+    aggregate = nil
+    _out, err = capture_subprocess_io do
+      aggregate, = Mutineer::Runner.execute(config_for(1, model: "postage"))
+    end
+
+    assert_equal 0, aggregate.errored_count, err
+    assert_operator aggregate.killed_count, :>, 0, "require_weight must still be killed"
+    assert_operator aggregate.survived_count, :>, 0, "heavy? must survive; a restored callback kills it"
+  ensure
+    ENV.delete("MUTINEER_EAGER_LOAD")
+  end
+
+  # #385: with Rails' pending-migration check on (a new app's default),
+  # rails/test_help queries every database when the tests load, shared ones
+  # too. Mutant forks turn the check off, so the shared database stays unused.
+  def test_the_pending_migration_check_does_not_trip_the_shared_database_check
+    ENV["MUTINEER_SECOND_DB"] = "1"
+    ENV["MUTINEER_MAINTAIN_SCHEMA"] = "1"
+    aggregate = nil
+    _out, err = capture_subprocess_io do
+      aggregate, = Mutineer::Runner.execute(config_for(2, shared_databases: %w[extra]))
+    end
+
+    refute_match(/shared database used/, err)
+    assert_equal 0, aggregate.errored_count
+    assert_equal 100.0, aggregate.mutation_score
+  ensure
+    ENV.delete("MUTINEER_SECOND_DB")
+    ENV.delete("MUTINEER_MAINTAIN_SCHEMA")
+  end
 end

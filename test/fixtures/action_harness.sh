@@ -22,6 +22,16 @@ cat > "$SCRATCH/bin/mutineer" <<STUB
 #!/usr/bin/env bash
 # The action's version-floor check asks for --version before running.
 if [ "\${1:-}" = "--version" ]; then echo "1.0.0"; exit 0; fi
+# The action asks \`mutineer config KEY\` for resolved settings (#394).
+# STUB_CONFIG unset: answer with this checkout's real CLI. "old": act as a
+# release without the command. Any other value: print that value.
+if [ "\${1:-}" = "config" ]; then
+  case "\${STUB_CONFIG:-}" in
+    "") exec ruby -I"$ROOT/lib" "$ROOT/bin/mutineer" "\$@" ;;
+    old) echo "mutineer: unknown command 'config'" >&2; exit 2 ;;
+    *) echo "\$STUB_CONFIG"; exit 0 ;;
+  esac
+fi
 echo "STUB-ARGS: \$*" >> "$SCRATCH/stub-args.txt"
 out=""
 prev=""
@@ -204,3 +214,75 @@ after=$(cksum "$weird")
 [ "$before" = "$after" ] && echo "  OK: escaped-path baseline kept" || echo "  FAIL: escaped-path baseline was replaced"
 [ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on an escaped path" || echo "  OK: escaped path rejected before running"
 grep '::error::' "$SCRATCH/case17/stdout.txt"
+
+echo; echo "== 17b: same-file path that ends in a newline (expects exit 2) (#394 review) =="
+mkdir -p "$SCRATCH/case17b"
+trailing="$SCRATCH/case17b/same.json"$'\n'
+cp "$SCRATCH/report.json" "$trailing"
+before=$(cksum "$trailing")
+run_step case17b STUB_EXIT=1 OUTPUT="$trailing" BASELINE="$trailing"
+after=$(cksum "$trailing")
+[ "$before" = "$after" ] && echo "  OK: trailing-newline baseline kept" || echo "  FAIL: trailing-newline baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on a trailing-newline path" || echo "  OK: trailing-newline path rejected before running"
+
+echo; echo "== 18: output under missing .mutineer cache dir (expects mkdir + delivered file) (#340) =="
+rm -rf .mutineer
+rm -f .mutineer.yml
+run_step case18 STUB_EXIT=0 OUTPUT=".mutineer/pr.json"
+[ -d .mutineer ] && echo "  OK: cache dir created" || echo "  FAIL: cache dir missing"
+[ -s .mutineer/pr.json ] && echo "  OK: output delivered into fresh cache dir" || echo "  FAIL: output not delivered"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  OK: mutineer ran after mkdir" || echo "  FAIL: mutineer never ran"
+
+echo; echo "== 18b: output under other missing dir still exits 2 (#340) =="
+run_step case18b STUB_EXIT=0 OUTPUT="reports/pr.json"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran for a non-cache missing parent" || echo "  OK: non-cache missing parent rejected"
+grep -q 'cannot write output' "$SCRATCH/case18b/stdout.txt" && echo "  OK: missing-dir error" || echo "  FAIL: missing-dir error absent"
+
+echo; echo "== 18c: output under missing custom cache-dir from yml (#340) =="
+printf 'cache_dir: mcache\n' > .mutineer.yml
+run_step case18c STUB_EXIT=0 OUTPUT="mcache/pr.json"
+[ -d mcache ] && echo "  OK: yml cache dir created" || echo "  FAIL: yml cache dir missing"
+[ -s mcache/pr.json ] && echo "  OK: output delivered into yml cache dir" || echo "  FAIL: yml cache output missing"
+rm -f .mutineer.yml
+
+echo; echo "== 18i: cache dir whose name ends in a newline (#394 review) =="
+printf 'cache_dir: "nlcache\\n"\n' > .mutineer.yml
+nl_out="nlcache"$'\n'"/pr.json"
+run_step case18i STUB_EXIT=0 OUTPUT="$nl_out"
+[ -s "$nl_out" ] && echo "  OK: newline-ended cache dir created" || echo "  FAIL: newline-ended cache dir output missing"
+[ -e nlcache ] && echo "  FAIL: created the cache dir without its newline" || echo "  OK: no truncated cache dir"
+rm -f .mutineer.yml
+
+echo; echo "== 18d: cache dir from extra-args, as two words (#340) =="
+run_step case18d STUB_EXIT=0 OUTPUT="xcache/pr.json" EXTRA_ARGS="--cache-dir xcache"
+[ -s xcache/pr.json ] && echo "  OK: extra-args cache dir created" || echo "  FAIL: extra-args cache dir output missing"
+
+echo; echo "== 18e: cache dir from extra-args, with = (#340) =="
+run_step case18e STUB_EXIT=0 OUTPUT="ecache/pr.json" EXTRA_ARGS="--cache-dir=ecache"
+[ -s ecache/pr.json ] && echo "  OK: extra-args = cache dir created" || echo "  FAIL: extra-args = cache dir output missing"
+
+echo; echo "== 18f: cache dir from a short extra-args form the CLI accepts (#340) =="
+run_step case18f STUB_EXIT=0 OUTPUT="scache/pr.json" EXTRA_ARGS="--cache=scache"
+[ -s scache/pr.json ] && echo "  OK: short-form cache dir created" || echo "  FAIL: short-form cache dir output missing"
+
+echo; echo "== 18g: the CLI names the cache dir (#394) =="
+run_step case18g STUB_EXIT=0 OUTPUT="zcache/pr.json" STUB_CONFIG="zcache"
+[ -s zcache/pr.json ] && echo "  OK: CLI-named cache dir created" || echo "  FAIL: the action did not ask the CLI for cache_dir"
+
+echo; echo "== 18h: an older CLI without the config command falls back (#394) =="
+run_step case18h STUB_EXIT=0 OUTPUT="ocache/pr.json" EXTRA_ARGS="--cache=ocache" STUB_CONFIG="old"
+[ -s ocache/pr.json ] && echo "  OK: fallback cache dir created" || echo "  FAIL: fallback cache dir output missing"
+
+echo; echo "== 13b: the CLI names the baseline, output is that file (#394) =="
+mkdir -p "$SCRATCH/case13b"
+cp "$SCRATCH/report.json" "$SCRATCH/case13b/baseline.json"
+before=$(cksum "$SCRATCH/case13b/baseline.json")
+run_step case13b STUB_EXIT=1 OUTPUT="$SCRATCH/case13b/baseline.json" STUB_CONFIG="$SCRATCH/case13b/baseline.json"
+[ "$(cksum "$SCRATCH/case13b/baseline.json")" = "$before" ] && echo "  OK: CLI-named baseline kept" || echo "  FAIL: CLI-named baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: the action did not ask the CLI for baseline" || echo "  OK: CLI-named baseline rejected before running"
+
+echo; echo "== 14c: an older CLI without the config command, abbreviated baseline (#394) =="
+before=$(cksum "$SCRATCH/case14/baseline.json")
+run_step case14c STUB_EXIT=1 OUTPUT="$SCRATCH/case14/baseline.json" EXTRA_ARGS="--base $SCRATCH/case14/baseline.json" STUB_CONFIG="old"
+[ "$(cksum "$SCRATCH/case14/baseline.json")" = "$before" ] && echo "  OK: fallback baseline kept" || echo "  FAIL: fallback baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on the fallback baseline" || echo "  OK: fallback baseline rejected before running"

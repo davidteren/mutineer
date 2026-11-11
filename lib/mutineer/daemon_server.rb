@@ -7,6 +7,7 @@ require_relative "child_coverage"
 require_relative "orphan_guard"
 require_relative "concern_blocks"
 require_relative "redaction"
+require_relative "child_cause"
 
 module Mutineer
   # App-side daemon (persistent worker).
@@ -38,6 +39,7 @@ module Mutineer
   #              (a mutant of a def in a concern's hook block adds to the payload
   #               "hook_def":{"line":12,"name":"total","singleton":false}, #297)
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
+  #              (an "error" whose child raised adds "details":"Class: message", #388)
   #   quit in  : {"cmd":"quit"}
   #
   # Worker isolation: when the app is Rails, each fork is routed to its own
@@ -192,7 +194,8 @@ module Mutineer
       # `db_role` "prepare" waits for a provision command (the first daemon).
       # "worker" only takes the shared lock (a worker daemon, including a
       # respawn). Anything else provisions now, which is what a direct client
-      # that never sends the command needs. SQLite provisioning does nothing.
+      # that never sends the command needs. SQLite takes the run lock and
+      # copies files on first use.
       def setup_worker_db(cfg)
         require_relative "rails_worker_db"
         @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
@@ -344,7 +347,11 @@ module Mutineer
         # Seed the slot's DB until the first killed/survived fork for this worker slot.
         first_use = @worker_db && !@slot_ready[worker]
         daemon = Process.pid
+        cause_rd, cause_wr = IO.pipe
+        cause_wr.sync = true
         pid = fork do
+          child = Process.pid
+          cause_rd.close
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
           # and silence the child's stdout so test output stays out of the diagnostics.
           Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
@@ -360,16 +367,21 @@ module Mutineer
               apply_payload(req["payload"])
               # A parallel worker records each pool that runs SQL, so a test
               # that closes its shared connection is still caught below.
-              @worker_db.watch_sql if @worker_db && @shared_databases&.any?
+              if @worker_db && @shared_databases&.any?
+                @worker_db.skip_schema_check!
+                @worker_db.watch_sql
+              end
               result = run_tests(Array(req["tests"]))
               check_shared_databases!
               result
             rescue Exception => e # rubocop:disable Lint/RescueException
               @errio.puts("[daemon-child] #{describe_error(e)}")
+              ChildCause.write(cause_wr, e, child)
               2
             end
           exit!(code)
         end
+        cause_wr.close
         verdict = wait_verdict(pid, timeout)
         # Mark ready only when the child finished cleanly after seeding
         # (killed/survived). Timeout can interrupt mid-copy; error can be a
@@ -382,7 +394,13 @@ module Mutineer
         # A SIGKILLed timeout child skipped its Tempfile unlink. Sweep the orphan
         # so it cannot outlive the run.
         sweep_temps if verdict == "timeout"
-        { "id" => req["id"], "verdict" => verdict }
+        reply = { "id" => req["id"], "verdict" => verdict }
+        cause = verdict == "error" && ChildCause.read(cause_rd)
+        reply["details"] = cause if cause
+        reply
+      ensure
+        cause_rd&.close
+        cause_wr.close if cause_wr && !cause_wr.closed?
       end
 
       # Hide kept mutant files from Zeitwerk before the app builds its loaders.
@@ -473,10 +491,12 @@ module Mutineer
       # removes orphans and never touches a live file. Same path for reload
       # (whole file) and redefine (wrapped snippet). The backend sends the whole
       # file, so the concern blocks it stores replace the forgotten ones (#256).
-      # With a `"hook_def"`, the loaded file stored a mutated hook-block def, and
-      # {ConcernBlocks.place_hook_def} loads it into each class that has the
-      # method; it raises when none was stored, so the mutant scores `error` (#297).
+      # With a `"hook_def"`, the load places the mutated hook-block def into each
+      # class that has the method, before the rest of the file runs; it raises
+      # when none was stored, so the mutant scores `error` (#297, #348).
       def apply_payload(payload)
+        hook = payload["hook_def"]
+        hook &&= { line: hook.fetch("line"), name: hook.fetch("name").to_sym, singleton: hook.fetch("singleton") }
         dir = File.dirname(File.expand_path(payload.fetch("source_file")))
         Tempfile.create([".mutineer_daemon", ".rb"], dir) do |f|
           # Held until this block ends, including SIGKILL (the kernel drops it).
@@ -484,12 +504,8 @@ module Mutineer
           f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
           f.write(payload.fetch("code"))
           f.flush
-          ConcernBlocks.load_mutant(payload.fetch("source_file"), f.path)
+          ConcernBlocks.load_mutant(payload.fetch("source_file"), f.path, hook_def: hook)
         end
-        hook = payload["hook_def"] or return
-
-        ConcernBlocks.place_hook_def(source_file: payload.fetch("source_file"), line: hook.fetch("line"),
-                                     name: hook.fetch("name").to_sym, singleton: hook.fetch("singleton"))
       end
 
       # Load the covering test files and run them; 0 = all passed (survived),

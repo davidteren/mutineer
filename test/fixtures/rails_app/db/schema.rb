@@ -10,4 +10,11 @@ ActiveRecord::Schema.define(version: 1) do
     t.boolean :rush, null: false, default: false
     t.timestamps
   end
+
+  create_table :shipments, force: true do |t|
+    t.integer :weight_grams, null: false, default: 0
+    t.integer :status, null: false, default: 0
+    t.boolean :express, null: false, default: false
+    t.timestamps
+  end
 end
