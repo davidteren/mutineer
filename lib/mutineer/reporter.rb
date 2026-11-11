@@ -4,6 +4,7 @@ require "json"
 require "stringio"
 require "cgi"
 require_relative "mutation"
+require_relative "redaction"
 
 module Mutineer
   # Renders an AggregateResult: the summary block, mutation score, and per-file
@@ -31,7 +32,7 @@ module Mutineer
     UNRUN_SHARE_LIMIT = 0.10
 
     # The JSON report's `schema_version` (see docs/json-schema.md).
-    SCHEMA_VERSION = "1.9"
+    SCHEMA_VERSION = "1.10"
 
     # The warning both matrix renderers give under the redundant tests.
     MATRIX_REDUNDANT_NOTE = "Delete redundant tests one at a time: two of them can be the only killers of one mutant."
@@ -139,7 +140,8 @@ module Mutineer
       if @agg.skipped_invalid_count.positive?
         message << " A mutant skipped (invalid) did not re-parse after mutation. If its source file " \
                    "parses on its own, that is a mutineer bug: please report it at " \
-                   "https://github.com/davidteren/mutineer/issues."
+                   "https://github.com/davidteren/mutineer/issues, with the source file and " \
+                   "these versions: Ruby #{RUBY_VERSION}, Prism #{Prism::VERSION}."
       end
       err.puts message
     end
@@ -251,6 +253,12 @@ module Mutineer
         },
         survivors: @agg.surviving_mutants.map { |r| survivor_json(r) }
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },
+        # Additive (1.10, #361): every killed mutant's lean identity so two runs
+        # can be joined by id without subtracting every unscored category.
+        # to_s/to_i: lean_mutant_json can leave null fields when a stub result
+        # lacks a subject (same rule as no_verdict[]).
+        killed: @agg.results.select(&:killed?).map { |r| mutant_json(r) }
+                    .sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s, h[:id].to_s] },
         # id extends the key to a total order: several mutants share a line.
         no_coverage: @agg.results.select(&:no_coverage?).map { |r| mutant_json(r) }
                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
@@ -728,25 +736,78 @@ module Mutineer
     end
 
     # The fields that name one mutant, for the lists that point at mutants:
-    # `no_coverage`, `uncapturable`, `unplaceable`, `ran_at_load`, `ignored` and
-    # `baseline.new_survivors`.
+    # `killed`, `no_coverage`, `uncapturable`, `unplaceable`, `ran_at_load`,
+    # `ignored` and `baseline.new_survivors`.
     #
     # @api private
     # @param result [Mutineer::Result] the mutant result.
     # @return [Hash] subject, file, line, operator, token, and id.
     def mutant_json(result)
-      m = result.mutation
-      file = result.subject.file
+      lean_mutant_json(result.subject, result.mutation, result.id)
+    end
+
+    # Lean mutant identity shared by run-report lists and `--dry-run --format json`.
+    #
+    # @api private
+    # @param subject [Mutineer::Subject] the mutated subject.
+    # @param mutation [Mutineer::Mutation] the mutation.
+    # @param id [String, nil] the stable mutant id.
+    # @return [Hash] subject, file, line, operator, token, and id.
+    def lean_mutant_json(subject, mutation, id)
+      # Stub results in tests (and rare pre-attach kills) can lack a subject.
+      # Match no_verdict_json: null fields rather than raising.
+      return {
+        subject: nil, file: nil, line: nil, operator: nil, token: nil, id: id
+      } if subject.nil? || mutation.nil?
+
+      file = subject.file
       source = source_for(file)
-      start_line, _orig, _mut, token = diff_for(m, source)
+      start_line, _orig, _mut, token = diff_for(mutation, source)
       {
-        subject: result.subject.qualified_name,
+        subject: subject.qualified_name,
         file: file,
         line: start_line,
-        operator: m.operator.to_s,
+        operator: mutation.operator.to_s,
         token: token,
-        id: result.id
+        id: id
       }
+    end
+
+    # JSON for `--dry-run --format json`: every valid candidate with its stable
+    # id, plus summary totals. Ids match a later real run of the same JobPlan.
+    # Callers partition with {Mutation#valid?} once and pass only valid jobs;
+    # this method does not re-validate.
+    #
+    # @param jobs [Array<Array>] valid `(subject, mutation, id)` triples from
+    #   {JobPlan.collect_jobs} (after {JobPlan.scope_since}).
+    # @param source_map [Hash{String => String}] source file path => source text.
+    # @param declined [Hash{String => Integer}] operator name => declined count.
+    # @param skipped_invalid [Integer] candidates that did not re-parse.
+    # @param ignored [Integer] suppressed candidates.
+    # @return [String] JSON text.
+    def self.dry_run_json(jobs, source_map, declined: {}, skipped_invalid: 0, ignored: 0)
+      reporter = new(AggregateResult.new([]), source_map)
+      by_operator = Hash.new(0)
+      mutants = jobs.map do |subject, mutation, id|
+        by_operator[mutation.operator.to_s] += 1
+        reporter.__send__(:lean_mutant_json, subject, mutation, id)
+      end
+      mutants.sort_by! { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s, h[:id].to_s] }
+      doc = {
+        schema_version: SCHEMA_VERSION,
+        summary: {
+          # Same marker as a completed report: absent means the old id format.
+          id_format: 2,
+          total: mutants.size,
+          skipped_invalid: skipped_invalid,
+          ignored: ignored,
+          declined: declined.values.sum,
+          declined_by_operator: declined,
+          by_operator: by_operator.sort.to_h
+        },
+        mutants: mutants
+      }
+      "#{JSON.generate(doc)}\n"
     end
 
     # Builds a line-aligned diff for a mutation whose byte range may span several
@@ -771,19 +832,26 @@ module Mutineer
     # An entry under the JSON `no_verdict:` key: an attempted mutant with no verdict.
     # A pre-fork failure has no subject or mutation attached, so those degrade to
     # nulls rather than dropping the entry — the count must still reconcile with
-    # `summary.no_verdict`.
+    # `summary.no_verdict`. `details` is redacted here too, whatever its source
+    # (#388).
     #
     # @api private
     # @param result [Mutineer::Result] an errored or timed-out result.
     # @return [Hash] no-verdict JSON object.
     def no_verdict_json(result)
+      file = result.subject&.file
+      # As in result_line: diff_for needs the source, so a mutation needs a file.
+      m = result.mutation if file
+      line, _orig, _mut, token = diff_for(m, source_for(file)) if m
       {
         subject: result.subject&.qualified_name,
-        file: result.subject&.file,
-        line: result_line(result),
+        file: file,
+        line: line,
+        operator: m&.operator&.to_s,
+        token: token,
         id: result.id,
         status: result.status.to_s,
-        details: result.details
+        details: result.details && Redaction.text(result.details)
       }
     end
 

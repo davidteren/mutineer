@@ -248,10 +248,13 @@ class BaselineTest < Minitest::Test
 
   def test_json_report_carries_additive_baseline_block
     base = Mutineer::Baseline.new(baseline_doc([]))
-    results = [Mutineer::Result.killed, survivor("ccc")]
+    killed = Mutineer::Result.killed.with(subject: subject,
+                                          mutation: mutation_at("100", "0", :literal_mutation),
+                                          id: "killedbase001")
+    results = [killed, survivor("ccc")]
     doc = JSON.parse(render(results, base.diff(agg(*results)), format: "json"))
 
-    assert_equal "1.9", doc["schema_version"] # 1.9 = summary.declined; 1.8 = ignore reason
+    assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 1.10 = killed[] and no_verdict operator/token; 1.9 = declined
     assert doc["baseline"]["regressed"]
     assert_equal 1, doc["baseline"]["new_survivors"].size
     assert_equal "ccc", doc["baseline"]["new_survivors"].first["id"]
