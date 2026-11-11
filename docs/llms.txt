@@ -26,7 +26,7 @@ Key facts:
 - [For AI agents & CI](https://davidteren.github.io/mutineer/agentic-coding.html): the agent inner loop, CI regression gating, the GitHub Action, and equivalent-mutant suppression.
 - [Equivalent skips](https://davidteren.github.io/mutineer/equivalent-skips.html): code changes Mutineer skips automatically, and why.
 - [Rails rollout](https://davidteren.github.io/mutineer/rails.html): four stages from one Rails model to a CI gate, plus GitHub Actions and GitLab CI recipes.
-- [JSON report schema](https://davidteren.github.io/mutineer/json-schema.html): the versioned JSON contract — `summary`, `survivors[]`, `killed[]`, `no_coverage[]`, `uncapturable[]`, `unplaceable[]`, `ran_at_load[]`, `no_verdict[]`, `ignored[]`, `per_source[]`, the `baseline` and `matrix` blocks, and dry-run JSON.
+- [JSON report schema](https://davidteren.github.io/mutineer/json-schema.html): the versioned JSON contract — `summary`, `survivors[]`, `killed[]`, `no_coverage[]`, `uncapturable[]`, `unplaceable[]`, `ran_at_load[]`, `no_verdict[]`, `ignored[]`, `per_source[]`, `unmutated_subjects[]`, the `baseline` and `matrix` blocks, and dry-run JSON.
 - [Ruby API (YARD)](https://davidteren.github.io/mutineer/api/): class reference generated from the website build’s source revision.
 - [Sample HTML report](https://davidteren.github.io/mutineer/sample-report.html): example report data displayed in the website theme; the CLI’s self-contained HTML output has a different presentation.
 <!-- /site-catalog:docs -->
