@@ -26,13 +26,19 @@ module Mutineer
     # workflow, so one bad mutant never fails the gate on its own, at any size.
     BROKEN_FLOOR = 1
 
-    # Share of the mutants a run tried to score that may go unrun (unplaceable or
-    # skipped invalid) before stderr warns. A warning only: it never changes the
-    # exit code. {BROKEN_FLOOR} also applies, so one unrun mutant never warns.
+    # Share of the mutants a run tried to score that may go unrun (unplaceable,
+    # skipped invalid, or unpaired) before stderr warns. A warning only: it
+    # never changes the exit code. {BROKEN_FLOOR} also applies, so one unrun
+    # mutant never warns. `--fail-fast` leaves unpaired mutants out of this share.
     UNRUN_SHARE_LIMIT = 0.10
 
     # The JSON report's `schema_version` (see docs/json-schema.md).
     SCHEMA_VERSION = "1.10"
+
+    # The unrun-share hint for mutants in sources with no paired test.
+    # The CLI keeps a shorter copy for the empty-run message.
+    UNPAIRED_SHARE_HINT = "See unpaired_sources[] in --format json. To run them, add a test " \
+                          "at the conventional path, or run those sources in a separate command with --test."
 
     # The warning both matrix renderers give under the redundant tests.
     MATRIX_REDUNDANT_NOTE = "Delete redundant tests one at a time: two of them can be the only killers of one mutant."
@@ -45,10 +51,16 @@ module Mutineer
     # @param source_map [Hash{String => String}] source file path => source text.
     # @param matrix [Mutineer::KillMatrix, nil] the kill matrix of a `--matrix`
     #   run; nil leaves every format exactly as it is without the flag.
-    def initialize(aggregate, source_map, matrix: nil)
+    # @param unpaired [Hash{String => Integer, nil}] file => mutant count for
+    #   sources pairing skipped. nil means the count failed. Default is empty.
+    # @param fail_fast [Boolean] when true, unpaired mutants stay out of the
+    #   unrun share and the human scope percentage.
+    def initialize(aggregate, source_map, matrix: nil, unpaired: {}, fail_fast: false)
       @agg = aggregate
       @source_map = source_map
       @matrix = matrix
+      @unpaired = unpaired
+      @fail_fast = fail_fast
     end
 
     # Single entry point. Branches on `format` ("human" | "json" | "html") and
@@ -134,11 +146,13 @@ module Mutineer
     def warn_unrun_share(err)
       return unless unrun_share_exceeded?
 
-      unrun = @agg.unrun_count
+      include_unpaired = unpaired_in_share?
+      unrun = unrun_for_share
       tried = attempted_count + unrun
       parts = []
       parts << "#{@agg.unplaceable_count} unplaceable" if @agg.unplaceable_count.positive?
       parts << "#{@agg.skipped_invalid_count} skipped (invalid)" if @agg.skipped_invalid_count.positive?
+      parts << "#{unpaired_mutant_count} in sources with no paired test" if include_unpaired
       pct = (unrun * 100.0 / tried).round(1)
       message = +"[mutineer] #{unrun} of the #{tried} mutants mutineer tried to score were not run " \
                  "(#{parts.join(', ')}; #{pct}%, limit #{(UNRUN_SHARE_LIMIT * 100).round}%). " \
@@ -152,6 +166,7 @@ module Mutineer
                    "https://github.com/davidteren/mutineer/issues, with the source file and " \
                    "these versions: Ruby #{RUBY_VERSION}, Prism #{Prism::VERSION}."
       end
+      message << " #{UNPAIRED_SHARE_HINT}" if include_unpaired
       err.puts message
     end
 
@@ -167,7 +182,11 @@ module Mutineer
     # @return [void]
     def human_report(out, err, threshold, declined: {}, scoped: false, subjects: nil, unmutated: nil)
       # The CLI explains an empty run for every format (CLI.warn_empty_run).
-      return if @agg.total.zero?
+      # A saved report still carries the unpaired counts.
+      if @agg.total.zero?
+        out.puts unpaired_line(scoped) unless @unpaired.empty?
+        return
+      end
 
       out.puts "Mutineer — Mutation Results"
       out.puts "========================="
@@ -268,6 +287,10 @@ module Mutineer
           # mutate (a heredoc split or an equivalent skip), so not in `total`.
           declined: declined.values.sum,
           declined_by_operator: declined,
+          # Additive (1.10, #381): sources pairing skipped, and the mutants in
+          # them. A nil count is left out of the mutant sum.
+          unpaired_sources: @unpaired.size,
+          unpaired_mutants: unpaired_mutant_count,
           # Additive (1.10, #386): methods discovered, and how many of them the
           # selected operators did not mutate. Not mutants, so not in `total`.
           subjects: subjects,
@@ -317,6 +340,9 @@ module Mutineer
         # output is byte-stable. Reuses AggregateResult via by_source.
         per_source: @agg.by_source.map { |file, agg| per_source_json(file, agg) }
                         .sort_by { |h| h[:file] },
+        # Additive (1.10, #381): every source pairing skipped, sorted by file.
+        # `mutants` is null when the count failed.
+        unpaired_sources: unpaired_sources_json,
         # Additive (1.10, #386): the methods the selected operators did not
         # mutate, sorted by (file, line, subject) in JobPlan.collect_jobs.
         unmutated_subjects: unmutated_subjects
@@ -376,6 +402,7 @@ module Mutineer
         <h1>Mutineer — Mutation Report</h1>
         <div class="score">Score: #{score.nil? ? 'N/A' : "#{score}%"}</div>
         #{summary_html}
+        #{unpaired_html}
         #{per_source_html(per_source)}
         #{survivors_html(survivors)}
         #{ignored_html}
@@ -393,7 +420,8 @@ module Mutineer
         "uncapturable" => @agg.uncapturable_count, "unplaceable" => @agg.unplaceable_count,
         "ran_at_load" => @agg.ran_at_load_count, "ignored" => @agg.ignored_count,
         "skipped" => @agg.skipped_invalid_count,
-        "errored" => @agg.errored_count, "timeout" => @agg.timeout_count
+        "errored" => @agg.errored_count, "timeout" => @agg.timeout_count,
+        "unpaired" => unpaired_mutant_count
       }
       spans = counts.map { |k, v| "<span><strong>#{v}</strong> #{esc(k)}</span>" }.join("\n  ")
       "<div class=\"counts\">\n  #{spans}\n</div>"
@@ -919,6 +947,7 @@ module Mutineer
       end
       # Equivalent mutants the user suppressed; excluded from the denominator.
       out.puts format("Ignored:      %-6d  (equivalent, suppressed)", @agg.ignored_count)
+      out.puts unpaired_line(scoped)
     end
 
     # Writes the score line.
@@ -932,7 +961,7 @@ module Mutineer
                  "#{@agg.unplaceable_count} unplaceable, #{@agg.ran_at_load_count} ran at load, " \
                  "#{@agg.skipped_invalid_count} skipped, " \
                  "#{@agg.errored_count} errored, #{@agg.timeout_count} timeout, " \
-                 "#{@agg.ignored_count} ignored excluded"
+                 "#{unpaired_mutant_count} unpaired, #{@agg.ignored_count} ignored excluded"
       if score.nil?
         out.puts "Mutation score: N/A  (no covered mutants)"
         # Only the benign case here: the gate-failure explanation is emitted once
@@ -991,14 +1020,110 @@ module Mutineer
       @agg.killed_count + @agg.survived_count + no_verdict_count
     end
 
-    # Whether the unrun mutants (unplaceable plus skipped invalid) are more than
-    # {BROKEN_FLOOR} and more than {UNRUN_SHARE_LIMIT} of attempted plus unrun.
+    # Whether the unrun mutants are more than {BROKEN_FLOOR} and more than
+    # {UNRUN_SHARE_LIMIT} of attempted plus unrun. A run with no result rows
+    # does not warn here. The empty-run message owns that case.
     #
     # @api private
     # @return [Boolean] true when the unrun-share warning applies.
     def unrun_share_exceeded?
-      unrun = @agg.unrun_count
+      return false if @agg.total.zero?
+
+      unrun = unrun_for_share
       unrun > BROKEN_FLOOR && unrun > UNRUN_SHARE_LIMIT * (attempted_count + unrun)
+    end
+
+    # Unrun mutants in the share. `--fail-fast` leaves unpaired mutants out.
+    #
+    # @api private
+    # @return [Integer]
+    def unrun_for_share
+      return @agg.unrun_count unless unpaired_in_share?
+
+      @agg.unrun_count + unpaired_mutant_count
+    end
+
+    # True when unpaired mutants join the unrun share and the human percentage.
+    # A failed count is not in the sum, so it does not join on its own.
+    #
+    # @api private
+    # @return [Boolean]
+    def unpaired_in_share?
+      !@fail_fast && !@agg.total.zero? && unpaired_mutant_count.positive?
+    end
+
+    # Known unpaired mutant counts. A nil count is left out.
+    #
+    # @api private
+    # @return [Integer]
+    def unpaired_mutant_count
+      @unpaired.each_value.sum { |count| count.is_a?(Integer) ? count : 0 }
+    end
+
+    # `unpaired_sources[]` sorted by file. A nil count stays nil, so JSON writes null.
+    #
+    # @api private
+    # @return [Array<Hash>]
+    def unpaired_sources_json
+      @unpaired.map { |file, count| { file: file, mutants: count } }.sort_by { |row| row[:file].to_s }
+    end
+
+    # The human Unpaired line. The percentage is omitted under `--fail-fast`,
+    # when the denominator is empty, and when the mutant count is 0.
+    #
+    # @api private
+    # @param scoped [Boolean] the run was diff-scoped (`--since`).
+    # @return [String]
+    def unpaired_line(scoped)
+      detail = [scoped ? "mutants on changed lines not run" : "mutants not run"]
+      sources = @unpaired.size
+      detail << (sources == 1 ? "1 source has no paired test" : "#{sources} sources have no paired test")
+      unknown = @unpaired.count { |_file, count| count.nil? }
+      if unknown == 1
+        detail << "1 source not counted"
+      elsif unknown > 1
+        detail << "#{unknown} sources not counted"
+      end
+      share = unpaired_scope_share
+      detail << "#{share}% of the mutants in scope" if share
+      format("Unpaired:     %-6d  (%s)", unpaired_mutant_count, detail.join("; "))
+    end
+
+    # Unpaired mutants over the scope denominator.
+    # The denominator is `total - ignored + unpaired`. nil when it must be omitted.
+    #
+    # @api private
+    # @return [Float, nil]
+    def unpaired_scope_share
+      return if @fail_fast
+
+      count = unpaired_mutant_count
+      return if count.zero?
+
+      denominator = @agg.total - @agg.ignored_count + count
+      return if denominator <= 0
+
+      (count * 100.0 / denominator).round(1)
+    end
+
+    # The HTML table of sources with no paired test. Empty when none were skipped.
+    #
+    # @api private
+    # @return [String]
+    def unpaired_html
+      return "" if @unpaired.empty?
+
+      rows = @unpaired.sort_by { |file, _count| file.to_s }.map do |file, count|
+        shown = count.nil? ? "unknown" : count.to_s
+        "<tr><td>#{esc(file)}</td><td class=\"num\">#{esc(shown)}</td></tr>"
+      end.join("\n  ")
+      <<~HTML.chomp
+        <h2>Sources with no paired test</h2>
+        <table>
+        <tr><th>File</th><th>Mutants</th></tr>
+          #{rows}
+        </table>
+      HTML
     end
 
     # The sentence both the verdict line and the stderr note are built from, so a

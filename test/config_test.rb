@@ -502,6 +502,11 @@ class ConfigTest < Minitest::Test
     assert_equal({}, Config.resolve({}, {}).ignore_reasons)
   end
 
+  def test_unpaired_sources_defaults_to_empty
+    assert_equal [], Config.new.unpaired_sources
+    assert_equal [], Config.resolve({}, {}).unpaired_sources
+  end
+
   # A mapping entry keeps its reason. A bare id in the same list does not.
   def test_ignore_mapping_keeps_the_reason_and_a_bare_id
     yaml = <<~YAML

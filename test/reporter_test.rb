@@ -583,6 +583,95 @@ class ReporterTest < Minitest::Test
     assert_equal 0, reporter(killed_and_unplaceable(2, 3)).exit_code(threshold: 80.0)
   end
 
+  def test_human_summary_has_an_unpaired_line
+    text = unpaired_report(Array.new(2) { Mutineer::Result.killed }, { "lib/b.rb" => 1, "lib/a.rb" => 1 }).first
+    assert_match(
+      /Unpaired:\s+2\s+\(mutants not run; 2 sources have no paired test; 50\.0% of the mutants in scope\)/,
+      text
+    )
+  end
+
+  def test_scope_share_leaves_out_ignored_rows
+    text, = unpaired_report(
+      Array.new(2) { Mutineer::Result.killed } + [Mutineer::Result.ignored],
+      { "lib/a.rb" => 2 }
+    )
+    assert_includes text, "50.0% of the mutants in scope"
+    refute_includes text, "40.0%"
+  end
+
+  def test_scope_share_is_absent_under_fail_fast
+    text, = unpaired_report(Array.new(2) { Mutineer::Result.killed }, { "lib/a.rb" => 2 }, fail_fast: true)
+    line = text.lines.grep(/Unpaired:/).first
+    assert line
+    refute_includes line, "%"
+  end
+
+  def test_empty_human_report_keeps_the_unpaired_line
+    text, err = unpaired_report([], { "lib/a.rb" => 2 })
+    assert_match(/\AUnpaired:\s+2\s+\(mutants not run; 1 source has no paired test; 100\.0% of the mutants in scope\)\n\z/, text)
+    assert_empty err
+  end
+
+  def test_score_line_lists_unpaired
+    text, = unpaired_report([Mutineer::Result.killed], { "lib/a.rb" => 2 })
+    assert_includes text, "2 unpaired"
+    assert_includes text, "Mutation score: 100.0%"
+  end
+
+  def test_unpaired_mutants_join_the_unrun_share
+    _text, err = unpaired_report(Array.new(2) { Mutineer::Result.killed }, { "lib/a.rb" => 3 })
+    assert_includes err, "3 of the 5 mutants mutineer tried to score were not run"
+    assert_includes err, "(3 in sources with no paired test; 60.0%, limit 10%)"
+    assert_includes err, "unpaired_sources[]"
+    assert_includes err, "run those sources in a separate command with --test"
+    refute_includes err, "or pass --test"
+    refute_includes err, "unplaceable[]"
+    refute_includes err, "re-parse"
+  end
+
+  def test_fail_fast_leaves_unpaired_out_of_the_unrun_share
+    out, err, doc = unpaired_json(Array.new(2) { Mutineer::Result.killed }, { "lib/a.rb" => 3 }, fail_fast: true)
+    refute_includes err, "were not run"
+    assert_equal 3, doc["summary"]["unpaired_mutants"]
+    refute_includes out, "were not run"
+  end
+
+  def test_no_unrun_warning_when_no_result_exists
+    _text, err = unpaired_report([], { "lib/a.rb" => 3 })
+    refute_includes err, "were not run"
+  end
+
+  def test_unrun_share_adds_unpaired_to_unplaceable
+    _text, err = unpaired_report(
+      Array.new(2) { Mutineer::Result.killed } + [Mutineer::Result.unplaceable],
+      { "lib/a.rb" => 2 }
+    )
+    assert_includes err, "3 of the 5"
+    assert_includes err, "(1 unplaceable, 2 in sources with no paired test; 60.0%, limit 10%)"
+  end
+
+  def test_no_unrun_warning_for_unpaired_under_the_limit_or_the_floor
+    _text, over = unpaired_report(Array.new(20) { Mutineer::Result.killed }, { "lib/a.rb" => 2 })
+    _text, floor = unpaired_report([Mutineer::Result.killed], { "lib/a.rb" => 1 })
+    refute_includes over, "were not run"
+    refute_includes floor, "were not run"
+  end
+
+  def test_unpaired_warning_keeps_the_exit_code_and_the_json
+    out = StringIO.new
+    err = StringIO.new
+    reporter = Mutineer::Reporter.new(
+      aggregate(Array.new(2) { Mutineer::Result.killed }),
+      { FILE => SRC },
+      unpaired: { "lib/a.rb" => 3 }
+    )
+    reporter.report(out: out, err: err, format: "json", threshold: 80.0)
+    assert_includes err.string, "were not run"
+    assert JSON.parse(out.string)
+    assert_equal 0, reporter.exit_code(threshold: 80.0)
+  end
+
   # --- declined candidates (#291) ---
 
   def test_human_summary_has_a_declined_line
@@ -633,5 +722,21 @@ class ReporterTest < Minitest::Test
 
   def reporter(results)
     Mutineer::Reporter.new(aggregate(results), { FILE => SRC })
+  end
+
+  def unpaired_report(results, unpaired, fail_fast: false)
+    out = StringIO.new
+    err = StringIO.new
+    Mutineer::Reporter.new(aggregate(results), { FILE => SRC }, unpaired: unpaired, fail_fast: fail_fast)
+                      .report(out: out, err: err)
+    [out.string, err.string]
+  end
+
+  def unpaired_json(results, unpaired, fail_fast: false)
+    out = StringIO.new
+    err = StringIO.new
+    Mutineer::Reporter.new(aggregate(results), { FILE => SRC }, unpaired: unpaired, fail_fast: fail_fast)
+                      .report(out: out, err: err, format: "json")
+    [out.string, err.string, JSON.parse(out.string)]
   end
 end

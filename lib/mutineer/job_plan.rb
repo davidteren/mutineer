@@ -470,6 +470,88 @@ module Mutineer
       nil
     end
 
+    # Counts scheduled mutants in each source pairing skipped.
+    # One source is parsed at a time. A source that raises records nil and
+    # an error string. This method prints nothing. The caller prints the error.
+    # An empty job list counts 0. `--only` and `--since` narrow the count.
+    # They do not drop the source. Ignored mutants are not in the count.
+    # The count is not a validity check.
+    #
+    # @param config [Mutineer::Config] run configuration. Reads `unpaired_sources`.
+    # @param operator_classes [Array<Class>] resolved operators.
+    # @return [Array(Hash{String => Integer, nil}, Array<Hash>)]
+    #   file => count, in source order, and `{file:, error:}` failures.
+    def self.unpaired_counts(config, operator_classes)
+      counts = {}
+      failures = []
+      pending_jobs = []
+      pending_ignored = []
+      pending_map = {}
+      pending_files = []
+
+      config.unpaired_sources.each do |file|
+        copy = config.dup
+        copy.sources = [file]
+        begin
+          jobs, ignored, source_map, = collect_jobs(copy, operator_classes)
+        rescue StandardError => e
+          counts[file] = nil
+          failures << { file: file, error: "#{e.class}: #{e.message}" }
+          next
+        end
+
+        if jobs.empty? || !config.since
+          counts[file] = jobs.size
+        else
+          pending_jobs.concat(jobs)
+          pending_ignored.concat(ignored)
+          pending_map.merge!(source_map)
+          pending_files << file
+          counts[file] = 0
+        end
+      end
+
+      apply_unpaired_since!(counts, pending_jobs, pending_ignored, pending_map, pending_files, config) if config.since
+      [counts, failures]
+    end
+
+    # Replaces pending unpaired counts with the jobs `--since` keeps.
+    # One {scope_since} call covers every file that produced a job.
+    #
+    # @api private
+    # @param counts [Hash{String => Integer, nil}] file => count, updated in place.
+    # @param jobs [Array] scheduled jobs from those files.
+    # @param ignored [Array<Mutineer::Result>] suppressed mutants from those files.
+    # @param source_map [Hash{String => String}] source text by file.
+    # @param files [Array<String>] unpaired files that produced jobs.
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.apply_unpaired_since!(counts, jobs, ignored, source_map, files, config)
+      return if files.empty?
+
+      copy = config.dup
+      copy.sources = files
+      kept, = scope_since(jobs, ignored, source_map, copy)
+      tally = Hash.new(0)
+      kept.each do |subject,|
+        key = unpaired_path(subject.file, files, config.project_root)
+        tally[key] += 1 if key
+      end
+      files.each { |file| counts[file] = tally[file] }
+    end
+
+    # The unpaired path spelling that names the same file as `subject_file`.
+    #
+    # @api private
+    # @param subject_file [String] path stored on the subject.
+    # @param files [Array<String>] unpaired paths in the caller's spelling.
+    # @param project_root [String] root for relative paths.
+    # @return [String, nil] the matching spelling, or nil.
+    def self.unpaired_path(subject_file, files, project_root)
+      absolute = File.expand_path(subject_file, project_root)
+      files.find { |file| File.expand_path(file, project_root) == absolute }
+    end
+
     # Narrows the jobs and the suppressed (ignored) results to --since when it
     # is set, as the dry run does, so a scoped report lists only mutants on
     # changed lines. Also returns how many mutants there were before narrowing

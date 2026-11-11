@@ -58,6 +58,21 @@ class RunnerDaemonTest < Minitest::Test
                  "daemon serial path must emit progress on stderr")
   end
 
+  def test_cli_reports_unpaired_sources_via_daemon
+    cfg = config_for("order_test.rb")
+    cfg.format = "json"
+    tax = File.join(APP, "app/models/tax_table.rb")
+    cfg.unpaired_sources = [tax]
+    ops = Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::DEFAULT_NAMES)
+    jobs, = Mutineer::JobPlan.collect_jobs(Mutineer::Config.new(sources: [tax], project_root: APP), ops)
+    out, _err = capture_io do
+      assert_raises(SystemExit) { Mutineer::CLI.execute(cfg) }
+    end
+    doc = JSON.parse(out)
+    assert_equal 1, doc["summary"]["unpaired_sources"]
+    assert_equal jobs.size, doc["summary"]["unpaired_mutants"]
+  end
+
   def test_daemon_coverage_map_warns_when_unavailable
     cfg = config_for("order_test.rb")
     Mutineer::DaemonClient.stub(:new, ->(*) { raise Mutineer::DaemonBootError, "boom" }) do

@@ -349,6 +349,10 @@ pull requests #393 and #395 (issue #403).
 `skipped`, `errored` are ALL excluded from the denominator. Empty denominator → `nil`,
 never `0.0`. The exact-survivor integration oracle must stay green.
 
+A run that drops a source whole counts that source and its mutants in the report
+(`summary.unpaired_sources`, `summary.unpaired_mutants`).
+Those mutants have a place in the unrun share, except under `--fail-fast`, which leaves them out.
+
 A new status for a mutant that exists but could not run ships with a count in the report and a
 place in the unrun share (`AggregateResult#unrun_count`, the stderr warning above 10%). A new place
 where an operator declines a candidate calls `decline` (`Mutators::Base`), so it is counted in

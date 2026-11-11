@@ -8,7 +8,7 @@ the tests or environment change. `survivors[]` sorts by
 `(file, line, operator)`; `killed[]`, `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
 add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`;
 `no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`;
-`unmutated_subjects[]` by `(file, line, subject)`. One exception:
+`unpaired_sources[]` by `file`; `unmutated_subjects[]` by `(file, line, subject)`. One exception:
 `details` of an errored mutant can quote run-specific text (see `no_verdict[]`).
 
 ## Versioning contract
@@ -22,6 +22,8 @@ The top-level `schema_version` (a string, e.g. `"1.10"`) follows these rules:
 
 A consumer should accept any `1.x` document and read only the keys it knows.
 Compare versions as two integers, major then minor, not as decimals: `1.10` comes after `1.9`.
+
+Compare `schema_version` as two integers, major then minor, so `1.10` follows `1.9`.
 
 Mutant `id` values are opaque identifiers. How an id is derived is versioned by
 `summary.id_format`, not by `schema_version`: when `id_format` changes, every id
@@ -47,6 +49,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
   "no_verdict":   [ /* mutants that were attempted and produced no verdict */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
   "per_source":   [ /* per-file roll-up */ ],
+  "unpaired_sources": [ /* sources with no paired test, sorted by file */ ],
   "unmutated_subjects": [ /* methods the selected operators did not mutate */ ],
   "matrix":       { /* present ONLY with --matrix: which tests kill which mutants */ },
   "baseline":     { /* present ONLY with --baseline: the delta vs a prior run */ }
@@ -57,14 +60,14 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| `total` | int | Classified results included in this report, across all statuses. With `--fail-fast`, unscheduled candidates are omitted, so this is not the full generated candidate count. |
+| `total` | int | Classified results included in this report, across all statuses. With `--fail-fast`, unscheduled candidates are omitted, so this is not the full generated candidate count. Mutants in sources with no paired test are not in `total`. |
 | `killed` | int | Mutants a test caught (suite went red). |
 | `survived` | int | Mutants no test caught. Review each for a missing test or equivalent behaviour. |
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant in code that runs only sometimes on a later line of a multi-line statement, such as the right side of `a &&` on its own line, when the tests that ran the statement did not kill it: the run cannot tell whether they reached it. Also a mutant on a later line of a multi-line statement whose first or last line holds other code, such as a call inside a one-line block. Mutineer ran the tests that ran that first or last line (never the `def` line); they did not kill it, and they may not have run the mutant. |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
-| `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically, or any method in a concern's `included` or `prepended` block; under `--strategy reload`, some methods in such a block. The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). Counted in the unrun share: when `unplaceable + skipped_invalid` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid`, stderr warns on every format. The warning does not change the exit code (schema `1.9`, #291). |
+| `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically, or any method in a concern's `included` or `prepended` block; under `--strategy reload`, some methods in such a block. The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
-| `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). Counted in the unrun share: when `unplaceable + skipped_invalid` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid`, stderr warns on every format. The warning does not change the exit code (schema `1.9`, #291). |
+| `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
 | `declined` | int | Candidates the operators found and did not mutate, so they are not in `total`: a heredoc the edit would split, or an equivalent skip listed on the [equivalent-skips page](equivalent-skips.md). Counted per operator, so a candidate two operators decline counts twice. Counted before `# mutineer:disable-line` and `ignore:` apply. `--only` narrows it; `--since` does not. Additive key (schema `1.9`, #291). |
 | `declined_by_operator` | object | The same count per operator name, operator name => int, only operators above zero, keys sorted. `{}` when none. Additive key (schema `1.9`, #291). |
 | `subjects` | int \| null | Methods found in the run's sources, each counted once. Methods, not mutants, so not in `total`. `--fail-fast` does not narrow it: it counts every method found, while `total` omits unscheduled mutants, so the two are not one denominator. `null` only when a program calls the reporter without both method counts (one alone counts as none); the CLI always fills both. Additive key (schema `1.10`, #386). |
@@ -78,6 +81,8 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `scoped` | bool | `true` when the run was diff-scoped (`--since`): the score covers only the changed-line mutants, so it is not comparable to a full-run score. A scoped CURRENT run skips `--baseline`'s score-drop check (new-survivor detection still applies); a scoped report is REFUSED as a baseline (exit 2) because survivors outside its diff would read as new regressions. Additive key (absent in reports from older versions; treat absent as `false`). |
 | `id_format` | int | The mutant id format. `2` means ids include the project-relative file path (1.3 and later). **Read this key, not `schema_version`, to learn the id format.** Absent in older reports: treat absent as the old format, whose ids did not include the path and can collide across files. Additive key (schema `1.4`). |
 | `legacy_id_matches` | object | `{ ignore, baseline }`, two ints. `ignore` counts `.mutineer.yml` `ignore:` entries in the old id format that matched this run (replace them with the new ids the run prints). `baseline` counts survivors that matched an old-format `--baseline` only through their old id (regenerate the baseline). Both are `0` when nothing old matched. Old-format matching is removed in 2.0. Additive key (schema `1.4`). |
+| `unpaired_sources` | int | How many sources had no paired test. `--only` and `--since` can leave a source at 0. The source stays in this count. Additive key (schema `1.10`, #381). |
+| `unpaired_mutants` | int | Non-ignored scheduled mutants in those sources. A failed count is left out of the sum. These mutants are excluded from the mutation score and are not in `no_verdict`, so they cannot fail `--threshold`. The human share is this count over `total - ignored + unpaired_mutants`. `--fail-fast` omits that percentage. `0` can mean no mutant, or no changed line under `--since`. Additive key (schema `1.10`, #381). |
 
 ### `survivors[]` (array of object)
 
@@ -210,6 +215,20 @@ Suppressed (equivalent) mutants, so you can audit what's silenced: `{ subject, f
 Per-file roll-up: `{ file, total, killed, survived, no_coverage, score }` (`score` is `float | null` as above).
 `total` counts classified results for that file. A `--fail-fast` report is partial:
 unscheduled candidates are omitted from these counts and from the top-level totals.
+
+### `unpaired_sources[]` (array of object)
+
+Each source pairing skipped. Sorted by `file`.
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `file` | string | The source path, as the run stored it. |
+| `mutants` | int \| null | Scheduled mutants in that file. `null` when the count failed. `0` can mean no mutant, or no changed line under `--since`. |
+
+The human report shows `unpaired_mutants / (total - ignored + unpaired_mutants)`.
+Ignored rows are not in that denominator.
+`--fail-fast` omits the percentage.
+A run with no result rows does not put these mutants in the unrun-share warning.
 
 ### `unmutated_subjects[]` (array of object)
 

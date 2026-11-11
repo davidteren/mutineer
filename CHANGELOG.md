@@ -8,6 +8,24 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **A run counts sources that have no paired test (#381).**
+  The report names each skipped source and how many mutants it holds.
+  JSON adds `summary.unpaired_sources`, `summary.unpaired_mutants`, and `unpaired_sources[]`.
+  The human report, the HTML report, and the dry run show the same counts.
+  Unpaired mutants are excluded from the score and cannot fail `--threshold`.
+  They join the unrun-share stderr warning, except under `--fail-fast`.
+  That warning does not change the exit code.
+  Schema version is `1.10`.
+  Compare it as two integers, so `1.10` follows `1.9`.
+  On Fizzy at `d5b7b749d`, 106 sources and 312 mutants were unpaired.
+  The paired run total was 759, so the share was 29.1%.
+  On Fizzy at `f220e4832`, 92 sources and 149 mutants were unpaired.
+  The paired total was 922, so the raw share was 13.9%.
+  After the 10 ignored mutants leave the denominator, the share is 14.0%.
+  Mutineer now parses those sources.
+  A disable-line warning or a git-diff warning can name them.
+  The Action summary line waits on pull request #395.
+  A dry run with `--rails` or `--boot` and no `--test` still exits 2 (#410).
 - **A concern pairs with the test that mirrors its namespace (#379).**
   `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_test.rb`.
   That path matches `Storage::Totaled`.

@@ -41,9 +41,9 @@ Directories or multiple sources run in one boot, with results per source. Tests 
 | `bar_upsert.rb` exists | `bar_upsert_guards_test.rb` stays with `bar_upsert.rb` |
 | A spec already pairs | It stays as that one file |
 
+A source with no paired test is skipped. The report counts its mutants. If that count fails, `unpaired_sources[].mutants` is `null` in JSON. These mutants are excluded from the score. They join the unrun-share warning unless `--fail-fast` is set.
 A `tests:` map in `.mutineer.yml` adds its test files when the run holds a matching source; see [Extra tests for a source](cli.md#extra-tests-for-a-source).
 For a `--baseline` gate, use the sources of the run that wrote the baseline.
-
 ### GitHub Action
 
 The composite action (`action.yml`) runs the CLI:
