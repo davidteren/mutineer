@@ -6,7 +6,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `--test FILE` | Test file; repeat for each file | Paired with each source by convention; unmatched sources are skipped; `--dry-run` with `--rails` or `--boot` still needs `--test` |
+| `--test PATH` | Test file, directory or quoted glob; repeat for more | Paired with each source by convention; unmatched sources are skipped; `--dry-run` with `--rails` or `--boot` still needs `--test` |
 | `--framework minitest\|rspec` | Test framework | `rspec` if most tests end in `_spec.rb`; otherwise `minitest` |
 | `--operators LIST` | Comma-separated operator names | Tier-1 (default) set; see `mutineer --list-operators` |
 | `--only NAME` | Mutate one subject, such as `Calculator#add` | All subjects |
@@ -32,6 +32,20 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--[no-]allow-empty` | Suppress warnings for runs without mutants | Off |
 | `--verbose` (alias `--debug`) | Full error details | Off |
 | `--list-operators`, `--version`, `--help` | Print and exit | |
+
+`--test` takes a file, a directory, or a quoted glob.
+Repeat the flag to add another value.
+A directory selects `*_test.rb`, `*_spec.rb`, and `test_*.rb` files.
+It skips `test_helper.rb`.
+It includes system tests and `test_` support files, such as `test/support/test_helpers.rb`.
+Quote a glob, or the shell expands it first.
+This selects the `*_test.rb` files under `test/models` and `test/controllers`: `--test 'test/{models,controllers}/**/*_test.rb'`.
+With `--test-command`, a directory is passed as typed.
+That run prints no count for the directory.
+A glob still expands.
+A blank value exits 2.
+A directory or glob with no test file exits 2.
+Each expanded directory or glob prints its file count on stderr.
 
 Other commands:
 

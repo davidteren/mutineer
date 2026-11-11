@@ -78,6 +78,11 @@ These inputs exist on the GitHub Action in 1.8.0:
 `operators`, `framework`, `strategy`, `jobs`, `rails`, `format`, `output`,
 `extra-args`, `working-directory`, `use-bundler`, `version`.
 
+From 1.9.0, the --test flag accepts a directory or a quoted glob.
+The Action test input accepts a directory.
+Mutineer 1.8.2 and earlier reject a directory in the Action test input.
+This is not in a release yet.
+
 ## 2.0 changes
 
 Each item below is a planned break.

@@ -50,7 +50,7 @@ module Mutineer
                                                      --force replaces an existing file.
 
       Run options:
-        --test FILE          Test file covering the sources (one per flag; repeat it).
+        --test PATH          Test file, directory or quoted glob (repeat for more).
                              Omit to pair each source with its test by convention
                              (not under --dry-run)
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
@@ -154,7 +154,7 @@ module Mutineer
         # A typed "no" must beat a .mutineer.yml `since:` key: the key is present
         # with a nil value, and nil is a value.
         o.on("--no-since") { opts[:since] = nil }
-        o.on("--test FILE") { |v| (opts[:tests] ||= []) << v }
+        o.on("--test PATH") { |v| (opts[:tests] ||= []) << v }
         o.on("--operators LIST") do |v|
           opts[:operators] = Config.parse(:operators, v.split(",").map(&:strip))
         end
@@ -216,12 +216,22 @@ module Mutineer
       case argv.first
       when "run"
         warn_config_root_mismatch(file_path, config.project_root) if file_path
+        # Matrix conflicts first — same order as validate! — so a --matrix
+        # clash is not hidden by a shape or expansion error (#407 OCR).
+        # Expand --test before the guard. The guard reads config.tests.
+        # migrate and config do not call this (#380).
+        # A bad --test-command is reported next, not hidden by a --test error.
+        validate_matrix!(config) if config.matrix
+        validate_test_command_shape!(config) if config.test_command
+        expand_tests!(config) if config.explicit?(:tests)
         tests_as_sources = argv[1..].select do |arg|
           Pairing.test_given_as_source?(arg, project_root: config.project_root, tests: config.tests)
         end
         if config.explicit?(:tests) && tests_as_sources.any?
           warn "mutineer: #{tests_as_sources.join(', ')} looks like a test file, not a source. " \
-               "--test takes one file; repeat it for each test file (--test a_test.rb --test b_test.rb)"
+               "A shell expands an unquoted glob into many files. " \
+               "Quote the glob (--test 'test/**/*_test.rb'), pass the directory (--test test), " \
+               "or repeat --test for each file"
           exit 2
         end
         # A directory source expands to its **/*.rb files; a file inside the
@@ -466,14 +476,7 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.validate_test_command!(config)
-      if config.test_command.strip.empty?
-        warn "mutineer: --test-command must not be empty"
-        exit 2
-      end
-      unless config.test_command.include?("%{files}")
-        warn "mutineer: --test-command must contain %{files} (where the --test paths are substituted)"
-        exit 2
-      end
+      validate_test_command_shape!(config)
       if config.boot
         warn "mutineer: --test-command cannot be combined with --boot/--rails " \
              "(the external subprocess boots the app itself)"
@@ -489,6 +492,23 @@ module Mutineer
 
       warn "[mutineer] --test-command runs serially (no per-worker DB isolation yet); forcing --jobs 1."
       config.jobs = 1
+    end
+
+    # The --test-command text must not be blank and must contain %{files}.
+    # It prints nothing when the text is valid, so a second call is safe.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.validate_test_command_shape!(config)
+      if config.test_command.strip.empty?
+        warn "mutineer: --test-command must not be empty"
+        exit 2
+      end
+      return if config.test_command.include?("%{files}")
+
+      warn "mutineer: --test-command must contain %{files} (where the --test paths are substituted)"
+      exit 2
     end
 
     # --daemon selects the persistent-daemon backend (boot once, fork per mutant,
@@ -655,6 +675,85 @@ module Mutineer
 
       warn "mutineer: no such file: #{missing.join(', ')}"
       exit 2
+    end
+
+    # Expand each typed --test value before a run. A blank value exits 2.
+    # With --test-command, a directory stays as typed. A glob still expands.
+    # A directory or glob with no test file exits 2. Each expanded value
+    # prints one count on stderr. Duplicate files keep the first spelling.
+    # The framework is detected again from the expanded list, unless the
+    # user set it.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.expand_tests!(config)
+      root = config.project_root
+      seen = {}
+      tests = []
+      counts = []
+      errors = []
+
+      Array(config.tests).each do |value|
+        kind = Pairing.classify_test_value(value, project_root: root)
+        if kind == :blank
+          errors << %(mutineer: --test must name a file, a directory or a glob, not blank (got: "#{value}"))
+          next
+        end
+        if kind == :directory && config.test_command
+          store_test_path(tests, seen, root, value)
+          next
+        end
+
+        paths = Pairing.expand_test(value, project_root: root)
+        if paths.empty?
+          errors << no_test_match_message(value, kind)
+          next
+        end
+        if kind == :directory || kind == :glob
+          noun = paths.size == 1 ? "file" : "files"
+          counts << "[mutineer] --test #{value}: #{paths.size} test #{noun}"
+        end
+        paths.each { |path| store_test_path(tests, seen, root, path) }
+      end
+
+      unless errors.empty?
+        errors.each { |msg| warn msg }
+        exit 2
+      end
+
+      counts.each { |line| warn line }
+      config.tests = tests
+      config.framework = Config.detect_framework(config.tests) unless config.explicit?(:framework)
+    end
+
+    # Usage text when a directory or glob matched no test file.
+    #
+    # @api private
+    # @param value [String] the --test value, as typed.
+    # @param kind [Symbol] :directory or :glob.
+    # @return [String]
+    def self.no_test_match_message(value, kind)
+      message = "mutineer: --test #{value} matched no test files"
+      return message unless kind == :directory
+
+      "#{message}. A directory gives the files under it named *_test.rb, *_spec.rb or test_*.rb."
+    end
+
+    # Keep the first spelling of one absolute test path.
+    #
+    # @api private
+    # @param tests [Array<String>] paths kept so far.
+    # @param seen [Hash{String => true}] absolute paths already kept.
+    # @param root [String] project root.
+    # @param path [String] path as it should be stored.
+    # @return [void]
+    def self.store_test_path(tests, seen, root, path)
+      key = File.expand_path(path, root)
+      return if seen[key]
+
+      seen[key] = true
+      tests << path
     end
 
     # Auto-pair sources to tests by path convention when no --test was given

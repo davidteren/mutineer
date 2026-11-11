@@ -3,6 +3,8 @@
 require_relative "test_helper"
 require "open3"
 require "rbconfig"
+require "tmpdir"
+require "fileutils"
 require "minitest/mock"
 require "mutineer/config"
 require "mutineer/cli"
@@ -114,5 +116,23 @@ class CliDaemonTest < Minitest::Test
 
     assert_equal 2, status.status
     assert_includes err, "mutineer: shared_databases lists primary"
+  end
+
+  # #380: a spec directory is expanded before the daemon check, so the RSpec
+  # rejection fires. The check exits before a daemon starts.
+  def test_daemon_rejects_a_spec_directory_before_startup
+    Dir.mktmpdir("mutineer-daemon-spec") do |proj|
+      FileUtils.mkdir_p(File.join(proj, "lib"))
+      FileUtils.mkdir_p(File.join(proj, "spec"))
+      File.write(File.join(proj, "lib", "calc.rb"), "class Calc; def n(a); a + 1; end; end\n")
+      File.write(File.join(proj, "spec", "calc_spec.rb"), "RSpec.describe(Calc) { it('ok') { } }\n")
+      out, err, status = Open3.capture3(
+        RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", BIN,
+        "run", "lib/calc.rb", "--rails", "--daemon", "--test", "spec", chdir: proj
+      )
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "--daemon supports only --framework minitest"
+      assert_empty out
+    end
   end
 end

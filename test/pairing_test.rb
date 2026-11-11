@@ -169,6 +169,81 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # #380: one --test value becomes test paths. A file stays as typed.
+  def test_expand_test_selects_a_directory_a_glob_or_a_file
+    with_tree(
+      "test/a_test.rb", "test/models/b_test.rb", "test/models/deep/c_test.rb",
+      "test/test_d.rb", "test/test_helper.rb", "test/support/helper.rb",
+      "test/.hidden/e_test.rb", "spec/x_spec.rb", "spec/spec_helper.rb"
+    ) do |root|
+      pair = Mutineer::Pairing
+      dir = ["test/a_test.rb", "test/models/b_test.rb", "test/models/deep/c_test.rb", "test/test_d.rb"]
+      assert_equal dir, pair.expand_test("test", project_root: root)
+      assert_equal dir, pair.expand_test(File.join(root, "test"), project_root: root)
+      assert_equal ["spec/x_spec.rb"], pair.expand_test("spec", project_root: root)
+      assert_equal ["test/a_test.rb", "test/models/b_test.rb", "test/models/deep/c_test.rb"],
+                   pair.expand_test("test/**/*_test.rb", project_root: root)
+      assert_equal ["spec/x_spec.rb", "test/a_test.rb", "test/models/b_test.rb", "test/models/deep/c_test.rb"],
+                   pair.expand_test("{test,spec}/**/*_{test,spec}.rb", project_root: root)
+      assert_equal ["test/a_test.rb", "test/test_d.rb", "test/test_helper.rb"],
+                   pair.expand_test("test/*.rb", project_root: root)
+      assert_empty pair.expand_test("test/mod*", project_root: root)
+      assert_equal ["./test/a_test.rb"], pair.expand_test("./test/a_test.rb", project_root: root)
+      assert_equal ["test/a_test.rb"], pair.expand_test("./test/*_test.rb", project_root: root)
+      assert_equal ["test/nope_test.rb"], pair.expand_test("test/nope_test.rb", project_root: root)
+      assert_empty pair.expand_test("test/**/*_nomatch.rb", project_root: root)
+      assert_empty pair.expand_test("test/support", project_root: root)
+      FileUtils.touch(File.join(root, "test", "[x]_test.rb"))
+      assert_equal ["test/[x]_test.rb"], pair.expand_test("test/[x]_test.rb", project_root: root)
+    end
+  end
+
+  # A directory includes system tests and test_ support files.
+  # A glob of one folder does not.
+  def test_expand_test_keeps_system_tests_and_test_support_files
+    with_tree("test/models/a_test.rb", "test/system/s_test.rb", "test/support/test_helpers.rb", "test/routes_test.rb") do |root|
+      pair = Mutineer::Pairing
+      assert_equal ["test/models/a_test.rb", "test/routes_test.rb", "test/support/test_helpers.rb", "test/system/s_test.rb"],
+                   pair.expand_test("test", project_root: root)
+      assert_equal ["test/models/a_test.rb"], pair.expand_test("test/models/**/*_test.rb", project_root: root)
+    end
+  end
+
+  # A directory name is literal. Pattern characters do not select a sibling.
+  def test_expand_test_reads_a_directory_name_as_literal
+    with_tree(
+      "test[a]/a_test.rb", "testa/nested/wrong_test.rb",
+      "br{ace}/a_test.rb", "a?b/a_test.rb", "axb/wrong_test.rb",
+      "star*/a_test.rb", "starX/wrong_test.rb"
+    ) do |root|
+      pair = Mutineer::Pairing
+      assert_equal ["test[a]/a_test.rb"], pair.expand_test("test[a]", project_root: root)
+      assert_equal ["br{ace}/a_test.rb"], pair.expand_test("br{ace}", project_root: root)
+      assert_equal ["a?b/a_test.rb"], pair.expand_test("a?b", project_root: root)
+      assert_equal ["star*/a_test.rb"], pair.expand_test("star*", project_root: root)
+    end
+  end
+
+  # A directory outside the project stays absolute.
+  def test_expand_test_keeps_an_outside_directory_absolute
+    with_tree("proj/test/a_test.rb", "other/b_test.rb") do |dir|
+      root = File.join(dir, "proj")
+      other = File.join(dir, "other")
+      assert_equal [File.join(other, "b_test.rb")],
+                   Mutineer::Pairing.expand_test(other, project_root: root)
+    end
+  end
+
+  # An outside directory whose name is a pattern still lists only its own files.
+  def test_expand_test_reads_an_outside_directory_name_as_literal
+    with_tree("proj/lib/a.rb", "out[a]/a_test.rb", "outa/nested/wrong_test.rb") do |dir|
+      root = File.join(dir, "proj")
+      other = File.join(dir, "out[a]")
+      assert_equal [File.join(other, "a_test.rb")],
+                   Mutineer::Pairing.expand_test(other, project_root: root)
+    end
+  end
+
   # #87: a suite split as <basename>_*_test.rb still pairs when the exact file
   # is absent. Order is sorted so the choice is stable.
   def test_split_test_files_pair_when_no_exact_file_exists

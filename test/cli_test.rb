@@ -231,7 +231,7 @@ class CliTest < Minitest::Test
                                 "test/calculator_weak_test.rb", chdir: proj)
       assert_equal 2, status.exitstatus, err
       assert_includes err, "test/calculator_weak_test.rb looks like a test file, not a source"
-      assert_includes err, "repeat it for each test file"
+      assert_includes err, "Quote the glob"
     end
   end
 
@@ -448,6 +448,22 @@ class CliTest < Minitest::Test
     assert_equal 2, status.exitstatus
     assert_includes err, "--matrix cannot be combined with --test-command"
     refute_includes err, "forcing --jobs 1"
+  end
+
+  # #407 OCR: matrix conflicts beat early shape/expansion checks that now run
+  # before validate!, so the user still sees the --no-matrix hint first.
+  def test_matrix_beats_test_command_shape_error
+    _, err, status = mutineer("run", "x.rb", "--test", "t.rb", "--matrix", "--test-command", "rake test")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--matrix cannot be combined with --test-command"
+    refute_includes err, "%{files}"
+  end
+
+  def test_matrix_beats_unmatched_test_glob
+    _, err, status = mutineer("run", "x.rb", "--matrix", "--daemon", "--test", "nowhere/*")
+    assert_equal 2, status.exitstatus
+    assert_includes err, "--matrix cannot be combined with --daemon"
+    refute_includes err, "matched no test files"
   end
 
   def test_matrix_with_fail_fast_exits_two
@@ -1480,6 +1496,184 @@ class CliTest < Minitest::Test
       assert_equal ["app/foo/bar.rb"], config.sources
       assert_equal ["test/foo/bar_guards_test.rb", "test/foo/bar_upsert_test.rb"], config.tests
     end
+  end
+
+  # #380: the temp fixture drops test/models so a later file there cannot change these lists.
+  def with_test_expand_project
+    with_autopair_project do |proj|
+      FileUtils.rm_rf(File.join(proj, "test", "models"))
+      yield proj
+    end
+  end
+
+  def test_a_test_directory_expands_and_matches_the_file_list
+    with_test_expand_project do |proj|
+      config = config_resolved_by_cli(proj, "run", "lib", "--test", "test")
+      assert_equal ["test/calc_test.rb", "test/greeter_test.rb"], config.tests
+
+      listed, = mutineer("run", "lib", "--test", "test/calc_test.rb", "--test", "test/greeter_test.rb",
+                         "--format", "json", chdir: proj)
+      out, err, status = mutineer("run", "lib", "--test", "test", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] --test test: 2 test files"
+      assert_equal JSON.parse(listed)["summary"], JSON.parse(out)["summary"]
+      assert_equal JSON.parse(listed)["per_source"], JSON.parse(out)["per_source"]
+    end
+  end
+
+  def test_a_quoted_test_glob_selects_the_same_files
+    with_test_expand_project do |proj|
+      config = config_resolved_by_cli(proj, "run", "lib/calc.rb", "--test", "test/*_test.rb")
+      assert_equal ["test/calc_test.rb", "test/greeter_test.rb"], config.tests
+    end
+  end
+
+  def test_a_typed_file_wins_over_the_same_file_from_a_directory
+    with_test_expand_project do |proj|
+      config = config_resolved_by_cli(proj, "run", "lib", "--test", "./test/calc_test.rb", "--test", "test")
+      assert_equal ["./test/calc_test.rb", "test/greeter_test.rb"], config.tests
+
+      _, err, status = mutineer("run", "--dry-run", "lib", "--test", "./test/calc_test.rb", "--test", "test",
+                                chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, err.lines.grep(/\[mutineer\] --test /).size
+      assert_includes err, "[mutineer] --test test: 2 test files"
+      refute_includes err, "--test ./test/calc_test.rb:"
+    end
+  end
+
+  def test_a_spec_directory_selects_specs_and_detects_rspec
+    with_test_expand_project do |proj|
+      FileUtils.mkdir_p(File.join(proj, "spec", "nested"))
+      File.write(File.join(proj, "spec", "calc_spec.rb"), <<~RUBY)
+        require_relative "../lib/calc"
+
+        RSpec.describe Calc do
+          it "adds" do
+            expect(Calc.new.add(2, 3)).to eq(5)
+          end
+        end
+      RUBY
+      File.write(File.join(proj, "spec", "nested", "greeter_spec.rb"), <<~RUBY)
+        RSpec.describe "greeter" do
+          it "passes" do
+            expect(true).to eq(true)
+          end
+        end
+      RUBY
+      File.write(File.join(proj, "spec", "spec_helper.rb"), "# helper\n")
+
+      config = config_resolved_by_cli(proj, "run", "lib/calc.rb", "--test", "spec")
+      assert_equal ["spec/calc_spec.rb", "spec/nested/greeter_spec.rb"], config.tests
+      assert_equal "rspec", config.framework
+
+      kept = config_resolved_by_cli(proj, "run", "lib/calc.rb", "--framework", "minitest", "--test", "spec")
+      assert_equal "minitest", kept.framework
+
+      out, err, status = mutineer("run", "lib/calc.rb", "--test", "spec", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, JSON.parse(out)["summary"]["killed"]
+    end
+  end
+
+  def test_a_blank_or_empty_test_value_exits_two
+    with_test_expand_project do |proj|
+      FileUtils.mkdir_p(File.join(proj, "empty"))
+      ["", "nowhere/*_test.rb", "empty"].each do |value|
+        out, err, status = mutineer("run", "lib/calc.rb", "--test", value, "--format", "json", chdir: proj)
+        assert_equal 2, status.exitstatus, err
+        assert_empty out
+        dry_out, dry_err, dry = mutineer("run", "--dry-run", "lib/calc.rb", "--test", value, chdir: proj)
+        assert_equal 2, dry.exitstatus, dry_err
+        assert_empty dry_out
+      end
+
+      _, blank_err, = mutineer("run", "lib/calc.rb", "--test", "", chdir: proj)
+      assert_includes blank_err, 'mutineer: --test must name a file, a directory or a glob, not blank (got: "")'
+      _, glob_err, = mutineer("run", "lib/calc.rb", "--test", "nowhere/*_test.rb", chdir: proj)
+      assert_includes glob_err, "mutineer: --test nowhere/*_test.rb matched no test files"
+      refute_includes glob_err, "A directory gives"
+      _, dir_err, = mutineer("run", "lib/calc.rb", "--test", "empty", chdir: proj)
+      assert_includes dir_err, "mutineer: --test empty matched no test files"
+      assert_includes dir_err, "A directory gives the files under it named *_test.rb, *_spec.rb or test_*.rb."
+    end
+  end
+
+  def test_a_missing_test_file_still_says_no_such_file
+    with_test_expand_project do |proj|
+      _, err, status = mutineer("run", "lib/calc.rb", "--test", "test/nope_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "no such file: test/nope_test.rb"
+    end
+  end
+
+  def test_dry_run_of_a_test_directory_prints_the_count
+    with_test_expand_project do |proj|
+      _, err, status = mutineer("run", "--dry-run", "lib", "--test", "test", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] --test test: 2 test files"
+    end
+  end
+
+  def test_one_test_file_uses_the_singular_count
+    with_test_expand_project do |proj|
+      FileUtils.rm(File.join(proj, "test", "greeter_test.rb"))
+      _, err, status = mutineer("run", "--dry-run", "lib/calc.rb", "--test", "test", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] --test test: 1 test file"
+    end
+  end
+
+  def test_test_command_keeps_a_directory_and_expands_a_glob
+    with_test_expand_project do |proj|
+      log = File.join(proj, "args.txt")
+      File.write(File.join(proj, "record.rb"), "File.open(#{log.dump}, 'a') { |f| f.puts ARGV }\n")
+      command = "#{RbConfig.ruby} record.rb %{files}"
+
+      _, err, status = mutineer("run", "lib/calc.rb", "--test", "test", "--test-command", command, chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_match(/\[mutineer\] --test /, err)
+      # The runner passes an absolute path. It does not expand the directory.
+      recorded = File.read(log).lines.map { |line| File.realpath(line.strip) }.uniq
+      assert_equal [File.realpath(File.join(proj, "test"))], recorded
+
+      File.write(log, "")
+      _, glob_err, glob_status = mutineer("run", "lib/calc.rb", "--test", "test/*_test.rb",
+                                          "--test-command", command, chdir: proj)
+      assert_equal 0, glob_status.exitstatus, glob_err
+      assert_includes glob_err, "[mutineer] --test test/*_test.rb: 2 test files"
+      files = ["test/calc_test.rb", "test/greeter_test.rb"].map { |path| File.realpath(File.join(proj, path)) }
+      assert_equal files, File.read(log).lines.map { |line| File.realpath(line.strip) }.uniq.sort
+    end
+  end
+
+  # A bad --test-command is reported before an unmatched --test glob.
+  def test_test_command_error_comes_before_a_test_glob_error
+    with_test_expand_project do |proj|
+      _, err, status = mutineer("run", "lib/calc.rb", "--test", "nowhere/*_test.rb",
+                                "--test-command", "rake test", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "must contain %{files}"
+      refute_includes err, "matched no test files"
+    end
+  end
+
+  # With --test-command, an empty directory stays one path. The run does not exit 2.
+  def test_test_command_keeps_an_empty_directory
+    with_test_expand_project do |proj|
+      FileUtils.mkdir_p(File.join(proj, "empty"))
+      _, err, status = mutineer("run", "--dry-run", "lib/calc.rb", "--test", "empty",
+                                "--test-command", "true %{files}", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "matched no test files"
+    end
+  end
+
+  def test_help_names_a_test_directory
+    out, _, status = mutineer("--help")
+    assert_equal 0, status.exitstatus
+    assert_includes out, "--test PATH"
+    assert_includes out, "directory"
   end
 
   # R5: an explicit --test disables inference entirely — only the named source runs.

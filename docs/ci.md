@@ -135,7 +135,7 @@ From [`action.yml`](https://github.com/davidteren/mutineer/blob/main/action.yml)
 | Input | Default | What it does |
 |-------|---------|--------------|
 | `sources` | required | Space-separated files or directories |
-| `test` | `""` | Test files; empty pairs by convention |
+| `test` | `""` | Test files or directories. Empty pairs by convention. A directory needs mutineer 1.9.0 or later |
 | `since` | `""` | Git ref; PR base on `pull_request`; `none` scans all |
 | `threshold` | `""` | Fail below this score |
 | `baseline` | `""` | Saved `--format json` report |
@@ -151,6 +151,16 @@ From [`action.yml`](https://github.com/davidteren/mutineer/blob/main/action.yml)
 | `working-directory` | `"."` | Project root |
 | `use-bundler` | `"false"` | Run `bundle exec mutineer`; required for `rails: true` |
 | `version` | `""` | Gem version without Bundler; empty uses latest |
+
+The `test` input accepts files and directories.
+A directory needs mutineer 1.9.0 or later.
+An older gem rejects a directory.
+Without Bundler, the `version` input sets the gem version.
+With `use-bundler: "true"`, `Gemfile.lock` sets it.
+If a directory is rejected, check that version.
+Bash expands a glob in `test` and in `extra-args`.
+`**` matches one directory level.
+That limit is issue #406 (Action globs match one directory level).
 
 ## Refresh the baseline
 
