@@ -379,12 +379,18 @@ row_workdir() {
 for i in "${!TABLE_NAMES[@]}"; do
   name="${TABLE_NAMES[$i]}" label="${TABLE_LABELS[$i]}"
   table_row output "$label" "$name" row_output
-  table_row yml-cache "$label" "$name" row_yml_cache
   table_row baseline "$label" "$name" row_baseline
   table_row yml-baseline "$label" "$name" row_yml_baseline
   table_row workdir "$label" "$name" row_workdir
   case "$name" in
+    # A leading `~` is a home shortcut for cache_dir (CLI expand_path), not a
+    # literal folder name under cwd, so the cache-dir rows do not apply.
+    "~"*) echo "  TABLE-SKIP: yml-cache/$label, args-cache/$label (~ cache_dir is home-relative)" ;;
+    *) table_row yml-cache "$label" "$name" row_yml_cache ;;
+  esac
+  case "$name" in
     *[[:space:]]*) echo "  TABLE-SKIP: args-cache/$label, args-baseline/$label (extra-args splits on whitespace)" ;;
+    "~"*) table_row args-baseline "$label" "$name" row_args_baseline ;;
     *)
       table_row args-cache "$label" "$name" row_args_cache
       table_row args-baseline "$label" "$name" row_args_baseline
@@ -424,3 +430,15 @@ else
   echo "  FAIL: expected a missing-directory error"
 fi
 rm -rf -- -dash .mutineer.yml
+
+# Home-relative cache_dir (~/...) must still match an absolute output parent
+# under that home (CLI expand_path semantics) (#401 cubic).
+echo; echo "== 19e: home-relative cache_dir matches absolute output parent =="
+rm -rf .mutineer.yml
+fake_home="$SCRATCH/fake-home"
+rm -rf "$fake_home"
+mkdir -p "$fake_home"
+ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => "~/mcache"}.to_yaml)'
+HOME="$fake_home" run_step t19e STUB_EXIT=0 OUTPUT="$fake_home/mcache/pr.json"
+[ -s "$fake_home/mcache/pr.json" ] && echo "  OK: home-relative cache dir created" || echo "  FAIL: home-relative cache dir not created"
+rm -rf "$fake_home" .mutineer.yml

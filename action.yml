@@ -333,9 +333,10 @@ runs:
                 done
               fi
             fi
-            # Compare without tilde expansion and with `--`, so a dash-leading
-            # folder is ARGV and a literal `~` folder stays under cwd (#401).
-            if ruby -e 'exit(File.absolute_path(ARGV[0]) == File.absolute_path(ARGV[1]))' -- "$out_dir" "$cache_dir"; then
+            # out_dir stays literal (absolute_path); cache_dir follows the CLI
+            # and expands `~` (expand_path). `--` keeps a dash-leading folder
+            # as ARGV (#401).
+            if ruby -e 'exit(File.absolute_path(ARGV[0]) == File.expand_path(ARGV[1]))' -- "$out_dir" "$cache_dir"; then
               if ! ruby -rfileutils -e 'FileUtils.mkdir_p(ARGV[0])' -- "$out_dir" 2>/dev/null; then
                 echo "::error::mutineer: cannot write output '$SAFE_OUT': could not create cache directory."
                 exit 2
