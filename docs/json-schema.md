@@ -284,6 +284,7 @@ report does. `--format html` under `--dry-run` stays human and warns that the fo
 {
   "schema_version": "1.10",
   "summary": {
+    "id_format": 2,
     "total": 0,
     "skipped_invalid": 0,
     "ignored": 0,
@@ -296,4 +297,6 @@ report does. `--format html` under `--dry-run` stays human and warns that the fo
 ```
 
 `mutants[].id` values match a later real run of the same sources, operators, and ignore rules
-(both paths use `JobPlan.collect_jobs`). `summary.total` equals `mutants.length`.
+(both paths use `JobPlan.collect_jobs`). `summary.id_format` is `2`, the same marker a completed
+report carries, so a consumer that joins by id does not treat a missing key as the old format.
+`summary.total` equals `mutants.length`.

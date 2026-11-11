@@ -723,6 +723,7 @@ class CliTest < Minitest::Test
       assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"]
       assert_operator doc["mutants"].size, :>, 0
       assert_equal doc["summary"]["total"], doc["mutants"].size
+      assert_equal 2, doc["summary"]["id_format"]
       entry = doc["mutants"].first
       assert_equal %w[subject file line operator token id], entry.keys
       assert_match(/\A[0-9a-f]{12}\z/, entry["id"])

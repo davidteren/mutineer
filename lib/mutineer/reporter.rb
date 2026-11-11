@@ -795,6 +795,8 @@ module Mutineer
       doc = {
         schema_version: SCHEMA_VERSION,
         summary: {
+          # Same marker as a completed report: absent means the old id format.
+          id_format: 2,
           total: mutants.size,
           skipped_invalid: skipped_invalid,
           ignored: ignored,
