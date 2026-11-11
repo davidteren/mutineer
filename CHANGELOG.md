@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`.mutineer.yml` accepts a `tests:` map (#382).**
+  Each entry names `sources` and `tests` patterns.
+  When the run holds a matching source, those test files join the run's test list beside convention-paired tests.
+  Coverage still picks the tests for each mutant.
+  `--test` replaces pairing and the map.
+  A malformed map or a pattern that matches no file exits 2.
 - **`--test` accepts a file, a directory, or a quoted glob (#380).**
   A directory selects `*_test.rb`, `*_spec.rb`, and `test_*.rb` files.
   It skips `test_helper.rb`.

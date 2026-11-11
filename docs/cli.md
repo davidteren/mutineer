@@ -6,7 +6,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `--test PATH` | Test file, directory or quoted glob; repeat for more | Paired with each source by convention; unmatched sources are skipped; `--dry-run` with `--rails` or `--boot` still needs `--test` |
+| `--test PATH` | Test file, directory or quoted glob; repeat for more | Paired with each source by convention, plus any matching `tests:` map entries; unmatched sources are skipped; `--test` replaces pairing and the map; `--dry-run` with `--rails` or `--boot` still needs `--test` |
 | `--framework minitest\|rspec` | Test framework | `rspec` if most tests end in `_spec.rb`; otherwise `minitest` |
 | `--operators LIST` | Comma-separated operator names | Tier-1 (default) set; see `mutineer --list-operators` |
 | `--only NAME` | Mutate one subject, such as `Calculator#add` | All subjects |
@@ -71,6 +71,7 @@ Pass sources as positional arguments and tests with `--test`.
 | `rails` | Boolean; enables Rails boot defaults |
 | `since` | Nonblank git ref; `false` disables diff scoping |
 | `framework` | `minitest` or `rspec`; preserved during test pairing |
+| `tests` | File only. List of mappings with `sources` and `tests` patterns; adds those tests to the run when a matching source is in the run. See [Extra tests for a source](#extra-tests-for-a-source) |
 | `verbose` | Boolean; shows capture diagnostics |
 | `ignore` | Mutant ID or list, or mappings with an `id` and optional `reason`, to suppress |
 | `baseline` | Prior JSON report path |
@@ -96,6 +97,8 @@ Pass sources as positional arguments and tests with `--test`.
 | `threshold`, CLI-only `--baseline-epsilon` | Strings use plain decimals: `90`, `0.5`; not `+2`, `1e2`, `1_0` |
 | String options, including `only`, `baseline` | Cannot be null or boolean |
 | `since` | Cannot be blank; use `since: false` to disable scoping |
+| Malformed `tests:` map | Exit 2; message names file, entry number, and fault |
+| `tests:` pattern that matches no file | Exit 2 on `mutineer run` and under `--dry-run`; not checked when `--test` is given |
 
 CLI-only: `format`, `strategy`, `output`, `baseline_epsilon`, `dry_run`, `coverage_from`.
 Use `--format json`, not `format:`. Select RSpec with `framework: rspec`.
@@ -108,6 +111,29 @@ threshold: 90
 # instead of `require: config/environment`.
 rails: true
 ```
+
+### Extra tests for a source
+
+Use a `tests:` map when convention cannot pair a source, such as a controller concern whose tests live with the controllers that include it:
+
+```yaml
+tests:
+  - sources: app/controllers/concerns/**/*.rb
+    tests: [test/controllers/**/*_test.rb, test/integration/**/*_test.rb]
+```
+
+An entry adds its tests to the whole run when the run holds one of its sources.
+Coverage picks the tests for each mutant.
+A mapped test can thus also kill a mutant of another source in that run.
+A `--baseline` gate therefore needs the sources of the run that wrote the baseline, as [CI](ci.md#baseline) already says.
+Mutineer captures coverage for each test file in the run and checks it clean, also on a cache hit (#398).
+A run of one mapped source loads every test of its entries.
+`--test-command` runs every test in the run for every mutant.
+A mutant that many test files cover can pass the time limit for one mutant.
+The limit is 10 seconds in process and 60 seconds with `--daemon`.
+Quote a pattern that starts with `*`.
+Quote a pattern with braces inside a `[...]` list.
+`--test` replaces pairing and the map.
 
 Coverage uses a digest-keyed cache at `.mutineer/coverage.json`, rebuilt automatically when sources change.
 
