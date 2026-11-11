@@ -47,7 +47,8 @@ All notable changes to this project are documented here. The format is based on
   With `use-bundler: true`, the Gemfile picks the version.
   A split name pairs only at the `concerns/` path.
   A failed namespace test does not mark a concern that has a test at its `concerns/` path.
-  Namespace split names are issue #408 (pair split test files at a concern's namespace path).- **Mutineer now reports the methods that got no mutants (#386).** A
+  Namespace split names are issue #408 (pair split test files at a concern's namespace path).
+- **Mutineer now reports the methods that got no mutants (#386).** A
   method whose body is one `if` with a `rescue` gets no mutant from the
   default operators, and the run did not say so. The dry run summary now
   ends with `no mutants in N of M methods`, and `--dry-run --verbose`

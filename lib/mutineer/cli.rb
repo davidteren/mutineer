@@ -1057,12 +1057,16 @@ module Mutineer
         return
       end
 
-      # Every unpaired count failed: the mutants may exist, so do not call the run empty.
+      # No positive unpaired count, and at least one count failed: mutants may
+      # still exist, so do not call the run empty. Name every unpaired source;
+      # say how many of those counts are unavailable.
       unknown = unpaired.count { |_file, count| count.nil? }
       if unknown.positive?
-        subject = unknown == 1 ? "1 source has" : "#{unknown} sources have"
-        warn "mutineer: no mutant ran. #{subject} no paired test, and the mutant count is unavailable " \
-             "(unpaired_sources[] in --format json). #{UNPAIRED_RUN_HINT}"
+        total = unpaired.size
+        sources = total == 1 ? "1 source has" : "#{total} sources have"
+        unavailable = unknown == 1 ? "1 of them" : "#{unknown} of them"
+        warn "mutineer: no mutant ran. #{sources} no paired test; the mutant count is unavailable for " \
+             "#{unavailable} (unpaired_sources[] in --format json). #{UNPAIRED_RUN_HINT}"
         return
       end
 

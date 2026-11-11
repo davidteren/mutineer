@@ -1617,7 +1617,18 @@ class CliTest < Minitest::Test
     _out, err = capture_io do
       Mutineer::CLI.warn_empty_run(Mutineer::Config.new, {}, { "lib/odd.rb" => nil })
     end
-    assert_includes err, "no mutant ran. 1 source has no paired test, and the mutant count is unavailable"
+    assert_includes err,
+                    "no mutant ran. 1 source has no paired test; the mutant count is unavailable for 1 of them"
+    refute_includes err, "no mutants were generated"
+  end
+
+  # A zero count next to a failed count still names every unpaired source.
+  def test_empty_run_names_all_unpaired_sources_when_one_count_failed
+    _out, err = capture_io do
+      Mutineer::CLI.warn_empty_run(Mutineer::Config.new, {}, { "lib/a.rb" => 0, "lib/b.rb" => nil })
+    end
+    assert_includes err,
+                    "no mutant ran. 2 sources have no paired test; the mutant count is unavailable for 1 of them"
     refute_includes err, "no mutants were generated"
   end
 
