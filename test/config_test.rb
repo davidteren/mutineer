@@ -281,6 +281,107 @@ class ConfigTest < Minitest::Test
 
   def test_known_keys_come_from_the_schema
     assert_equal Mutineer::CONFIG_OPTIONS.filter_map(&:yaml_key), Mutineer::KNOWN_KEYS
+    assert_includes Mutineer::KNOWN_KEYS, "tests"
+  end
+
+  # --- tests: map (issue #382) ---
+
+  def test_tests_key_parses_entries
+    yaml = <<~YAML
+      tests:
+        - sources: app/controllers/concerns/**/*.rb
+          tests:
+            - test/controllers/**/*_test.rb
+            - test/integration/**/*_test.rb
+    YAML
+    with_config(yaml) do |path|
+      out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty out
+      assert_empty err
+      assert_equal(
+        [{ sources: ["app/controllers/concerns/**/*.rb"],
+           tests: ["test/controllers/**/*_test.rb", "test/integration/**/*_test.rb"] }],
+        @hash[:test_map]
+      )
+      refute @hash.key?(:tests), "YAML tests: must not fill the CLI :tests field"
+    end
+  end
+
+  def test_tests_key_leaves_the_test_flag_field_alone
+    yaml = <<~YAML
+      tests:
+        - sources: lib/shared.rb
+          tests: test/shared_test.rb
+    YAML
+    with_config(yaml) do |path|
+      capture_io { @hash = Config.from_file(path) }
+      cfg = Config.resolve({}, @hash)
+      assert_equal [], cfg.tests
+      refute cfg.explicit?(:tests)
+      assert_equal(
+        [{ sources: ["lib/shared.rb"], tests: ["test/shared_test.rb"] }],
+        cfg.test_map
+      )
+      assert_equal "tests in .mutineer.yml", cfg.origin(:test_map)
+    end
+  end
+
+  def test_empty_tests_list_means_no_map
+    with_config("tests: []\n") do |path|
+      out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty out
+      assert_empty err
+      assert_equal({ test_map: [] }, @hash)
+    end
+  end
+
+  def test_config_new_defaults_test_map_to_empty
+    assert_equal [], Config.new.test_map
+  end
+
+  def test_malformed_tests_key_raises
+    [
+      "tests:\n",
+      "tests: plain\n",
+      "tests: [test/a_test.rb]\n",
+      "tests:\n  - sources: a.rb\n",
+      "tests:\n  - tests: a_test.rb\n",
+      "tests:\n  - sources: a.rb\n    tests: a_test.rb\n    test: typo\n",
+      "tests:\n  - sources: \"\"\n    tests: a_test.rb\n",
+      "tests:\n  - sources: []\n    tests: a_test.rb\n",
+      "tests:\n  - sources: 42\n    tests: a_test.rb\n",
+      "tests:\n  - sources: /abs/a_test.rb\n    tests: a_test.rb\n"
+    ].each do |yaml|
+      with_config(yaml) do |path|
+        err = assert_raises(Mutineer::ConfigError, yaml) { Config.from_file(path) }
+        assert_match(/\.mutineer\.yml: tests/, err.message, yaml)
+      end
+    end
+  end
+
+  def test_quoted_glob_patterns_parse
+    yaml = <<~YAML
+      tests:
+        - sources: lib/**/*.rb
+          tests: "**/*_test.rb"
+        - sources: app/**/*.rb
+          tests: ["test/{a,b}/**/*_test.rb"]
+    YAML
+    with_config(yaml) do |path|
+      capture_io { @hash = Config.from_file(path) }
+      assert_equal(
+        [
+          { sources: ["lib/**/*.rb"], tests: ["**/*_test.rb"] },
+          { sources: ["app/**/*.rb"], tests: ["test/{a,b}/**/*_test.rb"] }
+        ],
+        @hash[:test_map]
+      )
+    end
+
+    with_config("tests:\n  - sources: lib/a.rb\n    tests: *\n") do |path|
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_match(/\.mutineer\.yml parse error:/, err.message)
+    end
   end
 
   def test_from_file_warns_on_unknown_operator_and_drops_it
@@ -629,7 +730,9 @@ class ConfigTest < Minitest::Test
     timeout: [30, 60],
     capture_timeout: [300, 600],
     cache_dir: ["a", "b"],
-    shared_databases: [%w[cable], %w[queue]]
+    shared_databases: [%w[cable], %w[queue]],
+    test_map: [[{ sources: ["a.rb"], tests: ["a_test.rb"] }],
+               [{ sources: ["b.rb"], tests: ["b_test.rb"] }]]
   }.freeze
 
   def test_every_option_with_a_yaml_key_has_a_layer_sample
