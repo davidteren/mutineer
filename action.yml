@@ -273,11 +273,11 @@ runs:
           # Action preflights the caller's path before handing the CLI a temp
           # file, so the CLI's mkdir never runs for this input. Other missing
           # parents still exit 2.
-          # dirname ends its answer with one newline; the "." guard keeps $( )
-          # from also dropping a newline that ends the folder name.
-          out_dir="$(dirname -- "$OUTPUT"; printf .)"
+          # Ruby path APIs stay portable on macOS BSD tools, and `--` keeps a
+          # leading dash a path. The "." sentinel keeps a trailing newline that
+          # $( ) would strip from the folder name (#401).
+          out_dir="$(ruby -e 'print File.dirname(ARGV[0]), "."' -- "$OUTPUT")"
           out_dir="${out_dir%.}"
-          out_dir="${out_dir%$'\n'}"
           if [ ! -d "$out_dir" ]; then
             # #394: ask the installed CLI for its resolved cache_dir.
             if cli_setting cache_dir; then
@@ -306,7 +306,7 @@ runs:
                 end
                 value = ARGV[0] if [nil, true, false].include?(value) || value.to_s.strip.empty?
                 print value.to_s, "."
-              ' "$cache_dir")"
+              ' -- "$cache_dir")"
               cache_dir="${cache_dir%.}"
               if [ -n "$EXTRA_ARGS" ]; then
                 pending=""
@@ -333,10 +333,11 @@ runs:
                 done
               fi
             fi
-            # Compare in Ruby and answer with the exit code: a path read
-            # back through $( ) would lose a trailing newline.
-            if ruby -e 'exit(File.expand_path(ARGV[0]) == File.expand_path(ARGV[1]))' "$out_dir" "$cache_dir"; then
-              if ! mkdir -p "$out_dir" 2>/dev/null; then
+            # out_dir stays literal (absolute_path); cache_dir follows the CLI
+            # and expands `~` (expand_path). `--` keeps a dash-leading folder
+            # as ARGV (#401).
+            if ruby -e 'exit(File.absolute_path(ARGV[0]) == File.expand_path(ARGV[1]))' -- "$out_dir" "$cache_dir"; then
+              if ! ruby -rfileutils -e 'FileUtils.mkdir_p(ARGV[0])' -- "$out_dir" 2>/dev/null; then
                 echo "::error::mutineer: cannot write output '$SAFE_OUT': could not create cache directory."
                 exit 2
               fi
@@ -414,8 +415,12 @@ runs:
           same_path="$(ruby -e '
             left = ARGV[0]
             right = ARGV[1]
-            print File.realpath(left) if File.exist?(left) && File.exist?(right) && File.identical?(left, right)
-          ' "$OUTPUT" "$baseline_path")"
+            if File.exist?(left) && File.exist?(right) && File.identical?(left, right)
+              print File.realpath(left)
+              print "."
+            end
+          ' -- "$OUTPUT" "$baseline_path")"
+          same_path="${same_path%.}"
           if [ -n "$same_path" ]; then
             SAFE_SAME="${same_path//%/%25}"
             SAFE_SAME="${SAFE_SAME//$'\r'/%0D}"
@@ -487,7 +492,9 @@ runs:
         # exit-code=/report= outputs for a run that already finished.
         delivered_output=""
         if report_ok && [ -n "$OUTPUT" ]; then
-          if cp "$TMP_REPORT" "$OUTPUT"; then
+          # Ruby cp stays portable on macOS and keeps a leading-dash OUTPUT a
+          # path (BSD `cp` has no `--`) (#401).
+          if ruby -rfileutils -e 'FileUtils.cp(ARGV[0], ARGV[1])' -- "$TMP_REPORT" "$OUTPUT"; then
             delivered_output=1
           else
             echo "::warning::mutineer: could not copy the report to '$SAFE_OUT'; the report remains available through the 'report' output, and the run's exit code is unchanged."
@@ -599,7 +606,11 @@ runs:
         # working-directory, which a later step at the repo root cannot see.
         if report_ok; then
           if [ -n "$delivered_output" ]; then
-            report_path="$(cd "$(dirname "$OUTPUT")" && pwd)/$(basename "$OUTPUT")"
+            # absolute_path keeps a leading `~` literal (expand_path would treat
+            # it as a home shortcut). The "." sentinel keeps a trailing newline
+            # that $( ) would strip (#401).
+            report_path="$(ruby -e 'print File.absolute_path(ARGV[0]), "."' -- "$OUTPUT")"
+            report_path="${report_path%.}"
           else
             report_path="$TMP_REPORT"
           fi

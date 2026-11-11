@@ -12,7 +12,8 @@ require "open3"
 # extra-args --format/--output guard, the old-format id warning (#126), and a
 # failing run whose output and baseline are the same file (#160). The stub
 # answers `mutineer config` with the real CLI, a fixed value, or as an older
-# release without that command (#394).
+# release without that command (#394). One table of unusual path names runs
+# through every path input (#401).
 class ActionHarnessTest < Minitest::Test
   HARNESS = File.expand_path("fixtures/action_harness.sh", __dir__)
 
@@ -101,5 +102,16 @@ class ActionHarnessTest < Minitest::Test
     assert_includes args_of.call("5:"), "--no-since", "since: none must pass --no-since through"
     refute_includes args_of.call("5:"), "--since origin", "since: none must not also scope"
     assert_includes sec.call("7:"), "file=sub/lib/calc.rb", "working-directory prefix regressed"
+
+    # #401: every cell of the unusual-path table ran. 5 names x 5 rows, plus
+    # 3 names x 2 extra-args rows; the rest are known gaps with an issue.
+    table = sec.call("19:")
+    gaps = table.scan(/TABLE-GAP: (\S+)/).flatten
+    assert_equal [], gaps, "known gaps drifted:\n#{table}"
+    assert_equal 36 - gaps.size, table.scan("TABLE-OK:").size, "a table cell did not run:\n#{table}"
+    near = sec.call("19b:")
+    assert_includes near, "OK: newline parent is not the cache dir"
+    assert_includes near, "OK: newline cache dir created"
+    refute_includes near, "FAIL:"
   end
 end
