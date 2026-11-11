@@ -430,9 +430,17 @@ module Mutineer
       validate_test_command!(config) if config.test_command
 
       validate_since!(config) if config.since
-      preflight_output!(config.output, config) if config.output
+      # Non-JSON dry runs ignore --output (warn_unused_dry_run_settings); skip
+      # the path check so a missing parent does not exit 2 before that warning.
+      if config.output && (!config.dry_run || config.format == "json")
+        preflight_output!(config.output, config)
+      end
       preflight_baseline!(config.baseline) if config.baseline
-      preflight_same_file!(config) if config.output && config.baseline && !config.dry_run
+      # Human dry runs write nothing; JSON dry runs write --output (#362), so
+      # they need the same-file guard that blocks overwriting a baseline (#281).
+      if config.output && config.baseline && (!config.dry_run || config.format == "json")
+        preflight_same_file!(config)
+      end
 
       # When --test is omitted, infer each source's test by convention. Autopair
       # also re-detects framework from inferred tests when --framework was not set.
@@ -443,6 +451,7 @@ module Mutineer
       # validated before discovery).
       validate_daemon!(config) if config.daemon
       warn_unused_coverage_from(config)
+      warn_unused_dry_run_settings(config)
 
       # Boot mode needs at least one --test file (nothing to select from otherwise).
       if config.boot && config.tests.empty?
@@ -551,6 +560,25 @@ module Mutineer
              elsif !config.boot then "a run without --rails/--boot"
              end
       warn_unused_settings(config, mode, %i[coverage_from]) if mode
+    end
+
+    # `--dry-run` prints a candidate list; `--format html` never renders one,
+    # and `--output` only writes when `--format json` builds that list (#362).
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.warn_unused_dry_run_settings(config)
+      return unless config.dry_run
+
+      if config.explicit?(:format) && config.format == "html"
+        warn "[mutineer] --format html has no effect with --dry-run " \
+             "(it applies to a completed run; use --format json for candidates); ignoring it."
+      end
+      return unless config.explicit?(:output) && config.format != "json"
+
+      warn "[mutineer] #{config.origin(:output)} has no effect with --dry-run " \
+           "(it applies to --format json dry runs); ignoring it."
     end
 
     # A backend that never reads a setting the user set would silently do
@@ -779,7 +807,8 @@ module Mutineer
     # output is expanded the way Reporter#report writes it, so `x/../b.json`
     # with a missing `x/` still matches `b.json`. File.identical? is false when
     # either file is missing, so a new output path never matches.
-    # Unlike the Action's guard, a dry run skips this check: it writes no report.
+    # Unlike the Action's guard, a human dry run skips this check: it writes no
+    # report. JSON dry runs write `--output`, so they call this guard (#362).
     #
     # @api private
     # @param config [Mutineer::Config] run configuration (output and baseline set).
@@ -798,8 +827,9 @@ module Mutineer
     # except the cache directory: the documented `--output .mutineer/run.json`
     # must work on a fresh checkout. It is created here, before the run, so a
     # failure to create it exits 2 up front. A later failed check can leave the
-    # empty cache directory behind (a real run creates it anyway). A dry run
-    # writes no report, so it creates nothing.
+    # empty cache directory behind (a real run creates it anyway). A human dry
+    # run writes no report, so it creates nothing; `--dry-run --format json`
+    # writes the candidate list and may create the cache dir (#362).
     #
     # @api private
     # @param path [String] output file path.
@@ -808,7 +838,7 @@ module Mutineer
     def self.preflight_output!(path, config)
       dir = File.dirname(File.expand_path(path))
       if !File.exist?(dir) && dir == File.expand_path(config.cache_dir, config.project_root)
-        return if config.dry_run
+        return if config.dry_run && config.format != "json"
 
         begin
           FileUtils.mkdir_p(dir)
@@ -990,7 +1020,9 @@ module Mutineer
     end
 
     # Runs dry-run mode. Reuses JobPlan.collect_jobs (+ scope_since) so the
-    # candidate list cannot drift from a real run's job selection.
+    # candidate list cannot drift from a real run's job selection. `--format
+    # json` emits the lean candidate list (#362); other formats keep the human
+    # listing.
     #
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
@@ -1002,16 +1034,28 @@ module Mutineer
       # matches the printed list.
       jobs, ignored_results, = JobPlan.scope_since(jobs, ignored_results, source_map, config)
       ignored = ignored_results.size
+      # One valid? pass for both formats: Mutation#valid? re-parses the whole file.
+      valid, invalid = jobs.partition do |subject, mutation, _id|
+        mutation.valid?(source_map[subject.file])
+      end
+      skipped = invalid.size
+
+      if config.format == "json"
+        rendered = Reporter.dry_run_json(valid, source_map, declined: extras[:declined] || {},
+                                         skipped_invalid: skipped, ignored: ignored)
+        if config.output
+          abs = File.expand_path(config.output)
+          File.write(abs, rendered)
+          warn "Report written to #{abs}"
+        else
+          print rendered
+        end
+        exit 0
+      end
 
       per_operator = Hash.new(0)
-      skipped = 0
-      jobs.each do |subject, mutation, _id|
+      valid.each do |subject, mutation, _id|
         source = source_map[subject.file]
-        unless mutation.valid?(source)
-          skipped += 1
-          next
-        end
-
         line = source.byteslice(0, mutation.start_offset).count("\n") + 1
         per_operator[mutation.operator] += 1
         original = source.byteslice(mutation.start_offset...mutation.end_offset)

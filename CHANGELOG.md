@@ -17,6 +17,15 @@ All notable changes to this project are documented here. The format is based on
   Each expanded directory or glob prints its file count on stderr.
   The Action `test` input accepts a directory.
   A directory needs mutineer 1.9.0 or later.
+- **JSON reports list every killed mutant (#361).** `--format json` adds a
+  top-level `killed[]` of lean mutant objects (`subject`, `file`, `line`,
+  `operator`, `token`, `id`), sorted like `no_coverage[]`. Its length equals
+  `summary.killed`. `schema_version` is `1.10`.
+- **`--dry-run --format json` prints candidates with stable ids (#362).** The
+  document carries `mutants[]` (same lean shape) and a summary with `total`,
+  `by_operator`, `declined`, and `declined_by_operator`. Ids match a later real
+  run of the same job plan. `--output` writes the file; `--format html` under
+  `--dry-run` stays human and warns that the format is unused.
 
 ### Changed
 
