@@ -168,6 +168,18 @@ class CoverageMapTest < Minitest::Test
     refute_match(/\AError:/, out)
   end
 
+  # after(:suite) / after(:context) use the same "An error occurred" header (#360).
+  def test_truncate_clean_detail_keeps_rspec_suite_hook_error
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    noise = "." * (limit + 20)
+    text = "#{noise}\n\nAn error occurred in an `after(:suite)` hook.\nFailure/Error: raise \"cleanup failed\"\n\nRuntimeError:\n  cleanup failed\n"
+    out = map.send(:truncate_clean_detail, text)
+    assert_operator out, :start_with?, "An error occurred in an `after(:suite)` hook."
+    assert_includes out, "Failure/Error:"
+    assert_includes out, "cleanup failed"
+  end
+
   # An at_exit that fails after the child wrote passed:true must still fail the
   # clean check: warm-cache scoring must not proceed on a red exit (#360).
   def test_subprocess_clean_pass_rejects_nonzero_exit_after_passed_json

@@ -888,7 +888,9 @@ module Mutineer
     # @return [String]
     def truncate_clean_detail(text)
       starts = [text.index("Failures:")]
-      if (match = text.match(/^An error occurred while loading /m))
+      # RSpec load errors and after(:suite)/after(:context) errors share this
+      # header; do not require "while loading" or progress dots fill the cap.
+      if (match = text.match(/^An error occurred /m))
         starts << match.begin(0)
       end
       if (match = text.match(/^\s*\d+\) (?:Failure|Error):/m))
