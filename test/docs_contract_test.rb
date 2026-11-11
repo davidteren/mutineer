@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "minitest/mock"
 require_relative "../rake/docs_contract"
 require_relative "../rake/site_docs"
 
@@ -101,6 +102,25 @@ class DocsContractTest < Minitest::Test
     refute_nil threshold, "the self-dogfood job needs a --threshold"
     assert_includes readme, "mutation%20score-at%20least%20#{threshold}%25"
     assert_includes readme, "mutation score at least #{threshold}%"
+  end
+
+  # A paragraph line that starts with `#` but is no heading (`#417 tracks ...`)
+  # once matched no branch, so the renderer never advanced and ran out of memory.
+  # Counted, not timed: a stuck loop renders an empty paragraph per turn, so
+  # the stub stops it after a few calls before it can allocate much.
+  def test_schema_article_renders_a_paragraph_line_that_starts_with_a_hash
+    calls = 0
+    inline = lambda do |text|
+      calls += 1
+      raise "render_schema_article is not advancing" if calls > 20
+
+      text
+    end
+    body, = DocsContract.stub(:inline, inline) do
+      DocsContract.send(:render_schema_article, "Intro text.\n#417 tracks the rest.\n")
+    end
+
+    assert_includes body, "<p>#417 tracks the rest.</p>"
   end
 
   def test_json_schema_page_and_source_name_the_reporter_schema_version

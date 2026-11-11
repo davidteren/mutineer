@@ -22,7 +22,7 @@ test('theme, keyboard disclosure, copy and mobile navigation work together', asy
   await expect(page.locator('.copy').first()).toHaveText('Copied ✓');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('gem install mutineer');
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ['/', '/learn.html', '/agentic-coding.html', '/rails.html', '/json-schema.html', '/sample-report.html']) {
+  for (const path of ['/', '/learn.html', '/agentic-coding.html', '/rails.html', '/json-schema.html', '/sample-report.html', '/equivalent-skips.html']) {
     await page.goto(path);
     await expect(root).toHaveAttribute('data-theme', 'light');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

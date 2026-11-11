@@ -8,6 +8,7 @@ require_relative "child_coverage"
 require_relative "kill_channel"
 require_relative "concern_blocks"
 require_relative "redaction"
+require_relative "child_cause"
 
 module Mutineer
   # Fork-based isolation for running one mutant. The block runs in a child
@@ -32,7 +33,8 @@ module Mutineer
 
     # Runs the block in a forked child. The block's return value (an Integer
     # exit code) or any explicit `exit` is honoured; an unhandled exception
-    # becomes exit 2 with the cause written to STDERR.
+    # becomes exit 2 with the cause written to STDERR. The cause also reaches
+    # the Result's `details` through a {ChildCause} pipe.
     #
     # The child silences its stdout (see {ChildStdout.silence}) before the
     # block runs, so test output never reaches the user. Stderr stays open.
@@ -51,8 +53,12 @@ module Mutineer
     def self.run(timeout: DEFAULT_TIMEOUT, channel: false)
       rd, wr = IO.pipe if channel
       wr&.sync = true
+      cause_rd, cause_wr = IO.pipe
+      cause_wr.sync = true
       pid = fork do
+        child = Process.pid
         rd&.close
+        cause_rd.close
         # Own process group so a timeout kill can reap grandchildren (match
         # daemon/external backends). Best-effort: if setpgid fails, kill the pid.
         Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
@@ -68,6 +74,7 @@ module Mutineer
         rescue Exception => e # rubocop:disable Lint/RescueException
           # STDERR, not `warn`: a test may have left `$stderr` as a StringIO.
           STDERR.puts "[mutineer-child] #{Redaction.describe(e)}"
+          ChildCause.write(cause_wr, e, child)
           code = 2
         end
         STDERR.flush
@@ -78,6 +85,7 @@ module Mutineer
       end
 
       wr&.close
+      cause_wr.close
       buffer = +"" if rd
       reading = !rd.nil?
 
@@ -87,7 +95,7 @@ module Mutineer
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
       loop do
         reaped, status = Process.waitpid2(pid, Process::WNOHANG)
-        return finish(decode(status), rd, buffer, finished: true) if reaped
+        return finish(decode(status, ChildCause.read(cause_rd)), rd, buffer, finished: true) if reaped
 
         if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
           begin
@@ -98,7 +106,7 @@ module Mutineer
           begin
             _reaped, status = Process.waitpid2(pid)
             # Child may have finished cleanly between WNOHANG and kill; honor it.
-            return finish(decode(status), rd, buffer, finished: true) if status && status.exited? && !status.signaled?
+            return finish(decode(status, ChildCause.read(cause_rd)), rd, buffer, finished: true) if status && status.exited? && !status.signaled?
           rescue Errno::ECHILD
             # already reaped
           end
@@ -113,8 +121,10 @@ module Mutineer
       end
     ensure
       rd&.close
+      cause_rd&.close
       # Closed after the fork in the normal path; still open if fork raised.
       wr.close if wr && !wr.closed?
+      cause_wr.close if cause_wr && !cause_wr.closed?
     end
 
     # Reads what the channel holds now, without blocking.
@@ -366,12 +376,13 @@ module Mutineer
     #
     # @api private
     # @param status [Process::Status] child exit status.
+    # @param cause [String, nil] the {ChildCause} line the child sent, if any.
     # @return [Mutineer::Result] decoded result.
-    def self.decode(status)
+    def self.decode(status, cause = nil)
       case status.exitstatus
       when 0 then Result.survived
       when 1 then Result.killed
-      when 2 then Result.error("child exited with status 2")
+      when 2 then Result.error(cause || "child exited with status 2")
       else        Result.error("unexpected exit status: #{status.exitstatus.inspect}")
       end
     end
