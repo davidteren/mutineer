@@ -204,9 +204,30 @@ module Mutineer
 
       seed_hint = TestRunners.for(framework) == TestRunners::Minitest ? minitest_seed_hint : ""
       # The hint opens with "the unmutated suite is not green", so the files
-      # follow it rather than repeat that sentence (#360).
+      # follow it rather than repeat that sentence (#360). Failure names and
+      # the first error follow when capture stored them.
+      detail = clean_failure_detail(coverage_map, files)
       raise SmokeCheckError,
-            "#{ExternalBackend.generic_env_hint}. Failed: #{files.join(', ')}.#{seed_hint}"
+            "#{ExternalBackend.generic_env_hint}. Failed: #{files.join(', ')}.#{seed_hint}#{detail}"
+    end
+
+    # Joins capped failure reports for the unclean files (#360).
+    #
+    # @api private
+    # @param coverage_map [Mutineer::CoverageMap]
+    # @param files [Array<String>]
+    # @return [String] a leading newline plus the reports, or empty.
+    def self.clean_failure_detail(coverage_map, files)
+      details = coverage_map.failed_clean_details || {}
+      parts = files.filter_map do |file|
+        text = details[file].to_s.strip
+        next if text.empty?
+
+        "#{file}:\n#{text}"
+      end
+      return "" if parts.empty?
+
+      "\n#{parts.join("\n")}"
     end
 
     # Names the configured seed, and accounts for helper overrides.

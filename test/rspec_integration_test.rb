@@ -99,9 +99,11 @@ class RSpecIntegrationTest < Minitest::Test
         cache_dir: File.join(dir, "cache"), project_root: dir
       )
       err = nil
-      _, stderr = capture_subprocess_io { err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::Runner.execute(config) } }
+      capture_subprocess_io { err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::Runner.execute(config) } }
       assert_match(/unmutated suite is not green/, err.message)
-      assert_match(/fails unrelated/, stderr)
+      assert_equal 1, err.message.scan("not green").size, err.message
+      # #360: the failing example name is on the SmokeCheckError line.
+      assert_match(/fails unrelated/, err.message)
     end
   end
 

@@ -292,7 +292,9 @@ module Mutineer
         # daemon does not pay for it (#228).
         Coverage.suspend if Coverage.running?
         { "map" => cmap.map, "failed_test_files" => cmap.failed_test_files,
-          "failed_clean_tests" => cmap.failed_clean_tests, "load_lines" => cmap.load_lines.to_a,
+          "failed_clean_tests" => cmap.failed_clean_tests,
+          "failed_clean_details" => cmap.failed_clean_details,
+          "load_lines" => cmap.load_lines.to_a,
           "load_methods" => cmap.load_methods.to_a }
       rescue Exception => e # rubocop:disable Lint/RescueException
         error = describe_error(e)

@@ -87,7 +87,9 @@ class CoverageMapTest < Minitest::Test
                                       framework: "rspec", verbose: true)
       status = nil
 
-      _, err = capture_subprocess_io { status, = map.send(:spawn_script, map.send(:clean_check_script, []), result: false) }
+      _, err = capture_subprocess_io do
+        status, = map.send(:spawn_script, map.send(:clean_check_script, []), result: true)
+      end
 
       assert_equal 1, status.exitstatus
       assert_includes err, "[mutineer] load failed: RuntimeError: outer load failure"
@@ -105,15 +107,16 @@ class CoverageMapTest < Minitest::Test
         end
       RUBY
       map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [spec], project_root: dir, framework: "rspec")
-      status = nil
+      status = line = nil
 
-      _, err = capture_subprocess_io do
-        status, = map.send(:spawn_script, map.send(:clean_check_script, [spec]), result: false)
+      capture_subprocess_io do
+        status, line = map.send(:spawn_script, map.send(:clean_check_script, [spec]), result: true)
       end
 
       assert_equal 1, status.exitstatus
-      assert_includes err, "database postgres://u:[REDACTED]@host/db unavailable"
-      refute_includes err, "s3cret"
+      report = JSON.parse(line).fetch("failure_report")
+      assert_includes report, "database postgres://u:[REDACTED]@host/db unavailable"
+      refute_includes report, "s3cret"
     end
   end
 
@@ -288,6 +291,10 @@ class CoverageMapTest < Minitest::Test
       end
       assert_includes map.failed_clean_tests, "calc_test.rb"
       assert_empty map.failed_test_files, "a red assertion is not a capture crash"
+      # #360: the failing test name is kept for the SmokeCheckError line.
+      detail = map.failed_clean_details["calc_test.rb"].to_s
+      assert_match(/AuditFailingCalculatorTest#test_unrelated|test_unrelated/, detail, detail)
+      assert_match(/Expected: 1|Actual: 2|refute|assert/, detail, detail)
     end
   end
 
@@ -1100,7 +1107,7 @@ class CoverageMapTest < Minitest::Test
     payload = clean = nil
     out, = capture_subprocess_io do
       payload = map.send(:fork_capture, noisy, [CALC], nil)
-      clean = map.send(:fork_clean_pass?, [noisy], nil)
+      clean, = map.send(:fork_clean_pass?, [noisy], nil)
     end
     assert_kind_of Hash, payload
     assert payload["passed"]
@@ -1377,7 +1384,8 @@ class CoverageMapTest < Minitest::Test
       cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, capture_timeout: 0.05
     )
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    refute map.send(:fork_clean_pass?, [hang], nil)
+    ok, = map.send(:fork_clean_pass?, [hang], nil)
+    refute ok
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
     assert_operator elapsed, :<, 2.0
   end
