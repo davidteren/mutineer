@@ -140,7 +140,7 @@ This gap is common in rushed tests and tests written by AI agents.
 | Alternative backend | Changes to step 4 |
 |---|---|
 | `--daemon` | Boots Rails once in a persistent process; isolates each worker's test database |
-| `--test-command` | Runs tests in another Ruby subprocess; writes mutants to the real file, then restores it |
+| `--test-command` | Runs tests in another Ruby subprocess; writes mutants to the real file, then restores it. Run the tests in a fixed order (`SEED=1 mutineer run ...` for Minitest, `--order defined` for RSpec, with no `--order rand` in `SPEC_OPTS`) |
 
 | At a glance | |
 |---|---|
@@ -191,7 +191,7 @@ Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.c
 
 | Flag | Meaning |
 |------|---------|
-| `--test FILE` | Repeat per test file; omit to pair tests by convention |
+| `--test PATH` | Test file, directory, or quoted glob. Repeat the flag. Omit it to pair tests by convention and apply any `tests:` map |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
 | `--since REF` | Mutate only lines changed since git `REF`, such as `origin/main` |
 | `--baseline FILE` | Exit 1 for new survivors, or score drops on full runs, against a prior JSON report from a full run |

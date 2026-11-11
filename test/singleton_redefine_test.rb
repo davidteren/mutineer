@@ -264,12 +264,27 @@ class SingletonRedefineTest < Minitest::Test
                                         replacement: body.slice, operator: "equivalent")
       result = Mutineer::Isolation.run do
         code, hook_def = Mutineer::JobPlan.hook_mutant(mutation.apply(source), mutation, subject, source)
-        Mutineer::Isolation.apply_whole_file(code, source_file)
-        Mutineer::ConcernBlocks.place_hook_def(source_file: source_file, **hook_def)
+        Mutineer::Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
         Mutineer::TestRunners.for("minitest").run(tests, stop_at_first_failure: true)
       end
       assert_equal :survived, result.status, subject.qualified_name
     end
+  end
+
+  # #348: the fixture's last lines call the included and prepended hook-block
+  # defs while the file loads. Reload must place the mutant before that line runs, so the test
+  # that checks the load-time value kills it. Placed after the load, the
+  # mutant survived and then scored ran_at_load.
+  def test_reload_places_a_hook_def_before_later_load_time_calls
+    agg = run_redefine("hook_load_time.rb", "hook_load_time_test.rb", strategy: "reload", matrix: true)
+    killers = agg.results.select(&:killed?).group_by { |r| r.subject.qualified_name }.transform_values do |rs|
+      rs.flat_map { |r| r.kills.killed_by.map { |entry| entry[1].split("#").last } }.uniq
+    end
+    assert_equal({ "HookLoadTime#doubled" => %w[test_total_computed_at_load],
+                   "HookLoadTimeWrap#bumped" => %w[test_bumped_computed_at_load] }, killers)
+    assert_equal 0, agg.survived_count
+    assert_equal 0, agg.ran_at_load_count
+    assert_equal 0, agg.errored_count
   end
 
   # Parity control — this form already worked; it must keep working.

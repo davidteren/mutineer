@@ -122,6 +122,16 @@ class RedactionTest < Minitest::Test
     assert_equal "pw [REDACTED] rejected", redact("pw a rejected", "postgres://u:a@host/db")
   end
 
+  # An escape never swallows a copy of the form, and a form that starts with
+  # punctuation is still hidden right after one.
+  def test_an_escape_does_not_swallow_a_punctuation_password
+    assert_equal "pw [REDACTED] rejected", redact("pw %41 rejected", "postgres://u:%41@host/db")
+    refute redact("%41%41", "postgres://u:%41@host/db").start_with?("%41")
+    { "!a" => ["\e[36m!a\e[0m", "\\n!a"], "!ab" => ["-p!ab"] }.each do |password, texts|
+      texts.each { |text| refute_includes redact(text, "postgres://u:#{password}@host/db"), password, text }
+    end
+  end
+
   def test_short_punctuation_passwords_keep_other_tokens_readable
     { "!" => "word!word", "!a" => "word!aword", "a!" => "worda!word" }.each do |password, token|
       url = "postgres://u:#{password}@host/db"
@@ -196,17 +206,68 @@ class RedactionTest < Minitest::Test
     assert_equal %(key="[REDACTED]",), redact(%(key="s3cret",), "postgres://u:s3cret@host/db")
   end
 
-  # A password longer than 3 characters is hidden wherever it appears, even
-  # glued to a word character by an escape: %40, \u0041, \x41.
+  # A password is hidden even when an escape glues a word character to it:
+  # %40, \u0041, \u{41}, \x41, \101, \n, an ANSI colour code, a -p flag.
   def test_hides_a_long_password_right_after_an_escape
     url = "postgres://u:s3cret@host/db"
 
-    %w[u%40s3cret \\u0041s3cret \\x41s3cret xs3cret].each do |glued|
+    ["u%40s3cret", "\\u0041s3cret", "\\u{41}s3cret", "\\x41s3cret", "\\101s3cret", "\\ns3cret",
+     "\e[1m\e[36ms3cret\e[0m", "\\e[36ms3cret", "\\033[36ms3cret", "\\x1b[36ms3cret", "\\u001b[36ms3cret", "[31ms3cret", "[Ks3cret", "\e[Ks3cret", %(["mysql", "-ps3cret"]), "mysql -uapp -ps3cret prod"].each do |glued|
       text = redact("auth failed for #{glued}", url)
 
       refute_includes text, "s3cret", glued
       assert_includes text, "[REDACTED]", glued
     end
+  end
+
+  # #341 item 4: a password of word characters is hidden only as a whole
+  # token, so it no longer blanks letters inside other words.
+  def test_keeps_words_that_contain_a_long_word_password
+    url = "postgres://u:test@host/db"
+
+    assert_equal "/app/[REDACTED]/models/user_test.rb", redact("/app/test/models/user_test.rb", url)
+    assert_equal "auth failed for xs3cret s3cret_x", redact("auth failed for xs3cret s3cret_x", "postgres://u:s3cret@host/db")
+  end
+
+  # A long form with a non-word character has no reliable token edge, so it
+  # is still hidden inside other words.
+  def test_hides_a_long_punctuation_password_inside_a_word
+    assert_equal "x[REDACTED]y", redact("xp@ss!y", "postgres://u:p@ss!@host/db")
+  end
+
+  # #341 item 6: the URL password ends at the last `@` before a host with a
+  # port, path or query, so the host and later text with an `@` stay readable.
+  def test_url_password_stops_at_the_host
+    {
+      "postgres://u:p@ss@h/db and p@ss" => "postgres://u:[REDACTED]@h/db and p@ss",
+      "postgres://u:my pass@h/db mail a@b.com" => "postgres://u:[REDACTED]@h/db mail a@b.com",
+      %("postgres://u:p@ss@h:5432/db") => %("postgres://u:[REDACTED]@h:5432/db")
+    }.each { |text, want| assert_equal want, redact(text, "") }
+  end
+
+  # When a malformed password may hold what looks like a host, hiding wins:
+  # `pw@foo/bar qux` may be the whole password, so the match runs to the last
+  # host. With no host after any `@`, it runs to the last `@`, as before.
+  def test_url_password_fails_safe_when_the_host_is_ambiguous
+    {
+      "postgres://u:pw@foo/bar qux@h/db" => "postgres://u:[REDACTED]@h/db",
+      "postgres://u:pa@ss word@h/db" => "postgres://u:[REDACTED]@h/db",
+      "postgres://u:pw@h1/db, postgres://v:pw@h2/db" => "postgres://u:[REDACTED]@h2/db",
+      "postgres://u:pw@x@" => "postgres://u:[REDACTED]@",
+      "postgres://u:p@ss:word@host" => "postgres://u:[REDACTED]@host",
+      %("postgres://u:p@ss/word@host") => %("postgres://u:[REDACTED]@host"),
+      "postgres://u:p@ss:word@host failed" => "postgres://u:[REDACTED]@host failed",
+      "postgres://u:a@b/c@d@h" => "postgres://u:[REDACTED]@h",
+      "postgres://u:s3 cr@t@ho st/db" => "postgres://u:[REDACTED]@ho st/db"
+    }.each { |text, want| assert_equal want, redact(text, "") }
+  end
+
+  # Known limit (#341): a password that holds an `@`, a host, a `/` and a
+  # space shows the rest when the URL's own host has nothing after it, or has
+  # an `@` in its path or query.
+  def test_url_password_limit_is_pinned
+    assert_equal "postgres://u:[REDACTED]@b/c d@h", redact("postgres://u:a@b/c d@h", "")
+    assert_equal "postgres://u:[REDACTED]@h:1 x@db/app?n=ci@corp", redact("postgres://u:p@h:1 x@db/app?n=ci@corp", "")
   end
 
   def test_still_hides_a_password_that_only_partly_matches_the_username

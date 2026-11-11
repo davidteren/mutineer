@@ -202,6 +202,10 @@ class DaemonRedactionTest < Minitest::Test
     refute_includes out, "s3cret"
   end
 
+  def test_daemon_stderr_drain_keeps_the_line_break_after_an_invalid_byte
+    assert_equal "bad \uFFFD\nnext\n", drain("bad \xFF\nnext\n".b)
+  end
+
   # After a tool stderr has gone away (EPIPE), the drain drops lines but keeps
   # reading, so the daemon never blocks, and it ends quietly, so close_io's
   # join cannot re-raise the error mid-cleanup.
@@ -238,6 +242,56 @@ class DaemonRedactionTest < Minitest::Test
     client.send(:close_io)
 
     assert_equal "boot failed: postgres://u:[REDACTED]@ho st/db", errio.string
+  end
+
+  # #341 item 7: a grandchild that holds the stderr pipe open never sends EOF.
+  # Once the daemon has exited and the pipe is empty, close_io stops waiting,
+  # and the last partial line still prints.
+  def test_close_io_does_not_wait_on_a_pipe_a_grandchild_holds
+    errio = StringIO.new
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe # wr stays open, as a grandchild would keep it
+    daemon = Process.detach(spawn({ "RUBYOPT" => nil }, RbConfig.ruby, "-e", "$stderr.print 'boot failed: #{BAD_URL}'", err: wr))
+    daemon.join
+    client.instance_variable_set(:@stderr, rd)
+    client.instance_variable_set(:@wait_thr, daemon)
+    client.instance_variable_set(:@drain, Thread.new { client.send(:drain_stderr, rd) })
+
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    client.send(:close_io)
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+    # The old drain always waited the full DRAIN_GRACE; leave room for a slow runner.
+    assert_operator elapsed, :<, Mutineer::DaemonClient::DRAIN_GRACE * 0.8
+    assert_equal "boot failed: postgres://u:[REDACTED]@ho st/db", errio.string
+  ensure
+    wr&.close
+  end
+
+  # A mutant child can still write just after the daemon died. The drain waits
+  # one more quiet poll, so that line still shows. The line is written from
+  # inside that poll, so the test needs no sleep and takes the post-exit path.
+  def test_close_io_keeps_a_line_written_just_after_the_daemon_exits
+    errio = StringIO.new
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe
+    daemon = Process.detach(spawn({ "RUBYOPT" => nil }, RbConfig.ruby, "-e", "exit"))
+    daemon.join
+    late = wr
+    rd.define_singleton_method(:wait_readable) do |timeout|
+      late&.write("late line\n")
+      late = nil
+      super(timeout)
+    end
+    client.instance_variable_set(:@stderr, rd)
+    client.instance_variable_set(:@wait_thr, daemon)
+    client.instance_variable_set(:@drain, Thread.new { client.send(:drain_stderr, rd) })
+
+    client.send(:close_io)
+
+    assert_equal "late line\n", errio.string
+  ensure
+    wr&.close
   end
 
   def test_daemon_stderr_drain_keeps_a_last_partial_line

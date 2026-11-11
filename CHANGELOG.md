@@ -6,8 +6,108 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`.mutineer.yml` accepts a `tests:` map (#382).**
+  Each entry names `sources` and `tests` patterns.
+  When the run holds a matching source, those test files join the run's test list beside convention-paired tests.
+  Coverage still picks the tests for each mutant.
+  `--test` replaces pairing and the map.
+  A malformed map exits 2; without `--test`, a pattern that matches no file exits 2 (including `--dry-run`).
+- **`--test` accepts a file, a directory, or a quoted glob (#380).**
+  A directory selects `*_test.rb`, `*_spec.rb`, and `test_*.rb` files.
+  It skips `test_helper.rb`.
+  A blank value exits 2.
+  A directory or glob with no test file exits 2.
+  With `--test-command`, an empty directory stays as typed.
+  Each expanded directory or glob prints its file count on stderr.
+  The Action `test` input accepts a directory.
+  A directory needs mutineer 1.9.0 or later.
+- **JSON reports list every killed mutant (#361).** `--format json` adds a
+  top-level `killed[]` of lean mutant objects (`subject`, `file`, `line`,
+  `operator`, `token`, `id`), sorted like `no_coverage[]`. Its length equals
+  `summary.killed`. `schema_version` is `1.10`.
+- **`--dry-run --format json` prints candidates with stable ids (#362).** The
+  document carries `mutants[]` (same lean shape) and a summary with `total`,
+  `by_operator`, `declined`, and `declined_by_operator`. Ids match a later real
+  run of the same job plan. `--output` writes the file; `--format html` under
+  `--dry-run` stays human and warns that the format is unused.
+
+### Changed
+
+- **The test-file guard names three fixes (#380).**
+  Quote the glob, pass the directory, or repeat `--test`.
+- **`--dry-run` exits 2 for a blank `--test` or a directory with no test file (#380).**
+  Those values used to exit 0 on a dry run.
+  With `--test-command`, an empty directory stays as typed.
+
+## [1.8.2] - 2026-11-10
+
 ### Fixed
 
+- **Redaction no longer hides a password inside other words (#341).** A
+  form of the database password (raw, decoded or escaped) longer than 3
+  characters, made only of ASCII letters, digits and underscores, is now
+  hidden only as a whole word, like a short one. With
+  password `test`, the backtrace path `user_test.rb` stays readable. Such a
+  password inside a longer word is no longer hidden. The word `test` on its
+  own is still hidden, also right after an escape such as `%40` or `\n`, a
+  colour code, or a `-p` flag. That escape rule now covers short forms
+  too. A longer form with any
+  other character is still hidden wherever it appears.
+- **Redaction keeps the host after a password with an `@` (#341).** In
+  `postgres://u:p@ss@h/db and p@ss`, only `p@ss` is hidden now. Before, the
+  host and the rest of the line were hidden too. One known limit: in a URL
+  other than DATABASE_URL, a password that holds an `@`, a host, a `/`, `:`,
+  `?` or `#`, and a space, shows the part after that `@` when the URL's own
+  host has nothing after it, or has an `@` in its path or query. #341 tracks
+  it.
+- **Daemon shutdown no longer waits a second (#341).** A process the app
+  started could keep the daemon's error output open. Each quit or respawn of
+  `--daemon` then waited one second. Mutineer now stops waiting once the
+  daemon has exited and its output is read.
+- **One line that Prism 2 rejects no longer skips every mutant in the file
+  (#392).** Prism 2.0 and later report an operator write to a bare constant
+  inside a method (`T += 1`, `T ||= 1`, `T &&= 1`) as a dynamic constant
+  assignment. Ruby's `parse.y` does the same, but Ruby 3.4 and 4.0 load such
+  a file with their own Prism 1. Mutineer kept a mutant only when the mutated
+  file parsed with no errors, so on Prism 2 every mutant of that file was
+  counted as `skipped (invalid)`. When Prism reports an error, Mutineer now
+  asks the running Ruby to compile the mutant, and skips it only when Ruby
+  cannot. This holds in the dry run, in process, with `--test-command`, on
+  `--daemon`, and for the redefine strategy's method snippet. A project gets
+  Prism 2 when its bundle loads it, for example
+  through minitest 6.1. On Prism 2, the mutants of such a file that were
+  skipped now get a verdict, so the score, the counts, and the JSON report
+  can change for those projects. Prism 1 runs do not change.
+- **`--test-command` warns about a random test order (#338).** Mutineer
+  sets no seed for your command, so the clean run and each mutant run can
+  run the tests in different orders. An order-dependent suite can then fail
+  a mutant run for a reason the mutant did not cause, and that mutant
+  scores a false `killed`. When the clean run prints a random seed
+  (Minitest `Run options: --seed N`, RSpec `Randomized with seed N`) and
+  Mutineer finds no fixed seed, it now prints one warning with the fix for
+  that runner: put `SEED=1` before the `mutineer` command for Minitest, or
+  add `--order defined` to an RSpec command and keep `--order rand` out of
+  `SPEC_OPTS`, which RSpec reads after the command. The docs for
+  `--test-command` say the same. Mutineer does not set the seed itself, so scores do not
+  change. It cannot see a seed set in a wrapper script or `.rspec`, or a
+  Minitest `test_order`, so the warning can print when the order is
+  already fixed. #368 tracks these limits.
+- **Reload places a hook-block mutant before the rest of its file runs
+  (#348).** Under `--strategy reload`, a placeable mutated method from a
+  concern's `included` or `prepended` block reached the classes that include
+  or prepend the concern only after the whole mutant file loaded. Methods
+  that reload cannot place still score `unplaceable`. A later line in the same
+  file that called the method while the file loaded, such as
+  `TOTAL = Host.new.doubled(2)`, still used the original method. Mutineer
+  now places the mutated method when the load reaches the hook call, before
+  the rest of the file runs, in-process and on `--daemon`. Such a mutant can
+  now be killed where it used to survive or score `ran_at_load`, so the
+  score of an affected file can change. A mutant that raises in such a
+  load-time call now scores `error`. The alias and kept-method checks
+  still score `error`. The kept-method check runs after the load, so a
+  method handle the file holds only while it loads does not count.
 - **The Action creates the cache folder when `output` points into it
   (#340).** On a fresh checkout, `output: .mutineer/pr.json` exited 2,
   because `.mutineer/` did not exist yet. The CLI already created that
@@ -16,6 +116,51 @@ All notable changes to this project are documented here. The format is based on
   of `output`: `.mutineer` by default, the `cache_dir` from `.mutineer.yml`,
   or a `--cache-dir` in `extra-args` (or a prefix of it down to `--cac`, such as
   `--cache`). Any other missing folder still exits 2.
+- **Reload runs a Rails class body a second time without errors (#378,
+  #384).** Reload loads the mutant file over the class that is already
+  defined, so its body runs again. A model that declares an `enum`, and a
+  class that calls `skip_callback` (a controller's `skip_before_action` or
+  `allow_unauthenticated_access` calls it), raised on that second run, and
+  every mutant in the file scored `error`. While the mutant file loads, an
+  enum the class had before the load now skips Rails' conflict check, and
+  `skip_callback` does not raise for a callback the first run already
+  removed: one named by a method the class has, such as a callback from the
+  parent class or an included concern. A skip that names no such method or
+  parent callback still raises. Both checks run as usual while the tests
+  run. This holds on `--daemon` and with `--strategy reload`.
+- **Reload no longer runs validators and block callbacks twice (#390).**
+  The second run of a class body added a second copy of each `validates`,
+  each `validate` block, and each callback written as a block or a lambda,
+  such as `before_save do ... end`. Rails removes a repeated callback only
+  when it names a method. A test that counts errors or side effects then
+  failed for every mutant in the file, so those mutants scored `killed`
+  falsely. After the mutant file loads, Mutineer now keeps one copy of each:
+  the new one, in the place of the old one, so the order of callbacks does
+  not change. Entries from an included concern stay, because the reload does
+  not run the concern's block again. When Mutineer cannot tell which old
+  entry a new one repeats, it keeps both, as before (#413). This holds on
+  `--daemon` and with `--strategy reload`. With eager loading on, a mutant
+  of a parent class file still adds a callback back to each subclass that
+  skipped it (#414).
+  **Score change:** a Rails model with such a test can now show survivors
+  that were false kills before, so its score can go down.
+- **Concern mutants load when the test app loads lazily (#383).** With
+  `eager_load` off (the Rails test default), the mutant's load was the first
+  use of the concern, so Rails loaded the original file inside it. The
+  original `included` block then came back, and the mutant's block raised
+  `MultipleIncludedBlocks`. Mutineer now loads the original file first, through
+  the app's autoloader, so the mutant's block replaces it.
+- **The pending-migration check no longer trips `shared_databases` (#385).**
+  `rails/test_help` checks every database for pending migrations when the
+  tests load, shared ones too. A parallel `--daemon` run then reported the
+  shared database as used and scored every mutant `error`. Mutant forks of a
+  run with `shared_databases` now turn that check off. The clean check, which
+  runs before any mutant, still makes it.
+- **No Rails deprecation warning from concern mutants (#387).** Placing a
+  mutant inside an `included` block looked at every module. Rails 8.2 keeps a
+  deprecated constant as a module that warns on every call, so each such
+  mutant printed `LoadInterlockAwareMonitor is deprecated`. Mutineer now skips
+  that module.
 
 ## [1.8.1] - 2026-11-02
 
@@ -1872,6 +2017,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.8.2]: https://github.com/davidteren/mutineer/releases/tag/v1.8.2
 [1.8.1]: https://github.com/davidteren/mutineer/releases/tag/v1.8.1
 [1.8.0]: https://github.com/davidteren/mutineer/releases/tag/v1.8.0
 [1.7.0]: https://github.com/davidteren/mutineer/releases/tag/v1.7.0

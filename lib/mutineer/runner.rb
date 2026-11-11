@@ -264,7 +264,7 @@ module Mutineer
         # 3x the clean run, floor 30s, ceiling 300s: a heuristic. The floor covers
         # a fast suite; the ceiling bounds a hung mutant (infinite loop) so a
         # handful cannot stall a serial run for ~45min on a slow suite.
-        smoke_elapsed, check_summary = ExternalBackend.smoke_check!(config.test_command, abs_tests)
+        smoke_elapsed, check_summary, random_order = ExternalBackend.smoke_check!(config.test_command, abs_tests)
         timeout = [[smoke_elapsed * 3, 30].max, 300].min.ceil
         # #292: the summary check needs a summary line to look for. Without one
         # on the clean run, keep the exit-code rule and say what that costs.
@@ -273,6 +273,22 @@ module Mutineer
                "(such as \"3 runs, 3 assertions, 0 failures, 0 errors\" or \"3 examples, 0 failures\"), " \
                "so the crash check is off: an exit 1 counts as a kill even when the suite crashed " \
                "before its tests ran. Use the default Minitest or RSpec progress output to turn it on."
+        end
+        # #338: each mutant run picks its own order, so an order-dependent
+        # suite can fail a mutant run for a reason the mutant did not cause.
+        if random_order
+          runner, seed = random_order
+          fix = if runner == :minitest
+                  "set SEED=#{seed} before the mutineer command (SEED=#{seed} mutineer run ...), " \
+                    "not inside --test-command"
+                else
+                  # SPEC_OPTS is read after the command line, so it would undo the fix.
+                  "add --order defined to the rspec command in --test-command and keep " \
+                    "--order rand out of SPEC_OPTS"
+                end
+          warn "[mutineer] the clean run of --test-command printed a #{runner == :minitest ? 'Minitest' : 'RSpec'} " \
+               "seed (#{seed}) and Mutineer found no fixed seed, so each mutant run may use a new test " \
+               "order and an order-dependent suite can give a false kill. To fix the order, #{fix}."
         end
 
         results = []
@@ -304,7 +320,7 @@ module Mutineer
     def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:)
       source  = File.read(subject.file, encoding: "UTF-8")
       mutated = mutation.apply(source)
-      return Result.skipped if Parser.parse_string(mutated).errors.any?
+      return Result.skipped if Parser.invalid?(mutated)
 
       FileSwap.with(subject.file, mutated) do
         ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose, check_summary: check_summary)
@@ -365,7 +381,7 @@ module Mutineer
       mutated = mutation.apply(source)
 
       # Validity rule: a mutant that does not re-parse is skipped before forking.
-      return Result.skipped if Parser.parse_string(mutated).errors.any?
+      return Result.skipped if Parser.invalid?(mutated)
 
       # Coverage selection (both standalone and boot mode): a mutation on a line
       # no test exercises is :no_coverage (no fork); otherwise exactly the
@@ -391,8 +407,7 @@ module Mutineer
         elsif subject&.reload_hook_call
           # #297: a def in a concern's hook block reaches each class that has it.
           code, hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source)
-          Isolation.apply_whole_file(code, source_file)
-          ConcernBlocks.place_hook_def(source_file: source_file, **hook_def)
+          Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
         else
           Isolation.apply_whole_file(mutated, source_file)
         end

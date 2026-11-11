@@ -24,21 +24,43 @@ Check this Rails app for Mutineer's --daemon backend. Report: the test framework
    RAILS_ENV=test bundle exec mutineer init --rails
    ```
 
-3. Run one model inside the project's bundle. Add `--test FILE` to select tests.
+3. Run one model inside the project's bundle.
+   Add `--test PATH` for a file, a directory, or a quoted glob.
 
    ```sh
    RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
+   ```
+
+   `--test test` also selects files under `test/system/`.
+   To skip system tests, list each test directory you use.
+   The glob selects only the directories it names.
+   Add any other directory, such as `test/services`, and each root-level test file:
+
+   ```sh
+   RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --test 'test/{channels,controllers,helpers,integration,jobs,lib,mailers,middleware,models}/**/*_test.rb' --test test/routes_test.rb
    ```
 
 | Setting | Behaviour |
 | --- | --- |
 | `--rails` | Boots `config/environment` once. Each mutant forks from that process and reconnects ActiveRecord for a safe database connection. |
 | `--boot FILE` | Boots another entry point. |
-| Tests | Boot mode requires a conventionally found test or `--test`. A `--dry-run` skips pairing and requires `--test`. Mutants run only tests covering their line. |
+| Tests | Boot mode requires a conventionally found test, a matching `tests:` map entry, or `--test`. A `--dry-run` skips pairing and requires `--test`. Mutants run only tests covering their line. |
 | Coverage | Captured in a fork of the booted app, then cached. |
 | Default strategy | `redefine` without `--daemon`; `reload` with `--daemon`. |
 | `redefine` | Reloads the mutated method and each directly enclosing method, not the whole file. |
 | Methods nested in blocks | A method inside a block such as `define_method` can falsely survive. Use `--strategy reload`. |
+
+A controller concern often has no test at the conventional path.
+Map it to the controller and integration tests that exercise it:
+
+```yaml
+# .mutineer.yml
+tests:
+  - sources: app/controllers/concerns/**/*.rb
+    tests: [test/controllers/**/*_test.rb, test/integration/**/*_test.rb]
+```
+
+See [Extra tests for a source](cli.md#extra-tests-for-a-source) for cost notes.
 
 Both strategies write a hidden `.mutineer_mutant*.rb` beside the source.
 Under `--strategy redefine`, a read-only directory falls back to a system temporary file; `reload` needs a writable source directory.
@@ -222,6 +244,7 @@ RAILS_ENV=test mutineer run app/models/order.rb \
 | App Ruby selection | Use `.ruby-version` or a wrapper. Do not rely on `RBENV_VERSION=…` on the Mutineer command. |
 | `KEY=val` inside `--test-command` | Unsupported. Without a shell, it becomes the program name. |
 | Forced child settings | Replaces existing values with `PARALLEL_WORKERS=1`, `DISABLE_SPRING=1`, and `DISABLE_BOOTSNAP_COMPILE_CACHE=1`. |
+| Test order | Must be fixed. Mutineer sets no seed, so each run picks its own order. An order-dependent suite can then fail a mutant run for a reason the mutant did not cause, a false kill. For Minitest, put `SEED=1` before the `mutineer` command (`SEED=1 mutineer run ...`), not inside `--test-command`. For RSpec, add `--order defined` to the command, and keep `--order rand` out of `SPEC_OPTS`, which RSpec reads after the command. When the clean run prints a random seed and Mutineer finds no fixed one, it prints one warning. It cannot see a seed set in a wrapper script or `.rspec`, or a Minitest `test_order`, so the warning can print when the order is already fixed ([#368](https://github.com/davidteren/mutineer/issues/368)). |
 
 See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#rails-parallel-tests-spring-bootsnap-and-redis) for wrapper behaviour.
 
