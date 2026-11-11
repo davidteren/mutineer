@@ -120,7 +120,7 @@ module Mutineer
       entries = Array(test_map).each_with_index.map do |entry, index|
         number = index + 1
         sources = expand_map_patterns(Array(entry[:sources]), number, "sources", unmatched) do |pattern|
-          expand_map_source_pattern(pattern, root)
+          expand_map_source_pattern(pattern, root, roots)
         end
         tests = expand_map_patterns(Array(entry[:tests]), number, "tests", unmatched) do |pattern|
           expand_map_test_pattern(pattern, root, roots)
@@ -238,12 +238,15 @@ module Mutineer
 
     # One map source pattern: Dir.glob then {expand_sources}, so a matched
     # directory becomes its `.rb` files and path spellings clean the same way.
+    # Matches outside the project root are dropped (brace patterns like
+    # `{..,app}/x.rb` can escape a text-only `..` check).
     #
     # @api private
     # @param pattern [String] relative source pattern.
     # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
     # @return [Array<String>] matching source paths, sorted.
-    def expand_map_source_pattern(pattern, root)
+    def expand_map_source_pattern(pattern, root, roots)
       # An existing file or directory is literal, even when its name holds a
       # glob character (same rule as {classify_test_value} for --test).
       abs = File.expand_path(pattern, root)
@@ -254,7 +257,12 @@ module Mutineer
                end
       return [] if listed.empty?
 
-      expand_sources(listed, project_root: root).sort
+      expand_sources(listed, project_root: root).filter_map do |path|
+        path_abs = File.expand_path(path, root)
+        next unless File.exist?(path_abs)
+
+        existing_relative(path_abs, roots)
+      end.uniq.sort
     end
 
     # One map test pattern through {expand_test}. A missing plain path is not

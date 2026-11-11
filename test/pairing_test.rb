@@ -559,6 +559,23 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # Brace patterns that escape the root via `..` must not keep outside paths.
+  def test_resolve_test_map_drops_brace_patterns_that_leave_the_root
+    Dir.mktmpdir do |parent|
+      outside = File.join(parent, "outside.rb")
+      File.write(outside, "def x; 1; end\n")
+      root = File.join(parent, "proj")
+      FileUtils.mkdir_p(File.join(root, "app"))
+      FileUtils.mkdir_p(File.join(root, "test"))
+      File.write(File.join(root, "app/x.rb"), "def x; 1; end\n")
+      File.write(File.join(root, "test/a_test.rb"), "# test\n")
+      got = resolve_map([{ sources: ["{..,app}/outside.rb"], tests: ["test/a_test.rb"] }], root)
+      assert_empty got[:entries].first[:sources]
+      assert_equal [{ entry: 1, key: "sources", pattern: "{..,app}/outside.rb" }],
+                   got[:unmatched]
+    end
+  end
+
   def test_resolve_test_map_missing_plain_test_path_is_no_match
     with_tree("lib/a.rb") do |root|
       got = resolve_map(
