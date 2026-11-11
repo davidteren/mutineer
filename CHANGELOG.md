@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **JSON reports list every killed mutant (#361).** `--format json` adds a
+  top-level `killed[]` of lean mutant objects (`subject`, `file`, `line`,
+  `operator`, `token`, `id`), sorted like `no_coverage[]`. Its length equals
+  `summary.killed`. `schema_version` is `1.10`.
+- **`--dry-run --format json` prints candidates with stable ids (#362).** The
+  document carries `mutants[]` (same lean shape) and a summary with `total`,
+  `by_operator`, `declined`, and `declined_by_operator`. Ids match a later real
+  run of the same job plan. `--output` writes the file; `--format html` under
+  `--dry-run` stays human and warns that the format is unused.
+
 ## [1.8.2] - 2026-11-10
 
 ### Fixed
