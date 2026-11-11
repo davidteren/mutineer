@@ -108,7 +108,7 @@ class ActionHarnessTest < Minitest::Test
     table = sec.call("19:")
     gaps = table.scan(/TABLE-GAP: (\S+)/).flatten
     assert_equal [], gaps, "known gaps drifted:\n#{table}"
-    assert_equal 31 - gaps.size, table.scan("TABLE-OK:").size, "a table cell did not run:\n#{table}"
+    assert_equal 38 - gaps.size, table.scan("TABLE-OK:").size, "a table cell did not run:\n#{table}"
     near = sec.call("19b:")
     assert_includes near, "OK: newline parent is not the cache dir"
     assert_includes near, "OK: newline cache dir created"

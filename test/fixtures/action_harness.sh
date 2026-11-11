@@ -295,10 +295,9 @@ run_step case14c STUB_EXIT=1 OUTPUT="$SCRATCH/case14/baseline.json" EXTRA_ARGS="
 # it passes, so the list cannot go stale.
 echo; echo "== 19: unusual path names through every path input (#401) =="
 rm -rf .mutineer .mutineer.yml
-TABLE_LABELS=(space newline dash glob unicode)
-TABLE_NAMES=("sp ace" "nl"$'\n' "-dash" "gl*ob" "ünï")
-# " row/label=#issue " entries, space-separated. The newline baseline from
-# KNOWN_GAPS holds " row/label=#issue " entries while a row still fails.
+TABLE_LABELS=(space newline dash glob unicode tilde)
+TABLE_NAMES=("sp ace" "nl"$'\n' "-dash" "gl*ob" "ünï" "~tl")
+# " row/label=#issue " entries while a row still fails, space-separated.
 KNOWN_GAPS=""
 children() { ruby -e 'print Dir.children(".").sort.inspect'; }
 CLEAN_TREE="$(children; printf .)"
@@ -411,3 +410,17 @@ ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => ARGV[0]}.to_yaml)' -
 run_step t19c STUB_EXIT=0 OUTPUT=$'plain\n/pr.json'
 [ -s $'plain\n/pr.json' ] && echo "  OK: newline cache dir created" || echo "  FAIL: newline cache dir not created"
 rm -rf -- plain $'plain\n' .mutineer.yml
+
+# A missing dash-leading parent that is not the cache dir must exit 2 without
+# creating the folder (ruby must see ARGV, not switches) (#401 OCR).
+echo; echo "== 19d: dash-leading output parent is not the cache dir =="
+rm -rf .mutineer.yml .mutineer -- -dash
+run_step t19d STUB_EXIT=0 OUTPUT="-dash/pr.json"
+if [ -d -- "-dash" ]; then
+  echo "  FAIL: created a dash-leading folder that is not the cache dir"
+elif grep -q 'no such directory' "$SCRATCH/t19d/stdout.txt"; then
+  echo "  OK: dash-leading parent is not the cache dir"
+else
+  echo "  FAIL: expected a missing-directory error"
+fi
+rm -rf -- -dash .mutineer.yml
