@@ -15,23 +15,6 @@ All notable changes to this project are documented here. The format is based on
   longer copies the CLI's rules. With an older installed CLI that does not
   have the command, the Action uses its own copy of the rules, as before.
 
-### Fixed
-
-- **A reload of a parent class no longer puts a skipped callback back on
-  its subclasses (#414).** With the subclasses already loaded, Rails
-  appended the parent's `before_save` again, including onto a subclass
-  that had skipped it. Saves then failed, and a weak test looked strong.
-  Reload, redefine, and the daemon now leave each subclass chain as it was.
-  A callback replaced on one chain stays on every other chain.
-- **A second SQLite daemon run stops instead of sharing worker files (#404).**
-  Two `--rails --daemon` runs in one checkout used the same worker database
-  files, and both could stop with a false "the unmutated suite is not green".
-  A run now holds a lock on `<base file>-mutineer.lock` beside the database
-  file, and a second run stops with `another Mutineer run is using <base>`,
-  as PostgreSQL and MySQL runs already do. Mutineer never deletes the lock
-  file. A `file:` database name still takes no lock (#412).
-### Added
-
 - **The JSON report names why a mutant errored (#388).** When the mutant's
   child raises, under `reload`, `redefine` or the daemon,
   `no_verdict[].details` now holds `Class: first message line`, at most 500
@@ -79,6 +62,23 @@ All notable changes to this project are documented here. The format is based on
   Quote the glob, pass the directory, or repeat `--test`.
 - **`--dry-run` exits 2 for a blank `--test` or a directory with no test file (#380).**
   Those values used to exit 0 on a dry run.
+
+### Fixed
+
+- **A reload of a parent class no longer puts a skipped callback back on
+  its subclasses (#414).** With the subclasses already loaded, Rails
+  appended the parent's `before_save` again, including onto a subclass
+  that had skipped it. Saves then failed, and a weak test looked strong.
+  Reload, redefine, and the daemon now leave each subclass chain as it was.
+  A callback replaced on one chain stays on every other chain.
+- **A second SQLite daemon run stops instead of sharing worker files (#404).**
+  Two `--rails --daemon` runs in one checkout used the same worker database
+  files, and both could stop with a false "the unmutated suite is not green".
+  A run now holds a lock on `<base file>-mutineer.lock` beside the database
+  file, and a second run stops with `another Mutineer run is using <base>`,
+  as PostgreSQL and MySQL runs already do. Mutineer never deletes the lock
+  file. A `file:` database name still takes no lock (#412).
+
 
 ## [1.8.2] - 2026-11-10
 
