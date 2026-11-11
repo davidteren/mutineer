@@ -151,9 +151,21 @@ class CoverageMapTest < Minitest::Test
     noise = "x" * (limit + 20)
     text = "#{noise}\n\n  1) Error:\nDbTest#test_connect:\nRuntimeError: boom\n\n  2) Failure:\nCalcTest#test_add:\nExpected: 1\n  Actual: 2\n"
     out = map.send(:truncate_clean_detail, text)
-    assert_operator out, :start_with?, "Error:"
+    assert_match(/\A\s*1\) Error:/, out)
     assert_includes out, "DbTest#test_connect"
     assert_includes out, "RuntimeError: boom"
+  end
+
+  # A bare Error: inside RSpec's Failure/Error: must not cut the load header (#360).
+  def test_truncate_clean_detail_keeps_rspec_load_error_header
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    noise = "." * (limit + 20)
+    text = "#{noise}\n\nAn error occurred while loading ./calc_spec.rb.\nFailure/Error: raise \"boom\"\n\nRuntimeError:\n  boom\n"
+    out = map.send(:truncate_clean_detail, text)
+    assert_operator out, :start_with?, "An error occurred while loading ./calc_spec.rb."
+    assert_includes out, "Failure/Error:"
+    refute_match(/\AError:/, out)
   end
 
   # An at_exit that fails after the child wrote passed:true must still fail the
