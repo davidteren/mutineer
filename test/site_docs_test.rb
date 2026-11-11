@@ -105,6 +105,38 @@ class SiteDocsTest < Minitest::Test
     end
   end
 
+  # The present? triage heading sits inside Call to receiver, before Endless range.
+  def test_present_survivor_triage_sits_inside_call_to_receiver
+    html = File.read("docs/equivalent-skips.html")
+    section = html[/<h2 id="call-to-receiver">.*?(?=<h2 id="endless-range">)/m]
+    assert_includes section, '<h3 id="triage-a-present-survivor">'
+    markdown = File.read("docs/equivalent-skips.md")
+    md_section = markdown[/^## Call to receiver$.*?(?=^## )/m]
+    assert_includes md_section, "### Triage a `present?` survivor"
+  end
+
+  # The subsection names the gap and both ways to suppress one site.
+  def test_present_survivor_triage_names_the_gap_and_both_suppressions
+    html = File.read("docs/equivalent-skips.html")
+    section = html[/<h3 id="triage-a-present-survivor">.*?(?=<h2)/m]
+    assert_includes section, "present?"
+    assert_includes section, '""'
+    assert_includes section, "ignore:"
+    assert_includes section, "mutineer:disable-line call_to_receiver"
+
+    markdown = File.read("docs/equivalent-skips.md")
+    md_section = markdown[/^### Triage a `present\?` survivor$.*?(?=^## )/m]
+    assert_includes md_section, "present?"
+    assert_includes md_section, '""'
+    assert_includes md_section, "ignore:"
+    assert_includes md_section, "mutineer:disable-line call_to_receiver"
+  end
+
+  # The suppression guide links readers to the present? triage subsection.
+  def test_results_page_links_to_present_survivor_triage
+    assert_includes File.read("docs/results.md"), "equivalent-skips.html#triage-a-present-survivor"
+  end
+
   # The Rails guide is in the primary nav, and every YAML recipe parses.
   def test_rails_guide_is_linked_and_its_yaml_parses
     %w[docs/index.html docs/agentic-coding.html docs/sample-report.html docs/rails.html].each do |path|

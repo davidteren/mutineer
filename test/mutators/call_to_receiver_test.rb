@@ -94,6 +94,12 @@ class CallToReceiverTest < Minitest::Test
     end
   end
 
+  # present? stays off the skip list. A name skip would hide a real gap.
+  def test_present_predicate_becomes_its_receiver
+    assert_equal ["x"], mutated("x.present?")
+    assert_equal ["params[:day]"], mutated("params[:day].present?")
+  end
+
   def test_skipped_names_yield_none
     %w[x.dup x.clone Foo.new x.freeze x.itself x.to_set].each do |body|
       assert_empty mutated(body), "for #{body.inspect}"

@@ -44,9 +44,13 @@ module Mutineer
     # Seconds the daemon gets to boot the app and answer the handshake. A boot
     # that never returns ends the run instead of hanging it (#101).
     BOOT_TIMEOUT = 600
-    # Seconds close_io waits for the stderr drain to reach EOF before it stops
-    # the thread, so a last line without a newline is not lost.
+    # Most seconds close_io waits for the stderr drain to finish. The drain
+    # ends at EOF, or once the daemon has exited and the pipe is empty, so
+    # only a grandchild that keeps writing makes close_io wait this long.
     DRAIN_GRACE = 1
+    # Seconds the stderr drain waits for output before it checks whether the
+    # daemon has exited. A grandchild that holds the pipe open never sends EOF.
+    DRAIN_POLL = 0.1
     # Bundler's marker for a variable that was unset before it activated.
     BUNDLER_UNSET = "BUNDLER_ENVIRONMENT_PRESERVER_INTENTIONALLY_NIL"
 
@@ -83,6 +87,17 @@ module Mutineer
     # @return [Hash, nil]
     attr_reader :databases
 
+    # Why the last {#request} answered `"error"`: the redacted `Class: message`
+    # line from the daemon's child (#388), or `daemon crashed` / `daemon
+    # stopped answering` when no reply came. nil when the reply carried no
+    # cause, or the last request answered anything else. Read it right after
+    # {#request}: a client serves one worker thread at a time
+    # ({DaemonBackend} gives each thread its own), so no other request can
+    # replace it in between.
+    #
+    # @return [String, nil]
+    attr_reader :last_cause
+
     # Ask the daemon to create `slots` worker databases. Raises when the copy
     # fails or another run holds the database, so the caller stops before any
     # mutant is scored.
@@ -111,8 +126,12 @@ module Mutineer
     # @param timeout [Numeric] per-mutant wall-clock timeout (seconds).
     # @param worker [Integer] worker slot; the daemon routes the fork to
     #   `<db>-<worker>` for isolation. Defaults to 0 (serial).
-    # @return [String] one of survived/killed/error/timeout.
+    # @return [String] one of survived/killed/error/timeout. An `"error"`
+    #   reply's cause is in {#last_cause}.
     def request(id:, payload:, tests:, timeout:, worker: 0)
+      @last_cause = nil
+      # A write that fails reads no reply, so a stale flag must not name it a hang.
+      @timed_out = false
       # close_io nils the pipes, so a client whose respawn never completed would
       # otherwise fail per-mutant forever (NoMethodError on nil) and let the backend
       # score every remaining mutant against nothing. Deadness is a property of the
@@ -130,8 +149,12 @@ module Mutineer
         rescue Errno::EPIPE, IOError
           nil
         end
-      return reply["verdict"] if reply && reply["id"] == id
+      if reply && reply["id"] == id
+        @last_cause = reply["details"] if reply["verdict"] == "error"
+        return reply["verdict"]
+      end
 
+      @last_cause = @timed_out ? "daemon stopped answering" : "daemon crashed"
       restart!
       "error"
     end
@@ -349,10 +372,10 @@ module Mutineer
             "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run",
             unsetenv_others: true, chdir: @app_root
           )
-          # Replies are UTF-8 JSON, and the app's stderr is redacted as text: with
-          # LANG unset both pipes would read as US-ASCII (#303).
+          # Replies are UTF-8 JSON: with LANG unset the pipe would read as
+          # US-ASCII (#303). The stderr drain reads bytes and marks each line
+          # UTF-8 itself (write_redacted).
           @stdout.set_encoding(Encoding::UTF_8)
-          @stderr.set_encoding(Encoding::UTF_8)
           # Drain daemon stderr to the tool's stderr so child/boot errors are visible,
           # redacted line by line (#288: the app's output goes through here too).
           # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn.
@@ -419,27 +442,58 @@ module Mutineer
     # A line is the unit the daemon and the app write, so a password is never
     # split across two redaction calls. The line break is kept outside the
     # redaction, so a line redaction hides as a whole still ends its line.
-    # After a write fails (EPIPE from a tool stderr that went away), the drain
-    # keeps reading and drops the lines, so the daemon never blocks on a full
-    # pipe. The outer rescue swallows the benign EBADF/IOError raised when
-    # close_io closes the pipe under an in-flight read, so the thread never
-    # ends with an error that close_io's join would re-raise.
+    # The drain ends at EOF, or once the daemon has exited and the pipe is
+    # empty: a grandchild that keeps the pipe open would otherwise hold it
+    # until close_io's DRAIN_GRACE (#341). Either way it writes a last line
+    # that has no newline. After a write fails (EPIPE from a tool stderr that
+    # went away), the drain keeps reading and drops the lines, so the daemon
+    # never blocks on a full pipe. The outer rescue swallows the benign
+    # EBADF/IOError raised when close_io closes the pipe under an in-flight
+    # read, so the thread never ends with an error that close_io's join would
+    # re-raise.
     #
     # @param io [IO] the daemon's stderr pipe.
     # @return [nil]
     def drain_stderr(io)
       writable = true
-      io.each_line do |line|
-        next unless writable
+      pending = "".b
+      loop do
+        # Read the exit before the pipe: everything the daemon wrote is in the
+        # pipe by the time it has exited, so an empty read after it is the end.
+        exited = @wait_thr && !@wait_thr.alive?
+        chunk = io.read_nonblock(4096, exception: false)
+        break if chunk.nil?
 
-        body = line.chomp("\n").scrub # an invalid byte must not stop the drain
-        @errio.write(Redaction.text(body), body.length < line.length ? "\n" : "")
-      rescue StandardError
-        writable = false
+        if chunk == :wait_readable
+          # After the exit, one more quiet poll before stopping, so a mutant
+          # child's last line, written just after the daemon died, still shows.
+          ready = io.wait_readable(DRAIN_POLL)
+          break if exited && !ready
+
+          next
+        end
+        pending << chunk.b
+        while (cut = pending.index("\n"))
+          line = pending.slice!(0..cut)
+          writable &&= write_redacted(line)
+        end
       end
+      write_redacted(pending) if writable && !pending.empty?
       nil
     rescue StandardError
       nil
+    end
+
+    # Write one line of daemon stderr to the tool's stderr, redacted.
+    #
+    # @param line [String] raw bytes, with or without the trailing newline.
+    # @return [Boolean] false when the write failed.
+    def write_redacted(line)
+      body = line.chomp("\n").force_encoding(Encoding::UTF_8).scrub # an invalid byte must not stop the drain
+      @errio.write(Redaction.text(body), line.end_with?("\n") ? "\n" : "")
+      true
+    rescue StandardError
+      false
     end
 
     # Close the IPC pipes, stop the stderr-drain thread, and reap the daemon so a
@@ -454,9 +508,9 @@ module Mutineer
       rescue Errno::ESRCH
         nil # it exited between the check and the kill
       end
-      # The drain holds a partial last line until EOF. Give it a moment to reach
-      # EOF now the daemon is dead, so a boot error with no final newline still
-      # prints; then stop it BEFORE closing its fd (avoids an EBADF mid-read).
+      # The drain ends on its own once the daemon has exited and the pipe is
+      # empty, writing a boot error with no final newline. Wait for that, then
+      # stop it BEFORE closing its fd (avoids an EBADF mid-read).
       @drain&.join(DRAIN_GRACE)
       @drain&.kill
       [@stdin, @stdout, @stderr].each { |io| io&.close rescue nil } # rubocop:disable Style/RescueModifier

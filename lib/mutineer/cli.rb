@@ -50,9 +50,10 @@ module Mutineer
                                                      --force replaces an existing file.
 
       Run options:
-        --test FILE          Test file covering the sources (one per flag; repeat it).
+        --test PATH          Test file, directory or quoted glob (repeat for more).
                              Omit to pair each source with its test by convention
-                             (not under --dry-run)
+                             and any tests: map in .mutineer.yml (not under
+                             --dry-run). --test replaces pairing and the map
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
         --baseline FILE      Fail (exit 1) on NEW survivors / score drop vs a prior
@@ -83,7 +84,10 @@ module Mutineer
         --test-command CMD   Run the target suite in the app's own runtime as a
                              subprocess (for apps on Ruby < 3.4). CMD must contain
                              %{files}. Scrubs Mutineer Ruby PATH pins; set RAILS_ENV
-                             on the mutineer command (not as KEY=val inside CMD)
+                             on the mutineer command (not as KEY=val inside CMD).
+                             CMD must run tests in a fixed order: put SEED=1
+                             before the mutineer command for Minitest, or add
+                             --order defined to an RSpec CMD
         --daemon             Boot the app ONCE in a persistent daemon and fork per
                              mutant, with per-worker DB isolation so --jobs N is safe
                              under Rails (needs --rails/--boot; not with --test-command).
@@ -151,7 +155,7 @@ module Mutineer
         # A typed "no" must beat a .mutineer.yml `since:` key: the key is present
         # with a nil value, and nil is a value.
         o.on("--no-since") { opts[:since] = nil }
-        o.on("--test FILE") { |v| (opts[:tests] ||= []) << v }
+        o.on("--test PATH") { |v| (opts[:tests] ||= []) << v }
         o.on("--operators LIST") do |v|
           opts[:operators] = Config.parse(:operators, v.split(",").map(&:strip))
         end
@@ -213,12 +217,22 @@ module Mutineer
       case argv.first
       when "run"
         warn_config_root_mismatch(file_path, config.project_root) if file_path
+        # Matrix conflicts first — same order as validate! — so a --matrix
+        # clash is not hidden by a shape or expansion error (#407 OCR).
+        # Expand --test before the guard. The guard reads config.tests.
+        # migrate and config do not call this (#380).
+        # A bad --test-command is reported next, not hidden by a --test error.
+        validate_matrix!(config) if config.matrix
+        validate_test_command_shape!(config) if config.test_command
+        expand_tests!(config) if config.explicit?(:tests)
         tests_as_sources = argv[1..].select do |arg|
           Pairing.test_given_as_source?(arg, project_root: config.project_root, tests: config.tests)
         end
         if config.explicit?(:tests) && tests_as_sources.any?
           warn "mutineer: #{tests_as_sources.join(', ')} looks like a test file, not a source. " \
-               "--test takes one file; repeat it for each test file (--test a_test.rb --test b_test.rb)"
+               "A shell expands an unquoted glob into many files. " \
+               "Quote the glob (--test 'test/**/*_test.rb'), pass the directory (--test test), " \
+               "or repeat --test for each file"
           exit 2
         end
         # A directory source expands to its **/*.rb files; a file inside the
@@ -420,9 +434,21 @@ module Mutineer
       validate_test_command!(config) if config.test_command
 
       validate_since!(config) if config.since
-      preflight_output!(config.output, config) if config.output
+      # Non-JSON dry runs ignore --output (warn_unused_dry_run_settings); skip
+      # the path check so a missing parent does not exit 2 before that warning.
+      if config.output && (!config.dry_run || config.format == "json")
+        preflight_output!(config.output, config)
+      end
       preflight_baseline!(config.baseline) if config.baseline
-      preflight_same_file!(config) if config.output && config.baseline && !config.dry_run
+      # Human dry runs write nothing; JSON dry runs write --output (#362), so
+      # they need the same-file guard that blocks overwriting a baseline (#281).
+      if config.output && config.baseline && (!config.dry_run || config.format == "json")
+        preflight_same_file!(config)
+      end
+
+      # Resolve / warn for the tests: map before autopair. Dry-run skips
+      # autopair but still checks unmatched patterns (#382 R5, R12).
+      prepare_test_map!(config)
 
       # When --test is omitted, infer each source's test by convention. Autopair
       # also re-detects framework from inferred tests when --framework was not set.
@@ -433,6 +459,7 @@ module Mutineer
       # validated before discovery).
       validate_daemon!(config) if config.daemon
       warn_unused_coverage_from(config)
+      warn_unused_dry_run_settings(config)
 
       # Boot mode needs at least one --test file (nothing to select from otherwise).
       if config.boot && config.tests.empty?
@@ -454,14 +481,7 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.validate_test_command!(config)
-      if config.test_command.strip.empty?
-        warn "mutineer: --test-command must not be empty"
-        exit 2
-      end
-      unless config.test_command.include?("%{files}")
-        warn "mutineer: --test-command must contain %{files} (where the --test paths are substituted)"
-        exit 2
-      end
+      validate_test_command_shape!(config)
       if config.boot
         warn "mutineer: --test-command cannot be combined with --boot/--rails " \
              "(the external subprocess boots the app itself)"
@@ -477,6 +497,23 @@ module Mutineer
 
       warn "[mutineer] --test-command runs serially (no per-worker DB isolation yet); forcing --jobs 1."
       config.jobs = 1
+    end
+
+    # The --test-command text must not be blank and must contain %{files}.
+    # It prints nothing when the text is valid, so a second call is safe.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.validate_test_command_shape!(config)
+      if config.test_command.strip.empty?
+        warn "mutineer: --test-command must not be empty"
+        exit 2
+      end
+      return if config.test_command.include?("%{files}")
+
+      warn "mutineer: --test-command must contain %{files} (where the --test paths are substituted)"
+      exit 2
     end
 
     # --daemon selects the persistent-daemon backend (boot once, fork per mutant,
@@ -531,6 +568,25 @@ module Mutineer
              elsif !config.boot then "a run without --rails/--boot"
              end
       warn_unused_settings(config, mode, %i[coverage_from]) if mode
+    end
+
+    # `--dry-run` prints a candidate list; `--format html` never renders one,
+    # and `--output` only writes when `--format json` builds that list (#362).
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.warn_unused_dry_run_settings(config)
+      return unless config.dry_run
+
+      if config.explicit?(:format) && config.format == "html"
+        warn "[mutineer] --format html has no effect with --dry-run " \
+             "(it applies to a completed run; use --format json for candidates); ignoring it."
+      end
+      return unless config.explicit?(:output) && config.format != "json"
+
+      warn "[mutineer] #{config.origin(:output)} has no effect with --dry-run " \
+           "(it applies to --format json dry runs); ignoring it."
     end
 
     # A backend that never reads a setting the user set would silently do
@@ -626,14 +682,125 @@ module Mutineer
       exit 2
     end
 
+    # Expand each typed --test value before a run. A blank value exits 2.
+    # With --test-command, a directory stays as typed. A glob still expands.
+    # A directory or glob with no test file exits 2. Each expanded value
+    # prints one count on stderr. Duplicate files keep the first spelling.
+    # The framework is detected again from the expanded list, unless the
+    # user set it.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.expand_tests!(config)
+      root = config.project_root
+      seen = {}
+      tests = []
+      counts = []
+      errors = []
+
+      Array(config.tests).each do |value|
+        kind = Pairing.classify_test_value(value, project_root: root)
+        if kind == :blank
+          errors << %(mutineer: --test must name a file, a directory or a glob, not blank (got: "#{value}"))
+          next
+        end
+        if kind == :directory && config.test_command
+          store_test_path(tests, seen, root, value)
+          next
+        end
+
+        paths = Pairing.expand_test(value, project_root: root)
+        if paths.empty?
+          errors << no_test_match_message(value, kind)
+          next
+        end
+        if kind == :directory || kind == :glob
+          noun = paths.size == 1 ? "file" : "files"
+          counts << "[mutineer] --test #{value}: #{paths.size} test #{noun}"
+        end
+        paths.each { |path| store_test_path(tests, seen, root, path) }
+      end
+
+      unless errors.empty?
+        errors.each { |msg| warn msg }
+        exit 2
+      end
+
+      counts.each { |line| warn line }
+      config.tests = tests
+      config.framework = Config.detect_framework(config.tests) unless config.explicit?(:framework)
+    end
+
+    # Usage text when a directory or glob matched no test file.
+    #
+    # @api private
+    # @param value [String] the --test value, as typed.
+    # @param kind [Symbol] :directory or :glob.
+    # @return [String]
+    def self.no_test_match_message(value, kind)
+      message = "mutineer: --test #{value} matched no test files"
+      return message unless kind == :directory
+
+      "#{message}. A directory gives the files under it named *_test.rb, *_spec.rb or test_*.rb."
+    end
+
+    # Keep the first spelling of one absolute test path.
+    #
+    # @api private
+    # @param tests [Array<String>] paths kept so far.
+    # @param seen [Hash{String => true}] absolute paths already kept.
+    # @param root [String] project root.
+    # @param path [String] path as it should be stored.
+    # @return [void]
+    def self.store_test_path(tests, seen, root, path)
+      key = File.expand_path(path, root)
+      return if seen[key]
+
+      seen[key] = true
+      tests << path
+    end
+
+    # Warn or resolve the optional `tests:` map before pairing. With `--test`
+    # and a non-empty map, print one line that the map has no effect (R9) and
+    # resolve nothing. Otherwise expand every pattern; an unmatched pattern is
+    # exit 2 (R5). The resolved map is stashed for {autopair!}. Dry-run still
+    # runs this check (R12) even though it skips autopair.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.prepare_test_map!(config)
+      @resolved_test_map = nil
+      return if config.test_map.empty?
+
+      if config.explicit?(:tests)
+        warn "[mutineer] #{config.origin(:test_map)} has no effect when --test is given"
+        return
+      end
+
+      resolved = Pairing.resolve_test_map(config.test_map, project_root: config.project_root)
+      unless resolved[:unmatched].empty?
+        miss = resolved[:unmatched].first
+        # Prefer the loaded path: find_file can pick a home or parent config,
+        # and basename-only text hides which file failed the map check.
+        label = Config.find_file || CONFIG_FILE
+        warn "mutineer: #{label}: tests entry #{miss[:entry]}: " \
+             "#{miss[:key]} pattern #{miss[:pattern].inspect} matched no file"
+        exit 2
+      end
+      @resolved_test_map = resolved
+    end
+
     # Auto-pair sources to tests by path convention when no --test was given
-    # (explicit --test wins). Each source with at least one inferred test on
-    # disk joins the run; a source with none is dropped with a one-line stderr
-    # warning and the run continues with the rest. Split files for one source
-    # are all kept (#87). If every source is dropped: in boot mode the
-    # dedicated --boot/--rails-requires-test check reports it; otherwise exit 2
-    # with a usage message. The framework is re-detected from the inferred set
-    # unless it was set explicitly (a spec-only project loads/reports as rspec).
+    # (explicit --test wins). Each source keeps its paired tests, then any
+    # mapped tests from the resolved `tests:` map (R6, R10). A source with
+    # neither is dropped with a one-line stderr warning and the run continues
+    # with the rest. Split files for one source are all kept (#87). If every
+    # source is dropped: in boot mode the dedicated --boot/--rails-requires-test
+    # check reports it; otherwise exit 2 with a usage message. The framework is
+    # re-detected from the inferred set unless it was set explicitly (a
+    # spec-only project loads/reports as rspec).
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -641,15 +808,23 @@ module Mutineer
     def self.autopair!(config)
       return unless config.tests.empty?
 
-      paired = config.sources.filter_map do |s|
-        tests = Pairing.infer_tests(s, project_root: config.project_root, prefer: config.framework)
+      resolved = @resolved_test_map
+      @resolved_test_map = nil
+      if resolved.nil? && !config.test_map.empty? && !config.explicit?(:tests)
+        resolved = Pairing.resolve_test_map(config.test_map, project_root: config.project_root)
+      end
+
+      kept = config.sources.filter_map do |s|
+        paired = Pairing.infer_tests(s, project_root: config.project_root, prefer: config.framework)
+        mapped = resolved ? Pairing.mapped_tests_for(s, resolved) : []
+        tests = (paired + mapped).uniq
         [s, tests] unless tests.empty?
       end
-      (config.sources - paired.map(&:first)).each do |s|
+      (config.sources - kept.map(&:first)).each do |s|
         warn "[mutineer] no test found by convention for #{s}; skipping"
       end
-      config.sources = paired.map(&:first)
-      config.tests   = paired.flat_map(&:last).uniq
+      config.sources = kept.map(&:first)
+      config.tests   = kept.flat_map(&:last).uniq
       config.framework = Config.detect_framework(config.tests) unless config.explicit?(:framework)
 
       return unless config.sources.empty?
@@ -680,7 +855,8 @@ module Mutineer
     # output is expanded the way Reporter#report writes it, so `x/../b.json`
     # with a missing `x/` still matches `b.json`. File.identical? is false when
     # either file is missing, so a new output path never matches.
-    # Unlike the Action's guard, a dry run skips this check: it writes no report.
+    # Unlike the Action's guard, a human dry run skips this check: it writes no
+    # report. JSON dry runs write `--output`, so they call this guard (#362).
     #
     # @api private
     # @param config [Mutineer::Config] run configuration (output and baseline set).
@@ -699,8 +875,9 @@ module Mutineer
     # except the cache directory: the documented `--output .mutineer/run.json`
     # must work on a fresh checkout. It is created here, before the run, so a
     # failure to create it exits 2 up front. A later failed check can leave the
-    # empty cache directory behind (a real run creates it anyway). A dry run
-    # writes no report, so it creates nothing.
+    # empty cache directory behind (a real run creates it anyway). A human dry
+    # run writes no report, so it creates nothing; `--dry-run --format json`
+    # writes the candidate list and may create the cache dir (#362).
     #
     # @api private
     # @param path [String] output file path.
@@ -709,7 +886,7 @@ module Mutineer
     def self.preflight_output!(path, config)
       dir = File.dirname(File.expand_path(path))
       if !File.exist?(dir) && dir == File.expand_path(config.cache_dir, config.project_root)
-        return if config.dry_run
+        return if config.dry_run && config.format != "json"
 
         begin
           FileUtils.mkdir_p(dir)
@@ -891,7 +1068,9 @@ module Mutineer
     end
 
     # Runs dry-run mode. Reuses JobPlan.collect_jobs (+ scope_since) so the
-    # candidate list cannot drift from a real run's job selection.
+    # candidate list cannot drift from a real run's job selection. `--format
+    # json` emits the lean candidate list (#362); other formats keep the human
+    # listing.
     #
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
@@ -903,16 +1082,28 @@ module Mutineer
       # matches the printed list.
       jobs, ignored_results, = JobPlan.scope_since(jobs, ignored_results, source_map, config)
       ignored = ignored_results.size
+      # One valid? pass for both formats: Mutation#valid? re-parses the whole file.
+      valid, invalid = jobs.partition do |subject, mutation, _id|
+        mutation.valid?(source_map[subject.file])
+      end
+      skipped = invalid.size
+
+      if config.format == "json"
+        rendered = Reporter.dry_run_json(valid, source_map, declined: extras[:declined] || {},
+                                         skipped_invalid: skipped, ignored: ignored)
+        if config.output
+          abs = File.expand_path(config.output)
+          File.write(abs, rendered)
+          warn "Report written to #{abs}"
+        else
+          print rendered
+        end
+        exit 0
+      end
 
       per_operator = Hash.new(0)
-      skipped = 0
-      jobs.each do |subject, mutation, _id|
+      valid.each do |subject, mutation, _id|
         source = source_map[subject.file]
-        unless mutation.valid?(source)
-          skipped += 1
-          next
-        end
-
         line = source.byteslice(0, mutation.start_offset).count("\n") + 1
         per_operator[mutation.operator] += 1
         original = source.byteslice(mutation.start_offset...mutation.end_offset)
