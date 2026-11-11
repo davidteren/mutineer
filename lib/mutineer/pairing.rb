@@ -21,6 +21,8 @@ module Mutineer
   #                     namespaced subdirectories. The first EXISTING exact
   #                     candidate stays first. Split Minitest files join a
   #                     Minitest match. A matched spec is left as that one file.
+  #                     A concern at app/<dir>/concerns/<rest>.rb with no test
+  #                     there also tries exact names at <dir>/<rest>.
   #   * test_given_as_source? — whether a positional argument is a test file
   #                     by these same names, given as a source by mistake
   #                     after `--test` (#293).
@@ -377,7 +379,9 @@ module Mutineer
     # candidate from {#candidates} stays first. Each `<basename>_*_test.rb` in
     # the mirrored test directory is added after it (#87). A spec that the exact
     # rules already found is left alone: split Minitest names do not join it
-    # and do not replace it.
+    # and do not replace it. When that list is empty, a concern tries exact
+    # names at its namespace path. Split names stay at the concerns path.
+    # Issue #408 tracks namespace split names.
     #
     # @param source_rel [String] relative source path.
     # @param project_root [String] repository root for existence checks.
@@ -387,9 +391,31 @@ module Mutineer
       base, lib = logical_path(source_rel)
       root = File.expand_path(project_root)
       exact = candidates(base, lib, prefer).find { |rel| File.exist?(File.expand_path(rel, root)) }
-      return [exact] if exact&.end_with?("_spec.rb")
+      found = if exact&.end_with?("_spec.rb")
+                [exact]
+              else
+                ([exact] + split_test_files(base, lib, root)).compact.uniq
+              end
+      return found unless found.empty?
 
-      ([exact] + split_test_files(base, lib, root)).compact.uniq
+      ns = namespace_base(source_rel)
+      return found unless ns
+
+      pick = candidates(ns, false, prefer).find { |rel| File.exist?(File.expand_path(rel, root)) }
+      pick ? [pick] : []
+    end
+
+    # Namespace mirror for a concern, or nil.
+    # `app/<dir>/concerns/<rest>.rb` returns `<dir>/<rest>`.
+    # `concerns` must sit directly under `app/<dir>`.
+    #
+    # @param source_rel [String] relative source path.
+    # @return [String, nil] logical base without extension, or nil.
+    def namespace_base(source_rel)
+      match = source_rel.match(%r{\Aapp/([^/]+)/concerns/(.+)\.rb\z})
+      return unless match
+
+      "#{match[1]}/#{match[2]}"
     end
 
     # Strip the source root to a logical path (no ".rb") and flag lib/

@@ -37,6 +37,9 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --test 'test
 | `redefine` | Reloads the mutated method and each directly enclosing method, not the whole file. |
 | Methods nested in blocks | A method inside a block such as `define_method` can falsely survive. Use `--strategy reload`. |
 
+A file at `app/<dir>/concerns/` pairs with an exact namespace test when the `concerns/` path has none.
+See the [pairing table](ci.md).
+
 A controller concern often has no test at the conventional path.
 Map it to the controller and integration tests that exercise it:
 
