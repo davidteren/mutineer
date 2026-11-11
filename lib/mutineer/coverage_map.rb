@@ -877,16 +877,19 @@ module Mutineer
       @failed_clean_details[rel] = truncate_clean_detail(text)
     end
 
-    # Keeps the first lines of a clean-failure report within
-    # {CLEAN_FAILURE_DETAIL_LIMIT} characters.
+    # Keeps the first failure block of a clean-failure report within
+    # {CLEAN_FAILURE_DETAIL_LIMIT} characters. RSpec progress dots can fill
+    # the head of the sink; prefer the `Failures:` / `Failure:` section (#360).
     #
     # @api private
     # @param text [String] redacted reporter output.
     # @return [String]
     def truncate_clean_detail(text)
-      return text if text.length <= CLEAN_FAILURE_DETAIL_LIMIT
+      start = [text.index("Failures:"), text.index("Failure:")].compact.min || 0
+      report = start.zero? ? text : text[start..]
+      return report if report.length <= CLEAN_FAILURE_DETAIL_LIMIT
 
-      "#{text[0, CLEAN_FAILURE_DETAIL_LIMIT].rstrip}\n…"
+      "#{report[0, CLEAN_FAILURE_DETAIL_LIMIT].rstrip}\n…"
     end
 
     # Re-runs each successfully captured test on a cache hit. Digest equality
@@ -971,7 +974,9 @@ module Mutineer
       rescue JSON::ParserError
         nil
       end
-      return [status.success?, ""] unless data.is_a?(Hash)
+      # Fail closed: a child that exits 0 without a valid result line must not
+      # clear the clean check (mutation honesty).
+      return [false, ""] unless data.is_a?(Hash)
 
       # Require the process exit too: an `at_exit` hook can fail after the
       # child already wrote `passed: true` (#360 warm-cache clean check).

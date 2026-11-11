@@ -145,7 +145,7 @@ All notable changes to this project are documented here. The format is based on
   The SmokeCheckError line still says `not green` once and lists the files.
   It now also prints the reporter's failing test name and first failure
   message (capped), for Minitest and RSpec, including `--rails` / `--daemon`
-  forks and a warm-cache clean check. The message no longer repeats itself.
+  forks and a warm-cache clean check.
 - **The Action accepts an `output` path that starts with a dash, a tilde, or
   ends in a newline (#401).** Before, `output: -dash/pr.json` stopped the step
   with a `dirname` or `ruby` usage error, so a same-file `baseline` was not

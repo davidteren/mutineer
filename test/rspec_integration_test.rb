@@ -102,8 +102,9 @@ class RSpecIntegrationTest < Minitest::Test
       capture_subprocess_io { err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::Runner.execute(config) } }
       assert_match(/unmutated suite is not green/, err.message)
       assert_equal 1, err.message.scan("not green").size, err.message
-      # #360: the failing example name is on the SmokeCheckError line.
+      # #360: the failing example name and first error are on the SmokeCheckError line.
       assert_match(/fails unrelated/, err.message)
+      assert_match(/got: 1/, err.message)
     end
   end
 

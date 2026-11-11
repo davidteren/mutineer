@@ -120,6 +120,30 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # A child that exits 0 without a valid result JSON must not pass the clean check.
+  def test_subprocess_clean_pass_rejects_exit_zero_without_result_json
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    status = Object.new
+    def status.success? = true
+    def status.nil? = false
+    map.define_singleton_method(:spawn_script) { |*| [status, "not-json"] }
+    ok, = map.send(:subprocess_clean_pass?, [])
+    refute ok, "exit 0 with no JSON result must fail closed"
+  end
+
+  # Progress dots before Failures: must not consume the capped detail (#360).
+  def test_truncate_clean_detail_starts_at_failures_section
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    dots = "." * (limit + 50)
+    text = "#{dots}\n\nFailures:\n\n  1) example fails\n     expected: 2\n          got: 1\n"
+    out = map.send(:truncate_clean_detail, text)
+    assert_operator out, :start_with?, "Failures:"
+    assert_includes out, "example fails"
+    assert_includes out, "got: 1"
+    refute_includes out, dots[0, 20]
+  end
+
   # An at_exit that fails after the child wrote passed:true must still fail the
   # clean check: warm-cache scoring must not proceed on a red exit (#360).
   def test_subprocess_clean_pass_rejects_nonzero_exit_after_passed_json
@@ -351,8 +375,8 @@ class CoverageMapTest < Minitest::Test
       assert_empty map.failed_test_files, "a red assertion is not a capture crash"
       # #360: the failing test name is kept for the SmokeCheckError line.
       detail = map.failed_clean_details["calc_test.rb"].to_s
-      assert_match(/AuditFailingCalculatorTest#test_unrelated|test_unrelated/, detail, detail)
-      assert_match(/Expected: 1|Actual: 2|refute|assert/, detail, detail)
+      assert_match(/AuditFailingCalculatorTest#test_unrelated/, detail, detail)
+      assert_match(/Expected: 1\s+Actual: 2/, detail, detail)
     end
   end
 
