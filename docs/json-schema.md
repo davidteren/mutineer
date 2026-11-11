@@ -5,7 +5,7 @@ whole run. Use it for CI checks, dashboards, and AI coding agents. Arrays have a
 fixed sort order, independent of `--jobs` worker completion order. For the same
 inputs and results, JSON output is byte-identical. Results can still vary if
 the tests or environment change. `survivors[]` sorts by
-`(file, line, operator)`; `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
+`(file, line, operator)`; `killed[]`, `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
 add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`;
 `no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`. One exception:
 `details` of an errored mutant can quote run-specific text (see `no_verdict[]`).
@@ -37,6 +37,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
   "schema_version": "1.10",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch; review for test gaps or equivalent behaviour */ ],
+  "killed":       [ /* mutants a test caught; lean ids for joining runs (#361) */ ],
   "no_coverage":  [ /* mutants on lines no test exercises, or that the statement's tests may not reach (#254, #289) */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
   "unplaceable":  [ /* mutants the strategy cannot load where the tests call them; not run */ ],
@@ -86,6 +87,15 @@ Each surviving mutant — the records an agent or reviewer acts on:
 | `id` | string | **Offset-free id** (12 hex chars). Includes the file path relative to the project root (a source outside the root uses its absolute real path, so its ids differ between machines). Unrelated edits preserve it when the path, qualified method name, mutated token, and repeated-name/mutation order stay the same. File moves, renames, and root changes can change it. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids). Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
 | `token` | string | The exact code being mutated (whitespace-collapsed), e.g. `a + b`. |
 | `diff` | string | A unified diff with no context lines: `-original` / `+mutant` lines under a hunk header that gives each side's start line and, when it is not 1, its line count (`@@ -3,2 +3 @@`). For a `file` given relative to the project root, `git apply --unidiff-zero` run from that root accepts it. An absolute or `../` path needs `git apply --directory`/`-p` or an edit. Ready to hand to an agent as "write a test that fails under this change." |
+
+### `killed[]` (array of object)
+
+Additive key (schema `1.10`, #361). Every killed mutant as
+`{ subject, file, line, operator, token, id }`, sorted by
+`(file, line, operator, id)`. Same lean shape as `no_coverage[]` (no `diff`).
+`killed.length` equals `summary.killed`. Use this to join two runs by id
+(for example Minitest vs RSpec on the same source) without subtracting every
+unscored category from a full id list.
 
 ### `no_coverage[]`, `uncapturable[]`, `unplaceable[]` and `ran_at_load[]` (array of object)
 
@@ -283,3 +293,30 @@ threshold. When `summary.killed + summary.survived > 0`, check
 arithmetic for a fractional threshold (`summary.score` is rounded, and the gate does not use it). Compare
 `summary.no_verdict / summary.attempted` against 10%, and check `baseline.regressed`. A run that failed only on
 completeness is the one worth retrying rather than blaming on the tests.
+
+## Dry-run JSON (`--dry-run --format json`)
+
+Additive (schema `1.10`, #362). `mutineer run … --dry-run --format json` prints a candidate list
+instead of the human breakdown. `--output` writes that document the same way a completed run's
+report does. `--format html` under `--dry-run` stays human and warns that the format is unused.
+
+```jsonc
+{
+  "schema_version": "1.10",
+  "summary": {
+    "id_format": 2,
+    "total": 0,
+    "skipped_invalid": 0,
+    "ignored": 0,
+    "declined": 0,
+    "declined_by_operator": {},
+    "by_operator": { /* operator name => valid candidate count */ }
+  },
+  "mutants": [ /* { subject, file, line, operator, token, id }, sorted like killed[] */ ]
+}
+```
+
+`mutants[].id` values match a later real run of the same sources, operators, and ignore rules
+(both paths use `JobPlan.collect_jobs`). `summary.id_format` is `2`, the same marker a completed
+report carries, so a consumer that joins by id does not treat a missing key as the old format.
+`summary.total` equals `mutants.length`.

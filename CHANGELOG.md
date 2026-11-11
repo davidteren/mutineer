@@ -24,6 +24,38 @@ All notable changes to this project are documented here. The format is based on
 - **`no_verdict[]` entries gain `operator` and `token` (#388),** as in
   `no_coverage[]`. Both are `null` for an entry with no mutant. Schema
   `1.10`.
+- **`.mutineer.yml` accepts a `tests:` map (#382).**
+  Each entry names `sources` and `tests` patterns.
+  When the run holds a matching source, those test files join the run's test list beside convention-paired tests.
+  Coverage still picks the tests for each mutant.
+  `--test` replaces pairing and the map.
+  A malformed map exits 2; without `--test`, a pattern that matches no file exits 2 (including `--dry-run`).
+- **`--test` accepts a file, a directory, or a quoted glob (#380).**
+  A directory selects `*_test.rb`, `*_spec.rb`, and `test_*.rb` files.
+  It skips `test_helper.rb`.
+  A blank value exits 2.
+  A directory or glob with no test file exits 2.
+  With `--test-command`, an empty directory stays as typed.
+  Each expanded directory or glob prints its file count on stderr.
+  The Action `test` input accepts a directory.
+  A directory needs mutineer 1.9.0 or later.
+- **JSON reports list every killed mutant (#361).** `--format json` adds a
+  top-level `killed[]` of lean mutant objects (`subject`, `file`, `line`,
+  `operator`, `token`, `id`), sorted like `no_coverage[]`. Its length equals
+  `summary.killed`. `schema_version` is `1.10`.
+- **`--dry-run --format json` prints candidates with stable ids (#362).** The
+  document carries `mutants[]` (same lean shape) and a summary with `total`,
+  `by_operator`, `declined`, and `declined_by_operator`. Ids match a later real
+  run of the same job plan. `--output` writes the file; `--format html` under
+  `--dry-run` stays human and warns that the format is unused.
+
+### Changed
+
+- **The test-file guard names three fixes (#380).**
+  Quote the glob, pass the directory, or repeat `--test`.
+- **`--dry-run` exits 2 for a blank `--test` or a directory with no test file (#380).**
+  Those values used to exit 0 on a dry run.
+  With `--test-command`, an empty directory stays as typed.
 
 ## [1.8.2] - 2026-11-10
 
