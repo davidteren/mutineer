@@ -26,6 +26,11 @@ class JsonReporterTest < Minitest::Test
     Mutineer::Result.survived.with(subject: subject, mutation: mutation_at(">=", ">", :comparison))
   end
 
+  # A killed mutant with the fields lean lists need (subject, mutation, id).
+  def killed_mutant(token: "100", replacement: "0", operator: :literal_mutation, id: "killedid0001")
+    Mutineer::Result.killed.with(subject: subject, mutation: mutation_at(token, replacement, operator), id: id)
+  end
+
   def render(results)
     out = StringIO.new
     Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { FILE => SRC })
@@ -57,8 +62,8 @@ class JsonReporterTest < Minitest::Test
   end
 
   def test_valid_json_with_summary_and_score
-    doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "1.9", doc["schema_version"] # 1.9 adds summary.declined and declined_by_operator; 1.8 added reason on ignored[]
+    doc = render([killed_mutant, survivor])
+    assert_equal "1.10", doc["schema_version"] # 1.10 adds killed[]; 1.9 added summary.declined and declined_by_operator
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
@@ -66,10 +71,33 @@ class JsonReporterTest < Minitest::Test
     assert_equal false, doc["summary"]["scoped"], "unscoped run records scoped: false"
   end
 
+  # #361: killed[] lists every killed mutant so two runs can be joined by id
+  # without subtracting every unscored category from the full id set.
+  def test_killed_array_matches_summary_count_and_lean_shape
+    a = killed_mutant(token: "100", replacement: "0", operator: :literal_mutation, id: "killedlit0001")
+    b = killed_mutant(token: ">=", replacement: ">", operator: :comparison, id: "killedcmp0001")
+    doc = render([a, b, survivor])
+    assert_equal 2, doc["summary"]["killed"]
+    assert_equal 2, doc["killed"].size
+    assert_equal doc["summary"]["killed"], doc["killed"].size
+    entry = doc["killed"].find { |h| h["id"] == "killedlit0001" }
+    assert_equal ["Pricing#total", FILE, 3], entry.values_at("subject", "file", "line")
+    assert_equal %w[literal_mutation 100 killedlit0001], entry.values_at("operator", "token", "id")
+    refute entry.key?("diff"), "killed[] is lean like no_coverage[], not survivors[]"
+  end
+
+  def test_killed_array_sorted_by_file_line_operator_id
+    lit = killed_mutant(token: "100", replacement: "0", operator: :literal_mutation, id: "zid")
+    cmp = killed_mutant(token: ">=", replacement: ">", operator: :comparison, id: "aid")
+    # Input order is literal then comparison; comparison sorts first by operator.
+    ids = render([lit, cmp])["killed"].map { |h| h.values_at("operator", "id") }
+    assert_equal [%w[comparison aid], %w[literal_mutation zid]], ids
+  end
+
   # #126: the report names its id format, so a later --baseline load knows its
   # ids include the file path. With no legacy data the two counts are zero.
   def test_summary_records_the_id_format_and_zero_legacy_matches
-    doc = render([Mutineer::Result.killed, survivor])
+    doc = render([killed_mutant, survivor])
     assert_equal 2, doc["summary"]["id_format"]
     assert_equal({ "ignore" => 0, "baseline" => 0 }, doc["summary"]["legacy_id_matches"])
   end
@@ -78,7 +106,7 @@ class JsonReporterTest < Minitest::Test
   # baseline), so the report keeps them apart.
   def test_summary_carries_separate_legacy_id_match_counts
     out = StringIO.new
-    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })
                       .report(out: out, err: StringIO.new, format: "json",
                               legacy_id_matches: { ignore: 2, baseline: 1 })
     doc = JSON.parse(out.string)
@@ -89,7 +117,7 @@ class JsonReporterTest < Minitest::Test
   # load) knows its score covers only the changed-line mutants.
   def test_scoped_run_records_scoped_true
     out = StringIO.new
-    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })
                       .report(out: out, err: StringIO.new, format: "json", scoped: true)
     assert_equal true, JSON.parse(out.string)["summary"]["scoped"]
   end
@@ -98,7 +126,7 @@ class JsonReporterTest < Minitest::Test
   # daemon crash reached the user as nothing but a bump in the errored count.
   def test_no_verdict_entries_carry_their_cause
     doc = render([Mutineer::Result.error("daemon worker crashed: Errno::EPIPE"),
-                  Mutineer::Result.timeout, Mutineer::Result.killed])
+                  Mutineer::Result.timeout, killed_mutant])
     entries = doc["no_verdict"]
 
     assert_equal 2, entries.size
@@ -124,7 +152,7 @@ class JsonReporterTest < Minitest::Test
   def test_no_verdict_includes_uncapturable_because_the_gate_counts_it
     unc = Mutineer::Result.uncapturable.with(subject: subject,
                                              mutation: mutation_at("100", "0", :literal_mutation))
-    doc = render([unc, Mutineer::Result.killed])
+    doc = render([unc, killed_mutant])
 
     assert_equal 1, doc["no_verdict"].size
     assert_equal "uncapturable", doc["no_verdict"].first["status"]
@@ -153,7 +181,7 @@ class JsonReporterTest < Minitest::Test
   def test_summary_carries_the_figures_the_gate_uses
     uncovered = Mutineer::Result.no_coverage.with(subject: subject,
                                                   mutation: mutation_at("100", "0", :literal_mutation))
-    doc = render([Mutineer::Result.error("x"), Mutineer::Result.killed, uncovered])
+    doc = render([Mutineer::Result.error("x"), killed_mutant, uncovered])
 
     assert_equal 2, doc["summary"]["attempted"] # no_coverage was never attempted
     assert_equal 1, doc["summary"]["no_verdict"]
@@ -288,9 +316,10 @@ class JsonReporterTest < Minitest::Test
   end
 
   def test_empty_arrays_when_nothing_survives
-    doc = render([Mutineer::Result.killed])
+    doc = render([killed_mutant])
     assert_equal [], doc["survivors"]
     assert_equal [], doc["no_coverage"]
+    assert_equal 1, doc["killed"].size
     assert_equal 100.0, doc["summary"]["score"]
   end
 
@@ -320,7 +349,7 @@ class JsonReporterTest < Minitest::Test
   def test_uncapturable_summary_count_and_list
     unc = Mutineer::Result.uncapturable.with(subject: subject, id: "abc123def456",
                                              mutation: mutation_at("100", "0", :literal_mutation))
-    doc = render([Mutineer::Result.killed, survivor, unc])
+    doc = render([killed_mutant(id: "killedother01"), survivor, unc])
     assert_equal 1, doc["summary"]["uncapturable"]
     assert_equal 50.0, doc["summary"]["score"] # killed+survived only; uncapturable excluded
     entry = doc["uncapturable"].first
@@ -334,7 +363,7 @@ class JsonReporterTest < Minitest::Test
   def test_unplaceable_summary_count_and_list_stay_out_of_no_verdict
     unp = Mutineer::Result.unplaceable.with(subject: subject, id: "abc123def456",
                                             mutation: mutation_at("100", "0", :literal_mutation))
-    doc = render([Mutineer::Result.killed, survivor, unp])
+    doc = render([killed_mutant(id: "killedother01"), survivor, unp])
     assert_equal 1, doc["summary"]["unplaceable"]
     assert_equal [0, 0, 2, 50.0], doc["summary"].values_at("uncapturable", "no_verdict", "attempted", "score")
     entry = doc["unplaceable"].first
@@ -347,7 +376,7 @@ class JsonReporterTest < Minitest::Test
   def test_ran_at_load_summary_count_and_list_stay_out_of_no_verdict
     ral = Mutineer::Result.ran_at_load.with(subject: subject, id: "abc123def456",
                                             mutation: mutation_at("100", "0", :literal_mutation))
-    doc = render([Mutineer::Result.killed, survivor, ral])
+    doc = render([killed_mutant(id: "killedother01"), survivor, ral])
     assert_equal 1, doc["summary"]["ran_at_load"]
     assert_equal [0, 2, 50.0], doc["summary"].values_at("no_verdict", "attempted", "score")
     entry = doc["ran_at_load"].first
@@ -361,12 +390,18 @@ class JsonReporterTest < Minitest::Test
   def test_per_source_array_sorted_with_scores
     other = Mutineer::Subject.new(file: "z.rb", namespace: ["Z"], name: :m,
                                   singleton: false, def_node: nil)
+    z_src = "class Z\n  def m\n    1 + 1\n  end\nend\n"
+    z_mut = Mutineer::Mutation.new(start_offset: z_src.index("+"), end_offset: z_src.index("+") + 1,
+                                   replacement: "-", operator: :arithmetic)
     results = [
-      Mutineer::Result.killed.with(subject: subject), # pricing.rb
-      survivor,                                        # pricing.rb survivor
-      Mutineer::Result.killed.with(subject: other)    # z.rb
+      killed_mutant, # pricing.rb
+      survivor,      # pricing.rb survivor
+      Mutineer::Result.killed.with(subject: other, mutation: z_mut, id: "zkilled000001")
     ]
-    per = render(results)["per_source"]
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { FILE => SRC, "z.rb" => z_src })
+                      .report(out: out, err: StringIO.new, format: "json")
+    per = JSON.parse(out.string)["per_source"]
     assert_equal [FILE, "z.rb"], per.map { |h| h["file"] }
     pricing = per.find { |h| h["file"] == FILE }
     assert_equal 2, pricing["total"]
@@ -449,7 +484,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_summary_reports_declined_per_operator
     out = StringIO.new
-    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })
                       .report(out: out, err: StringIO.new, format: "json",
                               declined: { "array_literal" => 1, "range" => 2 })
     summary = JSON.parse(out.string)["summary"]
@@ -458,7 +493,7 @@ class JsonReporterTest < Minitest::Test
   end
 
   def test_summary_declined_defaults_to_zero
-    summary = render([Mutineer::Result.killed])["summary"]
+    summary = render([killed_mutant])["summary"]
     assert_equal 0, summary["declined"]
     assert_equal({}, summary["declined_by_operator"])
   end

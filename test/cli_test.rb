@@ -712,6 +712,68 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #362: --dry-run --format json prints candidates with stable ids so a later
+  # real run can be joined without parsing human text.
+  def test_dry_run_format_json_lists_mutants_with_ids
+    with_project do |proj|
+      out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--format", "json",
+                                  "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"]
+      assert_operator doc["mutants"].size, :>, 0
+      assert_equal doc["summary"]["total"], doc["mutants"].size
+      entry = doc["mutants"].first
+      assert_equal %w[subject file line operator token id], entry.keys
+      assert_match(/\A[0-9a-f]{12}\z/, entry["id"])
+      assert_equal "calculator.rb", entry["file"]
+      assert doc["summary"].key?("declined")
+      assert doc["summary"].key?("declined_by_operator")
+      assert doc["summary"].key?("by_operator")
+      assert_operator doc["summary"]["by_operator"]["arithmetic"], :>, 0
+    end
+  end
+
+  def test_dry_run_format_json_ids_match_a_real_run
+    with_project do |proj|
+      dry_out, dry_err, dry = mutineer("run", "calculator.rb", "--dry-run", "--format", "json",
+                                       "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, dry.exitstatus, dry_err
+      dry_ids = JSON.parse(dry_out)["mutants"].map { |h| h["id"] }.sort
+
+      _, run_err, run = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                 "--operators", "arithmetic", "--format", "json",
+                                 "--output", "run.json", chdir: proj)
+      assert_equal 0, run.exitstatus, run_err
+      report = JSON.parse(File.read(File.join(proj, "run.json")))
+      run_ids = (report["killed"] + report["survivors"] + report["no_coverage"] +
+                 report["uncapturable"] + report["unplaceable"] + report["ran_at_load"] +
+                 report["ignored"]).map { |h| h["id"] }.sort
+      assert_equal dry_ids, run_ids
+    end
+  end
+
+  def test_dry_run_format_json_honors_output
+    with_project do |proj|
+      out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--format", "json",
+                                  "--output", "dry.json", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_empty out
+      assert_includes err, "Report written to"
+      doc = JSON.parse(File.read(File.join(proj, "dry.json")))
+      assert_operator doc["mutants"].size, :>, 0
+    end
+  end
+
+  def test_dry_run_format_html_warns_unused
+    with_project do |proj|
+      out, err, status = mutineer("run", "calculator.rb", "--dry-run", "--format", "html", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "mutations (dry run, not executed)"
+      assert_includes err, "--format html has no effect with --dry-run"
+    end
+  end
+
   HEREDOC_CONDITION = "class Notes\n  def note(x)\n    if x == <<~S\n      hi\n    S\n      1\n    end\n  end\nend\n"
 
   def test_dry_run_prints_declined_counts
@@ -914,8 +976,9 @@ class CliTest < Minitest::Test
                               "--format", "json", "--output", "report.json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(File.read(File.join(proj, "report.json")))
-      assert_equal "1.9", doc["schema_version"]
+      assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"]
       assert_equal 100.0, doc["summary"]["score"]
+      assert_equal doc["summary"]["killed"], doc["killed"].size
     end
   end
 
@@ -1325,7 +1388,7 @@ class CliTest < Minitest::Test
       out, _, status = mutineer("run", "lib", "--format", "json", chdir: proj)
       assert_equal 0, status.exitstatus
       doc = JSON.parse(out)
-      assert_equal "1.9", doc["schema_version"]
+      assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"]
       per = doc["per_source"].sort_by { |h| h["file"] }
       assert_equal ["lib/calc.rb", "lib/greeter.rb"], per.map { |h| h["file"] }
       assert_equal 100.0, per.find { |h| h["file"] == "lib/greeter.rb" }["score"]

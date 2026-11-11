@@ -15,13 +15,15 @@ module DocsContract
     "Top-level shape" => "shape",
     "`summary` (object)" => "summary",
     "`survivors[]` (array of object)" => "survivors",
+    "`killed[]` (array of object)" => "killed",
     "`no_coverage[]`, `uncapturable[]`, `unplaceable[]` and `ran_at_load[]` (array of object)" => "other-statuses",
     "`no_verdict[]` (array of object)" => "no-verdict",
     "`ignored[]` (array of object)" => "ignored",
     "`per_source[]` (array of object)" => "per-source",
     "`matrix` (object, only with `--matrix`)" => "matrix",
     "`baseline` (object, only with `--baseline`)" => "baseline",
-    "Exit codes" => "exit-codes"
+    "Exit codes" => "exit-codes",
+    "Dry-run JSON (`--dry-run --format json`)" => "dry-run-json"
   }.freeze
 
   # Table aria-labels the Playwright suite already asserts.
@@ -39,13 +41,15 @@ module DocsContract
     "shape" => "Top-level shape",
     "summary" => "summary",
     "survivors" => "survivors[]",
+    "killed" => "killed[]",
     "other-statuses" => "no_coverage / uncapturable / unplaceable / ran_at_load",
     "no-verdict" => "no_verdict[]",
     "ignored" => "ignored[]",
     "per-source" => "per_source[]",
     "matrix" => "matrix",
     "baseline" => "baseline",
-    "exit-codes" => "Exit codes"
+    "exit-codes" => "Exit codes",
+    "dry-run-json" => "Dry-run JSON"
   }.freeze
 
   MARKED = %w[
