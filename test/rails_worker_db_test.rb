@@ -3,6 +3,8 @@
 require_relative "test_helper"
 require "minitest/mock"
 require "mutineer/rails_worker_db"
+require "open3"
+require "tmpdir"
 
 # #26/U5 — zero-dep unit coverage for the pure parts of the worker-DB adapter. The
 # path-munging is the one bit of non-trivial logic that could break silently, so it
@@ -415,6 +417,9 @@ class RailsWorkerDbTest < Minitest::Test
 
   def teardown
     db = Mutineer::RailsWorkerDb
+    file = db.instance_variable_get(:@sqlite_lock_file)
+    file.close if file && !file.closed?
+    db.instance_variable_set(:@sqlite_lock_file, nil)
     db.forget_mysql_base_config
     db.instance_variable_set(:@mysql_held_locks, nil)
     db.instance_variable_set(:@lock_connection, nil)
@@ -983,6 +988,216 @@ class RailsWorkerDbTest < Minitest::Test
     assert_raises(ArgumentError) do
       Mutineer::RailsWorkerDb.mysql_add_foreign_key_sql("slot", "children", rows, base: "app_test")
     end
+  end
+
+  def test_sqlite_lock_path_expands_a_relative_file
+    config = sqlite_db_config("storage/test.sqlite3")
+    expected = "#{File.expand_path('storage/test.sqlite3')}-mutineer.lock"
+    assert_equal expected, Mutineer::RailsWorkerDb.sqlite_lock_path(config)
+  end
+
+  def test_sqlite_lock_path_keeps_an_absolute_file
+    config = sqlite_db_config("/tmp/app/storage/test.sqlite3")
+    assert_equal "/tmp/app/storage/test.sqlite3-mutineer.lock", Mutineer::RailsWorkerDb.sqlite_lock_path(config)
+  end
+
+  def test_sqlite_lock_path_is_nil_without_a_database_file
+    ["", ":memory:", "file:storage/test.sqlite3?mode=ro", "file::memory:?cache=shared"].each do |name|
+      assert_nil Mutineer::RailsWorkerDb.sqlite_lock_path(sqlite_db_config(name)), name
+    end
+  end
+
+  def test_sqlite_file_expands_against_rails_root
+    saved = Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
+    rails = Module.new
+    rails.define_singleton_method(:root) { "/apps/shop" }
+    Object.const_set(:Rails, rails)
+    assert_equal "/apps/shop/storage/test.sqlite3",
+                 Mutineer::RailsWorkerDb.sqlite_file(sqlite_db_config("storage/test.sqlite3"))
+  ensure
+    Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
+    Object.const_set(:Rails, saved) if saved
+  end
+
+  def test_sqlite_exclusive_lock_stops_when_another_process_holds_shared
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      lock = "#{base}-mutineer.lock"
+      pid = spawn_sqlite_holder(lock, File::LOCK_SH)
+      error = assert_raises(RuntimeError) do
+        Mutineer::RailsWorkerDb.hold_sqlite_lock(lock, base, shared: false)
+      end
+      assert_equal "another Mutineer run is using #{base}", error.message
+      assert Mutineer::RailsWorkerDb.provision_wrapped?(error)
+    ensure
+      stop_sqlite_holder(pid)
+    end
+  end
+
+  def test_sqlite_exclusive_then_shared_lets_another_shared_lock_in
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      lock = "#{base}-mutineer.lock"
+      db = Mutineer::RailsWorkerDb
+      db.hold_sqlite_lock(lock, base, shared: false)
+      db.hold_sqlite_lock(lock, base, shared: true)
+      out, status = sqlite_lock_probe(lock)
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "shared=0 exclusive=false"
+    end
+  end
+
+  def test_sqlite_second_path_names_both_paths
+    Dir.mktmpdir do |dir|
+      first = File.join(dir, "a.sqlite3-mutineer.lock")
+      second = File.join(dir, "b.sqlite3-mutineer.lock")
+      db = Mutineer::RailsWorkerDb
+      db.hold_sqlite_lock(first, File.join(dir, "a.sqlite3"), shared: false)
+      error = assert_raises(ArgumentError) do
+        db.hold_sqlite_lock(second, File.join(dir, "b.sqlite3"), shared: false)
+      end
+      assert_includes error.message, first
+      assert_includes error.message, second
+    end
+  end
+
+  def test_sqlite_fork_close_keeps_the_parent_lock
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      lock = "#{base}-mutineer.lock"
+      db = Mutineer::RailsWorkerDb
+      db.hold_sqlite_lock(lock, base, shared: true)
+      child = fork do
+        db.forget_lock_connection_after_fork!
+        exit!(db.instance_variable_get(:@sqlite_lock_file).nil? ? 0 : 1)
+      end
+      _, status = Process.wait2(child)
+      assert_equal 0, status.exitstatus
+      out, probe = sqlite_lock_probe(lock)
+      assert_equal 0, probe.exitstatus, out
+      assert_includes out, "exclusive=false"
+    end
+  end
+
+  def test_sqlite_forget_twice_in_one_fork_keeps_the_parent_lock
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      lock = "#{base}-mutineer.lock"
+      db = Mutineer::RailsWorkerDb
+      db.hold_sqlite_lock(lock, base, shared: true)
+      child = fork do
+        db.forget_lock_connection_after_fork!
+        db.forget_lock_connection_after_fork!
+        exit! 0
+      rescue StandardError
+        exit! 1
+      end
+      _, status = Process.wait2(child)
+      assert_equal 0, status.exitstatus
+      out, probe = sqlite_lock_probe(lock)
+      assert_equal 0, probe.exitstatus, out
+      assert_includes out, "exclusive=false"
+    end
+  end
+
+  def test_sqlite_lock_in_an_unwritable_directory_names_the_path
+    skip "root ignores directory write permission" if Process.euid.zero?
+
+    Dir.mktmpdir do |dir|
+      locked = File.join(dir, "ro")
+      Dir.mkdir(locked)
+      File.chmod(0o555, locked)
+      path = File.join(locked, "test.sqlite3-mutineer.lock")
+      error = assert_raises(Errno::EACCES) do
+        Mutineer::RailsWorkerDb.hold_sqlite_lock(path, File.join(locked, "test.sqlite3"), shared: false)
+      end
+      assert_includes error.message, path
+    ensure
+      File.chmod(0o755, locked) if locked && File.directory?(locked)
+    end
+  end
+
+  def test_sqlite_existing_read_only_lock_file_opens
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      lock = "#{base}-mutineer.lock"
+      File.write(lock, "")
+      File.chmod(0o444, lock)
+      Mutineer::RailsWorkerDb.hold_sqlite_lock(lock, base, shared: false)
+      held = Mutineer::RailsWorkerDb.instance_variable_get(:@sqlite_lock_file)
+      assert_equal lock, held.path
+      refute held.closed?
+    end
+  end
+
+  def test_sqlite_provision_takes_the_lock
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      config = sqlite_db_config(base)
+      db = Mutineer::RailsWorkerDb
+      db.stub(:available?, true) do
+        db.stub(:current_adapter, "sqlite3") do
+          db.stub(:primary_db_config, config) { db.provision(2) }
+        end
+      end
+      out, status = sqlite_lock_probe("#{base}-mutineer.lock")
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "shared=0 exclusive=false"
+    end
+  end
+
+  def test_sqlite_provision_of_memory_takes_no_lock
+    config = sqlite_db_config(":memory:")
+    db = Mutineer::RailsWorkerDb
+    db.stub(:available?, true) do
+      db.stub(:current_adapter, "sqlite3") do
+        db.stub(:primary_db_config, config) { db.provision(2) }
+      end
+    end
+    assert_nil db.instance_variable_get(:@sqlite_lock_file)
+  end
+
+  # A stand-in for an ActiveRecord SQLite config with this database name.
+  def sqlite_db_config(database)
+    Struct.new(:adapter, :database).new("sqlite3", database)
+  end
+
+  # Start a plain Ruby process that holds `mode` on `lock_path` until stopped.
+  def spawn_sqlite_holder(lock_path, mode)
+    read, write = IO.pipe
+    pid = Process.spawn(RbConfig.ruby, "-e", <<~RUBY, out: write)
+      file = File.open(#{lock_path.inspect}, File::RDONLY | File::CREAT, 0o644)
+      ok = file.flock(File::LOCK_NB | #{mode})
+      abort("busy") unless ok
+      $stdout.puts "HELD"
+      $stdout.flush
+      sleep 60
+    RUBY
+    write.close
+    line = read.gets
+    read.close
+    flunk("holder did not lock #{lock_path}: #{line.inspect}") unless line&.start_with?("HELD")
+    pid
+  end
+
+  # Stop a holder from spawn_sqlite_holder and reap it.
+  def stop_sqlite_holder(pid)
+    return unless pid
+
+    Process.kill("TERM", pid)
+    Process.wait(pid)
+  rescue Errno::ESRCH, Errno::ECHILD
+    nil
+  end
+
+  # From another process, try a shared then an exclusive lock; return what each gave.
+  def sqlite_lock_probe(lock_path)
+    Open3.capture2(RbConfig.ruby, "-e", <<~RUBY)
+      file = File.open(#{lock_path.inspect}, File::RDONLY)
+      shared = file.flock(File::LOCK_SH | File::LOCK_NB)
+      exclusive = file.flock(File::LOCK_EX | File::LOCK_NB)
+      $stdout.puts "shared=\#{shared.inspect} exclusive=\#{exclusive.inspect}"
+    RUBY
   end
 
   # Rows from a client that only implements trilogy's each_hash.

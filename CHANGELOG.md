@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **A second SQLite daemon run stops instead of sharing worker files (#404).**
+  Two `--rails --daemon` runs in one checkout used the same worker database
+  files, and both could stop with a false "the unmutated suite is not green".
+  A run now holds a lock on `<base file>-mutineer.lock` beside the database
+  file, and a second run stops with `another Mutineer run is using <base>`,
+  as PostgreSQL and MySQL runs already do. Mutineer never deletes the lock
+  file. A `file:` database name still takes no lock (#412).
 ### Added
 
 - **The JSON report names why a mutant errored (#388).** When the mutant's
@@ -55,7 +64,6 @@ All notable changes to this project are documented here. The format is based on
   Quote the glob, pass the directory, or repeat `--test`.
 - **`--dry-run` exits 2 for a blank `--test` or a directory with no test file (#380).**
   Those values used to exit 0 on a dry run.
-  With `--test-command`, an empty directory stays as typed.
 
 ## [1.8.2] - 2026-11-10
 
