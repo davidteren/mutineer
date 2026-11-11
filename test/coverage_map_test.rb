@@ -507,8 +507,9 @@ class CoverageMapTest < Minitest::Test
 
       reused = shared_map(%w[alpha.rb], shard, coverage_from: File.join(capture, "coverage.json"))
       runs = sentinel_runs(sentinel).group_by(&:first).values.map { |run| run.map(&:last).sort }
-      assert_equal [%w[alpha_test.rb], SHARED_TESTS].sort, runs.sort,
-                   "alpha_test.rb, the only test covering alpha.rb, runs alone, then the combined run"
+      assert_equal [%w[alpha_test.rb]], runs,
+                   "alpha_test.rb, the only test covering alpha.rb, runs alone; beta_test.rb never runs " \
+                   "with a mutant, so there is no combined run (#398)"
       refute reused.phase_a_ran
       assert_path_exists File.join(shard, "coverage.json")
 
@@ -618,6 +619,143 @@ class CoverageMapTest < Minitest::Test
         assert_match(/cannot be reused/, err.message, "the capture parsed, then failed the fit check")
       end
     end
+  end
+
+  # --- #398: the clean check runs only the tests a mutant can run ---------
+
+  # Runs the block with MUTINEER_SENTINEL set, then returns each process's
+  # test files, sorted, so a combined run reads as one entry.
+  def sentinel_processes(dir)
+    sentinel = File.join(dir, "sentinel")
+    File.write(sentinel, "")
+    ENV["MUTINEER_SENTINEL"] = sentinel
+    yield
+    sentinel_runs(sentinel).group_by(&:first).values.map { |run| run.map(&:last).sort }.sort
+  ensure
+    ENV.delete("MUTINEER_SENTINEL")
+  end
+
+  # The booted parent, as `--boot` loads it: beta.rb then reads
+  # SharedAlpha.widen at boot, so only alpha_test.rb covers alpha.rb.
+  def boot_shared
+    ensure_coverage_running
+    require File.join(SHARED, "boot")
+  end
+
+  def test_cache_hit_runs_only_the_covering_tests_clean
+    boot_shared
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      first = nil
+      err = nil
+      misses = sentinel_processes(dir) { _, err = capture_io { first = shared_map(%w[alpha.rb], cache) } }
+      assert first.phase_a_ran
+      assert_equal [%w[alpha_test.rb], %w[beta_test.rb]], misses,
+                   "a miss captures each test alone; one covering test leaves no combined run"
+      assert_includes err, "[mutineer] coverage capture: the together check covers only the 1 test file that " \
+                           "covers the sources; 1 other test file ran alone only."
+
+      hit = nil
+      hits = sentinel_processes(dir) { _, err = capture_io { hit = shared_map(%w[alpha.rb], cache) } }
+      refute hit.phase_a_ran
+      assert_equal [%w[alpha_test.rb]], hits, "beta_test.rb covers no line of alpha.rb, so it is not run"
+      assert_empty hit.failed_clean_tests
+      assert_includes err, "[mutineer] coverage cache hit: the clean check ran the 1 test file that covers " \
+                           "the sources; 1 other test file never runs with a mutant and was not checked."
+    end
+  end
+
+  def test_cache_hit_stops_on_a_covering_test_that_turns_red
+    boot_shared
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      capture_io { shared_map(%w[alpha.rb], cache) }
+      hit = nil
+      with_env("MUTINEER_FLUNK" => "1") { capture_io { hit = shared_map(%w[alpha.rb], cache) } }
+      refute hit.phase_a_ran
+      assert_equal %w[alpha_test.rb], hit.failed_clean_tests
+    end
+  end
+
+  # beta_test.rb is red, but it covers no line of alpha.rb, so no mutant of
+  # this run can run it. A miss still stops on it (#96): capture runs every test.
+  def test_cache_hit_skips_a_red_test_that_covers_no_source
+    boot_shared
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      capture_io { shared_map(%w[alpha.rb], cache) }
+      hit = nil
+      miss = nil
+      with_env("MUTINEER_FLUNK_BETA" => "1") do
+        capture_io { hit = shared_map(%w[alpha.rb], cache) }
+        capture_io { miss = shared_map(%w[alpha.rb], File.join(dir, "fresh")) }
+      end
+      refute hit.phase_a_ran
+      assert_empty hit.failed_clean_tests
+      assert miss.phase_a_ran
+      assert_equal %w[beta_test.rb], miss.failed_clean_tests, "the test really is red"
+    end
+  end
+
+  # An empty map keeps every test: the daemon then runs every test for each mutant.
+  def test_cache_hit_with_an_empty_map_checks_every_test
+    ensure_coverage_running
+    Dir.mktmpdir do |root|
+      FileUtils.cp(Dir[File.join(SHARED, "*.rb")], root)
+      File.write(File.join(root, "gamma.rb"), "class SharedGamma\n  def self.triple(x)\n    x * 3\n  end\nend\n")
+      cache = File.join(root, "cache")
+      first = nil
+      capture_io { first = shared_map(%w[gamma.rb], cache, root: root) }
+      assert_empty first.map, "no test calls SharedGamma"
+
+      hits = sentinel_processes(root) { capture_io { shared_map(%w[gamma.rb], cache, root: root) } }
+      assert_equal [%w[alpha_test.rb], %w[alpha_test.rb beta_test.rb], %w[beta_test.rb]], hits
+    end
+  end
+
+  # A retried capture runs its test, so the hit does not run it alone again.
+  def test_cache_hit_runs_a_retried_capture_once
+    boot_shared
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      capture_io { shared_map(%w[alpha.rb], cache) }
+      file = File.join(cache, "coverage.json")
+      File.write(file, JSON.generate(JSON.parse(File.read(file)).merge("failed_test_files" => ["alpha_test.rb"])))
+
+      hit = nil
+      hits = sentinel_processes(dir) { capture_io { hit = shared_map(%w[alpha.rb], cache) } }
+      refute hit.phase_a_ran
+      assert_equal [%w[alpha_test.rb]], hits
+      assert_empty hit.failed_test_files
+    end
+  end
+
+  # Every test a mutant can be given must be in the clean check.
+  def test_every_test_a_mutant_can_run_is_in_the_clean_check
+    boot_shared
+    Dir.mktmpdir do |dir|
+      map = nil
+      capture_io { map = shared_map(%w[alpha.rb beta.rb], dir) }
+      checked = map.send(:clean_check_test_paths).map { |t| map.send(:relativize, t) }
+      # A mutant lives in a source, so only source keys can give it tests.
+      keys = map.map.keys.select { |key| %w[alpha.rb beta.rb].include?(key.split(":").first) }
+      selectable = keys.flat_map { |key| map.tests_for(*key.split(":").then { |f, l| [f, l.to_i] }) }.uniq
+      refute_empty selectable
+      assert_equal selectable.sort, checked.sort, "the check runs exactly the tests a mutant can be given"
+    end
+  end
+
+  # Standalone capture also maps the other project files a test ran, its own
+  # file too. No mutant lives there, so those keys must not pick a test.
+  def test_the_clean_check_reads_only_source_keys
+    map = Mutineer::CoverageMap.new(source_paths: %w[price.rb], test_paths: %w[price_test.rb mail_test.rb],
+                                    project_root: Dir.pwd)
+    map.instance_variable_set(:@map, { "price.rb:3" => %w[price_test.rb], "mail_test.rb:1" => %w[mail_test.rb] })
+    assert_equal %w[price_test.rb], map.send(:clean_check_test_paths)
+
+    map.instance_variable_set(:@map, { "mail_test.rb:1" => %w[mail_test.rb] })
+    assert_equal %w[price_test.rb mail_test.rb], map.send(:clean_check_test_paths),
+                 "no source key: every test, as for an empty map"
   end
 
   # --- #187: lines that ran at load ---------------------------------------

@@ -148,6 +148,36 @@ class DaemonCoverageTest < Minitest::Test
                     "subtotal_cents mutants are still run (covered)"
   end
 
+  # #398: on a cache hit the daemon checks only the tests that cover the
+  # sources. price_list_test.rb is red but covers no line of billing/fee.rb, so
+  # no mutant can run it: the hit goes on, and a fresh capture still stops on it.
+  # (Every test here loads Order through `fixtures :all`, so order.rb would not do.)
+  def test_cache_hit_skips_a_red_test_that_covers_no_source_on_the_daemon_path
+    Dir.mktmpdir("mutineer-daemon-hit") do |dir|
+      tests = %w[billing/fee_test.rb price_list_test.rb].map { |t| File.join(APP, "test/models", t) }
+      boot = boot_config("order_test.rb").merge(sources: [File.join(APP, "app/models/billing/fee.rb")], tests: tests)
+      build = lambda do |cache|
+        client = Mutineer::DaemonClient.new(boot: boot.merge(cache_dir: cache), app_root: APP).start
+        begin
+          client.coverage
+        ensure
+          client.quit
+        end
+      end
+      build.(File.join(dir, "cache"))
+      ENV["MUTINEER_FLUNK_PRICE_LIST"] = "1"
+      hit = build.(File.join(dir, "cache"))
+      miss = build.(File.join(dir, "fresh"))
+
+      refute_empty hit["map"]
+      refute_includes hit["map"].values.flatten, "test/models/price_list_test.rb"
+      assert_empty hit["failed_clean_tests"]
+      assert_equal %w[test/models/price_list_test.rb], miss["failed_clean_tests"], "the test really is red"
+    ensure
+      ENV.delete("MUTINEER_FLUNK_PRICE_LIST")
+    end
+  end
+
   def test_daemon_writes_the_coverage_cache_to_cache_dir
     Dir.mktmpdir("mutineer-daemon-cache") do |dir|
       config = config_for("order_subtotal_only_test.rb")
