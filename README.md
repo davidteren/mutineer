@@ -19,6 +19,48 @@ Changes that still pass reveal possible test gaps. This is **mutation testing**.
 
 📖 **[davidteren.github.io/mutineer →](https://davidteren.github.io/mutineer/)**: overview, operators, and usage.
 
+## Quick start
+
+Plain Ruby:
+
+```sh
+gem install mutineer
+mutineer run lib/discount.rb --test test/discount_test.rb
+```
+
+Rails: add to your `Gemfile` test group:
+
+```ruby
+gem "mutineer", group: :test, require: false
+```
+
+Install, create `.mutineer.yml`, and check one model:
+
+```sh
+bundle install
+RAILS_ENV=test bundle exec mutineer init --rails
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
+```
+
+Without `--test`, `app/models/order.rb` pairs with `test/models/order_test.rb` or `spec/models/order_spec.rb`.
+See [Quick start](https://github.com/davidteren/mutineer/blob/main/docs/quick-start.md).
+
+## Documentation
+
+| Guide | What it covers |
+|-------|----------------|
+| [Quick start](https://github.com/davidteren/mutineer/blob/main/docs/quick-start.md) | Install, run, fix a survivor |
+| [First run to steady state](https://github.com/davidteren/mutineer/blob/main/docs/getting-started.md) | One file through changed-code CI |
+| [Reading results](https://github.com/davidteren/mutineer/blob/main/docs/results.md) | Reports, survivors, suppression, mutant ids, kill matrix |
+| [Set up Rails, the daemon, and databases](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md) | Rails, daemon, databases, Spring, Bootsnap, Ruby < 3.4 |
+| [Roll out on a Rails app](https://github.com/davidteren/mutineer/blob/main/docs/rails.md) | Four stages from model to CI gate |
+| [CI: changed code and baselines](https://github.com/davidteren/mutineer/blob/main/docs/ci.md) | `--since`, `--baseline`, Action inputs, timeouts |
+| [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md) | Flags, defaults, `.mutineer.yml` |
+| [Comparison](https://github.com/davidteren/mutineer/blob/main/docs/comparison.md) | Mutineer, Mutant, other Ruby tools, fit-check prompt |
+| [AI agents and CI](https://davidteren.github.io/mutineer/agentic-coding.html) | Agent loop and CI recipes |
+| [JSON schema](https://davidteren.github.io/mutineer/json-schema.html) | Versioned report contract |
+| [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md) | Release guarantees |
+
 ## Is it production-ready?
 
 Check your database and framework before adding a CI gate.
@@ -151,32 +193,6 @@ This gap is common in rushed tests and tests written by AI agents.
 | Isolation | One fork per mutant on Linux and macOS |
 | Report formats | human, JSON (versioned schema), HTML |
 
-## Quick start
-
-Plain Ruby:
-
-```sh
-gem install mutineer
-mutineer run lib/discount.rb --test test/discount_test.rb
-```
-
-Rails: add to your `Gemfile` test group:
-
-```ruby
-gem "mutineer", group: :test, require: false
-```
-
-Install, create `.mutineer.yml`, and check one model:
-
-```sh
-bundle install
-RAILS_ENV=test bundle exec mutineer init --rails
-RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
-```
-
-Without `--test`, `app/models/order.rb` pairs with `test/models/order_test.rb` or `spec/models/order_spec.rb`.
-See [Quick start](https://github.com/davidteren/mutineer/blob/main/docs/quick-start.md).
-
 ## Usage
 
 ```sh
@@ -184,6 +200,7 @@ mutineer run <source...> [--test <test>...] [options]
 mutineer init [--rails] [--force]
 mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)
 mutineer migrate <source...> [--dry-run] [--operators LIST]
+mutineer config cache_dir|baseline [run options]
 ```
 
 ### Options
@@ -192,7 +209,7 @@ Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.c
 
 | Flag | Meaning |
 |------|---------|
-| `--test FILE` | Repeat per test file; omit to pair tests by convention |
+| `--test PATH` | Test file, directory, or quoted glob. Repeat the flag. Omit it to pair tests by convention and apply any `tests:` map |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
 | `--since REF` | Mutate only lines changed since git `REF`, such as `origin/main` |
 | `--baseline FILE` | Exit 1 for new survivors, or score drops on full runs, against a prior JSON report from a full run |
@@ -220,22 +237,6 @@ List with `mutineer --list-operators`. Enable specific operators with `--operato
 |---|---|
 | Tier 1 (default) | `arithmetic`, `comparison`, `boolean_connector`, `boolean_literal`, `statement_removal` |
 | Tier 2 (opt-in) | `return_nil`, `literal_mutation`, `condition_negation`, `string_literal`, `regex`, `collection_method`, `safe_navigation`, `range`, `negation_removal`, `chain_link`, `call_to_receiver`, `operand_removal`, `array_literal`, `condition_true`, `condition_false`, `operator_assignment` |
-
-## Documentation
-
-| Guide | What it covers |
-|-------|----------------|
-| [Quick start](https://github.com/davidteren/mutineer/blob/main/docs/quick-start.md) | Install, run, fix a survivor |
-| [First run to steady state](https://github.com/davidteren/mutineer/blob/main/docs/getting-started.md) | One file through changed-code CI |
-| [Reading results](https://github.com/davidteren/mutineer/blob/main/docs/results.md) | Reports, survivors, suppression, mutant ids, kill matrix |
-| [Rails setup](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md) | Rails, daemon, databases, Spring, Bootsnap, Ruby < 3.4 |
-| [Rails rollout](https://davidteren.github.io/mutineer/rails.html) | Four stages from model to CI gate |
-| [CI: changed code and baselines](https://github.com/davidteren/mutineer/blob/main/docs/ci.md) | `--since`, `--baseline`, Action inputs, timeouts |
-| [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md) | Flags, defaults, `.mutineer.yml` |
-| [Comparison](https://github.com/davidteren/mutineer/blob/main/docs/comparison.md) | Mutineer, Mutant, other Ruby tools, fit-check prompt |
-| [AI agents and CI](https://davidteren.github.io/mutineer/agentic-coding.html) | Agent loop and CI recipes |
-| [JSON schema](https://davidteren.github.io/mutineer/json-schema.html) | Versioned report contract |
-| [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md) | Release guarantees |
 
 ## For AI agents & pipelines
 
