@@ -129,11 +129,12 @@ class DocsContractTest < Minitest::Test
     assert_includes DocsContract.json_schema_html, "schema_version #{version}</span>"
   end
 
-  # The support matrix is one marked block. A missing block or a missing
+  # Readiness follows Quick start and Documentation (issue #353). The support
+  # matrix is one marked block. A missing block or a missing
   # database row fails this test.
   def test_readme_support_matrix_names_each_database
     readme = File.read("README.md")
-    assert_equal "## Is it production-ready?", readme[/^## .+$/]
+    assert_equal ["## Quick start", "## Documentation", "## Is it production-ready?"], readme.scan(/^## .+$/).first(3)
     block = readme[/<!-- contract:support-matrix -->\n(.*?)<!-- \/contract:support-matrix -->/m]
     flunk("README is missing the support-matrix contract block") unless block
     ["SQLite file", "PostgreSQL", "MySQL", "SQLite in memory", "more than one database"].each do |name|
