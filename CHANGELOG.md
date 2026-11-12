@@ -139,6 +139,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A killed mutant stays killed when the failure message holds raw bytes (#434).**
+  Rails' `assert_response` appends a short response body as raw bytes.
+  The reporter prints that message on the silenced stdout.
+  After Rails sets both `Encoding.default_external` and `Encoding.default_internal`
+  to UTF-8, that write raised `Encoding::UndefinedConversionError`, and the child
+  scored the mutant `errored`. The silenced stdout is binary now, so the bytes
+  are discarded and the failure still counts as a kill. This holds in-process
+  and in the daemon, for reload and redefine.
+  RSpec already writes its failure text to a StringIO, which accepts the bytes.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and
