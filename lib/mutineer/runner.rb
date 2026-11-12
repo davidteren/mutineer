@@ -109,7 +109,9 @@ module Mutineer
       # The sweep above still runs, so a zero-job run clears orphaned mutant files.
       if (empty_since = since_empty_result(config, operator_classes))
         if config.boot
-          # Existence only. Loading the boot is what this return skips (#396, #81).
+          # Existence only. --require is loaded after the boot, so loading it
+          # here would run it before the app exists. #396 skips that boot.
+          # A missing file stays a usage error.
           [config.boot, *config.require_paths].compact.each { |f| project_file!(config.project_root, f) }
         else
           # Standalone still loads each source and --require. A file that raises

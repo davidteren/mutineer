@@ -68,9 +68,9 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @param operator_classes [Array<Class>] resolved operators.
     # @param warn_suppress [Boolean] when false, {suppress_map} prints no
-    #   unknown-operator warning. Under `--since` the preview warns, and the
-    #   collection after the coverage map passes false so the warning prints
-    #   once (#396).
+    #   unknown-operator warning. The in-process `--since` preview warns, and
+    #   the in-process collection after the coverage map passes false, so the
+    #   warning prints once. The other backends collect once and warn (#396).
     # @return [Array(Array, Array<Result>, Hash<String,String>, Hash{Symbol => Hash})]
     #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`,
     #   `:id_map`, `:dropped_id_map`, `:declined`, `:subjects`,
@@ -616,9 +616,11 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @param extras [Hash, nil] {collect_jobs} extras to narrow in place.
     # @param warn_diff [Boolean] when false, a git-diff skip is not warned.
-    #   Under `--since` the preview uses the default, so the warning prints
-    #   before the boot. The collection after the coverage map passes false,
-    #   so the warning prints once even when that later call never runs (#396).
+    #   The in-process `--since` preview uses the default, so the warning
+    #   prints before the boot. The in-process collection after the coverage
+    #   map passes false, so the warning prints once even when that later
+    #   call never runs. `--daemon`, `--test-command`, and `--dry-run` call
+    #   this once, with the default (#396).
     # @return [Array(Array, Array<Mutineer::Result>, Integer), Array(Array, Array<Mutineer::Result>, nil)]
     #   the jobs to run, the ignored results to report, and the count before --since.
     def self.scope_since(jobs, ignored_results, source_map, config, extras: nil, warn_diff: true)

@@ -50,8 +50,10 @@ module Mutineer
     #   {git_diff}. A custom runner produces the diff text itself, so `report`
     #   does not apply to it.
     # @param report [Boolean] when false, {git_diff} prints no skip warning.
-    #   Under `--since` the preview uses the default. The collection after
-    #   the coverage map passes false (#396).
+    #   The in-process `--since` preview uses the default. The in-process
+    #   collection after the coverage map passes false. `--daemon`,
+    #   `--test-command`, and `--dry-run` call this once, with the default,
+    #   and they warn (#396).
     # @return [Hash<String, Set<Integer>>] absolute file path to changed lines.
     def for(ref:, files:, project_root:, runner: nil, report: true)
       producer = runner || ->(diff_ref, abs, root) { git_diff(diff_ref, abs, root, report: report) }
@@ -72,8 +74,9 @@ module Mutineer
     # A failure is warned, never silent, unless `report` is false: an empty
     # result means "no changed lines", which under `--since` removes every
     # mutant for the file — a green gate must not be manufactured by a broken
-    # diff without a trace. `report: false` is for a second pass after a
-    # preview that already warned (#396).
+    # diff without a trace. `report: false` is for the in-process collection
+    # after a preview that already warned. The other backends call this once
+    # and warn (#396).
     #
     # @param ref [String] git ref to diff against.
     # @param abs_file [String] absolute path of the file being diffed.
