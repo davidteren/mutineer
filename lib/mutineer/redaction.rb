@@ -210,57 +210,59 @@ module Mutineer
       [user, host, database]
     end
 
-    # Bytes at the end of `buffer` that must stay buffered. A password form
-    # that contains a newline can span reads. Zero when no form contains a
-    # newline, which is the usual URL. The held bytes are a prefix of such a
-    # form, not a finished copy.
+    # Byte index where a password form that contains a newline is not safe to
+    # emit yet. That is a proper prefix of the form at the end of `buffer`, or
+    # a complete form with no newline after it. The index is the buffer length
+    # when nothing must be held. Empty when no form contains a newline.
     #
     # @param buffer [String]
     # @return [Integer]
-    def newline_hold(buffer)
+    def newline_pending_index(buffer)
       forms = newline_forms
-      return 0 if forms.empty?
+      return buffer.bytesize if forms.empty?
 
-      hold = 0
+      earliest = buffer.bytesize
       forms.each do |form|
-        limit = form.b.bytesize - 1
-        next if limit < 1
-
+        raw = form.b
+        limit = raw.bytesize - 1
         size = [limit, buffer.bytesize].min
         size.downto(1) do |n|
-          next unless buffer.byteslice(-n, n) == form.b.byteslice(0, n)
+          next unless buffer.byteslice(-n, n) == raw.byteslice(0, n)
 
-          hold = n if n > hold
+          start = buffer.bytesize - n
+          earliest = start if start < earliest
           break
         end
+        from = 0
+        while (idx = buffer.index(raw, from))
+          after = buffer.byteslice(idx + raw.bytesize, buffer.bytesize - idx - raw.bytesize)
+          earliest = idx if idx < earliest && !after&.include?("\n".b)
+          from = idx + 1
+        end
       end
-      hold
+      earliest
     end
 
     # The prefix of `buffer` that can be redacted now, and the rest to keep.
-    # Unless `flush`, the prefix ends on a newline and does not end inside a
-    # password that itself contains a newline.
+    # Unless `flush`, the prefix ends on a newline and does not cut a password
+    # that itself contains a newline. A complete form stays buffered until a
+    # newline follows it, or until `flush`.
     #
     # @param buffer [String]
     # @param flush [Boolean] emit everything, including a partial tail.
     # @return [Array(String, String)]
     def take_redactable(buffer, flush:)
       buffer = buffer.b
-      hold = flush ? 0 : newline_hold(buffer)
-      usable_end = buffer.bytesize - hold
-      usable = buffer.byteslice(0, usable_end) || +"".b
-      if flush
-        [usable, +"".b]
-      else
-        cut = usable.rindex("\n".b)
-        return [+"".b, buffer] unless cut
+      return [buffer, +"".b] if flush
 
-        ready = usable.byteslice(0, cut + 1)
-        rest = +"".b
-        rest << usable.byteslice(cut + 1, usable.bytesize - cut - 1) if cut + 1 < usable.bytesize
-        rest << buffer.byteslice(usable_end, hold) if hold.positive?
-        [ready, rest]
-      end
+      stop = newline_pending_index(buffer)
+      usable = buffer.byteslice(0, stop) || +"".b
+      cut = usable.rindex("\n".b)
+      return [+"".b, buffer] unless cut
+
+      ready_end = cut + 1
+      rest = buffer.byteslice(ready_end, buffer.bytesize - ready_end) || +"".b
+      [buffer.byteslice(0, ready_end), rest]
     end
 
     # Password forms that contain a newline. Cached for the current

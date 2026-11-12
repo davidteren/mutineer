@@ -31,12 +31,14 @@ module Mutineer
       FILE_NAMES.flat_map { |name| from_file(File.join(root, name)) }.uniq
     end
 
-    # DATABASE_URL values in one file. Every line is read. `${NAME}` and
+    # DATABASE_URL values in one file. Every line is read. A double-quoted
+    # value may continue on later lines until its closing quote. `${NAME}` and
     # `$NAME` expand from an earlier assignment in the file, or from the
-    # environment when that variable is already set. A single-quoted value is
-    # not expanded. A directory, a missing path, and an unreadable file add
-    # nothing. An unknown `$NAME` is left as written, so that reference does
-    # not become a password.
+    # environment when that variable is already set. A backslash before `$`
+    # is a literal dollar. A single-quoted value is not expanded. An invalid
+    # byte is replaced and does not stop the read. A directory, a missing
+    # path, and an unreadable file add nothing. An unknown `$NAME` is left as
+    # written, so that reference does not become a password.
     #
     # @param path [String]
     # @return [Array<String>]
@@ -45,10 +47,18 @@ module Mutineer
 
       vars = {}
       urls = []
+      pending = nil
       File.open(path, "rb") do |io|
         io.each_line do |line|
-          parsed = parse_assignment(line)
-          next unless parsed
+          text = utf8_line(line)
+          chunk = pending ? pending + text : text
+          parsed = parse_assignment(chunk)
+          if parsed == :open
+            pending = chunk
+            next
+          end
+          pending = nil
+          next unless parsed.is_a?(Array)
 
           key, raw, expand_value = parsed
           value = expand_value ? expand(raw, vars) : raw
@@ -68,34 +78,35 @@ module Mutineer
     # @return [String, nil]
     def line_url(line)
       parsed = parse_assignment(line)
-      return nil unless parsed && parsed[0] == "DATABASE_URL"
+      return nil unless parsed.is_a?(Array) && parsed[0] == "DATABASE_URL"
 
       parsed[1].empty? ? nil : parsed[1]
     end
 
     # One `KEY=value` assignment. The third element is false for a
-    # single-quoted value, which dotenv does not expand.
+    # single-quoted value, which dotenv does not expand. `:open` means a
+    # quoted value has not reached its closing quote yet.
     #
     # @param line [String]
-    # @return [Array(String, String, Boolean), nil]
+    # @return [Array(String, String, Boolean), Symbol, nil]
     def parse_assignment(line)
-      text = line.to_s.sub(/\A\uFEFF/, "").strip
+      text = utf8_line(line).sub(/\A\uFEFF/, "").strip
       return nil if text.empty? || text.start_with?("#")
 
       text = text.sub(/\Aexport\s+/, "")
-      match = text.match(/\A([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\z/)
+      match = text.match(/\A([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\z/m)
       return nil unless match
 
       key = match[1]
       raw = match[2]
       if raw.start_with?("'")
         stop = closing_quote(raw, "'")
-        return nil unless stop
+        return :open unless stop
 
         [key, raw[1...stop], false]
       elsif raw.start_with?('"')
         stop = closing_quote(raw, '"')
-        return nil unless stop
+        return :open unless stop
 
         [key, decode_double(raw[1...stop]), true]
       else
@@ -103,23 +114,38 @@ module Mutineer
       end
     end
 
-    # Replace `${NAME}` and `$NAME`. The environment wins over an earlier
-    # assignment in the file. Anything else is left as written.
+    # Replace `${NAME}` and `$NAME`. A backslash before `$` stays a dollar and
+    # is not a reference. The environment wins over an earlier assignment in
+    # the file. Anything else is left as written.
     #
     # @param value [String]
     # @param vars [Hash{String => String}]
     # @return [String]
     def expand(value, vars)
-      value.gsub(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/) do
-        name = Regexp.last_match(1) || Regexp.last_match(2)
+      value.gsub(/\\\$|\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/) do
+        match = Regexp.last_match
+        next "$" if match[0] == "\\$"
+
+        name = match[1] || match[2]
         if ENV.key?(name)
           ENV[name].to_s
         elsif vars.key?(name)
           vars[name]
         else
-          Regexp.last_match(0)
+          match[0]
         end
       end
+    end
+
+    # One line as UTF-8. An invalid byte becomes U+FFFD so a binary dotenv
+    # line cannot raise before redaction starts.
+    #
+    # @param line [String]
+    # @return [String]
+    def utf8_line(line)
+      text = line.to_s.dup
+      text.force_encoding(Encoding::UTF_8)
+      text.scrub
     end
 
     # Index of the closing quote. A backslash escapes the next character

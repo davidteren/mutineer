@@ -84,6 +84,34 @@ class OutputFilterTest < Minitest::Test
     assert_includes err, "leak [REDACTED] end"
     refute_includes err, "foo"
     refute_includes err, "bar"
+
+    secret = ["foo", "\n", "bar"].join
+    _out, bare = captured do
+      Mutineer::OutputFilter.install(streams: [:stderr])
+      STDERR.print secret
+    end
+
+    assert_equal "[REDACTED]", bare
+    refute_includes bare, "foo"
+    refute_includes bare, "bar"
+  end
+
+  def test_a_fork_child_that_cannot_start_its_copier_prints_nothing
+    secret = ["s3", "cret"].join
+    _out, err = captured do
+      Mutineer::OutputFilter.install(streams: [:stderr])
+      Mutineer::OutputFilter.stub(:stream_io, ->(*) { raise IOError, "closed" }) do
+        pid = fork do
+          ENV["DATABASE_URL"] = "postgres://u:#{secret}@h/db"
+          STDERR.puts "child #{secret} end"
+          exit!(0)
+        end
+        Process.waitpid(pid)
+      end
+    end
+
+    refute_includes err, secret
+    refute_includes err, "child"
   end
 
   # The report is larger than a pipe buffer and the reader waits longer than

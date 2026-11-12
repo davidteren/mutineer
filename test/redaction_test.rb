@@ -289,7 +289,8 @@ class RedactionTest < Minitest::Test
       assert_equal message, redact(message, url), url
       redacted = redact(url, url)
       assert_includes redacted, "[REDACTED]", url
-      refute_includes redacted.split("@", 2).first, ":#{word}", url
+      refute_match(%r{://[^/?#\s]*:#{Regexp.escape(word)}@}, redacted, url)
+      refute_includes redacted, "password=#{word}", url
     end
   end
 
@@ -302,6 +303,13 @@ class RedactionTest < Minitest::Test
 
     assert_equal "leak [REDACTED] end\n", Mutineer::Redaction.text(ready, env: { "DATABASE_URL" => url })
     assert_empty rest
+    bare = +(["foo", "\n", "bar"].join)
+    held_ready, held_rest = Mutineer::Redaction.take_redactable(bare, flush: false)
+    assert_empty held_ready
+    assert_equal bare, held_rest
+    flushed, tail = Mutineer::Redaction.take_redactable(bare, flush: true)
+    assert_equal "[REDACTED]", Mutineer::Redaction.text(flushed, env: { "DATABASE_URL" => url })
+    assert_empty tail
     partial = +"leak foo\n"
     _ready, held = Mutineer::Redaction.take_redactable(partial, flush: false)
     assert_includes held, "foo\n"

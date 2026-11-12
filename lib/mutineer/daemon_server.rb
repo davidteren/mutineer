@@ -163,7 +163,10 @@ module Mutineer
         # the protocol channel reserved above. Point fd 1 at the filtered
         # stderr so `puts` from the app takes the same path.
         Redaction.extra_urls = DatabaseUrls.from_files(Dir.pwd)
-        if OutputFilter.install(streams: [:stderr]) && @protocol
+        unless OutputFilter.install(streams: [:stderr]) == :started
+          raise "cannot redirect stderr, so a database password would be printed"
+        end
+        if @protocol
           STDOUT.reopen(STDERR)
           $stdout = STDOUT
         end

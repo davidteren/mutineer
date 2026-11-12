@@ -72,6 +72,7 @@ class DatabaseUrlsTest < Minitest::Test
 
   def test_a_dotenv_reference_is_expanded
     # Built at runtime so the source has no assignment that looks like a secret.
+    # The caller's environment must not win over the file for this assertion.
     key = ["DB", "PASSWORD"].join("_")
     token = ["s3", "cret"].join
     head = "postgres://u:"
@@ -79,10 +80,48 @@ class DatabaseUrlsTest < Minitest::Test
       path = File.join(root, ".env")
       File.write(path, "#{key}=#{token}\nDATABASE_URL=#{head}${#{key}}@h/db\n")
 
-      assert_equal ["#{head}#{token}@h/db"], Mutineer::DatabaseUrls.from_file(path)
+      with_env(key => nil) do
+        assert_equal ["#{head}#{token}@h/db"], Mutineer::DatabaseUrls.from_file(path)
+      end
+      with_env(key => "from-env") do
+        assert_equal ["#{head}from-env@h/db"], Mutineer::DatabaseUrls.from_file(path)
+      end
 
       File.write(path, "DATABASE_URL='#{head}${#{key}}@h/db'\n")
       assert_equal ["#{head}${#{key}}@h/db"], Mutineer::DatabaseUrls.from_file(path)
+    end
+  end
+
+  def test_a_backslash_dollar_stays_a_dollar
+    literal = ["pa", "$", "word"].join
+    escaped = ["pa", "\\", "$", "word"].join
+    head = "postgres://u:"
+    Dir.mktmpdir do |root|
+      path = File.join(root, ".env")
+      File.write(path, "DATABASE_URL=\"#{head}#{escaped}@h/db\"\n")
+
+      assert_equal ["#{head}#{literal}@h/db"], Mutineer::DatabaseUrls.from_file(path)
+    end
+  end
+
+  def test_a_quoted_value_may_span_lines
+    head = "postgres://u:"
+    secret = ["foo", "\n", "bar"].join
+    Dir.mktmpdir do |root|
+      path = File.join(root, ".env")
+      File.write(path, "DATABASE_URL=\"#{head}#{secret}@h/db\"\n")
+
+      assert_equal ["#{head}#{secret}@h/db"], Mutineer::DatabaseUrls.from_file(path)
+    end
+  end
+
+  def test_an_invalid_byte_does_not_stop_the_read
+    head = "postgres://u:ok@h/db"
+    Dir.mktmpdir do |root|
+      path = File.join(root, ".env")
+      File.binwrite(path, "DATABASE_URL=#{head}\n\xFF\n")
+
+      assert_equal [head], Mutineer::DatabaseUrls.from_file(path)
     end
   end
 end

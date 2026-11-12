@@ -190,7 +190,9 @@ errors outside examples, the `--matrix` early end, and `--test-command`.
 
 `details` is redacted. Redaction replaces the password of `DATABASE_URL` from the environment and from
 these dotenv files: `.env`, `.env.local`, `.env.development`, `.env.development.local`, `.env.test`,
-and `.env.test.local`. It also replaces the password in any `scheme://user:password@host` URL.
+and `.env.test.local`. A double-quoted value may span lines. A backslash before `$` is a literal
+dollar. An invalid byte does not stop that read. It also replaces the password in any
+`scheme://user:password@host` URL.
 A one-character password, a password equal to the username, the host, or the database name, and a
 common word such as `password` or `test` stay visible outside a URL and outside a `password=` parameter.
 Any other form longer than one character is hidden only as a whole token, with no ASCII letter, digit,

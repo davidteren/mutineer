@@ -144,14 +144,18 @@ All notable changes to this project are documented here. The format is based on
   Mutineer copies each line and hides the `DATABASE_URL` password before the
   line reaches the terminal. `abort` in a boot file is included. A line with
   no password is unchanged. A fork that sets `DATABASE_URL` itself is
-  redacted in that process. A password that contains a newline is kept
-  together, so neither half is printed. Shutdown writes every byte already
+  redacted in that process. A password that contains a newline stays
+  together until a newline follows it or the stream ends, so neither half is
+  printed. The daemon does not boot when stderr cannot be redirected. A fork
+  whose own copier cannot start writes nothing further. Shutdown writes every byte already
   queued, including a report a slow reader has not taken yet. The daemon does this in its own process, so a
   password the boot file assigns is hidden even when the tool's environment
   does not have it. `--test-command` output is redacted with the tool's
   `DATABASE_URL` and with `DATABASE_URL` from dotenv files in the project
   (`.env`, `.env.local`, `.env.development`, `.env.development.local`,
-  `.env.test`, `.env.test.local`). A bare password set only inside the test
+  `.env.test`, `.env.test.local`). A double-quoted value may span lines. A
+  backslash before `$` is a literal dollar. An invalid byte does not stop
+  the read. A bare password set only inside the test
   command, and not in those files or the environment, stays visible. A
   password inside a URL is still hidden.
 - **Redaction no longer blanks a host, a database name, one character, or a

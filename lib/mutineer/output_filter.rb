@@ -153,7 +153,21 @@ module Mutineer
       @saved = {}
       @stdio = {}
       reads.each { |io| io.close unless io.closed? }
-      install(streams: names || [:stderr])
+      silence_stdio unless install(streams: names || [:stderr]) == :started
+    rescue StandardError
+      silence_stdio
+    end
+
+    # Point stdout and stderr at the null device. Used when this fork cannot
+    # start its own copier: the parent's pipe would otherwise publish a
+    # password this process set and the parent does not know.
+    #
+    # @return [void]
+    def silence_stdio
+      File.open(File::NULL, "w") do |null|
+        STDOUT.reopen(null) unless STDOUT.closed?
+        STDERR.reopen(null) unless STDERR.closed?
+      end
     rescue StandardError
       nil
     end

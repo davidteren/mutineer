@@ -73,6 +73,40 @@ class DaemonRedactionTest < Minitest::Test
 
   # #341: a dotenv file is read before the app boots, so a bare password from
   # that file is hidden even when the boot file never assigns DATABASE_URL.
+  def test_boot_stops_when_stderr_cannot_be_redirected
+    dir = Dir.pwd
+    out = StringIO.new
+    Mutineer::DaemonServer.instance_variable_set(:@output, out)
+    Mutineer::DaemonServer.instance_variable_set(:@protocol, StringIO.new)
+    status = nil
+    # Newest prepend wins, including over ExitHook, and later exit! calls
+    # still reach the real method when this flag is unset.
+    Kernel.prepend(Module.new do
+      def exit!(code = true)
+        throw :boot_exit, code if Thread.current[:catch_boot_exit]
+
+        super
+      end
+    end)
+    Thread.current[:catch_boot_exit] = true
+    Mutineer::OutputFilter.stub(:install, :failed) do
+      status = catch(:boot_exit) do
+        Mutineer::DaemonServer.send(:boot!, { "project_root" => dir, "framework" => "minitest" })
+        nil
+      end
+    end
+
+    assert_equal 1, status
+    assert_includes out.string, "password"
+  ensure
+    Thread.current[:catch_boot_exit] = false
+    Dir.chdir(dir) if dir
+    Mutineer::DaemonServer.instance_variable_set(:@output, nil)
+    Mutineer::DaemonServer.instance_variable_set(:@protocol, nil)
+    Mutineer::Redaction.extra_urls = []
+    Mutineer::OutputFilter.uninstall
+  end
+
   def test_stderr_hides_a_bare_password_from_a_dotenv_file
     out, err = daemon_boot('STDERR.puts "file s3cret end"', dotenv: "DATABASE_URL=postgres://u:s3cret@h/db\n")
 
