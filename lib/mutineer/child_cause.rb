@@ -31,7 +31,7 @@ module Mutineer
     module_function
 
     # Remembers the cause pipe for this process so suite code can write without
-    # holding the IO. Only {#write} / {#write_text} from the same pid succeed.
+    # holding the IO. Only {#write_error} / {#write_text} from the same pid succeed.
     #
     # @param io [IO] the pipe's write end, with `sync` on.
     # @param owner [Integer] the pid of the mutant's child.

@@ -39,7 +39,9 @@ module Mutineer
   #              (a mutant of a def in a concern's hook block adds to the payload
   #               "hook_def":{"line":12,"name":"total","singleton":false}, #297)
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
-  #              (an "error" whose child raised adds "details":"Class: message", #388)
+  #              (an "error" adds "details" when the child sent a cause line:
+  #               a raise → "Class: message" (#388); an in-test database error →
+  #               "a test failed with a database error: Class: message" (#417))
   #   quit in  : {"cmd":"quit"}
   #
   # Worker isolation: when the app is Rails, each fork is routed to its own

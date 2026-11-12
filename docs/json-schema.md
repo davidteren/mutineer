@@ -184,8 +184,11 @@ When the mutant's child raised (under `reload`, `redefine` or the daemon), `deta
 most 500 characters (a longer line is cut and ends in `...`). Example:
 `"ArgumentError: enum declared twice"` (schema `1.10`, #388). A Minitest database connection or
 lock error gives `a test failed with a database error: Class: message`. An RSpec error outside
-examples, and a `--matrix` early end after a serial database error, each get a fixed line that
-names that case (schema `1.10`, #417). Other errors keep their fixed text, such as
+examples gives
+`RSpec reported an error outside its examples, for example a spec file that raised while it loaded`.
+A `--matrix` early end after a serial database error gives
+`a test failed with a database error, then the child ended before the suite finished`
+(schema `1.10`, #417). Other errors keep their fixed text, such as
 `child exited with status 2`, `daemon verdict: error` or `worker crashed: Class: message`.
 A daemon that died or did not reply in time gives `daemon crashed` or `daemon stopped answering`
 (schema `1.10`, #388). `--test-command` and the human/HTML errored lists still lack named causes
