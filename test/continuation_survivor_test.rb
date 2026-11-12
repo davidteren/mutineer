@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "mutineer/daemon_server"
 require "tmpdir"
 
 # #345: a survivor on a continuation line used to be no_coverage, which left
@@ -14,6 +15,9 @@ class ContinuationSurvivorTest < Minitest::Test
   SOURCE = File.expand_path("fixtures/continuation_reach.rb", __dir__)
   REACH = File.expand_path("fixtures/continuation_reach_test.rb", __dir__)
   MISS = File.expand_path("fixtures/continuation_reach_miss_test.rb", __dir__)
+  LOAD_SOURCE = File.expand_path("fixtures/continuation_load.rb", __dir__)
+  LOAD_REACH = File.expand_path("fixtures/continuation_load_test.rb", __dir__)
+  LOAD_MISS = File.expand_path("fixtures/continuation_load_miss_test.rb", __dir__)
   # One mutant per method: `>` becomes `>=`, and the trailing `+` becomes `-`.
   EXPECTED = {
     adult?: [:comparison, ">="],
@@ -40,6 +44,68 @@ class ContinuationSurvivorTest < Minitest::Test
       assert_equal 0, missed.covered_count, strategy
       assert_equal EXPECTED.size, missed.no_coverage_count, strategy
     end
+  end
+
+  # The class body calls the continuation. That load is cleared before the
+  # tests. A test that never enters the expression stays no_coverage. A test
+  # that enters it during the test is survived.
+  def test_a_load_time_call_does_not_count_as_the_test_reaching_the_expression
+    %w[reload redefine].each do |strategy|
+      reached = run_suite(LOAD_REACH, strategy, [LOAD_SOURCE], %w[comparison])
+      missed = run_suite(LOAD_MISS, strategy, [LOAD_SOURCE], %w[comparison])
+
+      assert_equal [:survived], reached.results.map(&:status), strategy
+      assert_equal 0.0, reached.mutation_score, strategy
+      assert_equal [:no_coverage], missed.results.map(&:status), strategy
+      assert_nil missed.mutation_score, strategy
+      assert_equal 1, missed.no_coverage_count, strategy
+    end
+  end
+
+  # The daemon child clears the sentinel after load. A test that does not
+  # enter the expression leaves it empty; a test that does writes it again.
+  def test_the_daemon_forgets_a_load_time_call_before_its_tests
+    source = File.read(LOAD_SOURCE)
+    subject = Mutineer::Project.discover([LOAD_SOURCE]).find { |item| item.name == :adult? }
+    mutation = Mutineer::Mutators::Comparison.new.mutations_for(subject, source).fetch(0)
+    sentinel = Mutineer::ReachProbe.sentinel
+    code = Mutineer::ReachProbe.wrap_mutation(mutation.apply(source), mutation, sentinel.path)
+    daemon = Mutineer::DaemonServer
+    saved = %i[@errio @worker_db @slot_ready @source_dirs @framework @shared_databases].to_h do |name|
+      [name, daemon.instance_variable_get(name)]
+    end
+    Dir.mktmpdir("mutineer-load-daemon") do |dir|
+      err = File.open(File.join(dir, "err"), "w")
+      err.sync = true
+      daemon.instance_variable_set(:@errio, err)
+      daemon.instance_variable_set(:@worker_db, nil)
+      daemon.instance_variable_set(:@slot_ready, {})
+      daemon.instance_variable_set(:@source_dirs, [dir])
+      daemon.instance_variable_set(:@framework, "minitest")
+      daemon.instance_variable_set(:@shared_databases, [])
+      miss = File.join(dir, "miss_test.rb")
+      reach = File.join(dir, "reach_test.rb")
+      File.write(miss, "require \"minitest/autorun\"\nclass ContinuationLoadMiss < Minitest::Test\n" \
+                       "def test_false; refute ContinuationLoad.adult?(false); end\nend\n")
+      File.write(reach, "require \"minitest/autorun\"\nclass ContinuationLoadReach < Minitest::Test\n" \
+                        "def test_true; assert ContinuationLoad.adult?(true); end\nend\n")
+      payload = { "code" => code, "source_file" => LOAD_SOURCE, "reach_path" => sentinel.path }
+
+      missed = daemon.send(:run_mutant, "id" => 1, "worker" => 0, "timeout" => 30, "payload" => payload,
+                                        "tests" => [miss])
+      miss_reached = Mutineer::ReachProbe.reached?(sentinel)
+      reached = daemon.send(:run_mutant, "id" => 2, "worker" => 0, "timeout" => 30, "payload" => payload,
+                                         "tests" => [reach])
+
+      assert_equal "survived", missed["verdict"], File.read(err.path)
+      refute miss_reached, "a load-time call was counted as a test"
+      assert_equal "survived", reached["verdict"], File.read(err.path)
+      assert Mutineer::ReachProbe.reached?(sentinel), "a test that ran the expression left no sentinel"
+    end
+  ensure
+    saved&.each { |name, value| daemon.instance_variable_set(name, value) }
+    Mutineer::ReachProbe.close_sentinel(sentinel) if defined?(sentinel) && sentinel
+    Object.send(:remove_const, :ContinuationLoad) if defined?(ContinuationLoad)
   end
 
   # The daemon child loads the probed source. Executing that source is what
@@ -76,8 +142,8 @@ class ContinuationSurvivorTest < Minitest::Test
     end
   end
 
-  def run_suite(test, strategy)
-    config = Mutineer::Config.new(sources: [SOURCE], tests: [test], operators: %w[comparison arithmetic],
+  def run_suite(test, strategy, sources = [SOURCE], operators = %w[comparison arithmetic])
+    config = Mutineer::Config.new(sources: sources, tests: [test], operators: operators,
                                   cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT,
                                   strategy: strategy)
     aggregate, = Mutineer::Runner.execute(config)

@@ -420,6 +420,9 @@ module Mutineer
           else
             Isolation.apply_whole_file(ReachProbe.wrap_mutation(mutated, mutation, sentinel&.path), source_file)
           end
+          # A reload can run the expression while the file loads. That is not
+          # a test reaching it (#345).
+          ReachProbe.forget_load(sentinel.path) if sentinel
           if channel
             # --matrix: every covering test runs, and each outcome goes to the parent.
             TestRunners.for(framework).run(abs_tests, record_to: channel)

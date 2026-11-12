@@ -2,6 +2,7 @@
 
 require "tempfile"
 require_relative "parser"
+require_relative "statement_lines"
 
 module Mutineer
   # Records whether the expression that holds a mutation ran in the child.
@@ -26,13 +27,25 @@ module Mutineer
       file
     end
 
-    # Whether the child wrote the sentinel. False when there is no sentinel,
-    # or the expression never ran.
+    # Whether a test wrote the sentinel after {forget_load}. False when there
+    # is no sentinel, or the expression did not return during a test.
     #
     # @param sentinel [Tempfile, nil]
     # @return [Boolean]
     def self.reached?(sentinel)
       !sentinel.nil? && File.size(sentinel.path).positive?
+    end
+
+    # Empties the sentinel after the mutant has loaded and before its tests
+    # run. A reload runs top-level calls, and those can reach the expression
+    # before any test does. That load is not a test reaching it (#345). The
+    # daemon does the same clear itself, because this file pulls in Prism and
+    # the daemon cannot.
+    #
+    # @param path [String, nil] sentinel path.
+    # @return [void]
+    def self.forget_load(path)
+      File.write(path, "") if path
     end
 
     # Removes the sentinel file. A missing file is already gone.
@@ -70,9 +83,10 @@ module Mutineer
     # Returns nil when no expression holds it, or the wrapped text does not
     # parse: a wrap that does not parse is not used.
     #
-    # The wrapper returns the expression's value. It writes the sentinel from
-    # `ensure`, so a raise inside the expression still counts as a run. It
-    # writes once; later evaluations only stat the file.
+    # The wrapper returns the expression's value. It writes the sentinel only
+    # after that value has come back, so a raise inside the expression — an
+    # operand that fails before a mutated operator runs — does not count as a
+    # run. It writes once; later evaluations only stat the file.
     #
     # @param source [String]
     # @param start_offset [Integer] byte offset of the replacement.
@@ -80,12 +94,61 @@ module Mutineer
     # @param path [String] absolute sentinel path.
     # @return [String, nil]
     def self.wrap(source, start_offset, end_offset, path)
-      node = smallest(Parser.parse_string(source).value, start_offset, end_offset)
+      root = Parser.parse_string(source).value
+      node = smallest(root, start_offset, end_offset)
       return nil unless node
 
-      wrapped = splice(source, node, path)
-      wrapped unless Parser.invalid?(wrapped)
+      parents = parent_map(root)
+      while node
+        wrapped = splice(source, node, path)
+        return wrapped unless Parser.invalid?(wrapped)
+
+        parent = parents[node]
+        break if parent.nil? || climb_stops?(parent, node)
+
+        node = parent
+      end
+      nil
     end
+
+    # True when wrapping `parent` would record a run of code that can run
+    # without `child`: a conditional child, or a node that is a whole def,
+    # class, or file.
+    #
+    # @param parent [Prism::Node]
+    # @param child [Prism::Node]
+    # @return [Boolean]
+    def self.climb_stops?(parent, child)
+      return true if CLIMB_STOP.any? { |klass| parent.is_a?(klass) }
+
+      StatementLines.sometimes?(parent, child)
+    end
+    private_class_method :climb_stops?
+
+    # Nodes that must not be wrapped. Wrapping one records every run of the
+    # method or file, not the mutated expression.
+    CLIMB_STOP = [Prism::DefNode, Prism::ClassNode, Prism::ModuleNode, Prism::ProgramNode,
+                  Prism::SingletonClassNode].freeze
+
+    # Parent of each node, by identity. A heredoc body is a child that lies
+    # outside its opener, so every child is recorded.
+    #
+    # @param root [Prism::Node]
+    # @return [Hash{Prism::Node => Prism::Node}]
+    def self.parent_map(root)
+      map = {}.compare_by_identity
+      walk = lambda do |node|
+        return unless node.is_a?(Prism::Node)
+
+        node.compact_child_nodes.each do |child|
+          map[child] = node
+          walk.call(child)
+        end
+      end
+      walk.call(root)
+      map
+    end
+    private_class_method :parent_map
 
     # The deepest node whose location holds the range. A child replaces a
     # parent of the same span, so a one-statement body wraps the statement
@@ -115,10 +178,11 @@ module Mutineer
     end
     private_class_method :smallest
 
-    # Replaces `node` with a `begin`/`ensure` that writes `path` when the
-    # node runs. Keywords sit at column 0 on their own lines when the node
-    # spans lines, so the indent warning stays quiet. A one-line node stays
-    # one line, for the same reason.
+    # Replaces `node` with an expression that writes `path` only when `node`
+    # returns. The mark is the second element of an array, so it does not run
+    # when `node` raises. A one-line node stays one line. A node that spans
+    # lines keeps its text and puts the array on the following lines, so the
+    # indent warning stays quiet.
     #
     # @param source [String]
     # @param node [Prism::Node]
@@ -128,11 +192,11 @@ module Mutineer
       loc = node.location
       inner = source.byteslice(loc.start_offset, loc.end_offset - loc.start_offset)
       quoted = path.dump
-      mark = "::File.write(#{quoted}, \"1\") if ::File.size(#{quoted}) == 0"
+      mark = "(::File.write(#{quoted}, \"1\") if ::File.size(#{quoted}) == 0)"
       replacement = if inner.include?("\n")
-                      "\nbegin\n#{inner}\nensure\n#{mark}\nend"
+                      "\n[(#{inner}), #{mark}][0]"
                     else
-                      "begin; #{inner}; ensure; #{mark}; end"
+                      "[(#{inner}), #{mark}][0]"
                     end
       source.byteslice(0, loc.start_offset) + replacement + source.byteslice(loc.end_offset..)
     end

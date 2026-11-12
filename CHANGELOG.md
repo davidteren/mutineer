@@ -150,9 +150,15 @@ All notable changes to this project are documented here. The format is based on
   outside the score, and `summary.no_coverage` still counts it. The same rule
   covers a trailing operator (`&&`, `+`), a method chain, a multi-line
   argument list, a hash entry, and a heredoc interpolation, under `reload`,
-  `redefine`, and `--daemon`. A score can fall. A `--threshold` gate that
-  passed can fail. `--baseline` treats the new survivors as new. Refresh the
-  baseline.
+  `redefine`, and `--daemon`. A call that runs only while the mutant file
+  loads does not count: that write is cleared before the tests. A raise
+  inside the expression does not count, so an operand that fails before a
+  mutated operator runs stays `no_coverage`. Every one of the 24,918 mutants
+  from every operator on this gem's `lib/` and `test/fixtures/` either does
+  not re-parse, as before, or wraps. The fallback that would leave an
+  unwrappable mutant as `no_coverage` did not occur. A score can fall. A
+  `--threshold` gate that passed can fail. `--baseline` treats the new
+  survivors as new. Refresh the baseline.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and

@@ -74,6 +74,61 @@ class ReachProbeTest < Minitest::Test
     end
   end
 
+  # A piece of a backslash string is not an expression on its own. The probe
+  # climbs to the whole string, which runs exactly when that piece does.
+  def test_a_backslash_string_piece_wraps_the_whole_string
+    source = <<~'RUBY'
+      class C
+        def self.f
+          "a" \
+            "b" \
+            "c"
+        end
+      end
+    RUBY
+    plain = run_source(source, "puts C.f.inspect", json: false)
+    wrapped = wrap_snippet(source, '"b"')
+    assert wrapped, "the string piece did not wrap"
+
+    probed = run_source(wrapped, <<~'RUBY', json: true)
+      require "json"
+      value = C.f
+      puts JSON.generate(size: ::File.size(ARGV[1]), value: value.inspect)
+    RUBY
+
+    assert_equal plain, probed.fetch("value")
+    assert_operator probed.fetch("size"), :>, 0
+  end
+
+  # The operand raises before `+` runs. The test sees the exception it
+  # expected. The mutated operator never ran, so the sentinel stays empty.
+  def test_a_raising_operand_does_not_record_the_operator
+    source = <<~'RUBY'
+      class C
+        def self.f(flag)
+          flag &&
+            1 + fail("expected")
+        end
+      end
+    RUBY
+    wrapped = wrap_snippet(source, "+")
+    assert wrapped
+
+    probed = run_source(wrapped, <<~'RUBY', json: true)
+      require "json"
+      raised = false
+      begin
+        C.f(true)
+      rescue RuntimeError => e
+        raised = e.message == "expected"
+      end
+      puts JSON.generate(raised: raised, size: ::File.size(ARGV[1]))
+    RUBY
+
+    assert_equal true, probed.fetch("raised")
+    assert_equal 0, probed.fetch("size")
+  end
+
   # A deleted chain link is an empty replacement. The probe sits on the call
   # that remains, and it records a run only when that call runs.
   def test_a_deleted_chain_link_is_recorded_when_the_remaining_call_runs

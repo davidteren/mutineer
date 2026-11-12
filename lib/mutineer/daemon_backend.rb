@@ -448,6 +448,8 @@ module Mutineer
             elsif sentinel
               payload["code"] = ReachProbe.wrap_mutation(mutated, mutation, sentinel.path)
             end
+            # The daemon clears this after load and before tests (#345).
+            payload["reach_path"] = sentinel.path if sentinel
             verdict = client.request(
               id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,
               payload: payload, tests: sel ? sel[1] : abs_tests
