@@ -30,6 +30,8 @@ class RedefinePathAnchorTest < Minitest::Test
     ['File.join(__dir__, "anchor.txt")', :anchor_txt],
     ['File.read(File.join(__dir__, "anchor.txt")).strip', :anchor_body],
     ['require_relative "sibling"; ProbeSibling::MARK', :mark],
+    ['require_relative "~/tilde_sib"; TildeSib::MARK', :mark],
+    ["T += 1; __dir__", :dir],
     ["require_relative(\"sibling\"); ProbeSibling::MARK", :mark],
     ['Kernel.require_relative "sibling"; ProbeSibling::MARK', :mark],
     ["::Kernel.require_relative(\"sibling\"); ProbeSibling::MARK", :mark],
@@ -170,6 +172,9 @@ class RedefinePathAnchorTest < Minitest::Test
       Dir.mkdir(real)
       File.write(File.join(real, "sibling.rb"), "module ProbeSibling; MARK = \"hi\"; end\n")
       File.write(File.join(real, "anchor.txt"), "hi\n")
+      tilde = File.join(real, "~")
+      Dir.mkdir(tilde)
+      File.write(File.join(tilde, "tilde_sib.rb"), "module TildeSib; MARK = \"hi\"; end\n")
       File.write(File.join(real, "probe.rb"), probe_source)
       if mode == :symlink
         linkdir = File.join(root, "link")
@@ -236,6 +241,16 @@ class RedefinePathAnchorTest < Minitest::Test
     methods = FORMS.each_with_index.map do |(expr, _), index|
       "  def probe_#{index}\n    x9k = :keep\n    #{expr}\n  end"
     end
-    "class Probe339\n#{methods.join("\n")}\nend\n"
+    # An instance `require` must not catch the rewritten `require_relative`.
+    # `T += 1` is a Prism 2 parse error that Ruby still loads (#392).
+    <<~RUBY
+      class Probe339
+        T = 0
+        def require(_path)
+          raise "override"
+        end
+      #{methods.join("\n")}
+      end
+    RUBY
   end
 end

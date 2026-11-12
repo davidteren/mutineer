@@ -232,22 +232,29 @@ class ParallelStrategyTest < Minitest::Test
     rd, wr = IO.pipe
     pid = fork do
       rd.close
-      eval(src, TOPLEVEL_BINDING) # rubocop:disable Security/Eval
-      def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
-      subject = Mutineer::Subject.new(file: file, namespace: namespace,
-                                    name: def_node.name, singleton: singleton, def_node: def_node)
-      off = src.index(token)
-      mutation = Mutineer::Mutation.new(start_offset: off, end_offset: off + token.length,
-                                      replacement: replacement, operator: :literal_mutation)
-      loaded = nil
-      original = Kernel.instance_method(:load)
-      Mutineer::Isolation.stub(:load, lambda { |path|
-        loaded = path
-        original.bind_call(Mutineer::Isolation, path)
-      }) do
-        Mutineer::Isolation.apply_surgical(mutation, subject, src)
+      Dir.mktmpdir do |scratch|
+        source_path = File.join(scratch, "source.rb")
+        File.write(source_path, src)
+        load source_path
+        def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+        subject = Mutineer::Subject.new(file: file, namespace: namespace,
+                                      name: def_node.name, singleton: singleton, def_node: def_node)
+        off = src.index(token)
+        mutation = Mutineer::Mutation.new(start_offset: off, end_offset: off + token.length,
+                                        replacement: replacement, operator: :literal_mutation)
+        loaded = nil
+        original = Kernel.instance_method(:load)
+        Mutineer::Isolation.stub(:load, lambda { |path|
+          loaded = path
+          original.bind_call(Mutineer::Isolation, path)
+        }) do
+          Mutineer::Isolation.apply_surgical(mutation, subject, src)
+        end
+        # A loaded file, not `eval`: the call runs after the snippet is in place.
+        File.write(File.join(scratch, "call.rb"), "$surgical_value = (#{call}).to_s\n")
+        load File.join(scratch, "call.rb")
+        wr.write("#{loaded}\n#{$surgical_value}")
       end
-      wr.write("#{loaded}\n#{eval(call, TOPLEVEL_BINDING)}") # rubocop:disable Security/Eval
       wr.close
       exit!(0)
     end

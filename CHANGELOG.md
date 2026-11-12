@@ -146,7 +146,8 @@ All notable changes to this project are documented here. The format is based on
   so every mutant raised `ENOENT` or `LoadError` and scored `killed`. The
   snippet now resolves those against the original source file, including
   calls on `self` and `Kernel` and `send` with a literal name, whether the
-  directory is writable or not. A symlinked source keeps the loaded path for
+  directory is writable or not. A leading `~` stays a path segment, and the
+  load does not call an instance method named `require`. A symlinked source keeps the loaded path for
   `__FILE__` and the real directory for `__dir__` and `require_relative`. A
   test that checks `__FILE__` against the source path used to fail for every
   redefined mutant. It now fails only when the mutation changes the result,

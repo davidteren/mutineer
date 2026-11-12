@@ -506,8 +506,10 @@ module Mutineer
         @edits = []
       end
 
-      # Parses `source` and applies the edits. Parse errors return `source`
-      # unchanged: the caller's reparse guard then scores the snippet `error`.
+      # Parses `source` and applies the edits. A parse that still builds a tree
+      # is rewritten too: Prism 2 reports `T += 1` inside a method while Ruby
+      # loads it (#392), and the anchors in that method must still move.
+      # With no tree, `source` comes back unchanged.
       #
       # @param source [String] snippet or argument source.
       # @param file_literal [String] dumped original `__FILE__`.
@@ -515,7 +517,7 @@ module Mutineer
       # @return [String]
       def self.rewrite(source, file_literal, dir_literal)
         parsed = Prism.parse(source)
-        return source unless parsed.errors.empty?
+        return source unless parsed.value
 
         anchor = new(source, file_literal, dir_literal)
         anchor.visit(parsed.value)
@@ -539,7 +541,10 @@ module Mutineer
 
         if (argument = relative_argument(node))
           anchored = self.class.rewrite(slice(argument), @file_literal, @dir_literal)
-          text = ["require(File.expand_path(", anchored, ", ", @dir_literal, "))"].join
+          # `::Kernel.require` does not call an instance `require`. `absolute_path`
+          # leaves a leading `~` as a path segment; `expand_path` would treat it
+          # as a home directory, which `require_relative` does not.
+          text = ["::Kernel.require(File.absolute_path(", anchored, ", ", @dir_literal, "))"].join
           return replace(node, text)
         end
 
