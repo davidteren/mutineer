@@ -18,6 +18,8 @@ class TestRunnersRSpecTest < Minitest::Test
   FIX  = File.expand_path("../fixtures/rspec", __dir__)
   PASS = File.join(FIX, "passing_spec.rb")
   FAIL = File.join(FIX, "failing_spec.rb")
+  DB_ERROR = File.join(FIX, "database_error_spec.rb")
+  DB_ERROR_LINE = "[mutineer-child] a test failed with a database error, so the run has no verdict: "
   STOP = File.join(FIX, "stop_at_first_failure_spec.rb")
   EXIT_AFTER_KILL = File.join(FIX, "exit_after_kill_spec.rb")
   # Wraps each expectation in to_stdout_from_any_process, which reopens $stdout.
@@ -480,4 +482,104 @@ class TestRunnersRSpecTest < Minitest::Test
     assert_equal 7, code
   end
 
+  # Runs the database-error spec. Returns [exit status, stderr].
+  def rspec_db_error(env, **kwargs)
+    code, _out, err = in_fork do
+      env.each { |key, value| ENV["MUTINEER_FIXTURE_#{key}"] = value }
+      Mutineer::TestRunners::RSpec.run([DB_ERROR], **kwargs)
+    end
+    [code, err]
+  end
+
+  def rspec_db_verdict(env, matrix:)
+    result = nil
+    capture_subprocess_io do
+      result = Mutineer::Isolation.run(timeout: 10, channel: matrix) do |io|
+        env.each { |key, value| ENV["MUTINEER_FIXTURE_#{key}"] = value }
+        options = matrix ? { record_to: io } : { stop_at_first_failure: true }
+        Mutineer::TestRunners::RSpec.run([DB_ERROR], **options)
+      end
+    end
+    result
+  end
+
+  def assert_rspec_db_error(klass, result)
+    code, err = result
+    assert_equal 2, code, err
+    assert_includes err, "#{DB_ERROR_LINE}ActiveRecord::#{klass}: "
+  end
+
+  # #347: the same Active Record classes as Minitest. The first example's
+  # exception decides, on a full run, a stop, and a matrix run.
+  def test_each_listed_database_error_scores_error
+    { "connection" => "ConnectionNotEstablished", "pool_timeout" => "ConnectionTimeoutError",
+      "connection_failed" => "ConnectionFailed", "deadlock" => "Deadlocked",
+      "lock_wait" => "LockWaitTimeout" }.each do |kind, klass|
+      env = { "FIRST" => kind }
+      assert_rspec_db_error klass, rspec_db_error(env)
+      assert_rspec_db_error klass, rspec_db_error(env, stop_at_first_failure: true)
+      verdict = rspec_db_verdict(env, matrix: true)
+      assert_equal :error, verdict.status, kind
+      assert_empty verdict.kills.killed_by, kind
+      refute verdict.kills.complete, kind
+    end
+  end
+
+  def test_first_assertion_keeps_a_later_database_error_killed
+    env = { "FIRST" => "fail", "SECOND" => "connection" }
+    code, err = rspec_db_error(env)
+    assert_equal 1, code
+    assert_empty err
+    assert_equal 1, rspec_db_error(env, stop_at_first_failure: true).first
+
+    matrix = rspec_db_verdict(env, matrix: true)
+    assert_equal :killed, matrix.status
+    assert_equal ["in-example database error runs first"], names(matrix.kills.killed_by)
+    unavailable = matrix.kills.ran.find { |test| test[1] == "in-example database error runs second" }
+    refute_nil unavailable
+    assert_equal 0, Mutineer::KillMatrix.new([matrix]).kill_count(unavailable)
+  end
+
+  def test_first_database_error_beats_a_later_assertion
+    env = { "FIRST" => "connection", "SECOND" => "fail" }
+    assert_rspec_db_error "ConnectionNotEstablished", rspec_db_error(env)
+    matrix = rspec_db_verdict(env, matrix: true)
+    assert_equal :error, matrix.status
+    assert_equal ["in-example database error runs second"], names(matrix.kills.killed_by)
+    refute matrix.kills.complete
+  end
+
+  # A before hook is the example's own exception. An after hook is wrapped
+  # after it: RSpec::Core::MultipleExceptionError keeps the body first.
+  def test_before_hook_database_error_scores_error
+    assert_rspec_db_error "ConnectionNotEstablished", rspec_db_error({ "BEFORE" => "connection" })
+  end
+
+  def test_after_hook_does_not_replace_the_example_exception
+    code, err = rspec_db_error({ "FIRST" => "fail", "AFTER" => "connection" })
+    assert_equal 1, code
+    assert_empty err
+
+    result = rspec_db_error({ "FIRST" => "connection", "AFTER" => "runtime" })
+    assert_rspec_db_error "ConnectionNotEstablished", result
+    refute_includes result.last, "RuntimeError"
+  end
+
+  def test_statement_invalid_and_connection_not_defined_still_kill
+    %w[statement_invalid connection_not_defined].each do |kind|
+      assert_equal [1, ""], rspec_db_error({ "FIRST" => kind })
+    end
+  end
+
+  def test_database_error_line_is_redacted
+    result = rspec_db_error({ "FIRST" => "connection",
+                              "MESSAGE" => "could not connect to postgres://user:secret@db/app" })
+    assert_rspec_db_error "ConnectionNotEstablished", result
+    refute_includes result.last, "secret"
+    assert_includes result.last, "Check that the database server is up and has free connections."
+  end
+
+  def test_passing_database_error_spec_returns_zero
+    assert_equal [0, ""], rspec_db_error({})
+  end
 end

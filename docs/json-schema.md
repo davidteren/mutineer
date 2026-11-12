@@ -276,13 +276,14 @@ arrived out of order names no tests (`killed_by` and `ran` are empty).
 
 `status` is the verdict a run without `--matrix` gives. After the first failing test, that run skips every
 later test, test class and example group, so an exit, a crash or the timeout in one of those leaves the status
-`"killed"` for an ordinary test failure, or `"error"` for a Minitest database connection or lock failure.
+`"killed"` for an ordinary test failure, or `"error"` for a Minitest or RSpec database connection or lock failure.
 A database failure is not a killer and leaves the row incomplete, even when an earlier assertion
 already killed the mutant. It still runs the code around the failing test (the rest of its Minitest class `run` wrapper, the
 `after(:all)` hooks of its RSpec groups) and the suite's own cleanup (RSpec `after(:suite)`), so an end there
 keeps the exit status (or `"timeout"`). A failure in the tests of a Minitest `parallelize_me!` class keeps it
 too: those run after every serial class and cannot be stopped once queued, while a failure in a serial class
-still stops the run, even in a suite that also has a parallel class.
+still stops the run, even in a suite that also has a parallel class. The database-error choice among those
+queued tests follows the queue order, not the order the threads finish (#347).
 
 Each redundant test is judged on its own. Two redundant tests can be the only killers of one mutant, so
 delete them one at a time and re-run after each. Every answer covers this run's mutants only.
