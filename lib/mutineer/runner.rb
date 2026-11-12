@@ -107,6 +107,10 @@ module Mutineer
         end
       end
 
+      # Before boot and `--require`, so a `config.seed=` in those files is
+      # recorded and every forked child keeps it (#282).
+      prepare_rspec_seed!(config)
+
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
       # sources. Under Zeitwerk a manual require of an autoloadable file raises;
@@ -506,6 +510,25 @@ module Mutineer
       file
     end
     private_class_method :project_file!
+
+    # Installs the RSpec seed watcher in this process when the run uses
+    # RSpec. Boot and `--require` files then load with the watcher on, and
+    # forks inherit the record of a seed they set. A project without rspec
+    # is left for the child to report, as before.
+    #
+    # @api private
+    # @param config [Mutineer::Config]
+    # @return [void]
+    def self.prepare_rspec_seed!(config)
+      return unless config.framework == "rspec"
+
+      require "rspec/core"
+      ::RSpec::Core::Runner.disable_autorun!
+      TestRunners::RSpecSeed.install!
+    rescue LoadError
+      nil
+    end
+    private_class_method :prepare_rspec_seed!
 
     # Require one project file in the tool process. A failure becomes a
     # {ProjectLoadError} whose message, and each cause in its list, is

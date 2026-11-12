@@ -1251,6 +1251,7 @@ module Mutineer
           exit 3
         end
         RSpec::Core::Runner.disable_autorun!
+        #{rspec_seed_install}
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin
           #{abs_preload_paths.inspect}.each { |f| require f }
@@ -1386,8 +1387,22 @@ module Mutineer
       RUBY
     end
 
-    # Ruby source that pins a random RSpec order to the shared seed and keeps
-    # spec files in the order given, the same hooks as {TestRunners::RSpec.run}.
+    # Installs the RSpec seed watcher. The subprocess must do this before it
+    # loads `--require` files, so a `config.seed=` there is recorded (#282).
+    #
+    # @api private
+    # @return [String] Ruby script text.
+    def rspec_seed_install
+      seed = File.expand_path("test_runners/rspec_seed.rb", __dir__)
+      <<~RUBY.chomp
+        require #{seed.inspect}
+        Mutineer::TestRunners::RSpecSeed.install!
+      RUBY
+    end
+
+    # Ruby source that keeps spec files in the order given, the same hook as
+    # {TestRunners::RSpec.run}. The seed watcher is installed earlier, before
+    # the preloads ({#rspec_seed_install}).
     #
     # @api private
     # @param spec_list_source [String] Ruby source for the spec path arguments.
@@ -1396,7 +1411,6 @@ module Mutineer
       runner = File.expand_path("test_runners/rspec.rb", __dir__)
       <<~RUBY.chomp
         require #{runner.inspect}
-        Mutineer::TestRunners::RSpecSeed.install!
         Mutineer::TestRunners::RSpec.keep_file_order([#{spec_list_source}])
       RUBY
     end
@@ -1420,6 +1434,7 @@ module Mutineer
           exit 3
         end
         RSpec::Core::Runner.disable_autorun!
+        #{rspec_seed_install}
         Coverage.start(lines: true, methods: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin

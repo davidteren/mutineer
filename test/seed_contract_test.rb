@@ -41,6 +41,81 @@ class SeedContractTest < Minitest::Test
     assert_equal %w[77 77 77], rspec_seeds(assign_seed: 77)
   end
 
+  # A --require file sets the seed before the spec loads. The watcher has to
+  # be on already, or pin! replaces 77 with the pinned seed.
+  def test_a_preloaded_rspec_seed_reaches_the_clean_run
+    ENV.delete("SPEC_OPTS")
+    assert_equal [77, 77], preloaded_rspec_seeds("RSpec.configure { |config| config.seed = 77 }")
+  end
+
+  # A preload that only turns random order on has not chosen a seed.
+  def test_a_preload_that_only_sets_random_order_keeps_the_pinned_seed
+    ENV.delete("SPEC_OPTS")
+    body = "RSpec.configure { |config| config.order = :random; Kernel.srand config.seed }"
+    assert_equal [PINNED.to_i, PINNED.to_i], preloaded_rspec_seeds(body)
+  end
+
+  # Boot and --require run in the parent. The fork inherits the seed they set.
+  def test_a_fork_keeps_a_seed_set_before_it_starts
+    ENV.delete("SPEC_OPTS")
+    Dir.mktmpdir("mutineer-fork-seed") do |dir|
+      log = File.join(dir, "seed")
+      req = File.join(dir, "spec_seed.rb")
+      spec = File.join(dir, "subject_spec.rb")
+      File.write(req, "require \"rspec/core\"\nRSpec.configure { |config| config.seed = 77 }\n")
+      File.write(spec, <<~RUBY)
+        RSpec.describe "seed" do
+          it "records the seed" do
+            File.write(#{log.inspect}, RSpec.configuration.seed.to_s)
+          end
+        end
+      RUBY
+      config = Mutineer::Config.new(sources: [req], tests: [spec], framework: "rspec",
+                                    project_root: dir, require_paths: [req])
+      Mutineer::Runner.send(:prepare_rspec_seed!, config)
+      load req
+      pid = fork do
+        Mutineer::ChildStdout.silence
+        exit Mutineer::TestRunners::RSpec.run([spec])
+      end
+      Process.wait(pid)
+      assert_equal "77", File.read(log)
+    end
+  ensure
+    ::RSpec.reset if defined?(::RSpec.reset)
+  end
+
+  # Minitest re-seeds method order from the seed inside each class, so another
+  # file does not reshuffle it.
+  def test_minitest_method_order_inside_a_class_does_not_depend_on_the_other_files
+    ENV.delete("SEED")
+    Dir.mktmpdir("mutineer-method-order") do |dir|
+      log = File.join(dir, "order")
+      ENV["MUTINEER_SEED_LOG"] = log
+      file_a = write_minitest_methods(dir, "a")
+      file_b = write_minitest_classes(dir, "b", %w[B1])
+      alone = minitest_order([file_a], log)
+      both = minitest_order([file_a, file_b], log, stop: true)
+      assert_equal "test_dtest_ctest_atest_b", alone
+      assert_equal "#{alone}B1", both
+    end
+  end
+
+  # RSpec's random order sorts each group by a hash of the seed and its id, so
+  # another spec does not change the order inside the first.
+  def test_rspec_order_inside_a_file_does_not_depend_on_the_other_files
+    ENV.delete("SPEC_OPTS")
+    Dir.mktmpdir("mutineer-rspec-groups") do |dir|
+      log = File.join(dir, "order")
+      ENV["MUTINEER_SEED_LOG"] = log
+      file_a = write_rspec_groups(dir, "a")
+      file_b = write_rspec_groups(dir, "b", groups: %w[B1])
+      alone = rspec_order_of([file_a], log)
+      both = rspec_order_of([file_a, file_b], log)
+      assert_equal alone, both.gsub("B1one", "").gsub("B1two", "")
+    end
+  end
+
   # Forcing a seed must not turn a defined order into a random one.
   def test_a_defined_rspec_order_stays_defined_on_the_clean_run_and_the_mutant_run
     ENV.delete("SPEC_OPTS")
@@ -143,6 +218,67 @@ class SeedContractTest < Minitest::Test
         end
       end
     RUBY
+  end
+
+  def preloaded_rspec_seeds(configure)
+    Dir.mktmpdir("mutineer-preload-seed") do |dir|
+      log = File.join(dir, "seed")
+      ENV["MUTINEER_SEED_LOG"] = log
+      source = File.join(dir, "subject.rb")
+      req = File.join(dir, "spec_seed.rb")
+      spec = File.join(dir, "subject_spec.rb")
+      File.write(source, "class SeedContractSubject\n  def value = 1\nend\n")
+      File.write(req, "require \"rspec/core\"\n#{configure}\n")
+      File.write(spec, <<~RUBY)
+        RSpec.describe "seed" do
+          it "records the seed" do
+            File.write(ENV.fetch("MUTINEER_SEED_LOG"), RSpec.configuration.seed.to_s)
+          end
+        end
+      RUBY
+      map = Mutineer::CoverageMap.new(source_paths: [source], test_paths: [spec], require_paths: [req],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir,
+                                      framework: "rspec")
+      seeds = []
+      capture_subprocess_io do
+        File.write(log, "")
+        map.send(:capture, spec)
+        seeds << File.read(log).to_i
+        File.write(log, "")
+        map.send(:subprocess_clean_pass?, [spec])
+        seeds << File.read(log).to_i
+      end
+      seeds
+    end
+  end
+
+  def write_minitest_methods(dir, letter)
+    path = File.join(dir, "#{letter}_methods_test.rb")
+    methods = %w[test_a test_b test_c test_d].map do |name|
+      "  def #{name}; File.open(ENV.fetch(\"MUTINEER_SEED_LOG\"), \"a\") { |file| file.write(#{name.inspect}) }; end\n"
+    end.join
+    File.write(path, "require \"minitest\"\nclass Order#{letter}MethodsTest < Minitest::Test\n#{methods}end\n")
+    path
+  end
+
+  def write_rspec_groups(dir, letter, groups: %w[A1 A2])
+    path = File.join(dir, "#{letter}_groups_spec.rb")
+    body = groups.map do |name|
+      <<~RUBY
+        RSpec.describe #{name.inspect} do
+          it("one") { File.open(ENV.fetch("MUTINEER_SEED_LOG"), "a") { |file| file.write(#{name.inspect} + "one") } }
+          it("two") { File.open(ENV.fetch("MUTINEER_SEED_LOG"), "a") { |file| file.write(#{name.inspect} + "two") } }
+        end
+      RUBY
+    end.join
+    File.write(path, "RSpec.configure { |config| config.order = :random; Kernel.srand config.seed }\n#{body}")
+    path
+  end
+
+  def rspec_order_of(files, log)
+    File.write(log, "")
+    run_rspec(files, stop: false)
+    File.read(log)
   end
 
   def rspec_orders

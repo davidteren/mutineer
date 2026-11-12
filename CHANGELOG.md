@@ -145,6 +145,7 @@ All notable changes to this project are documented here. The format is based on
   A random order now uses seed `1` for coverage capture, the clean checks and the mutant runs, unless the suite sets a seed (`--seed`, `--order rand:N`, `SPEC_OPTS`, `.rspec`, or `config.seed`).
   A defined order is left as it is.
   Reading `config.seed` in a spec helper, as the generated `Kernel.srand config.seed` does, does not set one.
+  A `config.seed=` in a spec helper, a `--require` file, or the boot file does, and the clean check and the mutant runs keep it.
   Minitest already used seed `1`.
   Classes inside one file were still shuffled with the whole class list, so adding a file changed their order.
   Each file is now shuffled from that seed alone, on the clean check and the mutant runs.

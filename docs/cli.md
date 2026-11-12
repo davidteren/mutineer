@@ -59,7 +59,7 @@ To reproduce a failure, run the listed files with the same seed, for example `SE
 
 A random RSpec order uses seed `1`.
 A defined order is left as it is.
-Set another seed with `--seed`, `--order rand:N`, `SPEC_OPTS`, `.rspec`, or `config.seed`.
+  Set another seed with `--seed`, `--order rand:N`, `SPEC_OPTS`, `.rspec`, or `config.seed` in a spec helper, a `--require` file, or the boot file.
 A spec helper that only reads `config.seed`, as the generated `Kernel.srand config.seed` does, does not set one.
 
 Files run in the order that run was given.

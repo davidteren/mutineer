@@ -8,9 +8,9 @@ module Mutineer
     # mutant runs (#282). A defined order is left as it is: assigning
     # `config.seed` would switch the suite to random. A seed the suite sets
     # (`--seed`, `--order rand:N`, `SPEC_OPTS`, `.rspec`, or `config.seed=`)
-    # wins. The hooks install before `RSpec::Core::Runner.run`, and the seed
-    # is written after spec files load, which is when a spec helper sets the
-    # order, and before RSpec orders examples.
+    # wins. The hooks install before boot, `--require` files, and spec files
+    # load, so a `config.seed=` in any of those is visible. The seed is
+    # written after spec files load and before RSpec orders examples.
     #
     # A spec helper that only reads `config.seed` (the generated
     # `Kernel.srand config.seed`) does not count as setting it. The read
