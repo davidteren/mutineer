@@ -15,6 +15,7 @@ Read report rows, fix survivors, suppress equivalent mutants, and check which te
 | Skipped | The change produced invalid Ruby and did not run. | No |
 
 The first failed RSpec example follows that same connection and lock rule (#347).
+There is no `--daemon` for RSpec. Under `--matrix` the example is not a killer and the row stays incomplete.
 
 A source with no paired test is not run.
 The report counts that source and its mutants.
@@ -175,7 +176,7 @@ These labels apply only to this run's mutants. Mutate the code a test exercises 
 | Execution case | Verdict behaviour |
 | --- | --- |
 | First failure in a normal run | Skips later tests, classes, and example groups |
-| Later skipped test exits, crashes, or times out | First failure decides: `killed` for ordinary failures; `error` for Minitest database connection or lock failures |
+| Later skipped test exits, crashes, or times out | First failure decides: `killed` for ordinary failures; `error` for a Minitest or RSpec database connection or lock failure |
 | Minitest class `run` wrapper, RSpec `after(:all)`, or `after(:suite)` ends abnormally | These still run after failure; their exit status remains effective |
 | Minitest `parallelize_me!` failure | Exit status remains effective. Parallel classes run after serial classes and cannot stop once queued. Serial failures still stop the run. Among the queued tests, a database connection or lock error is judged by queue order, not by which thread finishes first (#347). |
 

@@ -145,8 +145,10 @@ All notable changes to this project are documented here. The format is based on
   (`ConnectionNotEstablished`, including pool timeouts, `ConnectionFailed`,
   `Deadlocked`, `LockWaitTimeout`) scores `error`, on a full run, a stop, and
   `--matrix`. A later example's connection error does not change an earlier
-  assertion. `ConnectionNotDefined` and other statement errors still score
-  `killed`. A `before` hook counts as the example's own exception. An `after`
+  assertion. On Rails 8, `ConnectionNotDefined` is a code error and still scores
+  `killed`. Rails 7.2 raises a plain `ConnectionNotEstablished` for an undefined
+  connection, so that mutant scores `error`. Other statement errors, such as bad
+  SQL, still score `killed`. A `before` hook counts as the example's own exception. An `after`
   hook does not replace it. The stderr line is the same one Minitest writes.
   With `--matrix`, that example is not a killer and the row stays incomplete.
   There is no `--daemon` for RSpec. Errors are out of the score, so a lost

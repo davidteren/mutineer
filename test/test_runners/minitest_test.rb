@@ -30,6 +30,7 @@ class TestRunnersMinitestTest < Minitest::Test
   DB_ERROR = File.join(FIX, "in_test_db_error_test.rb")
   DB_ERROR_PARALLEL = File.join(FIX, "in_test_db_error_parallel_test.rb")
   DB_ERROR_NESTED = File.join(FIX, "in_test_db_error_nested_parallel_test.rb")
+  DB_ERROR_ANON = File.join(FIX, "in_test_db_error_anon_parallel_test.rb")
   DB_ERROR_LINE = "[mutineer-child] a test failed with a database error, so the run has no verdict: "
 
   # Wraps each assertion in capture_subprocess_io, which reopens $stdout.
@@ -726,5 +727,14 @@ class TestRunnersMinitestTest < Minitest::Test
     unavailable = matrix.kills.ran.find { |test| test[1] == "InTestDatabaseErrorNestedOrder#test_b_second" }
     refute_nil unavailable
     assert_equal 0, Mutineer::KillMatrix.new([matrix]).kill_count(unavailable)
+  end
+
+  # Two anonymous classes inherit one method, so a key of class name plus
+  # source location is the same. The connection class finishes first. The
+  # assertion class was queued first, and that is what decides.
+  def test_anonymous_classes_that_share_a_method_follow_queue_order
+    result = db_error_run({}, file: DB_ERROR_ANON)
+    assert_equal 1, result.first, result.last
+    assert_empty result.last
   end
 end

@@ -101,7 +101,9 @@ job runs it. SQLite file means a database file, not `:memory:`.
 - RSpec: the first failed example with an Active Record connection or lock
   error scores `errored`, on the same classes as Minitest
   ([#347](https://github.com/davidteren/mutineer/issues/347)).
-  `ConnectionNotDefined` and other statement errors still score `killed`.
+  On Rails 8, `ConnectionNotDefined` is a code error and still scores `killed`.
+  On Rails 7.2 that case raises `ConnectionNotEstablished` and scores `errored`.
+  Other statement errors still score `killed`.
 
 Mutineer sets `PARALLEL_WORKERS=1`, so a `parallelize` call in `test_helper.rb` starts no Rails workers during a mutant run.
 See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#rails-parallel-tests-spring-bootsnap-and-redis).

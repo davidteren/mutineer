@@ -63,6 +63,25 @@ module Mutineer
         end
       end
 
+      # Prepended on `Minitest::Test`. The worker that runs a test is the
+      # worker that records it, but the result does not carry the class
+      # object. This notes the test's place in the outer queue and attaches
+      # that place to the result. Two anonymous classes that inherit one
+      # method stay distinct, because the place is stored on the class object
+      # (review of #453).
+      module StampQueueIndex
+        # Notes this test's place, runs it, and attaches the place to the result.
+        # A nested {run} keeps its own place.
+        #
+        # @return [Minitest::Result]
+        def run
+          InTestDatabaseError.stamp(self)
+          result = super
+          InTestDatabaseError.attach(result)
+          result
+        end
+      end
+
       # Prepended on `Minitest::Parallel::Executor`. Records each job as the
       # main thread enqueues it, which is Minitest's run order for a
       # `parallelize_me!` class. The workers then finish in another order.
@@ -131,13 +150,18 @@ module Mutineer
         # @param result [Minitest::Result] the result of one test.
         # @return [void]
         def record(reporter, result)
+          # Taken before the early returns. A pass still has a place, and a
+          # result this run did not attach (a test recording on its own
+          # reporter) has none.
+          index = stored_index(result)
           return if result.passed? || result.skipped?
           return unless outer_reporter?(reporter)
 
           outcome = database_error(result.failures.first) || false
-          # Zero is the first queued test. A missing index is a serial test,
-          # or a parallel test the queue hook did not see.
-          index = queue_index(result)
+          # Nil is a serial test, or a parallel test the queue hook did not
+          # see. Zero is the first queued test, so it must not be treated as
+          # missing. The database error is kept either way: a missing place
+          # does not turn it into an ordinary failure.
           if index.nil?
             self.first_failure = outcome if first_failure.nil?
           else
@@ -211,9 +235,11 @@ module Mutineer
         # Remembers where a parallel job sits in the outer run's queue. Called
         # on the main thread, before a worker can run the job. A job for
         # another reporter is a test running a parallel class itself; its
-        # order is not the run's, so it is ignored (review of #453). Never
-        # raises: a fault leaves that test without an index, and {record} then
-        # treats it as serial.
+        # order is not the run's, so it is ignored (review of #453). Each
+        # enqueue is its own place, keyed by the class object, so two
+        # anonymous classes that inherit one method do not share a place.
+        # Never raises: a fault leaves that test without an index, and {record}
+        # then keeps the outcome without a place.
         #
         # @param work [Object] the value passed to `Minitest::Parallel::Executor#<<`.
         # @return [void]
@@ -224,12 +250,39 @@ module Mutineer
           return unless klass.is_a?(Module) && method_name
           return if other_reporter?(reporter)
 
-          location = klass.instance_method(method_name).source_location
-          key = queue_key(klass.name, method_name, location)
           QUEUE_LOCK.synchronize do
-            positions = queue_positions
-            positions[key] ||= positions.size
+            index = @next_queue_index
+            @next_queue_index += 1
+            (queue_positions[[klass.object_id, method_name.to_s]] ||= []) << index
           end
+        rescue StandardError
+          nil
+        end
+
+        # Takes this test's place from the outer queue and pushes it on the
+        # thread's stack. A nested {StampQueueIndex#run} pushes its own place
+        # and pops it in {attach}, so the outer place stays put.
+        #
+        # @param test [Minitest::Runnable]
+        # @return [void]
+        def stamp(test)
+          index = QUEUE_LOCK.synchronize do
+            queue_positions[[test.class.object_id, test.name.to_s]]&.shift
+          end
+          (Thread.current[:mutineer_db_queue_stack] ||= []) << index
+        rescue StandardError
+          (Thread.current[:mutineer_db_queue_stack] ||= []) << nil
+        end
+
+        # Pops the place {stamp} pushed for this run and keeps it for `result`.
+        #
+        # @param result [Minitest::Result, nil]
+        # @return [void]
+        def attach(result)
+          index = Thread.current[:mutineer_db_queue_stack]&.pop
+          return unless result
+
+          QUEUE_LOCK.synchronize { result_indexes[result.object_id] = index }
         rescue StandardError
           nil
         end
@@ -255,14 +308,20 @@ module Mutineer
         def reset_failures!
           self.first_failure = nil
           self.parallel_failures = []
-          QUEUE_LOCK.synchronize { @queue_positions = {} }
+          QUEUE_LOCK.synchronize do
+            @queue_positions = {}
+            @next_queue_index = 0
+            @result_indexes = {}
+          end
         end
 
-        # Installs {NoteQueueOrder} when this Minitest has a parallel executor.
-        # An older shape without one keeps the record-order rule.
+        # Installs {NoteQueueOrder} when this Minitest has a parallel executor,
+        # and {StampQueueIndex} so a result can carry its place. An older shape
+        # without one keeps the record-order rule.
         #
         # @return [void]
         def hook_queue_order
+          OuterReporter.prepend_once(::Minitest::Test, StampQueueIndex)
           OuterReporter.prepend_once(::Minitest::Parallel::Executor, NoteQueueOrder)
         rescue NameError
           nil
@@ -279,34 +338,33 @@ module Mutineer
           !!(mine && reporter && !reporter.equal?(mine))
         end
 
-        # The queue index of `result`, or nil when it was not queued.
+        # The place {attach} stored for `result`, or nil when this run did not
+        # attach one. Removes it so a later record of another result cannot
+        # see it.
         #
-        # @param result [Minitest::Result]
+        # @param result [Object, nil]
         # @return [Integer, nil]
-        def queue_index(result)
-          location = result.source_location if result.respond_to?(:source_location)
-          key = queue_key(result.klass, result.name, location)
-          QUEUE_LOCK.synchronize { queue_positions[key] }
+        def stored_index(result)
+          return if result.nil?
+
+          QUEUE_LOCK.synchronize { result_indexes.delete(result.object_id) }
         rescue StandardError
           nil
         end
 
-        # The key {note_queued} and {queue_index} share. The class name is
-        # empty for an anonymous class; the source location tells those apart.
+        # Places still waiting for their test to start, keyed by class object
+        # id and method name. Each enqueue appends. {stamp} shifts the next one.
         #
-        # @param klass_name [String, nil]
-        # @param method_name [String, Symbol]
-        # @param location [Array, nil] `[file, line]` from `source_location`.
-        # @return [Array] class name, method name, and source location.
-        def queue_key(klass_name, method_name, location)
-          [klass_name.to_s, method_name.to_s, location]
-        end
-
-        # The positions recorded by {note_queued}, keyed by {queue_key}.
-        #
-        # @return [Hash{Array => Integer}]
+        # @return [Hash{Array => Array<Integer>}]
         def queue_positions
           @queue_positions ||= {}
+        end
+
+        # Places attached to results, keyed by the result's object id.
+        #
+        # @return [Hash{Integer => Integer, nil}]
+        def result_indexes
+          @result_indexes ||= {}
         end
 
         # The named classes this process has loaded.
