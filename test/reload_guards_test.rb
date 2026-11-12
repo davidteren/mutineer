@@ -497,6 +497,118 @@ class ReloadGuardsTest < Minitest::Test
     refute_includes merged.instance_variable_get(:@compiled).flatten, added
   end
 
+  # `:active?` is one object everywhere it is written. An independent
+  # `before_save :check, if: :active?` shares it with the parent and is not a
+  # skip merge. A reload that changes the parent to `if: :ready?` must leave
+  # both the exact copy and a longer list that starts with `:active?`. The
+  # `unless:` sibling is the same rule.
+  def test_an_independent_callback_keeps_a_shared_condition_symbol
+    old_config = { scope: [:kind] }
+    new_config = { scope: [:kind] }
+    old_parent = save_callback(:check, old_config, if_list: [:active?], unless_list: [])
+    new_parent = save_callback(:check, new_config, if_list: [:ready?], unless_list: [])
+    exact = save_callback(:check, old_config, if_list: [:active?], unless_list: [])
+    longer = save_callback(:check, old_config, if_list: [:active?, :mine?], unless_list: [])
+    parent = callback_class
+    exact_child = callback_class(parent)
+    longer_child = callback_class(parent)
+    parent.__callbacks = { save: Chain.new(new_parent) }
+    exact_child.__callbacks = { save: Chain.new(new_parent) }
+    longer_child.__callbacks = { save: Chain.new(new_parent) }
+    before = {
+      parent => { save: [old_parent] },
+      exact_child => { save: [exact] },
+      longer_child => { save: [longer] }
+    }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove(before, [__FILE__])
+
+    assert_same_list [exact], exact_child.__callbacks[:save]
+    assert_same_list [longer], longer_child.__callbacks[:save]
+    refute_includes exact.instance_variable_get(:@compiled).flatten, :ready?
+    refute_includes longer.instance_variable_get(:@compiled).flatten, :ready?
+    assert_same :active?, longer.instance_variable_get(:@if)[0]
+    assert_same :mine?, longer.instance_variable_get(:@if)[1]
+
+    old_unless = save_callback(:weigh, old_config, if_list: [], unless_list: [:draft?])
+    new_unless = save_callback(:weigh, new_config, if_list: [], unless_list: [:sent?])
+    unless_copy = save_callback(:weigh, old_config, if_list: [], unless_list: [:draft?])
+    unless_parent = callback_class
+    unless_child = callback_class(unless_parent)
+    unless_parent.__callbacks = { save: Chain.new(new_unless) }
+    unless_child.__callbacks = { save: Chain.new(new_unless) }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove(
+      { unless_parent => { save: [old_unless] }, unless_child => { save: [unless_copy] } }, [__FILE__]
+    )
+
+    assert_same_list [unless_copy], unless_child.__callbacks[:save]
+    refute_includes unless_copy.instance_variable_get(:@compiled).flatten, :sent?
+  end
+
+  # A symbol-only skip has the same shape as an independent callback, so the
+  # old copy stays. No issue is filed for carrying that symbol yet. A Proc in
+  # the parent list is what shows the copy was merged; that case is
+  # `test_a_restored_skip_carries_the_reloaded_parent_conditions`.
+  def test_a_symbol_only_skip_keeps_the_old_parent_symbol
+    old_config = { scope: [:kind] }
+    new_config = { scope: [:kind] }
+    old_parent = save_callback(:check, old_config, if_list: [:active?], unless_list: [])
+    new_parent = save_callback(:check, new_config, if_list: [:ready?], unless_list: [])
+    merged = save_callback(:check, old_config, if_list: [:active?], unless_list: [:express?])
+    parent = callback_class
+    narrowed = callback_class(parent)
+    parent.__callbacks = { save: Chain.new(new_parent) }
+    narrowed.__callbacks = { save: Chain.new(new_parent) }
+    before = { parent => { save: [old_parent] }, narrowed => { save: [merged] } }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove(before, [__FILE__])
+
+    assert_same_list [merged], narrowed.__callbacks[:save]
+    refute_includes merged.instance_variable_get(:@compiled).flatten, :ready?
+    assert_same :express?, merged.instance_variable_get(:@unless)[0]
+  end
+
+  # Two ancestors reload a callback of the same name. The chain lists the
+  # unrelated one first. The copy was merged from the other, so the rebuild
+  # uses that one's new Proc, not the old copy and not the first stray.
+  def test_a_restored_skip_uses_the_ancestor_it_was_merged_from
+    grand_old = -> { false }
+    grand_new = -> { true }
+    parent_old = -> { false }
+    parent_new = -> { true }
+    bulk = :bulk?
+    old_config = { scope: [:kind] }
+    new_config = { scope: [:kind] }
+    grand_before = save_callback(:check, old_config, if_list: [grand_old], unless_list: [])
+    grand_after = save_callback(:check, new_config, if_list: [grand_new], unless_list: [])
+    parent_before = save_callback(:check, old_config, if_list: [parent_old], unless_list: [])
+    parent_after = save_callback(:check, new_config, if_list: [parent_new], unless_list: [])
+    merged = save_callback(:check, old_config, if_list: [parent_old, bulk], unless_list: [])
+    grand = callback_class
+    parent = callback_class(grand)
+    child = callback_class(parent)
+    grand.__callbacks = { save: Chain.new(grand_after) }
+    parent.__callbacks = { save: Chain.new(grand_after, parent_after) }
+    child.__callbacks = { save: Chain.new(grand_after, parent_after) }
+    before = {
+      grand => { save: [grand_before] },
+      parent => { save: [grand_before, parent_before] },
+      child => { save: [merged] }
+    }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove(before, [__FILE__])
+
+    restored = child.__callbacks[:save].to_a
+    assert_equal 1, restored.size
+    compiled_if, = restored.fetch(0).instance_variable_get(:@compiled)
+    assert_same parent_new, compiled_if[0]
+    assert_same bulk, compiled_if[1]
+    refute_includes compiled_if, parent_old
+    refute_includes compiled_if, grand_new
+    refute_same merged, restored.fetch(0)
+  end
+
   # The new `:save` callback is the same object as a new `:validate` callback,
   # and the same object as a new callback on a class that is not a subclass.
   # Neither chain loses it. A parent reload still drops it from a subclass

@@ -149,8 +149,13 @@ All notable changes to this project are documented here. The format is based on
   them. A subclass callback that is not that copy stays as it was. So
   does a copy left when the parent callback had no conditions (#414):
   there is no parent condition object to carry, and a subclass callback
-  of the same name must not be rewritten. Redefine does not re-run the
-  class body, so it does not take this path. Reload and the daemon do.
+  of the same name must not be rewritten. A parent condition that is only
+  a symbol, or another interned object, is also left on the old copy. An
+  independent subclass callback can name that same symbol, so the symbol
+  is not evidence of a `skip_callback` merge. No issue is filed for that
+  remainder yet. A Proc copied from the parent is evidence, and that Proc
+  is carried. Redefine does not re-run the class body, so it does not
+  take this path. Reload and the daemon do.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and

@@ -301,8 +301,12 @@ module Mutineer
           next new_entry if new_entry && present.include?(new_entry)
           next entry if present.include?(entry)
 
-          other = stray.find { |candidate| displaced?(entry, candidate) }
-          restored(entry, other, swap) if other
+          other = merge_stray(entry, stray, swap)
+          if other
+            restored(entry, other, swap)
+          elsif stray.any? { |candidate| displaced?(entry, candidate) }
+            entry
+          end
         end
         order + without(now, order).reject { |entry| swap.key?(entry) || paired.include?(entry) }
       end
@@ -318,8 +322,11 @@ module Mutineer
       # `if`. A copy that does not hold those objects is the subclass's own
       # callback and stays. A parent that had no conditions has no objects to
       # match, so its copy stays too (#414): a subclass callback of the same
-      # name is not rewritten. The old copy also stays when `stray` still has
-      # those same condition objects.
+      # name is not rewritten. A list of only symbols, or other interned
+      # objects, is not evidence either. An independent callback can name the
+      # same symbol. No issue is filed for that remainder yet. A copied Proc
+      # is evidence, and that Proc is carried. The old copy also stays when
+      # `stray` still has those same condition objects.
       #
       # @param entry [Object] the subclass callback Rails dropped.
       # @param stray [Object] the ancestor callback appended in its place.
@@ -353,18 +360,43 @@ module Mutineer
         found
       end
 
+      # The reloaded callback `entry` was merged from, when several ancestors
+      # appended a callback of the same name. The first of those is not always
+      # the one. {displaced?} only compares the method name and the kind.
+      #
+      # @param entry [Object] the subclass callback Rails dropped.
+      # @param stray [Array] new callbacks this chain did not have.
+      # @param swap [Hash{Object => Object}] each old entry to its new entry.
+      # @return [Object, nil] the stray to rebuild from, or nil.
+      def self.merge_stray(entry, stray, swap)
+        stray.find { |candidate| displaced?(entry, candidate) && merge_source(entry, candidate, swap) }
+      end
+
       # @param entry [Object] a callback left by `skip_callback`.
       # @param parent [Object] the ancestor callback it was merged from.
       # @return [Boolean] true when `entry`'s conditions still start with
-      #   `parent`'s condition objects. `skip_callback` copies those objects.
-      #   A parent with no conditions matches every copy, so that is not
-      #   evidence and the answer is false.
+      #   `parent`'s condition objects, and one of those objects is not
+      #   interned. `skip_callback` copies those objects. A parent with no
+      #   conditions matches every copy, so that is not evidence. A symbol is
+      #   the same object wherever it is written, so it is not evidence
+      #   either. No issue is filed for a symbol-only parent condition yet.
       def self.merged_from?(entry, parent)
         entry_if, entry_unless = conditions(entry)
         parent_if, parent_unless = conditions(parent)
         return false if parent_if.empty? && parent_unless.empty?
+        return false unless prefix?(entry_if, parent_if) && prefix?(entry_unless, parent_unless)
 
-        prefix?(entry_if, parent_if) && prefix?(entry_unless, parent_unless)
+        (parent_if + parent_unless).any? { |item| !interned_condition?(item) }
+      end
+
+      # @param object [Object] one `if:` or `unless:` condition.
+      # @return [Boolean] true for nil, true, false, a Symbol, or an Integer.
+      #   Those are the same object wherever they are written. A Proc is not.
+      def self.interned_condition?(object)
+        object.nil? || same_object?(object, true) || same_object?(object, false) ||
+          object.is_a?(Symbol) || object.is_a?(Integer)
+      rescue StandardError
+        false
       end
 
       # @param left [Object] a callback.
