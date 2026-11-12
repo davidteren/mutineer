@@ -208,17 +208,21 @@ module Mutineer
           STDERR.flush
         end
 
-        # Remembers where a parallel job sits in the queue. Called on the main
-        # thread, before a worker can run the job. Never raises: a fault leaves
-        # that test without an index, and {record} then treats it as serial.
+        # Remembers where a parallel job sits in the outer run's queue. Called
+        # on the main thread, before a worker can run the job. A job for
+        # another reporter is a test running a parallel class itself; its
+        # order is not the run's, so it is ignored (review of #453). Never
+        # raises: a fault leaves that test without an index, and {record} then
+        # treats it as serial.
         #
         # @param work [Object] the value passed to `Minitest::Parallel::Executor#<<`.
         # @return [void]
         def note_queued(work)
           return unless work.is_a?(Array)
 
-          klass, method_name, = work
+          klass, method_name, reporter = work
           return unless klass.is_a?(Module) && method_name
+          return if other_reporter?(reporter)
 
           location = klass.instance_method(method_name).source_location
           key = queue_key(klass.name, method_name, location)
@@ -262,6 +266,17 @@ module Mutineer
           OuterReporter.prepend_once(::Minitest::Parallel::Executor, NoteQueueOrder)
         rescue NameError
           nil
+        end
+
+        # True when `reporter` belongs to a nested run, not the outer one.
+        # False when the outer reporter is not known yet, so the jobs that
+        # build the run's queue are still recorded.
+        #
+        # @param reporter [Minitest::CompositeReporter, nil]
+        # @return [Boolean]
+        def other_reporter?(reporter)
+          mine = armed_reporter
+          !!(mine && reporter && !reporter.equal?(mine))
         end
 
         # The queue index of `result`, or nil when it was not queued.

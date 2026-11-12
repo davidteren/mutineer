@@ -29,6 +29,7 @@ class TestRunnersMinitestTest < Minitest::Test
   NESTED   = File.join(FIX, "stop_at_first_failure_nested_run_test.rb")
   DB_ERROR = File.join(FIX, "in_test_db_error_test.rb")
   DB_ERROR_PARALLEL = File.join(FIX, "in_test_db_error_parallel_test.rb")
+  DB_ERROR_NESTED = File.join(FIX, "in_test_db_error_nested_parallel_test.rb")
   DB_ERROR_LINE = "[mutineer-child] a test failed with a database error, so the run has no verdict: "
 
   # Wraps each assertion in capture_subprocess_io, which reopens $stdout.
@@ -709,5 +710,21 @@ class TestRunnersMinitestTest < Minitest::Test
     result = db_error_run(database, file: DB_ERROR_PARALLEL)
     assert_db_error "Deadlocked", result
     refute_includes result.last, "ConnectionNotEstablished"
+  end
+
+  # A serial test queues the parallel class on its own reporter as test_b then
+  # test_a. The outer run queues test_a then test_b. The assertion in test_a
+  # decides, and the connection error that the nested run queued first does not.
+  def test_nested_parallel_queue_does_not_decide_the_outer_run
+    result = db_error_run({}, file: DB_ERROR_NESTED)
+    assert_equal 1, result.first, result.last
+    assert_empty result.last
+
+    matrix = db_error_verdict({}, matrix: true, file: DB_ERROR_NESTED)
+    assert_equal :killed, matrix.status
+    assert_equal ["InTestDatabaseErrorNestedOrder#test_a_first"], names(matrix.kills.killed_by)
+    unavailable = matrix.kills.ran.find { |test| test[1] == "InTestDatabaseErrorNestedOrder#test_b_second" }
+    refute_nil unavailable
+    assert_equal 0, Mutineer::KillMatrix.new([matrix]).kill_count(unavailable)
   end
 end
