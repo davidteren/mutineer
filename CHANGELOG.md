@@ -139,7 +139,7 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- **A mutant inside a one-line block on a load line is `ran_at_load` (#435).**
+- **A mutant in `define_method` or `define_singleton_method` on a load line is `ran_at_load` (#435).**
   A class method such as `greets` runs when the including class loads.
   Rails turns eager load on when `CI` is set, so that call happens before
   the mutant. The call's own mutants were `ran_at_load`. A mutant of a
@@ -155,9 +155,9 @@ All notable changes to this project are documented here. The format is based on
   a `define_method` or `define_singleton_method` call whose line ran at
   load, including the block that call stores. Another block on that line,
   such as `each` with an empty array, stays scored: the line can count
-  without the block, and a test can run the mutated block (#286). An
+  without the block, and a test can run the mutated block. An
   empty `each` that shares its line with `define_method` can still hide
-  that call. That needs the call to have been made with no elements while
+  that call (#286). That needs the call to have been made with no elements while
   the class loaded, then again with elements by a test that does not check
   the generated method. The reported call is `greets :alice`. Re-running
   the caller's class body, so these mutants can be killed, stays #389. A
