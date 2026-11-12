@@ -58,6 +58,71 @@ class OutputFilterTest < Minitest::Test
     assert_equal "no newline", err
   end
 
+  def test_a_fork_that_sets_the_url_hides_the_bare_password
+    out, err = captured do
+      Mutineer::OutputFilter.install(streams: [:stderr])
+      pid = fork do
+        ENV["DATABASE_URL"] = "postgres://u:s3cret@h/db"
+        STDERR.puts "child s3cret end"
+        exit!(0)
+      end
+      Process.waitpid(pid)
+    end
+
+    assert_includes err, "child [REDACTED] end"
+    refute_includes err, "s3cret"
+    assert_empty out
+  end
+
+  def test_a_password_with_a_newline_is_not_split
+    ENV["DATABASE_URL"] = "postgres://u:foo\nbar@h/db"
+    _out, err = captured do
+      Mutineer::OutputFilter.install(streams: [:stderr])
+      STDERR.puts "leak foo\nbar end"
+    end
+
+    assert_includes err, "leak [REDACTED] end"
+    refute_includes err, "foo"
+    refute_includes err, "bar"
+  end
+
+  # The report is larger than a pipe buffer and the reader waits longer than
+  # the old shutdown kill. Every byte still arrives.
+  def test_uninstall_writes_a_report_a_slow_reader_has_not_taken
+    real = STDOUT.dup
+    read, write = IO.pipe
+    write.sync = true
+    STDOUT.reopen(write)
+    payload = ("A" * 200_000) + "\n"
+    got = +""
+    reader = Thread.new do
+      sleep 0.3
+      loop do
+        chunk = read.read_nonblock(65_536, exception: false)
+        break if chunk.nil?
+        if chunk == :wait_readable
+          break unless read.wait_readable(1)
+
+          next
+        end
+        got << chunk
+      end
+    end
+    Mutineer::OutputFilter.install(streams: [:stdout])
+    STDOUT.write(payload)
+    Mutineer::OutputFilter.uninstall
+    write.close unless write.closed?
+    reader.join(2)
+
+    assert_equal payload, got
+  ensure
+    STDOUT.reopen(real) if real && !real.closed?
+    real&.close
+    write&.close unless write&.closed?
+    read&.close unless read&.closed?
+    Mutineer::OutputFilter.uninstall
+  end
+
   def test_a_replaced_stderr_receives_the_redacted_line
     ENV["DATABASE_URL"] = "postgres://u:s3cret@h/db"
     Mutineer::OutputFilter.install(streams: [:stderr])

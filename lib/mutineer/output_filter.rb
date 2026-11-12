@@ -4,18 +4,48 @@ require_relative "redaction"
 
 module Mutineer
   # Copies the process's stdout and stderr through {Redaction.text}. A fork
-  # child and a subprocess inherit the pipe, so a line the app writes
-  # straight to the inherited descriptor is redacted (#341). The copier runs
-  # in this process. Children do not start their own: they only write.
+  # child and a subprocess inherit the pipe. The child starts its own copier
+  # so a DATABASE_URL it sets is hidden (#341). A program it execs still
+  # writes to the pipe, and this process redacts with its own environment.
   #
-  # Stdlib only, so the app-side daemon can load this file. A line with no
+  # Stdlib only, so the app-side daemon can load this file. A chunk with no
   # password is copied unchanged, including its bytes.
   module OutputFilter
-    # Seconds the copier waits for a last line after {uninstall} closes this
+    # Seconds to wait for a last buffered chunk after {uninstall} closes this
     # process's write end. A grandchild that still holds the pipe does not
-    # extend the wait: the copier stops after this quiet poll. Same rule as
-    # the daemon stderr drain (#341).
+    # extend the wait. Bytes already read are written before the copier
+    # returns; a slow reader blocks that write, and the bytes are not dropped.
     QUIET_POLL = 0.05
+
+    # Runs {after_fork!} in the child. Kernel#fork and Process.fork are
+    # separate, so both are wrapped.
+    module ForkHook
+      # @return [Integer, nil] the child pid in the parent; nil in the child
+      #   when no block is given.
+      def fork(*)
+        if block_given?
+          super do
+            OutputFilter.after_fork!
+            yield
+          end
+        else
+          pid = super
+          OutputFilter.after_fork! if pid.nil?
+          pid
+        end
+      end
+    end
+
+    # Flushes the copier before exit!. exit! skips at_exit, and a forked
+    # test exits that way.
+    module ExitHook
+      # @param status [Boolean, Integer]
+      # @return [void]
+      def exit!(status = true)
+        OutputFilter.uninstall
+        super
+      end
+    end
 
     module_function
 
@@ -37,10 +67,11 @@ module Mutineer
     def install(streams: %i[stdout stderr])
       return false if installed?
 
+      names = Array(streams)
       saved = {}
       stdio = {}
       readers = {}
-      Array(streams).each do |name|
+      names.each do |name|
         io = stream_io(name)
         copy = io.dup
         copy.sync = true
@@ -55,10 +86,14 @@ module Mutineer
         stdio[name] = io
         readers[read] = name
       end
+      @streams = names
       @saved = saved
       @stdio = stdio
       @readers = readers
+      @stopping = false
       @installed = true
+      hook_fork
+      hook_exit!
       @thread = Thread.new { drain } # rubocop:disable ThreadSafety/NewThread
       @thread.report_on_exception = false
       hook_exit
@@ -68,14 +103,16 @@ module Mutineer
       false
     end
 
-    # Put the descriptors back and flush a trailing line that had no newline.
-    # Does nothing when {install} is not on. Safe to call twice.
+    # Put the descriptors back and write every byte already queued. Does
+    # nothing when {install} is not on. Safe to call twice. Does not kill the
+    # copier: a slow stdout must still receive the report. A grandchild that
+    # holds the pipe does not add a wait past {QUIET_POLL}, because the
+    # copier stops reading once the pipe is empty.
     #
     # @return [void]
     def uninstall
       return unless installed?
 
-      @installed = false
       @stopping = true
       saved = @saved || {}
       stdio = @stdio || {}
@@ -83,18 +120,39 @@ module Mutineer
         copy = saved[name]
         io.reopen(copy) if copy && !copy.closed? && !io.closed?
       end
-      @thread&.join(QUIET_POLL * 4)
-      if @thread&.alive?
-        @thread.kill
-        @thread.join(QUIET_POLL * 4)
-      end
+      @thread&.join
       saved.each_value { |io| io.close unless io.closed? }
       (@readers || {}).each_key { |io| io.close unless io.closed? }
+      @installed = false
       @thread = nil
       @stopping = false
       @saved = {}
       @stdio = {}
       @readers = {}
+    end
+
+    # Start a copier in a fork child. The parent's thread was not copied.
+    # This process redacts with its own environment, then writes to the
+    # parent's pipe. The parent's read ends are closed so this process does
+    # not steal the parent's bytes.
+    #
+    # @return [void]
+    def after_fork!
+      return unless installed?
+
+      names = @streams
+      reads = (@readers || {}).keys.dup
+      @installed = false
+      @thread = nil
+      @stopping = false
+      @hooked = false
+      @readers = {}
+      @saved = {}
+      @stdio = {}
+      reads.each { |io| io.close unless io.closed? }
+      install(streams: names || [:stderr])
+    rescue StandardError
+      nil
     end
 
     # The real stream for `name`.
@@ -105,8 +163,8 @@ module Mutineer
       name == :stdout ? STDOUT : STDERR
     end
 
-    # Register the process-exit flush once. `exit!` skips it; callers that
-    # use `exit!` call {uninstall} themselves.
+    # Register the process-exit flush once. `exit!` skips at_exit; {ExitHook}
+    # covers that.
     #
     # @return [void]
     def hook_exit
@@ -116,71 +174,112 @@ module Mutineer
       at_exit { uninstall }
     end
 
-    # Read both pipes until they close, or until {uninstall} asks the copier
-    # to stop. One line is one redaction, so a password split across writes
-    # is still hidden. A line with no newline is written when the pipe
-    # closes or when the copier stops. A grandchild that keeps a write end
-    # open does not hold the stop past {QUIET_POLL}.
+    # Wrap fork and exit! once per process.
+    #
+    # @return [void]
+    def hook_fork
+      return if @fork_hooked
+
+      @fork_hooked = true
+      Kernel.prepend(ForkHook)
+      Process.singleton_class.prepend(ForkHook)
+    end
+
+    # @return [void]
+    def hook_exit!
+      return if @exit_hooked
+
+      @exit_hooked = true
+      Kernel.prepend(ExitHook)
+    end
+
+    # Read both pipes until they close, or until {uninstall} has closed this
+    # process's write ends and the pipes are empty. A password that contains
+    # a newline stays in the buffer until the whole form has arrived.
     #
     # @return [void]
     def drain
       pending = Hash.new { |buffer, io| buffer[io] = +"".b }
       open = (@readers || {}).keys
       until open.empty?
-        # A short wait, not a blocking select, so uninstall can stop the
-        # copier while a grandchild still holds a write end.
-        ready, = IO.select(open, nil, nil, QUIET_POLL)
-        if ready.nil?
-          break if @stopping
-
-          next
+        if @stopping
+          drain_ready(open, pending)
+          break
         end
+        ready, = IO.select(open, nil, nil, QUIET_POLL)
+        next unless ready
 
         ready.each do |io|
           chunk = io.read_nonblock(4096, exception: false)
           if chunk.nil?
-            emit(@readers[io], pending[io]) unless pending[io].empty?
-            pending[io].clear
+            flush_pending(io, pending, flush: true)
             open.delete(io)
             io.close unless io.closed?
             next
           end
           next if chunk == :wait_readable
 
-          buffer = pending[io]
-          buffer << chunk.b
-          while (cut = buffer.index("\n".b))
-            emit(@readers[io], buffer.slice!(0..cut))
-          end
+          pending[io] << chunk.b
+          flush_pending(io, pending, flush: false)
         end
       end
-      pending.each { |io, buffer| emit(@readers[io], buffer) unless buffer.empty? }
+      open.each { |io| flush_pending(io, pending, flush: true) }
     rescue StandardError
       nil
     end
 
-    # Write `line` to the original stream, redacted. The original bytes are
+    # Read what is already buffered, plus one quiet poll, then stop. Used
+    # after {uninstall} closes this process's write ends.
+    #
+    # @param open [Array<IO>]
+    # @param pending [Hash{IO => String}]
+    # @return [void]
+    def drain_ready(open, pending)
+      open.each do |io|
+        loop do
+          chunk = io.read_nonblock(4096, exception: false)
+          if chunk == :wait_readable
+            break unless io.wait_readable(QUIET_POLL)
+
+            next
+          end
+          break if chunk.nil?
+
+          pending[io] << chunk.b
+        end
+        flush_pending(io, pending, flush: true)
+      end
+    end
+
+    # Redact and write the part of `pending[io]` that is safe to emit.
+    #
+    # @param io [IO]
+    # @param pending [Hash{IO => String}]
+    # @param flush [Boolean]
+    # @return [void]
+    def flush_pending(io, pending, flush:)
+      ready, pending[io] = Redaction.take_redactable(pending[io], flush: flush)
+      emit(@readers[io], ready)
+    end
+
+    # Write `chunk` to the original stream, redacted. The original bytes are
     # kept when redaction changes nothing, so a report with no password stays
-    # byte for byte. An error writes {Redaction::FAILED}, never the raw line.
+    # byte for byte. An error writes {Redaction::FAILED}, never the raw chunk.
     #
     # @param stream [Symbol, nil]
-    # @param line [String] raw bytes, with or without the trailing newline.
+    # @param chunk [String] raw bytes. May contain newlines.
     # @return [void]
-    def emit(stream, line)
-      return if stream.nil?
+    def emit(stream, chunk)
+      return if stream.nil? || chunk.nil? || chunk.empty?
 
-      newline = line.end_with?("\n")
-      raw = newline ? line.byteslice(0...-1) : line
-      text = raw.dup.force_encoding(Encoding::UTF_8)
+      text = chunk.dup.force_encoding(Encoding::UTF_8)
       clean = text.dup
       clean.scrub! unless clean.valid_encoding?
       redacted = Redaction.text(clean)
-      payload = redacted == clean && clean == text ? raw : redacted.b
+      payload = redacted == clean && clean == text ? chunk : redacted.b
       write_out(stream, payload)
-      write_out(stream, "\n".b) if newline
     rescue StandardError
       write_out(stream, Redaction::FAILED.b)
-      write_out(stream, "\n".b) if newline
     end
 
     # Write to `$stdout` or `$stderr` when the caller replaced that variable

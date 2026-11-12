@@ -180,29 +180,110 @@ module Mutineer
 
     # Username, host, and database name of `url`, or nils when that part is
     # missing. The host drops a trailing `:port`. The database name is the
-    # path before `?` or `#`. Read by position, like {database_url_parts}, so
-    # a malformed URL still yields the parts a message would quote.
+    # path before `?` or `#`. An `@` in the query or the path is not the
+    # userinfo separator: the host is read from the authority, the substring
+    # before the first `/`, `?`, or `#`.
     #
     # @param url [String]
     # @return [Array(String, String, String)] username, host, and database name; a missing part is nil.
     def url_labels(url)
       start = url.index("://")
-      at = url.rindex("@")
-      return [nil, nil, nil] unless start && at && at > start
+      return [nil, nil, nil] unless start
 
-      colon = url.index(":", start + 3)
-      user = colon && colon < at ? url[(start + 3)...colon] : url[(start + 3)...at]
-      rest = url[(at + 1)..]
-      slash = rest.index(%r{[/?#]})
-      hostport = slash ? rest[0...slash] : rest
+      body = url[(start + 3)..]
+      cut = body.index(%r{[/?#]})
+      authority = cut ? body[0...cut] : body
+      path = cut && body[cut] == "/" ? body[(cut + 1)..].split(%r{[?#]}, 2).first : nil
+      database = path unless path.nil? || path.empty?
+      at = authority.rindex("@")
+      if at
+        userinfo = authority[0...at]
+        hostport = authority[(at + 1)..]
+        colon = userinfo.index(":")
+        user = colon ? userinfo[0...colon] : userinfo
+      else
+        user = nil
+        hostport = authority
+      end
       host = hostport.sub(/:\d+\z/, "")
       host = nil if host.empty?
-      database = nil
-      if slash && rest[slash] == "/"
-        name = rest[(slash + 1)..].split(%r{[?#]}, 2).first
-        database = name unless name.nil? || name.empty?
-      end
       [user, host, database]
+    end
+
+    # Bytes at the end of `buffer` that must stay buffered. A password form
+    # that contains a newline can span reads. Zero when no form contains a
+    # newline, which is the usual URL. The held bytes are a prefix of such a
+    # form, not a finished copy.
+    #
+    # @param buffer [String]
+    # @return [Integer]
+    def newline_hold(buffer)
+      forms = newline_forms
+      return 0 if forms.empty?
+
+      hold = 0
+      forms.each do |form|
+        limit = form.b.bytesize - 1
+        next if limit < 1
+
+        size = [limit, buffer.bytesize].min
+        size.downto(1) do |n|
+          next unless buffer.byteslice(-n, n) == form.b.byteslice(0, n)
+
+          hold = n if n > hold
+          break
+        end
+      end
+      hold
+    end
+
+    # The prefix of `buffer` that can be redacted now, and the rest to keep.
+    # Unless `flush`, the prefix ends on a newline and does not end inside a
+    # password that itself contains a newline.
+    #
+    # @param buffer [String]
+    # @param flush [Boolean] emit everything, including a partial tail.
+    # @return [Array(String, String)]
+    def take_redactable(buffer, flush:)
+      buffer = buffer.b
+      hold = flush ? 0 : newline_hold(buffer)
+      usable_end = buffer.bytesize - hold
+      usable = buffer.byteslice(0, usable_end) || +"".b
+      if flush
+        [usable, +"".b]
+      else
+        cut = usable.rindex("\n".b)
+        return [+"".b, buffer] unless cut
+
+        ready = usable.byteslice(0, cut + 1)
+        rest = +"".b
+        rest << usable.byteslice(cut + 1, usable.bytesize - cut - 1) if cut + 1 < usable.bytesize
+        rest << buffer.byteslice(usable_end, hold) if hold.positive?
+        [ready, rest]
+      end
+    end
+
+    # Password forms that contain a newline. Cached for the current
+    # DATABASE_URL and {extra_urls}. Empty for an ordinary URL.
+    #
+    # @return [Array<String>]
+    def newline_forms
+      marker = ENV["DATABASE_URL"].to_s
+      urls = extra_urls
+      return @newline_forms if @newline_marker == marker && @newline_urls.equal?(urls)
+
+      @newline_marker = marker.dup.freeze
+      @newline_urls = urls
+      forms = []
+      source_urls(ENV, []).each do |url|
+        credential_parts(url).each do |_head, raw|
+          password_forms(raw).each { |form| forms << form if form.include?("\n") }
+        end
+        query_passwords(url).each do |raw|
+          password_forms(raw).each { |form| forms << form if form.include?("\n") }
+        end
+      end
+      @newline_forms = forms.uniq.freeze
     end
 
     # True when `raw` must not be blanked outside a URL or a `password=`

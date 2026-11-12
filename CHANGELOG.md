@@ -143,7 +143,10 @@ All notable changes to this project are documented here. The format is based on
   A boot file, a forked test, and a program that test starts inherit a pipe.
   Mutineer copies each line and hides the `DATABASE_URL` password before the
   line reaches the terminal. `abort` in a boot file is included. A line with
-  no password is unchanged. The daemon does this in its own process, so a
+  no password is unchanged. A fork that sets `DATABASE_URL` itself is
+  redacted in that process. A password that contains a newline is kept
+  together, so neither half is printed. Shutdown writes every byte already
+  queued, including a report a slow reader has not taken yet. The daemon does this in its own process, so a
   password the boot file assigns is hidden even when the tool's environment
   does not have it. `--test-command` output is redacted with the tool's
   `DATABASE_URL` and with `DATABASE_URL` from dotenv files in the project

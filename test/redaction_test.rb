@@ -270,6 +270,38 @@ class RedactionTest < Minitest::Test
                  redact("word password and #{query}", query)
   end
 
+  # An @ in the query or the path is not the userinfo separator, so the real
+  # database name is not treated as an unknown password and blanked.
+  def test_a_query_or_path_at_sign_does_not_hide_the_database_name
+    {
+      "postgres://u:mydb@host/mydb?application_name=ci@corp" => ['database "mydb" is down', "mydb"],
+      "postgres://u:my@db@host/my@db" => ["name my@db", "my@db"],
+      "postgres://host/mydb?password=mydb" => ["database mydb missing", "mydb"]
+    }.each do |url, (message, word)|
+      assert_equal message, redact(message, url), url
+      redacted = redact(url, url)
+      assert_includes redacted, "[REDACTED]", url
+      refute_includes redacted.split("@", 2).first, ":#{word}", url
+    end
+  end
+
+  def test_a_password_with_a_newline_is_one_secret
+    url = "postgres://u:foo\nbar@h/db"
+    previous = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = url
+    buffer = +"leak foo\nbar end\n"
+    ready, rest = Mutineer::Redaction.take_redactable(buffer, flush: false)
+
+    assert_equal "leak [REDACTED] end\n", Mutineer::Redaction.text(ready, env: { "DATABASE_URL" => url })
+    assert_empty rest
+    partial = +"leak foo\n"
+    _ready, held = Mutineer::Redaction.take_redactable(partial, flush: false)
+    assert_includes held, "foo\n"
+  ensure
+    previous ? ENV["DATABASE_URL"] = previous : ENV.delete("DATABASE_URL")
+    Mutineer::Redaction.instance_variable_set(:@newline_forms, nil)
+  end
+
   # A long form with a non-word character has no reliable token edge, so it
   # is still hidden inside other words.
   def test_hides_a_long_punctuation_password_inside_a_word
