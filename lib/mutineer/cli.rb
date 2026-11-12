@@ -126,6 +126,10 @@ module Mutineer
     # @param argv [Array<String>] raw command-line arguments.
     # @return [void]
     def self.start(argv)
+      # Reports and warnings name paths. Under an ASCII locale the stdio
+      # encoding is US-ASCII, so a non-ASCII path cannot be written (#346).
+      [$stdout, $stderr].each { |io| io.set_encoding(Encoding::UTF_8) }
+
       if argv.first == "triage"
         exit Triage.run(argv[1..])
       end

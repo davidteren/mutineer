@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "fs_path"
+
 module Mutineer
   # Realpath-based path normalization against a project root. Shared by the
   # coverage cache (map keys) and mutant ids (the path hashed into each id), so
@@ -30,6 +32,8 @@ module Mutineer
     # @param root [String] project root.
     # @return [String] absolute path.
     def absolute(path, root)
+      path = FsPath.read(path)
+      root = FsPath.read(root)
       # Join, don't expand: File.expand_path collapses `..` textually, before any
       # symlink is followed, so `link/../x.rb` would name the wrong file. The file
       # system resolves `..` physically in File.realpath.
@@ -39,7 +43,7 @@ module Mutineer
             elsif path.start_with?("~") then File.expand_path(path)
             else File.join(File.expand_path(root), path)
             end
-      File.exist?(raw) ? File.realpath(raw) : File.expand_path(raw)
+      FsPath.read(File.exist?(raw) ? File.realpath(raw) : File.expand_path(raw))
     end
 
     # Canonical project root (`/var` vs `/private/var`). Any file system error
@@ -49,9 +53,9 @@ module Mutineer
     # @param root [String] project root.
     # @return [String] realpath of the root when it exists, else its expanded path.
     def root_real(root)
-      File.realpath(File.expand_path(root))
+      FsPath.read(File.realpath(File.expand_path(root)))
     rescue SystemCallError
-      File.expand_path(root)
+      FsPath.read(File.expand_path(root))
     end
   end
 end

@@ -43,19 +43,20 @@ module Mutineer
     # @param project_root [String] repository root for relative expansion.
     # @return [Array<String>] flattened, deduped source file list.
     def expand_sources(args, project_root:)
-      root = File.expand_path(project_root)
+      root = FsPath.read(File.expand_path(project_root))
       # The root as typed and as its real path (macOS `/var` vs `/private/var`),
       # resolved once for every file below.
       roots = [root, ProjectPath.root_real(root)].uniq
       Array(args).flat_map do |arg|
+        arg = FsPath.read(arg)
         abs = File.expand_path(arg, root)
         if File.directory?(abs)
           # Escape metacharacters in the directory name so `component[1]` stays
           # literal (same rule as {directory_test_files}).
           listed = if (rel = root_relative(abs, roots))
-                     Dir.glob(File.join(glob_literal(rel), "**", "*.rb"), base: root)
+                     fs_glob(File.join(glob_literal(rel), "**", "*.rb"), base: root)
                    else
-                     Dir.glob(File.join(glob_literal(abs), "**", "*.rb"))
+                     fs_glob(File.join(glob_literal(abs), "**", "*.rb"))
                    end
           listed.sort.map do |f|
             full = File.absolute_path?(f) ? f : File.expand_path(f, root)
@@ -65,7 +66,7 @@ module Mutineer
           # `..` resolves as text, as FileSwap and the daemon already read it.
           [(existing_relative(abs, roots) if File.exist?(abs)) || arg]
         end
-      end.uniq
+      end.map { |path| FsPath.read(path) }.uniq
     end
 
     # Characters that make a --test value a glob when no path has that name.
@@ -165,7 +166,23 @@ module Mutineer
     # @param path [String] directory path, relative or absolute.
     # @return [String] the same path with pattern characters escaped.
     def glob_literal(path)
-      path.gsub(GLOB_META) { "\\#{Regexp.last_match(1)}" }
+      FsPath.read(path).gsub(GLOB_META) { "\\#{Regexp.last_match(1)}" }
+    end
+
+    # `Dir.glob` with each path read as UTF-8, or binary when it is not (#346).
+    #
+    # @param args [Array] arguments forwarded to {Dir.glob}.
+    # @return [Array<String>]
+    def fs_glob(*args, **kwargs)
+      Dir.glob(*args, **kwargs).map { |path| FsPath.read(path) }
+    end
+
+    # `Dir.children` with each name read as UTF-8, or binary when it is not (#346).
+    #
+    # @param dir [String] directory to list.
+    # @return [Array<String>]
+    def fs_children(dir)
+      Dir.children(dir).map { |path| FsPath.read(path) }
     end
 
     # Test files under a directory. The name rule is {TEST_NAME}. Dot entries
@@ -178,9 +195,9 @@ module Mutineer
     # @return [Array<String>] root-relative paths, or absolute paths outside the root.
     def directory_test_files(abs, root, roots)
       listed = if (rel = root_relative(abs, roots))
-                 Dir.glob(File.join(glob_literal(rel), "**", "*.rb"), base: root)
+                 fs_glob(File.join(glob_literal(rel), "**", "*.rb"), base: root)
                else
-                 Dir.glob(File.join(glob_literal(abs), "**", "*.rb"))
+                 fs_glob(File.join(glob_literal(abs), "**", "*.rb"))
                end
       listed.filter_map { |match| named_test_file(match, root, roots) }.sort
     end
@@ -195,9 +212,9 @@ module Mutineer
     # @return [Array<String>] sorted matching file paths.
     def glob_test_files(pattern, root, roots)
       listed = if File.absolute_path?(pattern)
-                 Dir.glob(pattern)
+                 fs_glob(pattern)
                else
-                 Dir.glob(pattern, base: root)
+                 fs_glob(pattern, base: root)
                end
       listed.filter_map { |match| glob_file(match, root, roots) }.sort
     end
@@ -265,7 +282,7 @@ module Mutineer
       listed = if File.exist?(abs)
                  [pattern]
                else
-                 Dir.glob(pattern, base: root)
+                 fs_glob(pattern, base: root)
                end
       return [] if listed.empty?
 
@@ -317,9 +334,9 @@ module Mutineer
     # @return [Array<String>] matching test paths (may include outside-root paths).
     def expand_map_test_glob(pattern, root, roots)
       matches = if File.absolute_path?(pattern)
-                  Dir.glob(pattern)
+                  fs_glob(pattern)
                 else
-                  Dir.glob(pattern, base: root)
+                  fs_glob(pattern, base: root)
                 end
       matches.flat_map do |match|
         full = File.absolute_path?(match) ? match : File.expand_path(match, root)
@@ -355,7 +372,9 @@ module Mutineer
     # @param roots [Array<String>] the project root, expanded and real.
     # @return [String, nil] root-relative path, or nil outside the root.
     def root_relative(abs, roots)
+      abs = FsPath.read(abs)
       roots.each do |r|
+        r = FsPath.read(r)
         prefix = r.end_with?("/") ? r : "#{r}/"
         return abs.delete_prefix(prefix) if abs.start_with?(prefix)
       end
@@ -555,7 +574,7 @@ module Mutineer
       return [] unless inside_project?(dir_abs, root_abs)
       return [] unless File.directory?(dir_abs)
 
-      Dir.children(dir_abs).filter_map do |entry|
+      fs_children(dir_abs).filter_map do |entry|
         next unless split_entry?(entry, name)
         next unless File.file?(File.join(dir_abs, entry))
         next if claimed_by_longer_source?(root, base, entry, dir_rel)
@@ -571,6 +590,8 @@ module Mutineer
     # @param root_abs [String] expanded project root.
     # @return [Boolean]
     def inside_project?(dir_abs, root_abs)
+      dir_abs = FsPath.read(dir_abs)
+      root_abs = FsPath.read(root_abs)
       prefix = root_abs == File::SEPARATOR ? File::SEPARATOR : "#{root_abs}#{File::SEPARATOR}"
       dir_abs == root_abs || dir_abs.start_with?(prefix)
     end
@@ -582,6 +603,8 @@ module Mutineer
     # @param name [String] source basename without extension.
     # @return [Boolean]
     def split_entry?(entry, name)
+      entry = FsPath.read(entry)
+      name = FsPath.read(name)
       return false unless entry.end_with?("_test.rb")
 
       rest = entry.delete_prefix("#{name}_")

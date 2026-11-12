@@ -99,7 +99,7 @@ module Mutineer
       instance.instance_variable_set(:@failed_test_files, failed_test_files || [])
       instance.instance_variable_set(:@failed_clean_tests, failed_clean_tests || [])
       instance.instance_variable_set(:@failed_clean_details, failed_clean_details || {})
-      instance.instance_variable_set(:@project_root, project_root)
+      instance.instance_variable_set(:@project_root, FsPath.read(project_root))
       instance
     end
 
@@ -107,13 +107,13 @@ module Mutineer
                    load_paths: ["lib"], project_root: Dir.pwd,
                    capture_timeout: DEFAULT_CAPTURE_TIMEOUT, boot_path: nil,
                    framework: "minitest", verbose: false, require_paths: [], coverage_from: nil)
-      @source_paths = Array(source_paths)
-      @require_paths = Array(require_paths)
-      @test_paths   = Array(test_paths)
-      @cache_dir    = cache_dir
-      @coverage_from = coverage_from
-      @load_paths   = Array(load_paths)
-      @project_root = project_root
+      @source_paths = Array(source_paths).map { |path| FsPath.read(path) }
+      @require_paths = Array(require_paths).map { |path| FsPath.read(path) }
+      @test_paths   = Array(test_paths).map { |path| FsPath.read(path) }
+      @cache_dir    = FsPath.read(cache_dir)
+      @coverage_from = coverage_from && FsPath.read(coverage_from)
+      @load_paths   = Array(load_paths).map { |path| FsPath.read(path) }
+      @project_root = FsPath.read(project_root)
       @capture_timeout = capture_timeout
       @boot_path    = boot_path
       @framework    = framework || "minitest"
@@ -743,8 +743,11 @@ module Mutineer
             passed, report = run_clean_with_report([abs_test])
             # {file => {lines: [...], methods: {...}}}; reduce to the counts
             # array record() expects, keeping only our source files.
+            wanted = abs_sources.map { |path| FsPath.read(path) }
+            # Coverage keys are US-ASCII with invalid bytes under LC_ALL=C (#346).
             coverage = Coverage.result(stop: false)
-                               .select { |f, _| abs_sources.include?(f) }
+                               .to_h { |f, v| [FsPath.read(f), v] }
+                               .select { |f, _| wanted.include?(f) }
                                .transform_values { |v| v.is_a?(Hash) ? lines_with_called_defs(v) : v }
             { "passed" => passed, "coverage" => coverage,
               "failure_report" => passed ? nil : report,
@@ -1035,12 +1038,19 @@ module Mutineer
     end
 
     # Reads the one result line a {#spawn_script} child writes to fd
-    # {RESULT_FD}.
+    # {RESULT_FD}. The line is JSON and may name a non-ASCII path. The pipe
+    # follows the locale, so under `LC_ALL=C` those bytes arrive tagged
+    # US-ASCII and `JSON.parse` raises. The bytes are UTF-8 (#346).
     #
     # @api private
     # @param io [IO] the parent end of the result pipe.
     # @return [String] the line, or `""` at end of file.
-    def read_result_line(io) = io.gets.to_s
+    def read_result_line(io)
+      line = io.gets
+      return "" unless line
+
+      line.dup.force_encoding(Encoding::UTF_8)
+    end
 
     # Reads the one Marshal object a forked capture child writes, without
     # waiting for end of file.
@@ -1095,12 +1105,13 @@ module Mutineer
     # Ruby source that opens the result channel in a {#spawn_script} child. The
     # script runs it first, so no file that a test opens can take fd
     # {RESULT_FD}. Close-on-exec keeps the fd out of the test's own
-    # subprocesses.
+    # subprocesses. Binary mode writes the JSON bytes as they are, so a
+    # non-ASCII path is not rejected by an ASCII locale (#346).
     #
     # @api private
     # @return [String] Ruby script text.
     def result_channel_expression
-      "_result = IO.new(#{RESULT_FD}, \"w\"); _result.close_on_exec = true"
+      "_result = IO.new(#{RESULT_FD}, \"w\"); _result.binmode; _result.close_on_exec = true"
     end
 
     # Runs test files in a fork of the booted parent and returns whether they
@@ -1209,19 +1220,21 @@ module Mutineer
     # @param test_paths [Array<String>] test file paths.
     # @return [String] Ruby script text.
     def minitest_clean_check_script(test_paths)
-      loads = Array(test_paths).map { |t| "load #{absolute(t).inspect}" }.join("\n")
+      loads = Array(test_paths).map { |t| "load #{FsPath.filesystem(absolute(t)).inspect}" }.join("\n")
       <<~RUBY
         #{result_channel_expression}
         require "json"
+        require #{FsPath::PATH.inspect}
         require "minitest"
         require "stringio"
+        Mutineer::FsPath.install_minitest_path_filter!
         def Minitest.autorun; end
         _report = StringIO.new
         Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
         Minitest.extensions << "mutineer_report"
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin
-          #{abs_preload_paths.inspect}.each { |f| require f }
+          #{abs_preload_paths.map { |path| FsPath.filesystem(path) }.inspect}.each { |f| require f }
           Minitest::Runnable.reset
           #{loads}
         #{load_failure_rescue}
@@ -1241,7 +1254,7 @@ module Mutineer
     # @param test_paths [Array<String>] spec file paths.
     # @return [String] Ruby script text.
     def rspec_clean_check_script(test_paths)
-      specs = Array(test_paths).map { |t| absolute(t).inspect }.join(", ")
+      specs = Array(test_paths).map { |t| FsPath.filesystem(absolute(t)).inspect }.join(", ")
       <<~RUBY
         #{result_channel_expression}
         require "json"
@@ -1254,7 +1267,7 @@ module Mutineer
         RSpec::Core::Runner.disable_autorun!
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin
-          #{abs_preload_paths.inspect}.each { |f| require f }
+          #{abs_preload_paths.map { |path| FsPath.filesystem(path) }.inspect}.each { |f| require f }
         #{load_failure_rescue}
         end
         _sink = StringIO.new
@@ -1326,8 +1339,10 @@ module Mutineer
         #{result_channel_expression}
         require "coverage"
         require "json"
+        require #{FsPath::PATH.inspect}
         require "minitest"
         require "stringio"
+        Mutineer::FsPath.install_minitest_path_filter!
         def Minitest.autorun; end
         _report = StringIO.new
         Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
@@ -1335,15 +1350,16 @@ module Mutineer
         Coverage.start(lines: true, methods: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin
-          #{abs_preload_paths.inspect}.each { |f| require f }
+          #{abs_preload_paths.map { |path| FsPath.filesystem(path) }.inspect}.each { |f| require f }
           _load = #{load_coverage_expression}
           Minitest::Runnable.reset
-          load #{absolute(test_path).inspect}
+          load #{FsPath.filesystem(absolute(test_path)).inspect}
         #{load_failure_rescue}
         end
         _passed = Minitest.run(#{minitest_seed_args_expression})
         _failure = _passed ? nil : #{redacted_expression("_report.string")}
-        _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
+        # Coverage keys are US-ASCII with invalid bytes under LC_ALL=C (#346).
+        _coverage = Coverage.result.to_h { |f, v| [Mutineer::FsPath.read(f), v.is_a?(Hash) ? v[:lines] : v] }
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => _coverage,
                                     "failure_report" => _failure,
                                     "load_coverage" => _load,
@@ -1375,6 +1391,7 @@ module Mutineer
         #{result_channel_expression}
         require "coverage"
         require "json"
+        require #{FsPath::PATH.inspect}
         require "stringio"
         begin
           require "rspec/core"
@@ -1386,14 +1403,15 @@ module Mutineer
         Coverage.start(lines: true, methods: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin
-          #{abs_preload_paths.inspect}.each { |f| require f }
+          #{abs_preload_paths.map { |path| FsPath.filesystem(path) }.inspect}.each { |f| require f }
           _load = #{load_coverage_expression}
         #{load_failure_rescue}
         end
         _sink = StringIO.new
-        _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
+        _status = RSpec::Core::Runner.run(["--no-color", #{FsPath.filesystem(absolute(test_path)).inspect}], _sink, _sink)
         _failure = _status.zero? ? nil : #{redacted_expression("_sink.string")}
-        _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
+        # Coverage keys are US-ASCII with invalid bytes under LC_ALL=C (#346).
+        _coverage = Coverage.result.to_h { |f, v| [Mutineer::FsPath.read(f), v.is_a?(Hash) ? v[:lines] : v] }
         _result.puts JSON.generate("passed" => _status.zero?, "coverage" => _coverage,
                                     "failure_report" => _failure,
                                     "load_coverage" => _load,
@@ -1476,9 +1494,9 @@ module Mutineer
     # @api private
     # @return [String] expression to embed in a capture subprocess script.
     def load_coverage_expression
-      "Coverage.peek_result.select { |f, _| #{abs_source_paths.inspect}.include?((File.realpath(f) rescue f)) }" \
-        ".transform_values { |v| { \"lines\" => v[:lines], " \
-        "\"methods\" => v[:methods].filter_map { |k, n| k[2, 2] if n.positive? } } }"
+      "Coverage.peek_result.filter_map { |f, v| key = Mutineer::FsPath.read((File.realpath(f) rescue f)); " \
+        "[key, { \"lines\" => v[:lines], \"methods\" => v[:methods].filter_map { |k, n| k[2, 2] if n.positive? } }] " \
+        "if #{abs_source_paths.map { |path| FsPath.read(path) }.inspect}.include?(key) }.to_h"
     end
 
     # Yields a "file:line" key for every project line with a non-zero count.
@@ -1506,7 +1524,7 @@ module Mutineer
     def loaded_files_expression
       root = project_root_real
       prefix = root.end_with?("/") ? root : "#{root}/"
-      "begin; _root = #{prefix.inspect}; $LOADED_FEATURES.filter_map { |f| next unless f.end_with?(\".rb\"); abs = (File.realpath(f) rescue next); abs if abs.start_with?(_root) }; rescue StandardError; []; end"
+      "begin; _root = #{FsPath.read(prefix).inspect}; $LOADED_FEATURES.filter_map { |f| next unless f.end_with?(\".rb\"); abs = (File.realpath(f) rescue next); abs = Mutineer::FsPath.read(abs); abs if abs.start_with?(_root) }; rescue StandardError; []; end"
     end
 
     # Canonical project root for loaded-feature matching (`/var` vs `/private/var`).
@@ -1520,12 +1538,12 @@ module Mutineer
     # @api private
     # @return [Array<String>] absolute realpaths.
     def capture_loaded_files
-      prefix = project_root_real
+      prefix = FsPath.read(project_root_real)
       prefix = "#{prefix}/" unless prefix.end_with?("/")
       $LOADED_FEATURES.filter_map do |f|
         next unless f.end_with?(".rb")
 
-        abs = File.realpath(f)
+        abs = FsPath.read(File.realpath(f))
         abs if abs.start_with?(prefix)
       rescue Errno::ENOENT
         nil
@@ -1557,7 +1575,8 @@ module Mutineer
     # @param abs [String] absolute realpath.
     # @return [String, nil]
     def loaded_relative(abs)
-      root = project_root_real
+      root = FsPath.read(project_root_real)
+      abs = FsPath.read(abs)
       prefix = root.end_with?("/") ? root : "#{root}/"
       return unless abs.start_with?(prefix)
 
@@ -1650,7 +1669,7 @@ module Mutineer
         folders.uniq.flat_map do |folder|
           abs = folder ? File.join(root, folder) : root
           entries = listings.fetch(abs) do
-            listings[abs] = File.directory?(abs) ? Dir.children(abs) : []
+            listings[abs] = File.directory?(abs) ? Dir.children(abs).map { |entry| FsPath.read(entry) } : []
           end
           entries.filter_map do |entry|
             next unless entry.end_with?(".rb")
@@ -1683,7 +1702,9 @@ module Mutineer
     # @return [Array(String, String, Array<String>)] grouped digest data.
     def digest_group(digest, role, paths)
       paths.sort.each do |p|
-        content = File.read(absolute(p))
+        # Bytes, not a locale read: a magic-comment encoding such as EUC-JP
+        # is not valid UTF-8, and the digest is of the file's bytes (#346).
+        content = File.binread(absolute(p))
         digest.update(role)
         digest.update("\0")
         digest.update(relativize(absolute(p)))

@@ -139,6 +139,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A non-ASCII path and a non-UTF-8 source no longer stop the run (#346).**
+  With `LANG` and `LC_ALL` unset, a source file, test file, or project
+  folder whose name is not ASCII made coverage fail, or the path missed
+  its match, so the run stopped or scored those mutants `no_coverage`.
+  Paths are read as UTF-8 when the bytes are UTF-8, and as binary
+  otherwise, and compared in that encoding. A path passed to `load` keeps
+  the encoding of `Dir.pwd`, and Minitest's failure backtrace is retagged
+  the same way, so a killed mutant is not reported as an error.
+  This covers the in-process coverage subprocess, the fork capture used
+  by `--rails` and `--daemon`, pairing (including a split test name),
+  and `--since` path keys.
+  A source file whose magic comment names an encoding (`# encoding: EUC-JP`,
+  and the other forms Ruby accepts) is read in that encoding. The mutant
+  keeps those bytes, so Ruby can load it. A file with no such comment is
+  still read as UTF-8. `db/schema.rb` uses the same read.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and

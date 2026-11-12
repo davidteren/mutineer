@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "stringio"
+require_relative "../fs_path"
 require_relative "../kill_channel"
 
 module Mutineer
@@ -52,11 +53,13 @@ module Mutineer
         # silenced here: the fork boundary that calls this method has already
         # pointed stdout at File::NULL (see ChildStdout).
         sink = StringIO.new
-        keep_file_order(spec_files) if stop_at_first_failure || record_to
+        # Match Dir.pwd's encoding so a failure path can be shortened (#346).
+        files = Array(spec_files).map { |file| FsPath.filesystem(file) }
+        keep_file_order(files) if stop_at_first_failure || record_to
         args = ["--no-color"]
         args << "--fail-fast" if stop_at_first_failure
         status = with_fail_fast_off(record_to) do
-          ::RSpec::Core::Runner.run([*args, *Array(spec_files)], sink, sink)
+          ::RSpec::Core::Runner.run([*args, *files], sink, sink)
         end
         @last_output = sink.string
         # Reached only when the suite returned: an example that exits the

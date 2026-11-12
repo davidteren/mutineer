@@ -96,7 +96,7 @@ module Mutineer
       # [id_path, def offset] => nil, or the method's entry when it got no mutation.
       subjects = {}
       Project.discover(config.sources, only: config.only).each do |subject|
-        source = (source_map[subject.file] ||= File.read(subject.file, encoding: "UTF-8"))
+        source = (source_map[subject.file] ||= Parser.read(subject.file))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
         # A repeated operator name runs once, so its declines count once.
         mutations = operator_classes.uniq.flat_map do |klass|
@@ -643,7 +643,7 @@ module Mutineer
       files = ranges.map { |h| h[:file] }.uniq
       changed ||= ChangedLines.for(ref: config.since, files: files, project_root: config.project_root)
       in_scope = ranges.select do |h|
-        lines = changed.fetch(File.expand_path(h[:file], config.project_root), Set.new)
+        lines = changed.fetch(FsPath.expand(h[:file], config.project_root), Set.new)
         next false if lines.empty?
 
         (h[:line]..h[:end_line]).any? { |ln| lines.include?(ln) }
@@ -666,7 +666,7 @@ module Mutineer
       jobs.select do |subject, mutation|
         source = source_map[subject.file]
         line = source.byteslice(0, mutation.start_offset).count("\n") + 1
-        abs = File.expand_path(subject.file, config.project_root)
+        abs = FsPath.expand(subject.file, config.project_root)
         changed.fetch(abs, []).include?(line)
       end
     end

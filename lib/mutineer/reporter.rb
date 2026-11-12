@@ -1262,12 +1262,12 @@ module Mutineer
     end
 
     # The source text of `file`: the run's copy when it has one, else the file
-    # read as UTF-8 whatever the locale (#303).
+    # read in its magic-comment encoding, or UTF-8 (#303, #346).
     #
     # @api private
     # @param file [String] source file path.
     # @return [String] source text.
-    def source_for(file) = @source_map[file] || File.read(file, encoding: "UTF-8")
+    def source_for(file) = @source_map[file] || Parser.read(file)
 
     # Source text, a method name or a file path made safe for a terminal (#163):
     # each control character except tab becomes its Ruby escape (ESC prints as

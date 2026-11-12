@@ -25,6 +25,59 @@ module Mutineer
       raise ParseError, e.message
     end
 
+    # Bytes of a magic comment Prism needs: the first line, or the second
+    # when the first is a shebang. A longer line is cut. Real encoding
+    # comments are short; the cap only bounds a pathological line.
+    HEADER_BYTES = 4096
+
+    # Reads a Ruby source file in the encoding its magic comment names, or
+    # UTF-8 when it names none (#346). The bytes are not transcoded, so
+    # Prism's offsets still address them and a mutant written back stays
+    # valid for that encoding. An unknown encoding name stays UTF-8, as
+    # Prism does. I/O errors propagate (`Errno::ENOENT` and the rest).
+    #
+    # @param path [String] source file path.
+    # @return [String] source text, tagged with its encoding.
+    def self.read(path)
+      bytes = File.binread(path)
+      bytes.force_encoding(source_encoding(bytes))
+    end
+
+    # Encoding Prism assigns to `bytes` from its magic comment.
+    #
+    # @param bytes [String] file contents.
+    # @return [Encoding]
+    def self.source_encoding(bytes)
+      Prism.parse(header(bytes)).source.encoding
+    end
+    private_class_method :source_encoding
+
+    # The first line of `bytes`, plus the second when the first is a shebang.
+    #
+    # @param bytes [String] file contents.
+    # @return [String] a binary slice.
+    def self.header(bytes)
+      slice = bytes.byteslice(0, HEADER_BYTES)
+      return "".b if slice.nil?
+
+      slice = slice.b
+      line_end = slice.index("\n") || slice.index("\r")
+      return slice unless line_end
+
+      first = slice.byteslice(0, line_end)
+      return slice.byteslice(0, line_end + 1) unless first.start_with?("#!")
+
+      rest_from = line_end + 1
+      rest = slice.byteslice(rest_from..)
+      return slice if rest.nil? || rest.empty?
+
+      second_end = rest.index("\n") || rest.index("\r")
+      return slice unless second_end
+
+      slice.byteslice(0, rest_from + second_end + 1)
+    end
+    private_class_method :header
+
     # Parses source text with Prism.
     #
     # @param source [String] source text.

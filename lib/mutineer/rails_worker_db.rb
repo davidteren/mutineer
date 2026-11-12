@@ -2,6 +2,7 @@
 
 require "digest"
 require "uri"
+require_relative "parser"
 require_relative "redaction"
 
 module Mutineer
@@ -501,7 +502,7 @@ module Mutineer
     # @param schema_path [String] absolute path to the app's Ruby schema file.
     # @return [Boolean]
     def self.schema_current?(schema_path)
-      text    = File.read(schema_path, encoding: "UTF-8")
+      text    = Parser.read(schema_path)
       version = schema_file_version(text)
       conn = ActiveRecord::Base.connection
       base       = ActiveRecord::Base
