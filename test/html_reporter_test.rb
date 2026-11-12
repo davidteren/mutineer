@@ -67,6 +67,15 @@ class HtmlReporterTest < Minitest::Test
     assert_includes html, "<span><strong>2</strong> declined</span>"
   end
 
+  # #420: under --since, declined stays full-run and the HTML label says so.
+  def test_scoped_declined_notes_not_narrowed
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "html", scoped: true,
+                              declined: { "range" => 2 })
+    assert_includes out.string, "<span><strong>2</strong> declined (not narrowed by --since)</span>"
+  end
+
   def test_summary_counts_ran_at_load
     assert_includes render([Mutineer::Result.killed, Mutineer::Result.ran_at_load]),
                     "<span><strong>1</strong> ran_at_load</span>"

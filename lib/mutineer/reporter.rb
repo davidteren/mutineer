@@ -86,7 +86,8 @@ module Mutineer
           json_report(baseline, scoped: scoped, legacy_id_matches: legacy_id_matches, declined: declined,
                                 subjects: subjects, unmutated_subjects: unmutated_subjects)
         elsif format == "html"
-          html_report(declined: declined, subjects: subjects, unmutated: unmutated_subjects&.size)
+          html_report(declined: declined, subjects: subjects, unmutated: unmutated_subjects&.size,
+                      scoped: scoped)
         else
           sio = StringIO.new
           human_report(sio, err, threshold, declined: declined, scoped: scoped,
@@ -364,7 +365,9 @@ module Mutineer
     # @param declined [Hash{String => Integer}] candidates declined by operators.
     # @param subjects [Integer, nil] methods discovered (in scope).
     # @param unmutated [Integer, nil] methods with no mutants (#419).
-    def html_report(declined: {}, subjects: nil, unmutated: nil)
+    # @param scoped [Boolean] the run was diff-scoped (`--since`); declined keeps
+    #   its full-run count and the HTML label says so.
+    def html_report(declined: {}, subjects: nil, unmutated: nil, scoped: false)
       score = @agg.mutation_score
       survivors = @agg.surviving_mutants.map { |r| survivor_json(r) }
                       .sort_by { |h| [h[:file], h[:line], h[:operator]] }
@@ -404,7 +407,7 @@ module Mutineer
         <body>
         <h1>Mutineer — Mutation Report</h1>
         <div class="score">Score: #{score.nil? ? 'N/A' : "#{score}%"}</div>
-        #{summary_html(declined: declined, subjects: subjects, unmutated: unmutated)}
+        #{summary_html(declined: declined, subjects: subjects, unmutated: unmutated, scoped: scoped)}
         #{unpaired_html}
         #{per_source_html(per_source)}
         #{survivors_html(survivors)}
@@ -420,7 +423,9 @@ module Mutineer
     # @param declined [Hash{String => Integer}]
     # @param subjects [Integer, nil]
     # @param unmutated [Integer, nil]
-    def summary_html(declined: {}, subjects: nil, unmutated: nil)
+    # @param scoped [Boolean] when true, the declined label notes it is not
+    #   narrowed by `--since` (same wording as the human report).
+    def summary_html(declined: {}, subjects: nil, unmutated: nil, scoped: false)
       counts = {
         "total" => @agg.total, "killed" => @agg.killed_count,
         "survived" => @agg.survived_count, "no_coverage" => @agg.no_coverage_count,
@@ -430,7 +435,10 @@ module Mutineer
         "errored" => @agg.errored_count, "timeout" => @agg.timeout_count,
         "unpaired" => unpaired_mutant_count
       }
-      counts["declined"] = declined.values.sum unless declined.empty?
+      if declined.any?
+        label = scoped ? "declined (not narrowed by --since)" : "declined"
+        counts[label] = declined.values.sum
+      end
       if subjects && unmutated
         counts["no_mutants"] = unmutated
         counts["methods"] = subjects
@@ -925,7 +933,8 @@ module Mutineer
     # @param out [IO] output stream.
     # @param declined [Hash{String => Integer}] operator name => declined count.
     # @param scoped [Boolean] the run was diff-scoped (`--since`), which does not
-    #   narrow the declined count or the method count.
+    #   narrow the declined count (method counts are already narrowed by
+    #   {JobPlan.scope_since}, #420).
     # @param subjects [Integer, nil] methods discovered; nil when unknown.
     # @param unmutated [Integer, nil] methods the selected operators did not
     #   mutate; nil when unknown, which leaves out the `No mutants:` row.

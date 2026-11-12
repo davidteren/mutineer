@@ -1112,6 +1112,41 @@ class RunnerTest < Minitest::Test
           end
           def note
           end
+          def leftover
+          end
+        end
+      RUBY
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", root, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      # Change an empty (unmutated) method's def line and leave `leftover` alone.
+      File.write(path, File.read(path).sub("def note\n", "def note # touched\n"))
+      config = Mutineer::Config.new(sources: [path], project_root: root, since: "HEAD")
+      ops = Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::DEFAULT_NAMES)
+      jobs, ignored, map, extras = Mutineer::JobPlan.collect_jobs(config, ops)
+      before = extras[:unmutated_subjects].map { |h| h[:subject] }.sort
+      assert_includes before, "Calc#note"
+      assert_includes before, "Calc#leftover"
+      Mutineer::JobPlan.scope_since(jobs, ignored, map, config, extras: extras)
+      names = extras[:unmutated_subjects].map { |h| h[:subject] }
+      assert_equal ["Calc#note"], names, extras.inspect
+      assert_equal 1, extras[:subjects]
+      refute extras.key?(:subject_ranges)
+    end
+  end
+
+  # #420: a changed mutable method stays in subjects; an unchanged empty one drops.
+  def test_scope_since_keeps_changed_mutable_method_and_drops_unchanged_empty
+    Dir.mktmpdir do |root|
+      path = File.join(root, "calc.rb")
+      File.write(path, <<~RUBY)
+        class Calc
+          def add(a, b)
+            a + b
+          end
+          def note
+          end
         end
       RUBY
       [%w[init -q], %w[config user.email t@t], %w[config user.name t],

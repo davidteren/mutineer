@@ -615,11 +615,14 @@ module Mutineer
         return [jobs, ignored_results, nil]
       end
 
-      # One pass, so git computes the changed lines once.
+      # One pass, so git computes the changed lines once for jobs and subjects.
       ignored_entries = ignored_results.map { |r| [r.subject, r.mutation, r] }
-      kept = filter_since(jobs + ignored_entries, source_map, config)
+      range_files = extras&.fetch(:subject_ranges, [])&.map { |h| h[:file] } || []
+      files = (config.sources + range_files).uniq
+      changed = ChangedLines.for(ref: config.since, files: files, project_root: config.project_root)
+      kept = filter_since(jobs + ignored_entries, source_map, config, changed: changed)
       kept_ignored, kept_jobs = kept.partition { |entry| entry.last.is_a?(Result) }
-      narrow_subjects_since!(extras, config) if extras
+      narrow_subjects_since!(extras, config, changed: changed) if extras
       [kept_jobs, kept_ignored.map(&:last), jobs.size + ignored_results.size]
     end
 
@@ -630,13 +633,15 @@ module Mutineer
     # @api private
     # @param extras [Hash] {collect_jobs} extras.
     # @param config [Mutineer::Config]
+    # @param changed [Hash{String => Set<Integer>}, nil] precomputed map from
+    #   {ChangedLines.for}; when nil, this method loads it for the range files.
     # @return [void]
-    def self.narrow_subjects_since!(extras, config)
+    def self.narrow_subjects_since!(extras, config, changed: nil)
       ranges = extras.delete(:subject_ranges) || []
       return if ranges.empty?
 
       files = ranges.map { |h| h[:file] }.uniq
-      changed = ChangedLines.for(ref: config.since, files: files, project_root: config.project_root)
+      changed ||= ChangedLines.for(ref: config.since, files: files, project_root: config.project_root)
       in_scope = ranges.select do |h|
         lines = changed.fetch(File.expand_path(h[:file], config.project_root), Set.new)
         next false if lines.empty?
@@ -652,9 +657,12 @@ module Mutineer
     # surviving mutant still goes through Runner.run's coverage check). A file with
     # no changed lines (absent from the diff) contributes no jobs. Line is computed
     # exactly as Runner.run does, from the already-read source in source_map.
-    def self.filter_since(jobs, source_map, config)
-      changed = ChangedLines.for(ref: config.since, files: config.sources,
-                                 project_root: config.project_root)
+    #
+    # @param changed [Hash{String => Set<Integer>}, nil] precomputed map from
+    #   {ChangedLines.for}; when nil, this method loads it for `config.sources`.
+    def self.filter_since(jobs, source_map, config, changed: nil)
+      changed ||= ChangedLines.for(ref: config.since, files: config.sources,
+                                   project_root: config.project_root)
       jobs.select do |subject, mutation|
         source = source_map[subject.file]
         line = source.byteslice(0, mutation.start_offset).count("\n") + 1
