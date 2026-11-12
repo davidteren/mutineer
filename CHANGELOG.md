@@ -139,6 +139,24 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A mutant inside a one-line block on a load line is `ran_at_load` (#435).**
+  A class method such as `greets` runs when the including class loads.
+  Rails turns eager load on when `CI` is set, so that call happens before
+  the mutant. The call's own mutants were `ran_at_load`. A mutant of a
+  string inside the block on that same line was a survivor, and the score
+  fell to 0.0. It is now `ran_at_load` too, under `reload`, `redefine`, and
+  the daemon. A kill still counts. `CI` itself changes nothing: only
+  whether the line ran at load does. Without eager load the class loads
+  after the mutant, and those mutants stay killed. An equivalent
+  `each` → `map` still survives in that case. On the reported method, 2 of
+  5 mutants moved, so that run's score goes from 0.0 to no score. A run
+  that still has other survivors can score higher, because these mutants
+  leave the denominator. `--threshold` skips a nil score. The new case is
+  a statement that shares its only line with other code on a line that
+  already ran at load. A block body on its own load line was already
+  excluded. Re-running the caller's class body, so these mutants can be
+  killed, stays #389. A one-line or endless `def` still uses its call
+  count, so a block on the `def` line is unchanged (#389).
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and

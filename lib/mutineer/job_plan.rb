@@ -377,9 +377,18 @@ module Mutineer
     # count at load without it. The `def` line never counts: Ruby counts it
     # when the method is defined.
     #
+    # A statement that shares its only line with other code has no strict line.
+    # When that line ran at load, the call on it is already `ran_at_load`, and
+    # so is a mutant inside the block on the same line (#435). Reloading the
+    # method does not run the call again: the class that called it, such as
+    # `Greeter` calling `greets`, loaded before the mutant. Re-running that
+    # class body is #389. `CI` is not read here. Rails eager load, which the
+    # test env turns on when `CI` is set, is what puts the line in the load set.
+    #
     # A one-line or endless def keeps its body on the `def` line, so it uses
     # the method's own call count at load instead (#209), for code that runs
-    # each time the method does ({StatementLines.runs_with_method?}).
+    # each time the method does ({StatementLines.runs_with_method?}). A block
+    # on that `def` line is unchanged (#389).
     #
     # @param source_file [String] the mutated source file path.
     # @param mutation [Mutineer::Mutation] the mutation.
@@ -400,6 +409,7 @@ module Mutineer
 
       body = (loc.start_line..loc.end_line)
       lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
+      lines = StatementLines.shared_lines(subject.def_node, source, mutation.start_offset) if lines.empty?
       lines.any? { |l| l != def_line && body.cover?(l) && coverage_map.ran_at_load?(source_file, l) }
     end
 

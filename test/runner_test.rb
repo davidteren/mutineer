@@ -238,6 +238,43 @@ class RunnerTest < Minitest::Test
     assert_equal :no_coverage, selection("def f(x) = x * 2\n", "x * 2", {}, load_lines: [1])[1].status
   end
 
+  # #435: a mutant inside a one-line block has no strict line, but it shares
+  # the call's line. When that line ran at load, the mutant is ran_at_load,
+  # like the call. A test that covers the line still runs, so a kill counts.
+  # Without the load line the survivor stays a survivor. Code that runs only
+  # sometimes does not count, and a one-line def still ignores the block.
+  def test_a_mutant_that_shares_a_load_line_is_ran_at_load
+    source = <<~'RUBY'
+      def greets(*names)
+        names.each { |name| define_method("greet_#{name}") { "Hello, #{name}" } }
+      end
+    RUBY
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :greets, singleton: false, def_node: def_node)
+    loaded = FakeCoverageMap.new({ 2 => ["t_test.rb"] }, "/root", [2], false, [])
+    cold = FakeCoverageMap.new({ 2 => ["t_test.rb"] }, "/root", [], false, [])
+
+    ["greet_", "Hello, ", "each"].each do |snippet|
+      start = source.index(snippet)
+      mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,
+                                        replacement: "nil", operator: :test)
+      assert_equal :run, Mutineer::JobPlan.coverage_selection("x.rb", mutation, subject, source, loaded)[0], snippet
+      assert Mutineer::JobPlan.ran_at_load?("x.rb", mutation, subject, source, loaded), snippet
+      refute Mutineer::JobPlan.ran_at_load?("x.rb", mutation, subject, source, cold), snippet
+      survived = Mutineer::Result.new(status: :survived)
+      assert_equal :ran_at_load,
+                   Mutineer::JobPlan.load_verdict(survived, "x.rb", mutation, subject, source, loaded).status, snippet
+      assert_equal :survived,
+                   Mutineer::JobPlan.load_verdict(survived, "x.rb", mutation, subject, source, cold).status, snippet
+      killed = Mutineer::Result.new(status: :killed)
+      assert_equal :killed,
+                   Mutineer::JobPlan.load_verdict(killed, "x.rb", mutation, subject, source, loaded).status, snippet
+    end
+
+    conditional = "def f(k)\n  return 7 * 6 if k.nil?\n  k\nend\n"
+    assert_equal :no_coverage, selection(conditional, "7 * 6", {}, load_lines: [2])[1].status
+  end
+
   # #209: a one-line or endless def ran at load when the method was called at
   # load, for code that runs each time the method does.
   def test_coverage_selection_uses_the_load_call_count_of_a_one_line_def
