@@ -58,8 +58,10 @@ module Mutineer
       # @return [String]
       def self.advertised_seed
         opts = ENV.fetch("SPEC_OPTS", "")
-        found = opts.scan(/--seed(?:=|\s+)(\d+)/).flatten
-        found.concat(opts.scan(/--order(?:=|\s+)rand(?:om)?:(\d+)/).flatten)
+        found = []
+        opts.scan(/--seed(?:=|\s+)(\d+)|--order(?:=|\s+)rand(?:om)?:(\d+)/) do |seed, order|
+          found << (seed || order)
+        end
         found.last || RunSeed::PINNED_SEED.to_s
       end
 

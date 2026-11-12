@@ -83,7 +83,7 @@ mutineer run --dry-run lib/discount.rb
 
 Typed flags override `.mutineer.yml`. Every flag with its default: [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md), `mutineer --help`, or the [README](https://github.com/davidteren/mutineer/blob/main/README.md).
 
-Runs Mutineer starts itself share one seed.
+Runs that Mutineer starts share one seed.
 Minitest uses `SEED` or `1`.
 A random RSpec order uses seed `1` unless the suite sets one.
 See [Test order](https://github.com/davidteren/mutineer/blob/main/docs/cli.md#test-order).

@@ -116,6 +116,13 @@ class SeedContractTest < Minitest::Test
     end
   end
 
+  def test_the_named_rspec_seed_is_the_last_option_in_spec_opts
+    ENV["SPEC_OPTS"] = "--order rand:7 --seed 8"
+    assert_equal "8", Mutineer::TestRunners::RSpecSeed.advertised_seed
+    ENV["SPEC_OPTS"] = "--seed 8 --order random:7"
+    assert_equal "7", Mutineer::TestRunners::RSpecSeed.advertised_seed
+  end
+
   # Forcing a seed must not turn a defined order into a random one.
   def test_a_defined_rspec_order_stays_defined_on_the_clean_run_and_the_mutant_run
     ENV.delete("SPEC_OPTS")

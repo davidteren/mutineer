@@ -516,14 +516,19 @@ class RunnerTest < Minitest::Test
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], failed_clean_tests: ["test/a_test.rb"],
                                           project_root: ROOT)
     without_seed_env do
-      minitest = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
-      assert_includes minitest.message, "SEED=#{Mutineer::MinitestIntegration::PINNED_SEED}"
-      ENV["SEED"] = "4242"
-      own = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
-      assert_includes own.message, "SEED=4242"
-      rspec = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map, framework: "rspec") }
-      refute_includes rspec.message, "SEED="
-      assert_includes rspec.message, "seed #{Mutineer::RunSeed::PINNED_SEED}"
+      spec_opts = ENV.delete("SPEC_OPTS")
+      begin
+        minitest = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+        assert_includes minitest.message, "SEED=#{Mutineer::MinitestIntegration::PINNED_SEED}"
+        ENV["SEED"] = "4242"
+        own = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+        assert_includes own.message, "SEED=4242"
+        rspec = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map, framework: "rspec") }
+        refute_includes rspec.message, "SEED="
+        assert_includes rspec.message, "seed #{Mutineer::RunSeed::PINNED_SEED}"
+      ensure
+        spec_opts ? ENV["SPEC_OPTS"] = spec_opts : ENV.delete("SPEC_OPTS")
+      end
     end
   end
 

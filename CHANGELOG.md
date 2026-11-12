@@ -146,6 +146,8 @@ All notable changes to this project are documented here. The format is based on
   A defined order is left as it is.
   Reading `config.seed` in a spec helper, as the generated `Kernel.srand config.seed` does, does not set one.
   A `config.seed=` in a spec helper, a `--require` file, or the boot file does, and the clean check and the mutant runs keep it.
+  The coverage cache includes `SPEC_OPTS` and the project `.rspec` and `.rspec-local` files, so a changed seed there is captured again.
+  `~/.rspec` is not part of that cache key.
   Minitest already used seed `1`.
   Classes inside one file were still shuffled with the whole class list, so adding a file changed their order.
   Each file is now shuffled from that seed alone, on the clean check and the mutant runs.

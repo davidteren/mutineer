@@ -999,6 +999,15 @@ class CoverageMapTest < Minitest::Test
       assert_equal digest.call(nil, "minitest"), digest.call("1", "minitest")
       assert_equal digest.call(nil, "rspec"), digest.call("2", "rspec")
       refute_equal digest.call(nil, "rspec"), digest.call(nil, "rspec", spec_opts: "--seed 2")
+      bare = digest.call(nil, "rspec")
+      File.write(File.join(dir, ".rspec"), "--seed 7\n")
+      with_file = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
+                                            framework: "rspec").send(:compute_digest)
+      refute_equal bare, with_file
+      File.write(File.join(dir, ".rspec"), "--seed 8\n")
+      changed = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
+                                          framework: "rspec").send(:compute_digest)
+      refute_equal with_file, changed
     end
   end
 

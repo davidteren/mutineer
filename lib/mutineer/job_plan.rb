@@ -289,6 +289,8 @@ module Mutineer
       seed = TestRunners::RSpecSeed.advertised_seed
       " Mutineer runs a random RSpec order with seed #{seed}, unless you set a seed " \
         "(--seed, --order rand:N, SPEC_OPTS, .rspec, or config.seed). " \
+        "RSpec reads SPEC_OPTS after the command line, so a seed there replaces " \
+        "--seed on the rspec command. " \
         "A defined order is left as it is. " \
         "An order-dependent example can fail here and pass in another order. " \
         "Check the listed spec files with the same seed."
