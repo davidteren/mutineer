@@ -282,7 +282,10 @@ module Mutineer
       # ancestor, is not such an entry: that chain keeps it. When Rails
       # dropped the subclass's own copy as a duplicate, such as the
       # conditional copy that a `skip_callback ... if:` leaves, that copy
-      # comes back.
+      # comes back. A copy that still holds its ancestor's conditions from
+      # before this load is rebuilt from the reloaded callback, so a mutant
+      # of those conditions reaches the subclass (#440). Reload and the
+      # daemon run this path. Redefine does not re-run the class body.
       #
       # @param old [Array] the chain's entries before the load.
       # @param now [Array] its entries after the load.
@@ -296,10 +299,165 @@ module Mutineer
         order = old.filter_map do |entry|
           new_entry = swap[entry]
           next new_entry if new_entry && present.include?(new_entry)
+          next entry if present.include?(entry)
 
-          entry if present.include?(entry) || stray.any? { |other| displaced?(entry, other) }
+          other = merge_stray(entry, stray, swap)
+          if other
+            restored(entry, other, swap)
+          elsif stray.any? { |candidate| displaced?(entry, candidate) }
+            entry
+          end
         end
         order + without(now, order).reject { |entry| swap.key?(entry) || paired.include?(entry) }
+      end
+
+      # The callback to put back when Rails dropped `entry` as a duplicate of
+      # `stray`. `skip_callback` with `if:` or `unless:` builds `entry` by
+      # copying the parent's condition objects and appending the subclass's
+      # own. Putting that object back would keep the parent's conditions from
+      # before the reload (#440). When those objects are still the parent's
+      # previous ones, this rebuilds `entry` from `stray` through
+      # `merge_conditional_options`, the same merge `skip_callback` uses: a
+      # subclass `if:` is stored on `unless`, and a subclass `unless:` on
+      # `if`. A copy that does not hold those objects is the subclass's own
+      # callback and stays. A parent that had no conditions has no objects to
+      # match, so its copy stays too (#414): a subclass callback of the same
+      # name is not rewritten. A list of only symbols, or other interned
+      # objects, is not evidence either. An independent callback can name the
+      # same symbol. A copied Proc is evidence, and that Proc is carried.
+      # The old copy also stays when `stray` still has those same condition
+      # objects.
+      #
+      # @param entry [Object] the subclass callback Rails dropped.
+      # @param stray [Object] the ancestor callback appended in its place.
+      # @param swap [Hash{Object => Object}] each old entry to its new entry.
+      # @return [Object] `entry`, or the rebuilt callback.
+      def self.restored(entry, stray, swap)
+        parent = merge_source(entry, stray, swap)
+        return entry unless parent
+        return entry if same_conditions?(stray, parent)
+        return entry unless stray.respond_to?(:merge_conditional_options)
+
+        extra_if, extra_unless = extra_conditions(entry, parent)
+        stray.merge_conditional_options(
+          chain_view(stray), if_option: extra_unless, unless_option: extra_if
+        )
+      end
+
+      # The nearest old callback that `swap` maps to `stray` and that {restored}
+      # can show `entry` was merged from. Ancestors are inserted furthest
+      # first, so the last match is the nearest class that reloaded `stray`.
+      #
+      # @param entry [Object] the subclass callback Rails dropped.
+      # @param stray [Object] the ancestor callback appended in its place.
+      # @param swap [Hash{Object => Object}] each old entry to its new entry.
+      # @return [Object, nil] that old callback, or nil when `entry` is not its merge.
+      def self.merge_source(entry, stray, swap)
+        found = nil
+        swap.each do |old_entry, new_entry|
+          found = old_entry if new_entry.equal?(stray) && merged_from?(entry, old_entry)
+        end
+        found
+      end
+
+      # The reloaded callback `entry` was merged from, when several ancestors
+      # appended a callback of the same name. The first of those is not always
+      # the one. {displaced?} only compares the method name and the kind.
+      #
+      # @param entry [Object] the subclass callback Rails dropped.
+      # @param stray [Array] new callbacks this chain did not have.
+      # @param swap [Hash{Object => Object}] each old entry to its new entry.
+      # @return [Object, nil] the stray to rebuild from, or nil.
+      def self.merge_stray(entry, stray, swap)
+        stray.find { |candidate| displaced?(entry, candidate) && merge_source(entry, candidate, swap) }
+      end
+
+      # @param entry [Object] a callback left by `skip_callback`.
+      # @param parent [Object] the ancestor callback it was merged from.
+      # @return [Boolean] true when `entry`'s conditions still start with
+      #   `parent`'s condition objects, and one of those objects is not
+      #   interned. `skip_callback` copies those objects. A parent with no
+      #   conditions matches every copy, so that is not evidence. A symbol is
+      #   the same object wherever it is written, so it is not evidence
+      #   either. A symbol-only parent condition stays on the old copy.
+      #   No issue tracks that limit yet.
+      def self.merged_from?(entry, parent)
+        entry_if, entry_unless = conditions(entry)
+        parent_if, parent_unless = conditions(parent)
+        return false if parent_if.empty? && parent_unless.empty?
+        return false unless prefix?(entry_if, parent_if) && prefix?(entry_unless, parent_unless)
+
+        (parent_if + parent_unless).any? { |item| !interned_condition?(item) }
+      end
+
+      # @param object [Object] one `if:` or `unless:` condition.
+      # @return [Boolean] true for nil, true, false, a Symbol, or an Integer.
+      #   Those are the same object wherever they are written. A Proc is not.
+      def self.interned_condition?(object)
+        object.nil? || same_object?(object, true) || same_object?(object, false) ||
+          object.is_a?(Symbol) || object.is_a?(Integer)
+      rescue StandardError
+        false
+      end
+
+      # @param left [Object] a callback.
+      # @param right [Object] another callback.
+      # @return [Boolean] true when both condition lists hold the same objects,
+      #   in order.
+      def self.same_conditions?(left, right)
+        left_if, left_unless = conditions(left)
+        right_if, right_unless = conditions(right)
+        same_list?(left_if, right_if) && same_list?(left_unless, right_unless)
+      end
+
+      # The conditions `skip_callback` appended after `parent`'s. {merged_from?}
+      # has already required `parent`'s conditions to be a prefix.
+      #
+      # @param entry [Object] the merged subclass callback.
+      # @param parent [Object] the ancestor callback it was merged from.
+      # @return [Array(Array, Array)] the extra `if` conditions and the extra
+      #   `unless` conditions.
+      def self.extra_conditions(entry, parent)
+        entry_if, entry_unless = conditions(entry)
+        parent_if, parent_unless = conditions(parent)
+        [entry_if.drop(parent_if.size), entry_unless.drop(parent_unless.size)]
+      end
+
+      # The `name` and `config` `ActiveSupport::Callbacks::Callback.build` reads
+      # off a chain. {chain_view} builds one from a callback.
+      ChainView = Struct.new(:name, :config)
+
+      # @param callback [Object] an ActiveSupport callback.
+      # @return [ChainView] that callback's chain name and config.
+      def self.chain_view(callback)
+        ChainView.new(callback.name, callback.chain_config)
+      end
+
+      # @param list [Array]
+      # @param parent [Array]
+      # @return [Boolean] true when `list` and `parent` are the same objects, in order.
+      def self.same_list?(list, parent)
+        list.size == parent.size && prefix?(list, parent)
+      end
+
+      # @param list [Array]
+      # @param parent [Array] the objects `list` must start with.
+      # @return [Boolean] true when each of `parent` is that object of `list`.
+      #   A shorter `list` does not start with `parent`.
+      def self.prefix?(list, parent)
+        parent.each_with_index.all? { |item, index| same_object?(list[index], item) }
+      end
+
+      # `BasicObject#equal?`, so a proxy condition cannot answer for its target.
+      # A condition that cannot be compared does not count as the parent's.
+      #
+      # @param left [Object]
+      # @param right [Object]
+      # @return [Boolean]
+      def self.same_object?(left, right)
+        SAME_OBJECT.bind_call(left, right)
+      rescue StandardError
+        false
       end
 
       # Pairs for `name` on `klass` and on each of its ancestors. Rails appends
