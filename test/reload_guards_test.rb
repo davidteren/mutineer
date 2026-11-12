@@ -343,6 +343,160 @@ class ReloadGuardsTest < Minitest::Test
     assert_same_list [conditional], narrowed.__callbacks[:save]
   end
 
+  # Stands in for ActiveSupport::Callbacks::Callback. `initialize` freezes the
+  # condition lists and records them as `@compiled`, as Rails 8 does when it
+  # builds the callback. A copy whose lists are changed later still runs the
+  # compiled ones. `merge_conditional_options` matches Rails 7.1 and 8.0:
+  # a skip's `unless:` is appended to `@if`, and its `if:` to `@unless`.
+  class ConditionalCallback
+    attr_reader :kind, :filter, :name, :chain_config
+
+    def initialize(name, filter, kind, options, chain_config)
+      @name = name
+      @filter = filter
+      @kind = kind
+      @chain_config = chain_config
+      @if = Array(options[:if]).freeze
+      @unless = Array(options[:unless]).freeze
+      @compiled = [@if, @unless]
+    end
+
+    def self.build(chain, filter, kind, options)
+      new(chain.name, filter, kind, options, chain.config)
+    end
+
+    def merge_conditional_options(chain, if_option:, unless_option:)
+      options = { if: @if.dup, unless: @unless.dup }
+      options[:if].concat(Array(unless_option))
+      options[:unless].concat(Array(if_option))
+      self.class.build(chain, @filter, @kind, options)
+    end
+  end
+
+  def save_callback(filter, config, if_list:, unless_list:)
+    chain = Struct.new(:name, :config).new(:save, config)
+    ConditionalCallback.build(chain, filter, :before, { if: if_list, unless: unless_list })
+  end
+
+  # #440: the parent callback has conditions, and the subclass skip leaves a
+  # merged copy. Rails then appends the reloaded parent callback and drops
+  # the copy. The copy holds the parent's old condition objects, so putting
+  # it back would hide the mutant. The chain must run the reloaded objects,
+  # with the subclass's own conditions after them. `@compiled` is what runs:
+  # a dup of the old copy, with its lists patched, would still compile the
+  # old objects. Reload and the daemon share this path. Redefine does not
+  # re-run the class body.
+  def test_a_restored_skip_carries_the_reloaded_parent_conditions
+    old_heavy = :heavy?
+    new_light = :light?
+    old_limit = -> { false }
+    new_limit = -> { true }
+    old_draft = -> { false }
+    new_draft = -> { true }
+    # A subclass `skip unless: :bulk?` is stored on `@if`. Two `skip if:`
+    # options are stored on `@unless`, in that order.
+    bulk = :bulk?
+    express = :express?
+    gift = :gift?
+    old_config = { scope: [:kind] }
+    new_config = { scope: [:kind] }
+    old_parent = save_callback(:check, old_config, if_list: [old_heavy, old_limit], unless_list: [old_draft])
+    new_parent = save_callback(:check, new_config, if_list: [new_light, new_limit], unless_list: [new_draft])
+    merged = save_callback(:check, old_config, if_list: [old_heavy, old_limit, bulk], unless_list: [old_draft, express, gift])
+    own = Callback.new(:before, proc {})
+    own_rule = :own_rule
+    independent = save_callback(:check, old_config, if_list: [own_rule], unless_list: [])
+    parent = callback_class
+    narrowed = callback_class(parent)
+    skipped = callback_class(parent)
+    override = callback_class(parent)
+    parent.__callbacks = { save: Chain.new(new_parent) }
+    narrowed.__callbacks = { save: Chain.new(new_parent) }
+    skipped.__callbacks = { save: Chain.new(own, new_parent) }
+    override.__callbacks = { save: Chain.new(new_parent) }
+    before = {
+      parent => { save: [old_parent] },
+      narrowed => { save: [merged] },
+      skipped => { save: [own] },
+      override => { save: [independent] }
+    }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove(before, [__FILE__])
+
+    restored = narrowed.__callbacks[:save].to_a
+    assert_equal 1, restored.size
+    callback = restored.fetch(0)
+    compiled_if, compiled_unless = callback.instance_variable_get(:@compiled)
+    assert_same new_light, compiled_if[0]
+    assert_same new_limit, compiled_if[1]
+    assert_same bulk, compiled_if[2]
+    assert_same new_draft, compiled_unless[0]
+    assert_same express, compiled_unless[1]
+    assert_same gift, compiled_unless[2]
+    refute_includes compiled_if, old_heavy
+    refute_includes compiled_if, old_limit
+    refute_includes compiled_unless, old_draft
+    refute_same merged, callback
+    refute_same new_parent, callback
+    assert_equal :before, callback.kind
+    assert_equal :check, callback.filter
+    assert_equal :save, callback.name
+    assert_same new_config, callback.chain_config
+    assert_equal [new_light, new_limit], new_parent.instance_variable_get(:@if)
+    assert_equal [new_draft], new_parent.instance_variable_get(:@unless)
+    assert_same_list [new_parent], parent.__callbacks[:save]
+    assert_same_list [own], skipped.__callbacks[:save]
+    assert_same_list [independent], override.__callbacks[:save]
+    assert_equal [own_rule], override.__callbacks[:save].to_a.fetch(0).instance_variable_get(:@if)
+  end
+
+  # The reloaded callback still has the parent's condition objects, so the
+  # merged copy is already what a fresh boot would build. It stays that object.
+  def test_a_restored_skip_keeps_the_copy_when_parent_conditions_are_unchanged
+    heavy = :heavy?
+    draft = -> { false }
+    express = :express?
+    config = { scope: [:kind] }
+    old_parent = save_callback(:check, config, if_list: [heavy], unless_list: [draft])
+    new_parent = save_callback(:check, config, if_list: [heavy], unless_list: [draft])
+    merged = save_callback(:check, config, if_list: [heavy, express], unless_list: [draft])
+    parent = callback_class
+    narrowed = callback_class(parent)
+    parent.__callbacks = { save: Chain.new(new_parent) }
+    narrowed.__callbacks = { save: Chain.new(new_parent) }
+    before = { parent => { save: [old_parent] }, narrowed => { save: [merged] } }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove(before, [__FILE__])
+
+    assert_same_list [merged], narrowed.__callbacks[:save]
+    assert_same_list [new_parent], parent.__callbacks[:save]
+  end
+
+  # A parent with no conditions has no objects to show the copy was merged
+  # from one. The subclass copy stays, including when the reload adds a
+  # condition: a subclass callback of the same name has this same shape
+  # (#414) and must not gain the parent's new condition.
+  def test_a_parent_with_no_conditions_keeps_the_subclass_copy
+    added = -> { true }
+    express = :express?
+    old_config = { scope: [:kind] }
+    new_config = { scope: [:kind] }
+    old_parent = save_callback(:check, old_config, if_list: [], unless_list: [])
+    new_parent = save_callback(:check, new_config, if_list: [added], unless_list: [])
+    merged = save_callback(:check, old_config, if_list: [], unless_list: [express])
+    parent = callback_class
+    narrowed = callback_class(parent)
+    parent.__callbacks = { save: Chain.new(new_parent) }
+    narrowed.__callbacks = { save: Chain.new(new_parent) }
+    before = { parent => { save: [old_parent] }, narrowed => { save: [merged] } }
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove(before, [__FILE__])
+
+    assert_same_list [merged], narrowed.__callbacks[:save]
+    assert_same_list [new_parent], parent.__callbacks[:save]
+    refute_includes merged.instance_variable_get(:@compiled).flatten, added
+  end
+
   # The new `:save` callback is the same object as a new `:validate` callback,
   # and the same object as a new callback on a class that is not a subclass.
   # Neither chain loses it. A parent reload still drops it from a subclass
