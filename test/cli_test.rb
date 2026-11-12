@@ -96,6 +96,13 @@ class CliTest < Minitest::Test
     end
   end
 
+  def init_git_project(proj)
+    [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+     %w[add .], %w[commit -qm base]].each do |args|
+      assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+    end
+  end
+
   # #303: with LC_ALL=C Ruby reads files as US-ASCII. A source line with a
   # non-ASCII character must still run, report, and gate on a baseline.
   def test_non_ascii_source_runs_and_gates_under_an_ascii_locale
@@ -1290,6 +1297,18 @@ class CliTest < Minitest::Test
     end
   end
 
+  def test_missing_boot_file_is_a_usage_error_for_empty_since
+    with_project do |proj|
+      init_git_project(proj)
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--boot", "missing_boot.rb", "--since", "HEAD", chdir: proj)
+
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "missing_boot.rb"
+      refute_includes err, "cannot load"
+    end
+  end
+
   def test_missing_boot_file_is_a_usage_error_under_daemon
     with_project do |proj|
       _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
@@ -1305,6 +1324,19 @@ class CliTest < Minitest::Test
     with_project do |proj|
       File.write(File.join(proj, ".mutineer.yml"), "require:\n  - missing_extra.rb\n")
       _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "missing_extra.rb"
+      refute_includes err, "cannot load"
+    end
+  end
+
+  def test_missing_require_file_is_a_usage_error_for_empty_since
+    with_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "require:\n  - missing_extra.rb\n")
+      init_git_project(proj)
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--since", "HEAD", chdir: proj)
 
       assert_equal 2, status.exitstatus, err
       assert_includes err, "missing_extra.rb"

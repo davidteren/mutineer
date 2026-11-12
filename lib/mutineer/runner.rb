@@ -112,15 +112,22 @@ module Mutineer
       # A `--since` run with no changed mutant has nothing to execute. Collect
       # and scope once before loading the app or capturing coverage so an empty
       # scope can return without paying for a full clean-suite run. Nonempty
-      # scopes continue through the existing path below, preserving its order.
+      # scopes reuse this work after coverage capture instead of repeating source
+      # discovery, parsing, and git diff.
+      since_scope = nil
       if config.since
+        # The empty-scope return skips the later require calls, so keep missing
+        # boot and --require paths as usage errors on that path too.
+        [config.boot, *config.require_paths].compact.each { |f| project_file!(config.project_root, f) }
+
         since_jobs, since_ignored, since_source_map, since_extras =
           JobPlan.collect_jobs(config, operator_classes)
         since_jobs, since_ignored, since_extras[:unscoped_mutants] =
           JobPlan.scope_since(since_jobs, since_ignored, since_source_map, config, extras: since_extras)
-        if since_jobs.empty? && since_ignored.empty?
+        if since_jobs.empty?
           return [AggregateResult.new(since_ignored), since_source_map, since_extras]
         end
+        since_scope = [since_jobs, since_ignored, since_source_map, since_extras]
       end
 
       if config.strategy == "redefine"
@@ -208,10 +215,16 @@ module Mutineer
       JobPlan.abort_if_unclean!(coverage_map, framework: config.framework)
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
-      jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
+      if since_scope
+        jobs, ignored_results, source_map, extras = since_scope
+      else
+        jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
+      end
 
-      jobs, ignored_results, extras[:unscoped_mutants] =
-        JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
+      unless since_scope
+        jobs, ignored_results, extras[:unscoped_mutants] =
+          JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
+      end
 
       strategy = config.strategy
       # Fail-fast must be serial: a parallel stop_when fires on the first survivor

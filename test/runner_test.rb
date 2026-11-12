@@ -503,6 +503,84 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  def test_empty_since_with_only_ignored_mutants_skips_coverage_capture
+    Dir.mktmpdir("mutineer-empty-since-ignored") do |dir|
+      source = File.join(dir, "calculator.rb")
+      File.write(source, "class EmptySinceCalculator\n  def add(a, b)\n    a + b # mutineer:disable-line -- unchanged\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [source], project_root: dir, since: "HEAD",
+                                    operators: ["arithmetic"])
+      changed = { File.expand_path(source, dir) => Set[3] }
+
+      Mutineer::ChangedLines.stub(:for, changed) do
+        Mutineer::CoverageMap.stub(:new, ->(**_kwargs) { flunk "coverage capture must not run" }) do
+          aggregate, = Mutineer::Runner.execute(config)
+          assert_equal 1, aggregate.ignored_count
+        end
+      end
+    end
+  end
+
+  def test_nonempty_since_scope_reuses_collected_jobs
+    Dir.mktmpdir("mutineer-since-reuse") do |dir|
+      source = File.join(dir, "calculator.rb")
+      File.write(source, "class SinceReuseCalculator\n  def add(a, b)\n    a + b\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [source], project_root: dir, since: "HEAD",
+                                    operators: ["arithmetic"], jobs: 1)
+      collect_calls = 0
+      scope_calls = 0
+      collect_jobs = Mutineer::JobPlan.method(:collect_jobs)
+      coverage_map = FakeCoverageMap.new({}, dir, [], false, [])
+      coverage_builder = Object.new
+      coverage_builder.define_singleton_method(:build_or_load) { coverage_map }
+      pool = Object.new
+      pool.define_singleton_method(:run) do |jobs, stop_when:, on_result:, &run_one|
+        results = []
+        jobs.each do |job|
+          result = run_one.call(job.fetch(0), job.fetch(1))
+          on_result.call(result)
+          results << result
+          break if stop_when&.call(result)
+        end
+        results
+      end
+      collected =
+        lambda do |cfg, operators|
+          collect_calls += 1
+          collect_jobs.call(cfg, operators)
+        end
+      scoped =
+        lambda do |jobs, ignored, source_map, cfg, extras: nil|
+          scope_calls += 1
+          assert cfg.since
+          assert_kind_of Hash, source_map
+          assert_kind_of Hash, extras
+          [jobs, ignored, jobs.size + ignored.size]
+        end
+
+      Mutineer::JobPlan.stub(:source_dirs, []) do
+        Mutineer::JobPlan.stub(:sweep_orphans, nil) do
+          Mutineer::JobPlan.stub(:collect_jobs, collected) do
+            Mutineer::JobPlan.stub(:scope_since, scoped) do
+              Mutineer::CoverageMap.stub(:new, ->(**_kwargs) { coverage_builder }) do
+                Mutineer::JobPlan.stub(:abort_if_unclean!, nil) do
+                  Mutineer::WorkerPool.stub(:new, pool) do
+                    Mutineer::Runner.stub(:run, ->(*_args, **_kwargs) { Mutineer::Result.new(status: :killed) }) do
+                      aggregate, = Mutineer::Runner.execute(config)
+                      assert_equal 1, aggregate.killed_count
+                    end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+
+      assert_equal 1, collect_calls
+      assert_equal 1, scope_calls
+    end
+  end
+
   def test_filter_since_file_absent_from_diff_yields_no_jobs
     config = Mutineer::Config.new(sources: [CALC], project_root: ROOT, since: "HEAD~1")
     source_map = { CALC => File.read(CALC) }
