@@ -380,7 +380,7 @@ class PairingTest < Minitest::Test
         skip "this filesystem refuses a file name that is not UTF-8"
       end
       names = infer_tests("user.rb", root)
-      assert_equal 2, names.size
+      assert_equal ["test/user_caf\u00e9_test.rb", "test/user_\xFF_test.rb"].map(&:b), names.map(&:b)
     end
   end
 

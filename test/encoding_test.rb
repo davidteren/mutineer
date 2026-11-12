@@ -316,9 +316,11 @@ class EncodingTest < Minitest::Test
       path = File.join(dir, "snip.rb")
       File.binwrite(path, bytes)
       script = "load #{path.inspect}\nputs greet.encoding.name\nputs greet.encode('UTF-8')\n"
-      out, err, status = Open3.capture3(RUBY, "-e", script)
+      # -E so the child can print UTF-8 when this process's locale is C.
+      # The capture is still tagged with that locale, so retag it before compare.
+      out, err, status = Open3.capture3(RUBY, "-Eutf-8:utf-8", "-e", script)
       assert_equal 0, status.exitstatus, err
-      assert_equal ["EUC-JP", "\u3042"], out.lines.map(&:strip)
+      assert_equal ["EUC-JP", "\u3042"], out.dup.force_encoding(Encoding::UTF_8).lines.map(&:strip)
     end
   end
 

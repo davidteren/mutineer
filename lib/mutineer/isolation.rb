@@ -242,8 +242,9 @@ module Mutineer
       Tempfile.create([".mutineer_mutant", ".rb"], dir) do |f|
         f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
         # Binary: a text write would follow the locale and could change
-        # the bytes. SourceBytes writes the encoding the text is in, and
-        # adds a magic comment when a redefine snippet has none (#346).
+        # the bytes. SourceBytes encodes the text to the encoding its
+        # magic comment names, and adds one when a redefine snippet has
+        # none (#346).
         f.binmode
         f.write(SourceBytes.for_file(code))
         f.flush
