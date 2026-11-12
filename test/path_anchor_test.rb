@@ -18,6 +18,7 @@ class RedefinePathAnchorTest < Minitest::Test
   # would return: the real directory, the loaded path, or the sibling.
   FORMS = [
     ["__dir__", :dir],
+    ["__dir__ { }", :dir],
     ["Kernel.__dir__", :dir],
     ["::Kernel.__dir__", :dir],
     ["self.__dir__", :dir],
@@ -30,6 +31,8 @@ class RedefinePathAnchorTest < Minitest::Test
     ['File.join(__dir__, "anchor.txt")', :anchor_txt],
     ['File.read(File.join(__dir__, "anchor.txt")).strip', :anchor_body],
     ['require_relative "sibling"; ProbeSibling::MARK', :mark],
+    ['require_relative("sibling") { }; ProbeSibling::MARK', :mark],
+    ['require_relative(*["sibling"]); ProbeSibling::MARK', :mark],
     ['require_relative "~/tilde_sib"; TildeSib::MARK', :mark],
     ["T += 1; __dir__", :dir],
     ["require_relative(\"sibling\"); ProbeSibling::MARK", :mark],
@@ -68,6 +71,33 @@ class RedefinePathAnchorTest < Minitest::Test
           assert_equal report["load_dir"], row["loaded_dir"], label
         end
       end
+    end
+  end
+
+  # A nested `Kernel` constant is not `::Kernel`. Rewriting `Kernel.__dir__`
+  # would return a path; the call must still miss the method.
+  def test_shadowed_kernel_is_not_rewritten
+    Dir.mktmpdir do |dir|
+      source = <<~RUBY
+        class ShadowHost339
+          Kernel = Module.new
+          def where
+            Kernel.__dir__
+          end
+        end
+      RUBY
+      path = File.join(dir, "shadow.rb")
+      File.write(path, source)
+      require path
+      subject = Mutineer::Project.discover([path]).first
+      offset = source.index("__dir__")
+      mutation = Mutineer::Mutation.new(start_offset: offset, end_offset: offset + "__dir__".bytesize,
+                                        replacement: "__dir__", operator: :literal_mutation)
+      error = assert_raises(NoMethodError) do
+        Mutineer::Isolation.apply_surgical(mutation, subject, source)
+        ShadowHost339.new.where
+      end
+      refute_match(%r{/tmp|/var|/private}, error.message)
     end
   end
 

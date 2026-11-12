@@ -349,7 +349,31 @@ module Mutineer
 
       file_path = anchor_file(subject)
       dir_literal = anchor_directory(file_path).dump
-      PathAnchor.rewrite(code, file_path.dump, dir_literal)
+      PathAnchor.rewrite(code, file_path.dump, dir_literal, bare_kernel: bare_kernel_builtin?(subject))
+    end
+
+    # Whether a bare `Kernel` in `subject` is `::Kernel`. A class or enclosing
+    # module that defines its own `Kernel` must keep that constant: rewriting
+    # `Kernel.__dir__` would turn a `NoMethodError` into a path.
+    #
+    # @api private
+    # @param subject [Mutineer::Subject] the method being redefined.
+    # @return [Boolean]
+    def self.bare_kernel_builtin?(subject)
+      cursor = Object
+      modules = subject.lexical_namespace.map do |element|
+        cursor = element.start_with?("::") ? Object.const_get(element.delete_prefix("::")) : cursor.const_get(element)
+      end
+      lookup = []
+      modules.reverse_each { |mod| mod.ancestors.each { |ancestor| lookup << ancestor if ancestor.is_a?(Module) } }
+      lookup.each do |candidate|
+        next unless candidate.const_defined?(:Kernel, false)
+
+        return candidate.const_get(:Kernel, false).equal?(::Kernel)
+      end
+      true
+    rescue NameError
+      false
     end
 
     # The path `__FILE__` must return for `subject`. The live method's
@@ -490,19 +514,23 @@ module Mutineer
     #
     # @api private
     class PathAnchor < Prism::Visitor
-      # Argument nodes that are not a single expression to splice into
-      # `File.expand_path`. A splat or a keyword would change meaning there.
+      # Argument nodes that are not a path expression. A keyword argument makes
+      # `require_relative` raise `ArgumentError` before it touches a file, so
+      # the call is left as written. A splat is a path and is kept.
       SKIPPED_ARGUMENTS = [
-        Prism::SplatNode, Prism::KeywordHashNode, Prism::BlockArgumentNode, Prism::ForwardingArgumentsNode
+        Prism::KeywordHashNode, Prism::BlockArgumentNode, Prism::ForwardingArgumentsNode
       ].freeze
 
       # @param source [String] the snippet or argument to rewrite.
       # @param file_literal [String] a dumped Ruby string of the original `__FILE__`.
       # @param dir_literal [String] a dumped Ruby string of the original `__dir__`.
-      def initialize(source, file_literal, dir_literal)
+      # @param bare_kernel [Boolean] rewrite a bare `Kernel` receiver. False when
+      #   the method's lexical scope defines a different `Kernel`.
+      def initialize(source, file_literal, dir_literal, bare_kernel)
         @source = source
         @file_literal = file_literal
         @dir_literal = dir_literal
+        @bare_kernel = bare_kernel
         @edits = []
       end
 
@@ -514,12 +542,13 @@ module Mutineer
       # @param source [String] snippet or argument source.
       # @param file_literal [String] dumped original `__FILE__`.
       # @param dir_literal [String] dumped original `__dir__`.
+      # @param bare_kernel [Boolean] see {#initialize}.
       # @return [String]
-      def self.rewrite(source, file_literal, dir_literal)
+      def self.rewrite(source, file_literal, dir_literal, bare_kernel: true)
         parsed = Prism.parse(source)
         return source unless parsed.value
 
-        anchor = new(source, file_literal, dir_literal)
+        anchor = new(source, file_literal, dir_literal, bare_kernel)
         anchor.visit(parsed.value)
         anchor.apply
       end
@@ -540,11 +569,13 @@ module Mutineer
         return replace(node, @dir_literal) if dir_call?(node)
 
         if (argument = relative_argument(node))
-          anchored = self.class.rewrite(slice(argument), @file_literal, @dir_literal)
-          # `::Kernel.require` does not call an instance `require`. `absolute_path`
-          # leaves a leading `~` as a path segment; `expand_path` would treat it
-          # as a home directory, which `require_relative` does not.
-          text = ["::Kernel.require(File.absolute_path(", anchored, ", ", @dir_literal, "))"].join
+          anchored = rewrite_slice(argument)
+          # `::Kernel.require` and `::File` do not follow a nested constant or an
+          # instance `require`. `absolute_path` leaves a leading `~` as a path
+          # segment; `expand_path` would treat it as a home directory, which
+          # `require_relative` does not. An ignored block is part of the call
+          # location and is dropped: `require_relative` does not yield it.
+          text = ["::Kernel.require(::File.absolute_path(", anchored, ", ", @dir_literal, "))"].join
           return replace(node, text)
         end
 
@@ -569,8 +600,6 @@ module Mutineer
       # @param node [Prism::CallNode]
       # @return [Boolean]
       def dir_call?(node)
-        return false if node.block
-
         args = positional(node)
         return false if args.nil?
 
@@ -585,12 +614,12 @@ module Mutineer
 
       # The single path argument of a `require_relative` call, or nil when the
       # call is not that anchor. `send(:require_relative, expr)` returns `expr`.
+      # A splat is included: `require_relative(*paths)` passes those paths on.
+      # A block does not matter: the method does not yield it.
       #
       # @param node [Prism::CallNode]
       # @return [Prism::Node, nil]
       def relative_argument(node)
-        return if node.block
-
         args = positional(node)
         return unless args
 
@@ -617,8 +646,8 @@ module Mutineer
       # @param node [Prism::Node]
       # @return [Boolean]
       def kernel_constant?(node)
-        (node.is_a?(Prism::ConstantReadNode) && node.name == :Kernel) ||
-          (node.is_a?(Prism::ConstantPathNode) && node.parent.nil? && node.name == :Kernel)
+        (node.is_a?(Prism::ConstantPathNode) && node.parent.nil? && node.name == :Kernel) ||
+          (@bare_kernel && node.is_a?(Prism::ConstantReadNode) && node.name == :Kernel)
       end
 
       # True for `send` or `__send__` on a receiver {path_receiver?} accepts.
@@ -655,6 +684,14 @@ module Mutineer
       def slice(node)
         location = node.location
         @source.byteslice(location.start_offset, location.end_offset - location.start_offset)
+      end
+
+      # Rewrites anchors inside one argument, keeping the call's `bare_kernel` flag.
+      #
+      # @param node [Prism::Node]
+      # @return [String]
+      def rewrite_slice(node)
+        self.class.rewrite(slice(node), @file_literal, @dir_literal, bare_kernel: @bare_kernel)
       end
 
       # Records a replacement of `node`'s source range.

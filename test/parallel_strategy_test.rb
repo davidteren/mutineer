@@ -127,7 +127,9 @@ class ParallelStrategyTest < Minitest::Test
       end
       assert_equal File.join(File.realpath(dir), "lib"), File.dirname(loaded)
       assert_match(/\A\.mutineer_mutant/, File.basename(loaded))
-      assert_equal File.expand_path("lib/x.rb", dir), value
+      # macOS `Dir.mktmpdir` is under `/var`, a symlink for `/private/var`. The
+      # child expands the path after `chdir`, so compare the real path.
+      assert_equal File.join(File.realpath(dir), "lib", "x.rb"), value
     end
   end
 
@@ -146,7 +148,7 @@ class ParallelStrategyTest < Minitest::Test
                                 file: "lib/x.rb")
       end
       assert_equal File.realpath(Dir.tmpdir), File.realpath(File.dirname(loaded))
-      assert_equal File.expand_path("lib/x.rb", dir), value
+      assert_equal File.join(File.realpath(dir), "lib", "x.rb"), value
     ensure
       File.chmod(0o755, lib) if File.directory?(lib)
     end
