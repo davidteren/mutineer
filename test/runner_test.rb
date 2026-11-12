@@ -310,6 +310,13 @@ class RunnerTest < Minitest::Test
     singleton = "def greets(name)\n  define_singleton_method(\"greet_\#{name}\") { \"Hello\" }\nend\n"
     ran, = load_probe("Hello", singleton, load_lines: [2])
     assert ran, "define_singleton_method stores the block the same way"
+
+    # A later statement on the modifier's line runs only sometimes. The line
+    # can count when the modifier's condition is checked. It stays scored.
+    later = "def f(flag); return \"early\" if flag; compute(flag); end\n"
+    ran, status = load_probe("compute", later, load_lines: [1])
+    refute ran
+    assert_equal :survived, status
   end
 
   # #209: a one-line or endless def ran at load when the method was called at

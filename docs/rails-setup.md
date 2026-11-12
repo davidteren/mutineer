@@ -68,7 +68,7 @@ Examples include constant-building calls, `to_prepare` initializers, and source 
 | A verdict is needed | Use `--test-command` to boot a fresh process per mutant. |
 | The caller loaded before the mutant | `reload` updates the macro method and does not run the class that already called it. Those mutants stay `ran_at_load`. Re-running that class body is [#389](https://github.com/davidteren/mutineer/issues/389). |
 
-`CI` does not change a verdict. Rails sets `config.eager_load` from `CI` in the test environment, and that eager load is what runs the call before the mutant. With eager load off, the class loads after the mutant and the same mutants are killed.
+Mutineer does not read `CI`. In the Rails test environment, `config.eager_load` follows `CI`, so a run with `CI` set loads the class before the mutant and these mutants are `ran_at_load`. With eager load off, the class loads after the mutant and the same mutants are killed.
 
 Continue from the first report to a CI gate with the
 [Rails rollout guide](https://davidteren.github.io/mutineer/rails.html).
