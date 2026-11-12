@@ -1146,7 +1146,9 @@ class ReloadGuardsTest < Minitest::Test
     [
       { label: "symbol condition", entries: bare_entries(:draft?, :published?) },
       { label: "proc condition", entries: [guarded(BareCallback.new, condition_procs[0]), guarded(BareCallback.new, condition_procs[1]), guarded(BareCallback.new, condition_procs[1])] },
-      { label: "same class, symbol condition", entries: class_entries(same_class: true, concern_if: :draft?, body_if: :published?) }
+      { label: "same class, symbol condition", entries: class_entries(same_class: true, concern_if: :draft?, body_if: :published?) },
+      { label: "unless symbol", entries: bare_unless(:draft?, :published?) },
+      { label: "unless proc", entries: [guarded(BareCallback.new, nil, unless_condition: condition_procs[0]), guarded(BareCallback.new, nil, unless_condition: condition_procs[1]), guarded(BareCallback.new, nil, unless_condition: condition_procs[1])] }
     ]
   end
 
@@ -1174,12 +1176,25 @@ class ReloadGuardsTest < Minitest::Test
     ]
   end
 
+  # @param concern_unless [Object]
+  # @param body_unless [Object]
+  # @return [Array<Callback>]
+  def bare_unless(concern_unless, body_unless)
+    [
+      guarded(BareCallback.new, nil, unless_condition: concern_unless),
+      guarded(BareCallback.new, nil, unless_condition: body_unless),
+      guarded(BareCallback.new, nil, unless_condition: body_unless)
+    ]
+  end
+
   # @param filter [Object]
   # @param condition [Object, nil]
+  # @param unless_condition [Object, nil]
   # @return [Callback]
-  def guarded(filter, condition)
+  def guarded(filter, condition, unless_condition: nil)
     callback = Callback.new(:before, filter)
     callback.instance_variable_set(:@if, [condition]) if condition
+    callback.instance_variable_set(:@unless, [unless_condition]) if unless_condition
     callback
   end
 
