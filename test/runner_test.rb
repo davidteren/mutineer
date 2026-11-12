@@ -478,6 +478,31 @@ class RunnerTest < Minitest::Test
     assert_equal [jobs, ignored, nil], Mutineer::JobPlan.scope_since(jobs, ignored, source_map, config)
   end
 
+  # #396: an empty `--since` scope returns before the app boot and coverage
+  # capture, while preserving the pre-scope mutant count for the report.
+  def test_empty_since_returns_before_boot_and_coverage_capture
+    Dir.mktmpdir("mutineer-empty-since") do |dir|
+      source = File.join(dir, "calculator.rb")
+      test = File.join(dir, "calculator_test.rb")
+      boot = File.join(dir, "boot.rb")
+      marker = File.join(dir, "booted")
+      File.binwrite(source, "class EmptySinceCalculator\r\n  def add(a, b)\r\n    a + b\r\n  end\r\nend\r\n")
+      File.write(test, "raise 'the unchanged test suite must not run'\n")
+      File.write(boot, "File.write(#{marker.dump}, 'booted')\n")
+      config = Mutineer::Config.new(sources: [source], tests: [test], boot: boot, since: "HEAD",
+                                    operators: ["arithmetic"], project_root: dir)
+
+      Mutineer::ChangedLines.stub(:for, {}) do
+        Mutineer::CoverageMap.stub(:new, ->(**_kwargs) { flunk "coverage capture must not run" }) do
+          _aggregate, _source_map, extras = Mutineer::Runner.execute(config)
+          assert_operator extras[:unscoped_mutants], :>, 0
+        end
+      end
+
+      refute_path_exists marker, "an empty `--since` run must return before application boot"
+    end
+  end
+
   def test_filter_since_file_absent_from_diff_yields_no_jobs
     config = Mutineer::Config.new(sources: [CALC], project_root: ROOT, since: "HEAD~1")
     source_map = { CALC => File.read(CALC) }

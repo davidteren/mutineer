@@ -109,6 +109,27 @@ module Mutineer
       # Zeitwerk (#253).
       dirs = JobPlan.source_dirs(config)
       JobPlan.sweep_orphans(dirs)
+      # A `--since` run with no changed mutant has nothing to execute. Collect
+      # and scope once before loading the app or capturing coverage so an empty
+      # scope can return without paying for a full clean-suite run. Nonempty
+      # scopes continue through the existing path below, preserving its order.
+      if config.since
+        since_jobs, since_ignored, since_source_map, since_extras =
+          JobPlan.collect_jobs(config, operator_classes)
+        since_jobs, since_ignored, since_extras[:unscoped_mutants] =
+          JobPlan.scope_since(since_jobs, since_ignored, since_source_map, config, extras: since_extras)
+        if since_jobs.empty? && since_ignored.empty?
+          return [AggregateResult.new(since_ignored), since_source_map, since_extras]
+        end
+      end
+
+      if config.strategy == "redefine"
+        dirs.reject { |d| File.writable?(d) }.each do |d|
+          warn "[mutineer] #{d} is not writable: redefine loads its mutants from the system temp dir, " \
+               "so a method there that uses __dir__ or require_relative can be falsely killed. " \
+               "Make the directory writable to avoid this (#339)."
+        end
+      end
 
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
