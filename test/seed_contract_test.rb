@@ -110,9 +110,12 @@ class SeedContractTest < Minitest::Test
       ENV["MUTINEER_SEED_LOG"] = log
       file_a = write_rspec_groups(dir, "a")
       file_b = write_rspec_groups(dir, "b", groups: %w[B1])
+      File.write(File.join(dir, "subject.rb"), "class SeedContractSubject\n  def value = 1\nend\n")
       alone = rspec_order_of([file_a], log)
       both = rspec_order_of([file_a, file_b], log)
+      clean = rspec_clean_order(dir, [file_a, file_b], log)
       assert_equal alone, both.gsub("B1one", "").gsub("B1two", "")
+      assert_equal alone, clean.gsub("B1one", "").gsub("B1two", "")
     end
   end
 
@@ -285,6 +288,14 @@ class SeedContractTest < Minitest::Test
   def rspec_order_of(files, log)
     File.write(log, "")
     run_rspec(files, stop: false)
+    File.read(log)
+  end
+
+  def rspec_clean_order(dir, files, log)
+    File.write(log, "")
+    map = Mutineer::CoverageMap.new(source_paths: [File.join(dir, "subject.rb")], test_paths: files,
+                                    cache_dir: File.join(dir, "cache"), project_root: dir, framework: "rspec")
+    capture_subprocess_io { map.send(:subprocess_clean_pass?, files) }
     File.read(log)
   end
 
