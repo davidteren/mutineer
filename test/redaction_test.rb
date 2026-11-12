@@ -119,7 +119,20 @@ class RedactionTest < Minitest::Test
   end
 
   def test_hides_a_short_password_that_stands_alone
-    assert_equal "pw [REDACTED] rejected", redact("pw a rejected", "postgres://u:a@host/db")
+    assert_equal "pw [REDACTED] rejected", redact("pw ab rejected", "postgres://u:ab@host/db")
+  end
+
+  # #341: one character is ordinary text (`a`, `1`). It stays outside a URL
+  # and is still hidden in the URL and in a password= parameter. A longer
+  # value that only starts with that character is not eaten.
+  def test_keeps_a_one_character_password_outside_a_url
+    { "a" => "postgres://u:a@host/db", "1" => "postgres://u:1@host/db", "!" => "postgres://u:!@host/db" }.each do |password, url|
+      assert_equal "pw #{password} rejected", redact("pw #{password} rejected", url), password
+      assert_equal "postgres://u:[REDACTED]@host/db", redact(url, url), password
+    end
+    query = "postgres://u@h/db?password=a"
+    assert_equal "see a at postgres://u@h/db?password=[REDACTED]", redact("see a at #{query}", query)
+    assert_equal "password=admin", redact("password=admin", "postgres://u:a@host/db")
   end
 
   # An escape never swallows a copy of the form, and a form that starts with
@@ -133,12 +146,14 @@ class RedactionTest < Minitest::Test
   end
 
   def test_short_punctuation_passwords_keep_other_tokens_readable
-    { "!" => "word!word", "!a" => "word!aword", "a!" => "worda!word" }.each do |password, token|
+    { "!a" => "word!aword", "a!" => "worda!word" }.each do |password, token|
       url = "postgres://u:#{password}@host/db"
 
       assert_equal token, redact(token, url)
       assert_equal "pw [REDACTED] rejected", redact("pw #{password} rejected", url)
     end
+    # One character is kept as its own token. See test_keeps_a_one_character_password_outside_a_url.
+    assert_equal "word!word", redact("word!word", "postgres://u:!@host/db")
   end
 
   # A percent-encoded password that decodes to invalid UTF-8 must not make
@@ -221,12 +236,38 @@ class RedactionTest < Minitest::Test
   end
 
   # #341 item 4: a password of word characters is hidden only as a whole
-  # token, so it no longer blanks letters inside other words.
+  # token, so it no longer blanks letters inside other words. `test` is also
+  # a common word (item 5), so the path component stays too.
   def test_keeps_words_that_contain_a_long_word_password
     url = "postgres://u:test@host/db"
 
-    assert_equal "/app/[REDACTED]/models/user_test.rb", redact("/app/test/models/user_test.rb", url)
+    assert_equal "/app/test/models/user_test.rb", redact("/app/test/models/user_test.rb", url)
+    assert_equal "postgres://u:[REDACTED]@host/db", redact(url, url)
     assert_equal "auth failed for xs3cret s3cret_x", redact("auth failed for xs3cret s3cret_x", "postgres://u:s3cret@host/db")
+    assert_equal "auth failed for [REDACTED]", redact("auth failed for s3cret", "postgres://u:s3cret@host/db")
+  end
+
+  # #341 item 5: a common-word password, and a password equal to the host or
+  # the database name, stays readable outside a URL. The URL and a password=
+  # parameter still hide it. Several values, so the rule is not one example.
+  def test_keeps_a_common_word_or_url_label_outside_a_url
+    cases = {
+      "postgres://u:password@h/db" => ["FATAL: password authentication failed", "password"],
+      "postgres://u:test@h/db" => ["/app/test/models", "test"],
+      "postgres://u:secret@h/db" => ["the secret is kept", "secret"],
+      "postgres://app:localhost@localhost/db" => ["reach localhost", "localhost"],
+      "postgres://app:mydb@db.internal/mydb" => ['database "mydb" is down', "mydb"],
+      "mysql2://app:db.internal@db.internal:3306/app" => ["host db.internal refused", "db.internal"]
+    }
+    cases.each do |url, (message, word)|
+      assert_equal message, redact(message, url), url
+      redacted = redact(url, url)
+      assert_includes redacted, "[REDACTED]@", url
+      refute_includes redacted.split("@", 2).first, word, url
+    end
+    query = "postgres://u@h/db?password=password"
+    assert_equal "word password and postgres://u@h/db?password=[REDACTED]",
+                 redact("word password and #{query}", query)
   end
 
   # A long form with a non-word character has no reliable token edge, so it
@@ -318,5 +359,24 @@ class RedactionTest < Minitest::Test
     refute_includes err, "s3cret"
   ensure
     ENV["DATABASE_URL"] = saved
+  end
+
+  # A URL passed beside ENV, and one stored on the module, both hide a bare
+  # password. The env URL is not required.
+  def test_extra_urls_hide_a_bare_password
+    text = Mutineer::Redaction.text("bare s3cret end", env: {}, urls: ["postgres://u:s3cret@h/db"])
+
+    assert_equal "bare [REDACTED] end", text
+
+    Mutineer::Redaction.extra_urls = ["postgres://u:othersecret@h/db"]
+    stored = Mutineer::Redaction.text("saw othersecret", env: {})
+    assert_equal "saw [REDACTED]", stored
+  ensure
+    Mutineer::Redaction.extra_urls = []
+  end
+
+  # A one-character decoded form is not blanked. The raw percent-encoding is.
+  def test_a_decoded_one_character_form_stays_visible
+    assert_equal "letter a and [REDACTED]", redact("letter a and %61", "postgres://u:%61@host/db")
   end
 end

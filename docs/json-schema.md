@@ -188,9 +188,11 @@ A daemon that died or did not reply in time gives `daemon crashed` or `daemon st
 (schema `1.10`, #388). Issue #417 tracks a cause for the rest: a database error inside a test, RSpec
 errors outside examples, the `--matrix` early end, and `--test-command`.
 
-`details` is redacted, but only in part. Redaction replaces the password of `DATABASE_URL`, and the
-password in any `scheme://user:password@host` URL, with `[REDACTED]`. A password that appears on its
-own, from another setting, stays visible (#341 tracks redaction gaps). An exception message can hold
+`details` is redacted. Redaction replaces the password of `DATABASE_URL` (the environment value and
+a `DATABASE_URL` in a dotenv file in the project) and the password in any `scheme://user:password@host`
+URL with `[REDACTED]`. A password of one character, a password that equals the username, the host, or
+the database name, and a common word such as `password` or `test` stay visible outside a URL and outside
+a `password=` parameter. A password from another setting stays visible. An exception message can hold
 other secrets too, so treat the report like a log. A message
 can also hold an object address or a temporary file name, so `details` of an errored mutant can differ
 between two runs with the same verdicts.

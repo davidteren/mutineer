@@ -19,6 +19,8 @@ require_relative "mutator_registry"
 require_relative "triage"
 require_relative "init"
 require_relative "redaction"
+require_relative "database_urls"
+require_relative "output_filter"
 
 module Mutineer
   # Command-line entry point. `start` is the single public method called by
@@ -126,6 +128,8 @@ module Mutineer
     # @param argv [Array<String>] raw command-line arguments.
     # @return [void]
     def self.start(argv)
+      # Set before any exit: the method's ensure reads it, and exit runs ensure.
+      filter_owned = false
       if argv.first == "triage"
         exit Triage.run(argv[1..])
       end
@@ -244,6 +248,10 @@ module Mutineer
         # A directory source expands to its **/*.rb files; a file inside the
         # project becomes its root-relative path (#104). Test inference (when --test is omitted) happens in validate!.
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
+        # Direct writes from the app, a fork, or a subprocess inherit these
+        # pipes (#341). Dotenv files cover a DATABASE_URL the app loads itself.
+        Redaction.extra_urls = DatabaseUrls.from_files(config.project_root)
+        filter_owned = OutputFilter.install
         run(config)
       when "migrate"
         warn_config_root_mismatch(file_path, config.project_root) if file_path
@@ -275,6 +283,12 @@ module Mutineer
       end
       warn "mutineer: #{Redaction.text(details)}"
       exit 1
+    ensure
+      # Flush after the report is printed and before the process exits, while
+      # extra_urls is still set. Then drop them so a later in-process call
+      # does not keep this project's passwords.
+      OutputFilter.uninstall if filter_owned
+      Redaction.extra_urls = []
     end
 
     # Settings `mutineer config` prints. The GitHub Action asks for these

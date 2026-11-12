@@ -57,6 +57,42 @@ class DaemonRedactionTest < Minitest::Test
     end
   end
 
+  # #341: the daemon process sees a DATABASE_URL the boot file assigns. The
+  # parent's environment does not have it. The bare word is still hidden, and
+  # the protocol line stays JSON.
+  def test_stderr_hides_a_password_the_boot_file_assigns
+    out, err = daemon_boot(<<~RUBY)
+      ENV["DATABASE_URL"] = "postgres://u:s3cret@h/db"
+      STDERR.puts "bare s3cret end"
+    RUBY
+
+    assert_equal true, JSON.parse(out.lines.last)["ready"], out
+    assert_includes err, "bare [REDACTED] end"
+    refute_includes out + err, "s3cret"
+  end
+
+  # #341: a dotenv file is read before the app boots, so a bare password from
+  # that file is hidden even when the boot file never assigns DATABASE_URL.
+  def test_stderr_hides_a_bare_password_from_a_dotenv_file
+    out, err = daemon_boot('STDERR.puts "file s3cret end"', dotenv: "DATABASE_URL=postgres://u:s3cret@h/db\n")
+
+    assert_equal true, JSON.parse(out.lines.last)["ready"], out
+    assert_includes err, "file [REDACTED] end"
+    refute_includes out + err, "s3cret"
+  end
+
+  def daemon_boot(boot_source, dotenv: nil)
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "boot.rb"), boot_source)
+      File.write(File.join(dir, ".env"), dotenv) if dotenv
+      lib = File.expand_path("../lib", __dir__)
+      script = "require \"mutineer/daemon_server\"; Mutineer::DaemonServer.run"
+      stdin = JSON.generate("cmd" => "boot", "project_root" => dir, "boot" => boot_source && "boot.rb")
+      return Open3.capture3({ "DATABASE_URL" => nil }, RbConfig.ruby, "-I", lib, "-e", script,
+                            stdin_data: "#{stdin}\n")
+    end
+  end
+
   # #303: with LC_ALL=C the daemon reads its stdin as US-ASCII. A boot line
   # with a non-ASCII path must still parse, so the daemon replies.
   def test_boot_line_with_a_non_ascii_path_parses_under_an_ascii_locale

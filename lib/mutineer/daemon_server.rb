@@ -7,6 +7,8 @@ require_relative "child_coverage"
 require_relative "orphan_guard"
 require_relative "concern_blocks"
 require_relative "redaction"
+require_relative "database_urls"
+require_relative "output_filter"
 require_relative "child_cause"
 
 module Mutineer
@@ -155,6 +157,16 @@ module Mutineer
         @framework = cfg.fetch("framework", "minitest")
         @source_dirs = Array(cfg["source_dirs"]).map { |d| File.expand_path(d) }
         Dir.chdir(cfg["project_root"]) if cfg["project_root"]
+        # The parent's drain knows the tool's DATABASE_URL. A URL the app
+        # loads from a dotenv file, or assigns before it prints, is hidden
+        # here, where this process can see it (#341). Stderr only: stdout is
+        # the protocol channel reserved above. Point fd 1 at the filtered
+        # stderr so `puts` from the app takes the same path.
+        Redaction.extra_urls = DatabaseUrls.from_files(Dir.pwd)
+        if OutputFilter.install(streams: [:stderr]) && @protocol
+          STDOUT.reopen(STDERR)
+          $stdout = STDOUT
+        end
         ENV["RAILS_ENV"] ||= "test" if cfg["rails"]
         Array(cfg["load_paths"]).each { |d| $LOAD_PATH.unshift(File.expand_path(d)) }
         # Start Coverage BEFORE the app loads, so booted source lines are
@@ -183,6 +195,8 @@ module Mutineer
         # can surface a clean error rather than hang on the handshake.
         @output.puts(JSON.generate("ready" => false, "error" => describe_error(e)))
         @output.flush
+        # exit! skips at_exit, so flush the stderr pipe before it.
+        OutputFilter.uninstall
         exit!(1)
       end
 

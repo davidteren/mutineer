@@ -8,7 +8,12 @@ module Mutineer
   # a malformed one can quote the whole URL. Outside a URL a password form
   # made only of word characters is hidden only as a whole token, so it cannot
   # blank letters inside other words (#341). A password that exactly equals the
-  # username is left visible outside a URL, so `role "postgres"` stays readable.
+  # username, the host, or the database name is left visible outside a URL,
+  # because the redacted URL already shows that word (`role "postgres"`,
+  # `localhost`, `database "app"`). So is a one-character password, and a
+  # password that is one of {COMMON_WORDS}: those words are ordinary text in
+  # errors and paths. The password inside a URL, and the value of a
+  # `password=` query parameter, stays hidden in every one of those cases.
   #
   # Stdlib only: the app-side daemon loads this file without the rest of
   # mutineer.
@@ -20,10 +25,12 @@ module Mutineer
     # such `@`, it ends at the last `@`, as before. A malformed password with
     # an `@`, a `:`, a space, or a quote `inspect` escaped (`\"`) is hidden
     # too, so when the two goals conflict, hiding wins: in
-    # `u:pw@h/x and y@h2/db` the text up to `h2` is hidden. One case still
-    # shows part of a password: one that holds an `@`, a host, a `/`, `:`,
-    # `?` or `#`, and a space (`a@b/c d`), in a URL whose own host has no
-    # port, path or query, or has an `@` in them (`?n=ci@corp`).
+    # `u:pw@h/x and y@h2/db` the text up to `h2` is hidden. The matcher
+    # contract, pinned by the redaction test, still shows the tail of one
+    # malformed password: it holds an `@`, a host, a `/`, `:`, `?` or `#`,
+    # and a space (`a@b/c d`), in a URL whose own host has no port, path or
+    # query, or has an `@` in them (`?n=ci@corp`). A DATABASE_URL password
+    # is still hidden by the prefix and blanket passes.
     URL_PASSWORD = %r{
       ([a-z][a-z0-9+.\-]*://[^\s:/@"'\\]*):
       (?:
@@ -50,52 +57,194 @@ module Mutineer
     # (`mysql -ps3cret`, `["-ps3cret"]`). A form right after one is still a
     # whole token.
     ESCAPE = /%\h{2}|\\x\h{2}|\\u(?:\h{4}|\{\h+\})|\\[0-7]{1,3}|(?:\e|\\(?:e|033|x1[bB]|u001[bB]))?\[[0-9;]*[A-Za-z]|\\[a-z]|(?<![^\s"'(\[,=])-p/.source
+    # Passwords left visible as bare words (#341). Each one is also ordinary
+    # text in a backtrace, a log line, or a database error (`password
+    # authentication failed`, `/app/test/`). Hiding the word makes that line
+    # unreadable. Local and CI URLs often use one of these; a production
+    # password is usually not a dictionary word. The URL and `password=`
+    # passes still hide the value. Matched exactly, in this case: `Password`
+    # is still hidden.
+    COMMON_WORDS = %w[
+      password passwd secret test admin root guest user username
+      database localhost host port name token key login credential
+      postgres mysql redis default welcome
+    ].freeze
+    # Where a `password=` query value ends in a message: the next query
+    # delimiter, or the quote or bracket that closed the URL.
+    QUERY_VALUE_END = /(?=&|#|\s|"|'|`|\)|\]|\}|,|\\|\z)/
 
     module_function
 
-    # Hide the password in any URL, and the DATABASE_URL password (from its
+    # Extra DATABASE_URL values, besides `env` in {text}. The CLI and the
+    # daemon set this from dotenv files so a password the app loads itself
+    # is still hidden (#341). Empty unless a caller sets it.
+    #
+    # @return [Array<String>]
+    def extra_urls
+      @extra_urls || []
+    end
+
+    # Replace {extra_urls}. Blank values are dropped. Frozen, so a caller
+    # cannot change the list the redaction thread is reading.
+    #
+    # @param urls [Array<String>]
+    # @return [Array<String>]
+    def extra_urls=(urls)
+      @extra_urls = Array(urls).map { |url| utf8(url.to_s) }.uniq.reject(&:empty?).freeze
+    end
+
+    # Hide the password in any URL, and each DATABASE_URL password (from its
     # `user:password@` pair and from its `password=` query parameter) wherever
     # it appears: whole, percent-decoded, `inspect` escaped, or cut short after
-    # its `scheme://user:` prefix. Outside a URL a form of word characters, or
-    # of {SHORT_FORM} characters or fewer, is hidden only as a whole token; a
-    # longer form with another character is hidden anywhere. Never raises: text in
-    # any encoding comes back as UTF-8, and an internal error returns {FAILED}.
+    # its `scheme://user:` prefix. `env` supplies one URL. {extra_urls} and
+    # `urls` supply the rest (a dotenv file, or a URL the app set itself).
+    # Outside a URL a form of word characters, or of {SHORT_FORM} characters or
+    # fewer, is hidden only as a whole token; a longer form with another
+    # character is hidden anywhere. A raw password that equals the username,
+    # the host, or the database name, a form of one character, and a form in
+    # {COMMON_WORDS} are left visible outside a URL. The `password=` value
+    # itself is still replaced. Never raises: text in any encoding comes back
+    # as UTF-8, and an internal error returns {FAILED}.
     #
     # @param text [#to_s]
     # @param env [Hash{String => String}] where DATABASE_URL is read.
+    # @param urls [Array<String>] more credential URLs, besides {extra_urls}.
     # @return [String]
-    def text(text, env: ENV)
+    def text(text, env: ENV, urls: [])
       out = utf8(text.to_s)
-      url = utf8(env["DATABASE_URL"].to_s)
-      # Two readings of the userinfo: up to the last `@` (a malformed password
-      # may hold any character) and up to the last `@` before the path (a
-      # query value may hold an `@`). Both are hidden: hiding too much is safe.
-      parts = [database_url_parts(url), database_url_parts(authority(url))].compact.uniq
+      sources = source_urls(env, urls)
       # Prefixes first, on the caller's text, so no replacement made here can
-      # be mistaken for part of a password.
-      parts.each do |head, raw|
-        forms = password_forms(raw)
-        [head, head.inspect[1...-1]].uniq.each do |prefix|
-          out = forms.reduce(out) { |acc, secret| redact_prefixes(acc, prefix, secret) }
+      # be mistaken for part of a password. Two readings of each userinfo: up
+      # to the last `@` (a malformed password may hold any character) and up
+      # to the last `@` before the path (a query value may hold an `@`). Both
+      # are hidden: hiding too much is safe.
+      sources.each do |url|
+        credential_parts(url).each do |head, raw|
+          forms = password_forms(raw)
+          [head, head.inspect[1...-1]].uniq.each do |prefix|
+            out = forms.reduce(out) { |acc, secret| redact_prefixes(acc, prefix, secret) }
+          end
         end
       end
       out = out.gsub(URL_PASSWORD) { "#{Regexp.last_match(1)}:#{REDACTED}@" }
-      # A password that exactly equals the username is left visible outside a
-      # URL. The username is not a secret: mutineer prints it in every
-      # redacted URL, so the value is already shown, and blanking it would
-      # hide every role and database name in a `postgres:postgres` setup. The
-      # skip needs an exact raw match: a password that only shares a form or a
-      # prefix with the username is a separate secret and stays hidden. A
-      # `password=` query parameter, which Rails prefers, is always hidden.
-      raws = parts.reject { |head, raw| raw == head[(head.index("://") + 3)...-1] }.map(&:last)
-      raws.concat(query_passwords(url))
-      secrets = raws.compact.uniq.flat_map { |raw| password_forms(raw) }.uniq.sort_by { |form| -form.length }
-      secrets.reduce(out) do |acc, secret|
+      secrets = []
+      sources.each do |url|
+        host, database = url_labels(url).values_at(1, 2)
+        credential_parts(url).each do |head, raw|
+          # The username is not a secret: the redacted URL prints it. The skip
+          # needs an exact raw match. A password that only shares a form or a
+          # prefix with the username is a separate secret and stays hidden.
+          user = head[(head.index("://") + 3)...-1]
+          password_forms(raw).each { |form| out = redact_query_value(out, form) }
+          next if outside_url_visible?(raw, user: user, host: host, database: database)
+
+          secrets.concat(password_forms(raw))
+        end
+        # A `password=` value is always replaced in the parameter. Rails
+        # prefers it over the userinfo password. The bare word follows the
+        # same outside-URL rules as a userinfo password.
+        query_passwords(url).each do |raw|
+          password_forms(raw).each { |form| out = redact_query_value(out, form) }
+          next if outside_url_visible?(raw, user: nil, host: host, database: database)
+
+          secrets.concat(password_forms(raw))
+        end
+      end
+      secrets.uniq.sort_by { |form| -form.length }.reduce(out) do |acc, secret|
+        next acc unless blanket_form?(secret)
+
         whole_token = secret.length <= SHORT_FORM || secret.match?(/\A#{WORD_CHAR}+\z/)
         whole_token ? redact_word(acc, secret) : acc.gsub(secret, REDACTED)
       end
     rescue StandardError
       FAILED
+    end
+
+    # Every DATABASE_URL this call should treat as a credential. Blank values
+    # are dropped. The order does not matter: each password is applied.
+    #
+    # @param env [Hash{String => String}]
+    # @param urls [Array<String>]
+    # @return [Array<String>]
+    def source_urls(env, urls)
+      ([env["DATABASE_URL"], *extra_urls, *urls]).map { |url| utf8(url.to_s) }.uniq.reject(&:empty?)
+    end
+
+    # The userinfo readings of `url`. See {text}.
+    #
+    # @param url [String]
+    # @return [Array<Array(String, String)>]
+    def credential_parts(url)
+      [database_url_parts(url), database_url_parts(authority(url))].compact.uniq
+    end
+
+    # Username, host, and database name of `url`, or nils when that part is
+    # missing. The host drops a trailing `:port`. The database name is the
+    # path before `?` or `#`. Read by position, like {database_url_parts}, so
+    # a malformed URL still yields the parts a message would quote.
+    #
+    # @param url [String]
+    # @return [Array(String, String, String)] username, host, and database name; a missing part is nil.
+    def url_labels(url)
+      start = url.index("://")
+      at = url.rindex("@")
+      return [nil, nil, nil] unless start && at && at > start
+
+      colon = url.index(":", start + 3)
+      user = colon && colon < at ? url[(start + 3)...colon] : url[(start + 3)...at]
+      rest = url[(at + 1)..]
+      slash = rest.index(%r{[/?#]})
+      hostport = slash ? rest[0...slash] : rest
+      host = hostport.sub(/:\d+\z/, "")
+      host = nil if host.empty?
+      database = nil
+      if slash && rest[slash] == "/"
+        name = rest[(slash + 1)..].split(%r{[?#]}, 2).first
+        database = name unless name.nil? || name.empty?
+      end
+      [user, host, database]
+    end
+
+    # True when `raw` must not be blanked outside a URL or a `password=`
+    # parameter (#341). Exact match only, same as the username rule.
+    #
+    # @param raw [String]
+    # @param user [String, nil]
+    # @param host [String, nil]
+    # @param database [String, nil]
+    # @return [Boolean]
+    def outside_url_visible?(raw, user:, host:, database:)
+      return true if raw.nil? || raw.empty? || raw.length <= 1
+      return true if COMMON_WORDS.include?(raw)
+
+      raw == user || raw == host || raw == database
+    end
+
+    # True when this password form is hidden outside a URL. A one-character
+    # form and a {COMMON_WORDS} form are not: they are ordinary text.
+    #
+    # @param form [String]
+    # @return [Boolean]
+    def blanket_form?(form)
+      return false if form.nil? || form.empty? || form.length <= 1
+      return false if COMMON_WORDS.include?(form)
+
+      true
+    end
+
+    # Replace one `password=` query value and keep the parameter name. `form`
+    # must be the whole value, so a one-character password does not eat the
+    # start of a longer value.
+    #
+    # @param text [String]
+    # @param form [String]
+    # @return [String]
+    def redact_query_value(text, form)
+      return text if form.nil? || form.empty?
+
+      text.gsub(/([?&]password=)#{Regexp.escape(form)}#{QUERY_VALUE_END}/) do
+        "#{Regexp.last_match(1)}#{REDACTED}"
+      end
     end
 
     # A UTF-8 copy of `str` that every pattern here can match. Valid UTF-8 and

@@ -19,6 +19,8 @@ require_relative "daemon_backend"
 require_relative "job_plan"
 require_relative "rails_run_env"
 require_relative "redaction"
+require_relative "database_urls"
+require_relative "output_filter"
 
 module Mutineer
   # Raised when the tool process cannot load a project file: the boot file, a
@@ -68,8 +70,19 @@ module Mutineer
     def self.execute(config)
       # Rails reads PARALLEL_WORKERS when a test helper calls parallelize.
       # Set it before any boot or child spawn, then put the caller's value back.
+      # The ensure below reads these. Set them before anything that can raise.
+      filter_owned = false
+      urls_owned = false
       previous_parallel_workers = ENV["PARALLEL_WORKERS"]
       RailsRunEnv.pin_process!
+      # The CLI installs the filter first and owns it for the report that
+      # follows this method. A library caller owns it for the run itself.
+      # Direct writes from a fork or a subprocess then go through the pipe (#341).
+      filter_owned = OutputFilter.install
+      if Redaction.extra_urls.empty?
+        Redaction.extra_urls = DatabaseUrls.from_files(config.project_root)
+        urls_owned = true
+      end
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
 
       # External backend: run the suite as a subprocess in the app's own runtime.
@@ -214,6 +227,10 @@ module Mutineer
     ensure
       # A caller that set PARALLEL_WORKERS keeps that value after the run.
       RailsRunEnv.restore_process!(previous_parallel_workers)
+      OutputFilter.uninstall if filter_owned
+      # The CLI set the list for the report printed after this method. Clear
+      # it only when this call loaded it and this call owns the filter.
+      Redaction.extra_urls = [] if urls_owned && filter_owned
     end
 
     # A `--matrix` error that carries no {Kills} row (the worker crashed, or its

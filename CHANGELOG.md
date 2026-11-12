@@ -139,6 +139,28 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Direct stderr and stdout no longer print a database password (#341).**
+  A boot file, a forked test, and a program that test starts inherit a pipe.
+  Mutineer copies each line and hides the `DATABASE_URL` password before the
+  line reaches the terminal. `abort` in a boot file is included. A line with
+  no password is unchanged. The daemon does this in its own process, so a
+  password the boot file assigns is hidden even when the tool's environment
+  does not have it. `--test-command` output is redacted with the tool's
+  `DATABASE_URL` and with `DATABASE_URL` from dotenv files in the project
+  (`.env`, `.env.local`, `.env.development`, `.env.development.local`,
+  `.env.test`, `.env.test.local`). A bare password set only inside the test
+  command, and not in those files or the environment, stays visible. A
+  password inside a URL is still hidden.
+- **Redaction no longer blanks a host, a database name, one character, or a
+  common word (#341).** A password that equals the host or the database name
+  stays readable outside a URL, as a password that equals the username
+  already did. A one-character password (`a`, `1`) stays readable outside a
+  URL, so it does not erase that character from every line. The words
+  `password`, `test`, `secret`, `postgres`, and the rest of the list in
+  `Redaction::COMMON_WORDS` stay readable as bare words. The password is
+  still hidden inside a URL and as the value of a `password=` parameter.
+  Local and CI URLs often use these words. A production password usually
+  does not.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and
