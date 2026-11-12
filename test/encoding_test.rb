@@ -26,6 +26,7 @@ class EncodingTest < Minitest::Test
     "# vim: set fileencoding=EUC-JP :\n" => "EUC-JP",
     "# vim: fileencoding=EUC-JP\n" => "UTF-8",
     "#!/usr/bin/env ruby\n# encoding: EUC-JP\n" => "EUC-JP",
+    "#!/usr/bin/env ruby\r\n# encoding: EUC-JP\r\n" => "EUC-JP",
     "# encoding=EUC-JP\n" => "UTF-8",
     "# encoding = EUC-JP\n" => "EUC-JP",
     "# Encoding: Shift_JIS\n" => "Shift_JIS",

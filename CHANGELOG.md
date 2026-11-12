@@ -154,7 +154,9 @@ All notable changes to this project are documented here. The format is based on
   A source file whose magic comment names an encoding (`# encoding: EUC-JP`,
   and the other forms Ruby accepts) is read in that encoding. The mutant
   keeps those bytes, so Ruby can load it. A file with no such comment is
-  still read as UTF-8. `db/schema.rb` uses the same read.
+  still read as UTF-8. The daemon still reads `db/schema.rb` as UTF-8.
+  That file loads on the app's Ruby, which may not ship Prism, and a
+  Prism require there would turn off worker-database routing.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and
