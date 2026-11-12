@@ -36,9 +36,10 @@ module Mutineer
   #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
   #               "tests":["test/models/order_test.rb"],"timeout":30}
-  #              (a :maybe mutant also sends "reach_path". The child clears that
-  #               file after load and before tests, so a load-time call is not
-  #               a test reaching the expression, #345)
+  #              (a :maybe mutant also sends "reach_path" and "reach_key" inside
+  #               "payload". The child clears that file, and the thread-local
+  #               named by reach_key, after load and before tests, so a
+  #               load-time call is not a test reaching the expression, #345)
   #              (a mutant of a def in a concern's hook block adds to the payload
   #               "hook_def":{"line":12,"name":"total","singleton":false}, #297)
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
@@ -372,7 +373,7 @@ module Mutineer
               apply_payload(req["payload"])
               # A reload can run the probed expression while the file loads.
               # Drop that write before tests, matching the in-process child (#345).
-              forget_load_reach(req["payload"]["reach_path"])
+              forget_load_reach(req["payload"]["reach_path"], req["payload"]["reach_key"])
               # A parallel worker records each pool that runs SQL, so a test
               # that closes its shared connection is still caught below.
               if @worker_db && @shared_databases&.any?
@@ -491,13 +492,14 @@ module Mutineer
       # as {ReachProbe.forget_load}. Written here because this file cannot
       # require Prism.
       #
-      # @param path [String, nil]
+      # @param path [String, nil] sentinel path, inside the run payload.
+      # @param key [String, nil] thread-local key, `mutineer_r` plus 16 hex
+      #   digits, the same pattern as {ReachProbe::KEY_FORMAT}.
       # @return [void]
-      def forget_load_reach(path)
+      def forget_load_reach(path, key)
         return unless path.is_a?(String) && !path.empty?
 
-        # Same global as ReachProbe::REACHED. This file cannot load that one.
-        $mutineer_reached = nil
+        Thread.current[key.to_sym] = nil if key.is_a?(String) && key.match?(/\Amutineer_r[0-9a-f]{16}\z/)
         File.write(path, "")
       end
 

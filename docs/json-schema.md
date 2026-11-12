@@ -75,7 +75,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `errored` | int | Mutants whose run crashed, or whose first failed Minitest test had a database connection or lock error (excluded). Each one is in `no_verdict[]` with `status` `"error"`. |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). Under `--since`, only those on changed lines. |
-| `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 or #289 no-coverage mutant did run its statement's tests; #345 keeps it no-coverage only when the mutated expression did not run). |
+| `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 or #289 no-coverage mutant did run its statement's tests; #345 keeps it no-coverage only when the mutated expression did not return during a test). |
 | `no_verdict` | int | Attempted mutants that produced no verdict: `errored + timeout + uncapturable`. The completeness gate is `no_verdict / attempted`. |
 | `score` | float \| null | `killed / (killed + survived) * 100`, rounded. **`null`** when the denominator is empty (no covered mutants) — never `0.0`. |
 | `scoped` | bool | `true` when the run was diff-scoped (`--since`): the score covers only the changed-line mutants, so it is not comparable to a full-run score. A scoped CURRENT run skips `--baseline`'s score-drop check (new-survivor detection still applies); a scoped report is REFUSED as a baseline (exit 2) because survivors outside its diff would read as new regressions. Additive key (absent in reports from older versions; treat absent as `false`). |
@@ -110,7 +110,7 @@ unscored category from a full id list.
 ### `no_coverage[]`, `uncapturable[]`, `unplaceable[]` and `ran_at_load[]` (array of object)
 
 Each entry is `{ subject, file, line, operator, token, id }`, sorted by
-`(file, line, operator, id)`. `no_coverage` is a coverage gap: no test runs the line, or (#254, #289, #345) the tests that run a later line's statement did not kill the mutant and the probe did not see the mutated expression run, so only a run of that expression that survives, or a test that kills it, clears the entry; `uncapturable` means the test that
+`(file, line, operator, id)`. `no_coverage` is a coverage gap: no test runs the line, or (#254, #289, #345) the tests that run a later line's statement did not kill the mutant and the probe did not see the mutated expression return during a test, so only a return of that expression that survives, or a test that kills it, clears the entry; `uncapturable` means the test that
 should cover the line errored while capturing coverage (fix the harness, not the test). `unplaceable` (schema
 `1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module cannot be
 named statically (an anonymous `Class.new`, a relative path such as `User::Permission` inside a namespace,

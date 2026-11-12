@@ -135,7 +135,7 @@ class ReachProbeTest < Minitest::Test
     source = "class C\n  def self.f(user)\n    user.name.upcase\n  end\nend\n"
     start = source.byteindex(".name")
     mutated = source.byteslice(0, start) + source.byteslice(start + ".name".bytesize..)
-    wrapped = Mutineer::ReachProbe.wrap(mutated, start, start, sentinel_path)
+    wrapped = Mutineer::ReachProbe.wrap(mutated, start, start, sentinel_path, probe_key)
 
     assert wrapped, mutated
     probed = run_source(wrapped, <<~'RUBY', json: true)
@@ -153,11 +153,15 @@ class ReachProbeTest < Minitest::Test
 
   def wrap_snippet(source, snippet)
     start = source.byteindex(snippet)
-    Mutineer::ReachProbe.wrap(source, start, start + snippet.bytesize, sentinel_path)
+    Mutineer::ReachProbe.wrap(source, start, start + snippet.bytesize, sentinel_path, probe_key)
   end
 
   # The Tempfile object has to stay referenced. Keeping only its path lets
   # the finalizer unlink the file before the child stats it.
+  def probe_key
+    @probe_key ||= Mutineer::ReachProbe.reach_key
+  end
+
   def sentinel_path
     @sentinel ||= Tempfile.new(["reach-probe-", ".touch"]).tap(&:close)
     @sentinel.path

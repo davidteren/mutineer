@@ -438,18 +438,22 @@ module Mutineer
         else
           # Same probe as in-process (#345): the daemon child loads this text.
           sentinel = sel && sel[0] == :maybe ? ReachProbe.sentinel : nil
+          reach_key = sentinel && ReachProbe.reach_key
           begin
             payload = { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) }
             if subject.reload_hook_call
               # #297: the daemon child places the hook-block def, as in-process (Runner.run).
               payload["code"], hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source,
-                                                              reach_path: sentinel&.path)
+                                                              reach_path: sentinel&.path, reach_key: reach_key)
               payload["hook_def"] = hook_def.to_h { |key, value| [key.to_s, key == :name ? value.to_s : value] }
             elsif sentinel
-              payload["code"] = ReachProbe.wrap_mutation(mutated, mutation, sentinel.path)
+              payload["code"] = ReachProbe.wrap_mutation(mutated, mutation, sentinel.path, reach_key)
             end
-            # The daemon clears this after load and before tests (#345).
-            payload["reach_path"] = sentinel.path if sentinel
+            # The daemon clears these after load and before tests (#345).
+            if sentinel
+              payload["reach_path"] = sentinel.path
+              payload["reach_key"] = reach_key
+            end
             verdict = client.request(
               id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,
               payload: payload, tests: sel ? sel[1] : abs_tests

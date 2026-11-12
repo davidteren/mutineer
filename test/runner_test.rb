@@ -1201,7 +1201,8 @@ class RunnerTest < Minitest::Test
     mutation = Mutineer::Mutation.new(start_offset: body.start_offset, end_offset: body.end_offset,
                                       replacement: "x - 2", operator: "test")
     code, = Mutineer::JobPlan.hook_mutant(
-      mutation.apply(source), mutation, subject, source, reach_path: "/tmp/mutineer-reach-hook"
+      mutation.apply(source), mutation, subject, source,
+      reach_path: "/tmp/mutineer-reach-hook", reach_key: "mutineer_r0123456789abcdef"
     )
 
     assert_empty Mutineer::Parser.parse_string(code).errors

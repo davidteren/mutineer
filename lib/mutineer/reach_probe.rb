@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "securerandom"
 require "tempfile"
 require_relative "parser"
 require_relative "statement_lines"
@@ -17,11 +18,18 @@ module Mutineer
   # The inserted text is stdlib only (`File`). The daemon loads it as source,
   # so the app process needs no Prism and no Mutineer constant.
   module ReachProbe
-    # Global the generated source sets after the expression returns once.
-    # {forget_load} and the daemon's `forget_load_reach` clear this same
-    # name, so a load-time run does not skip the write during the tests.
-    # The daemon hardcodes the name: it cannot load this file.
-    REACHED = :$mutineer_reached
+    # A thread-local key for one sentinel: `mutineer_r` plus 16 hex digits.
+    # The generated source and {forget_load} use this key, not a fixed global,
+    # so an application variable of the same shape is not read or overwritten.
+    # The daemon checks the same pattern; it cannot load this file.
+    KEY_FORMAT = /\Amutineer_r[0-9a-f]{16}\z/
+
+    # A new key for one mutant's sentinel.
+    #
+    # @return [String]
+    def self.reach_key
+      "mutineer_r#{SecureRandom.hex(8)}"
+    end
     # An empty sentinel file. The child writes `"1"` when the expression runs.
     # The caller checks {reached?} and then {close_sentinel}.
     #
@@ -48,12 +56,12 @@ module Mutineer
     # the daemon cannot.
     #
     # @param path [String, nil] sentinel path.
+    # @param key [String, nil] thread-local key from {reach_key}.
     # @return [void]
-    def self.forget_load(path)
+    def self.forget_load(path, key)
       return unless path
 
-      # Same name as {REACHED}. A direct write: this file must not eval.
-      $mutineer_reached = nil
+      Thread.current[key.to_sym] = nil if key.to_s.match?(KEY_FORMAT)
       File.write(path, "")
     end
 
@@ -79,12 +87,13 @@ module Mutineer
     # @param source [String] mutated source.
     # @param mutation [Mutineer::Mutation] the edit, already applied to `source`.
     # @param path [String, nil] sentinel path, or nil to leave `source` alone.
+    # @param key [String, nil] thread-local key from {reach_key}.
     # @return [String]
-    def self.wrap_mutation(source, mutation, path)
-      return source if path.nil?
+    def self.wrap_mutation(source, mutation, path, key)
+      return source if path.nil? || !key.to_s.match?(KEY_FORMAT)
 
       start = mutation.start_offset
-      wrap(source, start, start + mutation.replacement.bytesize, path) || source
+      wrap(source, start, start + mutation.replacement.bytesize, path, key) || source
     end
 
     # Wraps the smallest expression that holds the byte range `[start_offset,
@@ -95,21 +104,23 @@ module Mutineer
     # The wrapper returns the expression's value. It writes the sentinel only
     # after that value has come back, so a raise inside the expression — an
     # operand that fails before a mutated operator runs — does not count as a
-    # run. It writes once; later evaluations only stat the file.
+    # run. Later returns on the same thread do not touch the file.
     #
     # @param source [String]
     # @param start_offset [Integer] byte offset of the replacement.
     # @param end_offset [Integer] byte offset just after the replacement.
     # @param path [String] absolute sentinel path.
+    # @param key [String] thread-local key from {reach_key}.
     # @return [String, nil]
-    def self.wrap(source, start_offset, end_offset, path)
+    def self.wrap(source, start_offset, end_offset, path, key)
+      return nil unless key.to_s.match?(KEY_FORMAT)
       root = Parser.parse_string(source).value
       node = smallest(root, start_offset, end_offset)
       return nil unless node
 
       parents = parent_map(root)
       while node
-        wrapped = splice(source, node, path)
+        wrapped = splice(source, node, path, key)
         return wrapped unless Parser.invalid?(wrapped)
 
         parent = parents[node]
@@ -196,14 +207,15 @@ module Mutineer
     # @param source [String]
     # @param node [Prism::Node]
     # @param path [String]
+    # @param key [String] thread-local key from {reach_key}.
     # @return [String]
-    def self.splice(source, node, path)
+    def self.splice(source, node, path, key)
       loc = node.location
       inner = source.byteslice(loc.start_offset, loc.end_offset - loc.start_offset)
       quoted = path.dump
-      # The global skips the write after the first return. A stat on every
-      # later pass would hit a loop that evaluates the expression.
-      mark = "(#{REACHED} ||= (::File.write(#{quoted}, \"1\"); true))"
+      # The thread-local skips the write after the first return on this
+      # thread. A stat on every later pass would hit a loop.
+      mark = "(Thread.current[:#{key}] ||= (::File.write(#{quoted}, \"1\"); true))"
       replacement = if inner.include?("\n")
                       "\n[(#{inner}), #{mark}][0]"
                     else

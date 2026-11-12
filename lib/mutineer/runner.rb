@@ -399,6 +399,7 @@ module Mutineer
       abs_tests = payload
       # A :maybe mutant records whether the mutated expression ran (#345).
       sentinel = kind == :maybe ? ReachProbe.sentinel : nil
+      reach_key = sentinel && ReachProbe.reach_key
 
       begin
         result = Isolation.run(timeout: timeout, channel: matrix) do |channel|
@@ -408,21 +409,23 @@ module Mutineer
           if strategy == "redefine"
             # Load each enclosing def too: its body holds the original nested def,
             # which a call to it would define again over the mutant (#290).
-            Isolation.apply_surgical(mutation, subject, source, reach_path: sentinel&.path)
+            Isolation.apply_surgical(mutation, subject, source, reach_path: sentinel&.path, reach_key: reach_key)
             s = subject
             while (s = s.enclosing_subject)
-              Isolation.apply_surgical(mutation, s, source, reach_path: sentinel&.path)
+              Isolation.apply_surgical(mutation, s, source, reach_path: sentinel&.path, reach_key: reach_key)
             end
           elsif subject&.reload_hook_call
             # #297: a def in a concern's hook block reaches each class that has it.
-            code, hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source, reach_path: sentinel&.path)
+            code, hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source, reach_path: sentinel&.path,
+                                                 reach_key: reach_key)
             Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
           else
-            Isolation.apply_whole_file(ReachProbe.wrap_mutation(mutated, mutation, sentinel&.path), source_file)
+            Isolation.apply_whole_file(ReachProbe.wrap_mutation(mutated, mutation, sentinel&.path, reach_key),
+                                        source_file)
           end
           # A reload can run the expression while the file loads. That is not
           # a test reaching it (#345).
-          ReachProbe.forget_load(sentinel.path) if sentinel
+          ReachProbe.forget_load(sentinel.path, reach_key) if sentinel
           if channel
             # --matrix: every covering test runs, and each outcome goes to the parent.
             TestRunners.for(framework).run(abs_tests, record_to: channel)

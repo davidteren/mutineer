@@ -69,7 +69,8 @@ class ContinuationSurvivorTest < Minitest::Test
     subject = Mutineer::Project.discover([LOAD_SOURCE]).find { |item| item.name == :adult? }
     mutation = Mutineer::Mutators::Comparison.new.mutations_for(subject, source).fetch(0)
     sentinel = Mutineer::ReachProbe.sentinel
-    code = Mutineer::ReachProbe.wrap_mutation(mutation.apply(source), mutation, sentinel.path)
+    reach_key = Mutineer::ReachProbe.reach_key
+    code = Mutineer::ReachProbe.wrap_mutation(mutation.apply(source), mutation, sentinel.path, reach_key)
     daemon = Mutineer::DaemonServer
     saved = %i[@errio @worker_db @slot_ready @source_dirs @framework @shared_databases].to_h do |name|
       [name, daemon.instance_variable_get(name)]
@@ -89,7 +90,8 @@ class ContinuationSurvivorTest < Minitest::Test
                        "def test_false; refute ContinuationLoad.adult?(false); end\nend\n")
       File.write(reach, "require \"minitest/autorun\"\nclass ContinuationLoadReach < Minitest::Test\n" \
                         "def test_true; assert ContinuationLoad.adult?(true); end\nend\n")
-      payload = { "code" => code, "source_file" => LOAD_SOURCE, "reach_path" => sentinel.path }
+      payload = { "code" => code, "source_file" => LOAD_SOURCE, "reach_path" => sentinel.path,
+                  "reach_key" => reach_key }
 
       missed = daemon.send(:run_mutant, "id" => 1, "worker" => 0, "timeout" => 30, "payload" => payload,
                                         "tests" => [miss])
