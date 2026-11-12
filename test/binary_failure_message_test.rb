@@ -15,7 +15,8 @@ require "tmpdir"
 # and the matrix names the test that failed.
 #
 # Siblings: reload and redefine both silence stdout in Isolation. The daemon
-# silences it in its own child. RSpec writes the failure text to a StringIO,
+# silences it in its own child and forces reload; redefine is in-process only.
+# RSpec writes the failure text to a StringIO,
 # which does not transcode, so that path already returned killed.
 # `--test-command` does not reopen stdout after the encodings are set, so it
 # is not this path.
