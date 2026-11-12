@@ -42,7 +42,11 @@ module Mutineer
     # and either can quote DATABASE_URL.
     REDACTION_PATH = File.expand_path("redaction.rb", __dir__)
 
-    attr_reader :project_root, :failed_test_files, :failed_clean_tests, :phase_a_ran, :map
+    # Cap for a failing clean-suite report on the SmokeCheckError line (#360).
+    CLEAN_FAILURE_DETAIL_LIMIT = 800
+
+    attr_reader :project_root, :failed_test_files, :failed_clean_tests, :failed_clean_details,
+                :phase_a_ran, :map
 
     # The source lines that ran while the app booted or the sources and the
     # `--require` files loaded, before any test ran, as a Set of "file:line"
@@ -77,12 +81,15 @@ module Mutineer
     # @param failed_test_files [Array<String>] test files whose capture failed.
     # @param project_root [String] project root (for path relativization).
     # @param failed_clean_tests [Array<String>] test files whose unmutated run failed.
+    # @param failed_clean_details [Hash{String => String}] capped failure report per
+    #   failed clean test (issue #360).
     # @param load_lines [Array<String>, Set<String>] "file:line" keys that ran at load ({#load_lines}).
     # @param load_methods [Array<String>, Set<String>] "file:line:column" keys of methods called at load
     #   ({#load_methods}).
     # @param timings [Hash{String => Float}] capture seconds per test file ({#timings}).
     # @return [Mutineer::CoverageMap] a query-only map.
-    def self.from_data(map:, failed_test_files:, project_root:, failed_clean_tests: [], load_lines: [],
+    def self.from_data(map:, failed_test_files:, project_root:, failed_clean_tests: [],
+                       failed_clean_details: {}, load_lines: [],
                        load_methods: [], timings: {})
       instance = allocate
       instance.instance_variable_set(:@map, map || {})
@@ -91,6 +98,7 @@ module Mutineer
       instance.instance_variable_set(:@load_methods, Set.new(load_methods || []))
       instance.instance_variable_set(:@failed_test_files, failed_test_files || [])
       instance.instance_variable_set(:@failed_clean_tests, failed_clean_tests || [])
+      instance.instance_variable_set(:@failed_clean_details, failed_clean_details || {})
       instance.instance_variable_set(:@project_root, project_root)
       instance
     end
@@ -113,6 +121,7 @@ module Mutineer
       @map          = {}
       @failed_test_files = []
       @failed_clean_tests = []
+      @failed_clean_details = {}
       @load_lines   = Set.new
       @load_methods = Set.new
       @timings      = {}
@@ -428,6 +437,7 @@ module Mutineer
         end
         @failed_test_files = cached["failed_test_files"] || []
         @failed_clean_tests = []
+        @failed_clean_details = {}
         @loaded_dependencies = cached["dependencies"] || {}
         recaptured = retry_failed_captures(after_fork)
         warn_incomplete unless @failed_test_files.empty?
@@ -515,6 +525,7 @@ module Mutineer
       @timings = cached["timings"] || {}
       @failed_test_files = []
       @failed_clean_tests = []
+      @failed_clean_details = {}
       @loaded_dependencies = cached["dependencies"]
       checked = clean_check_test_paths
       verify_cached_clean(after_fork: after_fork, test_paths: checked)
@@ -638,6 +649,7 @@ module Mutineer
       @timings = {}
       @failed_test_files = []
       @failed_clean_tests = []
+      @failed_clean_details = {}
       @loaded_dependencies = {}
 
       @test_paths.each do |test_path|
@@ -659,6 +671,7 @@ module Mutineer
       @timings = {}
       @failed_test_files = []
       @failed_clean_tests = []
+      @failed_clean_details = {}
       @loaded_dependencies = {}
       abs_sources = abs_source_paths
 
@@ -727,13 +740,14 @@ module Mutineer
             # no-op. Injected so this file needs neither Runner (Prism) nor Rails.
             after_fork&.call
             Coverage.result(clear: true, stop: false) # discard pre-test delta
-            passed = TestRunners.for(@framework).run([abs_test]).zero?
+            passed, report = run_clean_with_report([abs_test])
             # {file => {lines: [...], methods: {...}}}; reduce to the counts
             # array record() expects, keeping only our source files.
             coverage = Coverage.result(stop: false)
                                .select { |f, _| abs_sources.include?(f) }
                                .transform_values { |v| v.is_a?(Hash) ? lines_with_called_defs(v) : v }
             { "passed" => passed, "coverage" => coverage,
+              "failure_report" => passed ? nil : report,
               "loaded_files" => capture_loaded_files }
           rescue Exception => e # rubocop:disable Lint/RescueException
             # Stringify (an arbitrary Exception may not marshal); the parent
@@ -841,12 +855,52 @@ module Mutineer
       record_load(payload["load_coverage"])
 
       unless payload["passed"]
-        @failed_clean_tests << relativize(test_path)
+        record_failed_clean(relativize(test_path), payload["failure_report"])
         return
       end
 
       coverage = payload["coverage"]
       record(coverage, test_path) if coverage.is_a?(Hash)
+    end
+
+    # Notes a red unmutated suite for {JobPlan.abort_if_unclean!} (issue #360).
+    #
+    # @api private
+    # @param rel [String] project-relative test path, or `"combined suite"`.
+    # @param detail [String, nil] failing test names / first error, capped.
+    # @return [void]
+    def record_failed_clean(rel, detail = nil)
+      @failed_clean_tests << rel unless @failed_clean_tests.include?(rel)
+      text = detail.to_s.strip
+      return if text.empty?
+
+      @failed_clean_details[rel] = truncate_clean_detail(text)
+    end
+
+    # Keeps the first failure block of a clean-failure report within
+    # {CLEAN_FAILURE_DETAIL_LIMIT} characters. RSpec progress dots can fill
+    # the head of the sink; prefer RSpec's `Failures:` / load-error header or
+    # Minitest's numbered `N) Failure:` / `N) Error:` line. Do not match a bare
+    # `Error:` — that cuts RSpec's `Failure/Error:` mid-token (#360).
+    #
+    # @api private
+    # @param text [String] redacted reporter output.
+    # @return [String]
+    def truncate_clean_detail(text)
+      starts = [text.index("Failures:")]
+      # RSpec load errors and after(:suite)/after(:context) errors share this
+      # header; do not require "while loading" or progress dots fill the cap.
+      if (match = text.match(/^An error occurred /m))
+        starts << match.begin(0)
+      end
+      if (match = text.match(/^\s*\d+\) (?:Failure|Error):/m))
+        starts << match.begin(0)
+      end
+      start = starts.compact.min || 0
+      report = start.zero? ? text : text[start..]
+      return report if report.length <= CLEAN_FAILURE_DETAIL_LIMIT
+
+      "#{report[0, CLEAN_FAILURE_DETAIL_LIMIT].rstrip}\n…"
     end
 
     # Re-runs each successfully captured test on a cache hit. Digest equality
@@ -861,12 +915,12 @@ module Mutineer
         rel = relativize(test_path)
         next if @failed_test_files.include?(rel)
 
-        ok = if @boot_path
-               fork_clean_pass?([absolute(test_path)], after_fork)
-             else
-               subprocess_clean_pass?([test_path])
-             end
-        @failed_clean_tests << rel unless ok
+        ok, detail = if @boot_path
+                       fork_clean_pass?([absolute(test_path)], after_fork)
+                     else
+                       subprocess_clean_pass?([test_path])
+                     end
+        record_failed_clean(rel, detail) unless ok
       end
     end
 
@@ -907,22 +961,37 @@ module Mutineer
       return if runnable.size < 2
       return unless @failed_clean_tests.empty?
 
-      ok = if @boot_path
-             fork_clean_pass?(runnable.map { |t| absolute(t) }, after_fork)
-           else
-             subprocess_clean_pass?(runnable)
-           end
-      @failed_clean_tests << "combined suite" unless ok
+      ok, detail = if @boot_path
+                     fork_clean_pass?(runnable.map { |t| absolute(t) }, after_fork)
+                   else
+                     subprocess_clean_pass?(runnable)
+                   end
+      record_failed_clean("combined suite", detail) unless ok
     end
 
     # Runs test files in a fresh interpreter and returns whether they passed.
+    # The child writes a one-line JSON result with an optional failure report
+    # (#360), so a leftover process cannot hold a stderr pipe open.
     #
     # @api private
     # @param test_paths [Array<String>] test file paths.
-    # @return [Boolean]
+    # @return [Array(Boolean, String)] pass flag and capped failure report.
     def subprocess_clean_pass?(test_paths)
-      status, = spawn_script(clean_check_script(test_paths), result: false)
-      status&.success? || false
+      status, line = spawn_script(clean_check_script(test_paths), result: true)
+      return [false, ""] if status.nil?
+
+      data = begin
+        JSON.parse(line.to_s)
+      rescue JSON::ParserError
+        nil
+      end
+      # Fail closed: a child that exits 0 without a valid result line must not
+      # clear the clean check (mutation honesty).
+      return [false, ""] unless data.is_a?(Hash)
+
+      # Require the process exit too: an `at_exit` hook can fail after the
+      # child already wrote `passed: true` (#360 warm-cache clean check).
+      [status.success? && data["passed"] == true, data["failure_report"].to_s]
     end
 
     # Runs `script` in a fresh `ruby -` that reads the script from stdin. The
@@ -1034,13 +1103,14 @@ module Mutineer
       "_result = IO.new(#{RESULT_FD}, \"w\"); _result.close_on_exec = true"
     end
 
-    # Runs test files in a fork of the booted parent and returns whether they passed.
+    # Runs test files in a fork of the booted parent and returns whether they
+    # passed, with a capped failure report for a red suite (#360).
     # Bounded by `@capture_timeout` so a hung child cannot block the CLI.
     #
     # @api private
     # @param abs_tests [Array<String>] absolute test file paths.
     # @param after_fork [Proc, nil] boot-mode fork hook.
-    # @return [Boolean]
+    # @return [Array(Boolean, String)] pass flag and failure report.
     def fork_clean_pass?(abs_tests, after_fork)
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @capture_timeout
       rd, wr = IO.pipe
@@ -1055,21 +1125,51 @@ module Mutineer
           ChildStdout.silence
           after_fork&.call
           Coverage.result(clear: true, stop: false) if Coverage.running?
-          wr.write(Marshal.dump(TestRunners.for(@framework).run(abs_tests).zero?))
-        rescue Exception # rubocop:disable Lint/RescueException
-          wr.write(Marshal.dump(false))
+          passed, report = run_clean_with_report(abs_tests)
+          wr.write(Marshal.dump([passed, report]))
+        rescue Exception => e # rubocop:disable Lint/RescueException
+          wr.write(Marshal.dump([false, Redaction.describe(e)]))
         ensure
           wr.close
           exit!(0)
         end
       end
       wr.close
-      _, passed = await_child(pid, deadline) { read_marshal(rd) }
-      passed == true
+      _, payload = await_child(pid, deadline) { read_marshal(rd) }
+      return [false, ""] unless payload.is_a?(Array)
+
+      passed, report = payload
+      [passed == true, report.to_s]
     rescue StandardError
-      false
+      [false, ""]
     ensure
       [rd, wr].compact.each { |io| io.close unless io.closed? }
+    end
+
+    # Runs tests in the current (forked) process and returns pass plus the
+    # redacted reporter failure text when red (#360).
+    #
+    # @api private
+    # @param abs_tests [Array<String>] absolute test file paths.
+    # @return [Array(Boolean, String)]
+    def run_clean_with_report(abs_tests)
+      if @framework == "rspec"
+        code = TestRunners.for(@framework).run(abs_tests)
+        raw = TestRunners::RSpec.last_output.to_s
+      else
+        require "minitest"
+        require "stringio"
+        report = StringIO.new
+        Minitest.define_singleton_method(:plugin_mutineer_clean_report_init) do |options|
+          reporter << Minitest::SummaryReporter.new(report, options)
+        end
+        Minitest.extensions << "mutineer_clean_report" unless Minitest.extensions.include?("mutineer_clean_report")
+        code = TestRunners.for(@framework).run(abs_tests)
+        raw = report.string
+      end
+      # Forked children print this into SmokeCheckError; redact like the
+      # subprocess JSON path so DATABASE_URL passwords never reach stderr.
+      [code.zero?, code.zero? ? "" : Redaction.text(raw)]
     end
 
     # SIGKILLs capture child `pid` and its process group, then waits for
@@ -1111,6 +1211,8 @@ module Mutineer
     def minitest_clean_check_script(test_paths)
       loads = Array(test_paths).map { |t| "load #{absolute(t).inspect}" }.join("\n")
       <<~RUBY
+        #{result_channel_expression}
+        require "json"
         require "minitest"
         require "stringio"
         def Minitest.autorun; end
@@ -1125,7 +1227,9 @@ module Mutineer
         #{load_failure_rescue}
         end
         _passed = Minitest.run(#{minitest_seed_args_expression})
-        $stderr.write(#{redacted_expression("_report.string")}) unless _passed
+        _failure = _passed ? nil : #{redacted_expression("_report.string")}
+        _result.puts JSON.generate("passed" => _passed == true, "failure_report" => _failure)
+        _result.close
         exit(_passed ? 0 : 1)
       RUBY
     end
@@ -1139,6 +1243,8 @@ module Mutineer
     def rspec_clean_check_script(test_paths)
       specs = Array(test_paths).map { |t| absolute(t).inspect }.join(", ")
       <<~RUBY
+        #{result_channel_expression}
+        require "json"
         require "stringio"
         begin
           require "rspec/core"
@@ -1153,7 +1259,9 @@ module Mutineer
         end
         _sink = StringIO.new
         status = RSpec::Core::Runner.run(["--no-color", #{specs}], _sink, _sink)
-        $stderr.write(#{redacted_expression("_sink.string")}) unless status.zero?
+        _failure = status.zero? ? nil : #{redacted_expression("_sink.string")}
+        _result.puts JSON.generate("passed" => status.zero?, "failure_report" => _failure)
+        _result.close
         exit(status.zero? ? 0 : 1)
       RUBY
     end
@@ -1234,9 +1342,10 @@ module Mutineer
         #{load_failure_rescue}
         end
         _passed = Minitest.run(#{minitest_seed_args_expression})
-        $stderr.write(#{redacted_expression("_report.string")}) unless _passed
+        _failure = _passed ? nil : #{redacted_expression("_report.string")}
         _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => _coverage,
+                                    "failure_report" => _failure,
                                     "load_coverage" => _load,
                                     "loaded_files" => #{loaded_files_expression})
         _result.close
@@ -1283,9 +1392,10 @@ module Mutineer
         end
         _sink = StringIO.new
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
-        $stderr.write(#{redacted_expression("_sink.string")}) unless _status.zero?
+        _failure = _status.zero? ? nil : #{redacted_expression("_sink.string")}
         _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
         _result.puts JSON.generate("passed" => _status.zero?, "coverage" => _coverage,
+                                    "failure_report" => _failure,
                                     "load_coverage" => _load,
                                     "loaded_files" => #{loaded_files_expression})
         _result.close

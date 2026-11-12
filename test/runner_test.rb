@@ -482,6 +482,36 @@ class RunnerTest < Minitest::Test
     assert_includes err.message, "Failed: test/a_test.rb, test/b_test.rb."
   end
 
+  # #360: a stored failure report (test name + first error) follows the file list.
+  def test_abort_if_unclean_includes_failure_report_detail
+    map = Mutineer::CoverageMap.from_data(
+      map: {}, failed_test_files: [], failed_clean_tests: ["calc_test.rb"],
+      failed_clean_details: { "calc_test.rb" => "Failure:\nCalcTest#test_add [calc_test.rb:4]:\nExpected: 3\n  Actual: 4" },
+      project_root: ROOT
+    )
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+    assert_equal 1, err.message.scan("not green").size, err.message
+    assert_includes err.message, "Failed: calc_test.rb."
+    assert_includes err.message, "CalcTest#test_add"
+    assert_includes err.message, "Expected: 3"
+  end
+
+  # #360: joined per-file reports are capped so a large unclean suite cannot flood stderr.
+  def test_abort_if_unclean_caps_joined_failure_details
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    details = {
+      "a_test.rb" => "A" * limit,
+      "b_test.rb" => "UNIQUE_TAIL_SHOULD_NOT_APPEAR"
+    }
+    map = Mutineer::CoverageMap.from_data(
+      map: {}, failed_test_files: [], failed_clean_tests: details.keys,
+      failed_clean_details: details, project_root: ROOT
+    )
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+    assert_includes err.message, "…"
+    refute_includes err.message, "UNIQUE_TAIL_SHOULD_NOT_APPEAR"
+  end
+
   def test_abort_if_unclean_names_the_minitest_seed
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], failed_clean_tests: ["test/a_test.rb"],
                                           project_root: ROOT)
@@ -561,7 +591,10 @@ class RunnerTest < Minitest::Test
         map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test],
                                         cache_dir: File.join(dir, "cache"), project_root: dir)
         capture_subprocess_io do
-          3.times { refute map.send(:subprocess_clean_pass?, [test]), "the clean check must fail under the pinned seed" }
+          3.times do
+            ok, = map.send(:subprocess_clean_pass?, [test])
+            refute ok, "the clean check must fail under the pinned seed"
+          end
         end
       end
     end
@@ -581,7 +614,7 @@ class RunnerTest < Minitest::Test
                                         cache_dir: File.join(dir, "cache"), project_root: dir)
         subprocess = capture = nil
         capture_subprocess_io do
-          subprocess = map.send(:subprocess_clean_pass?, [test])
+          subprocess, = map.send(:subprocess_clean_pass?, [test])
           capture = map.send(:capture, test)&.fetch("passed")
         end
         script = "require 'mutineer'; Mutineer::ChildStdout.silence; exit Mutineer::TestRunners::Minitest.run([#{test.dump}], stop_at_first_failure: true)"
@@ -625,7 +658,8 @@ class RunnerTest < Minitest::Test
             outcomes << map.send(:capture, test).fetch("passed")
             rows << File.readlines(log).map { |line| JSON.parse(line) }
             File.write(log, "")
-            outcomes << map.send(:subprocess_clean_pass?, [test])
+            ok, = map.send(:subprocess_clean_pass?, [test])
+            outcomes << ok
             rows << File.readlines(log).map { |line| JSON.parse(line) }
           end
           File.write(log, "")

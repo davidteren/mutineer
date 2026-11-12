@@ -87,7 +87,9 @@ class CoverageMapTest < Minitest::Test
                                       framework: "rspec", verbose: true)
       status = nil
 
-      _, err = capture_subprocess_io { status, = map.send(:spawn_script, map.send(:clean_check_script, []), result: false) }
+      _, err = capture_subprocess_io do
+        status, = map.send(:spawn_script, map.send(:clean_check_script, []), result: true)
+      end
 
       assert_equal 1, status.exitstatus
       assert_includes err, "[mutineer] load failed: RuntimeError: outer load failure"
@@ -105,16 +107,135 @@ class CoverageMapTest < Minitest::Test
         end
       RUBY
       map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [spec], project_root: dir, framework: "rspec")
-      status = nil
+      status = line = nil
 
-      _, err = capture_subprocess_io do
-        status, = map.send(:spawn_script, map.send(:clean_check_script, [spec]), result: false)
+      capture_subprocess_io do
+        status, line = map.send(:spawn_script, map.send(:clean_check_script, [spec]), result: true)
       end
 
       assert_equal 1, status.exitstatus
-      assert_includes err, "database postgres://u:[REDACTED]@host/db unavailable"
-      refute_includes err, "s3cret"
+      report = JSON.parse(line).fetch("failure_report")
+      assert_includes report, "database postgres://u:[REDACTED]@host/db unavailable"
+      refute_includes report, "s3cret"
     end
+  end
+
+  # A child that exits 0 without a valid result JSON must not pass the clean check.
+  def test_subprocess_clean_pass_rejects_exit_zero_without_result_json
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    status = Object.new
+    def status.success? = true
+    def status.nil? = false
+    map.define_singleton_method(:spawn_script) { |*| [status, "not-json"] }
+    ok, = map.send(:subprocess_clean_pass?, [])
+    refute ok, "exit 0 with no JSON result must fail closed"
+  end
+
+  # Progress dots before Failures: must not consume the capped detail (#360).
+  def test_truncate_clean_detail_starts_at_failures_section
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    dots = "." * (limit + 50)
+    text = "#{dots}\n\nFailures:\n\n  1) example fails\n     expected: 2\n          got: 1\n"
+    out = map.send(:truncate_clean_detail, text)
+    assert_operator out, :start_with?, "Failures:"
+    assert_includes out, "example fails"
+    assert_includes out, "got: 1"
+    refute_includes out, dots[0, 20]
+  end
+
+  # An earlier Minitest Error: must win over a later Failure: (#360).
+  def test_truncate_clean_detail_keeps_an_error_before_a_failure
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    noise = "x" * (limit + 20)
+    text = "#{noise}\n\n  1) Error:\nDbTest#test_connect:\nRuntimeError: boom\n\n  2) Failure:\nCalcTest#test_add:\nExpected: 1\n  Actual: 2\n"
+    out = map.send(:truncate_clean_detail, text)
+    assert_match(/\A\s*1\) Error:/, out)
+    assert_includes out, "DbTest#test_connect"
+    assert_includes out, "RuntimeError: boom"
+  end
+
+  # A bare Error: inside RSpec's Failure/Error: must not cut the load header (#360).
+  def test_truncate_clean_detail_keeps_rspec_load_error_header
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    noise = "." * (limit + 20)
+    text = "#{noise}\n\nAn error occurred while loading ./calc_spec.rb.\nFailure/Error: raise \"boom\"\n\nRuntimeError:\n  boom\n"
+    out = map.send(:truncate_clean_detail, text)
+    assert_operator out, :start_with?, "An error occurred while loading ./calc_spec.rb."
+    assert_includes out, "Failure/Error:"
+    refute_match(/\AError:/, out)
+  end
+
+  # after(:suite) / after(:context) use the same "An error occurred" header (#360).
+  def test_truncate_clean_detail_keeps_rspec_suite_hook_error
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    noise = "." * (limit + 20)
+    text = "#{noise}\n\nAn error occurred in an `after(:suite)` hook.\nFailure/Error: raise \"cleanup failed\"\n\nRuntimeError:\n  cleanup failed\n"
+    out = map.send(:truncate_clean_detail, text)
+    assert_operator out, :start_with?, "An error occurred in an `after(:suite)` hook."
+    assert_includes out, "Failure/Error:"
+    assert_includes out, "cleanup failed"
+  end
+
+  # An at_exit that fails after the child wrote passed:true must still fail the
+  # clean check: warm-cache scoring must not proceed on a red exit (#360).
+  def test_subprocess_clean_pass_rejects_nonzero_exit_after_passed_json
+    Dir.mktmpdir("mutineer-at-exit") do |dir|
+      test = File.join(dir, "at_exit_fail_test.rb")
+      File.write(test, <<~RUBY)
+        require "minitest/test"
+        class AtExitFailTest < Minitest::Test
+          def test_ok
+            assert true
+          end
+        end
+        at_exit { exit 1 }
+      RUBY
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [test], project_root: dir)
+      ok = nil
+      capture_subprocess_io { ok, = map.send(:subprocess_clean_pass?, [test]) }
+      refute ok, "a nonzero exit after passed:true must fail the clean check"
+    end
+  end
+
+  def test_fork_clean_failure_report_hides_the_password
+    ensure_coverage_running
+    Dir.mktmpdir("mutineer-fork-redaction") do |dir|
+      test = File.join(dir, "db_fail_test.rb")
+      File.write(test, <<~RUBY)
+        require "minitest/test"
+        class DbFailTest < Minitest::Test
+          def test_connects
+            raise "database postgres://u:s3cret@host/db unavailable"
+          end
+        end
+      RUBY
+      map = Mutineer::CoverageMap.new(
+        source_paths: [CALC], test_paths: [test],
+        cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: dir
+      )
+      ok = report = nil
+      capture_subprocess_io { ok, report = map.send(:fork_clean_pass?, [test], nil) }
+      refute ok
+      assert_includes report, "database postgres://u:[REDACTED]@host/db unavailable"
+      refute_includes report, "s3cret"
+    end
+  end
+
+  # A fork that raises before the reporter runs still returns a redacted error (#360).
+  def test_fork_clean_pass_preserves_a_redacted_exception_from_the_child
+    ensure_coverage_running
+    noisy = File.expand_path("fixtures/noisy_minitest_test.rb", __dir__)
+    map = fork_map(noisy, verbose: false)
+    ok = report = nil
+    after_fork = -> { raise "database postgres://u:s3cret@host/db unavailable" }
+    capture_subprocess_io { ok, report = map.send(:fork_clean_pass?, [noisy], after_fork) }
+    refute ok
+    assert_includes report, "RuntimeError: database postgres://u:[REDACTED]@host/db unavailable"
+    refute_includes report, "s3cret"
   end
 
   def test_uncovered_line_returns_empty
@@ -288,6 +409,10 @@ class CoverageMapTest < Minitest::Test
       end
       assert_includes map.failed_clean_tests, "calc_test.rb"
       assert_empty map.failed_test_files, "a red assertion is not a capture crash"
+      # #360: the failing test name is kept for the SmokeCheckError line.
+      detail = map.failed_clean_details["calc_test.rb"].to_s
+      assert_match(/AuditFailingCalculatorTest#test_unrelated/, detail, detail)
+      assert_match(/Expected: 1\s+Actual: 2/, detail, detail)
     end
   end
 
@@ -1100,7 +1225,7 @@ class CoverageMapTest < Minitest::Test
     payload = clean = nil
     out, = capture_subprocess_io do
       payload = map.send(:fork_capture, noisy, [CALC], nil)
-      clean = map.send(:fork_clean_pass?, [noisy], nil)
+      clean, = map.send(:fork_clean_pass?, [noisy], nil)
     end
     assert_kind_of Hash, payload
     assert payload["passed"]
@@ -1377,7 +1502,8 @@ class CoverageMapTest < Minitest::Test
       cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, capture_timeout: 0.05
     )
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    refute map.send(:fork_clean_pass?, [hang], nil)
+    ok, = map.send(:fork_clean_pass?, [hang], nil)
+    refute ok
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
     assert_operator elapsed, :<, 2.0
   end

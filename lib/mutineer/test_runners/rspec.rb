@@ -15,6 +15,13 @@ module Mutineer
     # return 0 (all passed), 1 (an example failed) or 2 (only an error
     # outside examples, such as a spec file that raised while loading).
     module RSpec
+      # The sink text from the most recent {.run} (#360 clean-failure detail).
+      #
+      # @return [String, nil]
+      def self.last_output
+        @last_output
+      end
+
       # Runs the given RSpec files.
       #
       # @param spec_files [String, Array<String>] one file or many files.
@@ -51,6 +58,7 @@ module Mutineer
         status = with_fail_fast_off(record_to) do
           ::RSpec::Core::Runner.run([*args, *Array(spec_files)], sink, sink)
         end
+        @last_output = sink.string
         # Reached only when the suite returned: an example that exits the
         # process skips it, and the parent then keeps the row incomplete. A
         # return alone proves nothing: fail-fast turned on mid-run stops RSpec
