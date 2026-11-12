@@ -360,6 +360,30 @@ class PairingTest < Minitest::Test
     end
   end
 
+  def test_longer_source_in_a_non_ascii_directory_keeps_its_split_file
+    with_tree("app/caf\u00e9/user.rb", "app/caf\u00e9/user_session.rb",
+              "test/caf\u00e9/user_session_test.rb") do |root|
+      assert_empty infer_tests("app/caf\u00e9/user.rb", root)
+      assert_equal ["test/caf\u00e9/user_session_test.rb"],
+                   infer_tests("app/caf\u00e9/user_session.rb", root)
+    end
+  end
+
+  def test_split_names_sort_when_one_is_not_utf8
+    Dir.mktmpdir("mutineer-pair") do |root|
+      FileUtils.mkdir_p(File.join(root, "test"))
+      File.write(File.join(root, "user.rb"), "")
+      File.write(File.join(root, "test", "user_caf\u00e9_test.rb"), "")
+      begin
+        File.binwrite(File.join(root, "test").b + "/user_\xFF_test.rb".b, "")
+      rescue Errno::EILSEQ
+        skip "this filesystem refuses a file name that is not UTF-8"
+      end
+      names = infer_tests("user.rb", root)
+      assert_equal 2, names.size
+    end
+  end
+
   def test_root_source_does_not_take_a_longer_sibling_test
     with_tree("user.rb", "user_session.rb", "test/user_session_test.rb") do |root|
       assert_empty infer_tests("user.rb", root)

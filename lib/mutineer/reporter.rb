@@ -903,8 +903,8 @@ module Mutineer
       mutated_block = before + replacement + after
       start_line  = source.byteslice(0, m.start_offset).count("\n") + 1
       token       = source.byteslice(m.start_offset...m.end_offset).gsub(/\s+/, " ").strip
-      if token.bytesize > 50
-        token = token.byteslice(0, 47) + "...".dup.force_encoding(token.encoding)
+      if token.length > 50
+        token = token[0, 47] + "...".dup.force_encoding(token.encoding)
       end
       [start_line, original_block, mutated_block, token]
     end
@@ -1300,7 +1300,11 @@ module Mutineer
     def utf8_text(text)
       str = text.to_s
       return str if str.encoding == Encoding::UTF_8 && str.valid_encoding?
-      return str.encode(Encoding::UTF_8) if str.valid_encoding?
+      # ASCII-8BIT is "valid" for every byte, and encode raises on a byte
+      # UTF-8 cannot hold. Those bytes fall through and print as \xNN.
+      if str.encoding != Encoding::ASCII_8BIT && str.valid_encoding?
+        return str.encode(Encoding::UTF_8)
+      end
 
       str.dup.force_encoding(Encoding::UTF_8)
          .scrub { |bytes| bytes.unpack("C*").map { |b| format("\\x%02X", b) }.join }

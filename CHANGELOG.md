@@ -158,8 +158,12 @@ All notable changes to this project are documented here. The format is based on
   is taken from the first line, or the second after a shebang, within the
   first 4096 bytes. The mutant keeps those bytes, so Ruby can load it.
   The daemon receives the text through JSON, which is Unicode, and writes
-  the file back in the encoding the comment names. A file with no such
-  comment is still read as UTF-8. The daemon still reads `db/schema.rb`
+  the file back in the encoding the comment names. The comment forms are
+  the ones Ruby accepts, including an indented comment and a vim
+  `fileencoding` modeline. `# encoding=NAME` with no space is not one of
+  them. A file with no such comment is still read as UTF-8. A redefine
+  snippet has no comment of its own, so the write adds one when the
+  snippet is already in another encoding. The daemon still reads `db/schema.rb`
   as UTF-8. `rails_worker_db.rb` loads on the app's Ruby, which may not
   ship Prism, and requiring Prism there would turn off worker-database
   routing.

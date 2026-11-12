@@ -38,7 +38,9 @@ class EncodingTest < Minitest::Test
     "# frozen_string_literal: true; encoding: EUC-JP\n" => "EUC-JP",
     "# -*- frozen_string_literal: true; coding: EUC-JP -*-\n" => "EUC-JP",
     "# encoding: ASCII-8BIT\n" => "ASCII-8BIT",
-    "# encoding: EUC-JP\r\n" => "EUC-JP"
+    "# encoding: EUC-JP\r\n" => "EUC-JP",
+    "value = \"encoding: EUC-JP\"\n" => "UTF-8",
+    "x = 1 # encoding: EUC-JP\n" => "UTF-8"
   }.freeze
 
   def test_paths_of_one_name_share_one_encoding
@@ -204,6 +206,8 @@ class EncodingTest < Minitest::Test
         assert_equal expected, text.encoding.name, header
         assert text.valid_encoding?, header
         assert_equal header.b, text.b.byteslice(0, header.bytesize), header
+        delivered = text.encode(Encoding::UTF_8)
+        assert_equal text.b, Mutineer::SourceBytes.for_file(delivered), header
       end
     end
   end
@@ -275,10 +279,46 @@ class EncodingTest < Minitest::Test
     Dir.mktmpdir("mutineer-bin") do |parent|
       root = File.join(parent, "caf\u00e9")
       Dir.mkdir(root)
-      File.binwrite(root.b + "/".b + "\xFF.rb".b, "")
+      begin
+        File.binwrite(root.b + "/".b + "\xFF.rb".b, "")
+      rescue Errno::EILSEQ
+        skip "this filesystem refuses a file name that is not UTF-8"
+      end
       relative = Mutineer::ProjectPath.relative("\xFF.rb".b, root)
       assert_equal "\xFF.rb".b, relative.b
       assert_equal Encoding::ASCII_8BIT, relative.encoding
+    end
+  end
+
+  def test_a_report_escapes_a_binary_path
+    reporter = Mutineer::Reporter.allocate
+    shown = reporter.send(:printable, "\xFF.rb".b)
+    assert_equal Encoding::UTF_8, shown.encoding
+    assert_includes shown, "\\xFF"
+  end
+
+  def test_a_long_euc_jp_token_is_cut_on_a_character
+    body = "\xA4\xA2".b * 60
+    source = ("# encoding: EUC-JP\n".b + body + "\n".b).force_encoding(Encoding::EUC_JP)
+    start = "# encoding: EUC-JP\n".bytesize
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + body.bytesize,
+                                       replacement: "x", operator: :arithmetic)
+    token = Mutineer::Reporter.allocate.send(:diff_for, mutation, source).last
+    assert token.valid_encoding?
+    assert_equal ("\u3042" * 47).encode(Encoding::EUC_JP) + "...".dup.force_encoding(Encoding::EUC_JP), token
+  end
+
+  def test_a_redefine_snippet_is_written_with_its_encoding
+    snippet = "def greet\n  \"\xA4\xA2\"\nend\n".b.force_encoding(Encoding::EUC_JP)
+    bytes = Mutineer::SourceBytes.for_file(snippet)
+    assert bytes.start_with?("# encoding: EUC-JP\n".b)
+    Dir.mktmpdir("mutineer-snip") do |dir|
+      path = File.join(dir, "snip.rb")
+      File.binwrite(path, bytes)
+      script = "load #{path.inspect}\nputs greet.encoding.name\nputs greet.encode('UTF-8')\n"
+      out, err, status = Open3.capture3(RUBY, "-e", script)
+      assert_equal 0, status.exitstatus, err
+      assert_equal ["EUC-JP", "\u3042"], out.lines.map(&:strip)
     end
   end
 
