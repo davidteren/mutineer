@@ -161,8 +161,9 @@ All notable changes to this project are documented here. The format is based on
   for `range`, and save a new baseline. Active Record conditions such as
   `where(created_at: time..)`, `where.not`, `find_by`, and `exists?` were
   already swapped. They still are: both ranges become the same `>=` SQL.
-  Suppress an equivalent mutant with `# mutineer:disable-line` or an
-  `ignore:` entry.
+  Suppress one equivalent mutant with an `ignore:` entry.
+  `# mutineer:disable-line range` hides every `range` mutant on that line,
+  so use it only when every one of them is equivalent.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and
