@@ -163,8 +163,9 @@ only at load, gets this status instead of `survived` or `no_coverage`, under bot
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.
 A one-line or endless `def` keeps its body on the `def` line, which counts when the method is defined, so its method call
 count at load is used instead. A block on that `def` line is not classified from the line (#389).
-A statement that shares its only line with other code counts when that line ran at load, including the body of a
-block on the line (#435). Code that runs only sometimes, such as the body of `x if c`, does not.
+A `define_method` or `define_singleton_method` whose line ran at load counts too, including the block that call
+stores (#435). Another block on that line does not: `each` with an empty array counts the line without running the
+block. Code that runs only sometimes, such as the body of `x if c`, does not.
 
 Several mutants can share a line, so `operator` and `token` name the change and `id` identifies the mutant.
 The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` these entries were

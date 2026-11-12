@@ -152,11 +152,17 @@ All notable changes to this project are documented here. The format is based on
   5 mutants moved, so that run's score goes from 0.0 to no score. A run
   that still has other survivors can score higher, because these mutants
   leave the denominator. `--threshold` skips a nil score. The new case is
-  a statement that shares its only line with other code on a line that
-  already ran at load. A block body on its own load line was already
-  excluded. Re-running the caller's class body, so these mutants can be
-  killed, stays #389. A one-line or endless `def` still uses its call
-  count, so a block on the `def` line is unchanged (#389).
+  a `define_method` or `define_singleton_method` call whose line ran at
+  load, including the block that call stores. Another block on that line,
+  such as `each` with an empty array, stays scored: the line can count
+  without the block, and a test can run the mutated block (#286). An
+  empty `each` that shares its line with `define_method` can still hide
+  that call. That needs the call to have been made with no elements while
+  the class loaded, then again with elements by a test that does not check
+  the generated method. The reported call is `greets :alice`. Re-running
+  the caller's class body, so these mutants can be killed, stays #389. A
+  one-line or endless `def` still uses its call count, so a block on the
+  `def` line is unchanged (#389).
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and

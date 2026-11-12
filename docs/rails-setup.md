@@ -62,7 +62,7 @@ Examples include constant-building calls, `to_prepare` initializers, and source 
 
 | Result | Treatment |
 | --- | --- |
-| A mutant survives on a line executed during loading | Classified as `ran_at_load`, not `survived` or `no_coverage`. Excluded from the score and `--threshold` failures. A mutant inside a block on that line counts too, including a string in a `define_method` block written on the same line as the call (#435). |
+| A mutant survives on a line executed during loading | Classified as `ran_at_load`, not `survived` or `no_coverage`. Excluded from the score and `--threshold` failures. A mutant in a `define_method` or `define_singleton_method` whose line ran at load counts too, including the block that call stores (#435). Another block on that line, such as `each`, stays scored. |
 | A mutant is killed | The kill counts. |
 | Strategy is `reload` | Repeats the mutated file's class body, but not initializers or other files. Survivors on these lines remain untrusted. |
 | A verdict is needed | Use `--test-command` to boot a fresh process per mutant. |

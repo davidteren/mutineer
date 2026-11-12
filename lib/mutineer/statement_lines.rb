@@ -43,9 +43,11 @@ module Mutineer
     # (a branch, the right side of `&&`, the body of `x if c`): those lines can
     # count without this code (#187, #254).
     #
-    # A one-line block on a call that ran at load has no strict line of its own,
-    # but the call's mutants are already `ran_at_load`. The block's mutants are
-    # the same load (#435). {JobPlan.ran_at_load?} reads these lines for that.
+    # A one-line block on a call that ran at load has no strict line of its own.
+    # The call's line can count without the block: `each` on an empty array
+    # still counts the line. {JobPlan.ran_at_load?} does not treat that as the
+    # block having run. It uses these lines only for a `define_method` or
+    # `define_singleton_method` call (#435).
     #
     # @param def_node [Prism::DefNode] the method that holds the position.
     # @param source [String] the source text of the file.
@@ -112,6 +114,39 @@ module Mutineer
       lines
     end
     private_class_method :strict_lines
+
+    # Calls that store a block as a method. The block does not run when the
+    # call does, so a mutant in the call or in the block is the original method
+    # once that call has run at load (#435).
+    STORED_METHOD_CALLS = %i[define_method define_singleton_method].freeze
+
+    # Lines of the nearest {STORED_METHOD_CALLS} call that holds `offset`: the
+    # call's strict lines, or the line it shares with other code when strict
+    # mode drops every line. Empty when `offset` is not in such a call, or when
+    # that call runs only sometimes. A line here ran only if the caller recorded
+    # it; an empty `each` on the same line can count without this call (#286).
+    #
+    # @param def_node [Prism::DefNode] the method that holds the position.
+    # @param source [String] the source text of the file.
+    # @param offset [Integer] byte offset of the position.
+    # @return [Array<Integer>]
+    def self.stored_method_lines(def_node, source, offset)
+      return [] unless def_node&.body
+
+      path = path_to(def_node.body, offset)
+      call = path&.reverse_each&.find do |node|
+        node.is_a?(Prism::CallNode) && STORED_METHOD_CALLS.include?(node.name)
+      end
+      return [] unless call
+
+      statement = statement_at(def_node, call.location.start_offset, conditional: true)
+      return [] unless statement
+
+      location = statement.location
+      lines = (location.start_line..last_line(statement)).to_a
+      kept = strict_lines(source, location, lines.dup)
+      kept.empty? ? lines : kept
+    end
 
     # Whether the code at `offset` runs each time the method runs: it is in
     # the first statement of the body, not in a statement nested in it or in

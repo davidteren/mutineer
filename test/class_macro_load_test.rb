@@ -41,15 +41,15 @@ class ClassMacroLoadTest < Minitest::Test
 
   # Runs one fresh process. Boot coverage and a required source only work in
   # a process that has not loaded the fixture.
-  def run_macro(strategy:, boot:, ci:)
+  def run_macro(strategy:, boot:, ci:, source: SOURCE, test: TEST_FILE, operators: OPERATORS)
     Dir.mktmpdir("mutineer-class-macro") do |cache|
       script = <<~RUBY
         require "mutineer"
         require "json"
         #{ci ? 'ENV["CI"] = "true"' : "ENV.delete(\"CI\")"}
-        config = Mutineer::Config.new(sources: [#{SOURCE.inspect}], tests: [#{TEST_FILE.inspect}],
+        config = Mutineer::Config.new(sources: [#{source.inspect}], tests: [#{test.inspect}],
                                       boot: #{boot.inspect}, strategy: #{strategy.inspect},
-                                      operators: #{OPERATORS.inspect},
+                                      operators: #{operators.inspect},
                                       project_root: #{ROOT.inspect}, cache_dir: #{cache.inspect}, jobs: 1)
         agg = Mutineer::Runner.execute(config).first
         source = File.read(config.sources.first)
@@ -94,6 +94,20 @@ class ClassMacroLoadTest < Minitest::Test
         assert_equal EAGER, rows, "#{strategy} CI=#{ci}"
         assert_nil score, "#{strategy} CI=#{ci}: every mutant is excluded, so the score is nil, not 0.0"
       end
+    end
+  end
+
+  # Boot calls apply([]) so the each line runs and the block does not. The test
+  # calls apply([1]) and does not check the string, so the mutant runs and
+  # survives. It is not ran_at_load: the shared line is not a define_method call.
+  def test_an_each_block_on_a_load_line_stays_a_survivor
+    %w[reload redefine].each do |strategy|
+      rows, score = run_macro(strategy: strategy, boot: "apply_boot.rb", ci: false,
+                              source: "lib/apply_each.rb", test: "test/apply_each_test.rb",
+                              operators: %w[literal_mutation])
+      assert_equal ["survived"], rows.values.uniq, strategy
+      assert_equal 1, rows.size, strategy
+      assert_in_delta 0.0, score, 0.001, strategy
     end
   end
 
