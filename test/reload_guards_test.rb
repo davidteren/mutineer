@@ -674,6 +674,44 @@ class ReloadGuardsTest < Minitest::Test
     Object.send(:remove_const, :FilePathCorpus) if Object.const_defined?(:FilePathCorpus, false)
   end
 
+  # A `rescue` or `ensure` stores a nested sequence whose path and lines
+  # differ on the mutant file. The repeat still pairs, and a different block
+  # in the same class stays.
+  def test_a_rescued_or_ensured_block_pairs_across_the_mutant_path
+    verbose = $VERBOSE
+    Dir.mktmpdir do |dir|
+      source = File.join(dir, "parcel.rb")
+      shifted = File.join(dir, "parcel_shifted.rb")
+      File.write(source, RESCUE_CORPUS)
+      File.write(shifted, RESCUE_CORPUS_SHIFTED)
+      $VERBOSE = nil
+      load source
+      old_rescue = RescueCorpus::PROC
+      old_ensured = RescueCorpus::ENSURED
+      load shifted
+      new_rescue = RescueCorpus::PROC
+      new_ensured = RescueCorpus::ENSURED
+      other = RescueCorpus::OTHER
+      refute_same old_rescue, new_rescue
+      refute_same old_rescue.binding.local_variable_get(:token), new_rescue.binding.local_variable_get(:token)
+
+      { rescue: [old_rescue, new_rescue], ensure: [old_ensured, new_ensured] }.each do |label, (old_block, new_block)|
+        concern_entry = Callback.new(:before, other)
+        old_entry = Callback.new(:before, old_block)
+        new_entry = Callback.new(:before, new_block)
+        klass = callback_class
+        klass.__callbacks = { save: Chain.new(concern_entry, old_entry, new_entry) }
+
+        Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_entry] } }, [source, shifted])
+
+        assert_same_list [concern_entry, new_entry], klass.__callbacks[:save], label.to_s
+      end
+    end
+  ensure
+    $VERBOSE = verbose if defined?(verbose)
+    Object.send(:remove_const, :RescueCorpus) if Object.const_defined?(:RescueCorpus, false)
+  end
+
   # Two class bodies, one of which records the file path and a new object.
   FILE_PATH_CORPUS = <<~RUBY
     module FilePathCorpus
@@ -690,6 +728,37 @@ class ReloadGuardsTest < Minitest::Test
       # a mutant inserted this line
       token = Object.new
       PROC = proc { log(__FILE__, token) }
+      OTHER = proc { stamp }
+    end
+  RUBY
+
+  # A rescued callback and an ensured callback, then the same with a line
+  # inserted above them.
+  RESCUE_CORPUS = <<~RUBY
+    module RescueCorpus
+      token = Object.new
+      PROC = proc { update_audit(token) rescue nil }
+      ENSURED = proc do
+        update_audit(token)
+      ensure
+        stamp
+      end
+      OTHER = proc { stamp }
+    end
+  RUBY
+
+  # The module name stays, so the block label stays. The inserted line moves
+  # the rescue and ensure bodies.
+  RESCUE_CORPUS_SHIFTED = <<~RUBY
+    module RescueCorpus
+      # a mutant inserted this line
+      token = Object.new
+      PROC = proc { update_audit(token) rescue nil }
+      ENSURED = proc do
+        update_audit(token)
+      ensure
+        stamp
+      end
       OTHER = proc { stamp }
     end
   RUBY

@@ -534,7 +534,9 @@ module Mutineer
       # show it. A value the block captured is not part of the code, so a
       # new object, a time or a random value still pairs (#413). `__FILE__`
       # is the source path in one load and the mutant path in the other;
-      # both become the same placeholder.
+      # both become the same placeholder. A `rescue` or `ensure` keeps a
+      # nested sequence in the catch table; that sequence is normalized
+      # too, or the two copies would not pair.
       #
       # @param block [Proc]
       # @param reloaded [Array<String>] real paths of the source and mutant files.
@@ -560,19 +562,22 @@ module Mutineer
       # @return [Array]
       def self.code_identity(data, paths)
         misc = ISEQ_MISC_KEYS.to_h { |key| [key, data[4][key]] }
-        [data[5], misc, data[9], data[10], data[11], data[12], strip_code(data[13], paths)]
+        [data[5], misc, data[9], data[10], data[11], strip_code(data[12], paths), strip_code(data[13], paths)]
       end
 
       # @param node [Object] one node of an instruction sequence.
       # @param paths [Array<String>] paths to treat as the reloaded file.
       # @return [Object] `node` with line numbers and those paths removed.
+      #   A bare integer in an instruction list is a line number, including
+      #   one in the middle of a `rescue` or `ensure` body. An integer that
+      #   is an operand, such as `[:getlocal_WC_0, 3]`, stays.
       def self.strip_code(node, paths)
         case node
         when Array
           if node[0] == ISEQ_FORMAT
             code_identity(node, paths)
-          elsif node[0].is_a?(Integer) && node.any? { |child| child.is_a?(Symbol) && child.to_s.start_with?("RUBY_EVENT_") }
-            strip_code(node.drop(1), paths)
+          elsif instruction_body?(node)
+            node.filter_map { |child| strip_code(child, paths) unless child.is_a?(Integer) }
           else
             node.map { |child| strip_code(child, paths) }
           end
@@ -583,6 +588,13 @@ module Mutineer
         else
           node
         end
+      end
+
+      # @param node [Array] one array from an instruction sequence.
+      # @return [Boolean] true when `node` is a list of instructions rather
+      #   than one instruction's operands.
+      def self.instruction_body?(node)
+        node.any? { |child| child.is_a?(Symbol) && child.to_s.start_with?("RUBY_EVENT_") }
       end
 
       # What two entries share when they are copies of one macro call, apart
