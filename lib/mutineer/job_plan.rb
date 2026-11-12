@@ -607,9 +607,15 @@ module Mutineer
     # @param source_map [Hash{String => String}] source text by file.
     # @param config [Mutineer::Config] run configuration.
     # @param extras [Hash, nil] {collect_jobs} extras to narrow in place.
+    # @param warn_diff [Boolean] when false, a git-diff skip is not warned.
+    #   The in-process `--since` preview passes false. It repeats this call
+    #   with the default when the list is empty, and discards the preview
+    #   when a mutant remains, so the later call warns once (#396). A caller
+    #   that passes false must repeat the diff with warnings, or a broken
+    #   diff would drop mutants with no trace.
     # @return [Array(Array, Array<Mutineer::Result>, Integer), Array(Array, Array<Mutineer::Result>, nil)]
     #   the jobs to run, the ignored results to report, and the count before --since.
-    def self.scope_since(jobs, ignored_results, source_map, config, extras: nil)
+    def self.scope_since(jobs, ignored_results, source_map, config, extras: nil, warn_diff: true)
       unless config.since
         extras&.delete(:subject_ranges)
         return [jobs, ignored_results, nil]
@@ -619,7 +625,8 @@ module Mutineer
       ignored_entries = ignored_results.map { |r| [r.subject, r.mutation, r] }
       range_files = extras&.fetch(:subject_ranges, [])&.map { |h| h[:file] } || []
       files = (config.sources + range_files).uniq
-      changed = ChangedLines.for(ref: config.since, files: files, project_root: config.project_root)
+      changed = ChangedLines.for(ref: config.since, files: files, project_root: config.project_root,
+                                 report: warn_diff)
       kept = filter_since(jobs + ignored_entries, source_map, config, changed: changed)
       kept_ignored, kept_jobs = kept.partition { |entry| entry.last.is_a?(Result) }
       narrow_subjects_since!(extras, config, changed: changed) if extras

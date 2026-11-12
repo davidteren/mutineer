@@ -58,6 +58,12 @@ module Mutineer
     # The CLI then reports + applies the exit code; the integration test asserts
     # directly on the AggregateResult.
     #
+    # Under `--since`, when no changed line holds a mutant to run, this returns
+    # that empty result before the boot and the coverage map (#396). The daemon
+    # (#81) and `--test-command` (#76) already return before their own expensive
+    # step. A list that still holds a mutant keeps the order below, so job
+    # order and ids stay as they are.
+    #
     # The parent process `require`s each source file so its classes exist; forked
     # children inherit them, so a covering test file's own require_relative of the
     # source is a no-op and does not clobber the mutated `load` (spec §7).
@@ -99,6 +105,14 @@ module Mutineer
       # file an older version left without the dot would stop Zeitwerk (#253).
       dirs = JobPlan.source_dirs(config)
       JobPlan.sweep_orphans(dirs)
+      # #396: know an empty --since list before paying for the boot and the map.
+      # The sweep above still runs, so a zero-job run clears orphaned mutant files.
+      if (empty_since = since_empty_result(config, operator_classes))
+        # Existence only. A missing boot or --require stays a usage error.
+        # Loading them is the boot this return skips.
+        [config.boot, *config.require_paths].compact.each { |f| project_file!(config.project_root, f) }
+        return empty_since
+      end
       if config.strategy == "redefine"
         dirs.reject { |d| File.writable?(d) }.each do |d|
           warn "[mutineer] #{d} is not writable: redefine loads its mutants from the system temp dir, " \
@@ -215,6 +229,48 @@ module Mutineer
       # A caller that set PARALLEL_WORKERS keeps that value after the run.
       RailsRunEnv.restore_process!(previous_parallel_workers)
     end
+
+    # The in-process result when `--since` leaves no mutant to run, or nil when
+    # the run must boot and build the coverage map (#396).
+    #
+    # {JobPlan.collect_jobs} and {JobPlan.scope_since} only read source text, so
+    # this needs no boot. The first pass is silent. An empty list is collected
+    # again so git-diff warnings print once, and that result is what the caller
+    # returns before {CoverageMap#build_or_load} or {CoverageMap#build_via_fork}.
+    # A list that still holds a mutant is discarded: the caller collects again
+    # after the map, so job order and ids stay as they are, and that later call
+    # is the one that warns.
+    #
+    # A zero-job run does not check that the unmutated suite is green, and it
+    # does not load the boot file. #81 made that choice for `--daemon` and
+    # `--test-command`. Comment-only and docs-in-code pull requests are the
+    # usual hit: the README documents `--since` for pull-request CI. Issue
+    # #396 records that as a normal case, and one such job failed on a flaky
+    # test (elopage/monetiser#229). No broader count was measured.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @param operator_classes [Array<Class>] resolved operators.
+    # @return [Array(Mutineer::AggregateResult, Hash{String => String}, Hash), nil]
+    #   the empty aggregate, source map and extras, or nil when mutants remain.
+    def self.since_empty_result(config, operator_classes)
+      return unless config.since
+
+      scope = lambda do |warn_diff|
+        jobs, ignored, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
+        jobs, ignored, extras[:unscoped_mutants] =
+          JobPlan.scope_since(jobs, ignored, source_map, config, extras: extras, warn_diff: warn_diff)
+        [jobs, ignored, source_map, extras]
+      end
+
+      jobs, = scope.call(false)
+      return unless jobs.empty?
+
+      jobs, ignored, source_map, extras = scope.call(true)
+      return unless jobs.empty?
+
+      [AggregateResult.new(ignored), source_map, extras]
+    end
+    private_class_method :since_empty_result
 
     # A `--matrix` error that carries no {Kills} row (the worker crashed, or its
     # result was lost) gets an empty, incomplete row: its tests never reported,

@@ -46,12 +46,18 @@ module Mutineer
     # @param ref [String] git ref to diff against.
     # @param files [Array<String>] source files to inspect.
     # @param project_root [String] repository root for `git -C`.
-    # @param runner [#call] injectable diff producer.
+    # @param runner [#call, nil] injectable diff producer. The default calls
+    #   {git_diff}. A custom runner produces the diff text itself, so `report`
+    #   does not apply to it.
+    # @param report [Boolean] when false, {git_diff} prints no skip warning.
+    #   The in-process `--since` preview passes false, then repeats the diff
+    #   with the default or discards the preview (#396).
     # @return [Hash<String, Set<Integer>>] absolute file path to changed lines.
-    def for(ref:, files:, project_root:, runner: method(:git_diff))
+    def for(ref:, files:, project_root:, runner: nil, report: true)
+      producer = runner || ->(diff_ref, abs, root) { git_diff(diff_ref, abs, root, report: report) }
       files.each_with_object({}) do |file, acc|
         abs = File.expand_path(file, project_root)
-        acc[abs] = parse(runner.call(ref, abs, project_root))
+        acc[abs] = parse(producer.call(ref, abs, project_root))
       end
     end
 
@@ -63,31 +69,35 @@ module Mutineer
     # warning, so the skip does not look like a file with no changes.
     # Paths are literal, so a name such as `file[1].rb` is not read as a glob.
     #
-    # A failure is warned, never silent: an empty result means "no changed
-    # lines", which under `--since` removes every mutant for the file — a green
-    # gate must not be manufactured by a broken diff without a trace.
+    # A failure is warned, never silent, unless `report` is false: an empty
+    # result means "no changed lines", which under `--since` removes every
+    # mutant for the file — a green gate must not be manufactured by a broken
+    # diff without a trace. `report: false` is only for a preview that repeats
+    # this diff with warnings, or discards the preview (#396).
     #
     # @param ref [String] git ref to diff against.
     # @param abs_file [String] absolute path of the file being diffed.
     # @param project_root [String] repository root for `git -C`.
-    # @return [String] diff text, or `""` on failure (after a stderr warning).
-    def git_diff(ref, abs_file, project_root)
+    # @param report [Boolean] when false, skip warnings are not printed.
+    # @return [String] diff text, or `""` on failure (after a stderr warning
+    #   when `report` is true).
+    def git_diff(ref, abs_file, project_root, report: true)
       out, _err, status = Open3.capture3(
         "git", "--literal-pathspecs", "-C", project_root, "diff", "--unified=0", ref, "--", abs_file,
         binmode: true # the hunk regex must not trip on a changed line's non-ASCII bytes
       )
       if status.success?
         return out if indexed?(abs_file, project_root)
-        return new_file_diff(abs_file) unless ignored?(abs_file, project_root)
+        return new_file_diff(abs_file, report: report) unless ignored?(abs_file, project_root)
 
-        warn "[mutineer] #{abs_file} is ignored by Git; its lines will not be mutated (--since)"
+        warn "[mutineer] #{abs_file} is ignored by Git; its lines will not be mutated (--since)" if report
         return ""
       end
 
-      warn "[mutineer] git diff failed for #{abs_file}; its lines will not be mutated (--since)"
+      warn "[mutineer] git diff failed for #{abs_file}; its lines will not be mutated (--since)" if report
       ""
     rescue StandardError => e
-      warn "[mutineer] git diff failed for #{abs_file} (#{e.class}); its lines will not be mutated (--since)"
+      warn "[mutineer] git diff failed for #{abs_file} (#{e.class}); its lines will not be mutated (--since)" if report
       ""
     end
 
@@ -125,12 +135,14 @@ module Mutineer
     # nothing and a positive threshold would still exit 0.
     #
     # @param abs_file [String] absolute path of the file being diffed.
+    # @param report [Boolean] when false, a read failure is not warned.
+    #   See {git_diff}.
     # @return [String] a one-hunk diff header, or `""`.
-    def new_file_diff(abs_file)
+    def new_file_diff(abs_file, report: true)
       count = File.foreach(abs_file).count
       count.zero? ? "" : "@@ -0,0 +1,#{count} @@\n"
     rescue SystemCallError => e
-      warn "[mutineer] cannot read #{abs_file} (#{e.class}); its lines will not be mutated (--since)"
+      warn "[mutineer] cannot read #{abs_file} (#{e.class}); its lines will not be mutated (--since)" if report
       ""
     end
   end

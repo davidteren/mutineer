@@ -139,6 +139,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **An in-process `--since` run with no mutant on a changed line skips the
+  coverage map (#396).** A comment-only change, or any diff that holds no
+  mutant, used to boot the app and run the unmutated suite, then say the
+  changes held nothing to test. A red or flaky test failed that job
+  (elopage/monetiser#229). The run now reads the sources and the diff first.
+  An empty job list returns before the boot and the coverage map, with the
+  same "nothing to test" message and exit 0 as `--daemon` (#81) and
+  `--test-command` (#76). This is the in-process path, with or without
+  `--boot`, for reload and redefine. A missing `--boot` or `--require` file
+  is still a usage error. A run that still has a mutant on a changed line
+  boots, builds the map and checks the suite as before. Its job order and
+  ids stay the same.
+  A zero-job run no longer notices a red suite or a boot that fails while
+  loading. #81 made that choice. Comment-only and docs-in-code pull
+  requests are the usual case for the README's `--since` CI run. No broader
+  count was measured.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and
