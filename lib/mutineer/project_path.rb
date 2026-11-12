@@ -20,10 +20,13 @@ module Mutineer
     def relative(path, root)
       abs = absolute(path, root)
       real_root = root_real(root)
-      prefix = real_root.end_with?("/") ? real_root : "#{real_root}/"
-      return abs unless abs.start_with?(prefix)
+      # Byte prefix: a non-UTF-8 file name is binary, and a non-ASCII root
+      # is UTF-8. start_with? raises on that mix (#346).
+      prefix = real_root.b
+      prefix += "/".b unless prefix.end_with?("/".b)
+      return abs unless FsPath.bytes_start_with?(abs, prefix)
 
-      abs.delete_prefix(prefix)
+      FsPath.bytes_delete_prefix(abs, prefix)
     end
 
     # Expands `path` against `root`, resolved to its real path when it exists.
@@ -40,8 +43,8 @@ module Mutineer
       # A leading `~` names the home directory (as File.expand_path reads it), so
       # expand it rather than joining it under the root.
       raw = if File.absolute_path?(path) then path
-            elsif path.start_with?("~") then File.expand_path(path)
-            else File.join(File.expand_path(root), path)
+            elsif path.b.start_with?("~".b) then File.expand_path(path)
+            else File.expand_path(root).b + File::SEPARATOR.b + path.to_s.b
             end
       FsPath.read(File.exist?(raw) ? File.realpath(raw) : File.expand_path(raw))
     end

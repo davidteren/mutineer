@@ -8,6 +8,7 @@ require_relative "orphan_guard"
 require_relative "concern_blocks"
 require_relative "redaction"
 require_relative "child_cause"
+require_relative "source_bytes"
 
 module Mutineer
   # App-side daemon (persistent worker).
@@ -506,7 +507,9 @@ module Mutineer
           # Held until this block ends, including SIGKILL (the kernel drops it).
           # Another run's sweep sees the lock and does not delete the file.
           f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
-          f.write(payload.fetch("code"))
+          # JSON delivered Unicode. Write the encoding the comment names (#346).
+          f.binmode
+          f.write(SourceBytes.for_file(payload.fetch("code")))
           f.flush
           ConcernBlocks.load_mutant(payload.fetch("source_file"), f.path, hook_def: hook)
         end

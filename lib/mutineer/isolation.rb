@@ -3,6 +3,7 @@
 require "tempfile"
 require_relative "result"
 require_relative "parser"
+require_relative "source_bytes"
 require_relative "child_stdout"
 require_relative "child_coverage"
 require_relative "kill_channel"
@@ -240,7 +241,10 @@ module Mutineer
       dir = Dir.tmpdir if fallback && !File.writable?(dir)
       Tempfile.create([".mutineer_mutant", ".rb"], dir) do |f|
         f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
-        f.write(code)
+        # Binary: a text write would follow the locale and could change
+        # bytes that the magic comment still names (#346).
+        f.binmode
+        f.write(SourceBytes.for_file(code))
         f.flush
         yield f.path
       end

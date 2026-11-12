@@ -375,8 +375,11 @@ module Mutineer
       abs = FsPath.read(abs)
       roots.each do |r|
         r = FsPath.read(r)
-        prefix = r.end_with?("/") ? r : "#{r}/"
-        return abs.delete_prefix(prefix) if abs.start_with?(prefix)
+        prefix = r.b
+        prefix += "/".b unless prefix.end_with?("/".b)
+        next unless FsPath.bytes_start_with?(abs, prefix)
+
+        return FsPath.bytes_delete_prefix(abs, prefix)
       end
       nil
     end
@@ -576,10 +579,10 @@ module Mutineer
 
       fs_children(dir_abs).filter_map do |entry|
         next unless split_entry?(entry, name)
-        next unless File.file?(File.join(dir_abs, entry))
+        next unless File.file?(dir_abs.b + "/".b + entry.b)
         next if claimed_by_longer_source?(root, base, entry, dir_rel)
 
-        File.join(dir_rel, entry)
+        FsPath.read(dir_rel == "." ? entry.b : dir_rel.b + "/".b + entry.b)
       end.sort
     end
 
@@ -590,10 +593,12 @@ module Mutineer
     # @param root_abs [String] expanded project root.
     # @return [Boolean]
     def inside_project?(dir_abs, root_abs)
-      dir_abs = FsPath.read(dir_abs)
-      root_abs = FsPath.read(root_abs)
-      prefix = root_abs == File::SEPARATOR ? File::SEPARATOR : "#{root_abs}#{File::SEPARATOR}"
-      dir_abs == root_abs || dir_abs.start_with?(prefix)
+      dir_b = FsPath.read(dir_abs).b
+      root_b = FsPath.read(root_abs).b
+      return true if dir_b == root_b
+
+      prefix = root_b == "/".b ? "/".b : root_b + "/".b
+      FsPath.bytes_start_with?(dir_b, prefix)
     end
 
     # True when `entry` is `<name>_<piece>_test.rb` and not the exact
@@ -605,10 +610,13 @@ module Mutineer
     def split_entry?(entry, name)
       entry = FsPath.read(entry)
       name = FsPath.read(name)
-      return false unless entry.end_with?("_test.rb")
+      return false unless entry.b.end_with?("_test.rb".b)
 
-      rest = entry.delete_prefix("#{name}_")
-      rest != entry && rest.match?(/\A.+_test\.rb\z/)
+      needle = name.b + "_".b
+      return false unless entry.b.start_with?(needle)
+
+      rest = FsPath.read(entry.b.byteslice(needle.bytesize..).b)
+      rest.match?(/\A.+_test\.rb\z/)
     end
 
     # True when a longer source file on disk owns this split test. `user.rb`
@@ -625,17 +633,18 @@ module Mutineer
     #   this directory. An `app/` source does not take a `test/lib/` file.
     # @return [Boolean]
     def claimed_by_longer_source?(root, base, entry, scanned_dir = nil)
-      name = File.basename(base)
-      stem = entry.sub(/_test\.rb\z/, "")
-      return false unless stem.start_with?("#{name}_")
+      name = File.basename(base).b
+      stem = entry.b.sub(/_test\.rb\z/, "")
+      needle = name + "_".b
+      return false unless stem.start_with?(needle)
 
-      rest = stem.delete_prefix("#{name}_")
-      return false if rest.empty?
+      rest = stem.byteslice(needle.bytesize..)
+      return false if rest.nil? || rest.empty?
 
       dir = File.dirname(base)
       parts = rest.split("_", -1)
       (1..parts.length).any? do |i|
-        longer = "#{name}_#{parts.first(i).join("_")}"
+        longer = name + "_".b + parts.first(i).join("_".b)
         next false unless longer_owns_entry?(entry, longer)
 
         longer_source_exists?(root, dir, longer, scanned_dir)
@@ -650,7 +659,7 @@ module Mutineer
     # @param stem [String] longer source basename without extension.
     # @return [Boolean]
     def longer_owns_entry?(entry, stem)
-      entry == "#{stem}_test.rb" || split_entry?(entry, stem)
+      entry.b == stem.b + "_test.rb".b || split_entry?(entry, stem)
     end
 
     # True when a longer source file exists beside this logical path.
@@ -664,12 +673,12 @@ module Mutineer
     # @param scanned_dir [String, nil] relative test directory being scanned.
     # @return [Boolean]
     def longer_source_exists?(root, dir, stem, scanned_dir = nil)
-      file = "#{stem}.rb"
+      file = stem.b + ".rb".b
       folders = [dir == "." ? nil : dir]
       %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
       folders.uniq.any? do |folder|
-        rel = folder ? File.join(folder, file) : file
-        next false unless File.file?(File.join(root, rel))
+        rel = folder ? folder.b + "/".b + file : file
+        next false unless File.file?(root.b + "/".b + rel)
         next false if scanned_dir && !source_searches_dir?(rel, scanned_dir)
 
         true

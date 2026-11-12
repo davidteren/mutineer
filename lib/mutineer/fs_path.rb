@@ -31,6 +31,31 @@ module Mutineer
       text.dup.force_encoding(Encoding::ASCII_8BIT)
     end
 
+    # True when `text`'s bytes begin with `prefix`'s bytes.
+    # Encodings are not compared, so a UTF-8 root and a binary file name
+    # do not raise (#346).
+    #
+    # @param text [String]
+    # @param prefix [String]
+    # @return [Boolean]
+    def self.bytes_start_with?(text, prefix)
+      text.to_s.b.start_with?(prefix.to_s.b)
+    end
+
+    # `text` without a byte prefix, read again as UTF-8 or binary.
+    # `text` itself when the prefix is absent.
+    #
+    # @param text [String]
+    # @param prefix [String]
+    # @return [String]
+    def self.bytes_delete_prefix(text, prefix)
+      raw = text.to_s.b
+      pre = prefix.to_s.b
+      return read(text) unless raw.start_with?(pre)
+
+      read(raw.byteslice(pre.bytesize..).b)
+    end
+
     # Absolute form of `path`, passed through {read}.
     #
     # @param path [String]

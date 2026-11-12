@@ -127,8 +127,10 @@ module Mutineer
     # @return [void]
     def self.start(argv)
       # Reports and warnings name paths. Under an ASCII locale the stdio
-      # encoding is US-ASCII, so a non-ASCII path cannot be written (#346).
-      [$stdout, $stderr].each { |io| io.set_encoding(Encoding::UTF_8) }
+      # encoding is US-ASCII, so a non-ASCII path cannot be written.
+      # Binary mode writes each string's own bytes: UTF-8 text stays UTF-8,
+      # and a path that is not valid UTF-8 does not raise on the way out (#346).
+      [$stdout, $stderr].each(&:binmode)
 
       if argv.first == "triage"
         exit Triage.run(argv[1..])

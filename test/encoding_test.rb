@@ -5,6 +5,7 @@ require "open3"
 require "tmpdir"
 require "fileutils"
 require "json"
+require "minitest/mock"
 
 # #346: non-ASCII paths under an ASCII locale, and a source whose magic
 # comment names another encoding. The path bug is that the same bytes compare
@@ -229,7 +230,7 @@ class EncodingTest < Minitest::Test
       refute_equal plus, mutated.byteslice(mutation.start_offset, 1)
       assert_equal "-", mutated.byteslice(mutation.start_offset, 1)
 
-      report = run_json(proj, "eucjp.rb", test: "eucjp_test.rb", env: {})
+      report = run_json(proj, "eucjp.rb", test: "eucjp_test.rb")
       killed = report["killed"]
       assert_equal 1, killed.size
       assert_equal "eucjp.rb", killed[0]["file"]
@@ -253,6 +254,50 @@ class EncodingTest < Minitest::Test
       assert text.valid_encoding?
       assert_equal bytes, text.b
     end
+  end
+
+  def test_json_round_trip_is_written_in_the_magic_comment_encoding
+    code = File.binread(File.join(FIXTURES, "eucjp.rb")).force_encoding(Encoding::EUC_JP)
+    delivered = JSON.parse(JSON.generate("code" => code)).fetch("code")
+    assert_equal Encoding::UTF_8, delivered.encoding
+    assert_equal code.b, Mutineer::SourceBytes.for_file(delivered)
+    assert_equal code.b, Mutineer::SourceBytes.for_file(code)
+    Dir.mktmpdir("mutineer-bytes") do |dir|
+      path = File.join(dir, "eucjp.rb")
+      File.binwrite(path, code)
+      Mutineer::Isolation.write_beside(delivered, path) do |written|
+        assert_equal code.b, File.binread(written)
+      end
+    end
+  end
+
+  def test_a_binary_file_under_a_utf8_root_still_has_a_relative_path
+    Dir.mktmpdir("mutineer-bin") do |parent|
+      root = File.join(parent, "caf\u00e9")
+      Dir.mkdir(root)
+      File.binwrite(root.b + "/".b + "\xFF.rb".b, "")
+      relative = Mutineer::ProjectPath.relative("\xFF.rb".b, root)
+      assert_equal "\xFF.rb".b, relative.b
+      assert_equal Encoding::ASCII_8BIT, relative.encoding
+    end
+  end
+
+  def test_a_report_transcodes_a_valid_euc_jp_string
+    text = "# \xA4\xA2".b.force_encoding(Encoding::EUC_JP)
+    reporter = Mutineer::Reporter.allocate
+    shown = reporter.send(:printable, text)
+    assert_equal Encoding::UTF_8, shown.encoding
+    assert_includes shown, "\u3042"
+    html = reporter.send(:esc, text)
+    assert_equal Encoding::UTF_8, html.encoding
+    assert_includes html, "\u3042"
+  end
+
+  def test_an_id_joins_a_utf8_path_with_an_euc_jp_token
+    path = "caf\u00e9.rb"
+    token = "\xA4\xA2".b.force_encoding(Encoding::EUC_JP)
+    id = Mutineer::MutantId.digest([path, token, :arithmetic])
+    assert_match(/\A[0-9a-f]{12}\z/, id)
   end
 
   private
