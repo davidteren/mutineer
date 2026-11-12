@@ -95,6 +95,14 @@ class SiteDocsTest < Minitest::Test
     assert_equal expected, markdown.scan(/^\| `(\w+)`/).flatten.sort
   end
 
+  # The endless-range skip is limited to an array or string literal on both pages.
+  def test_equivalent_skips_page_limits_the_endless_range_skip_to_literals
+    [File.read("docs/equivalent-skips.html"), File.read("docs/equivalent-skips.md")].each do |page|
+      assert_includes page, "array or string literal"
+      refute_includes page, "capitals only"
+    end
+  end
+
   # Every call whose endless-range arguments are skipped is named on both pages.
   def test_equivalent_skips_page_names_every_range_slice_call
     html = File.read("docs/equivalent-skips.html")

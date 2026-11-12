@@ -139,6 +139,27 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **An endless range on a Hash, Proc, or other non-literal receiver is swapped (#344).**
+  The `range` operator skipped an endless range (`1..`, `1..nil`) used as an
+  index of `[]`, `[]=`, `slice`, `slice!`, `byteslice`, `bytesplice`,
+  `values_at`, or an index write. The only exception was a constant whose
+  name contained a lower-case letter, such as `Array[1..]`. Every variable,
+  call, and other constant was skipped, including `HASH[1..]`, `ARGV[1..]`,
+  `list[1..]`, `fn[1..]`, and `{(1..) => :a}[1..]`. A Hash, a Proc, and a
+  custom `[]` or `slice` can tell `1..` from `1...`, so the skip hid a mutant
+  a test can kill. The operator now skips that range only when the receiver
+  is an array or string literal, including one wrapped in parentheses or
+  `begin`. A variable, a call, or a constant is swapped, and an earlier
+  assignment is not followed. On a real Array or String the new mutant is
+  often equivalent, as in `argv[1..]` or `text.byteslice(offset..)`. In this
+  gem's `lib/`, 14 such ranges were skipped and none was a literal, so a
+  `range` run there goes from 45 mutants to 59. A run that names `range`
+  can gain mutants, survivors, and new mutant ids. Re-check `ignore:` entries
+  for `range`, and save a new baseline. Active Record conditions such as
+  `where(created_at: time..)`, `where.not`, `find_by`, and `exists?` were
+  already swapped. They still are: both ranges become the same `>=` SQL.
+  Suppress an equivalent mutant with `# mutineer:disable-line` or an
+  `ignore:` entry.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and
