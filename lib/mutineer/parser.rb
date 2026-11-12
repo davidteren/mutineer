@@ -43,14 +43,40 @@ module Mutineer
       bytes.force_encoding(source_encoding(bytes))
     end
 
-    # Encoding Prism assigns to `bytes` from its magic comment.
+    # Encoding Ruby assigns to `bytes` from its magic comment.
+    #
+    # This follows Ruby's loader, not Prism. Prism 2 treats `# encoding=NAME`
+    # with no space as a magic comment. Ruby 3.4 does not, and loads that
+    # file as UTF-8 (#346).
     #
     # @param bytes [String] file contents.
     # @return [Encoding]
     def self.source_encoding(bytes)
-      Prism.parse(header(bytes)).source.encoding
+      name = magic_name(header(bytes))
+      return Encoding::UTF_8 if name.nil?
+
+      Encoding.find(name)
+    rescue ArgumentError
+      Encoding::UTF_8
     end
     private_class_method :source_encoding
+
+    # The encoding name in `header`, or nil. A colon may have no space
+    # (`encoding: EUC-JP`). An equals sign needs whitespace on both sides
+    # (`encoding = EUC-JP`). A vim modeline counts only as `set fileencoding=`.
+    #
+    # @param header [String] the first line, plus the second after a shebang.
+    # @return [String, nil]
+    def self.magic_name(header)
+      text = header.to_s
+      vim = text.match(/vim:\s*set\b[^\n\r]*\bfileencoding\s*=\s*([^\s:]+)/i)
+      return vim[1] if vim
+
+      named = text.match(/\b(?:en)?coding\s*:\s*([^\s;#]+)/i) ||
+              text.match(/\b(?:en)?coding\s+=\s*([^\s;#]+)/i)
+      named&.[](1)
+    end
+    private_class_method :magic_name
 
     # The first line of `bytes`, plus the second when the first is a shebang.
     #

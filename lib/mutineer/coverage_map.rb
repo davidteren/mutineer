@@ -1522,9 +1522,13 @@ module Mutineer
     # @api private
     # @return [String] expression to embed in a capture subprocess script.
     def loaded_files_expression
-      root = project_root_real
-      prefix = root.end_with?("/") ? root : "#{root}/"
-      "begin; _root = #{FsPath.read(prefix).inspect}; $LOADED_FEATURES.filter_map { |f| next unless f.end_with?(\".rb\"); abs = (File.realpath(f) rescue next); abs = Mutineer::FsPath.read(abs); abs if abs.start_with?(_root) }; rescue StandardError; []; end"
+      root = FsPath.read(project_root_real)
+      prefix = root.b
+      prefix += "/".b unless prefix.end_with?("/".b)
+      # Byte prefix: a UTF-8 root and a binary loaded path must not raise.
+      # A raise here used to be rescued into an empty list, and an empty
+      # dependency hash then matched a stale cache (#346).
+      "begin; _root = #{prefix.inspect}; $LOADED_FEATURES.filter_map { |f| next unless f.b.end_with?(\".rb\".b); abs = (File.realpath(f) rescue next); Mutineer::FsPath.read(abs) if Mutineer::FsPath.bytes_start_with?(abs, _root) }; rescue StandardError; []; end"
     end
 
     # Canonical project root for loaded-feature matching (`/var` vs `/private/var`).
@@ -1538,13 +1542,14 @@ module Mutineer
     # @api private
     # @return [Array<String>] absolute realpaths.
     def capture_loaded_files
-      prefix = FsPath.read(project_root_real)
-      prefix = "#{prefix}/" unless prefix.end_with?("/")
+      root = FsPath.read(project_root_real)
+      prefix = root.b
+      prefix += "/".b unless prefix.end_with?("/".b)
       $LOADED_FEATURES.filter_map do |f|
-        next unless f.end_with?(".rb")
+        next unless f.b.end_with?(".rb".b)
 
-        abs = FsPath.read(File.realpath(f))
-        abs if abs.start_with?(prefix)
+        abs = File.realpath(f)
+        FsPath.read(abs) if FsPath.bytes_start_with?(abs, prefix)
       rescue Errno::ENOENT
         nil
       end
@@ -1576,11 +1581,11 @@ module Mutineer
     # @return [String, nil]
     def loaded_relative(abs)
       root = FsPath.read(project_root_real)
-      abs = FsPath.read(abs)
-      prefix = root.end_with?("/") ? root : "#{root}/"
-      return unless abs.start_with?(prefix)
+      prefix = root.b
+      prefix += "/".b unless prefix.end_with?("/".b)
+      return unless FsPath.bytes_start_with?(abs, prefix)
 
-      abs.delete_prefix(prefix)
+      FsPath.bytes_delete_prefix(abs, prefix)
     end
 
     # Byte fingerprint of a file for cache dependency checks.

@@ -744,16 +744,17 @@ module Mutineer
       at_eof = source.byteindex("\n", m.end_offset).nil?
       old_lines = side_lines(original_block, at_eof)
       new_lines = side_lines(mutated_block, at_eof)
+      shown_file = utf8_text(file)
       {
-        subject: result.subject.qualified_name,
+        subject: utf8_text(result.subject.qualified_name.to_s),
         file: file,
         line: start_line,
         operator: m.operator.to_s,
         # The stable, copy-pasteable id (next to the human-readable token) so a
         # user can paste it straight into .mutineer.yml `ignore:`.
         id: result.id,
-        token: token,
-        diff: "--- a/#{file}\n+++ b/#{file}\n" \
+        token: utf8_text(token),
+        diff: "--- a/#{shown_file}\n+++ b/#{shown_file}\n" \
               "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
               "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
       }
@@ -769,7 +770,9 @@ module Mutineer
     # @param at_eof [Boolean] no newline follows the block in the file.
     # @return [Array<String>] its lines, with their endings.
     def side_lines(block, at_eof)
-      (at_eof ? block : "#{block}\n").lines
+      newline = "\n".dup.force_encoding(block.encoding)
+      text = at_eof ? block : block + newline
+      text.lines.map { |line| utf8_text(line) }
     end
 
     # The `-` or `+` lines of one side. A line with no newline is the file's

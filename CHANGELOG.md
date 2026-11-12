@@ -145,8 +145,10 @@ All notable changes to this project are documented here. The format is based on
   its match, so the run stopped or scored those mutants `no_coverage`.
   Paths are read as UTF-8 when the bytes are UTF-8, and as binary
   otherwise, and compared in that encoding. Minitest is given the path
-  in `Dir.pwd`'s encoding, and its failure backtrace is retagged the same
-  way, so a killed mutant is not reported as an error. RSpec is given the
+  in `Dir.pwd`'s encoding when those bytes are valid there, and as binary
+  otherwise (under `LC_ALL=C` that encoding is already binary). Its
+  failure backtrace is retagged the same way, so a killed mutant is not
+  reported as an error. RSpec is given the
   path as UTF-8, which its path regexp requires.
   This covers the in-process coverage subprocess, the fork capture used
   by `--rails` and `--daemon`, pairing (including a split test name),
@@ -158,9 +160,9 @@ All notable changes to this project are documented here. The format is based on
   The daemon receives the text through JSON, which is Unicode, and writes
   the file back in the encoding the comment names. A file with no such
   comment is still read as UTF-8. The daemon still reads `db/schema.rb`
-  as UTF-8.
-  That file loads on the app's Ruby, which may not ship Prism, and a
-  Prism require there would turn off worker-database routing.
+  as UTF-8. `rails_worker_db.rb` loads on the app's Ruby, which may not
+  ship Prism, and requiring Prism there would turn off worker-database
+  routing.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and

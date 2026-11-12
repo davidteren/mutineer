@@ -372,10 +372,11 @@ module Mutineer
             "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run",
             unsetenv_others: true, chdir: @app_root
           )
-          # Requests and replies are UTF-8 JSON. With LANG unset the pipes would
-          # be US-ASCII, so a non-ASCII path could not be written or parsed
-          # (#303, #346). The stderr drain reads bytes and marks each line
-          # UTF-8 itself (write_redacted).
+          # Requests and replies are UTF-8 JSON, so both pipes are tagged
+          # UTF-8 and do not depend on LANG (#303, #346). `JSON.generate`
+          # already returns UTF-8; the stdin tag keeps a later write of a
+          # UTF-8 string from being converted. The stderr drain reads bytes
+          # and marks each line UTF-8 itself (write_redacted).
           @stdin.set_encoding(Encoding::UTF_8)
           @stdout.set_encoding(Encoding::UTF_8)
           # Drain daemon stderr to the tool's stderr so child/boot errors are visible,

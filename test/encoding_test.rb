@@ -293,6 +293,24 @@ class EncodingTest < Minitest::Test
     assert_includes html, "\u3042"
   end
 
+  def test_json_diff_joins_an_euc_jp_line_with_a_non_ascii_path
+    source = "# encoding: EUC-JP\nclass C\n  def add(a, b)\n    a + b # \xA4\xA2\n  end\nend\n".b
+               .force_encoding(Encoding::EUC_JP)
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first.body.body.first
+    subject = Mutineer::Subject.new(file: "caf\u00e9.rb", namespace: ["C"], name: :add,
+                                     singleton: false, def_node: def_node)
+    offset = source.byteindex("+")
+    mutation = Mutineer::Mutation.new(start_offset: offset, end_offset: offset + 1,
+                                       replacement: "-", operator: :arithmetic)
+    result = Mutineer::Result.survived.with(subject: subject, mutation: mutation, id: "abc123")
+    reporter = Mutineer::Reporter.new(Mutineer::AggregateResult.new([result]), { "caf\u00e9.rb" => source })
+    row = reporter.send(:survivor_json, result)
+    assert_includes row[:diff], "caf\u00e9.rb"
+    assert_includes row[:diff], "\u3042"
+    assert_equal Encoding::UTF_8, row[:diff].encoding
+    JSON.generate(row)
+  end
+
   def test_an_id_joins_a_utf8_path_with_an_euc_jp_token
     path = "caf\u00e9.rb"
     token = "\xA4\xA2".b.force_encoding(Encoding::EUC_JP)
