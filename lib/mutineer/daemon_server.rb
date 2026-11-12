@@ -354,6 +354,7 @@ module Mutineer
         pid = fork do
           child = Process.pid
           cause_rd.close
+          ChildCause.arm!(cause_wr, child)
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
           # and silence the child's stdout so test output stays out of the diagnostics.
           Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
@@ -380,6 +381,8 @@ module Mutineer
               @errio.puts("[daemon-child] #{describe_error(e)}")
               ChildCause.write(cause_wr, e, child)
               2
+            ensure
+              ChildCause.disarm!
             end
           exit!(code)
         end

@@ -182,11 +182,14 @@ Filter on `status` `"error"` for the errored mutants: their count equals `summar
 When the mutant's child raised (under `reload`, `redefine` or the daemon), `details` is one line:
 `Class: first non-blank line of the message`, or the class alone when the message is blank, at
 most 500 characters (a longer line is cut and ends in `...`). Example:
-`"ArgumentError: enum declared twice"` (schema `1.10`, #388). Other errors keep their fixed text,
-such as `child exited with status 2`, `daemon verdict: error` or `worker crashed: Class: message`.
+`"ArgumentError: enum declared twice"` (schema `1.10`, #388). A Minitest database connection or
+lock error gives `a test failed with a database error: Class: message`. An RSpec error outside
+examples, and a `--matrix` early end after a serial database error, each get a fixed line that
+names that case (schema `1.10`, #417). Other errors keep their fixed text, such as
+`child exited with status 2`, `daemon verdict: error` or `worker crashed: Class: message`.
 A daemon that died or did not reply in time gives `daemon crashed` or `daemon stopped answering`
-(schema `1.10`, #388). Issue #417 tracks a cause for the rest: a database error inside a test, RSpec
-errors outside examples, the `--matrix` early end, and `--test-command`.
+(schema `1.10`, #388). `--test-command` and the human/HTML errored lists still lack named causes
+(#417 items 5–6).
 
 `details` is redacted, but only in part. Redaction replaces the password of `DATABASE_URL`, and the
 password in any `scheme://user:password@host` URL, with `[REDACTED]`. A password that appears on its
