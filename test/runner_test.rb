@@ -1208,6 +1208,7 @@ class RunnerTest < Minitest::Test
     assert_empty Mutineer::Parser.parse_string(code).errors
     stored = code[/store_hook_def do\n.*?^end;/m]
     assert_includes stored, '::File.write("/tmp/mutineer-reach-hook"'
+    assert_includes stored, "mutineer_r0123456789abcdef"
     refute_includes code[/def doubled\(x\)\n      x - 2\n    end\n  end\nend\n/], "::File.write"
   end
 

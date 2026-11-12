@@ -18,7 +18,8 @@ module Mutineer
   # The inserted text is stdlib only (`File`). The daemon loads it as source,
   # so the app process needs no Prism and no Mutineer constant.
   module ReachProbe
-    # A thread-local key for one sentinel: `mutineer_r` plus 16 hex digits.
+    # A fiber-local key for one sentinel: `mutineer_r` plus 16 hex digits.
+    # `Thread.current[]` is fiber-local, not one value for the whole thread.
     # The generated source and {forget_load} use this key, not a fixed global,
     # so an application variable of the same shape is not read or overwritten.
     # The daemon checks the same pattern; it cannot load this file.
@@ -56,7 +57,7 @@ module Mutineer
     # the daemon cannot.
     #
     # @param path [String, nil] sentinel path.
-    # @param key [String, nil] thread-local key from {reach_key}.
+    # @param key [String, nil] fiber-local key from {reach_key}.
     # @return [void]
     def self.forget_load(path, key)
       return unless path
@@ -87,7 +88,7 @@ module Mutineer
     # @param source [String] mutated source.
     # @param mutation [Mutineer::Mutation] the edit, already applied to `source`.
     # @param path [String, nil] sentinel path, or nil to leave `source` alone.
-    # @param key [String, nil] thread-local key from {reach_key}.
+    # @param key [String, nil] fiber-local key from {reach_key}.
     # @return [String]
     def self.wrap_mutation(source, mutation, path, key)
       return source if path.nil? || !key.to_s.match?(KEY_FORMAT)
@@ -110,7 +111,7 @@ module Mutineer
     # @param start_offset [Integer] byte offset of the replacement.
     # @param end_offset [Integer] byte offset just after the replacement.
     # @param path [String] absolute sentinel path.
-    # @param key [String] thread-local key from {reach_key}.
+    # @param key [String] fiber-local key from {reach_key}.
     # @return [String, nil]
     def self.wrap(source, start_offset, end_offset, path, key)
       return nil unless key.to_s.match?(KEY_FORMAT)
@@ -207,14 +208,14 @@ module Mutineer
     # @param source [String]
     # @param node [Prism::Node]
     # @param path [String]
-    # @param key [String] thread-local key from {reach_key}.
+    # @param key [String] fiber-local key from {reach_key}.
     # @return [String]
     def self.splice(source, node, path, key)
       loc = node.location
       inner = source.byteslice(loc.start_offset, loc.end_offset - loc.start_offset)
       quoted = path.dump
-      # The thread-local skips the write after the first return on this
-      # thread. A stat on every later pass would hit a loop.
+      # The fiber-local skips the write after the first return on this
+      # fiber. A stat on every later pass would hit a loop.
       mark = "(Thread.current[:#{key}] ||= (::File.write(#{quoted}, \"1\"); true))"
       replacement = if inner.include?("\n")
                       "\n[(#{inner}), #{mark}][0]"

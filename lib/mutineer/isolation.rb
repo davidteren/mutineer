@@ -263,7 +263,7 @@ module Mutineer
     # @param reach_path [String, nil] sentinel for a `:maybe` mutant (#345).
     #   The loaded def records a run of the mutated expression. Nil leaves
     #   the def as the mutation alone.
-    # @param reach_key [String, nil] thread-local key for `reach_path`.
+    # @param reach_key [String, nil] fiber-local key for `reach_path`.
     # @return [Object] whatever `load` returns.
     def self.apply_surgical(mutation, subject, source, reach_path: nil, reach_key: nil)
       # Rebuild the FULL namespace nesting textually so unqualified enclosing-

@@ -37,7 +37,7 @@ module Mutineer
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
   #               "tests":["test/models/order_test.rb"],"timeout":30}
   #              (a :maybe mutant also sends "reach_path" and "reach_key" inside
-  #               "payload". The child clears that file, and the thread-local
+  #               "payload". The child clears that file, and the fiber-local
   #               named by reach_key, after load and before tests, so a
   #               load-time call is not a test reaching the expression, #345)
   #              (a mutant of a def in a concern's hook block adds to the payload
@@ -373,7 +373,9 @@ module Mutineer
               apply_payload(req["payload"])
               # A reload can run the probed expression while the file loads.
               # Drop that write before tests, matching the in-process child (#345).
-              forget_load_reach(req["payload"]["reach_path"], req["payload"]["reach_key"])
+              # A request with no payload (a test stub) has nothing to clear.
+              loaded = req["payload"] || {}
+              forget_load_reach(loaded["reach_path"], loaded["reach_key"])
               # A parallel worker records each pool that runs SQL, so a test
               # that closes its shared connection is still caught below.
               if @worker_db && @shared_databases&.any?
@@ -493,7 +495,7 @@ module Mutineer
       # require Prism.
       #
       # @param path [String, nil] sentinel path, inside the run payload.
-      # @param key [String, nil] thread-local key, `mutineer_r` plus 16 hex
+      # @param key [String, nil] fiber-local key, `mutineer_r` plus 16 hex
       #   digits, the same pattern as {ReachProbe::KEY_FORMAT}.
       # @return [void]
       def forget_load_reach(path, key)

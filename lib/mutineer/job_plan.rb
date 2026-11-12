@@ -282,7 +282,7 @@ module Mutineer
     # @param source [String] the original source text.
     # @param reach_path [String, nil] sentinel for a `:maybe` mutant (#345).
     #   The placed def records a run of the mutated expression.
-    # @param reach_key [String, nil] thread-local key for `reach_path`.
+    # @param reach_key [String, nil] fiber-local key for `reach_path`.
     # @return [Array(String, Hash{Symbol => Object})] the mutant text, and the
     #   original def's `line`, `name` and `singleton`.
     def self.hook_mutant(mutated, mutation, subject, source, reach_path: nil, reach_key: nil)
