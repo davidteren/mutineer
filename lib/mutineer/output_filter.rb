@@ -59,13 +59,15 @@ module Mutineer
     # Point each named stream at a pipe and start the copier. A second call
     # does nothing and returns false, so the caller that turned it on is the
     # one that turns it off. `streams` is `:stdout`, `:stderr`, or both.
-    # Returns false without changing the descriptors when they cannot be
-    # redirected (a closed stream).
+    # Returns :failed without leaving the descriptors redirected when they
+    # cannot be moved (a closed stream). Returns :already when a copier is
+    # already running, so the caller that started it stays the one that
+    # stops it.
     #
     # @param streams [Array<Symbol>]
-    # @return [Boolean] true when this call started the copier.
+    # @return [Symbol] :started, :already, or :failed.
     def install(streams: %i[stdout stderr])
-      return false if installed?
+      return :already if installed?
 
       names = Array(streams)
       saved = {}
@@ -97,10 +99,11 @@ module Mutineer
       @thread = Thread.new { drain } # rubocop:disable ThreadSafety/NewThread
       @thread.report_on_exception = false
       hook_exit
-      true
+      :started
     rescue StandardError
       restore(stdio || {}, saved || {})
-      false
+      readers&.each_key { |io| io.close unless io.closed? }
+      :failed
     end
 
     # Put the descriptors back and write every byte already queued. Does
@@ -276,7 +279,9 @@ module Mutineer
       clean = text.dup
       clean.scrub! unless clean.valid_encoding?
       redacted = Redaction.text(clean)
-      payload = redacted == clean && clean == text ? chunk : redacted.b
+      # Unchanged text keeps the original bytes, including invalid ones.
+      # A replaced secret is the redacted UTF-8 string.
+      payload = redacted == clean ? chunk : redacted.b
       write_out(stream, payload)
     rescue StandardError
       write_out(stream, Redaction::FAILED.b)

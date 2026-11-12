@@ -71,7 +71,7 @@ module Mutineer
     ].freeze
     # Where a `password=` query value ends in a message: the next query
     # delimiter, or the quote or bracket that closed the URL.
-    QUERY_VALUE_END = /(?=&|#|\s|"|'|`|\)|\]|\}|,|\\|\z)/
+    QUERY_VALUE_END = /(?=&|#|\s|"|'|`|\)|\]|\}|,|\\|\.|\?|!|;|\z)/
 
     module_function
 

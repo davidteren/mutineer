@@ -55,9 +55,30 @@ class DatabaseUrlsTest < Minitest::Test
 
   def test_a_missing_or_unreadable_file_adds_nothing
     Dir.mktmpdir do |root|
-      assert_empty Mutineer::DatabaseUrls.from_file(File.join(root, ".env"))
-      Dir.mkdir(File.join(root, ".env"))
-      assert_empty Mutineer::DatabaseUrls.from_file(File.join(root, ".env"))
+      missing = File.join(root, ".env")
+      assert_empty Mutineer::DatabaseUrls.from_file(missing)
+      Dir.mkdir(missing)
+      assert_empty Mutineer::DatabaseUrls.from_file(missing)
+      Dir.rmdir(missing)
+      File.write(missing, "DATABASE_URL=postgres://u:s3cret@h/db\n")
+      skip "root can read a mode 000 file" if Process.uid.zero?
+
+      File.chmod(0o000, missing)
+      assert_empty Mutineer::DatabaseUrls.from_file(missing)
+    ensure
+      File.chmod(0o644, missing) if missing && File.file?(missing)
+    end
+  end
+
+  def test_a_dotenv_reference_is_expanded
+    Dir.mktmpdir do |root|
+      path = File.join(root, ".env")
+      File.write(path, "DB_PASSWORD=s3cret\nDATABASE_URL=postgres://u:${DB_PASSWORD}@h/db\n")
+
+      assert_equal ["postgres://u:s3cret@h/db"], Mutineer::DatabaseUrls.from_file(path)
+
+      File.write(path, "DATABASE_URL='postgres://u:${DB_PASSWORD}@h/db'\n")
+      assert_equal ["postgres://u:${DB_PASSWORD}@h/db"], Mutineer::DatabaseUrls.from_file(path)
     end
   end
 end

@@ -125,13 +125,16 @@ class OutputFilterTest < Minitest::Test
 
   def test_a_replaced_stderr_receives_the_redacted_line
     ENV["DATABASE_URL"] = "postgres://u:s3cret@h/db"
-    Mutineer::OutputFilter.install(streams: [:stderr])
+    assert_equal :started, Mutineer::OutputFilter.install(streams: [:stderr])
     captured = StringIO.new
     previous = $stderr
-    $stderr = captured
-    STDERR.puts "leak s3cret done"
-    Mutineer::OutputFilter.uninstall
-    $stderr = previous
+    begin
+      $stderr = captured
+      STDERR.puts "leak s3cret done"
+      Mutineer::OutputFilter.uninstall
+    ensure
+      $stderr = previous
+    end
 
     assert_equal "leak [REDACTED] done\n", captured.string
   end
@@ -153,9 +156,23 @@ class OutputFilterTest < Minitest::Test
     end
   end
 
+  def test_a_failed_install_closes_the_pipes_it_opened
+    before = Dir.children("/proc/self/fd").size
+    Mutineer::OutputFilter.stub(:stream_io, lambda { |name|
+      raise IOError, "closed" if name == :stdout
+
+      STDERR
+    }) do
+      assert_equal :failed, Mutineer::OutputFilter.install(streams: [:stderr, :stdout])
+    end
+
+    assert_equal before, Dir.children("/proc/self/fd").size
+    refute Mutineer::OutputFilter.installed?
+  end
+
   def test_install_twice_starts_one_copier
-    assert Mutineer::OutputFilter.install
-    refute Mutineer::OutputFilter.install
+    assert_equal :started, Mutineer::OutputFilter.install
+    assert_equal :already, Mutineer::OutputFilter.install
   ensure
     Mutineer::OutputFilter.uninstall
     refute Mutineer::OutputFilter.installed?
@@ -251,7 +268,7 @@ class OutputFilterTest < Minitest::Test
     Dir.mktmpdir do |proj|
       File.write(File.join(proj, "a.rb"), "class A; def add(a, b) = a + b; end\n")
       File.write(File.join(proj, "a_test.rb"), "def test_a = 1\n")
-      command = "#{RbConfig.ruby} -e 'STDERR.puts %{only incommand tail}; exit 1' %{files}"
+      command = "#{RbConfig.ruby} -e 'ENV[%{DATABASE_URL}] = %{postgres://u:incommand@h/db}; STDERR.puts %{only incommand tail}; exit 1' %{files}"
       _out, err, status = mutineer("run", "a.rb", "--test", "a_test.rb", "--test-command", command,
                                    chdir: proj, env: { "DATABASE_URL" => nil })
 

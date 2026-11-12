@@ -132,6 +132,7 @@ class RedactionTest < Minitest::Test
     end
     query = "postgres://u@h/db?password=a"
     assert_equal "see a at postgres://u@h/db?password=[REDACTED]", redact("see a at #{query}", query)
+    assert_equal "see postgres://u@h/db?password=[REDACTED].", redact("see postgres://u@h/db?password=a.", "postgres://u@h/db?password=a")
     assert_equal "password=admin", redact("password=admin", "postgres://u:a@host/db")
   end
 

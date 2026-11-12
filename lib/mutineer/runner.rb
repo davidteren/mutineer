@@ -78,7 +78,12 @@ module Mutineer
       # The CLI installs the filter first and owns it for the report that
       # follows this method. A library caller owns it for the run itself.
       # Direct writes from a fork or a subprocess then go through the pipe (#341).
-      filter_owned = OutputFilter.install
+      case OutputFilter.install
+      when :started
+        filter_owned = true
+      when :failed
+        raise "cannot redirect stdout and stderr for redaction"
+      end
       if Redaction.extra_urls.empty?
         Redaction.extra_urls = DatabaseUrls.from_files(config.project_root)
         urls_owned = true
@@ -228,9 +233,9 @@ module Mutineer
       # A caller that set PARALLEL_WORKERS keeps that value after the run.
       RailsRunEnv.restore_process!(previous_parallel_workers)
       OutputFilter.uninstall if filter_owned
-      # The CLI set the list for the report printed after this method. Clear
-      # it only when this call loaded it and this call owns the filter.
-      Redaction.extra_urls = [] if urls_owned && filter_owned
+      # The CLI set its own list before this method and restores it. Clear
+      # only the list this call loaded.
+      Redaction.extra_urls = [] if urls_owned
     end
 
     # A `--matrix` error that carries no {Kills} row (the worker crashed, or its

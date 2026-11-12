@@ -188,11 +188,15 @@ A daemon that died or did not reply in time gives `daemon crashed` or `daemon st
 (schema `1.10`, #388). Issue #417 tracks a cause for the rest: a database error inside a test, RSpec
 errors outside examples, the `--matrix` early end, and `--test-command`.
 
-`details` is redacted. Redaction replaces the password of `DATABASE_URL` (the environment value and
-a `DATABASE_URL` in a dotenv file in the project) and the password in any `scheme://user:password@host`
-URL with `[REDACTED]`. A password of one character, a password that equals the username, the host, or
-the database name, and a common word such as `password` or `test` stay visible outside a URL and outside
-a `password=` parameter. A password from another setting stays visible. An exception message can hold
+`details` is redacted. Redaction replaces the password of `DATABASE_URL` from the environment and from
+these dotenv files: `.env`, `.env.local`, `.env.development`, `.env.development.local`, `.env.test`,
+and `.env.test.local`. It also replaces the password in any `scheme://user:password@host` URL.
+A one-character password, a password equal to the username, the host, or the database name, and a
+common word such as `password` or `test` stay visible outside a URL and outside a `password=` parameter.
+Any other form longer than one character is hidden only as a whole token, with no ASCII letter, digit,
+or underscore touching either edge, when it has at most three characters or is made only of ASCII
+letters, digits, and underscores. A longer form that contains another character is hidden wherever it
+appears. A password from another setting stays visible. An exception message can hold
 other secrets too, so treat the report like a log. A message
 can also hold an object address or a temporary file name, so `details` of an errored mutant can differ
 between two runs with the same verdicts.

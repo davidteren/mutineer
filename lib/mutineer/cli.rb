@@ -130,6 +130,7 @@ module Mutineer
     def self.start(argv)
       # Set before any exit: the method's ensure reads it, and exit runs ensure.
       filter_owned = false
+      previous_urls = nil
       if argv.first == "triage"
         exit Triage.run(argv[1..])
       end
@@ -249,9 +250,17 @@ module Mutineer
         # project becomes its root-relative path (#104). Test inference (when --test is omitted) happens in validate!.
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
         # Direct writes from the app, a fork, or a subprocess inherit these
-        # pipes (#341). Dotenv files cover a DATABASE_URL the app loads itself.
-        Redaction.extra_urls = DatabaseUrls.from_files(config.project_root)
-        filter_owned = OutputFilter.install
+        # pipes (#341). Dotenv files are merged with any URLs the caller
+        # already set, and that list is restored when start returns.
+        previous_urls = Redaction.extra_urls
+        Redaction.extra_urls = (previous_urls + DatabaseUrls.from_files(config.project_root)).uniq
+        case OutputFilter.install
+        when :started
+          filter_owned = true
+        when :failed
+          warn "mutineer: cannot redirect stdout and stderr, so a database password would be printed"
+          exit 1
+        end
         run(config)
       when "migrate"
         warn_config_root_mismatch(file_path, config.project_root) if file_path
@@ -288,7 +297,7 @@ module Mutineer
       # extra_urls is still set. Then drop them so a later in-process call
       # does not keep this project's passwords.
       OutputFilter.uninstall if filter_owned
-      Redaction.extra_urls = []
+      Redaction.extra_urls = previous_urls unless previous_urls.nil?
     end
 
     # Settings `mutineer config` prints. The GitHub Action asks for these
