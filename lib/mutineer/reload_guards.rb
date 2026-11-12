@@ -380,6 +380,7 @@ module Mutineer
       #   conditions matches every copy, so that is not evidence. A symbol is
       #   the same object wherever it is written, so it is not evidence
       #   either. A symbol-only parent condition stays on the old copy.
+      #   No issue tracks that limit yet.
       def self.merged_from?(entry, parent)
         entry_if, entry_unless = conditions(entry)
         parent_if, parent_unless = conditions(parent)
