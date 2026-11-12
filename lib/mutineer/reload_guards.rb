@@ -118,10 +118,18 @@ module Mutineer
     # that are the same ({.same?}): a validator with equivalent options, a
     # lambda that captured equivalent values, a block from the same place in
     # the code. They pair only when there are as many old ones as new ones
-    # ({.exact_pairs}). An entry left over, such as a `validates` whose options come
-    # from a method the mutant changed, pairs by {.key} only when no concern
-    # entry could be the one it repeats ({.by_key}). Otherwise both copies stay,
-    # as before this fix.
+    # ({.exact_pairs}). An entry left over pairs by {.key}. The key is the
+    # callback kind, the filter, and its `if:` / `unless:` conditions. A
+    # `&:name` proc's filter is that symbol. A block's filter is its place
+    # and its code, not a value it captured. A validator's filter is its
+    # class, its attributes and its option names, not values a method the
+    # mutant changed can return. A concern entry that differs on any of
+    # those is not a candidate, so the class body's repeat can pair. One
+    # that is the same on all of them still shares the key, and the pair is
+    # kept only when the counts match, so a guess cannot drop the concern's
+    # entry. Otherwise both copies stay (#413). Full reload (#389) builds
+    # the class once, which is what can separate those identical entries.
+    # Redefine does not run the class body again, so it never adds the copy.
     #
     # ActiveSupport gives a class a new chain object each time a callback is
     # added or skipped, so a class whose chain objects all stay the same was
@@ -423,7 +431,8 @@ module Mutineer
       # @return [Boolean] true when the instance variables both have are
       #   equivalent. One of them can hold a value the other has not cached
       #   yet, such as a Rails reflection's memoized lookups, so the others are
-      #   skipped.
+      #   skipped. No shared variables is not a match: a symbol or a number
+      #   has none, and those compare by value.
       def self.same_state?(left, right, same)
         names = left.instance_variables & right.instance_variables
         return false if names.empty?
@@ -436,9 +445,14 @@ module Mutineer
       # @param reloaded [Array<String>] real paths of the source and mutant files.
       # @param same [Proc] compares two values one level deeper.
       # @return [Boolean] true for blocks from the same place in the code that
-      #   captured equivalent values. A block with no source, such as
-      #   `&:save` or `method(:x).to_proc`, matches only itself.
+      #   captured equivalent values. A `&:name` proc has no source and
+      #   captures nothing; it matches another for the same symbol (#413).
+      #   `method(:x).to_proc` still matches only through its source and the
+      #   receiver it captured.
       def self.same_block?(left, right, reloaded, same)
+        left_symbol = symbol_proc_text(left)
+        right_symbol = symbol_proc_text(right)
+        return left_symbol == right_symbol if left_symbol || right_symbol
         return false unless left.source_location && right.source_location
 
         block_key(left, reloaded) == block_key(right, reloaded) && same_captures?(left, right, same)
@@ -473,23 +487,110 @@ module Mutineer
 
       # Where a block sits in the code: the file and Ruby's label for it, such
       # as "block in <class:Parcel>", plus the line for a file the load did
-      # not run. The source file and the mutant file count as one file, and
-      # their lines are left out, because a mutant can move lines.
+      # not run, plus the block's code ({.block_code}). The source file and
+      # the mutant file count as one file, and their lines are left out,
+      # because a mutant can move lines. Two blocks that share a label and
+      # differ in code are different callbacks (#413). A `&:name` proc is
+      # the symbol Ruby prints for it, so `:normalize` does not share a key
+      # with `:touch`.
       #
       # @param block [Proc]
       # @param reloaded [Array<String>] real paths of the source and mutant files.
       # @return [Array]
       def self.block_key(block, reloaded)
+        symbol = symbol_proc_text(block)
+        return [:symbol, symbol] if symbol
+
         file, line = block.source_location
         # CRuby only; elsewhere blocks match by file and line alone.
         label = RubyVM::InstructionSequence.of(block)&.label if defined?(::RubyVM::InstructionSequence)
-        reloaded.include?(file && real_path(file)) ? [:reloaded, label] : [file, line, label]
+        code = block_code(block, reloaded)
+        reloaded.include?(file && real_path(file)) ? [:reloaded, label, code] : [file, line, label, code]
+      end
+
+      # CRuby prints `Symbol#to_proc` as `#<Proc:0xaddr(&:name) (lambda)>`.
+      # The text after `&` is the symbol's own inspect. The cache holds 67
+      # of these procs, so a later `&:other` can make the next `&:name` a
+      # new object; the text still matches (#413).
+      SYMBOL_PROC = /\A#<Proc:0x[0-9a-fA-F]+\(&(.+)\) \(lambda\)>\z/
+
+      # @param block [Proc]
+      # @return [String, nil] the symbol text, such as `":normalize"`, or nil
+      #   when `block` is not a `Symbol#to_proc`.
+      def self.symbol_proc_text(block)
+        SYMBOL_PROC.match(block.to_s)&.[](1) if block.is_a?(::Proc)
+      end
+
+      # Magic `InstructionSequence#to_a` starts with. A different format has
+      # no code identity, so the block matches by file and label only.
+      ISEQ_FORMAT = "YARVInstructionSequence/SimpleDataFormat"
+
+      # Fields of an instruction sequence that stay the same when the same
+      # block is compiled again. Node ids and code locations change on every
+      # load, so they are left out.
+      ISEQ_MISC_KEYS = %i[arg_size local_size stack_max parser].freeze
+
+      # The block's code, with locations removed, or nil when Ruby cannot
+      # show it. A value the block captured is not part of the code, so a
+      # new object, a time or a random value still pairs (#413). `__FILE__`
+      # is the source path in one load and the mutant path in the other;
+      # both become the same placeholder.
+      #
+      # @param block [Proc]
+      # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @return [Array, nil]
+      def self.block_code(block, reloaded)
+        return unless defined?(::RubyVM::InstructionSequence)
+
+        iseq = ::RubyVM::InstructionSequence.of(block)
+        return unless iseq
+
+        data = iseq.to_a
+        return unless data.is_a?(Array) && data[0] == ISEQ_FORMAT && data[4].is_a?(Hash)
+
+        file, = block.source_location
+        paths = [file, *reloaded].compact.flat_map { |path| [path, real_path(path)] }.uniq
+        code_identity(data, paths)
+      rescue StandardError
+        nil
+      end
+
+      # @param data [Array] one `InstructionSequence#to_a` array.
+      # @param paths [Array<String>] paths to treat as the reloaded file.
+      # @return [Array]
+      def self.code_identity(data, paths)
+        misc = ISEQ_MISC_KEYS.to_h { |key| [key, data[4][key]] }
+        [data[5], misc, data[9], data[10], data[11], data[12], strip_code(data[13], paths)]
+      end
+
+      # @param node [Object] one node of an instruction sequence.
+      # @param paths [Array<String>] paths to treat as the reloaded file.
+      # @return [Object] `node` with line numbers and those paths removed.
+      def self.strip_code(node, paths)
+        case node
+        when Array
+          if node[0] == ISEQ_FORMAT
+            code_identity(node, paths)
+          elsif node[0].is_a?(Integer) && node.any? { |child| child.is_a?(Symbol) && child.to_s.start_with?("RUBY_EVENT_") }
+            strip_code(node.drop(1), paths)
+          else
+            node.map { |child| strip_code(child, paths) }
+          end
+        when String
+          paths.include?(node) ? :reloaded_path : node
+        when Hash
+          node.to_h { |key, value| [strip_code(key, paths), strip_code(value, paths)] }
+        else
+          node
+        end
       end
 
       # What two entries share when they are copies of one macro call, apart
-      # from its arguments. A callback that names a method matches the same
-      # name. A block or lambda matches by {.block_key}. A validator matches by
-      # class and attributes.
+      # from values a mutant can change. A callback that names a method
+      # matches the same name. A block or lambda matches by {.block_key}.
+      # A validator matches by class, attributes and option names, not option
+      # values. `if:` and `unless:` are part of the key, so the same filter
+      # under a different condition is a different callback (#413).
       #
       # @param callback [Object] an ActiveSupport callback.
       # @param reloaded [Array<String>] real paths of the source and mutant files.
@@ -499,9 +600,50 @@ module Mutineer
         filter_key = case filter
                      when Symbol, Module then filter
                      when Proc then block_key(filter, reloaded)
-                     else [filter.class, filter.respond_to?(:attributes) ? filter.attributes : nil]
+                     else object_key(filter)
                      end
-        [callback.kind, filter_key]
+        [callback.kind, filter_key, condition_key(callback, reloaded)]
+      end
+
+      # @param filter [Object] a callback filter that is not a symbol, module or proc.
+      # @return [Array] its class, attributes and option names.
+      def self.object_key(filter)
+        attributes = filter.attributes if filter.respond_to?(:attributes)
+        shape = option_shape(filter.options) if filter.respond_to?(:options)
+        [filter.class, attributes, shape]
+      end
+
+      # Option names, nested, without the values. A method the mutant changed
+      # can return a different value; the names in the class body stay.
+      #
+      # @param value [Object] a validator's options, or a nested value.
+      # @return [Array, nil] nil when `value` is not a Hash.
+      def self.option_shape(value)
+        return unless value.is_a?(Hash)
+
+        value.keys.sort_by(&:to_s).map { |key| [key, option_shape(value[key])] }
+      end
+
+      # @param callback [Object] an ActiveSupport callback.
+      # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @return [Array] its `if:` and `unless:` conditions, as keys. A proc
+      #   condition uses {.block_key}, so a captured value that changes on
+      #   each load does not hide the repeat.
+      def self.condition_key(callback, reloaded)
+        conditions(callback).map do |list|
+          Array(list).map { |item| condition_item_key(item, reloaded) }
+        end
+      end
+
+      # @param item [Object] one `if:` or `unless:` condition.
+      # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @return [Object]
+      def self.condition_item_key(item, reloaded)
+        case item
+        when Proc then block_key(item, reloaded)
+        when Symbol, Module, Numeric, String, TrueClass, FalseClass, NilClass then item
+        else item.class
+        end
       end
 
       # @param list [Array]

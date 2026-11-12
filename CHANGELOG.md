@@ -139,6 +139,27 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Reload pairs a repeated callback when the other entry is a different one (#413).**
+  After a class body ran again, a concern's callback shared a bucket with
+  the class body's when the bucket was only the kind and the filter's
+  class. A different `&:name`, a block with different code, a validator
+  with different option names, or the same filter under a different `if:`
+  counted as a candidate. The class body's new copy then stayed beside
+  the old one, and a test that counts errors or callback runs killed
+  every mutant of the file. `&:name` now matches the symbol. A block
+  matches its code, so a value it captured that differs on each load (a
+  new object, a time, a random value) still pairs when no other entry
+  has that code. A validator matches its option names, not values a
+  mutant method can change. An `if:` or `unless:` is part of the match.
+  A concern entry that is the same symbol, the same code, or the same
+  option names still cannot be told apart, so both copies stay. A
+  callback the class body adds only on its first run (`@done ||=`) still
+  keeps every identical copy. Those cases remain #413. Full reload
+  (#389) would build the class once. Reload and the daemon share this
+  path. Redefine does not run the class body again, so it does not add
+  the second copy.
+  **Score change:** a Rails model whose test counts those callbacks can
+  now show survivors that were false kills, so its score can go down.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and
