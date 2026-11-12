@@ -1254,7 +1254,7 @@ module Mutineer
     # @param test_paths [Array<String>] spec file paths.
     # @return [String] Ruby script text.
     def rspec_clean_check_script(test_paths)
-      specs = Array(test_paths).map { |t| FsPath.filesystem(absolute(t)).inspect }.join(", ")
+      specs = Array(test_paths).map { |t| absolute(t).inspect }.join(", ")
       <<~RUBY
         #{result_channel_expression}
         require "json"
@@ -1267,7 +1267,7 @@ module Mutineer
         RSpec::Core::Runner.disable_autorun!
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin
-          #{abs_preload_paths.map { |path| FsPath.filesystem(path) }.inspect}.each { |f| require f }
+          #{abs_preload_paths.inspect}.each { |f| require f }
         #{load_failure_rescue}
         end
         _sink = StringIO.new
@@ -1403,12 +1403,12 @@ module Mutineer
         Coverage.start(lines: true, methods: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin
-          #{abs_preload_paths.map { |path| FsPath.filesystem(path) }.inspect}.each { |f| require f }
+          #{abs_preload_paths.inspect}.each { |f| require f }
           _load = #{load_coverage_expression}
         #{load_failure_rescue}
         end
         _sink = StringIO.new
-        _status = RSpec::Core::Runner.run(["--no-color", #{FsPath.filesystem(absolute(test_path)).inspect}], _sink, _sink)
+        _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
         _failure = _status.zero? ? nil : #{redacted_expression("_sink.string")}
         # Coverage keys are US-ASCII with invalid bytes under LC_ALL=C (#346).
         _coverage = Coverage.result.to_h { |f, v| [Mutineer::FsPath.read(f), v.is_a?(Hash) ? v[:lines] : v] }

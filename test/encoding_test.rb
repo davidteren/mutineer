@@ -154,6 +154,37 @@ class EncodingTest < Minitest::Test
     end
   end
 
+  def test_non_ascii_folder_scores_an_rspec_example
+    Dir.mktmpdir("mutineer-rspec") do |parent|
+      proj = File.join(parent, "caf\u00e9")
+      FileUtils.mkdir_p(File.join(proj, "spec"))
+      File.write(File.join(proj, "calc.rb"), <<~SRC)
+        class Calc
+          def add(a, b)
+            a + b
+          end
+        end
+      SRC
+      File.write(File.join(proj, "spec", "calc_spec.rb"), <<~SPEC)
+        require "rspec/autorun"
+        require_relative "../calc"
+        RSpec.describe Calc do
+          it "adds" do
+            expect(Calc.new.add(1, 2)).to eq(3)
+          end
+        end
+      SPEC
+      report = run_json(proj, "calc.rb", test: "spec/calc_spec.rb", framework: "rspec")
+      killed = report["killed"]
+      assert_equal 1, killed.size
+      assert_equal "Calc#add", killed[0]["subject"]
+      assert_equal "arithmetic", killed[0]["operator"]
+      assert_equal "calc.rb", killed[0]["file"]
+      assert_equal 0, report["summary"]["errored"]
+      assert_equal 100.0, report["summary"]["score"]
+    end
+  end
+
   def test_magic_comment_encoding_matches_ruby
     Dir.mktmpdir("mutineer-magic") do |dir|
       paths = MAGIC_COMMENTS.keys.each_with_index.map do |header, index|
@@ -225,9 +256,10 @@ class EncodingTest < Minitest::Test
 
   private
 
-  def run_json(proj, source, test: nil, env: { "LC_ALL" => "C", "LANG" => nil })
+  def run_json(proj, source, test: nil, framework: nil, env: { "LC_ALL" => "C", "LANG" => nil })
     args = ["run", source, "--operators", "arithmetic", "--jobs", "1", "--format", "json"]
     args += ["--test", test] if test
+    args += ["--framework", framework] if framework
     out, err, status = Open3.capture3(env, RUBY, "-I#{File.join(ROOT, 'lib')}", BIN, *args, chdir: proj)
     assert_equal 0, status.exitstatus, err
     refute_match(/malformed utf-8|invalid byte sequence/i, err)

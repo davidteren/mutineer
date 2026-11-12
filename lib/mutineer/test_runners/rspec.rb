@@ -53,8 +53,9 @@ module Mutineer
         # silenced here: the fork boundary that calls this method has already
         # pointed stdout at File::NULL (see ChildStdout).
         sink = StringIO.new
-        # Match Dir.pwd's encoding so a failure path can be shortened (#346).
-        files = Array(spec_files).map { |file| FsPath.filesystem(file) }
+        # RSpec matches the spec path with a UTF-8 regexp. A binary path
+        # under LC_ALL=C raises before the example runs (#346).
+        files = Array(spec_files).map { |file| FsPath.read(file) }
         keep_file_order(files) if stop_at_first_failure || record_to
         args = ["--no-color"]
         args << "--fail-fast" if stop_at_first_failure

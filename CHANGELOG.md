@@ -144,9 +144,10 @@ All notable changes to this project are documented here. The format is based on
   folder whose name is not ASCII made coverage fail, or the path missed
   its match, so the run stopped or scored those mutants `no_coverage`.
   Paths are read as UTF-8 when the bytes are UTF-8, and as binary
-  otherwise, and compared in that encoding. A path passed to `load` keeps
-  the encoding of `Dir.pwd`, and Minitest's failure backtrace is retagged
-  the same way, so a killed mutant is not reported as an error.
+  otherwise, and compared in that encoding. Minitest is given the path
+  in `Dir.pwd`'s encoding, and its failure backtrace is retagged the same
+  way, so a killed mutant is not reported as an error. RSpec is given the
+  path as UTF-8, which its path regexp requires.
   This covers the in-process coverage subprocess, the fork capture used
   by `--rails` and `--daemon`, pairing (including a split test name),
   and `--since` path keys.
