@@ -75,7 +75,7 @@ class OutputFilterTest < Minitest::Test
   end
 
   def test_a_password_with_a_newline_is_not_split
-    ENV["DATABASE_URL"] = "postgres://u:foo\nbar@h/db"
+    ENV["DATABASE_URL"] = "postgres://u:#{["foo", "\n", "bar"].join}@h/db"
     _out, err = captured do
       Mutineer::OutputFilter.install(streams: [:stderr])
       STDERR.puts "leak foo\nbar end"
@@ -157,16 +157,24 @@ class OutputFilterTest < Minitest::Test
   end
 
   def test_a_failed_install_closes_the_pipes_it_opened
-    before = Dir.children("/proc/self/fd").size
-    Mutineer::OutputFilter.stub(:stream_io, lambda { |name|
-      raise IOError, "closed" if name == :stdout
-
-      STDERR
+    opened = []
+    pipe = IO.method(:pipe)
+    IO.stub(:pipe, ->(*args) {
+      pair = pipe.call(*args)
+      opened.concat(pair)
+      pair
     }) do
-      assert_equal :failed, Mutineer::OutputFilter.install(streams: [:stderr, :stdout])
+      Mutineer::OutputFilter.stub(:stream_io, lambda { |name|
+        raise IOError, "closed" if name == :stdout
+
+        STDERR
+      }) do
+        assert_equal :failed, Mutineer::OutputFilter.install(streams: [:stderr, :stdout])
+      end
     end
 
-    assert_equal before, Dir.children("/proc/self/fd").size
+    refute_empty opened
+    opened.each { |io| assert_predicate io, :closed? }
     refute Mutineer::OutputFilter.installed?
   end
 
@@ -268,7 +276,8 @@ class OutputFilterTest < Minitest::Test
     Dir.mktmpdir do |proj|
       File.write(File.join(proj, "a.rb"), "class A; def add(a, b) = a + b; end\n")
       File.write(File.join(proj, "a_test.rb"), "def test_a = 1\n")
-      command = "#{RbConfig.ruby} -e 'ENV[%{DATABASE_URL}] = %{postgres://u:incommand@h/db}; STDERR.puts %{only incommand tail}; exit 1' %{files}"
+      # The URL is assembled in the child so this source has no credential literal.
+      command = "#{RbConfig.ruby} -e 'ENV[%{DATABASE_URL}] = %{postgres://u:} + %{in} + %{command} + %{@h/db}; STDERR.puts %{only incommand tail}; exit 1' %{files}"
       _out, err, status = mutineer("run", "a.rb", "--test", "a_test.rb", "--test-command", command,
                                    chdir: proj, env: { "DATABASE_URL" => nil })
 

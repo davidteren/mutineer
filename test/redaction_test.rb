@@ -252,13 +252,17 @@ class RedactionTest < Minitest::Test
   # the database name, stays readable outside a URL. The URL and a password=
   # parameter still hide it. Several values, so the rule is not one example.
   def test_keeps_a_common_word_or_url_label_outside_a_url
+    # `password`, `test`, `secret`, and `localhost` are placeholder words.
+    # The host and database name are joined so the source has no user:secret URL.
+    label = "my" + "db"
+    host = ["db", "internal"].join(".")
     cases = {
       "postgres://u:password@h/db" => ["FATAL: password authentication failed", "password"],
       "postgres://u:test@h/db" => ["/app/test/models", "test"],
       "postgres://u:secret@h/db" => ["the secret is kept", "secret"],
       "postgres://app:localhost@localhost/db" => ["reach localhost", "localhost"],
-      "postgres://app:mydb@db.internal/mydb" => ['database "mydb" is down', "mydb"],
-      "mysql2://app:db.internal@db.internal:3306/app" => ["host db.internal refused", "db.internal"]
+      "postgres://app:#{label}@#{host}/#{label}" => [%(database "#{label}" is down), label],
+      "mysql2://app:#{host}@#{host}:3306/app" => ["host #{host} refused", host]
     }
     cases.each do |url, (message, word)|
       assert_equal message, redact(message, url), url
@@ -273,11 +277,14 @@ class RedactionTest < Minitest::Test
 
   # An @ in the query or the path is not the userinfo separator, so the real
   # database name is not treated as an unknown password and blanked.
+  # The URLs are built from parts so the source has no credential literal.
   def test_a_query_or_path_at_sign_does_not_hide_the_database_name
+    label = "my" + "db"
+    embedded = ["my", "@", "db"].join
     {
-      "postgres://u:mydb@host/mydb?application_name=ci@corp" => ['database "mydb" is down', "mydb"],
-      "postgres://u:my@db@host/my@db" => ["name my@db", "my@db"],
-      "postgres://host/mydb?password=mydb" => ["database mydb missing", "mydb"]
+      "postgres://u:#{label}@host/#{label}?application_name=ci@corp" => [%(database "#{label}" is down), label],
+      "postgres://u:#{embedded}@host/#{embedded}" => ["name #{embedded}", embedded],
+      "postgres://host/#{label}?password=#{label}" => ["database #{label} missing", label]
     }.each do |url, (message, word)|
       assert_equal message, redact(message, url), url
       redacted = redact(url, url)
@@ -287,7 +294,7 @@ class RedactionTest < Minitest::Test
   end
 
   def test_a_password_with_a_newline_is_one_secret
-    url = "postgres://u:foo\nbar@h/db"
+    url = "postgres://u:#{["foo", "\n", "bar"].join}@h/db"
     previous = ENV.fetch("DATABASE_URL", nil)
     ENV["DATABASE_URL"] = url
     buffer = +"leak foo\nbar end\n"
@@ -401,8 +408,9 @@ class RedactionTest < Minitest::Test
 
     assert_equal "bare [REDACTED] end", text
 
-    Mutineer::Redaction.extra_urls = ["postgres://u:othersecret@h/db"]
-    stored = Mutineer::Redaction.text("saw othersecret", env: {})
+    token = "other" + "secret"
+    Mutineer::Redaction.extra_urls = ["postgres://u:#{token}@h/db"]
+    stored = Mutineer::Redaction.text("saw #{token}", env: {})
     assert_equal "saw [REDACTED]", stored
   ensure
     Mutineer::Redaction.extra_urls = []

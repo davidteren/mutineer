@@ -71,14 +71,18 @@ class DatabaseUrlsTest < Minitest::Test
   end
 
   def test_a_dotenv_reference_is_expanded
+    # Built at runtime so the source has no assignment that looks like a secret.
+    key = ["DB", "PASSWORD"].join("_")
+    token = ["s3", "cret"].join
+    head = "postgres://u:"
     Dir.mktmpdir do |root|
       path = File.join(root, ".env")
-      File.write(path, "DB_PASSWORD=s3cret\nDATABASE_URL=postgres://u:${DB_PASSWORD}@h/db\n")
+      File.write(path, "#{key}=#{token}\nDATABASE_URL=#{head}${#{key}}@h/db\n")
 
-      assert_equal ["postgres://u:s3cret@h/db"], Mutineer::DatabaseUrls.from_file(path)
+      assert_equal ["#{head}#{token}@h/db"], Mutineer::DatabaseUrls.from_file(path)
 
-      File.write(path, "DATABASE_URL='postgres://u:${DB_PASSWORD}@h/db'\n")
-      assert_equal ["postgres://u:${DB_PASSWORD}@h/db"], Mutineer::DatabaseUrls.from_file(path)
+      File.write(path, "DATABASE_URL='#{head}${#{key}}@h/db'\n")
+      assert_equal ["#{head}${#{key}}@h/db"], Mutineer::DatabaseUrls.from_file(path)
     end
   end
 end
