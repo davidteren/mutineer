@@ -108,9 +108,15 @@ module Mutineer
       # #396: know an empty --since list before paying for the boot and the map.
       # The sweep above still runs, so a zero-job run clears orphaned mutant files.
       if (empty_since = since_empty_result(config, operator_classes))
-        # Existence only. A missing boot or --require stays a usage error.
-        # Loading them is the boot this return skips.
-        [config.boot, *config.require_paths].compact.each { |f| project_file!(config.project_root, f) }
+        if config.boot
+          # Existence only. Loading the boot is what this return skips (#396, #81).
+          [config.boot, *config.require_paths].compact.each { |f| project_file!(config.project_root, f) }
+        else
+          # Standalone still loads each source and --require. A file that raises
+          # stays a runtime error. The coverage map is what this return skips.
+          config.sources.each { |f| require_project_file(config.project_root, f) }
+          config.require_paths.each { |f| require_project_file(config.project_root, f) }
+        end
         return empty_since
       end
       if config.strategy == "redefine"
@@ -192,10 +198,14 @@ module Mutineer
       JobPlan.abort_if_unclean!(coverage_map, framework: config.framework)
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
-      jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
+      # Under --since the preview already warned, so this pass stays quiet.
+      previewed = !config.since.nil?
+      jobs, ignored_results, source_map, extras =
+        JobPlan.collect_jobs(config, operator_classes, warn_suppress: !previewed)
 
       jobs, ignored_results, extras[:unscoped_mutants] =
-        JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
+        JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras,
+                            warn_diff: !previewed)
 
       strategy = config.strategy
       # Fail-fast must be serial: a parallel stop_when fires on the first survivor
@@ -234,20 +244,22 @@ module Mutineer
     # the run must boot and build the coverage map (#396).
     #
     # {JobPlan.collect_jobs} and {JobPlan.scope_since} only read source text, so
-    # this needs no boot. The first pass is silent: no git-diff skip and no
-    # unknown-operator warning from a disable-line marker. An empty list is
-    # collected again so those warnings print once, and that result is what the
-    # caller returns before {CoverageMap#build_or_load} or
-    # {CoverageMap#build_via_fork}. A list that still holds a mutant is
-    # discarded: the caller collects again after the map, so job order and ids
-    # stay as they are, and that later call is the one that warns.
+    # this needs no boot. This pass warns. It always runs, so a later boot,
+    # map, or clean-check failure cannot drop a git-diff skip or an unknown
+    # operator in a disable-line marker. The collection after the map stays
+    # quiet, so those warnings print once. An empty list is what the caller
+    # returns before {CoverageMap#build_or_load} or {CoverageMap#build_via_fork}.
+    # A list that still holds a mutant is discarded: the caller collects again
+    # after the map, so job order and ids stay as they are.
     #
     # A zero-job run does not check that the unmutated suite is green, and it
     # does not load the boot file. #81 made that choice for `--daemon` and
-    # `--test-command`. Comment-only and docs-in-code pull requests are the
-    # usual hit: the README documents `--since` for pull-request CI. Issue
-    # #396 records that as a normal case, and one such job failed on a flaky
-    # test (elopage/monetiser#229). No broader count was measured.
+    # `--test-command`. Without a boot, the caller still loads each source and
+    # `--require`, so a file that raises stays a runtime error. Comment-only
+    # and docs-in-code pull requests are the usual hit: the README documents
+    # `--since` for pull-request CI. Issue #396 records that as a normal case,
+    # and one such job failed on a flaky test (elopage/monetiser#229). No
+    # broader count was measured.
     #
     # @param config [Mutineer::Config] run configuration.
     # @param operator_classes [Array<Class>] resolved operators.
@@ -256,18 +268,9 @@ module Mutineer
     def self.since_empty_result(config, operator_classes)
       return unless config.since
 
-      scope = lambda do |report|
-        jobs, ignored, source_map, extras =
-          JobPlan.collect_jobs(config, operator_classes, warn_suppress: report)
-        jobs, ignored, extras[:unscoped_mutants] =
-          JobPlan.scope_since(jobs, ignored, source_map, config, extras: extras, warn_diff: report)
-        [jobs, ignored, source_map, extras]
-      end
-
-      jobs, = scope.call(false)
-      return unless jobs.empty?
-
-      jobs, ignored, source_map, extras = scope.call(true)
+      jobs, ignored, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
+      jobs, ignored, extras[:unscoped_mutants] =
+        JobPlan.scope_since(jobs, ignored, source_map, config, extras: extras)
       return unless jobs.empty?
 
       [AggregateResult.new(ignored), source_map, extras]

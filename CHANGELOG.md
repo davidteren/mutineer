@@ -151,7 +151,10 @@ All notable changes to this project are documented here. The format is based on
   is still a usage error. A run that still has a mutant on a changed line
   boots, builds the map and checks the suite as before. Its job order and
   ids stay the same. A git-diff skip and an unknown operator in a
-  `# mutineer:disable-line` marker still warn once.
+  `# mutineer:disable-line` marker still warn once, and they warn before
+  the boot, so a boot that fails still shows them. Without `--boot`, a
+  source or `--require` file that raises while loading is still a runtime
+  error. The coverage map is still skipped.
   A zero-job run no longer notices a red suite or a boot that fails while
   loading. #81 made that choice. Comment-only and docs-in-code pull
   requests are the usual case for the README's `--since` CI run. No broader

@@ -155,6 +155,59 @@ class SinceEmptyRunTest < Minitest::Test
     end
   end
 
+  # Without a boot, an empty --since run still loads each source and
+  # --require. A file that raises stays a runtime error. The coverage map
+  # is not built.
+  def test_empty_since_without_boot_still_reports_a_source_or_require_that_raises
+    with_repo do |dir, src, test, marker|
+      File.write(src, "raise \"source blew up\"\n")
+      error = nil
+      capture_io do
+        error = assert_raises(Mutineer::ProjectLoadError) do
+          refute_coverage_built { Mutineer::Runner.execute(run_config(dir, src, test)) }
+        end
+      end
+      assert_includes error.message, "source blew up"
+      refute_path_exists marker
+    end
+
+    with_repo do |dir, src, test, marker|
+      require_path = File.join(dir, "setup.rb")
+      File.write(require_path, "raise \"require blew up\"\n")
+      config = run_config(dir, src, test, require_paths: [require_path])
+      error = nil
+      capture_io do
+        error = assert_raises(Mutineer::ProjectLoadError) do
+          refute_coverage_built { Mutineer::Runner.execute(config) }
+        end
+      end
+      assert_includes error.message, "require blew up"
+      refute_path_exists marker
+    end
+  end
+
+  # A nonempty preview warns before the boot. A boot that then raises still
+  # shows the git-diff skip. The collection after the map never runs.
+  def test_since_diff_warning_prints_before_a_boot_that_raises
+    with_repo do |dir, src, test, _marker|
+      boot, = quiet_boot(dir)
+      File.write(boot, "raise \"must not boot\"\n")
+      generated = File.join(dir, "generated.rb")
+      File.write(File.join(dir, ".gitignore"), "generated.rb\n")
+      git(dir, "add", ".gitignore")
+      git(dir, "commit", "-qm", "ignore generated")
+      File.write(generated, "class Generated\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(src, apply_diff(File.read(src), :mutant_line))
+      _out, err = capture_io do
+        error = assert_raises(Mutineer::ProjectLoadError) do
+          Mutineer::Runner.execute(run_config(dir, [src, generated], test, boot: boot))
+        end
+        assert_includes error.message, "must not boot"
+      end
+      assert_equal 1, err.scan("is ignored by Git").size, err
+    end
+  end
+
   # #396 review: an unknown disable-line operator warns once. The preview
   # collects silently. The collection the run keeps is the one that warns:
   # the second pass when the diff holds no mutant, and the pass after the
