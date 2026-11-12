@@ -2,6 +2,7 @@
 
 require "stringio"
 require_relative "../kill_channel"
+require_relative "rspec_seed"
 
 module Mutineer
   # Raised when the target project asks for a framework whose gem isn't present.
@@ -37,6 +38,7 @@ module Mutineer
         end
 
         require_rspec!
+        RSpecSeed.install!
 
         ::RSpec::Core::Runner.disable_autorun!
         # Not RSpec.reset: it also drops the settings that gems added when Bundler
@@ -52,7 +54,9 @@ module Mutineer
         # silenced here: the fork boundary that calls this method has already
         # pointed stdout at File::NULL (see ChildStdout).
         sink = StringIO.new
-        keep_file_order(spec_files) if stop_at_first_failure || record_to
+        # Clean checks pass no hook. They still use this file order, so they
+        # share it with the mutant run (#282).
+        keep_file_order(spec_files)
         args = ["--no-color"]
         args << "--fail-fast" if stop_at_first_failure
         status = with_fail_fast_off(record_to) do
@@ -83,6 +87,8 @@ module Mutineer
 
       # Runs the top-level example groups in the order of `spec_files` (#203),
       # after RSpec's own ordering, which then decides the order within a file.
+      # Every run uses it, including the clean check, so a mutant run and the
+      # clean check of the same files share that order (#282).
       #
       # @api private
       # @param spec_files [String, Array<String>] the files, in run order.

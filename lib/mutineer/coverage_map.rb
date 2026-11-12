@@ -565,7 +565,7 @@ module Mutineer
         return "it has no source fingerprints; capture it again with this version and --rails/--boot"
       end
       return "its entries are not the shape a coverage cache saves; capture it again" unless well_formed_capture?(cached)
-      return "its tests, --require files, boot file, load paths, framework or Minitest seed differ, or an older version made it; capture it again" unless cached["inputs"] == compute_digest(inputs_only: true)
+      return "its tests, --require files, boot file, load paths, framework or test seed differ, or an older version made it; capture it again" unless cached["inputs"] == compute_digest(inputs_only: true)
 
       fingerprints = source_fingerprints
       missing = fingerprints.keys - cached["sources"].keys
@@ -1209,7 +1209,6 @@ module Mutineer
     # @param test_paths [Array<String>] test file paths.
     # @return [String] Ruby script text.
     def minitest_clean_check_script(test_paths)
-      loads = Array(test_paths).map { |t| "load #{absolute(t).inspect}" }.join("\n")
       <<~RUBY
         #{result_channel_expression}
         require "json"
@@ -1223,7 +1222,7 @@ module Mutineer
         begin
           #{abs_preload_paths.inspect}.each { |f| require f }
           Minitest::Runnable.reset
-          #{loads}
+          #{minitest_file_order_setup(test_paths.map { |t| absolute(t).inspect }.join(", "))}
         #{load_failure_rescue}
         end
         _passed = Minitest.run(#{minitest_seed_args_expression})
@@ -1257,6 +1256,7 @@ module Mutineer
           #{abs_preload_paths.inspect}.each { |f| require f }
         #{load_failure_rescue}
         end
+        #{rspec_order_preamble(specs)}
         _sink = StringIO.new
         status = RSpec::Core::Runner.run(["--no-color", #{specs}], _sink, _sink)
         _failure = status.zero? ? nil : #{redacted_expression("_sink.string")}
@@ -1338,7 +1338,7 @@ module Mutineer
           #{abs_preload_paths.inspect}.each { |f| require f }
           _load = #{load_coverage_expression}
           Minitest::Runnable.reset
-          load #{absolute(test_path).inspect}
+          #{minitest_file_order_setup(absolute(test_path).inspect)}
         #{load_failure_rescue}
         end
         _passed = Minitest.run(#{minitest_seed_args_expression})
@@ -1362,6 +1362,43 @@ module Mutineer
     # @return [String] Ruby expression for the Minitest argument array.
     def minitest_seed_args_expression
       "ENV[\"SEED\"] ? [] : [\"--seed\", #{MinitestIntegration::PINNED_SEED.to_s.inspect}]"
+    end
+
+    # Loads the test files and installs {MinitestIntegration::FileOrder} so the
+    # subprocess clean check and coverage capture shuffle each file the same
+    # way as {MinitestIntegration.run} (#282). The child requires only the
+    # file-order file, not the rest of the runner.
+    #
+    # @api private
+    # @param files_list_source [String] Ruby source for the path arguments,
+    #   one inspected string or several joined by commas.
+    # @return [String] Ruby script text.
+    def minitest_file_order_setup(files_list_source)
+      path = File.expand_path("minitest_integration/file_order.rb", __dir__)
+      <<~RUBY.chomp
+        _rank = {}
+        [#{files_list_source}].each_with_index do |_f, _i|
+          load _f
+          Minitest::Runnable.runnables.each { |_klass| _rank[_klass] ||= _i }
+        end
+        require #{path.inspect}
+        Mutineer::MinitestIntegration.keep_file_order(_rank)
+      RUBY
+    end
+
+    # Ruby source that pins a random RSpec order to the shared seed and keeps
+    # spec files in the order given, the same hooks as {TestRunners::RSpec.run}.
+    #
+    # @api private
+    # @param spec_list_source [String] Ruby source for the spec path arguments.
+    # @return [String] Ruby script text.
+    def rspec_order_preamble(spec_list_source)
+      runner = File.expand_path("test_runners/rspec.rb", __dir__)
+      <<~RUBY.chomp
+        require #{runner.inspect}
+        Mutineer::TestRunners::RSpecSeed.install!
+        Mutineer::TestRunners::RSpec.keep_file_order([#{spec_list_source}])
+      RUBY
     end
 
     # Same coverage-JSON contract as the minitest path, but driven by RSpec:
@@ -1390,6 +1427,7 @@ module Mutineer
           _load = #{load_coverage_expression}
         #{load_failure_rescue}
         end
+        #{rspec_order_preamble(absolute(test_path).inspect)}
         _sink = StringIO.new
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
         _failure = _status.zero? ? nil : #{redacted_expression("_sink.string")}
@@ -1623,9 +1661,15 @@ module Mutineer
       @load_paths.sort.each { |lp| d.update("loadpath\0#{lp}\0") }
       d.update("framework\0#{@framework}\0")
       # The seed sets the test order, and the order can change which lines run (#282).
-      # This is the configured seed. A test helper that changes SEED is not
-      # digested, like any other helper edit.
-      d.update("seed\0#{MinitestIntegration.seed}\0") unless @framework == "rspec"
+      # Minitest: the configured seed. A test helper that changes SEED is not
+      # digested, like any other helper edit. RSpec: the pinned seed and
+      # SPEC_OPTS. A `.rspec` seed or `config.seed` in a spec helper is not
+      # digested, like that helper.
+      if @framework == "rspec"
+        d.update("seed\0#{MinitestIntegration::PINNED_SEED}\0#{ENV['SPEC_OPTS']}\0")
+      else
+        d.update("seed\0#{MinitestIntegration.seed}\0")
+      end
       d.hexdigest
     end
 

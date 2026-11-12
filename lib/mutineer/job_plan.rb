@@ -205,9 +205,8 @@ module Mutineer
     #
     # @param coverage_map [Mutineer::CoverageMap] the built or loaded map.
     # @param framework [String, nil] the run's framework (nil is Minitest, as in
-    #   {TestRunners.for}). For Minitest, the message names the seed: an
-    #   order-dependent suite can pass in a random order and fail in the
-    #   pinned one (#282).
+    #   {TestRunners.for}). The message names the seed: an order-dependent
+    #   suite can pass in a random order and fail in the pinned one (#282).
     # @return [void]
     # @raise [Mutineer::SmokeCheckError] when any captured test failed clean,
     #   or when no test recorded coverage and a capture failed.
@@ -219,7 +218,7 @@ module Mutineer
       files = coverage_map.failed_clean_tests
       return if files.empty?
 
-      seed_hint = TestRunners.for(framework) == TestRunners::Minitest ? minitest_seed_hint : ""
+      seed_hint = seed_hint_for(framework)
       # The hint opens with "the unmutated suite is not green", so the files
       # follow it rather than repeat that sentence (#360). Failure names and
       # the first error follow when capture stored them.
@@ -251,6 +250,24 @@ module Mutineer
       "\n#{text[0, limit].rstrip}\n…"
     end
 
+    # The not-green hint for this framework, or empty when it has no seed.
+    #
+    # @api private
+    # @param framework [String, nil]
+    # @return [String]
+    def self.seed_hint_for(framework)
+      # `==`, not `case`: `when` uses Module#===, and a module is not an
+      # instance of itself.
+      runner = TestRunners.for(framework)
+      if runner == TestRunners::Minitest
+        minitest_seed_hint
+      elsif runner == TestRunners::RSpec
+        rspec_seed_hint
+      else
+        ""
+      end
+    end
+
     # Names the configured seed, and accounts for helper overrides.
     #
     # @api private
@@ -262,6 +279,19 @@ module Mutineer
         "Check the listed test files with the same seed and helpers " \
         "(for \"combined suite\", all of them together). " \
         "Change SEED, including helper settings, to choose another order."
+    end
+
+    # Names the seed a random RSpec order uses. A defined order is unchanged.
+    #
+    # @api private
+    # @return [String]
+    def self.rspec_seed_hint
+      seed = TestRunners::RSpecSeed.advertised_seed
+      " Mutineer runs a random RSpec order with seed #{seed}, unless you set a seed " \
+        "(--seed, --order rand:N, SPEC_OPTS, .rspec, or config.seed). " \
+        "A defined order is left as it is. " \
+        "An order-dependent example can fail here and pass in another order. " \
+        "Check the listed spec files with the same seed."
     end
 
     # The reload mutant text for a def in a concern's `included` or `prepended`

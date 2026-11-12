@@ -514,7 +514,8 @@ module Mutineer
       # 1 = a failure/error (killed), 2 = the first failure was an in-test
       # database error (error, #296). Minitest only; rspec is not yet on this path.
       # {MinitestIntegration.run} is the method the daemon's clean check uses,
-      # so each mutant fork gets the same seed and class list (#282). It loads
+      # so each mutant fork gets the same seed and, within each file, the same
+      # class order as the clean check (#282). It loads
       # only stdlib, so the daemon still needs no Prism. The fork requires
       # nothing else first: the test files' `require "test_helper"` loads
       # rails/test_help after the class list is reset, as in the clean check.

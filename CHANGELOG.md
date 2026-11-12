@@ -139,6 +139,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **The clean check and the mutant runs share one RSpec seed, and one order inside a Minitest file (#282).**
+  A random RSpec order used a new seed in every process.
+  The clean check and a mutant run could disagree, and a hang could score `killed` on one run and `timeout` on the next.
+  A random order now uses seed `1` for coverage capture, the clean checks and the mutant runs, unless the suite sets a seed (`--seed`, `--order rand:N`, `SPEC_OPTS`, `.rspec`, or `config.seed`).
+  A defined order is left as it is.
+  Reading `config.seed` in a spec helper, as the generated `Kernel.srand config.seed` does, does not set one.
+  Minitest already used seed `1`.
+  Classes inside one file were still shuffled with the whole class list, so adding a file changed their order.
+  Each file is now shuffled from that seed alone, on the clean check and the mutant runs.
+  Files run in the order that run was given.
+  A mutant run's files stay in coverage order (paired, then cheapest).
+  The combined clean check uses the order the tests were given.
+  Those two file lists can differ.
+  `--test-command` still sets no seed (#338).
+  A coverage cache from another `SPEC_OPTS`, or from a version that did not pin the RSpec seed, is captured again.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and

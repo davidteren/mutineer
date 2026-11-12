@@ -471,6 +471,12 @@ class TestRunnersRSpecTest < Minitest::Test
     IO.pipe { |_rd, wr| assert_equal "b2b1a2a1", group_order(%w[b a], record_to: wr) }
   end
 
+  # #282: a clean check passes no hook. It keeps the same file order as the
+  # mutant run, and the suite's order inside each file.
+  def test_a_plain_run_keeps_the_same_file_order_as_a_mutant_run
+    assert_equal group_order(%w[a b], stop_at_first_failure: true), group_order(%w[a b])
+  end
+
   def test_record_to_and_stop_at_first_failure_cannot_be_combined
     code, = in_fork do
       Mutineer::TestRunners::RSpec.run([STOP], stop_at_first_failure: true, record_to: $stderr)

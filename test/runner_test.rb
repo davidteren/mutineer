@@ -523,6 +523,7 @@ class RunnerTest < Minitest::Test
       assert_includes own.message, "SEED=4242"
       rspec = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map, framework: "rspec") }
       refute_includes rspec.message, "SEED="
+      assert_includes rspec.message, "seed #{Mutineer::RunSeed::PINNED_SEED}"
     end
   end
 
