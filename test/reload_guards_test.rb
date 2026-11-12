@@ -547,8 +547,8 @@ class ReloadGuardsTest < Minitest::Test
   end
 
   # A symbol-only skip has the same shape as an independent callback, so the
-  # old copy stays. No issue is filed for carrying that symbol yet. A Proc in
-  # the parent list is what shows the copy was merged; that case is
+  # old copy stays. A Proc in the parent list is what shows the copy was
+  # merged; that case is
   # `test_a_restored_skip_carries_the_reloaded_parent_conditions`.
   def test_a_symbol_only_skip_keeps_the_old_parent_symbol
     old_config = { scope: [:kind] }

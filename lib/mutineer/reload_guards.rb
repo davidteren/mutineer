@@ -324,9 +324,9 @@ module Mutineer
       # match, so its copy stays too (#414): a subclass callback of the same
       # name is not rewritten. A list of only symbols, or other interned
       # objects, is not evidence either. An independent callback can name the
-      # same symbol. No issue is filed for that remainder yet. A copied Proc
-      # is evidence, and that Proc is carried. The old copy also stays when
-      # `stray` still has those same condition objects.
+      # same symbol. A copied Proc is evidence, and that Proc is carried.
+      # The old copy also stays when `stray` still has those same condition
+      # objects.
       #
       # @param entry [Object] the subclass callback Rails dropped.
       # @param stray [Object] the ancestor callback appended in its place.
@@ -379,7 +379,7 @@ module Mutineer
       #   interned. `skip_callback` copies those objects. A parent with no
       #   conditions matches every copy, so that is not evidence. A symbol is
       #   the same object wherever it is written, so it is not evidence
-      #   either. No issue is filed for a symbol-only parent condition yet.
+      #   either. A symbol-only parent condition stays on the old copy.
       def self.merged_from?(entry, parent)
         entry_if, entry_unless = conditions(entry)
         parent_if, parent_unless = conditions(parent)
