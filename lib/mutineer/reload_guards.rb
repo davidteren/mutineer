@@ -177,7 +177,10 @@ module Mutineer
 
       # Pairs each entry the load added to `klass`'s own chains with the old
       # entry it repeats: first with old entries that are the same
-      # ({.exact_pairs}), then by key.
+      # ({.exact_pairs}), then by key. A mutant can change a block's body, so
+      # the code no longer matches. Leftovers that share a place and have
+      # equal counts pair without the code ({.by_key} with `code: false`).
+      # A concern that shares only that place still makes the counts differ.
       #
       # @param klass [Class] a class whose chains the load changed.
       # @param old [Hash{Class => Hash{Symbol => Array}}] each class's entries before the load.
@@ -196,7 +199,10 @@ module Mutineer
 
           pool = without(before, parent_old.fetch(name, []))
           exact = exact_pairs(added, pool, reloaded)
-          matched = exact + by_key(without(added, exact.map(&:last)), pool, reloaded)
+          rest = without(added, exact.map(&:last))
+          keyed = by_key(rest, pool, reloaded)
+          loose = by_key(without(rest, keyed.map(&:last)), without(pool, keyed.map(&:first)), reloaded, code: false)
+          matched = exact + keyed + loose
           pairs[name] = matched unless matched.empty?
         end
         pairs
@@ -236,10 +242,12 @@ module Mutineer
       # @param added [Array] new entries with no exact match.
       # @param pool [Array] old entries no exact match took.
       # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @param code [Boolean] when false, a block's compiled body is left out
+      #   of the key, so a mutant of that body still pairs.
       # @return [Array<Array(Object, Object)>] each old entry and the new entry that replaces it.
-      def self.by_key(added, pool, reloaded)
-        old_by_key = pool.group_by { |entry| key(entry, reloaded) }
-        added.group_by { |entry| key(entry, reloaded) }.flat_map do |k, new_entries|
+      def self.by_key(added, pool, reloaded, code: true)
+        old_by_key = pool.group_by { |entry| key(entry, reloaded, code: code) }
+        added.group_by { |entry| key(entry, reloaded, code: code) }.flat_map do |k, new_entries|
           old_entries = old_by_key.fetch(k, [])
           old_entries.size == new_entries.size ? old_entries.zip(new_entries) : []
         end
@@ -496,16 +504,18 @@ module Mutineer
       #
       # @param block [Proc]
       # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @param code [Boolean] when false, the compiled body is left out. A
+      #   mutant of that body then shares the key of the block it replaced.
       # @return [Array]
-      def self.block_key(block, reloaded)
+      def self.block_key(block, reloaded, code: true)
         symbol = symbol_proc_text(block)
         return [:symbol, symbol] if symbol
 
         file, line = block.source_location
         # CRuby only; elsewhere blocks match by file and line alone.
         label = RubyVM::InstructionSequence.of(block)&.label if defined?(::RubyVM::InstructionSequence)
-        code = block_code(block, reloaded)
-        reloaded.include?(file && real_path(file)) ? [:reloaded, label, code] : [file, line, label, code]
+        compiled = block_code(block, reloaded) if code
+        reloaded.include?(file && real_path(file)) ? [:reloaded, label, compiled] : [file, line, label, compiled]
       end
 
       # CRuby prints `Symbol#to_proc` as `#<Proc:0xaddr(&:name) (lambda)>`.
@@ -574,7 +584,7 @@ module Mutineer
       def self.strip_code(node, paths)
         case node
         when Array
-          if node[0] == ISEQ_FORMAT
+          if iseq_node?(node)
             code_identity(node, paths)
           elsif instruction_body?(node)
             node.filter_map { |child| strip_code(child, paths) unless child.is_a?(Integer) }
@@ -588,6 +598,17 @@ module Mutineer
         else
           node
         end
+      end
+
+      # A real instruction sequence, not an array a callback happened to
+      # build. The magic string alone is not enough: the node also has the
+      # misc hash, a label, and a bytecode array. Anything else stays an
+      # array, so it cannot blank the block's code identity.
+      #
+      # @param node [Array]
+      # @return [Boolean]
+      def self.iseq_node?(node)
+        node[0] == ISEQ_FORMAT && node[4].is_a?(Hash) && node[5].is_a?(String) && node[13].is_a?(Array)
       end
 
       # @param node [Array] one array from an instruction sequence.
@@ -606,15 +627,16 @@ module Mutineer
       #
       # @param callback [Object] an ActiveSupport callback.
       # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @param code [Boolean] see {block_key}.
       # @return [Array]
-      def self.key(callback, reloaded)
+      def self.key(callback, reloaded, code: true)
         filter = callback.filter
         filter_key = case filter
                      when Symbol, Module then filter
-                     when Proc then block_key(filter, reloaded)
+                     when Proc then block_key(filter, reloaded, code: code)
                      else object_key(filter)
                      end
-        [callback.kind, filter_key, condition_key(callback, reloaded)]
+        [callback.kind, filter_key, condition_key(callback, reloaded, code: code)]
       end
 
       # @param filter [Object] a callback filter that is not a symbol, module or proc.
@@ -638,21 +660,23 @@ module Mutineer
 
       # @param callback [Object] an ActiveSupport callback.
       # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @param code [Boolean] see {block_key}.
       # @return [Array] its `if:` and `unless:` conditions, as keys. A proc
       #   condition uses {.block_key}, so a captured value that changes on
       #   each load does not hide the repeat.
-      def self.condition_key(callback, reloaded)
+      def self.condition_key(callback, reloaded, code: true)
         conditions(callback).map do |list|
-          Array(list).map { |item| condition_item_key(item, reloaded) }
+          Array(list).map { |item| condition_item_key(item, reloaded, code: code) }
         end
       end
 
       # @param item [Object] one `if:` or `unless:` condition.
       # @param reloaded [Array<String>] real paths of the source and mutant files.
+      # @param code [Boolean] see {block_key}.
       # @return [Object]
-      def self.condition_item_key(item, reloaded)
+      def self.condition_item_key(item, reloaded, code: true)
         case item
-        when Proc then block_key(item, reloaded)
+        when Proc then block_key(item, reloaded, code: code)
         when Symbol, Module, Numeric, String, TrueClass, FalseClass, NilClass then item
         else item.class
         end

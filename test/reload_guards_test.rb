@@ -712,6 +712,83 @@ class ReloadGuardsTest < Minitest::Test
     Object.send(:remove_const, :RescueCorpus) if Object.const_defined?(:RescueCorpus, false)
   end
 
+  # A mutant changed the callback body, so the compiled code no longer
+  # matches. The new body still replaces the old one when nothing else sits
+  # at that place. A concern block with the same label is that something
+  # else: every copy stays.
+  def test_a_mutated_block_pairs_only_when_its_place_is_unique
+    verbose = $VERBOSE
+    Dir.mktmpdir do |dir|
+      source = File.join(dir, "hook.rb")
+      mutant = File.join(dir, "hook_mut.rb")
+      File.write(source, MUTATED_CORPUS)
+      File.write(mutant, MUTATED_CORPUS_CHANGED)
+      $VERBOSE = nil
+      load source
+      old_block = MutatedCorpus.blocks[0]
+      other = MutatedCorpus.other
+      same_label = MutatedCorpus.blocks[1]
+      load mutant
+      new_block = MutatedCorpus.blocks[0]
+      refute_same old_block, new_block
+
+      alone = Callback.new(:before, old_block)
+      changed = Callback.new(:before, new_block)
+      klass = callback_class
+      klass.__callbacks = { save: Chain.new(alone, changed) }
+      Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [alone] } }, [source, mutant])
+      assert_same_list [changed], klass.__callbacks[:save], "unique place"
+
+      concern_entry = Callback.new(:before, other)
+      old_entry = Callback.new(:before, old_block)
+      new_entry = Callback.new(:before, new_block)
+      klass = callback_class
+      klass.__callbacks = { save: Chain.new(concern_entry, old_entry, new_entry) }
+      Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_entry] } }, [source, mutant])
+      assert_same_list [concern_entry, new_entry], klass.__callbacks[:save], "different label"
+
+      concern_entry = Callback.new(:before, same_label)
+      klass = callback_class
+      klass.__callbacks = { save: Chain.new(concern_entry, old_entry, new_entry) }
+      Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_entry] } }, [source, mutant])
+      assert_same_list [concern_entry, old_entry, new_entry], klass.__callbacks[:save], "same label"
+    end
+  ensure
+    $VERBOSE = verbose if defined?(verbose)
+    Object.send(:remove_const, :MutatedCorpus) if Object.const_defined?(:MutatedCorpus, false)
+  end
+
+  # The callback body builds an array whose first string is the instruction
+  # sequence magic. That array is data, not a nested sequence, and the
+  # repeat still pairs across a file whose lines moved.
+  def test_a_block_that_builds_an_instruction_shaped_array_pairs
+    verbose = $VERBOSE
+    Dir.mktmpdir do |dir|
+      source = File.join(dir, "magic.rb")
+      shifted = File.join(dir, "magic_shifted.rb")
+      File.write(source, MAGIC_ARRAY_CORPUS)
+      File.write(shifted, MAGIC_ARRAY_CORPUS_SHIFTED)
+      $VERBOSE = nil
+      load source
+      old_block = MagicArrayCorpus::PROC
+      load shifted
+      new_block = MagicArrayCorpus::PROC
+      other = MagicArrayCorpus::OTHER
+      concern_entry = Callback.new(:before, other)
+      old_entry = Callback.new(:before, old_block)
+      new_entry = Callback.new(:before, new_block)
+      klass = callback_class
+      klass.__callbacks = { save: Chain.new(concern_entry, old_entry, new_entry) }
+
+      Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_entry] } }, [source, shifted])
+
+      assert_same_list [concern_entry, new_entry], klass.__callbacks[:save]
+    end
+  ensure
+    $VERBOSE = verbose if defined?(verbose)
+    Object.send(:remove_const, :MagicArrayCorpus) if Object.const_defined?(:MagicArrayCorpus, false)
+  end
+
   # Two class bodies, one of which records the file path and a new object.
   FILE_PATH_CORPUS = <<~RUBY
     module FilePathCorpus
@@ -759,6 +836,48 @@ class ReloadGuardsTest < Minitest::Test
       ensure
         stamp
       end
+      OTHER = proc { stamp }
+    end
+  RUBY
+
+  # A callback registered from a method, then the same method with the block
+  # body changed, as a mutant of that method does.
+  MUTATED_CORPUS = <<~RUBY
+    module MutatedCorpus
+      def self.blocks
+        [proc { audit }, proc { concern_only }]
+      end
+
+      def self.other
+        proc { stamp }
+      end
+    end
+  RUBY
+
+  MUTATED_CORPUS_CHANGED = <<~RUBY
+    module MutatedCorpus
+      def self.blocks
+        [proc { audit_changed }, proc { concern_only }]
+      end
+
+      def self.other
+        proc { stamp }
+      end
+    end
+  RUBY
+
+  # A block whose value is an array headed by the instruction-sequence magic.
+  MAGIC_ARRAY_CORPUS = <<~'RUBY'
+    module MagicArrayCorpus
+      PROC = proc { ["YARVInstructionSequence/SimpleDataFormat", 1, 2, 3, { a: 1 }, "label"] }
+      OTHER = proc { stamp }
+    end
+  RUBY
+
+  MAGIC_ARRAY_CORPUS_SHIFTED = <<~'RUBY'
+    module MagicArrayCorpus
+      # a mutant inserted this line
+      PROC = proc { ["YARVInstructionSequence/SimpleDataFormat", 1, 2, 3, { a: 1 }, "label"] }
       OTHER = proc { stamp }
     end
   RUBY
