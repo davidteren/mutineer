@@ -49,8 +49,7 @@ class RangeLiteralTest < Minitest::Test
      '[10, 20, 30][1..]', '[10, 20, 30][1...]', '[10, 20, 30].slice(1..)',
      '[10, 20, 30].slice!(1..)', '"abcd".byteslice(1..)', '"abcd"&.byteslice(1...)',
      '"abcd".bytesplice(1.., "x")', '[10, 20, 30].values_at(1..)', '("abcd")[1..]',
-     '([1, 2, 3])[1..]', '(("abcd"))[1..]', '(1; "abcd")[1..]', '`echo ab`[1..]',
-     '`echo #{1}`[1..]', '"abcd"[1..] = "x"', '[1, 2][1..] = [9]',
+     '([1, 2, 3])[1..]',      '(("abcd"))[1..]', '(1; "abcd")[1..]', '"abcd"[1..] = "x"', '[1, 2][1..] = [9]',
      '"abcd"[1..] += "x"', '[1, 2][1..] ||= [9]', '[1, 2][1..] &&= [9]',
      '[1, 2][1..], b = x, y', "begin\n    \"abcd\"\n  end[1..]"].each do |body|
       mutations, = run_mutator(body)
@@ -173,7 +172,8 @@ class RangeLiteralTest < Minitest::Test
       "lambda { |r| r }[1..]" => "...", "list.[](1..)" => "...", "list[1..] = x" => "...",
       "list[1..] += x" => "...", "list[1..] ||= x" => "...", "list[1..] &&= x" => "...",
       "HASH[1..] ||= x" => "...", "(list)[1..]" => "...", "(h)[1..]" => "...",
-      "list[1..], b = x, y" => "..." }.each do |body, replacement|
+      "list[1..], b = x, y" => "...", '`echo ab`[1..]' => "...",
+      '`echo #{1}`[1..]' => "..." }.each do |body, replacement|
       mutations, source = run_mutator(body)
       assert_equal 1, mutations.size, "expected 1 mutation for #{body.inspect}"
       m = mutations.first
@@ -221,5 +221,45 @@ class RangeLiteralTest < Minitest::Test
     key_at = source.index("(1..)") + "(1".length
     index_at = source.index("list[1..]") + "list[1".length
     assert_equal [key_at, index_at].sort, mutations.map(&:start_offset).sort
+  end
+
+  # A rescue or else can return a Hash even when another branch is a string.
+  # The index is swapped. A begin whose every value branch is a string stays
+  # declined, and ensure does not supply the value.
+  def test_begin_rescue_and_else_are_swapped_unless_every_value_is_a_literal
+    rescued = "(begin\n    raise \"bad\"\n    \"ab\"\n  rescue\n    {(1..) => :open}\n  end)[1..]"
+    mutations, source = run_mutator(rescued)
+    assert_equal 0, declined(rescued)
+    assert_equal 2, mutations.size
+    key_at = source.index("(1..)") + "(1".length
+    index_at = source.index("end)[1..]") + "end)[1".length
+    assert_equal [key_at, index_at].sort, mutations.map(&:start_offset).sort
+
+    other = "begin\n    \"ab\"\n  rescue\n    \"cd\"\n  else\n    {(1..) => :a}\n  end[1..]"
+    mutations, source = run_mutator(other)
+    assert_equal 0, declined(other)
+    assert_includes mutations.map(&:start_offset), source.index("end[1..]") + "end[1".length
+
+    chained = "begin\n    \"ab\"\n  rescue A\n    \"cd\"\n  rescue\n    {(1..) => :a}\n  end[1..]"
+    mutations, source = run_mutator(chained)
+    assert_equal 0, declined(chained)
+    assert_includes mutations.map(&:start_offset), source.index("end[1..]") + "end[1".length
+
+    empty = "begin\n    \"ab\"\n  rescue\n  end[1..]"
+    mutations, source = run_mutator(empty)
+    assert_equal 0, declined(empty)
+    assert_equal 1, mutations.size
+    assert_equal source.index("end[1..]") + "end[1".length, mutations.first.start_offset
+
+    both = "begin\n    \"ab\"\n  rescue\n    \"cd\"\n  end[1..]"
+    assert_empty run_mutator(both).first
+    assert_equal 1, declined(both)
+
+    ensured = "begin\n    \"abcd\"\n  ensure\n    {(1..) => :a}\n  end[1..]"
+    mutations, source = run_mutator(ensured)
+    assert_equal 1, declined(ensured)
+    assert_equal 1, mutations.size
+    assert_equal source.index("(1..)") + "(1".length, mutations.first.start_offset
+    refute_includes mutations.map(&:start_offset), source.index("end[1..]") + "end[1".length
   end
 end

@@ -148,8 +148,11 @@ All notable changes to this project are documented here. The format is based on
   `list[1..]`, `fn[1..]`, and `{(1..) => :a}[1..]`. A Hash, a Proc, and a
   custom `[]` or `slice` can tell `1..` from `1...`, so the skip hid a mutant
   a test can kill. The operator now skips that range only when the receiver
-  is an array or string literal, including one wrapped in parentheses or
-  `begin`. A variable, a call, or a constant is swapped, and an earlier
+  is an array or string literal, including parentheses around one. A
+  `begin` counts only when every branch that can supply its value is such
+  a literal, so a rescue or an else that returns a Hash is swapped.
+  Backticks are swapped too, because `` ` `` can be overridden. A
+  variable, a call, or a constant is swapped, and an earlier
   assignment is not followed. On a real Array or String the new mutant is
   often equivalent, as in `argv[1..]` or `text.byteslice(offset..)`. In this
   gem's `lib/`, 14 such ranges were skipped and none was a literal, so a

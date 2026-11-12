@@ -166,7 +166,7 @@ operators:
 mutineer run lib --operators arithmetic,comparison,boolean_connector,boolean_literal,statement_removal,range
 ```
 
-The `range` operator swaps `..` and `...`. It skips an endless range (`1..` or `1..nil`) only when that range is a direct index argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`, `bytesplice` or `values_at` and the receiver is an array or string literal, as in `"abcd"[1..]` or `%w[a b c].values_at(1..)`. Parentheses and `begin` around that literal count, as in `("abcd")[1..]`. Index writes such as `"abcd"[1..] = "x"` skip the index too.
+The `range` operator swaps `..` and `...`. It skips an endless range (`1..` or `1..nil`) only when that range is a direct index argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`, `bytesplice` or `values_at` and the receiver is an array or string literal, as in `"abcd"[1..]` or `%w[a b c].values_at(1..)`. Parentheses around that literal count, as in `("abcd")[1..]`. A `begin` counts only when every branch that can supply its value is such a literal. A rescue or an else can return something else, and backticks do not count, because `` ` `` can be overridden. Index writes such as `"abcd"[1..] = "x"` skip the index too.
 
 An array or a string selects the same elements for `(1..)` and `(1...)`, so that mutant is equivalent. The literal is what fixes the class. A variable, a call, or a constant does not: `list[1..]`, `ARGV[1..]`, `text.byteslice(1..)` and `HASH[1..]` are swapped. A Hash tells `{(1..) => :a}[1..]` from `[1...]`, a Proc called as `fn[1..]` receives the range, and a class of your own can define `[]` or `slice` to treat the two ranges differently. A test can kill those mutants. An earlier assignment is not followed, so `list = [1, 2]; list[1..]` is swapped too.
 

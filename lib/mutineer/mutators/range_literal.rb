@@ -122,26 +122,51 @@ module Mutineer
         args.each { |arg| @slice_args[arg] = true if arg.is_a?(Prism::RangeNode) }
       end
 
-      # Whether the receiver's syntax is an Array or a String. A literal is.
-      # Parentheses and `begin` are unwrapped to the value they return, so
-      # `("ab")[1..]` is still a string. A variable, call, or constant is not:
-      # it can hold a Hash, a Proc, or a custom object, and an earlier
-      # assignment is not followed.
+      # Whether the receiver's syntax is an Array or a String. A quoted string
+      # or an array literal is. Parentheses are unwrapped to the value they
+      # return, so `("ab")[1..]` is still a string. A `begin` counts only when
+      # every branch that can supply its value is one of those literals: a
+      # rescue or an else can return a Hash instead. Backticks are a call to
+      # `` ` ``, which can be overridden, so they are not literals. A variable,
+      # call, or constant is not either: it can hold a Hash, a Proc, or a
+      # custom object, and an earlier assignment is not followed.
       #
       # @param node [Prism::Node, nil] receiver of a slice call or index write.
       # @return [Boolean]
       def sequence_receiver?(node)
         case node
-        when Prism::ArrayNode, Prism::StringNode, Prism::InterpolatedStringNode,
-             Prism::XStringNode, Prism::InterpolatedXStringNode
+        when Prism::ArrayNode, Prism::StringNode, Prism::InterpolatedStringNode
           true
         when Prism::ParenthesesNode
           sequence_receiver?(statement_value(node.body))
         when Prism::BeginNode
-          sequence_receiver?(statement_value(node.statements))
+          begin_is_sequence?(node)
         else
           false
         end
+      end
+
+      # Whether every value a `begin` can return is an array or string literal.
+      # The value is the else, or the body when there is no else. Each rescue
+      # can replace it. `ensure` runs but does not supply the value.
+      #
+      # @param node [Prism::BeginNode] begin expression used as a receiver.
+      # @return [Boolean]
+      def begin_is_sequence?(node)
+        success = if node.else_clause
+                    statement_value(node.else_clause.statements)
+                  else
+                    statement_value(node.statements)
+                  end
+        return false unless sequence_receiver?(success)
+
+        rescue_clause = node.rescue_clause
+        while rescue_clause
+          return false unless sequence_receiver?(statement_value(rescue_clause.statements))
+
+          rescue_clause = rescue_clause.subsequent
+        end
+        true
       end
 
       # The value of a statement list, which is its last statement. Any other
