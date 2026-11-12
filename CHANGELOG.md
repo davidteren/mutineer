@@ -139,6 +139,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A continuation-line survivor that ran is scored (#345).**
+  Ruby counts one line of a statement. A mutant on a later line is a `:maybe`
+  selection (#254, #289): Mutineer runs the tests of the statement's other
+  lines, a kill counts, and a survivor was `no_coverage` even when those
+  tests had run the mutated expression. That survivor left the score, so the
+  score could sit above the truth. The child now writes a sentinel when the
+  mutated expression runs. A survivor the sentinel records is `survived` and
+  enters the score. A survivor it does not record stays `no_coverage`, still
+  outside the score, and `summary.no_coverage` still counts it. The same rule
+  covers a trailing operator (`&&`, `+`), a method chain, a multi-line
+  argument list, a hash entry, and a heredoc interpolation, under `reload`,
+  `redefine`, and `--daemon`. A score can fall. A `--threshold` gate that
+  passed can fail. `--baseline` treats the new survivors as new. Refresh the
+  baseline.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and
