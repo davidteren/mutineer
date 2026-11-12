@@ -774,7 +774,9 @@ class CliTest < Minitest::Test
       File.write(path, File.read(path).sub("a + b", "a + b + 0"))
       out, err, status = mutineer("run", "calculator.rb", "day.rb", "--dry-run", "--since", "HEAD", chdir: proj)
       assert_equal 0, status.exitstatus, err
-      assert_includes out, "no mutants in 1 of 8 methods (not narrowed by --since)"
+      # #420: only methods whose def intersects the calculator.rb edit.
+      assert_match(/no mutants in 0 of 1 methods\n/, out)
+      refute_match(/no mutants in .*not narrowed by --since/, out)
     end
   end
 

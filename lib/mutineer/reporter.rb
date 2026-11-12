@@ -86,7 +86,8 @@ module Mutineer
           json_report(baseline, scoped: scoped, legacy_id_matches: legacy_id_matches, declined: declined,
                                 subjects: subjects, unmutated_subjects: unmutated_subjects)
         elsif format == "html"
-          html_report
+          html_report(declined: declined, subjects: subjects, unmutated: unmutated_subjects&.size,
+                      scoped: scoped)
         else
           sio = StringIO.new
           human_report(sio, err, threshold, declined: declined, scoped: scoped,
@@ -361,7 +362,12 @@ module Mutineer
     # (CGI.escapeHTML) so a `<`/`>` in source can never break the markup. Reuses
     # survivor_json/per_source_json so one run yields one set of facts regardless
     # of --format.
-    def html_report
+    # @param declined [Hash{String => Integer}] candidates declined by operators.
+    # @param subjects [Integer, nil] methods discovered (in scope).
+    # @param unmutated [Integer, nil] methods with no mutants (#419).
+    # @param scoped [Boolean] the run was diff-scoped (`--since`); declined keeps
+    #   its full-run count and the HTML label says so.
+    def html_report(declined: {}, subjects: nil, unmutated: nil, scoped: false)
       score = @agg.mutation_score
       survivors = @agg.surviving_mutants.map { |r| survivor_json(r) }
                       .sort_by { |h| [h[:file], h[:line], h[:operator]] }
@@ -401,7 +407,7 @@ module Mutineer
         <body>
         <h1>Mutineer — Mutation Report</h1>
         <div class="score">Score: #{score.nil? ? 'N/A' : "#{score}%"}</div>
-        #{summary_html}
+        #{summary_html(declined: declined, subjects: subjects, unmutated: unmutated, scoped: scoped)}
         #{unpaired_html}
         #{per_source_html(per_source)}
         #{survivors_html(survivors)}
@@ -413,7 +419,13 @@ module Mutineer
     end
 
     # The summary counts block for the HTML header.
-    def summary_html
+    #
+    # @param declined [Hash{String => Integer}]
+    # @param subjects [Integer, nil]
+    # @param unmutated [Integer, nil]
+    # @param scoped [Boolean] when true, the declined label notes it is not
+    #   narrowed by `--since` (same wording as the human report).
+    def summary_html(declined: {}, subjects: nil, unmutated: nil, scoped: false)
       counts = {
         "total" => @agg.total, "killed" => @agg.killed_count,
         "survived" => @agg.survived_count, "no_coverage" => @agg.no_coverage_count,
@@ -423,6 +435,14 @@ module Mutineer
         "errored" => @agg.errored_count, "timeout" => @agg.timeout_count,
         "unpaired" => unpaired_mutant_count
       }
+      if declined.any?
+        label = scoped ? "declined (not narrowed by --since)" : "declined"
+        counts[label] = declined.values.sum
+      end
+      if subjects && unmutated
+        counts["no_mutants"] = unmutated
+        counts["methods"] = subjects
+      end
       spans = counts.map { |k, v| "<span><strong>#{v}</strong> #{esc(k)}</span>" }.join("\n  ")
       "<div class=\"counts\">\n  #{spans}\n</div>"
     end
@@ -913,7 +933,8 @@ module Mutineer
     # @param out [IO] output stream.
     # @param declined [Hash{String => Integer}] operator name => declined count.
     # @param scoped [Boolean] the run was diff-scoped (`--since`), which does not
-    #   narrow the declined count or the method count.
+    #   narrow the declined count (method counts are already narrowed by
+    #   {JobPlan.scope_since}, #420).
     # @param subjects [Integer, nil] methods discovered; nil when unknown.
     # @param unmutated [Integer, nil] methods the selected operators did not
     #   mutate; nil when unknown, which leaves out the `No mutants:` row.
@@ -941,9 +962,10 @@ module Mutineer
       # Not mutants: methods, which no operator gave a mutant (#386). Unknown
       # (a caller passed no method counts) prints no row, never a made-up 0.
       if subjects && unmutated
+        # Under --since the JobPlan already narrowed these counts (#420).
         out.puts format("No mutants:   %-6d  (methods of %d that the selected operators did not mutate; " \
-                        "--dry-run --verbose and the JSON report list them%s)",
-                        unmutated, subjects, scoped ? "; not narrowed by --since" : "")
+                        "--dry-run --verbose and the JSON report list them)",
+                        unmutated, subjects)
       end
       # Equivalent mutants the user suppressed; excluded from the denominator.
       out.puts format("Ignored:      %-6d  (equivalent, suppressed)", @agg.ignored_count)

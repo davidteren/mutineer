@@ -520,11 +520,12 @@ runs:
               ("## Mutineer " + (if $code == "0" then "passed" else "failed (exit \($code))" end)
                  + (if (.summary.scoped // false) then " (diff-scoped run: changed lines only)" else "" end)),
               "",
-              "| Score | Killed | Survived | No coverage | Ignored | No verdict |",
-              "|---|---|---|---|---|---|",
+              "| Score | Killed | Survived | No coverage | Ignored | No verdict | No mutants |",
+              "|---|---|---|---|---|---|---|",
               ("| " + (.summary.score | if . == null then "N/A" else "\(.)%" end)
                  + " | \(.summary.killed) | \(.summary.survived) | \(.summary.no_coverage)"
-                 + " | \(.summary.ignored) | \(.summary.no_verdict) |"),
+                 + " | \(.summary.ignored) | \(.summary.no_verdict)"
+                 + " | " + (if .summary.unmutated_subjects == null then "—" else "\(.summary.unmutated_subjects)" end) + " |"),
               (if .baseline then
                  "", ("Baseline: \(.baseline.new_survivors | length) new survivor(s)"
                       + (if (.baseline.score_comparable != false) then

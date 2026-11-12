@@ -54,6 +54,28 @@ class HtmlReporterTest < Minitest::Test
                     "<span><strong>1</strong> unplaceable</span>"
   end
 
+  # #419: HTML shows the No mutants method count when the reporter has it.
+  def test_summary_counts_no_mutants_and_declined
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "html",
+                              subjects: 5, unmutated_subjects: [{ subject: "A#a", file: "a.rb", line: 1 }],
+                              declined: { "range" => 2 })
+    html = out.string
+    assert_includes html, "<span><strong>1</strong> no_mutants</span>"
+    assert_includes html, "<span><strong>5</strong> methods</span>"
+    assert_includes html, "<span><strong>2</strong> declined</span>"
+  end
+
+  # #420: under --since, declined stays full-run and the HTML label says so.
+  def test_scoped_declined_notes_not_narrowed
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "html", scoped: true,
+                              declined: { "range" => 2 })
+    assert_includes out.string, "<span><strong>2</strong> declined (not narrowed by --since)</span>"
+  end
+
   def test_summary_counts_ran_at_load
     assert_includes render([Mutineer::Result.killed, Mutineer::Result.ran_at_load]),
                     "<span><strong>1</strong> ran_at_load</span>"

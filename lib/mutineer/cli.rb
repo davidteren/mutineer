@@ -1184,7 +1184,7 @@ module Mutineer
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
       # Narrow jobs and ignored the same way a real run does, so the summary
       # matches the printed list.
-      jobs, ignored_results, = JobPlan.scope_since(jobs, ignored_results, source_map, config)
+      jobs, ignored_results, = JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
       ignored = ignored_results.size
       # One valid? pass for both formats: Mutation#valid? re-parses the whole file.
       valid, invalid = jobs.partition do |subject, mutation, _id|
@@ -1272,16 +1272,16 @@ module Mutineer
       end
     end
 
-    # Formats the dry run's count of methods with no mutants (#386). `--since`
-    # does not narrow the count, so under `--since` the text says so.
+    # Formats the dry run's count of methods with no mutants (#386). Under
+    # `--since` the count is already narrowed to methods whose def intersects
+    # the diff (#420).
     #
     # @param unmutated [Integer] methods the selected operators did not mutate.
-    # @param subjects [Integer] methods discovered.
-    # @param since [String, nil] the `--since` ref, when set.
+    # @param subjects [Integer] methods discovered (in scope).
+    # @param since [String, nil] unused; kept for call-site symmetry with {declined_summary}.
     # @return [String] e.g. `no mutants in 1 of 2 methods`.
-    def self.unmutated_summary(unmutated, subjects, since:)
-      text = "no mutants in #{unmutated} of #{subjects} methods"
-      since ? "#{text} (not narrowed by --since)" : text
+    def self.unmutated_summary(unmutated, subjects, since:) # rubocop:disable Lint/UnusedMethodArgument
+      "no mutants in #{unmutated} of #{subjects} methods"
     end
 
     # Formats the dry run's declined count: the total, then each operator's
