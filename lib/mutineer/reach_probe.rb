@@ -17,6 +17,11 @@ module Mutineer
   # The inserted text is stdlib only (`File`). The daemon loads it as source,
   # so the app process needs no Prism and no Mutineer constant.
   module ReachProbe
+    # Global the generated source sets after the expression returns once.
+    # {forget_load} and the daemon's `forget_load_reach` clear this same
+    # name, so a load-time run does not skip the write during the tests.
+    # The daemon hardcodes the name: it cannot load this file.
+    REACHED = :$mutineer_reached
     # An empty sentinel file. The child writes `"1"` when the expression runs.
     # The caller checks {reached?} and then {close_sentinel}.
     #
@@ -45,7 +50,11 @@ module Mutineer
     # @param path [String, nil] sentinel path.
     # @return [void]
     def self.forget_load(path)
-      File.write(path, "") if path
+      return unless path
+
+      # Same name as {REACHED}. A direct write: this file must not eval.
+      $mutineer_reached = nil
+      File.write(path, "")
     end
 
     # Removes the sentinel file. A missing file is already gone.
@@ -192,7 +201,9 @@ module Mutineer
       loc = node.location
       inner = source.byteslice(loc.start_offset, loc.end_offset - loc.start_offset)
       quoted = path.dump
-      mark = "(::File.write(#{quoted}, \"1\") if ::File.size(#{quoted}) == 0)"
+      # The global skips the write after the first return. A stat on every
+      # later pass would hit a loop that evaluates the expression.
+      mark = "(#{REACHED} ||= (::File.write(#{quoted}, \"1\"); true))"
       replacement = if inner.include?("\n")
                       "\n[(#{inner}), #{mark}][0]"
                     else

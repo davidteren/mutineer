@@ -494,7 +494,11 @@ module Mutineer
       # @param path [String, nil]
       # @return [void]
       def forget_load_reach(path)
-        File.write(path, "") if path.is_a?(String) && !path.empty?
+        return unless path.is_a?(String) && !path.empty?
+
+        # Same global as ReachProbe::REACHED. This file cannot load that one.
+        $mutineer_reached = nil
+        File.write(path, "")
       end
 
       # Write the tool-built mutated text beside the real source and `load` it,

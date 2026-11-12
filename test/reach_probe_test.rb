@@ -133,7 +133,7 @@ class ReachProbeTest < Minitest::Test
   # that remains, and it records a run only when that call runs.
   def test_a_deleted_chain_link_is_recorded_when_the_remaining_call_runs
     source = "class C\n  def self.f(user)\n    user.name.upcase\n  end\nend\n"
-    start = source.index(".name")
+    start = source.byteindex(".name")
     mutated = source.byteslice(0, start) + source.byteslice(start + ".name".bytesize..)
     wrapped = Mutineer::ReachProbe.wrap(mutated, start, start, sentinel_path)
 
@@ -152,7 +152,7 @@ class ReachProbeTest < Minitest::Test
   end
 
   def wrap_snippet(source, snippet)
-    start = source.index(snippet)
+    start = source.byteindex(snippet)
     Mutineer::ReachProbe.wrap(source, start, start + snippet.bytesize, sentinel_path)
   end
 
