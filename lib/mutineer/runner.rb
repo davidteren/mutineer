@@ -180,7 +180,8 @@ module Mutineer
       # Collect every (subject, mutation) up front so the pool can fan them out.
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
 
-      jobs, ignored_results, extras[:unscoped_mutants] = JobPlan.scope_since(jobs, ignored_results, source_map, config)
+      jobs, ignored_results, extras[:unscoped_mutants] =
+        JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
 
       strategy = config.strategy
       # Fail-fast must be serial: a parallel stop_when fires on the first survivor
@@ -254,7 +255,8 @@ module Mutineer
         FileSwap.restore_orphans(dirs)
 
         jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
-        jobs, ignored_results, extras[:unscoped_mutants] = JobPlan.scope_since(jobs, ignored_results, source_map, config)
+        jobs, ignored_results, extras[:unscoped_mutants] =
+          JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
 
         # Nothing to mutate: return before the smoke check, which runs the whole
         # --test set to calibrate a timeout no mutant would use (#76).

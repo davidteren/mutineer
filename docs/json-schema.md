@@ -71,7 +71,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `declined` | int | Candidates the operators found and did not mutate, so they are not in `total`: a heredoc the edit would split, or an equivalent skip listed on the [equivalent-skips page](equivalent-skips.md). Counted per operator, so a candidate two operators decline counts twice. Counted before `# mutineer:disable-line` and `ignore:` apply. `--only` narrows it; `--since` does not. Additive key (schema `1.9`, #291). |
 | `declined_by_operator` | object | The same count per operator name, operator name => int, only operators above zero, keys sorted. `{}` when none. Additive key (schema `1.9`, #291). |
 | `subjects` | int \| null | Methods found in the run's sources, each counted once. Methods, not mutants, so not in `total`. `--fail-fast` does not narrow it: it counts every method found, while `total` omits unscheduled mutants, so the two are not one denominator. `null` only when a program calls the reporter without both method counts (one alone counts as none); the CLI always fills both. Additive key (schema `1.10`, #386). |
-| `unmutated_subjects` | int \| null | Methods the selected operators gave no mutant, an empty method included. `unmutated_subjects[]` below lists them. Decided before the run, so `--fail-fast` does not narrow it either. `null` when `subjects` is `null`. Additive key (schema `1.10`, #386). |
+| `unmutated_subjects` | int \| null | Methods the selected operators gave no mutant, an empty method included. `unmutated_subjects[]` below lists them. Decided before the run, so `--fail-fast` does not narrow it. `--since` keeps methods whose `def` intersects the diff (#420). `null` when `subjects` is `null`. Additive key (schema `1.10`, #386). |
 | `errored` | int | Mutants whose run crashed, or whose first failed Minitest test had a database connection or lock error (excluded). Each one is in `no_verdict[]` with `status` `"error"`. |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). Under `--since`, only those on changed lines. |
@@ -236,9 +236,10 @@ The array is `null` when `summary.unmutated_subjects` is `null`. Otherwise each 
 `def`. `subject` and `file` read as in `survivors[]`. An empty method is listed too. The list is made before
 `# mutineer:disable-line` and `ignore:` apply, so a method whose mutants are all ignored is not listed. A method
 whose candidates were all declined is listed, and `summary.declined` counts those candidates. `--only` narrows
-the list; `--since` does not (#420). Without `--test`, a real run skips a source with no paired test, so its
-methods are not listed (#381); a dry run does not skip such sources, so its count can be larger. Additive key
-(schema `1.10`, #386). `mutineer run --dry-run --verbose` prints the same list as `no mutants:` lines.
+the list; `--since` keeps methods whose `def` range intersects a changed line (#420). Without `--test`, a real
+run skips a source with no paired test, so its methods are not listed (#381); a dry run does not skip such
+sources, so its count can be larger. Additive key (schema `1.10`, #386). `mutineer run --dry-run --verbose`
+prints the same list as `no mutants:` lines.
 
 ### `matrix` (object, only with `--matrix`)
 

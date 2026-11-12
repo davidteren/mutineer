@@ -1101,6 +1101,35 @@ class RunnerTest < Minitest::Test
     assert_equal({}, extras[:declined])
   end
 
+  # #420: --since keeps only methods whose def intersects the diff.
+  def test_scope_since_narrows_unmutated_subjects_to_changed_defs
+    Dir.mktmpdir do |root|
+      path = File.join(root, "calc.rb")
+      File.write(path, <<~RUBY)
+        class Calc
+          def add(a, b)
+            a + b
+          end
+          def note
+          end
+        end
+      RUBY
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", root, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      File.write(path, File.read(path).sub("a + b", "a + b + 0"))
+      config = Mutineer::Config.new(sources: [path], project_root: root, since: "HEAD")
+      ops = Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::DEFAULT_NAMES)
+      jobs, ignored, map, extras = Mutineer::JobPlan.collect_jobs(config, ops)
+      assert_operator extras[:subjects], :>=, 2
+      Mutineer::JobPlan.scope_since(jobs, ignored, map, config, extras: extras)
+      assert_equal 1, extras[:subjects], extras.inspect
+      assert_empty extras[:unmutated_subjects]
+      refute extras.key?(:subject_ranges)
+    end
+  end
+
   # #297: the reload mutant of a hook-block def stores the mutated def just
   # before the hook call, in the same module body, and still parses.
   def test_hook_mutant_inserts_the_stored_def_before_the_hook_call

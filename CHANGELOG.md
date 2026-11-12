@@ -61,10 +61,8 @@ All notable changes to this project are documented here. The format is based on
   methods it found and points to `--list-operators`. Scores, exit codes,
   the mutants that run and the default operators do not change. The
   README names `condition_true` and `condition_false` for these methods.
-  Known limits: no operator mutates a one-statement `rescue` body (#418),
-  the HTML report and the Action step summary do not show the count
-  (#419), and `--since` does not narrow it (#420). #386 stays open for
-  the default-operator decision.
+  Known limit: no operator mutates a one-statement `rescue` body (#418).
+  #386 stays open for the default-operator decision.
 - **`mutineer config KEY` prints a resolved setting (#394).** It prints the
   `cache_dir` or `baseline` that `mutineer run` would use with the same
   options and `.mutineer.yml`. It writes nothing. An unknown key exits 2. The
@@ -141,6 +139,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`--since` narrows the No mutants method count (#420).**
+  `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
+  keep methods whose `def` range intersects a changed line. The human and
+  dry-run lines no longer say the count is un-narrowed.
+- **The HTML report and Action step summary show the No mutants count (#419).**
+  HTML adds `no_mutants` / `methods` (and `declined` when present). The Action
+  summary table gains a No mutants column from `summary.unmutated_subjects`.
 - **A not-green clean run names the failing test and the first error (#360).**
   The SmokeCheckError line still says `not green` once and lists the files.
   It now also prints the reporter's failing test name and first failure

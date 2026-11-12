@@ -107,14 +107,18 @@ module Mutineer
         end
         id_path = (id_paths[subject.file] ||= ProjectPath.relative(subject.file, config.project_root))
         decls = name_decls[[id_path, subject.qualified_name]]
-        ordinal = (decls[subject.def_node.location.start_offset] ||= decls.size)
+        loc = subject.def_node.location
+        ordinal = (decls[loc.start_offset] ||= decls.size)
         # The first path spelling of a def wins; later spellings are the same method.
-        key = [id_path, subject.def_node.location.start_offset]
+        key = [id_path, loc.start_offset]
         unless subjects.key?(key)
-          subjects[key] = if mutations.empty?
-                            { subject: subject.qualified_name, file: subject.file,
-                              line: subject.def_node.location.start_line }
-                          end
+          # end_line is for --since narrowing (#420); the public list keeps
+          # only subject/file/line.
+          subjects[key] = {
+            subject: subject.qualified_name, file: subject.file,
+            line: loc.start_line, end_line: loc.end_line,
+            unmutated: mutations.empty?
+          }
         end
         ids = MutantId.for_subject(subject, source, mutations, path: id_path, subject_ordinal: ordinal)
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
@@ -150,10 +154,23 @@ module Mutineer
         end
       end
       declined = declined.select { |_, count| count.positive? }.sort.to_h
-      unmutated = subjects.values.compact.sort_by { |h| [h[:file], h[:line], h[:subject]] }
+      infos = subjects.values
+      unmutated = public_unmutated(infos)
       [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map,
                                             dropped_id_map: dropped_id_map, declined: declined,
-                                            subjects: subjects.size, unmutated_subjects: unmutated }]
+                                            subjects: infos.size, unmutated_subjects: unmutated,
+                                            subject_ranges: infos }]
+    end
+
+    # The reportable `{subject, file, line}` rows for methods with no mutants.
+    #
+    # @api private
+    # @param infos [Array<Hash>] internal subject rows from {collect_jobs}.
+    # @return [Array<Hash>]
+    def self.public_unmutated(infos)
+      infos.select { |h| h[:unmutated] }
+           .map { |h| { subject: h[:subject], file: h[:file], line: h[:line] } }
+           .sort_by { |h| [h[:file], h[:line], h[:subject]] }
     end
 
     # One key per mutation; two mutations share a key exactly when they are on
@@ -581,22 +598,53 @@ module Mutineer
     # is set, as the dry run does, so a scoped report lists only mutants on
     # changed lines. Also returns how many mutants there were before narrowing
     # (nil without --since), so the CLI can tell "the changes held nothing to
-    # test" from "nothing was mutable at all".
+    # test" from "nothing was mutable at all". When `extras` is given, also
+    # narrows `subjects` / `unmutated_subjects` to methods whose def range
+    # intersects the diff (#420).
     #
     # @param jobs [Array] (subject, mutation, id) entries to run.
     # @param ignored_results [Array<Mutineer::Result>] suppressed mutants.
     # @param source_map [Hash{String => String}] source text by file.
     # @param config [Mutineer::Config] run configuration.
+    # @param extras [Hash, nil] {collect_jobs} extras to narrow in place.
     # @return [Array(Array, Array<Mutineer::Result>, Integer), Array(Array, Array<Mutineer::Result>, nil)]
     #   the jobs to run, the ignored results to report, and the count before --since.
-    def self.scope_since(jobs, ignored_results, source_map, config)
-      return [jobs, ignored_results, nil] unless config.since
+    def self.scope_since(jobs, ignored_results, source_map, config, extras: nil)
+      unless config.since
+        extras&.delete(:subject_ranges)
+        return [jobs, ignored_results, nil]
+      end
 
       # One pass, so git computes the changed lines once.
       ignored_entries = ignored_results.map { |r| [r.subject, r.mutation, r] }
       kept = filter_since(jobs + ignored_entries, source_map, config)
       kept_ignored, kept_jobs = kept.partition { |entry| entry.last.is_a?(Result) }
+      narrow_subjects_since!(extras, config) if extras
       [kept_jobs, kept_ignored.map(&:last), jobs.size + ignored_results.size]
+    end
+
+    # Keeps `subjects` / `unmutated_subjects` for methods whose def range
+    # intersects `--since` changed lines (#420). Drops the internal
+    # `subject_ranges` key afterward.
+    #
+    # @api private
+    # @param extras [Hash] {collect_jobs} extras.
+    # @param config [Mutineer::Config]
+    # @return [void]
+    def self.narrow_subjects_since!(extras, config)
+      ranges = extras.delete(:subject_ranges) || []
+      return if ranges.empty?
+
+      files = ranges.map { |h| h[:file] }.uniq
+      changed = ChangedLines.for(ref: config.since, files: files, project_root: config.project_root)
+      in_scope = ranges.select do |h|
+        lines = changed.fetch(File.expand_path(h[:file], config.project_root), Set.new)
+        next false if lines.empty?
+
+        (h[:line]..h[:end_line]).any? { |ln| lines.include?(ln) }
+      end
+      extras[:subjects] = in_scope.size
+      extras[:unmutated_subjects] = public_unmutated(in_scope)
     end
 
     # --since: keep only jobs whose mutation lands on a line changed since the git
