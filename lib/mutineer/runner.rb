@@ -234,12 +234,13 @@ module Mutineer
     # the run must boot and build the coverage map (#396).
     #
     # {JobPlan.collect_jobs} and {JobPlan.scope_since} only read source text, so
-    # this needs no boot. The first pass is silent. An empty list is collected
-    # again so git-diff warnings print once, and that result is what the caller
-    # returns before {CoverageMap#build_or_load} or {CoverageMap#build_via_fork}.
-    # A list that still holds a mutant is discarded: the caller collects again
-    # after the map, so job order and ids stay as they are, and that later call
-    # is the one that warns.
+    # this needs no boot. The first pass is silent: no git-diff skip and no
+    # unknown-operator warning from a disable-line marker. An empty list is
+    # collected again so those warnings print once, and that result is what the
+    # caller returns before {CoverageMap#build_or_load} or
+    # {CoverageMap#build_via_fork}. A list that still holds a mutant is
+    # discarded: the caller collects again after the map, so job order and ids
+    # stay as they are, and that later call is the one that warns.
     #
     # A zero-job run does not check that the unmutated suite is green, and it
     # does not load the boot file. #81 made that choice for `--daemon` and
@@ -255,10 +256,11 @@ module Mutineer
     def self.since_empty_result(config, operator_classes)
       return unless config.since
 
-      scope = lambda do |warn_diff|
-        jobs, ignored, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
+      scope = lambda do |report|
+        jobs, ignored, source_map, extras =
+          JobPlan.collect_jobs(config, operator_classes, warn_suppress: report)
         jobs, ignored, extras[:unscoped_mutants] =
-          JobPlan.scope_since(jobs, ignored, source_map, config, extras: extras, warn_diff: warn_diff)
+          JobPlan.scope_since(jobs, ignored, source_map, config, extras: extras, warn_diff: report)
         [jobs, ignored, source_map, extras]
       end
 

@@ -155,6 +155,35 @@ class SinceEmptyRunTest < Minitest::Test
     end
   end
 
+  # #396 review: an unknown disable-line operator warns once. The preview
+  # collects silently. The collection the run keeps is the one that warns:
+  # the second pass when the diff holds no mutant, and the pass after the
+  # map when a mutant remains.
+  def test_unknown_disable_line_operator_warns_once
+    with_repo do |dir, src, test, _marker|
+      File.write(src, apply_diff(File.read(src), :bad_marker))
+      File.write(test, passing_test(src))
+      aggregate = nil
+      _out, err = capture_subprocess_io do
+        aggregate, = Mutineer::Runner.execute(run_config(dir, src, test))
+      end
+      assert_equal 1, err.scan('unknown operator "arithmetc"').size, err
+      assert_equal 1, aggregate.killed_count
+    end
+
+    with_repo do |dir, src, test, marker|
+      File.write(src, apply_diff(File.read(src), :bad_marker))
+      git(dir, "add", "calc.rb")
+      git(dir, "commit", "-qm", "bad marker")
+      File.write(src, File.read(src).sub("class SinceCalc\n", "class SinceCalc\n  # note\n"))
+      _out, err = capture_io do
+        refute_coverage_built { Mutineer::Runner.execute(run_config(dir, src, test)) }
+      end
+      assert_equal 1, err.scan('unknown operator "arithmetc"').size, err
+      refute_path_exists marker
+    end
+  end
+
   # A non-empty --since run collects again after the map, so ids match that
   # collection, and a git-diff warning from the silent preview is not repeated.
   def test_since_with_mutants_warns_once_and_keeps_collect_jobs_ids
@@ -263,6 +292,7 @@ class SinceEmptyRunTest < Minitest::Test
     when :other_line then text.sub('"name"', '"title"')
     when :mutant_line then text.sub("a + b", "a + b # touched")
     when :suppress then text.sub("a + b", "a + b # mutineer:disable-line")
+    when :bad_marker then text.sub("a + b", "a + b # mutineer:disable-line arithmetc")
     else flunk("unknown diff #{diff}")
     end
   end

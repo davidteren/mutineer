@@ -67,11 +67,14 @@ module Mutineer
     #
     # @param config [Mutineer::Config] run configuration.
     # @param operator_classes [Array<Class>] resolved operators.
+    # @param warn_suppress [Boolean] when false, {suppress_map} prints no
+    #   unknown-operator warning. The in-process `--since` preview passes
+    #   false, then repeats collection with the default (#396).
     # @return [Array(Array, Array<Result>, Hash<String,String>, Hash{Symbol => Hash})]
     #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`,
     #   `:id_map`, `:dropped_id_map`, `:declined`, `:subjects`,
     #   `:unmutated_subjects`).
-    def self.collect_jobs(config, operator_classes)
+    def self.collect_jobs(config, operator_classes, warn_suppress: true)
       # Registry order, so a repeat across operators keeps the registry-first
       # copy (#275). A class outside ALL goes last; ties keep the input order.
       rank = MutatorRegistry::ALL.values
@@ -97,7 +100,7 @@ module Mutineer
       subjects = {}
       Project.discover(config.sources, only: config.only).each do |subject|
         source = (source_map[subject.file] ||= File.read(subject.file, encoding: "UTF-8"))
-        disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
+        disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file, report: warn_suppress))
         # A repeated operator name runs once, so its declines count once.
         mutations = operator_classes.uniq.flat_map do |klass|
           operator = klass.new
@@ -431,8 +434,10 @@ module Mutineer
     #
     # @param source [String] the source text.
     # @param file [String] the file name, for warnings.
+    # @param report [Boolean] when false, an unknown operator name is not warned.
+    #   See {collect_jobs}.
     # @return [Hash{Integer => Hash}] line => `{ ops:, reason: }`.
-    def self.suppress_map(source, file)
+    def self.suppress_map(source, file, report: true)
       map = {}
       Parser.comments(source).grep(Prism::InlineComment).each do |comment|
         line = comment.location.start_line
@@ -443,9 +448,11 @@ module Mutineer
         # is a bare marker, not an empty list that silences nothing.
         ops = nil if ops&.empty?
         unknown = ops.to_a.reject { |o| MutatorRegistry::ALL.key?(o) }
-        unknown.each do |o|
-          warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line}#{Mutineer.did_you_mean(o, MutatorRegistry::ALL.keys)} " \
-               "(known: #{MutatorRegistry::ALL.keys.join(', ')}); write a reason after --"
+        if report
+          unknown.each do |o|
+            warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line}#{Mutineer.did_you_mean(o, MutatorRegistry::ALL.keys)} " \
+                 "(known: #{MutatorRegistry::ALL.keys.join(', ')}); write a reason after --"
+          end
         end
         reason = comment.slice[/\s--\s*(.*)\z/, 1]&.strip
         reason = nil if reason.nil? || reason.empty?
