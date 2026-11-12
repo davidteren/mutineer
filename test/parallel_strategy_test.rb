@@ -82,9 +82,10 @@ class ParallelStrategyTest < Minitest::Test
     assert_equal a.killed_count, b.killed_count
   end
 
-  # A read-only source dir still runs under redefine, and the run warns that
-  # path-relative methods there can be falsely killed (#279 review).
-  def test_redefine_warns_about_a_read_only_source_dir
+  # A read-only source dir still runs under redefine (#279). The temp-dir
+  # fallback no longer warns: path anchors are rewritten to the source file,
+  # so the old false-kill warning would be wrong (#339).
+  def test_redefine_runs_a_read_only_source_without_a_path_warning
     skip "root can write a read-only dir" if Process.uid.zero?
     Dir.mktmpdir do |dir|
       lib = File.join(dir, "lib")
@@ -105,41 +106,47 @@ class ParallelStrategyTest < Minitest::Test
           cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: dir, strategy: "redefine", jobs: 1
         ))
       end
-      assert_match(/#{Regexp.escape(File.basename(lib))} is not writable: redefine/, err)
-      assert_operator result.killed_count, :>=, 1, "mutants still run from the temp dir"
+      refute_match(/is not writable: redefine/, err)
+      assert_operator result.killed_count, :>=, 1, "a real arithmetic mutant is still killed"
+      assert_equal 0, result.errored_count
     ensure
       File.chmod(0o755, lib) if File.directory?(lib)
     end
   end
 
   # apply_surgical writes its file beside the source and hidden, as
-  # apply_whole_file does (#279).
+  # apply_whole_file does (#279). The method's `__FILE__` is the original
+  # path, not that hidden file (#339).
   def test_apply_surgical_loads_beside_the_source
     Dir.mktmpdir do |dir|
       Dir.mkdir(File.join(dir, "lib"))
       src = "class S279\n  def where\n    __dir__\n  end\nend\n"
-      loaded = Dir.chdir(dir) do
-        surgical_result(src, namespace: ["S279"], singleton: false,
-                             token: "__dir__", replacement: "__FILE__", call: "S279.new.where", file: "lib/x.rb")
+      loaded, value = Dir.chdir(dir) do
+        surgical_load_and_value(src, namespace: ["S279"], singleton: false,
+                                    token: "__dir__", replacement: "__FILE__", call: "S279.new.where", file: "lib/x.rb")
       end
       assert_equal File.join(File.realpath(dir), "lib"), File.dirname(loaded)
       assert_match(/\A\.mutineer_mutant/, File.basename(loaded))
+      assert_equal File.expand_path("lib/x.rb", dir), value
     end
   end
 
   # A read-only source dir falls back to the system temp dir, as in 1.x, so
-  # redefine keeps working there (#279 review).
+  # redefine keeps working there (#279). `__FILE__` still names the source
+  # file, not the temp file (#339).
   def test_apply_surgical_falls_back_to_tmpdir_for_read_only_source
     skip "root can write a read-only dir" if Process.uid.zero?
     Dir.mktmpdir do |dir|
       lib = File.join(dir, "lib")
       Dir.mkdir(lib)
       File.chmod(0o555, lib)
-      loaded = Dir.chdir(dir) do
-        surgical_result("class S279RO\n  def where\n    __dir__\n  end\nend\n", namespace: ["S279RO"], singleton: false,
-                        token: "__dir__", replacement: "__FILE__", call: "S279RO.new.where", file: "lib/x.rb")
+      loaded, value = Dir.chdir(dir) do
+        surgical_load_and_value("class S279RO\n  def where\n    __dir__\n  end\nend\n", namespace: ["S279RO"],
+                                singleton: false, token: "__dir__", replacement: "__FILE__", call: "S279RO.new.where",
+                                file: "lib/x.rb")
       end
       assert_equal File.realpath(Dir.tmpdir), File.realpath(File.dirname(loaded))
+      assert_equal File.expand_path("lib/x.rb", dir), value
     ensure
       File.chmod(0o755, lib) if File.directory?(lib)
     end
@@ -218,6 +225,39 @@ class ParallelStrategyTest < Minitest::Test
   end
 
   private
+
+  # Like {surgical_result}, and also the path `load` received. The method value
+  # is not that path: `__FILE__` is anchored to the source file (#339).
+  def surgical_load_and_value(src, namespace:, singleton:, token:, replacement:, call:, file: File.join(Dir.tmpdir, "x.rb"))
+    rd, wr = IO.pipe
+    pid = fork do
+      rd.close
+      eval(src, TOPLEVEL_BINDING) # rubocop:disable Security/Eval
+      def_node = Mutineer::Parser.parse_string(src).value.statements.body.first.body.body.first
+      subject = Mutineer::Subject.new(file: file, namespace: namespace,
+                                    name: def_node.name, singleton: singleton, def_node: def_node)
+      off = src.index(token)
+      mutation = Mutineer::Mutation.new(start_offset: off, end_offset: off + token.length,
+                                      replacement: replacement, operator: :literal_mutation)
+      loaded = nil
+      original = Kernel.instance_method(:load)
+      Mutineer::Isolation.stub(:load, lambda { |path|
+        loaded = path
+        original.bind_call(Mutineer::Isolation, path)
+      }) do
+        Mutineer::Isolation.apply_surgical(mutation, subject, src)
+      end
+      wr.write("#{loaded}\n#{eval(call, TOPLEVEL_BINDING)}") # rubocop:disable Security/Eval
+      wr.close
+      exit!(0)
+    end
+    wr.close
+    reader = Thread.new { rd.read }
+    wait_child(pid)
+    out = reader.value
+    rd.close
+    out.split("\n", 2)
+  end
 
   # Defines the source in a forked child, applies the surgical mutation, and
   # returns the post-mutation value of `call` as a string. The snippet file is

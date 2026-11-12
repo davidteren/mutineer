@@ -31,6 +31,11 @@ module Mutineer
     # Seconds between the parent's checks on a running child.
     POLL_INTERVAL = 0.005
 
+    # Byte scan for a path anchor. A snippet without one skips the parse that
+    # {anchor_paths} would do (#339). `send(:__dir__)` and
+    # `send(:require_relative)` contain the same tokens.
+    ANCHOR_PATTERN = /__dir__|__FILE__|require_relative/
+
     # Runs the block in a forked child. The block's return value (an Integer
     # exit code) or any explicit `exit` is honoured; an unhandled exception
     # becomes exit 2 with the cause written to STDERR. The cause also reaches
@@ -299,18 +304,110 @@ module Mutineer
       # scanners to flag. The input is the project's OWN source (the enclosing
       # method, textually mutated), loaded only in this forked child.
       #
-      # The file sits beside the source, as in apply_whole_file, so `__dir__`
-      # and `require_relative` in the method resolve against its real
-      # neighbours (#279). In the temp dir they raise ENOENT or LoadError, and
-      # every mutant of the method dies whatever it changes. The hidden
-      # `.mutineer_mutant` name keeps Zeitwerk away (#253) and lets the parent
-      # sweep an orphan after a timeout kill.
-      #
-      # A read-only source dir keeps the 1.x system-temp location, so redefine
-      # still runs there (only path-relative methods mis-score, as before: #339).
-      write_beside(wrapped, subject.file, fallback: true) { |path| load path }
+      # The file sits beside the source, as in apply_whole_file (#279). A
+      # read-only source directory keeps the 1.x system-temp location, so
+      # redefine still runs there. Either file is a different path from the
+      # source, so {anchor_paths} rewrites `__FILE__`, `__dir__`, and
+      # `require_relative` to the original file before the load. Without that,
+      # a temp-dir load raises ENOENT or LoadError and every mutant of the
+      # method scores `killed` (#339). The hidden `.mutineer_mutant` name
+      # keeps Zeitwerk away (#253) and lets the parent sweep an orphan after a
+      # timeout kill.
+      anchored = anchor_paths(wrapped, subject)
+      # The anchored text is what `load` runs. A rewrite that does not reparse
+      # must take the same error path as the unanchored snippet above.
+      raise "surgical snippet failed to reparse" if anchored != wrapped && Parser.invalid?(anchored)
+
+      write_beside(anchored, subject.file, fallback: true) { |path| load path }
 
       target.send(vis, subject.name) if vis && vis != :public
+    end
+
+    # Rewrites path anchors in a redefine snippet so they resolve against the
+    # original source file when `load` runs a different file (#339).
+    #
+    # The hidden snippet is never the source file. Beside the source, `__dir__`
+    # still names that directory, but `__FILE__` names the hidden file, and a
+    # symlinked source makes `__dir__` and `require_relative` follow the link's
+    # directory. In the system temp directory every one of them follows the
+    # temp directory, so each mutant raises and scores `killed`. The rewrite
+    # uses the live method's `source_location` when that file is `subject.file`,
+    # so a symlink keeps the path the program loaded. `__dir__` and
+    # `require_relative` use `File.realpath`, as Ruby does.
+    #
+    # Calls with an implicit receiver, literal `self`, or `Kernel` / `::Kernel`
+    # are rewritten, including `send` and `__send__` whose name is a literal.
+    # A call on any other receiver is left alone: `other.__dir__` is a private
+    # call and raises.
+    #
+    # @api private
+    # @param code [String] the wrapped snippet.
+    # @param subject [Mutineer::Subject] the method being redefined.
+    # @return [String] `code`, or a copy with the anchors rewritten.
+    def self.anchor_paths(code, subject)
+      return code unless code.match?(ANCHOR_PATTERN)
+
+      file_path = anchor_file(subject)
+      dir_literal = anchor_directory(file_path).dump
+      PathAnchor.rewrite(code, file_path.dump, dir_literal)
+    end
+
+    # The path `__FILE__` must return for `subject`. The live method's
+    # `source_location` wins when it is the same file, because that string is
+    # the one the unmutated method returns (a symlink path stays a symlink
+    # path). Otherwise the expanded subject path.
+    #
+    # @api private
+    # @param subject [Mutineer::Subject] the method being redefined.
+    # @return [String] absolute path.
+    def self.anchor_file(subject)
+      defined_in = defined_path(subject)
+      return defined_in if defined_in && same_file?(defined_in, subject.file)
+
+      File.expand_path(subject.file)
+    end
+
+    # The directory `__dir__` and `require_relative` use for `file_path`:
+    # `File.dirname(File.realpath(file_path))`. A subject path that is not a
+    # file yet (a unit probe) uses the real directory that contains it.
+    #
+    # @api private
+    # @param file_path [String] the path {anchor_file} chose.
+    # @return [String] absolute real directory.
+    def self.anchor_directory(file_path)
+      File.dirname(File.realpath(file_path))
+    rescue SystemCallError
+      File.realpath(File.dirname(File.expand_path(file_path)))
+    end
+
+    # The file the live method was defined in, when that method is `subject`'s
+    # own. An inherited method, or a method that is not defined yet, returns nil
+    # so {anchor_file} uses the subject path.
+    #
+    # @api private
+    # @param subject [Mutineer::Subject] the method being redefined.
+    # @return [String, nil] `source_location` path, or nil.
+    def self.defined_path(subject)
+      target = subject.namespace.empty? ? Object : Object.const_get(subject.namespace.join("::"))
+      target = target.singleton_class if subject.singleton
+      method = target.instance_method(subject.name)
+      return unless method.owner == target
+
+      method.source_location&.first
+    rescue NameError
+      nil
+    end
+
+    # Whether `left` and `right` are the same file after resolving symlinks.
+    #
+    # @api private
+    # @param left [String] a path.
+    # @param right [String] a path.
+    # @return [Boolean]
+    def self.same_file?(left, right)
+      File.realpath(left) == File.realpath(right)
+    rescue SystemCallError
+      false
     end
 
     # The enclosing def with the mutation applied, wrapped in `class << self`
@@ -386,5 +483,185 @@ module Mutineer
       else        Result.error("unexpected exit status: #{status.exitstatus.inspect}")
       end
     end
+
+    # Rewrites path anchors in one snippet (#339). A `require_relative` argument
+    # is rewritten on its own first, so a nested `__dir__` or `__FILE__` is not
+    # left pointing at the file `load` runs.
+    #
+    # @api private
+    class PathAnchor < Prism::Visitor
+      # Argument nodes that are not a single expression to splice into
+      # `File.expand_path`. A splat or a keyword would change meaning there.
+      SKIPPED_ARGUMENTS = [
+        Prism::SplatNode, Prism::KeywordHashNode, Prism::BlockArgumentNode, Prism::ForwardingArgumentsNode
+      ].freeze
+
+      # @param source [String] the snippet or argument to rewrite.
+      # @param file_literal [String] a dumped Ruby string of the original `__FILE__`.
+      # @param dir_literal [String] a dumped Ruby string of the original `__dir__`.
+      def initialize(source, file_literal, dir_literal)
+        @source = source
+        @file_literal = file_literal
+        @dir_literal = dir_literal
+        @edits = []
+      end
+
+      # Parses `source` and applies the edits. Parse errors return `source`
+      # unchanged: the caller's reparse guard then scores the snippet `error`.
+      #
+      # @param source [String] snippet or argument source.
+      # @param file_literal [String] dumped original `__FILE__`.
+      # @param dir_literal [String] dumped original `__dir__`.
+      # @return [String]
+      def self.rewrite(source, file_literal, dir_literal)
+        parsed = Prism.parse(source)
+        return source unless parsed.errors.empty?
+
+        anchor = new(source, file_literal, dir_literal)
+        anchor.visit(parsed.value)
+        anchor.apply
+      end
+
+      # Replaces a `__FILE__` keyword with the original path.
+      #
+      # @param node [Prism::SourceFileNode] the keyword.
+      # @return [void]
+      def visit_source_file_node(node)
+        replace(node, @file_literal)
+      end
+
+      # Replaces a path-anchor call, or walks into a call that is not one.
+      #
+      # @param node [Prism::CallNode] a call in the snippet.
+      # @return [void]
+      def visit_call_node(node)
+        return replace(node, @dir_literal) if dir_call?(node)
+
+        if (argument = relative_argument(node))
+          anchored = self.class.rewrite(slice(argument), @file_literal, @dir_literal)
+          text = ["require(File.expand_path(", anchored, ", ", @dir_literal, "))"].join
+          return replace(node, text)
+        end
+
+        super
+      end
+
+      # Applies recorded edits from the end, so earlier byte offsets stay valid.
+      #
+      # @return [String] the rewritten source.
+      def apply
+        @edits.sort_by! { |start_off,| -start_off }
+        @edits.inject(@source) do |code, (start_off, end_off, text)|
+          code.byteslice(0, start_off) + text + code.byteslice(end_off..)
+        end
+      end
+
+      private
+
+      # True when `node` is the `__dir__` keyword, including `self.__dir__`,
+      # `Kernel.__dir__`, and `send` / `__send__` of the literal name.
+      #
+      # @param node [Prism::CallNode]
+      # @return [Boolean]
+      def dir_call?(node)
+        return false if node.block
+
+        args = positional(node)
+        return false if args.nil?
+
+        if node.name == :__dir__
+          path_receiver?(node) && args.empty?
+        elsif send_call?(node)
+          args.size == 1 && literal_name(args.first) == "__dir__"
+        else
+          false
+        end
+      end
+
+      # The single path argument of a `require_relative` call, or nil when the
+      # call is not that anchor. `send(:require_relative, expr)` returns `expr`.
+      #
+      # @param node [Prism::CallNode]
+      # @return [Prism::Node, nil]
+      def relative_argument(node)
+        return if node.block
+
+        args = positional(node)
+        return unless args
+
+        if node.name == :require_relative && path_receiver?(node) && args.size == 1
+          args.first
+        elsif send_call?(node) && args.size == 2 && literal_name(args.first) == "require_relative"
+          args.last
+        end
+      end
+
+      # True for an implicit receiver, literal `self`, or `Kernel` / `::Kernel`.
+      #
+      # @param node [Prism::CallNode]
+      # @return [Boolean]
+      def path_receiver?(node)
+        receiver = node.receiver
+        return true if receiver.nil? || receiver.is_a?(Prism::SelfNode)
+
+        kernel_constant?(receiver)
+      end
+
+      # True when `node` is `Kernel` or `::Kernel`.
+      #
+      # @param node [Prism::Node]
+      # @return [Boolean]
+      def kernel_constant?(node)
+        (node.is_a?(Prism::ConstantReadNode) && node.name == :Kernel) ||
+          (node.is_a?(Prism::ConstantPathNode) && node.parent.nil? && node.name == :Kernel)
+      end
+
+      # True for `send` or `__send__` on a receiver {path_receiver?} accepts.
+      #
+      # @param node [Prism::CallNode]
+      # @return [Boolean]
+      def send_call?(node)
+        (node.name == :send || node.name == :__send__) && path_receiver?(node)
+      end
+
+      # Positional arguments, or nil when one of them is a splat or keywords.
+      #
+      # @param node [Prism::CallNode]
+      # @return [Array<Prism::Node>, nil]
+      def positional(node)
+        args = node.arguments&.arguments || []
+        return if args.any? { |arg| SKIPPED_ARGUMENTS.any? { |kind| arg.is_a?(kind) } }
+
+        args
+      end
+
+      # The text of a symbol or string literal, without quotes.
+      #
+      # @param node [Prism::Node]
+      # @return [String, nil]
+      def literal_name(node)
+        node.unescaped if node.is_a?(Prism::SymbolNode) || node.is_a?(Prism::StringNode)
+      end
+
+      # The snippet bytes of `node`.
+      #
+      # @param node [Prism::Node]
+      # @return [String]
+      def slice(node)
+        location = node.location
+        @source.byteslice(location.start_offset, location.end_offset - location.start_offset)
+      end
+
+      # Records a replacement of `node`'s source range.
+      #
+      # @param node [Prism::Node]
+      # @param text [String] the Ruby source to write instead.
+      # @return [void]
+      def replace(node, text)
+        location = node.location
+        @edits << [location.start_offset, location.end_offset, text]
+      end
+    end
+    private_constant :PathAnchor
   end
 end
