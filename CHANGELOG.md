@@ -12,6 +12,7 @@ All notable changes to this project are documented here. The format is based on
   When a source raises `NameError` (including `NoMethodError`) while it
   loads, and the run has no `boot:` file, stderr adds one line. The names
   it needs come from `boot:` or `--boot`, which loads before the sources.
+  Listing the entry file as an earlier source also loads it first.
   In that run, `require:` files still load after the sources, so a source
   cannot use them while it loads. With a boot file they load after the
   boot file, and the parent does not require the sources.

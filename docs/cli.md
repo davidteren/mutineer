@@ -90,6 +90,7 @@ With no boot file, an in-process run requires each source, then each `require` f
 A source that raises `NameError` while it loads cannot take the missing name from `require`.
 With a boot file, `require` files load after that file, and the parent does not require the sources.
 Point `boot` at an app entry point or a gem's entry file (`lib/<name>.rb`), or pass `--boot`.
+Listing that file as an earlier source also loads it first.
 A dry run does not load the sources, so it does not report this.
 `--daemon` loads the boot file, then the `require` files, in the daemon.
 `--test-command` does not load `require` files.
