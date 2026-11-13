@@ -146,7 +146,12 @@ All notable changes to this project are documented here. The format is based on
   (`file::memory:` or `mode=memory`) takes no lock. An empty `file:` URI
   is a private temporary database and takes no lock. A relative `file:`
   path is resolved from the working directory, which the daemon sets to
-  the app root before the lock.
+  the app root before the lock. A later `mode` that adds write or create
+  access, such as `mode=ro&mode=rw`, is a URI SQLite rejects, so it takes
+  no lock. Other run-lock gaps are unchanged (#416): in-process `--rails`
+  runs, the lock taken after boot and `--require` files, a prepare daemon
+  that fails to boot, and the `--jobs 1` respawn window. A custom VFS that
+  does not open the URI path is not covered.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and

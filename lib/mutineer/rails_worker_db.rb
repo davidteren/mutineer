@@ -818,7 +818,8 @@ module Mutineer
         return unless sqlite_uri_option(name, value, options)
       end
 
-      [sqlite_uri_text(path), options[:mode] == "memory"]
+      memory = options[:open_flags] && (options[:open_flags] & 0x80) != 0
+      [sqlite_uri_text(path), memory]
     end
 
     # Advance to the delimiter that ends the part a `%00` truncated.
@@ -853,26 +854,55 @@ module Mutineer
     end
 
     # Record one query parameter. `mode` and `cache` are the keys that decide
-    # whether a file opens. The last value wins. An unknown value is a URI
-    # SQLite rejects.
+    # whether a file opens. An unknown value is a URI SQLite rejects.
+    # A later `mode` replaces the earlier one only when SQLite allows it.
+    # Adding write or create after a narrower mode is refused.
     #
     # @param name [Array<Integer>] parameter name bytes.
     # @param value [Array<Integer>] parameter value bytes.
-    # @param options [Hash] `:mode` and `:cache`, updated in place.
+    # @param options [Hash] `:open_flags` and `:cache`, updated in place.
     # @return [Boolean] false when SQLite would reject this parameter.
     def self.sqlite_uri_option(name, value, options)
       key = sqlite_uri_text(name)
       text = sqlite_uri_text(value)
       case key
       when "mode"
-        return false unless %w[ro rw rwc memory].include?(text)
-
-        options[:mode] = text
+        return false unless sqlite_uri_mode(text, options)
       when "cache"
         return false unless %w[shared private].include?(text)
 
         options[:cache] = text
       end
+      true
+    end
+
+    # Apply one `mode` value to the open flags SQLite starts with.
+    # The default is read-write and create, as in `sqlite3_open`.
+    # SQLite refuses a later mode whose non-memory bits are greater than the
+    # flags still set, for example `mode=ro&mode=rw`. `mode=memory` then
+    # `mode=rw` is a disk file again. The memory bit is `0x80`.
+    #
+    # @param text [String] the mode value.
+    # @param options [Hash] `:open_flags` is updated in place.
+    # @return [Boolean] false when the value is unknown or not allowed.
+    def self.sqlite_uri_mode(text, options)
+      readonly = 0x01
+      readwrite = 0x02
+      create = 0x04
+      memory = 0x80
+      bits = {
+        "ro" => readonly,
+        "rw" => readwrite,
+        "rwc" => readwrite | create,
+        "memory" => memory
+      }[text]
+      return false unless bits
+
+      mask = readonly | readwrite | create | memory
+      flags = options[:open_flags] ||= readwrite | create
+      return false if (bits & ~memory) > (mask & flags)
+
+      options[:open_flags] = (flags & ~mask) | bits
       true
     end
 

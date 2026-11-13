@@ -1030,6 +1030,10 @@ class RailsWorkerDbTest < Minitest::Test
       "file:pre%00mid.sqlite3?mode=rw" => "pre",
       "file:foo.sqlite3?MODE=memory" => "foo.sqlite3",
       "file:foo.sqlite3?mode=memory&mode=rw" => "foo.sqlite3",
+      "file:foo.sqlite3?mode=rw&mode=ro" => "foo.sqlite3",
+      "file:foo.sqlite3?mode=ro&mode=rw" => nil,
+      "file:foo.sqlite3?mode=ro&mode=rwc" => nil,
+      "file:foo.sqlite3?mode=rw&mode=rwc" => nil,
       "file:foo.sqlite3?=memory&mode=rw" => "foo.sqlite3",
       "file:foo.sqlite3?immutable=1" => "foo.sqlite3",
       "file:/var/app/storage/test.sqlite3" => "/var/app/storage/test.sqlite3",
@@ -1105,14 +1109,16 @@ class RailsWorkerDbTest < Minitest::Test
           "file:///",
           "file://otherhost/#{bare}?mode=rwc",
           "file:named.sqlite3?mode=rwc&mode=memory",
-          "file:named.sqlite3?MODE=memory&mode=rwc"
+          "file:named.sqlite3?MODE=memory&mode=rwc",
+          "file:widen.sqlite3?mode=ro&mode=rw",
+          "file:widen.sqlite3?mode=rw&mode=rwc"
         ].each do |uri|
           opened = sqlite_cli_opened_file(sqlite3, uri)
           got = Mutineer::RailsWorkerDb.sqlite_uri_file(uri)
           if opened.nil?
             assert_nil got, uri
           else
-            assert_equal opened, got, uri
+            assert_equal File.expand_path(opened), File.expand_path(got), uri
           end
         end
       end
@@ -1129,7 +1135,9 @@ class RailsWorkerDbTest < Minitest::Test
         begin
           plain = Mutineer::RailsWorkerDb.sqlite_lock_path(sqlite_db_config("storage/test.sqlite3"))
           uri = Mutineer::RailsWorkerDb.sqlite_lock_path(sqlite_db_config("file:storage/test.sqlite3?mode=rwc"))
-          assert_equal "#{dir}/storage/test.sqlite3-mutineer.lock", plain
+          # expand_path resolves /var to /private/var on macOS. Compare that path.
+          expected = "#{File.expand_path('storage/test.sqlite3', dir)}-mutineer.lock"
+          assert_equal expected, plain
           assert_equal plain, uri
         ensure
           Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
