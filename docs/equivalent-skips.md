@@ -3,8 +3,8 @@
 Mutineer skips some code changes to reduce results that rarely help improve tests.
 These built-in skips cannot be turned off. Chain-call skips and the endless-range
 skip use the method name only, so they are not always equivalent.
-Mutineer counts every skip on this page when its operator runs. The chain-link,
-call-to-receiver and range operators are not in the default set, so their skips
+Mutineer counts every skip on this page when its operator runs. The collection-method,
+chain-link, call-to-receiver and range operators are not in the default set, so their skips
 are counted only when `--operators` selects them. The dry run prints the count,
 and the JSON report gives it in `summary.declined_by_operator`.
 
@@ -171,3 +171,33 @@ For a slice of an Array or String, `(1..)` and `(1...)` select the same elements
 Every other endless range is swapped. This includes the assigned value in `h[:k] = 1..nil` and a range in parentheses, as in `list[(1..)]`. `(1..)` and `(1...)` differ on `==`, `eql?`, `hash`, `exclude_end?`, `to_s`, `inspect` and `cover?(1..)`, so a test that compares, stores or prints the range can kill the mutant.
 
 Some of these mutants are equivalent: a range in parentheses inside a slice, or a range used only with `include?`, `===`, `case`/`when`, a `case`/`in` pattern or `clamp`. In a Rails app, a range in an Active Record query, as in `where(created_at: time..)`, also gives an equivalent mutant, because both ranges become the same `>=` SQL condition. So does `validates :age, inclusion: { in: 18.. }`. Suppress such a mutant with `# mutineer:disable-line` or an `ignore:` entry, as described at the top of the page.
+
+## Collection method
+
+The `collection_method` operator is not in the default set. Select it with `--operators` or with `operators:` in `.mutineer.yml`. The `--operators` list replaces the default set, so name the default operators too.
+
+The operator swaps `each` with `map`, `all?` with `any?`, `first` with `last`, `min` with `max`, and `select` with `reject`. It skips `each` and `map` when the call's result is discarded. `each` returns the receiver. `map` returns a new array. No test can tell those apart when the value is thrown away. Each skipped call counts as declined.
+
+The check uses the syntax tree only. It does not know the receiver's class. A method named `each` that is not `Enumerable#each` follows the same rule.
+
+The result is discarded, and the swap is skipped, when the call is a statement and nothing keeps that statement's value:
+
+- It is not the last expression of the method.
+- It is not the last expression of a block or a lambda. The method that takes the block may use the block's result. The operator does not guess which methods do. A loop that is the last line of a block is still swapped.
+- It is not the last expression of a branch whose value is kept. A branch is an `if`, `unless`, `case`, `rescue`, `else`, ternary, or modifier.
+- A `while`, `until`, or `for` body discards its value, including the last line. An `ensure` body does too. `defined?` does not read the call's result.
+- A `begin`, parentheses, an array, a hash, a range, string interpolation, or `and` / `or` / `&&` / `||` keeps the value only when the outer expression keeps it.
+
+The result is kept, and the swap still runs, when the call is any of these:
+
+- The last expression of the method, a block, or a lambda.
+- Assigned, including `+=`, `||=`, multiple assignment, and a pattern match (`=>`).
+- Passed as an argument, a splat, a keyword value, or a block argument.
+- The receiver of another call, as in `users.each { }.size` or `!users.each`. The next call may use the object. The swap stays even when that next call's own result is discarded.
+- Returned with `return`, `break`, or `next`.
+- The object of `class << obj`.
+- A condition of `if`, `unless`, `while`, `until`, or `case`, or a `when` value. Both results are true for an ordinary receiver, so some of these mutants are equivalent. The syntax reads the value, so the operator still emits them.
+
+`all?`, `any?`, `first`, `last`, `min`, `max`, `select`, and `reject` are swapped even when the result is discarded. `all?` and `any?` can stop on different elements. A block can show that change.
+
+The report that opened this skip found the `each` to `map` mutant in 4 of 23 ignore entries.

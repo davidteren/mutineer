@@ -105,6 +105,26 @@ class SiteDocsTest < Minitest::Test
     end
   end
 
+  # The unused each/map skip is on both twins, in its own section.
+  def test_equivalent_skips_page_describes_the_unused_each_map_skip
+    phrases = [
+      "collection_method", "declined", "multiple assignment", "argument", "block",
+      "ensure", "while", "all?", "4 of 23"
+    ]
+    html = File.read("docs/equivalent-skips.html")[/<h2 id="collection-method">.*/m]
+    markdown = File.read("docs/equivalent-skips.md")[/^## Collection method\n.*/m]
+    phrases.each do |phrase|
+      assert_includes html, phrase, "equivalent-skips.html is missing #{phrase}"
+      assert_includes markdown, phrase, "equivalent-skips.md is missing #{phrase}"
+    end
+    html_intro = File.read("docs/equivalent-skips.html")[/\A.*?(?=<h2)/m]
+    md_intro = File.read("docs/equivalent-skips.md")[/\A.*?(?=^## )/m]
+    %w[collection-method chain-link call-to-receiver range].each do |name|
+      assert_includes html_intro, name, "equivalent-skips.html intro is missing #{name}"
+      assert_includes md_intro, name, "equivalent-skips.md intro is missing #{name}"
+    end
+  end
+
   # The present? triage heading sits inside Call to receiver, before Endless range.
   def test_present_survivor_triage_sits_inside_call_to_receiver
     html = File.read("docs/equivalent-skips.html")
