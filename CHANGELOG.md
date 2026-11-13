@@ -8,6 +8,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **A source that cannot load alone points at `boot:` (#376).**
+  When a source raises `NameError` (including `NoMethodError`) while it
+  loads, and the run has no `boot:` file, stderr adds one line. The names
+  it needs come from `boot:` or `--boot`, which loads before the sources.
+  Listing the entry file as an earlier source also loads it first.
+  In that run, `require:` files still load after the sources, so a source
+  cannot use them while it loads. With a boot file they load after the
+  boot file, and the parent does not require the sources.
+  `--test-command` does not load `require:` files. The hint line is absent
+  for any other load error, and for a `NameError` in the boot file or a
+  `require:` file. A dry run does not load the source, so it does not print
+  the line. `--daemon` and `--test-command` do not require sources in the
+  tool process, so they do not print it either. `--help` describes `--boot`
+  as an app entry point or a gem's `lib/<name>.rb`, and no longer limits it
+  to Rails apps.
 - **A run counts sources that have no paired test (#381).**
   The report names each skipped source and how many mutants it holds.
   JSON adds `summary.unpaired_sources`, `summary.unpaired_mutants`, and `unpaired_sources[]`.
@@ -76,10 +91,13 @@ All notable changes to this project are documented here. The format is based on
   characters, for example `ArgumentError: enum declared twice`. Before, it
   said only `child exited with status 2` or `daemon verdict: error`, and the
   cause was on stderr alone. The line is redacted in the child, and every
-  `details` value is redacted again when the report is written. Other
-  errors (a database error inside a test, RSpec errors outside examples, the
-  `--matrix` early end, `--test-command`) keep their fixed
-  text; #417 tracks them.
+  `details` value is redacted again when the report is written.
+- **Errored mutants without a raised exception name their cause (#417).** A
+  Minitest database connection or lock error puts
+  `a test failed with a database error: Class: message` in `details`. An
+  RSpec error outside examples uses a fixed line that names that case. A
+  `--matrix` early end after a serial database error uses its own fixed
+  line. `--test-command` and the human/HTML errored lists stay deferred.
 - **A daemon crash names itself in `details` (#388).** A mutant whose daemon
   died or did not reply in time now has `daemon crashed` or `daemon stopped
   answering`, not `daemon verdict: error`.
@@ -113,6 +131,27 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Behavior change.** A continuation-line survivor that ran is scored (#345).
+  Ruby counts one line of a statement. A mutant on a later line is a `:maybe`
+  selection (#254, #289): Mutineer runs the tests of the statement's other
+  lines, and a kill already counted. A survivor was `no_coverage` even when
+  those tests had run the mutated expression, so it left the score. The child
+  now writes a sentinel the first time that expression returns during a test.
+  That survivor moves from `no_coverage` to `survived`: it appears in
+  `survivors[]` and in `summary.survived`, and it leaves `summary.no_coverage`.
+  It enters the score. A survivor the sentinel does not record stays
+  `no_coverage`, still outside the score, and `summary.no_coverage` still
+  counts it. The same rule covers a trailing operator (`&&`, `+`), a method
+  chain, a multi-line argument list, a hash entry, and a heredoc
+  interpolation, under `reload`, `redefine`, and `--daemon`. A call that runs
+  only while the mutant file loads does not count: that write is cleared
+  before the tests. A raise inside the expression does not count, so an
+  operand that fails before a mutated operator runs stays `no_coverage`.
+  Every one of the 24,918 mutants from every operator on this gem's `lib/`
+  and `test/fixtures/` either does not re-parse, as before, or wraps. The
+  fallback that would leave an unwrappable mutant as `no_coverage` did not
+  occur. A score can fall. A `--threshold` gate that passed can fail.
+  `--baseline` treats the new survivors as new. Refresh the baseline.
 - **A coverage cache hit checks only the tests that cover the sources
   (#398).** Before, a hit ran every `--test` file alone and then all of them
   together. Now it runs only the files that cover a line of the run's
@@ -152,6 +191,128 @@ All notable changes to this project are documented here. The format is based on
   runs, the lock taken after boot and `--require` files, a prepare daemon
   that fails to boot, and the `--jobs 1` respawn window. A custom VFS that
   does not open the URI path is not covered.
+- **An RSpec example's database error scores `error`, and a parallel Minitest
+  class follows queue order (#347).** The first failed RSpec example now
+  follows the Minitest rule. An Active Record connection or lock error
+  (`ConnectionNotEstablished`, including pool timeouts, `ConnectionFailed`,
+  `Deadlocked`, `LockWaitTimeout`) scores `error`, on a full run, a stop, and
+  `--matrix`. A later example's connection error does not change an earlier
+  assertion. On Rails 8, `ConnectionNotDefined` is a code error and still scores
+  `killed`. Rails 7.2 raises a plain `ConnectionNotEstablished` for an undefined
+  connection, so that mutant scores `error`. Other statement errors, such as bad
+  SQL, still score `killed`. A `before` hook counts as the example's own exception. An `after`
+  hook does not replace it. The stderr line is the same one Minitest writes.
+  With `--matrix`, that example is not a killer and the row stays incomplete.
+  There is no `--daemon` for RSpec. Errors are out of the score, so a lost
+  connection during a run no longer raises it, and a run that used to count
+  the example as a kill can change its score or fail `--threshold`. Refresh
+  the baseline when that happens.
+  Under Minitest `parallelize_me!`, the first failure is the earliest test in
+  the queue, not the thread that finishes first. A serial failure still
+  decides, because those classes run first. A mutant that mixed a database
+  error and an assertion in one parallel class no longer flips between
+  `killed` and `error` across runs. The JSON report still does not name an
+  in-test database error; pull request #443 does that. Active Record 7.2
+  reports SQLite `database is locked` as `StatementInvalid`, so that mutant
+  still scores `killed` (#347).
+- **`--strategy redefine` no longer false-kills path anchors in a read-only
+  source directory (#339).** Redefine loads the mutated method from a hidden
+  file. When that directory is not writable, the file is in the system temp
+  directory. `__dir__`, `__FILE__`, and `require_relative` then pointed there,
+  so every mutant raised `ENOENT` or `LoadError` and scored `killed`. The
+  snippet now resolves those against the original source file, including
+  calls on `self` and `Kernel` and `send` with a literal name, whether the
+  directory is writable or not. A leading `~` stays a path segment, and the
+  load does not call an instance method named `require`. A symlinked source keeps the loaded path for
+  `__FILE__` and the real directory for `__dir__` and `require_relative`. A
+  test that checks `__FILE__` against the source path used to fail for every
+  redefined mutant. It now fails only when the mutation changes the result,
+  so a redefine score can go down. Reload, in process and on the daemon,
+  still needs a writable directory: the write fails and the mutant scores
+  `error`, which stays out of the score. The read-only warning is gone.
+- **A killed mutant stays killed when the failure message holds raw bytes (#434).**
+  Rails' `assert_response` appends a short response body as raw bytes.
+  The reporter prints that message on the silenced stdout.
+  After Rails sets both `Encoding.default_external` and `Encoding.default_internal`
+  to UTF-8, that write raised `Encoding::UndefinedConversionError`, and the child
+  scored the mutant `errored`. The silenced stdout is binary now, so the bytes
+  are discarded and the failure still counts as a kill. This holds for
+  in-process reload and redefine runs and for daemon reload runs.
+  The daemon forces reload; redefine is not available there.
+  RSpec already writes its failure text to a StringIO, which accepts the bytes.
+- **A mutant in `define_method` or `define_singleton_method` on a load line is `ran_at_load` (#435).**
+  A class method such as `greets` runs when the including class loads.
+  Rails turns eager load on when `CI` is set, so that call happens before
+  the mutant. The call's own mutants were `ran_at_load`. A mutant of a
+  string inside the block on that same line was a survivor, and the score
+  fell to 0.0. It is now `ran_at_load` too, under `reload`, `redefine`, and
+  the daemon. A kill still counts. `CI` itself changes nothing: only
+  whether the line ran at load does. Without eager load the class loads
+  after the mutant, and those mutants stay killed. An equivalent
+  `each` → `map` still survives in that case. On the reported method, 2 of
+  5 mutants moved, so that run's score goes from 0.0 to no score. A run
+  that still has other survivors can score higher, because these mutants
+  leave the denominator. `--threshold` skips a nil score. The new case is
+  a `define_method` or `define_singleton_method` call whose line ran at
+  load, including the block that call stores. Another block on that line,
+  such as `each` with an empty array, stays scored: the line can count
+  without the block, and a test can run the mutated block. An
+  empty `each` that shares its line with `define_method` can still hide
+  that call (#286). That needs the call to have been made with no elements while
+  the class loaded, then again with elements by a test that does not check
+  the generated method. The reported call is `greets :alice`. Re-running
+  the caller's class body, so these mutants can be killed, stays #389. A
+  one-line or endless `def` still uses its call count, so a block on the
+  `def` line is unchanged (#389).
+- **An endless range on a Hash, Proc, or other non-literal receiver is swapped (#344).**
+  The `range` operator skipped an endless range (`1..`, `1..nil`) used as an
+  index of `[]`, `[]=`, `slice`, `slice!`, `byteslice`, `bytesplice`,
+  `values_at`, or an index write. The only exception was a constant whose
+  name contained a lower-case letter, such as `Array[1..]`. Every variable,
+  call, and other constant was skipped, including `HASH[1..]`, `ARGV[1..]`,
+  `list[1..]`, `fn[1..]`, and `{(1..) => :a}[1..]`. A Hash, a Proc, and a
+  custom `[]` or `slice` can tell `1..` from `1...`, so the skip hid a mutant
+  a test can kill. The operator now skips that range only when the receiver
+  is an array or string literal, including parentheses around one. A
+  `begin` counts only when every branch that can supply its value is such
+  a literal, so a rescue or an else that returns a Hash is swapped.
+  Backticks are swapped too, because `` ` `` can be overridden. A
+  variable, a call, or a constant is swapped, and an earlier
+  assignment is not followed. On a real Array or String the new mutant is
+  often equivalent, as in `argv[1..]` or `text.byteslice(offset..)`. In this
+  gem's `lib/`, 14 such ranges were skipped and none was a literal, so a
+  `range` run there goes from 45 mutants to 59. A run that names `range`
+  can gain mutants, survivors, and new mutant ids. Re-check `ignore:` entries
+  for `range`, and save a new baseline. Active Record conditions such as
+  `where(created_at: time..)`, `where.not`, `find_by`, and `exists?` were
+  already swapped. They still are: both ranges become the same `>=` SQL.
+  Suppress one equivalent mutant with an `ignore:` entry.
+  `# mutineer:disable-line range` hides every `range` mutant on that line,
+  so use it only when every one of them is equivalent.
+- **Reload pairs a repeated callback when the other entry is a different one (#413).**
+  After a class body ran again, the repeat was paired by kind and by a
+  filter identity that still put different callbacks in one bucket.
+  `&:name` procs have no source, so they shared one bucket. Blocks in
+  the reloaded file shared a bucket when Ruby gave them the same label,
+  with no comparison of their code. A validator shared a bucket with
+  another of its class and attributes, with no comparison of option
+  names. `if:` and `unless:` were not part of the bucket. The class
+  body's new copy then stayed beside the old one, and a test that
+  counts errors or callback runs killed every mutant of the file.
+  `&:name` now matches the symbol. A block matches its code, so a value
+  it captured that differs on each load (a new object, a time, a random
+  value) still pairs when no other entry has that code. A validator
+  matches its option names, not values a mutant method can change. An
+  `if:` or `unless:` is part of the match.
+  A concern entry that is the same symbol, the same code, or the same
+  option names still cannot be told apart, so both copies stay. A
+  callback the class body adds only on its first run (`@done ||=`) still
+  keeps every identical copy. Those cases remain #413. Full reload
+  (#389) would build the class once. Reload and the daemon share this
+  path. Redefine does not run the class body again, so it does not add
+  the second copy.
+  **Score change:** a Rails model whose test counts those callbacks can
+  now show survivors that were false kills, so its score can go down.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and
