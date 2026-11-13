@@ -73,6 +73,20 @@ class OutputFilterTest < Minitest::Test
     assert_includes err, "child [REDACTED] end"
     refute_includes err, "s3cret"
     assert_empty out
+
+    # Kernel.fork is a separate singleton method and is wrapped too.
+    _out, err = captured do
+      Mutineer::OutputFilter.install(streams: [:stderr])
+      pid = Kernel.fork do
+        ENV["DATABASE_URL"] = "postgres://u:s3cret@h/db"
+        STDERR.puts "kfork s3cret end"
+        exit!(0)
+      end
+      Process.waitpid(pid)
+    end
+
+    assert_includes err, "kfork [REDACTED] end"
+    refute_includes err, "s3cret"
   end
 
   def test_a_password_with_a_newline_is_not_split
@@ -120,14 +134,22 @@ class OutputFilterTest < Minitest::Test
   # parent's pipe, and the parent redacts it with the parent's environment.
   def test_a_fork_child_that_execs_still_reaches_the_parent_pipe
     ENV["DATABASE_URL"] = "postgres://u:s3cret@h/db"
-    _out, err = captured do
-      Mutineer::OutputFilter.install(streams: [:stderr])
-      pid = fork { exec(RbConfig.ruby, "-e", "STDERR.puts %(execd s3cret end)") }
-      Process.waitpid(pid)
-    end
+    script = "STDERR.puts %(execd s3cret end)"
+    # Kernel#exec, Kernel.exec, and Process.exec are three separate methods.
+    [
+      -> { exec(RbConfig.ruby, "-e", script) },
+      -> { Kernel.exec(RbConfig.ruby, "-e", script) },
+      -> { Process.exec(RbConfig.ruby, "-e", script) }
+    ].each_with_index do |child, index|
+      _out, err = captured do
+        Mutineer::OutputFilter.install(streams: [:stderr])
+        pid = fork { child.call }
+        Process.waitpid(pid)
+      end
 
-    assert_includes err, "execd [REDACTED] end"
-    refute_includes err, "s3cret"
+      assert_includes err, "execd [REDACTED] end", "exec form #{index}"
+      refute_includes err, "s3cret"
+    end
   end
 
   # The parent's copier cannot hide a password only the child knows. A child
@@ -140,7 +162,8 @@ class OutputFilterTest < Minitest::Test
     script = "STDOUT.puts %(execd-out #{secret}); STDERR.puts %(execd-err #{secret})"
     [
       -> { ENV["DATABASE_URL"] = child_url; exec(RbConfig.ruby, "-e", script) },
-      -> { Process.exec({ "DATABASE_URL" => child_url }, RbConfig.ruby, "-e", script) }
+      -> { Process.exec({ "DATABASE_URL" => child_url }, RbConfig.ruby, "-e", script) },
+      -> { Kernel.exec({ "DATABASE_URL" => child_url }, RbConfig.ruby, "-e", script) }
     ].each do |child|
       out, err = captured do
         Mutineer::OutputFilter.install

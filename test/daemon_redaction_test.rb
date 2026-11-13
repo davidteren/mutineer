@@ -244,9 +244,14 @@ class DaemonRedactionTest < Minitest::Test
     client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
     rd, wr = IO.pipe
     wr.binmode
-    wr.write(bytes)
-    wr.close
+    # Write while the drain reads: a payload larger than the pipe buffer
+    # (16 KiB on some macOS runners) would block a write made first.
+    writer = Thread.new do
+      wr.write(bytes)
+      wr.close
+    end
     client.send(:drain_stderr, rd)
+    writer.join
     errio.string
   ensure
     rd&.close
@@ -261,8 +266,8 @@ class DaemonRedactionTest < Minitest::Test
   end
 
   # A long line is scanned once its newline arrives, not on every 4 KiB read,
-  # so the drain stays linear in the line length. The line fits in one pipe
-  # buffer, because the helper writes before it reads.
+  # so the drain stays linear in the line length. The line is larger than
+  # any pipe buffer, so the reads really come in pieces.
   def test_daemon_stderr_drain_scans_a_long_line_once
     real = Mutineer::Redaction.method(:take_redactable)
     calls = 0
@@ -270,9 +275,9 @@ class DaemonRedactionTest < Minitest::Test
       calls += 1
       real.call(buffer, flush: flush)
     end
-    out = Mutineer::Redaction.stub(:take_redactable, counting) { drain("#{"A" * 60_000}\n") }
+    out = Mutineer::Redaction.stub(:take_redactable, counting) { drain("#{"A" * 200_000}\n") }
 
-    assert_equal 60_001, out.bytesize
+    assert_equal 200_001, out.bytesize
     assert_operator calls, :<=, 2
   end
 

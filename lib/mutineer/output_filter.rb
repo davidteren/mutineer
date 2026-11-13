@@ -19,8 +19,8 @@ module Mutineer
     # returns; a slow reader blocks that write, and the bytes are not dropped.
     QUIET_POLL = 0.05
 
-    # Runs {after_fork!} in the child. Kernel#fork and Process.fork are
-    # separate, so both are wrapped.
+    # Runs {after_fork!} in the child. Kernel#fork, Kernel.fork, and
+    # Process.fork are separate, so all three are wrapped.
     module ForkHook
       # @return [Integer, nil] the child pid in the parent; nil in the child
       #   when no block is given.
@@ -40,7 +40,8 @@ module Mutineer
 
     # Stops a fork child's copier before exec. The copier thread and its read
     # end do not survive exec, so the program would write to a pipe nobody
-    # reads. Kernel#exec and Process.exec are separate, so both are wrapped.
+    # reads. Kernel#exec, Kernel.exec, and Process.exec are separate, so all
+    # three are wrapped.
     module ExecHook
       # @return [void] does not return when exec succeeds.
       def exec(*args)
@@ -234,10 +235,10 @@ module Mutineer
       return if @fork_hooked
 
       @fork_hooked = true
-      Kernel.prepend(ForkHook)
-      Process.singleton_class.prepend(ForkHook)
-      Kernel.prepend(ExecHook)
-      Process.singleton_class.prepend(ExecHook)
+      [Kernel, Kernel.singleton_class, Process.singleton_class].each do |target|
+        target.prepend(ForkHook)
+        target.prepend(ExecHook)
+      end
     end
 
     # @return [void]
