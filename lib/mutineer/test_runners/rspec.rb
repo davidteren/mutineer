@@ -72,9 +72,10 @@ module Mutineer
         return 0 if status.zero?
 
         code = failure_code
-        # Fixed cause when RSpec failed outside examples (#417 / KTD5). Write
-        # here so failure_code stays a pure status helper.
-        ChildCause.write_text(ChildCause::RSPEC_OUTSIDE_EXAMPLES) if code == 2
+        # Fixed cause when RSpec failed outside examples (#417 / KTD5). Status 2
+        # is also an in-example database error (#347), so test the predicate,
+        # not the status. Write here so failure_code stays a pure status helper.
+        ChildCause.write_text(ChildCause::RSPEC_OUTSIDE_EXAMPLES) if outside_examples?
         code
       ensure
         FileOrder.rank = nil

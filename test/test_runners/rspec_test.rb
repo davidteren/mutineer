@@ -531,6 +531,16 @@ class TestRunnersRSpecTest < Minitest::Test
     end
   end
 
+  # Status 2 is also a database error: its verdict must not carry the
+  # outside-examples cause (#417, #347).
+  def test_database_error_verdict_does_not_claim_an_error_outside_examples
+    [true, false].each do |matrix|
+      verdict = rspec_db_verdict({ "FIRST" => "connection" }, matrix: matrix)
+      assert_equal :error, verdict.status
+      refute_equal Mutineer::ChildCause::RSPEC_OUTSIDE_EXAMPLES, verdict.details
+    end
+  end
+
   def test_first_assertion_keeps_a_later_database_error_killed
     env = { "FIRST" => "fail", "SECOND" => "connection" }
     code, err = rspec_db_error(env)
