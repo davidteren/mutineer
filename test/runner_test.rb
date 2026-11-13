@@ -203,6 +203,21 @@ class RunnerTest < Minitest::Test
     def order_tests(_file, tests) = tests
   end
 
+  def load_probe(snippet, source, load_lines:)
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
+    start = source.index(snippet)
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,
+                                      replacement: "nil", operator: :test)
+    map = FakeCoverageMap.new({ start => [] }, "/root", load_lines, false, [])
+    # The line numbers in load_lines are what the assertion names. tests_for is
+    # unused: this probe asks ran_at_load? and the survivor reclassification.
+    ran = Mutineer::JobPlan.ran_at_load?("x.rb", mutation, subject, source, map)
+    survived = Mutineer::JobPlan.load_verdict(Mutineer::Result.new(status: :survived), "x.rb", mutation, subject,
+                                              source, map).status
+    [ran, survived]
+  end
+
   def selection(source, snippet, tests_by_line, load_lines: [], uncapturable: false, load_methods: [])
     def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
     subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
@@ -236,6 +251,72 @@ class RunnerTest < Minitest::Test
   def test_coverage_selection_ignores_the_def_line_load_count
     assert_equal :no_coverage, selection("def f(x = 1)\n  x\nend\n", "1", {}, load_lines: [1])[1].status
     assert_equal :no_coverage, selection("def f(x) = x * 2\n", "x * 2", {}, load_lines: [1])[1].status
+  end
+
+  # #435: a define_method call stores its block. A mutant in the call or in
+  # the stored block is ran_at_load when that call's line ran at load, even
+  # though the block body has no strict line of its own. A test that covers
+  # the line still runs, so a kill counts. Without the load line the survivor
+  # stays a survivor. An each block on the same kind of line is not
+  # define_method: the line counts when each runs with no elements, and the
+  # test can run the mutated block (#286). Code that runs only sometimes does
+  # not count, and a one-line def still ignores the block.
+  def test_a_mutant_that_shares_a_load_line_is_ran_at_load
+    source = <<~'RUBY'
+      def greets(*names)
+        names.each { |name| define_method("greet_#{name}") { "Hello, #{name}" } }
+      end
+    RUBY
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :greets, singleton: false, def_node: def_node)
+    loaded = FakeCoverageMap.new({ 2 => ["t_test.rb"] }, "/root", [2], false, [])
+    cold = FakeCoverageMap.new({ 2 => ["t_test.rb"] }, "/root", [], false, [])
+
+    ["greet_", "Hello, ", "each"].each do |snippet|
+      start = source.index(snippet)
+      mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,
+                                        replacement: "nil", operator: :test)
+      assert_equal :run, Mutineer::JobPlan.coverage_selection("x.rb", mutation, subject, source, loaded)[0], snippet
+      assert Mutineer::JobPlan.ran_at_load?("x.rb", mutation, subject, source, loaded), snippet
+      refute Mutineer::JobPlan.ran_at_load?("x.rb", mutation, subject, source, cold), snippet
+      survived = Mutineer::Result.new(status: :survived)
+      assert_equal :ran_at_load,
+                   Mutineer::JobPlan.load_verdict(survived, "x.rb", mutation, subject, source, loaded).status, snippet
+      assert_equal :survived,
+                   Mutineer::JobPlan.load_verdict(survived, "x.rb", mutation, subject, source, cold).status, snippet
+      killed = Mutineer::Result.new(status: :killed)
+      assert_equal :killed,
+                   Mutineer::JobPlan.load_verdict(killed, "x.rb", mutation, subject, source, loaded).status, snippet
+    end
+
+    conditional = "def f(k)\n  return 7 * 6 if k.nil?\n  k\nend\n"
+    assert_equal :no_coverage, selection(conditional, "7 * 6", {}, load_lines: [2])[1].status
+
+    # The string sits in each's block. Boot can count the line with xs = []
+    # and a later test can run the mutated block. It stays a survivor.
+    each_block = "def f(xs)\n  xs.each { |x| use(\"original\") }\nend\n"
+    ran, status = load_probe("original", each_block, load_lines: [2])
+    refute ran
+    assert_equal :survived, status
+
+    # The stored block's body is on its own line, so that line did not run at
+    # load. The define_method call did, and the block it stored is the original.
+    stored = "def greets(name)\n  define_method(\"greet_\#{name}\") do\n    \"Hello\"\n  end\nend\n"
+    ran, = load_probe("Hello", stored, load_lines: [2])
+    assert ran, "the define_method call ran at load"
+    ran, = load_probe("Hello", stored, load_lines: [])
+    refute ran, "no load line"
+
+    singleton = "def greets(name)\n  define_singleton_method(\"greet_\#{name}\") { \"Hello\" }\nend\n"
+    ran, = load_probe("Hello", singleton, load_lines: [2])
+    assert ran, "define_singleton_method stores the block the same way"
+
+    # A later statement on the modifier's line runs only sometimes. The line
+    # can count when the modifier's condition is checked. It stays scored.
+    later = "def f(flag); return \"early\" if flag; compute(flag); end\n"
+    ran, status = load_probe("compute", later, load_lines: [1])
+    refute ran
+    assert_equal :survived, status
   end
 
   # #209: a one-line or endless def ran at load when the method was called at

@@ -23,12 +23,23 @@ module Mutineer
     # file in another mode (for example the "w+x" Tempfile of Minitest's
     # `capture_subprocess_io`).
     #
+    # The null device is binary. A text-mode one still transcodes writes to
+    # `Encoding.default_external` once `Encoding.default_internal` is set too.
+    # Rails sets both to UTF-8 (`config.encoding`). The reporter's print of a
+    # failure message that holds raw bytes (what `assert_response` does with a
+    # short body) then raises `Encoding::UndefinedConversionError`, after the
+    # test has already failed. The child's rescue scores that `error`, not
+    # `killed` (#434). Nothing reads the silenced bytes.
+    #
     # Call it only in a child that exits after the tests run. Nothing restores
     # the previous stdout.
     #
     # @return [void]
     def self.silence
-      File.open(File::NULL, "w") { |null| STDOUT.reopen(null) }
+      File.open(File::NULL, "wb") { |null| STDOUT.reopen(null) }
+      # `reopen` can keep a UTF-8 encoding the process already had. Binary
+      # mode drops it, so a later write of those bytes cannot raise.
+      STDOUT.binmode
       $stdout = STDOUT
     end
   end
