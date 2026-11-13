@@ -70,6 +70,10 @@ module Mutineer
     # `--baseline` load) knows the score covers only the changed-line mutants.
     # `legacy_id_matches` (`{ignore:, baseline:}`) counts stored ids still in the
     # old format (#126); only the JSON report records it (`summary.legacy_id_matches`).
+    # `unmatched_ignores` is the `ignore:` ids that matched no mutant in this
+    # run (#377); only the JSON report records them (`summary.unmatched_ignores`).
+    # An empty list under `--only` means the check was skipped, not that every
+    # entry matched.
     # `declined` (operator name => count, from {JobPlan.collect_jobs}) counts the
     # candidates the operators did not mutate; the JSON and human reports show it.
     # `subjects` (methods discovered) and `unmutated_subjects` (one
@@ -78,12 +82,14 @@ module Mutineer
     # they are unknown: JSON reports null and the human report has no row. The
     # two are one unit: when either is left out, both are unknown.
     def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil,
-               baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 }, declined: {},
+               baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 },
+               unmatched_ignores: [], declined: {},
                subjects: nil, unmutated_subjects: nil)
       subjects = unmutated_subjects = nil if subjects.nil? || unmutated_subjects.nil?
       rendered =
         if format == "json"
-          json_report(baseline, scoped: scoped, legacy_id_matches: legacy_id_matches, declined: declined,
+          json_report(baseline, scoped: scoped, legacy_id_matches: legacy_id_matches,
+                                unmatched_ignores: unmatched_ignores, declined: declined,
                                 subjects: subjects, unmutated_subjects: unmutated_subjects)
         elsif format == "html"
           html_report(declined: declined, subjects: subjects, unmutated: unmutated_subjects&.size,
@@ -239,6 +245,9 @@ module Mutineer
     # @param legacy_id_matches [Hash{Symbol => Integer}] `{ignore:, baseline:}`:
     #   old-format ignore entries that matched, and survivors matched in an
     #   old-format baseline only through their old id (#126).
+    # @param unmatched_ignores [Array<String>] `ignore:` ids that matched no
+    #   mutant in this run, in file order, each once (#377). Empty under
+    #   `--only`, which skips the check.
     # @return [String] JSON text.
     # @param declined [Hash{String => Integer}] operator name => count of
     #   candidates that operator did not mutate (additive `summary.declined`
@@ -249,7 +258,8 @@ module Mutineer
     #   the operators did not mutate, already sorted (additive
     #   `summary.unmutated_subjects` count and top-level `unmutated_subjects[]`);
     #   nil (JSON null for both) when not supplied.
-    def json_report(baseline = nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 }, declined: {},
+    def json_report(baseline = nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 },
+                    unmatched_ignores: [], declined: {},
                     subjects: nil, unmutated_subjects: nil)
       killed = @agg.killed_count
       survived = @agg.survived_count
@@ -284,6 +294,10 @@ module Mutineer
           # the number of old-format ignore entries that matched; `baseline` the
           # survivors matched in the baseline only through their old id.
           legacy_id_matches: legacy_id_matches,
+          # Additive (1.10, #377): ignore ids that matched no mutant in this
+          # run's sources and operators. File order, each id once. Empty under
+          # --only, because that check is skipped. The exit code stays 0.
+          unmatched_ignores: unmatched_ignores,
           # Additive (1.9, #291): candidates the operators found and did not
           # mutate (a heredoc split or an equivalent skip), so not in `total`.
           declined: declined.values.sum,
@@ -857,8 +871,11 @@ module Mutineer
     # @param declined [Hash{String => Integer}] operator name => declined count.
     # @param skipped_invalid [Integer] candidates that did not re-parse.
     # @param ignored [Integer] suppressed candidates.
+    # @param unmatched_ignores [Array<String>] `ignore:` ids that matched no
+    #   mutant (#377), the same list a real run records.
     # @return [String] JSON text.
-    def self.dry_run_json(jobs, source_map, declined: {}, skipped_invalid: 0, ignored: 0)
+    def self.dry_run_json(jobs, source_map, declined: {}, skipped_invalid: 0, ignored: 0,
+                          unmatched_ignores: [])
       reporter = new(AggregateResult.new([]), source_map)
       by_operator = Hash.new(0)
       mutants = jobs.map do |subject, mutation, id|
@@ -874,6 +891,8 @@ module Mutineer
           total: mutants.size,
           skipped_invalid: skipped_invalid,
           ignored: ignored,
+          # Same list as a completed report (#377). Absent means an older dry run.
+          unmatched_ignores: unmatched_ignores,
           declined: declined.values.sum,
           declined_by_operator: declined,
           by_operator: by_operator.sort.to_h

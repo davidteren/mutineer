@@ -47,8 +47,11 @@ module Mutineer
             (--id ID ... | --all)                    Print ignore: entries for
                                                      survivors. Does not edit files.
         migrate [options] <source...>                Rewrite old ignore ids in
-                                                     .mutineer.yml. --dry-run prints
-                                                     each change and writes nothing
+                                                     .mutineer.yml. --dry-run lists
+                                                     each change and every entry
+                                                     that matches no mutant, writes
+                                                     nothing, and exits 1 for a miss.
+                                                     run warns and still exits 0
         init [--rails] [--force]                     Write .mutineer.yml and print
                                                      the first run command.
                                                      --force replaces an existing file.
@@ -977,6 +980,10 @@ module Mutineer
 
       aggregate, source_map, extras = Runner.execute(config)
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
+      # Matched before --since narrows the jobs, so an entry for a mutant
+      # outside the diff is not listed. --only returns an empty list.
+      unmatched_ignores = unmatched_ignore_ids(config, extras)
+      warn_unmatched_ignores(unmatched_ignores)
       matrix = KillMatrix.new(aggregate.results) if config.matrix
       reporter = Reporter.new(aggregate, source_map, matrix: matrix, unpaired: unpaired,
                               fail_fast: config.fail_fast)
@@ -1000,6 +1007,7 @@ module Mutineer
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
                       scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches,
+                      unmatched_ignores: unmatched_ignores,
                       declined: extras.fetch(:declined, {}), subjects: extras.fetch(:subjects, 0),
                       unmutated_subjects: extras.fetch(:unmutated_subjects, []))
       warn_empty_run(config, extras, unpaired) if aggregate.total.zero?
@@ -1131,6 +1139,52 @@ module Mutineer
            "#{config_dir} will not match this run. Run mutineer from #{config_dir}."
     end
 
+    # `ignore:` ids that match no mutant in this run's sources and operators.
+    # The set is the new ids and old-format ids from {JobPlan.collect_jobs}
+    # (`id_map` and `dropped_id_map`), so a dropped repeat of an edit counts
+    # as matched (#275) and an old-format id that still matches is not listed
+    # (the legacy warning names it). Matching happens before `--since` narrows
+    # the jobs, so an entry for a mutant outside the diff is not listed.
+    # `--only` returns an empty list: methods are narrowed before matching, so
+    # a miss there would not mean the entry is stale. File order, each id once.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @param extras [Hash] the {JobPlan.collect_jobs} extras (`:id_map`,
+    #   `:dropped_id_map`).
+    # @return [Array<String>] unmatched ids.
+    def self.unmatched_ignore_ids(config, extras)
+      return [] if config.only
+
+      known = {}
+      [extras[:id_map], extras[:dropped_id_map]].each do |map|
+        map&.each do |new_id, old_id|
+          known[new_id] = true
+          known[old_id] = true
+        end
+      end
+      seen = {}
+      Array(config.ignore).each_with_object([]) do |id, out|
+        next if known[id] || seen[id]
+
+        seen[id] = true
+        out << id
+      end
+    end
+
+    # Warns once per `ignore:` entry that matched no mutant (#377). The text
+    # says the list covers only this run, so a run of some files does not
+    # claim an entry is stale in the rest of the project. The exit code does
+    # not change. `--only` passes an empty list ({unmatched_ignore_ids}).
+    #
+    # @param ids [Array<String>] unmatched ids, in file order.
+    # @return [void]
+    def self.warn_unmatched_ignores(ids)
+      ids.each do |id|
+        warn "[mutineer] ignore entry #{id} matched no mutant in this run's sources and operators. " \
+             "If those cover its code, the entry is stale: remove it."
+      end
+    end
+
     # Warns once per old-format `ignore:` entry (#126), naming each new id it
     # matched with that mutant's file and subject. mutineer cannot tell a full
     # run from a narrowed one, so the text always says the list covers only this
@@ -1182,6 +1236,8 @@ module Mutineer
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
+      unmatched_ignores = unmatched_ignore_ids(config, extras)
+      warn_unmatched_ignores(unmatched_ignores)
       # Narrow jobs and ignored the same way a real run does, so the summary
       # matches the printed list.
       jobs, ignored_results, = JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
@@ -1194,7 +1250,8 @@ module Mutineer
 
       if config.format == "json"
         rendered = Reporter.dry_run_json(valid, source_map, declined: extras[:declined] || {},
-                                         skipped_invalid: skipped, ignored: ignored)
+                                         skipped_invalid: skipped, ignored: ignored,
+                                         unmatched_ignores: unmatched_ignores)
         if config.output
           abs = File.expand_path(config.output)
           File.write(abs, rendered)

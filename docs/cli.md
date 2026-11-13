@@ -51,7 +51,7 @@ Other commands:
 
 - `mutineer init [--rails] [--force]`
 - `mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)`
-- `mutineer migrate <source...> [--dry-run] [--operators LIST]`
+- `mutineer migrate <source...> [--dry-run] [--operators LIST]`: rewrite old `ignore:` ids. `--dry-run` lists each change and every entry that matches no mutant, writes nothing, and exits 1 when any entry matches nothing. `run` warns about those entries for its own sources and operators, lists them in `summary.unmatched_ignores`, and still exits 0. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids).
 - `mutineer config cache_dir|baseline [run options]`: print the value `run` would use with these options and `.mutineer.yml`. An unset baseline prints nothing. It writes nothing. The GitHub Action uses it.
 
 Exit codes: [README](https://github.com/davidteren/mutineer#exit-codes).

@@ -20,8 +20,14 @@ class CliTest < Minitest::Test
   # An isolated project dir with the calculator fixtures copied in, so the run is
   # real but the .mutineer cache lands in the temp dir, never the repo.
   # The [mutineer] old-format ignore warnings in a stderr capture.
+  # The unmatched-entry warning starts the same way and is not one of these.
   def legacy_warnings(err)
-    err.lines.grep(/\A\[mutineer\] ignore entry/)
+    err.lines.grep(/\A\[mutineer\] ignore entry .* old id format/)
+  end
+
+  # The [mutineer] warning for an ignore entry that matched no mutant (#377).
+  def unmatched_warnings(err)
+    err.lines.grep(/\A\[mutineer\] ignore entry .* matched no mutant/)
   end
 
   # The [mutineer] run-root mismatch warning in a stderr capture.
@@ -829,6 +835,7 @@ class CliTest < Minitest::Test
       assert doc["summary"].key?("declined")
       assert doc["summary"].key?("declined_by_operator")
       assert doc["summary"].key?("by_operator")
+      assert_equal [], doc["summary"]["unmatched_ignores"]
       assert_operator doc["summary"]["by_operator"]["arithmetic"], :>, 0
     end
   end
@@ -1423,6 +1430,9 @@ class CliTest < Minitest::Test
                                   chdir: proj)
       assert_equal 0, status.exitstatus, err
       assert_equal({ "ignore" => 1, "baseline" => 0 }, JSON.parse(out)["summary"]["legacy_id_matches"])
+      # A matching old id is in use. It is not also an unmatched entry.
+      assert_equal [], JSON.parse(out)["summary"]["unmatched_ignores"]
+      assert_empty unmatched_warnings(err)
     end
   end
 
@@ -1434,7 +1444,154 @@ class CliTest < Minitest::Test
       assert_equal 0, status.exitstatus, err
       assert_match(/1 ignored/, out)
       assert_empty legacy_warnings(err)
+      assert_empty unmatched_warnings(err)
     end
+  end
+
+  # #377: a stale ignore id is named, listed, and does not change the exit code.
+  # A current id in the same list is in use, so it is not named. A repeated
+  # stale id is named once, in file order.
+  def test_run_warns_when_an_ignore_entry_matches_no_mutant
+    with_project do |proj|
+      _old, current = calculator_ids(proj)
+      first = "aaaaaaaaaaaa"
+      second = "0123456789ab"
+      File.write(File.join(proj, ".mutineer.yml"), <<~YML)
+        ignore:
+          - #{first}
+          - #{current}
+          - #{second}
+          - #{first}
+        operators:
+          - arithmetic
+      YML
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--operators", "arithmetic", "--jobs", "1", "--format", "json",
+                                  chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal [first, second], doc["summary"]["unmatched_ignores"]
+      assert_includes doc["ignored"].map { |row| row["id"] }, current
+      assert_equal ["[mutineer] ignore entry #{first} matched no mutant in this run's sources and operators. " \
+                    "If those cover its code, the entry is stale: remove it.\n",
+                    "[mutineer] ignore entry #{second} matched no mutant in this run's sources and operators. " \
+                    "If those cover its code, the entry is stale: remove it.\n"],
+                   unmatched_warnings(err)
+    end
+  end
+
+  # #377: --since narrows after matching, so an entry for a mutant outside the
+  # diff is not a miss. A stale id in the same file still is.
+  def test_since_does_not_warn_about_an_ignore_outside_the_diff
+    with_project do |proj|
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      _old, current = calculator_ids(proj)
+      stale = "0123456789ab"
+      File.write(File.join(proj, ".mutineer.yml"), <<~YML)
+        ignore:
+          - #{current}
+          - #{stale}
+        operators:
+          - arithmetic
+      YML
+      path = File.join(proj, "calculator.rb")
+      File.write(path, File.read(path) + "# note\n")
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--since", "HEAD", "--operators", "arithmetic", "--jobs", "1",
+                                  "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal true, doc["summary"]["scoped"]
+      assert_equal [stale], doc["summary"]["unmatched_ignores"]
+      assert_equal 1, unmatched_warnings(err).size
+      assert_includes unmatched_warnings(err).first, stale
+      refute_includes unmatched_warnings(err).join, current
+    end
+  end
+
+  # #377: --only narrows methods before matching, so a miss would not mean the
+  # entry is stale. The warning is skipped and the list is empty.
+  def test_only_skips_the_unmatched_ignore_warning
+    with_project do |proj|
+      _old, add_id = calculator_ids(proj)
+      stale = "0123456789ab"
+      File.write(File.join(proj, ".mutineer.yml"), <<~YML)
+        ignore:
+          - #{add_id}
+          - #{stale}
+        operators:
+          - arithmetic
+      YML
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--only", "Calculator#subtract", "--operators", "arithmetic",
+                                  "--jobs", "1", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_empty unmatched_warnings(err)
+      assert_equal [], JSON.parse(out)["summary"]["unmatched_ignores"]
+    end
+  end
+
+  # #377: a run of one file warns about an entry whose mutant is in another
+  # file. The text says the list covers only this run. Both files do not warn.
+  def test_a_file_subset_warns_about_an_entry_in_another_file
+    Dir.mktmpdir("mutineer-subset") do |proj|
+      %w[a b].each do |name|
+        File.write(File.join(proj, "#{name}.rb"), "class #{name.upcase}\n  def f(x) = x + 1\nend\n")
+      end
+      b_id = arithmetic_new_id(File.join(proj, "b.rb"), "b.rb")
+      File.write(File.join(proj, ".mutineer.yml"), "ignore:\n  - #{b_id}\noperators:\n  - arithmetic\n")
+
+      out, err, status = mutineer("run", "a.rb", "--dry-run", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal [b_id], JSON.parse(out)["summary"]["unmatched_ignores"]
+      assert_includes unmatched_warnings(err).join, "this run's sources and operators"
+      assert_includes unmatched_warnings(err).join, "If those cover its code, the entry is stale: remove it."
+
+      out, err, status = mutineer("run", "a.rb", "b.rb", "--dry-run", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal [], JSON.parse(out)["summary"]["unmatched_ignores"]
+      assert_empty unmatched_warnings(err)
+    end
+  end
+
+  # #377: a dropped repeat's id is still current, so it is not an unmatched entry.
+  def test_a_dropped_copy_ignore_is_not_unmatched
+    Dir.mktmpdir("mutineer-dropped") do |root|
+      path = File.join(root, "str.rb")
+      File.write(path, "class Str\n  def a\n    \"hi\"\n  end\nend\n")
+      ops = %w[literal_mutation string_literal]
+      classes = Mutineer::MutatorRegistry.resolve(ops)
+      string_only = Mutineer::Config.new(sources: [path], project_root: root, operators: %w[string_literal])
+      dropped_id, old_id = Mutineer::JobPlan.collect_jobs(
+        string_only, Mutineer::MutatorRegistry.resolve(%w[string_literal])
+      ).last[:id_map].first
+      stale = "0123456789ab"
+      config = Mutineer::Config.new(sources: [path], project_root: root, operators: ops,
+                                    ignore: [stale, dropped_id, old_id, stale])
+      extras = Mutineer::JobPlan.collect_jobs(config, classes).last
+      assert_equal [stale], Mutineer::CLI.unmatched_ignore_ids(config, extras)
+      narrowed = Mutineer::Config.new(sources: [path], project_root: root, operators: ops,
+                                      ignore: [stale, dropped_id], only: "Str#other")
+      assert_equal [], Mutineer::CLI.unmatched_ignore_ids(narrowed, extras)
+
+      File.write(File.join(root, ".mutineer.yml"), "ignore:\n  - #{dropped_id}\noperators:\n  - literal_mutation\n  - string_literal\n")
+      _out, err, status = mutineer("run", "str.rb", "--dry-run", chdir: root)
+      assert_equal 0, status.exitstatus, err
+      assert_empty unmatched_warnings(err)
+    end
+  end
+
+  # The new id of the first arithmetic mutant, relative to the run directory.
+  def arithmetic_new_id(path, relative)
+    source = File.read(path)
+    subject = Mutineer::Project.discover([path]).find do |item|
+      Mutineer::Mutators::Arithmetic.new.mutations_for(item, source).any?
+    end
+    mutation = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source).first
+    Mutineer::MutantId.for(subject, mutation, source, path: relative)
   end
 
   # --dry-run --since prints the same old-format warnings as a real run. No
@@ -2486,6 +2643,16 @@ class CliTest < Minitest::Test
     out, _, status = mutineer("--help")
     assert_equal 0, status.exitstatus
     assert_includes out, "migrate [options] <source...>"
+    assert_includes out, "matches no mutant"
+    assert_includes out, "exits 1 for a miss"
+    assert_includes out, "run warns and still exits 0"
+  end
+
+  def test_unmatched_ignore_warning_has_the_full_text
+    _, err = capture_io { Mutineer::CLI.warn_unmatched_ignores(%w[0123456789ab]) }
+    assert_equal "[mutineer] ignore entry 0123456789ab matched no mutant in this run's sources and operators. " \
+                 "If those cover its code, the entry is stale: remove it.\n",
+                 err
   end
 
   def test_old_ignore_warning_has_the_full_text
