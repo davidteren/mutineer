@@ -1002,9 +1002,110 @@ class RailsWorkerDbTest < Minitest::Test
   end
 
   def test_sqlite_lock_path_is_nil_without_a_database_file
-    ["", ":memory:", "file:storage/test.sqlite3?mode=ro", "file::memory:?cache=shared"].each do |name|
+    ["", ":memory:"].each do |name|
       assert_nil Mutineer::RailsWorkerDb.sqlite_lock_path(sqlite_db_config(name)), name
     end
+  end
+
+  # The table is SQLite's file: rule (authority, escapes, query, fragment),
+  # checked against SQLite 3.45: each name opens `opened`, or no shared file.
+  def test_sqlite_file_uri_lock_follows_the_opened_file
+    root = Dir.pwd
+    {
+      "file:storage/test.sqlite3" => "storage/test.sqlite3",
+      "file:storage/test.sqlite3?mode=ro" => "storage/test.sqlite3",
+      "file:storage/test.sqlite3?mode=rw&cache=shared" => "storage/test.sqlite3",
+      "file:storage/test.sqlite3?vfs=unix" => "storage/test.sqlite3",
+      "file:storage/test.sqlite3#fragment" => "storage/test.sqlite3",
+      "file:storage/test.sqlite3?mode=rw#fragment" => "storage/test.sqlite3",
+      "file:storage/my%20db.sqlite3" => "storage/my db.sqlite3",
+      "file:storage/bad%zz.sqlite3" => "storage/bad%zz.sqlite3",
+      "file:storage/bad%.sqlite3" => "storage/bad%.sqlite3",
+      "file:foo/../bar.sqlite3" => "bar.sqlite3",
+      "file:./rel.sqlite3" => "rel.sqlite3",
+      "file:foo%2Fbar.sqlite3" => "foo/bar.sqlite3",
+      "file:a%00b.sqlite3" => "a",
+      "file:pre%00mid.sqlite3?mode=rw" => "pre",
+      "file:foo.sqlite3?MODE=memory" => "foo.sqlite3",
+      "file:foo.sqlite3?mode=memory&mode=rw" => "foo.sqlite3",
+      "file:foo.sqlite3?=memory&mode=rw" => "foo.sqlite3",
+      "file:foo.sqlite3?immutable=1" => "foo.sqlite3",
+      "file:/var/app/storage/test.sqlite3" => "/var/app/storage/test.sqlite3",
+      "file:///var/app/storage/test.sqlite3" => "/var/app/storage/test.sqlite3",
+      "file:////var/app/storage/test.sqlite3" => "/var/app/storage/test.sqlite3",
+      "file://localhost/var/app/storage/test.sqlite3" => "/var/app/storage/test.sqlite3",
+      "file://localhost//var/app/storage/test.sqlite3" => "/var/app/storage/test.sqlite3",
+      "file:%2Fvar%2Fapp%2Fdb.sqlite3" => "/var/app/db.sqlite3",
+      "file::memory:" => nil,
+      "file::memory:?cache=shared" => nil,
+      "file:%3Amemory%3A" => nil,
+      "file:memdb1?mode=memory" => nil,
+      "file:memdb1?mode=memory&cache=shared" => nil,
+      "file:/var/app/db.sqlite3?mode=memory" => nil,
+      "file:foo.sqlite3?cache=shared&mode=memory" => nil,
+      "file:foo.sqlite3?mode=rw&mode=memory" => nil,
+      "file:foo.sqlite3?mode=mem%6Fry" => nil,
+      "file:foo.sqlite3?m%6Fde=memory" => nil,
+      "file:a%00b.sqlite3?mode=memory" => nil,
+      "file:" => nil,
+      "file:?mode=rw" => nil,
+      "file:///" => nil,
+      "file://localhost" => nil,
+      "file://localhost/" => nil,
+      "file:///./" => nil,
+      "file:%00hidden.sqlite3" => nil,
+      "file://otherhost/var/app/db.sqlite3" => nil,
+      "file://LocalHost/var/app/db.sqlite3" => nil,
+      "file:foo.sqlite3?mode=MEMORY" => nil,
+      "file:foo.sqlite3?mode" => nil,
+      "file:foo.sqlite3?mode=" => nil,
+      "file:foo.sqlite3?cache=SHARED" => nil
+    }.each do |name, opened|
+      actual = Mutineer::RailsWorkerDb.sqlite_lock_path(sqlite_db_config(name))
+      if opened.nil?
+        assert_nil actual, name
+      else
+        base = opened.start_with?("/") ? opened : File.expand_path(opened, root)
+        assert_equal "#{base}-mutineer.lock", actual, name
+      end
+    end
+  end
+
+  def test_sqlite_file_uri_and_plain_path_share_a_lock_in_the_app_root
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        saved = Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
+        rails = Module.new
+        rails.define_singleton_method(:root) { dir }
+        Object.const_set(:Rails, rails)
+        begin
+          plain = Mutineer::RailsWorkerDb.sqlite_lock_path(sqlite_db_config("storage/test.sqlite3"))
+          uri = Mutineer::RailsWorkerDb.sqlite_lock_path(sqlite_db_config("file:storage/test.sqlite3?mode=rwc"))
+          assert_equal "#{dir}/storage/test.sqlite3-mutineer.lock", plain
+          assert_equal plain, uri
+        ensure
+          Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
+          Object.const_set(:Rails, saved) if saved
+        end
+      end
+    end
+  end
+
+  def test_sqlite_file_uri_does_not_use_rails_root
+    saved = Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
+    rails = Module.new
+    rails.define_singleton_method(:root) { "/apps/shop" }
+    Object.const_set(:Rails, rails)
+    db = Mutineer::RailsWorkerDb
+    assert_equal "#{File.expand_path('storage/test.sqlite3')}-mutineer.lock",
+                 db.sqlite_lock_path(sqlite_db_config("file:storage/test.sqlite3"))
+    assert_equal "/apps/shop/storage/test.sqlite3-mutineer.lock",
+                 db.sqlite_lock_path(sqlite_db_config("storage/test.sqlite3"))
+    assert_equal "/var/app/storage/test.sqlite3-mutineer.lock",
+                 db.sqlite_lock_path(sqlite_db_config("file:/var/app/storage/test.sqlite3"))
+  ensure
+    Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
+    Object.const_set(:Rails, saved) if saved
   end
 
   def test_sqlite_file_expands_against_rails_root
@@ -1147,14 +1248,52 @@ class RailsWorkerDbTest < Minitest::Test
   end
 
   def test_sqlite_provision_of_memory_takes_no_lock
-    config = sqlite_db_config(":memory:")
-    db = Mutineer::RailsWorkerDb
-    db.stub(:available?, true) do
-      db.stub(:current_adapter, "sqlite3") do
-        db.stub(:primary_db_config, config) { db.provision(2) }
+    [":memory:", "file::memory:?cache=shared", "file:memdb1?mode=memory&cache=shared"].each do |name|
+      config = sqlite_db_config(name)
+      db = Mutineer::RailsWorkerDb
+      db.stub(:available?, true) do
+        db.stub(:current_adapter, "sqlite3") do
+          db.stub(:primary_db_config, config) { db.provision(2) }
+        end
       end
+      assert_nil db.instance_variable_get(:@sqlite_lock_file), name
     end
-    assert_nil db.instance_variable_get(:@sqlite_lock_file)
+  end
+
+  def test_sqlite_provision_of_a_file_uri_locks_that_file
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      config = sqlite_db_config("file:#{base}?mode=rwc")
+      db = Mutineer::RailsWorkerDb
+      db.stub(:available?, true) do
+        db.stub(:current_adapter, "sqlite3") do
+          db.stub(:primary_db_config, config) { db.provision(2) }
+        end
+      end
+      out, status = sqlite_lock_probe("#{base}-mutineer.lock")
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "shared=0 exclusive=false"
+    end
+  end
+
+  def test_sqlite_file_uri_stops_when_the_plain_file_is_locked
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      pid = spawn_sqlite_holder("#{base}-mutineer.lock", File::LOCK_SH)
+      config = sqlite_db_config("file:#{base}?mode=ro")
+      db = Mutineer::RailsWorkerDb
+      error = assert_raises(RuntimeError) do
+        db.stub(:available?, true) do
+          db.stub(:current_adapter, "sqlite3") do
+            db.stub(:primary_db_config, config) { db.provision(1) }
+          end
+        end
+      end
+      assert_equal "another Mutineer run is using #{base}", error.message
+      assert db.provision_wrapped?(error)
+    ensure
+      stop_sqlite_holder(pid)
+    end
   end
 
   # A stand-in for an ActiveRecord SQLite config with this database name.

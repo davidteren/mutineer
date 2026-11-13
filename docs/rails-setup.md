@@ -152,14 +152,14 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 | Database | Worker provisioning and cleanup |
 | --- | --- |
 | SQLite | Copies each worker file on first use. For `storage/test.sqlite3`, worker files are `storage/test-<N>.sqlite3` and the run lock is `storage/test.sqlite3-mutineer.lock`. |
-| SQLite lock file | The lock file never goes stale. Do not delete it while a run is active. Wait for the other run to finish, or stop it. Add `<base file>-mutineer.lock` to `.gitignore` unless your rules already cover `storage/*`. A `file:` database name takes no lock (#412). Other known gaps are tracked in #416. |
+| SQLite lock file | The lock file never goes stale. Do not delete it while a run is active. Wait for the other run to finish, or stop it. Add `<base file>-mutineer.lock` to `.gitignore` unless your rules already cover `storage/*`. A `file:` name that opens a disk file takes this lock on that file. A memory URI (`file::memory:` or `mode=memory`) takes no lock. Other known gaps are tracked in #416. |
 | PostgreSQL | Copies the test database before workers start. Names use `<base>-mutineer-<N>`, shortened to fit 63 bytes. Databases remain after the run. |
 | PostgreSQL cleanup | Run `DROP DATABASE "myapp_test-mutineer-0";`, using your test database name and worker slot. |
 | MySQL 8 | Creates `<base>-mutineer-<N>`, shortened to fit 64 bytes. Loads `schema.rb` or `structure.sql`, then copies rows before workers start. |
 | MySQL recovery | Does not recopy after an error or timeout. Databases remain after the run; the next run drops and rebuilds them. |
 | MySQL cleanup | Run ``DROP DATABASE `myapp_test-mutineer-0`;``. MySQL requires backticks around the name. |
 | `:memory:` | Not supported by `--daemon`. |
-| Concurrent runs | A second run on the same test database stops with `another Mutineer run is using <base>`. This covers PostgreSQL, MySQL, and file-backed SQLite databases (not `file:` names). |
+| Concurrent runs | A second run on the same test database stops with `another Mutineer run is using <base>`. This covers PostgreSQL, MySQL, and file-backed SQLite databases, including a `file:` URI that names a disk file. A memory URI takes no lock. |
 
 | MySQL requirement or limit | Detail |
 | --- | --- |
