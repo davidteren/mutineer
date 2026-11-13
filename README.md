@@ -172,7 +172,8 @@ This gap is common in rushed tests and tests written by AI agents.
 3. **Map coverage and check unchanged tests.** Each test file runs with coverage to map lines to tests.
    `.mutineer/coverage.json` caches the map; a change to a source, a test or a project file the tests load rebuilds it. A fresh capture runs every
    test alone; a failure stops the run. With a cached map, only the tests that cover the sources run again,
-   alone and together, because a mutant runs only those tests.
+   alone and together, because a mutant runs only those tests. In a standalone run, a line that runs only
+   while the source loads does not count as coverage of every test. The paired test still covers that line.
 4. **Run each mutant in a fork.** The parent loads code once, including the app with `--rails`.
    Children run in parallel on Linux and macOS.
    Each loads the changed file (`reload`) or replaces the changed method (`redefine`).
