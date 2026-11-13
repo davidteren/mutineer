@@ -412,20 +412,46 @@ class OutputFilterTest < Minitest::Test
     end
   end
 
-  # The command's own process can set a password that is not in the
-  # environment and not in a dotenv file. The bare word stays. A URL would
-  # still be hidden. This is the limit of what the parent can know.
-  def test_test_command_leaves_a_bare_password_set_only_inside_the_command
+  # The command's Ruby process assigns the password itself. The tool
+  # environment and the dotenv files do not have it. The copier in that
+  # process still hides the bare word (#457).
+  def test_test_command_hides_a_bare_password_set_only_inside_the_command
     Dir.mktmpdir do |proj|
       File.write(File.join(proj, "a.rb"), "class A; def add(a, b) = a + b; end\n")
       File.write(File.join(proj, "a_test.rb"), "def test_a = 1\n")
-      # The URL is assembled in the child so this source has no credential literal.
-      command = "#{RbConfig.ruby} -e 'ENV[%{DATABASE_URL}] = %{postgres://u:} + %{in} + %{command} + %{@h/db}; STDERR.puts %{only incommand tail}; exit 1' %{files}"
+      left = "in"
+      right = "command"
+      word = left + right
+      command = "#{RbConfig.ruby} -e 'ENV[%{DATABASE_URL}] = %{postgres://u:} + %{#{left}} + %{#{right}} + %{@h/db}; STDERR.puts %{only #{word} tail}; exit 1' %{files}"
       _out, err, status = mutineer("run", "a.rb", "--test", "a_test.rb", "--test-command", command,
-                                   chdir: proj, env: { "DATABASE_URL" => nil })
+                                   chdir: proj, env: { "DATABASE_URL" => nil, "RUBYOPT" => nil })
 
       assert_equal 1, status.exitstatus, err
-      assert_includes err, "only incommand tail"
+      assert_includes err, "only [REDACTED] tail"
+      refute_includes err, word
+    end
+  end
+
+  # exec replaces the process. The next Ruby still loads the copier, so a
+  # password assigned only there is hidden, and the run finishes.
+  def test_test_command_hides_a_password_set_after_exec
+    Dir.mktmpdir do |proj|
+      File.write(File.join(proj, "a.rb"), "class A; def add(a, b) = a + b; end\n")
+      File.write(File.join(proj, "a_test.rb"), "def test_a = 1\n")
+      word = ["ex", "ecuted"].join
+      script = File.join(proj, "print_pw.rb")
+      File.write(script, [
+        'ENV["DATABASE_URL"] = ["postgres://u:", "ex", "ecuted", "@h/db"].join',
+        'STDERR.puts "saw " + ["ex", "ecuted"].join + " tail"',
+        "exit 1\n"
+      ].join("\n"))
+      command = "#{RbConfig.ruby} -e 'exec(#{RbConfig.ruby.inspect}, #{script.inspect})' %{files}"
+      _out, err, status = mutineer("run", "a.rb", "--test", "a_test.rb", "--test-command", command,
+                                   chdir: proj, env: { "DATABASE_URL" => nil, "RUBYOPT" => nil })
+
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "saw [REDACTED] tail"
+      refute_includes err, word
     end
   end
 

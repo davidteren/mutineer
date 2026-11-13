@@ -386,6 +386,18 @@ module Mutineer
       parts
     end
 
+    # RUBYOPT for a `--test-command` child. The copier file is first, so it
+    # installs before another `-r`. An option already present is kept.
+    #
+    # @api private
+    # @return [String]
+    def self.command_rubyopt
+      flag = "-r#{File.expand_path("command_redact.rb", __dir__)}"
+      parts = ENV["RUBYOPT"].to_s.split
+      parts.unshift(flag) unless parts.include?(flag)
+      parts.join(" ")
+    end
+
     # Spawns the command to a captured combined-output tempfile, enforces a
     # wall-clock timeout (SIGKILL past the deadline), and returns
     # [kind, exit_code, output, elapsed]. Mirrors Isolation's single-waiter loop:
@@ -409,7 +421,10 @@ module Mutineer
       # explicit [program, argv0] form guarantees the no-shell exec path even for a
       # degenerate single-element argv (Process.spawn(*argv) would route a lone
       # metachar-bearing string through /bin/sh, breaking the argv-only invariant).
-      pid = Process.spawn(child_env, [argv.first, argv.first], *argv[1..],
+      # RUBYOPT loads the copier in each Ruby process this command starts, so a
+      # password that process assigns is hidden before the bytes are captured
+      # (#457). A program that is not Ruby ignores RUBYOPT.
+      pid = Process.spawn(child_env.merge("RUBYOPT" => command_rubyopt), [argv.first, argv.first], *argv[1..],
                           out: out, err: %i[child out], pgroup: true)
       kind, code = wait_with_timeout(pid, timeout)
       elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start

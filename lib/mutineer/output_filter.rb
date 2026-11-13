@@ -8,7 +8,9 @@ module Mutineer
   # so a DATABASE_URL it sets is hidden (#341). Before a fork child execs, its
   # copier stops, so the program writes to the parent's pipe and the parent
   # redacts it with the parent's environment. A program that would run with
-  # a DATABASE_URL the parent does not know writes to the null device.
+  # a DATABASE_URL the parent does not know writes to the null device. A
+  # `--test-command` Ruby process restores the captured descriptors before
+  # exec, and the next Ruby loads its own copier (#457).
   #
   # Stdlib only, so the app-side daemon can load this file. A chunk with no
   # password is copied unchanged, including its bytes.
@@ -195,21 +197,34 @@ module Mutineer
     end
 
     # In a fork child, put the parent's pipe back on stdout and stderr and
-    # flush this copier. Does nothing in the process that started the filter:
-    # its saved descriptors are the real terminal, which is not redacted.
-    # When the program would run with a DATABASE_URL the parent does not
-    # know, its output goes to the null device instead: the parent could not
-    # hide that password.
+    # flush this copier. When the program would run with a DATABASE_URL the
+    # parent does not know, its output goes to the null device instead: the
+    # parent could not hide that password. A `--test-command` Ruby process
+    # also puts the captured descriptors back, so the program that replaces
+    # it does not write to a pipe whose reader died. The next Ruby loads its
+    # own copier from RUBYOPT (#457).
     #
     # @param args [Array] the arguments given to exec; a leading Hash is its
     #   environment.
     # @return [void]
     def before_exec(args = [])
-      return unless @fork_child
+      if @fork_child
+        known = known_url?(args, @parent_url)
+        uninstall
+        silence_stdio unless known
+        return
+      end
+      return unless installed? && command_ruby?
 
-      known = known_url?(args, @parent_url)
       uninstall
-      silence_stdio unless known
+    end
+
+    # True when this process was started as a `--test-command` Ruby, which
+    # loads the copier from RUBYOPT.
+    #
+    # @return [Boolean]
+    def command_ruby?
+      ENV["RUBYOPT"].to_s.include?("command_redact.rb")
     end
 
     # `args` for spawn or system, with stdout and stderr sent to the null

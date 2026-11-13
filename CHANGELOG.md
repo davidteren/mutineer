@@ -154,8 +154,8 @@ All notable changes to this project are documented here. The format is based on
   `system` when their environment hash sets a `DATABASE_URL` this process
   does not know. That program's own redirects of stdout and stderr are
   replaced too, so an `Open3` capture of it gets no output. Other ways to start a program with its own password, such
-  as backticks, `IO.popen`, or a shell command that sets the variable, are
-  tracked in #457. Shutdown writes every byte already
+  as backticks, `IO.popen`, or a shell command that sets the variable, still
+  pass that password through. Shutdown writes every byte already
   queued, including a report a slow reader has not taken yet. The daemon does this in its own process, so a
   password the boot file assigns is hidden even when the tool's environment
   does not have it. `--test-command` output is redacted with the tool's
@@ -164,9 +164,10 @@ All notable changes to this project are documented here. The format is based on
   `.env.test`, `.env.test.local`). A double-quoted value may span lines. A
   quote that never closes is a plain value on its own line, as in dotenv. A
   backslash before `$` is a literal dollar. An invalid byte does not stop
-  the read. A bare password set only inside the test
-  command, and not in those files or the environment, stays visible (#457).
-  A password inside a URL is still hidden.
+  the read. A Ruby process the command starts hides a bare password it
+  assigns itself, including one set only in that process (#457). A program
+  that is not Ruby ignores that copier. A password inside a URL is still
+  hidden.
 - **Redaction no longer blanks a host, a database name, one character, or a
   common word (#341).** A password that equals the host or the database name
   stays readable outside a URL, as a password that equals the username
