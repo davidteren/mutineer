@@ -65,7 +65,7 @@ Check whether the Mutineer gem (https://github.com/davidteren/mutineer) suits th
 
 1. Ruby: read .ruby-version, Gemfile and Gemfile.lock. Mutineer needs Ruby 3.4 or later. On an older Ruby it can still run with --test-command, but serially and with no coverage narrowing.
 2. OS for CI and development: Linux or macOS is required (it forks). Windows is not supported.
-3. Test framework: Minitest or RSpec. Inspect the test files and Gemfile; paths such as test/**/*_test.rb, test/**/test_*.rb and spec/**/*_spec.rb are examples. Both work. With RSpec: no --daemon, so Rails runs are serial, and a spec that fails on a database connection error counts as killed (issue #347).
+3. Test framework: Minitest or RSpec. Inspect the test files and Gemfile; paths such as test/**/*_test.rb, test/**/test_*.rb and spec/**/*_spec.rb are examples. Both work. With RSpec: no --daemon, so Rails runs are serial. A spec whose first failure is an Active Record connection or lock error scores errored, on the same classes as Minitest.
 4. Rails: is it a Rails app (config/application.rb)? Note the Rails version. If config/database.yml has several databases, note that an app with more than one database runs one worker, unless shared_databases in .mutineer.yml lists each database the tests never use (Rails 7.1 or later).
 5. Test database adapter (config/database.yml, test env):
    - sqlite3 with a file path, postgresql, or mysql2/trilogy on MySQL 8.0: parallel runs work with --daemon (Minitest only).
