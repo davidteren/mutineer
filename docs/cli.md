@@ -150,8 +150,9 @@ Before the mutants run, Mutineer checks that the unchanged tests pass:
   only those files, so a red test outside them cannot change a result. Mutineer prints how many files it
   did not check. A test file whose last capture failed is captured again, which also runs it. When no test
   covers any source line, every test file runs. In a standalone run, a line that ran only while the sources
-  loaded does not put every test file in this set (#426). The paired test for that source still covers the
-  line. When none of the run's tests pair with the source, every test file stays in the set. A line a test
+  loaded does not put every test file in this set (#426). The conventionally paired test for that source
+  still covers the line. A `tests:` map entry does not count as that pair. When none of the run's tests are
+  conventionally paired with the source, every test file stays in the set. A line a test
   runs after the sources load covers that test, as on a boot or daemon run.
 - **`--coverage-from`** (in-process `--rails` or `--boot` runs only; other runs ignore it). As on a cache hit: only the test files that cover a source line run, alone and then
   together, so a red test outside them does not stop the run. Mutineer prints how many files it did not check.

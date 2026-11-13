@@ -144,8 +144,9 @@ All notable changes to this project are documented here. The format is based on
   before each test. The class line, the `def` line, and any other line that
   runs only then were credited to every test, so the clean check kept them
   all. Those lines still count as `ran_at_load`. A test keeps such a line
-  when it is a paired test for that source. When the run has no paired test
-  for the source, every test keeps the line, so a reload kill is not dropped.
+  when it is a convention-paired test for that source. A `tests:` map entry
+  does not count. When the run has no convention-paired test for the source,
+  every test keeps the line, so a reload kill is not dropped.
   A line the test runs after the sources load stays credited to that test,
   including the `def` line of a method the test calls. Boot and daemon runs
   already omitted the load lines and do not change. A coverage cache saved
@@ -153,10 +154,11 @@ All notable changes to this project are documented here. The format is based on
   longer match, including when an exact spec that the run did not select
   appears or disappears and replaces a split test.
   **Score effect.** The exact-survivor oracle does not change. A reload kill
-  of a line that runs only at load stays a kill when the paired test is in
-  the run (`Catalog.price`, and a hook def the file calls while it loads).
-  `--strategy redefine` still reports `ran_at_load` for that line. An
-  unpaired test no longer runs that mutant when a paired test is in the run.
+  of a line that runs only at load stays a kill when the convention-paired
+  test is in the run (`Catalog.price`, and a hook def the file calls while
+  it loads). `--strategy redefine` still reports `ran_at_load` for that line.
+  An unpaired test no longer runs that mutant when a convention-paired test
+  is in the run.
   A kill that only the unpaired test would have caught can become
   `ran_at_load` or a survivor. The checked fixtures do not hit that case.
 - **`--since` narrows the No mutants method count (#420).**
