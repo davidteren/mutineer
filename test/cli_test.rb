@@ -1534,6 +1534,58 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #377: pairing drops a requested source that has no test, but its ignore
+  # entries are still in use. A real run and a dry run of the same files
+  # list the same unmatched ids. An old-format id in that source still warns
+  # as an old id, not as unmatched.
+  def test_an_unpaired_source_ignore_is_not_unmatched
+    Dir.mktmpdir("mutineer-unpaired") do |proj|
+      FileUtils.mkdir_p(File.join(proj, "lib"))
+      FileUtils.mkdir_p(File.join(proj, "test"))
+      File.write(File.join(proj, "lib/a.rb"), "class A\n  def f(x) = x + 1\nend\n")
+      File.write(File.join(proj, "lib/b.rb"), "class B\n  def f(x) = x + 1\nend\n")
+      File.write(File.join(proj, "test/a_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "../lib/a"
+        class ATest < Minitest::Test
+          def test_f = assert_equal(2, A.new.f(1))
+        end
+      RUBY
+      b_path = File.join(proj, "lib/b.rb")
+      source = File.read(b_path)
+      subject = Mutineer::Project.discover([b_path]).find do |item|
+        Mutineer::Mutators::Arithmetic.new.mutations_for(item, source).any?
+      end
+      mutation = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source).first
+      new_id = Mutineer::MutantId.for(subject, mutation, source, path: "lib/b.rb")
+      old_id = Mutineer::MutantId.legacy_for(subject, mutation, source)
+      stale = "0123456789ab"
+      File.write(File.join(proj, ".mutineer.yml"), <<~YML)
+        ignore:
+          - #{new_id}
+          - #{old_id}
+          - #{stale}
+        operators:
+          - arithmetic
+      YML
+
+      out, err, status = mutineer("run", "lib/a.rb", "lib/b.rb", "--jobs", "1", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "no test found by convention for lib/b.rb"
+      assert_equal [stale], JSON.parse(out)["summary"]["unmatched_ignores"]
+      assert_equal [stale], unmatched_warnings(err).map { |line| line[/[0-9a-f]{12}/] }
+      assert_equal 1, legacy_warnings(err).size
+      assert_includes legacy_warnings(err).first, old_id
+      refute_includes unmatched_warnings(err).join, new_id
+
+      dry_out, dry_err, dry = mutineer("run", "lib/a.rb", "lib/b.rb", "--dry-run", "--format", "json", chdir: proj)
+      assert_equal 0, dry.exitstatus, dry_err
+      assert_equal [stale], JSON.parse(dry_out)["summary"]["unmatched_ignores"]
+      assert_equal unmatched_warnings(err), unmatched_warnings(dry_err)
+      assert_includes legacy_warnings(dry_err).join, old_id
+    end
+  end
+
   # #377: a run of one file warns about an entry whose mutant is in another
   # file. The text says the list covers only this run. Both files do not warn.
   def test_a_file_subset_warns_about_an_entry_in_another_file

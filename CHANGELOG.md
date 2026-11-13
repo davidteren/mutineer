@@ -15,6 +15,7 @@ All notable changes to this project are documented here. The format is based on
   `--dry-run` prints the same warning, and `--dry-run --format json` lists the same ids.
   `--since` does not warn about an entry whose mutant is outside the diff: matching happens before the diff narrows the run.
   A run of some files warns about entries those files and operators do not match. The warning says so.
+  A source you passed that has no paired test still counts: its entries are not reported as unmatched, and `run` agrees with `run --dry-run` of the same files.
   `--only` skips the check. The list is then empty, which does not mean every entry matched.
   A dropped repeat of an edit counts as matched.
   An old-format id that still matches is not in this list. The old-id warning still names it.

@@ -112,7 +112,7 @@ An `ignore:` entry stays in the file when its mutant's id changes. It then match
 [mutineer] ignore entry 0123456789ab matched no mutant in this run's sources and operators. If those cover its code, the entry is stale: remove it.
 ```
 
-The warning covers only that run's sources and operators. A run of some files warns about an entry whose mutant is in a file you did not pass. That entry may still match a full run. `--since` does not add a warning: ignores are matched before the diff narrows the run, so an entry for a mutant outside the diff stays quiet. `--only` skips the warning, because it narrows methods before matching.
+The warning covers only that run's sources and operators. A run of some files warns about an entry whose mutant is in a file you did not pass. That entry may still match a full run. A source you did pass, and that pairing skipped because it has no test, still counts: its entries are not called unmatched, and `run` agrees with `run --dry-run` of the same files. `--since` does not add a warning: ignores are matched before the diff narrows the run, so an entry for a mutant outside the diff stays quiet. `--only` skips the warning, because it narrows methods before matching.
 
 The JSON report lists the ids in `summary.unmatched_ignores`, in file order, each id once. Under `--only` the list is empty. An empty list there does not mean every entry matched. `--dry-run` prints the same warning, and `--dry-run --format json` lists the same ids.
 
