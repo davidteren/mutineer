@@ -8,6 +8,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **A concern pairs with a split test at its namespace path (#408).**
+  `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_bytes_test.rb`.
+  The `concerns/` path still wins when it has any test, exact or split.
+  A longer source keeps its file. That includes a longer concern and a model or `lib/` file of the longer name.
+  A model keeps a split file it already pairs with. The concern may use that same file. The model does not lose it.
+  Before this, a namespace split name left the concern skipped, with no score.
+  A concern that was skipped can now run. That can change a score or a gate.
+  `--baseline` treats new survivors as new. Refresh the baseline.
+  See `docs/ci.md`, "Refresh the baseline".
+  A failed namespace split moves those mutants from `no_coverage` to `uncapturable`.
+  On the Fizzy tree measured for #379, no unpaired concern had a namespace split name.
+  One of 352 `app/` sources paired with a split file.
 - **A run counts sources that have no paired test (#381).**
   The report names each skipped source and how many mutants it holds.
   JSON adds `summary.unpaired_sources`, `summary.unpaired_mutants`, and `unpaired_sources[]`.
@@ -45,9 +57,8 @@ All notable changes to this project are documented here. The format is based on
   With `use-bundler: false`, an Action with an empty `version` installs the latest gem.
   Pin `version`, or refresh the baseline, before the next run.
   With `use-bundler: true`, the Gemfile picks the version.
-  A split name pairs only at the `concerns/` path.
   A failed namespace test does not mark a concern that has a test at its `concerns/` path.
-  Namespace split names are issue #408 (pair split test files at a concern's namespace path).
+  A namespace split name pairs under #408.
 - **Mutineer now reports the methods that got no mutants (#386).** A
   method whose body is one `if` with a `rescue` gets no mutant from the
   default operators, and the run did not say so. The dry run summary now

@@ -43,6 +43,8 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
 ```
 
 Without `--test`, `app/models/order.rb` pairs with `test/models/order_test.rb` or `spec/models/order_spec.rb`.
+A concern at `app/models/concerns/storage/totaled.rb` pairs with the test at that path.
+With no test there, it pairs with `test/models/storage/totaled_test.rb` or `test/models/storage/totaled_bytes_test.rb`.
 See [Quick start](https://github.com/davidteren/mutineer/blob/main/docs/quick-start.md).
 
 ## Documentation

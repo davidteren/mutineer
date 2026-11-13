@@ -361,12 +361,31 @@ module Mutineer
 
     # True when a failed split test file pairs with this source. Directory and
     # the longer-source check match {Pairing}, so a test outside the mirror, or
-    # one owned by `user_session.rb`, does not taint `user.rb`.
+    # one owned by `user_session.rb`, does not taint `user.rb`. A concern with
+    # no test at its `concerns/` path also accepts a split name at its
+    # namespace path (#408). A longer concern owns that name the same way.
     #
     # @param source_rel [String] project-relative source path.
     # @return [Boolean]
     def split_failed_test?(source_rel)
       base, lib = Pairing.logical_path(source_rel)
+      return true if failed_split_in?(base, lib, concern: false)
+
+      ns = Pairing.namespace_base(source_rel)
+      return false unless ns
+      return false if own_concern_test?(source_rel, ns)
+
+      failed_split_in?(ns, false, concern: true)
+    end
+
+    # True when one failed split file in the mirror of `base` pairs with it.
+    #
+    # @param base [String] logical source path without extension.
+    # @param lib [Boolean] whether the source originated from lib/.
+    # @param concern [Boolean] true for a concern's namespace mirror, so a
+    #   longer concern file can own the name.
+    # @return [Boolean]
+    def failed_split_in?(base, lib, concern:)
       name = File.basename(base)
       @failed_test_files.any? do |t|
         test_rel = relativize(t)
@@ -374,6 +393,7 @@ module Mutineer
         next false unless Pairing.split_entry?(entry, name)
         next false unless mirrored_test_dir?(test_rel, base, lib)
         next false if Pairing.claimed_by_longer_source?(@project_root, base, entry, File.dirname(test_rel))
+        next false if concern && Pairing.claimed_by_longer_concern?(@project_root, base, entry)
 
         true
       end
@@ -1632,7 +1652,10 @@ module Mutineer
     # Longer source files that can take a split test from a configured source.
     # Only their presence is digested. A content edit of a sibling does not
     # change pairing, and it does not rebuild coverage. Each directory is
-    # listed once, even when many sources share it.
+    # listed once, even when many sources share it. A concern also digests
+    # longer files in its namespace directory, because those files can own a
+    # namespace split name (#408). A model does not digest a concern file:
+    # the model keeps a split file it already pairs with.
     #
     # @return [Array<String>] project-relative paths, sorted.
     def ownership_paths
@@ -1643,26 +1666,39 @@ module Mutineer
         next [] if rel.start_with?("/")
 
         base, = Pairing.logical_path(rel)
-        name = File.basename(base)
-        dir = File.dirname(base)
-        folders = [dir == "." ? nil : dir]
-        %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
-        folders.uniq.flat_map do |folder|
-          abs = folder ? File.join(root, folder) : root
-          entries = listings.fetch(abs) do
-            listings[abs] = File.directory?(abs) ? Dir.children(abs) : []
-          end
-          entries.filter_map do |entry|
-            next unless entry.end_with?(".rb")
-
-            stem = entry.delete_suffix(".rb")
-            next unless stem.start_with?("#{name}_") && stem.length > name.length
-
-            folder ? File.join(folder, entry) : entry
-          end
-        end
+        bases = [base]
+        ns = Pairing.namespace_base(rel)
+        bases << ns if ns
+        bases.uniq.flat_map { |logical| owner_files(root, logical, listings) }
       end
       paths.uniq.sort
+    end
+
+    # Longer `.rb` files that can own a split name of `base`.
+    #
+    # @param root [String] expanded project root.
+    # @param base [String] logical source path without extension.
+    # @param listings [Hash{String => Array<String>}] directory children, filled once.
+    # @return [Array<String>] project-relative paths.
+    def owner_files(root, base, listings)
+      name = File.basename(base)
+      dir = File.dirname(base)
+      folders = [dir == "." ? nil : dir]
+      %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
+      folders.uniq.flat_map do |folder|
+        abs = folder ? File.join(root, folder) : root
+        entries = listings.fetch(abs) do
+          listings[abs] = File.directory?(abs) ? Dir.children(abs) : []
+        end
+        entries.filter_map do |entry|
+          next unless entry.end_with?(".rb")
+
+          stem = entry.delete_suffix(".rb")
+          next unless stem.start_with?("#{name}_") && stem.length > name.length
+
+          folder ? File.join(folder, entry) : entry
+        end
+      end
     end
 
     # boot_path and require_paths are require-style paths (e.g. "config/environment",

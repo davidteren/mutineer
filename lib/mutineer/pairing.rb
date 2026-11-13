@@ -22,7 +22,9 @@ module Mutineer
   #                     candidate stays first. Split Minitest files join a
   #                     Minitest match. A matched spec is left as that one file.
   #                     A concern at app/<dir>/concerns/<rest>.rb with no test
-  #                     there also tries exact names at <dir>/<rest>.
+  #                     there also tries exact and split names at <dir>/<rest>.
+  #                     A longer source keeps its file. A model keeps a split
+  #                     file it already pairs with (#408).
   #   * test_given_as_source? — whether a positional argument is a test file
   #                     by these same names, given as a source by mistake
   #                     after `--test` (#293).
@@ -379,9 +381,11 @@ module Mutineer
     # candidate from {#candidates} stays first. Each `<basename>_*_test.rb` in
     # the mirrored test directory is added after it (#87). A spec that the exact
     # rules already found is left alone: split Minitest names do not join it
-    # and do not replace it. When that list is empty, a concern tries exact
-    # names at its namespace path. Split names stay at the concerns path.
-    # Issue #408 tracks namespace split names.
+    # and do not replace it. When that list is empty, a concern tries the same
+    # exact and split names at its namespace path (#408). The `concerns/` path
+    # still wins when it has any test. A longer source, including a longer
+    # concern, keeps a split file. A model keeps a split file it already pairs
+    # with: this fallback does not take one away.
     #
     # @param source_rel [String] relative source path.
     # @param project_root [String] repository root for existence checks.
@@ -390,19 +394,46 @@ module Mutineer
     def infer_tests(source_rel, project_root:, prefer: "minitest")
       base, lib = logical_path(source_rel)
       root = File.expand_path(project_root)
-      exact = candidates(base, lib, prefer).find { |rel| File.exist?(File.expand_path(rel, root)) }
-      found = if exact&.end_with?("_spec.rb")
-                [exact]
-              else
-                ([exact] + split_test_files(base, lib, root)).compact.uniq
-              end
+      found = tests_at(base, lib, root, prefer)
       return found unless found.empty?
 
       ns = namespace_base(source_rel)
       return found unless ns
 
-      pick = candidates(ns, false, prefer).find { |rel| File.exist?(File.expand_path(rel, root)) }
-      pick ? [pick] : []
+      namespace_tests(ns, root, prefer)
+    end
+
+    # Exact and split tests for one logical base. A spec stays the only file.
+    #
+    # @param base [String] logical source path without extension.
+    # @param lib [Boolean] whether the source originated from lib/.
+    # @param root [String] expanded project root.
+    # @param prefer [String] preferred framework name.
+    # @return [Array<String>] existing test paths, exact candidate first.
+    def tests_at(base, lib, root, prefer)
+      exact = candidates(base, lib, prefer).find { |rel| File.exist?(File.expand_path(rel, root)) }
+      return [exact] if exact&.end_with?("_spec.rb")
+
+      ([exact] + split_test_files(base, lib, root)).compact.uniq
+    end
+
+    # Namespace exact and split tests for a concern whose `concerns/` path
+    # has none. Split files a longer concern owns are left out. A longer model
+    # is already left out by {split_test_files}.
+    #
+    # @param ns [String] namespace base from {namespace_base}.
+    # @param root [String] expanded project root.
+    # @param prefer [String] preferred framework name.
+    # @return [Array<String>] existing test paths, exact candidate first.
+    def namespace_tests(ns, root, prefer)
+      found = tests_at(ns, false, root, prefer)
+      return found if found.any? { |rel| rel.end_with?("_spec.rb") }
+
+      name = File.basename(ns)
+      found.reject do |rel|
+        entry = File.basename(rel)
+        split_entry?(entry, name) && claimed_by_longer_concern?(root, ns, entry)
+      end
     end
 
     # Namespace mirror for a concern, or nil.
@@ -602,20 +633,65 @@ module Mutineer
     #   this directory. An `app/` source does not take a `test/lib/` file.
     # @return [Boolean]
     def claimed_by_longer_source?(root, base, entry, scanned_dir = nil)
-      name = File.basename(base)
+      dir = File.dirname(base)
+      longer_owner_stems(File.basename(base), entry).any? do |longer|
+        longer_source_exists?(root, dir, longer, scanned_dir)
+      end
+    end
+
+    # True when a longer concern file owns this split name.
+    # The file sits under `app/<dir>/concerns/`, a directory
+    # {longer_source_exists?} does not search for a namespace base.
+    # Only the concern's namespace fallback asks this, so a model keeps a
+    # split file it already pairs with (#408).
+    #
+    # @param root [String] expanded project root.
+    # @param ns_base [String] namespace base, such as `models/storage/totaled`.
+    # @param entry [String] test file basename.
+    # @return [Boolean]
+    def claimed_by_longer_concern?(root, ns_base, entry)
+      dir = namespace_concerns_dir(ns_base)
+      return false unless dir
+
+      longer_owner_stems(File.basename(ns_base), entry).any? do |longer|
+        File.file?(File.join(root, dir, "#{longer}.rb"))
+      end
+    end
+
+    # `app/<dir>/concerns/<rest-dir>` for a namespace base `<dir>/<rest>`.
+    #
+    # @param ns_base [String] namespace base from {namespace_base}.
+    # @return [String, nil] relative concerns directory, or nil when the base
+    #   has no rest path.
+    def namespace_concerns_dir(ns_base)
+      app_dir, rest = ns_base.split("/", 2)
+      return unless app_dir && rest
+
+      parent = File.dirname(rest)
+      if parent == "."
+        File.join("app", app_dir, "concerns")
+      else
+        File.join("app", app_dir, "concerns", parent)
+      end
+    end
+
+    # Longer basenames that own `entry`, one per prefix of its pieces.
+    # `user_session__test.rb` yields nothing for `user_session`.
+    #
+    # @param name [String] shorter source basename without extension.
+    # @param entry [String] test file basename.
+    # @return [Array<String>] owner basenames without extension.
+    def longer_owner_stems(name, entry)
       stem = entry.sub(/_test\.rb\z/, "")
-      return false unless stem.start_with?("#{name}_")
+      return [] unless stem.start_with?("#{name}_")
 
       rest = stem.delete_prefix("#{name}_")
-      return false if rest.empty?
+      return [] if rest.empty?
 
-      dir = File.dirname(base)
       parts = rest.split("_", -1)
-      (1..parts.length).any? do |i|
+      (1..parts.length).filter_map do |i|
         longer = "#{name}_#{parts.first(i).join("_")}"
-        next false unless longer_owns_entry?(entry, longer)
-
-        longer_source_exists?(root, dir, longer, scanned_dir)
+        longer if longer_owns_entry?(entry, longer)
       end
     end
 

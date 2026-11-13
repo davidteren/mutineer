@@ -1087,6 +1087,23 @@ class CoverageMapTest < Minitest::Test
     assert_equal expected, map.order_tests("lib/shop/cart.rb", tests)
   end
 
+  # A concern's namespace split runs before a cheaper unrelated file.
+  def test_order_tests_puts_a_concern_namespace_split_first
+    dir = Dir.mktmpdir("mutineer-order")
+    source = "app/models/concerns/storage/totaled.rb"
+    paired = "test/models/storage/totaled_bytes_test.rb"
+    extra = "test/other_test.rb"
+    [source, paired, extra].each do |rel|
+      path = File.join(dir, rel)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, "")
+    end
+    timings = { paired => 9.0, extra => 0.1 }
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: dir, timings: timings)
+
+    assert_equal [paired, extra], map.order_tests(File.join(dir, source), [extra, paired])
+  end
+
   # A concern's namespace test runs before a cheaper unrelated file.
   def test_order_tests_puts_a_concern_namespace_test_first
     dir = Dir.mktmpdir("mutineer-order")
@@ -1798,26 +1815,69 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
-  # A split name at the namespace path does not mark the concern.
-  def test_failing_split_name_at_the_namespace_path_does_not_taint_the_concern
+  # A failed split name at the namespace path marks the concern.
+  def test_failing_split_name_at_the_namespace_path_marks_the_concern
     Dir.mktmpdir do |dir|
+      map, src = concern_namespace_capture(dir, "test/models/storage/totaled_bytes_test.rb")
+      assert map.uncapturable_source?(src)
+      assert map.method_uncapturable?(src, 3..5)
+    end
+  end
+
+  # A longer model owns the namespace split, so the failed file does not mark
+  # the concern. The model is the source that pairs with the file.
+  def test_failing_namespace_split_owned_by_a_longer_model_does_not_taint_the_concern
+    Dir.mktmpdir do |dir|
+      longer = File.join(dir, "app/models/storage/totaled_bytes.rb")
+      FileUtils.mkdir_p(File.dirname(longer))
+      File.write(longer, "class TotaledBytes; def n; 1; end; end\n")
       map, src = concern_namespace_capture(dir, "test/models/storage/totaled_bytes_test.rb")
       refute map.uncapturable_source?(src)
       refute map.method_uncapturable?(src, 3..5)
+      assert map.uncapturable_source?(longer)
+    end
+  end
+
+  # A longer concern owns the namespace split. The shorter concern stays a
+  # coverage gap. The longer concern is the one the failed file marks.
+  def test_failing_namespace_split_owned_by_a_longer_concern_marks_that_concern
+    Dir.mktmpdir do |dir|
+      shorter = "app/models/concerns/user.rb"
+      longer_rel = "app/models/concerns/user_session.rb"
+      bad_rel = "test/models/user_session_extra_test.rb"
+      [shorter, longer_rel, bad_rel].each do |rel|
+        path = File.join(dir, rel)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, rel == bad_rel ? "require 'does/not/exist'\n" : "module M; def n; 1; end; end\n")
+      end
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(
+          source_paths: [File.join(dir, shorter), File.join(dir, longer_rel)],
+          test_paths: [File.join(dir, bad_rel)],
+          cache_dir: File.join(dir, "cache"), project_root: dir
+        ).build_or_load
+      end
+      refute map.uncapturable_source?(File.join(dir, shorter))
+      assert map.uncapturable_source?(File.join(dir, longer_rel))
     end
   end
 
   # A test at the concerns path wins, so a failed namespace test does not
   # mark the concern. Pairing would not run the namespace test for it.
+  # An exact name and a split name at the namespace path follow the same rule.
   def test_failing_namespace_test_does_not_taint_a_concern_with_its_own_test
-    %w[test/models/concerns/storage/totaled_test.rb
-       test/models/concerns/storage/totaled_sum_test.rb].each do |own|
-      Dir.mktmpdir do |dir|
-        FileUtils.mkdir_p(File.join(dir, File.dirname(own)))
-        File.write(File.join(dir, own), "# exists\n")
-        map, src = concern_namespace_capture(dir, "test/models/storage/totaled_test.rb")
-        refute map.uncapturable_source?(src), own
-        refute map.method_uncapturable?(src, 3..5), own
+    %w[test/models/storage/totaled_test.rb
+       test/models/storage/totaled_bytes_test.rb].each do |failed|
+      %w[test/models/concerns/storage/totaled_test.rb
+         test/models/concerns/storage/totaled_sum_test.rb].each do |own|
+        Dir.mktmpdir do |dir|
+          FileUtils.mkdir_p(File.join(dir, File.dirname(own)))
+          File.write(File.join(dir, own), "# exists\n")
+          map, src = concern_namespace_capture(dir, failed)
+          refute map.uncapturable_source?(src), "#{own} vs #{failed}"
+          refute map.method_uncapturable?(src, 3..5), "#{own} vs #{failed}"
+        end
       end
     end
   end
@@ -1937,6 +1997,41 @@ class CoverageMapTest < Minitest::Test
       end
       assert rebuilt.phase_a_ran, "deleting the longer source must rebuild coverage"
       refute rebuilt.uncapturable_source?(user)
+    end
+  end
+
+  # A longer file in the namespace directory owns the concern's split name.
+  # Deleting it changes the digest, so the next run captures again.
+  def test_deleting_a_namespace_longer_source_rebuilds_a_concern
+    Dir.mktmpdir do |dir|
+      concern = File.join(dir, "app/models/concerns/storage/totaled.rb")
+      longer = File.join(dir, "app/models/storage/totaled_bytes.rb")
+      bad = File.join(dir, "test/models/storage/totaled_bytes_extra_test.rb")
+      [concern, longer, bad].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+      File.write(concern, "module Storage\n  module Totaled\n    def total(a, b)\n      a + b\n    end\n  end\nend\n")
+      File.write(longer, "class TotaledBytes; def n; 1; end; end\n")
+      File.write(bad, <<~RUBY)
+        sibling = File.expand_path("../../../app/models/storage/totaled_bytes.rb", __dir__)
+        raise "sibling present" if File.file?(sibling)
+      RUBY
+      first = nil
+      capture_subprocess_io do
+        first = Mutineer::CoverageMap.new(source_paths: [concern], test_paths: [bad],
+                                          cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      refute_empty first.failed_test_files
+      refute first.uncapturable_source?(concern)
+
+      File.delete(longer)
+      refute first.uncapturable_source?(concern), "the stored blame stays with this map"
+
+      rebuilt = nil
+      capture_subprocess_io do
+        rebuilt = Mutineer::CoverageMap.new(source_paths: [concern], test_paths: [bad],
+                                            cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      assert rebuilt.phase_a_ran, "deleting the namespace owner must rebuild coverage"
+      refute rebuilt.uncapturable_source?(concern)
     end
   end
 
