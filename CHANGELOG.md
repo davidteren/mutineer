@@ -178,6 +178,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A `file:` SQLite name locks the file it opens (#412).**
+  `file:storage/test.sqlite3?mode=rwc` takes the same run lock as
+  `storage/test.sqlite3` when both names open that file. A second daemon
+  run stops with `another Mutineer run is using <file>`. A memory URI
+  (`file::memory:` or `mode=memory`) takes no lock. An empty `file:` URI
+  is a private temporary database and takes no lock. A relative `file:`
+  path is resolved from the working directory, which the daemon sets to
+  the app root before the lock. A later `mode` that adds write or create
+  access, such as `mode=ro&mode=rw`, is a URI SQLite rejects, so it takes
+  no lock. Other run-lock gaps are unchanged (#416): in-process `--rails`
+  runs, the lock taken after boot and `--require` files, a prepare daemon
+  that fails to boot, and the `--jobs 1` respawn window. A custom VFS that
+  does not open the URI path is not covered.
 - **An RSpec example's database error scores `error`, and a parallel Minitest
   class follows queue order (#347).** The first failed RSpec example now
   follows the Minitest rule. An Active Record connection or lock error
@@ -337,7 +350,7 @@ All notable changes to this project are documented here. The format is based on
   A run now holds a lock on `<base file>-mutineer.lock` beside the database
   file, and a second run stops with `another Mutineer run is using <base>`,
   as PostgreSQL and MySQL runs already do. Mutineer never deletes the lock
-  file. A `file:` database name still takes no lock (#412).
+  file. A `file:` name that opens a disk file takes that same lock (#412).
 
 ## [1.8.2] - 2026-11-10
 
