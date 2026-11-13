@@ -152,7 +152,8 @@ All notable changes to this project are documented here. The format is based on
   redacted. If the program would run with a `DATABASE_URL` the parent does
   not know, its output is dropped instead. The same holds for `spawn` and
   `system` when their environment hash sets a `DATABASE_URL` this process
-  does not know. Other ways to start a program with its own password, such
+  does not know. That program's own redirects of stdout and stderr are
+  replaced too, so an `Open3` capture of it gets no output. Other ways to start a program with its own password, such
   as backticks, `IO.popen`, or a shell command that sets the variable, are
   tracked in #457. Shutdown writes every byte already
   queued, including a report a slow reader has not taken yet. The daemon does this in its own process, so a

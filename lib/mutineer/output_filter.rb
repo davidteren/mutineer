@@ -214,7 +214,9 @@ module Mutineer
 
     # `args` for spawn or system, with stdout and stderr sent to the null
     # device when the program's env hash sets a DATABASE_URL this process
-    # does not know. A stream the caller already redirects is left alone.
+    # does not know. The caller's own redirects of stdout and stderr are
+    # dropped too: a target such as `err: :out` or `err: STDOUT` would still
+    # reach this pipe, and Ruby refuses a stream given twice.
     #
     # @param args [Array] the arguments given to spawn or system.
     # @return [Array]
@@ -222,11 +224,9 @@ module Mutineer
       return args if !installed? || known_url?(args, ENV.fetch("DATABASE_URL", nil))
 
       options = args.size > 1 && args.last.is_a?(Hash) ? args.last : {}
-      taken = options.keys.flat_map { |key| Array(key) }
-      extra = {}
-      extra[:out] = File::NULL unless taken.intersect?([:out, 1, STDOUT])
-      extra[:err] = File::NULL unless taken.intersect?([:err, 2, STDERR])
-      options.empty? ? args + [extra] : args[0...-1] + [options.merge(extra)]
+      kept = options.reject { |key, _| Array(key).intersect?([:out, :err, 1, 2, STDOUT, STDERR]) }
+      command = options.empty? ? args : args[0...-1]
+      command + [kept.merge(out: File::NULL, err: File::NULL)]
     end
 
     # True when the program `args` start would run with no DATABASE_URL,

@@ -214,10 +214,16 @@ class OutputFilterTest < Minitest::Test
       results << Process.wait2(Kernel.spawn(env, RbConfig.ruby, "-e", script)).last.success?
       pid = fork { exit!(system(env, RbConfig.ruby, "-e", script) ? 0 : 1) }
       results << Process.waitpid2(pid).last.success?
+      # A caller redirect whose target is a standard stream still reaches
+      # the pipe, so it is replaced too.
+      [{ err: STDOUT }, { err: :out }, { err: 1 }, { out: [:child, :err] },
+       { %i[out err] => STDOUT }].each do |redirect|
+        results << system(env, RbConfig.ruby, "-e", script, **redirect)
+      end
       results << system(RbConfig.ruby, "-e", "STDERR.puts %(plain s3cret end)")
     end
 
-    assert_equal [true] * 6, results
+    assert_equal [true] * 11, results
     refute_includes out + err, secret
     refute_includes out + err, "spawned"
     assert_includes err, "plain [REDACTED] end"
