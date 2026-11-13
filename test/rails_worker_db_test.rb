@@ -1385,10 +1385,11 @@ class RailsWorkerDbTest < Minitest::Test
     nil
   end
 
-  # sqlite3 on PATH, or nil. The URI oracle skips when this is nil.
+  # Absolute path of sqlite3 on PATH, or nil. The URI oracle skips when this
+  # is nil. The path is absolute so a later chdir cannot lose a relative PATH entry.
   def sqlite3_cli
     ENV["PATH"].split(File::PATH_SEPARATOR).each do |dir|
-      bin = File.join(dir, "sqlite3")
+      bin = File.expand_path(File.join(dir, "sqlite3"))
       return bin if File.executable?(bin) && !File.directory?(bin)
     end
     nil
