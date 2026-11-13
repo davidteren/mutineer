@@ -314,6 +314,11 @@ class CollectionMethodTest < Minitest::Test
           defined?(xs.lazy.each { |item| item.touch })
         end
       RUBY
+      ["hash key inside defined? is not evaluated", <<~RUBY, [], 1],
+        def m
+          defined?({ users.each { |user| user.notify } => 1 })
+        end
+      RUBY
       ["earlier statement inside a command is discarded", <<~RUBY, [%w[map each]], 1],
         def m
           `echo \#{
