@@ -37,10 +37,16 @@ module Mutineer
   #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
   #               "tests":["test/models/order_test.rb"],"timeout":30}
+  #              (a :maybe mutant also sends "reach_path" and "reach_key" inside
+  #               "payload". The child clears that file, and the fiber-local
+  #               named by reach_key, after load and before tests, so a
+  #               load-time call is not a test reaching the expression, #345)
   #              (a mutant of a def in a concern's hook block adds to the payload
   #               "hook_def":{"line":12,"name":"total","singleton":false}, #297)
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
-  #              (an "error" whose child raised adds "details":"Class: message", #388)
+  #              (an "error" adds "details" when the child sent a cause line:
+  #               a raise → "Class: message" (#388); an in-test database error →
+  #               "a test failed with a database error: Class: message" (#417))
   #   quit in  : {"cmd":"quit"}
   #
   # Worker isolation: when the app is Rails, each fork is routed to its own
@@ -357,6 +363,7 @@ module Mutineer
         pid = fork do
           child = Process.pid
           cause_rd.close
+          ChildCause.arm!(cause_wr, child)
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
           # and silence the child's stdout so test output stays out of the diagnostics.
           Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
@@ -370,6 +377,11 @@ module Mutineer
               # A routing failure raises here and is scored `error`, never a false verdict.
               @worker_db&.after_fork(worker, first_use ? @schema_path : nil, seed: first_use)
               apply_payload(req["payload"])
+              # A reload can run the probed expression while the file loads.
+              # Drop that write before tests, matching the in-process child (#345).
+              # A request with no payload (a test stub) has nothing to clear.
+              loaded = req["payload"] || {}
+              forget_load_reach(loaded["reach_path"], loaded["reach_key"])
               # A parallel worker records each pool that runs SQL, so a test
               # that closes its shared connection is still caught below.
               if @worker_db && @shared_databases&.any?
@@ -383,6 +395,8 @@ module Mutineer
               @errio.puts("[daemon-child] #{describe_error(e)}")
               ChildCause.write(cause_wr, e, child)
               2
+            ensure
+              ChildCause.disarm!
             end
           exit!(code)
         end
@@ -482,6 +496,21 @@ module Mutineer
           end
           sleep POLL
         end
+      end
+
+      # Empties the reach sentinel after the mutant file has loaded. Same rule
+      # as {ReachProbe.forget_load}. Written here because this file cannot
+      # require Prism.
+      #
+      # @param path [String, nil] sentinel path, inside the run payload.
+      # @param key [String, nil] fiber-local key, `mutineer_r` plus 16 hex
+      #   digits, the same pattern as {ReachProbe::KEY_FORMAT}.
+      # @return [void]
+      def forget_load_reach(path, key)
+        return unless path.is_a?(String) && !path.empty?
+
+        Thread.current[key.to_sym] = nil if key.is_a?(String) && key.match?(/\Amutineer_r[0-9a-f]{16}\z/)
+        File.write(path, "")
       end
 
       # Write the tool-built mutated text beside the real source and `load` it,

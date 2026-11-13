@@ -83,8 +83,9 @@ module Mutineer
                              these sources or more; runs alone only the tests that
                              cover these sources
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
-        --boot FILE          Require FILE once in the parent to boot the app env, then
-                             fork per mutant (Rails apps; needs a test, given or found by convention)
+        --boot FILE          Require FILE once in the parent before the sources, then
+                             fork per mutant (an app entry point or a gem's lib/<name>.rb;
+                             needs a test, given or found by convention)
         --rails              Boot config/environment; without --daemon, defaults to
                              redefine and serial execution
         --test-command CMD   Run the target suite in the app's own runtime as a
@@ -452,7 +453,10 @@ module Mutineer
     rescue Mutineer::ProjectLoadError => e
       # A boot file, source or --require file failed to load. The message is
       # already redacted; --verbose adds the backtrace and the cause chain.
+      # A source NameError with no boot file adds one line that points at
+      # boot: (#376). The hint is static text, so it needs no redaction.
       warn "mutineer: #{e.message}"
+      warn "mutineer: #{e.hint}" if e.hint
       if config.verbose
         (e.backtrace || []).each { |frame| warn "\t#{Redaction.text(frame)}" }
         e.causes.each { |cause| warn "mutineer: caused by: #{cause}" }

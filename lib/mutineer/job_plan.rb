@@ -280,11 +280,15 @@ module Mutineer
     # @param mutation [Mutineer::Mutation] the mutation.
     # @param subject [Mutineer::Subject] a subject with a {Subject#reload_hook_call}.
     # @param source [String] the original source text.
+    # @param reach_path [String, nil] sentinel for a `:maybe` mutant (#345).
+    #   The placed def records a run of the mutated expression.
+    # @param reach_key [String, nil] fiber-local key for `reach_path`.
     # @return [Array(String, Hash{Symbol => Object})] the mutant text, and the
     #   original def's `line`, `name` and `singleton`.
-    def self.hook_mutant(mutated, mutation, subject, source)
+    def self.hook_mutant(mutated, mutation, subject, source, reach_path: nil, reach_key: nil)
       at = subject.reload_hook_call.location.start_offset
-      stored = "::Mutineer::ConcernBlocks.store_hook_def do\n#{Isolation.mutated_def(mutation, subject, source)}\nend; "
+      stored = "::Mutineer::ConcernBlocks.store_hook_def do\n" \
+               "#{Isolation.mutated_def(mutation, subject, source, reach_path: reach_path, reach_key: reach_key)}\nend; "
       [mutated.byteslice(0...at) + stored + mutated.byteslice(at..),
        { line: subject.def_node.location.start_line, name: subject.name, singleton: subject.singleton }]
     end
@@ -301,8 +305,8 @@ module Mutineer
     # multi-line `a && b`, #254), and a first or last line that holds other
     # code (the opener of a one-line block, #289), but never the `def` line.
     # Those tests may not have run the mutant, so the answer is
-    # `[:maybe, abs_test_paths]` and {selection_verdict} treats a survivor as
-    # no_coverage.
+    # `[:maybe, abs_test_paths]`. {selection_verdict} keeps a survivor that
+    # the probe saw run, and leaves one it did not see as no_coverage (#345).
     #
     # An empty selection is `:ran_at_load` when the mutant's line ran while the
     # app booted or its class loaded ({ran_at_load?}): no test ran it, but the
@@ -351,18 +355,20 @@ module Mutineer
 
     # The verdict of a mutant whose tests {coverage_selection} chose as `:maybe`:
     # they ran its statement but may not have run the mutated code. A kill is a
-    # real kill. A survivor is no_coverage, because the run cannot tell "never
-    # ran" from "ran unchecked" (#254); like any no_coverage mutant it has no
-    # `--matrix` row. An error or a timeout stays what it is: the mutant ran, and
-    # a failure is reported, not hidden. A kill keeps its whole `--matrix` row.
-    # A result of any other selection comes back unchanged.
+    # real kill. A survivor the probe saw run is a real survivor and keeps its
+    # `--matrix` row (#345). A survivor the probe did not see is no_coverage,
+    # the same as any other unreached mutant, and has no `--matrix` row (#254).
+    # An error or a timeout stays what it is: the mutant ran, and a failure is
+    # reported, not hidden. A kill keeps its whole `--matrix` row. A result of
+    # any other selection comes back unchanged.
     #
     # @param kind [Symbol, nil, false] the first element of {coverage_selection}'s
     #   answer, or a falsy value when no selection ran.
     # @param result [Mutineer::Result] the mutant's verdict.
+    # @param reached [Boolean] true when the mutated expression ran in the child.
     # @return [Mutineer::Result]
-    def self.selection_verdict(kind, result)
-      return result unless kind == :maybe && result.survived?
+    def self.selection_verdict(kind, result, reached: false)
+      return result unless kind == :maybe && result.survived? && !reached
 
       result.with(status: :no_coverage, kills: nil)
     end
@@ -377,9 +383,20 @@ module Mutineer
     # count at load without it. The `def` line never counts: Ruby counts it
     # when the method is defined.
     #
+    # A `define_method` or `define_singleton_method` call stores its block.
+    # Reloading the method does not run the class that already called it, such
+    # as `Greeter` calling `greets`, so a mutant in that call or in the stored
+    # block is the original method when the call's line ran at load (#435).
+    # The line of `each` on an empty array counts without the block, so a block
+    # that is not one of those calls stays scored (#286). Re-running the
+    # caller's class body is #389. `CI` is not read here. Rails eager load,
+    # which the test env turns on when `CI` is set, is what puts the line in
+    # the load set.
+    #
     # A one-line or endless def keeps its body on the `def` line, so it uses
     # the method's own call count at load instead (#209), for code that runs
-    # each time the method does ({StatementLines.runs_with_method?}).
+    # each time the method does ({StatementLines.runs_with_method?}). A block
+    # on that `def` line is unchanged (#389).
     #
     # @param source_file [String] the mutated source file path.
     # @param mutation [Mutineer::Mutation] the mutation.
@@ -399,8 +416,12 @@ module Mutineer
       end
 
       body = (loc.start_line..loc.end_line)
-      lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
-      lines.any? { |l| l != def_line && body.cover?(l) && coverage_map.ran_at_load?(source_file, l) }
+      ran = lambda do |lines|
+        lines.any? { |l| l != def_line && body.cover?(l) && coverage_map.ran_at_load?(source_file, l) }
+      end
+      return true if ran.call(StatementLines.for(subject.def_node, source, mutation.start_offset))
+
+      ran.call(StatementLines.stored_method_lines(subject.def_node, source, mutation.start_offset))
     end
 
     # A survivor whose line ran at load becomes `ran_at_load` ({ran_at_load?});

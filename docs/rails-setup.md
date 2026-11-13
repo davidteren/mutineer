@@ -53,19 +53,22 @@ tests:
 See [Extra tests for a source](cli.md#extra-tests-for-a-source) for cost notes.
 
 Both strategies write a hidden `.mutineer_mutant*.rb` beside the source.
-Under `--strategy redefine`, a read-only directory falls back to a system temporary file; `reload` needs a writable source directory.
-Mutineer warns that `__dir__` or `require_relative` can then cause false kills and an inflated score.
-Make the source directory writable to avoid this problem, tracked in issue #339.
+Under `--strategy redefine`, a read-only directory falls back to a system temporary file.
+The method still resolves `__dir__`, `__FILE__`, and `require_relative` against the original source file, so those mutants are not false kills.
+`reload`, in process and on the daemon, does not fall back. It needs a writable source directory, and a read-only directory scores the mutant `error`, which stays out of the score.
 
 Code executed during boot or class loading runs before mutation. Forked tests do not repeat it.
 Examples include constant-building calls, `to_prepare` initializers, and source calls from `.mutineer.yml` `require:` files.
 
 | Result | Treatment |
 | --- | --- |
-| A mutant survives on a line executed during loading | Classified as `ran_at_load`, not `survived` or `no_coverage`. Excluded from the score and `--threshold` failures. |
+| A mutant survives on a line executed during loading | Classified as `ran_at_load`, not `survived` or `no_coverage`. Excluded from the score and `--threshold` failures. A mutant in a `define_method` or `define_singleton_method` whose line ran at load counts too, including the block that call stores (#435). Another block on that line, such as `each`, stays scored. An empty `each` that shares the line with `define_method` can still mark that call `ran_at_load` when the call did not run ([#286](https://github.com/davidteren/mutineer/issues/286)). |
 | A mutant is killed | The kill counts. |
 | Strategy is `reload` | Repeats the mutated file's class body, but not initializers or other files. Survivors on these lines remain untrusted. |
 | A verdict is needed | Use `--test-command` to boot a fresh process per mutant. |
+| The caller loaded before the mutant | `reload` updates the macro method and does not run the class that already called it. Those mutants stay `ran_at_load`. Re-running that class body is [#389](https://github.com/davidteren/mutineer/issues/389). |
+
+Mutineer does not read `CI`. In the Rails test environment, `config.eager_load` follows `CI`, so a run with `CI` set loads the class before the mutant and these mutants are `ran_at_load`. With eager load off, the class loads after the mutant and the same mutants are killed.
 
 Continue from the first report to a CI gate with the
 [Rails rollout guide](https://davidteren.github.io/mutineer/rails.html).
