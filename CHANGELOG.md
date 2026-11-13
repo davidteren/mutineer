@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **An empty `--since` scope returns before application boot (#396).**
+
 ### Added
 
 - **A source that cannot load alone points at `boot:` (#376).**

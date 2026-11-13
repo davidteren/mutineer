@@ -528,12 +528,15 @@ class RunnerTest < Minitest::Test
                                     operators: ["arithmetic"], jobs: 1)
       collect_calls = 0
       scope_calls = 0
+      scoped_jobs = nil
+      pool_jobs = nil
       collect_jobs = Mutineer::JobPlan.method(:collect_jobs)
       coverage_map = FakeCoverageMap.new({}, dir, [], false, [])
       coverage_builder = Object.new
       coverage_builder.define_singleton_method(:build_or_load) { coverage_map }
       pool = Object.new
       pool.define_singleton_method(:run) do |jobs, stop_when:, on_result:, &run_one|
+        pool_jobs = jobs
         results = []
         jobs.each do |job|
           result = run_one.call(job.fetch(0), job.fetch(1))
@@ -554,7 +557,9 @@ class RunnerTest < Minitest::Test
           assert cfg.since
           assert_kind_of Hash, source_map
           assert_kind_of Hash, extras
-          [jobs, ignored, jobs.size + ignored.size]
+          scoped_jobs = jobs.take(1)
+          refute_same jobs, scoped_jobs
+          [scoped_jobs, ignored, jobs.size + ignored.size]
         end
 
       Mutineer::JobPlan.stub(:source_dirs, []) do
@@ -578,6 +583,8 @@ class RunnerTest < Minitest::Test
 
       assert_equal 1, collect_calls
       assert_equal 1, scope_calls
+      assert_same scoped_jobs, pool_jobs
+      assert_equal 1, pool_jobs.size
     end
   end
 
