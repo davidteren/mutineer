@@ -1344,6 +1344,37 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #396: the reported in-process shape. A comment-only diff, a red suite and
+  # a boot file that raises. The run exits 0 and names the empty diff. The
+  # suite does not run and the boot file does not load. --boot is the same
+  # Runner path as --rails --no-daemon.
+  def test_comment_only_since_run_skips_a_red_suite_and_a_raising_boot
+    with_project do |proj|
+      marker = File.join(proj, "ran.txt")
+      File.write(File.join(proj, "red_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "calculator"
+        class RedSuiteTest < Minitest::Test
+          def test_fails
+            File.write(#{marker.dump}, "ran")
+            flunk "red suite"
+          end
+        end
+      RUBY
+      File.write(File.join(proj, "boot.rb"), "raise \"must not boot\"\n")
+      init_git_project(proj)
+      calc = File.join(proj, "calculator.rb")
+      File.write(calc, File.read(calc).sub("class Calculator\n", "class Calculator\n  # note\n"))
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "red_test.rb", "--boot", "boot.rb",
+                                   "--since", "HEAD", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "nothing to test in the changes since HEAD"
+      refute_includes err, "not green"
+      refute_includes err, "must not boot"
+      refute_path_exists marker
+    end
+  end
+
   def test_boot_not_implemented_error_exits_one_cleanly
     _, err, status = run_with_boot(%(raise NotImplementedError, "adapter for #{BAD_DATABASE_URL}"\n))
 
