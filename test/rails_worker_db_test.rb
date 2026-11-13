@@ -1125,6 +1125,15 @@ class RailsWorkerDbTest < Minitest::Test
     end
   end
 
+  # The memory flag is a Boolean, not nil, when the URI has no mode.
+  def test_sqlite_uri_parts_memory_flag_is_a_boolean
+    db = Mutineer::RailsWorkerDb
+
+    assert_equal ["a.sqlite3", false], db.sqlite_uri_parts("file:a.sqlite3")
+    assert_equal ["a.sqlite3", false], db.sqlite_uri_parts("file:a.sqlite3?mode=rwc")
+    assert_equal ["a.sqlite3", true], db.sqlite_uri_parts("file:a.sqlite3?mode=memory")
+  end
+
   def test_sqlite_file_uri_and_plain_path_share_a_lock_in_the_app_root
     Dir.mktmpdir do |tmp|
       # Rails.root is a real path, and so is the working directory after chdir.

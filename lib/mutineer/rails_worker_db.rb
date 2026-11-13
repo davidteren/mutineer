@@ -818,7 +818,7 @@ module Mutineer
         return unless sqlite_uri_option(name, value, options)
       end
 
-      memory = options[:open_flags] && (options[:open_flags] & 0x80) != 0
+      memory = (options[:open_flags].to_i & 0x80) != 0
       [sqlite_uri_text(path), memory]
     end
 
