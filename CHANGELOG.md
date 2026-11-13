@@ -166,8 +166,9 @@ All notable changes to this project are documented here. The format is based on
   backslash before `$` is a literal dollar. An invalid byte does not stop
   the read. A Ruby process the command starts hides a bare password it
   assigns itself, including one set only in that process (#457). A program
-  that is not Ruby ignores that copier. A password inside a URL is still
-  hidden.
+  that is not Ruby ignores that copier, so when that Ruby execs a program
+  with a `DATABASE_URL` the tool did not know, the program's output is
+  dropped. A password inside a URL is still hidden.
 - **Redaction no longer blanks a host, a database name, one character, or a
   common word (#341).** A password that equals the host or the database name
   stays readable outside a URL, as a password that equals the username

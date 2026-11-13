@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "shellwords"
 require "tempfile"
+require "tmpdir"
 require_relative "result"
 require_relative "rails_run_env"
 require_relative "redaction"
@@ -386,17 +388,46 @@ module Mutineer
       parts
     end
 
-    # RUBYOPT for a `--test-command` child. The copier file is first, so it
-    # installs before another `-r`. An option already present is kept.
+    # RUBYOPT for a `--test-command` child: the copier file alone. The tool's
+    # own RUBYOPT (`-rbundler/setup` under `bundle exec`) stays out, as
+    # {child_env} clears every `RUBY*` key so the suite picks its own Ruby and
+    # gems. Empty when the copier file cannot be named without whitespace.
     #
     # @api private
+    # @param dir [String] the directory that holds command_redact.rb.
     # @return [String]
-    def self.command_rubyopt
-      flag = "-r#{File.expand_path("command_redact.rb", __dir__)}"
-      parts = ENV["RUBYOPT"].to_s.split
-      parts.unshift(flag) unless parts.include?(flag)
-      parts.join(" ")
+    def self.command_rubyopt(dir = __dir__)
+      path = command_redact_file(dir)
+      path ? "-r#{path}" : ""
     end
+
+    # Path of command_redact.rb that RUBYOPT can carry. Ruby splits RUBYOPT at
+    # whitespace and has no quoting or escape, so a path with a space (a home
+    # directory named "Jane Doe") makes every Ruby child stop with "invalid
+    # switch in RUBYOPT". Such a path is reached through a symlink in a
+    # temporary directory, removed when this process exits. `require_relative`
+    # in the file resolves the real path, so the rest of the copier loads.
+    #
+    # @api private
+    # @param dir [String] the directory that holds command_redact.rb.
+    # @return [String, nil] nil when the temporary directory name has whitespace too.
+    def self.command_redact_file(dir)
+      path = File.expand_path("command_redact.rb", dir)
+      return path unless path.match?(/\s/)
+
+      COMMAND_REDACT_LINKS[dir] ||= begin
+        tmp = Dir.mktmpdir("mutineer-redact")
+        at_exit { FileUtils.remove_entry(tmp, true) }
+        link = File.join(tmp, "command_redact.rb")
+        File.symlink(path, link)
+        link
+      end
+      link = COMMAND_REDACT_LINKS[dir]
+      link.match?(/\s/) ? nil : link
+    end
+
+    # Symlinks {command_redact_file} made, by source directory.
+    COMMAND_REDACT_LINKS = {} # rubocop:disable Style/MutableConstant
 
     # Spawns the command to a captured combined-output tempfile, enforces a
     # wall-clock timeout (SIGKILL past the deadline), and returns

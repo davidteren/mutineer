@@ -3,6 +3,7 @@
 require "minitest/mock"
 require "open3"
 require "rbconfig"
+require "shellwords"
 require "stringio"
 require "tmpdir"
 require_relative "test_helper"
@@ -445,13 +446,73 @@ class OutputFilterTest < Minitest::Test
         'STDERR.puts "saw " + ["ex", "ecuted"].join + " tail"',
         "exit 1\n"
       ].join("\n"))
-      command = "#{RbConfig.ruby} -e 'exec(#{RbConfig.ruby.inspect}, #{script.inspect})' %{files}"
+      command = "#{RbConfig.ruby} -e 'exec(RbConfig.ruby, ARGV.shift)' #{Shellwords.escape(script)} %{files}"
       _out, err, status = mutineer("run", "a.rb", "--test", "a_test.rb", "--test-command", command,
                                    chdir: proj, env: { "DATABASE_URL" => nil, "RUBYOPT" => nil })
 
       assert_equal 1, status.exitstatus, err
       assert_includes err, "saw [REDACTED] tail"
       refute_includes err, word
+    end
+  end
+
+  # The command's Ruby sets a URL the tool does not know, then execs a program
+  # that is not Ruby. That program has no copier, so its output is dropped.
+  def test_test_command_drops_output_of_a_non_ruby_exec_with_an_unknown_url
+    Dir.mktmpdir do |proj|
+      File.write(File.join(proj, "a.rb"), "class A; def add(a, b) = a + b; end\n")
+      File.write(File.join(proj, "a_test.rb"), "def test_a = 1\n")
+      word = ["ex", "ecuted"].join
+      code = 'ENV["DATABASE_URL"] = ["postgres://u:", "ex", "ecuted", "@h/db"].join; ' \
+             'exec("/bin/sh", "-c", "echo saw " + ["ex", "ecuted"].join + " tail >&2; exit 1")'
+      command = "#{Shellwords.escape(RbConfig.ruby)} -e #{Shellwords.escape(code)} %{files}"
+      _out, err, _status = mutineer("run", "a.rb", "--test", "a_test.rb", "--test-command", command,
+                                    chdir: proj, env: { "DATABASE_URL" => nil, "RUBYOPT" => nil })
+
+      refute_includes err, word
+      refute_includes err, "saw"
+    end
+  end
+
+  # child_env clears every RUBY* key. The copier flag must not bring the
+  # tool's own RUBYOPT (`-rbundler/setup` under `bundle exec`) back.
+  def test_command_rubyopt_leaves_out_the_tools_rubyopt
+    saved = ENV.fetch("RUBYOPT", nil)
+    ENV["RUBYOPT"] = "-rbundler/setup -W0"
+    rubyopt = Mutineer::ExternalBackend.command_rubyopt
+
+    assert_match(%r{\A-r\S*command_redact\.rb\z}, rubyopt)
+    refute_includes rubyopt, "bundler"
+  ensure
+    saved ? ENV["RUBYOPT"] = saved : ENV.delete("RUBYOPT")
+  end
+
+  # Ruby splits RUBYOPT at whitespace and has no escape. A copier path with a
+  # space is reached through a symlink, and a Ruby child still loads it.
+  def test_command_rubyopt_reaches_a_copier_path_with_a_space
+    Dir.mktmpdir do |tmp|
+      dir = File.join(tmp, "has space")
+      Dir.mkdir(dir)
+      File.write(File.join(dir, "command_redact.rb"), "puts 'copier loaded'\n")
+      rubyopt = Mutineer::ExternalBackend.command_rubyopt(dir)
+
+      refute_match(/\s/, rubyopt)
+      out, status = Open3.capture2e({ "RUBYOPT" => rubyopt }, RbConfig.ruby, "-e", "1")
+      assert_predicate status, :success?, out
+      assert_includes out, "copier loaded"
+    end
+  end
+
+  # A command started from a deleted directory must still start.
+  def test_command_redact_starts_when_the_working_directory_is_gone
+    Dir.mktmpdir do |tmp|
+      gone = File.join(tmp, "gone")
+      Dir.mkdir(gone)
+      code = "Dir.rmdir(Dir.pwd); require #{File.join(LIB, 'mutineer', 'command_redact.rb').dump}; puts :started"
+      out, status = Open3.capture2e(RbConfig.ruby, "-e", code, chdir: gone)
+
+      assert_predicate status, :success?, out
+      assert_includes out, "started"
     end
   end
 

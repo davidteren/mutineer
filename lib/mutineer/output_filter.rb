@@ -129,6 +129,8 @@ module Mutineer
       @readers = readers
       @stopping = false
       @installed = true
+      # What the process that reads this pipe knows, for {before_exec}.
+      @install_url = ENV["DATABASE_URL"].to_s
       hook_fork
       hook_exit!
       @thread = Thread.new { drain } # rubocop:disable ThreadSafety/NewThread
@@ -202,7 +204,9 @@ module Mutineer
     # parent could not hide that password. A `--test-command` Ruby process
     # also puts the captured descriptors back, so the program that replaces
     # it does not write to a pipe whose reader died. The next Ruby loads its
-    # own copier from RUBYOPT (#457).
+    # own copier from RUBYOPT (#457). The same null-device rule holds there
+    # when the program would run with a URL the tool did not know at start:
+    # a program that is not Ruby has no copier.
     #
     # @param args [Array] the arguments given to exec; a leading Hash is its
     #   environment.
@@ -216,7 +220,11 @@ module Mutineer
       end
       return unless installed? && command_ruby?
 
+      # The next Ruby loads its own copier. A program that is not Ruby does not,
+      # so drop its output when it would run with a URL nobody here knows.
+      known = known_url?(args, @install_url)
       uninstall
+      silence_stdio unless known
     end
 
     # True when this process was started as a `--test-command` Ruby, which

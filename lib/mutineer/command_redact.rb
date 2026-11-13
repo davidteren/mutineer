@@ -19,8 +19,18 @@ module Mutineer
     #
     # @return [Symbol] the result of {OutputFilter.install}.
     def install
-      Redaction.extra_urls = DatabaseUrls.from_files(Dir.pwd)
+      Redaction.extra_urls = DatabaseUrls.from_files(working_directory)
       OutputFilter.install
+    end
+
+    # The working directory, or nil when it was removed. A command that runs
+    # from a deleted directory must still start.
+    #
+    # @return [String, nil]
+    def working_directory
+      Dir.pwd
+    rescue SystemCallError
+      nil
     end
   end
 end
