@@ -1007,8 +1007,10 @@ class RailsWorkerDbTest < Minitest::Test
     end
   end
 
-  # The table is SQLite's file: rule (authority, escapes, query, fragment),
-  # checked against SQLite 3.45: each name opens `opened`, or no shared file.
+  # The table is SQLite's file: rule (authority, escapes, query, fragment).
+  # `opened` is the file that name opens, or nil when it opens no shared file.
+  # test_sqlite_file_uri_lock_matches_the_file_sqlite_opens compares a sample
+  # with the file the sqlite3 CLI opens.
   def test_sqlite_file_uri_lock_follows_the_opened_file
     root = Dir.pwd
     {
@@ -1067,6 +1069,52 @@ class RailsWorkerDbTest < Minitest::Test
       else
         base = opened.start_with?("/") ? opened : File.expand_path(opened, root)
         assert_equal "#{base}-mutineer.lock", actual, name
+      end
+    end
+  end
+
+  # The fixed table above states the rule. This asks SQLite which file it
+  # opened, so a parser drift fails here. It skips when the CLI is absent.
+  # The table still runs.
+  def test_sqlite_file_uri_lock_matches_the_file_sqlite_opens
+    sqlite3 = sqlite3_cli
+    skip "sqlite3 CLI is not installed" unless sqlite3
+
+    Dir.mktmpdir do |dir|
+      Dir.mkdir(File.join(dir, "storage"))
+      abs = File.join(dir, "app.sqlite3")
+      bare = abs.delete_prefix("/")
+      Dir.chdir(dir) do
+        [
+          "file:storage/test.sqlite3?mode=rwc",
+          "file:storage/my%20db.sqlite3?mode=rwc",
+          "file:storage/test.sqlite3?vfs=unix&mode=rwc",
+          "file:a%00b.sqlite3?mode=rwc",
+          "file:foo/../bar.sqlite3?mode=rwc",
+          "file:./rel.sqlite3?mode=rwc",
+          "file:pre%00mid.sqlite3?mode=rwc",
+          "file:caf%C3%A9.sqlite3?mode=rwc",
+          "file:#{abs}?mode=rwc",
+          "file:///#{bare}?mode=rwc",
+          "file:////#{bare}?mode=rwc",
+          "file://localhost/#{bare}?mode=rwc",
+          "file://localhost//#{bare}?mode=rwc",
+          "file::memory:",
+          "file:memdb1?mode=memory&cache=shared",
+          "file:",
+          "file:///",
+          "file://otherhost/#{bare}?mode=rwc",
+          "file:named.sqlite3?mode=rwc&mode=memory",
+          "file:named.sqlite3?MODE=memory&mode=rwc"
+        ].each do |uri|
+          opened = sqlite_cli_opened_file(sqlite3, uri)
+          got = Mutineer::RailsWorkerDb.sqlite_uri_file(uri)
+          if opened.nil?
+            assert_nil got, uri
+          else
+            assert_equal opened, got, uri
+          end
+        end
       end
     end
   end
@@ -1327,6 +1375,28 @@ class RailsWorkerDbTest < Minitest::Test
     Process.wait(pid)
   rescue Errno::ESRCH, Errno::ECHILD
     nil
+  end
+
+  # sqlite3 on PATH, or nil. The URI oracle skips when this is nil.
+  def sqlite3_cli
+    ENV["PATH"].split(File::PATH_SEPARATOR).each do |dir|
+      bin = File.join(dir, "sqlite3")
+      return bin if File.executable?(bin) && !File.directory?(bin)
+    end
+    nil
+  end
+
+  # The file SQLite opened for `uri`, or nil when it opened no shared file.
+  # `quote(file)` wraps the path in single quotes. An empty quote is no file.
+  def sqlite_cli_opened_file(sqlite3, uri)
+    out, status = Open3.capture2e(sqlite3, uri, "SELECT quote(file) FROM pragma_database_list WHERE name='main';")
+    return nil unless status.success?
+
+    quoted = out.strip
+    return nil if quoted.empty? || quoted == "''"
+    return nil unless quoted.start_with?("'") && quoted.end_with?("'")
+
+    quoted[1..-2].gsub("''", "'")
   end
 
   # From another process, try a shared then an exclusive lock; return what each gave.
