@@ -157,6 +157,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A killed mutant stays killed when the failure message holds raw bytes (#434).**
+  Rails' `assert_response` appends a short response body as raw bytes.
+  The reporter prints that message on the silenced stdout.
+  After Rails sets both `Encoding.default_external` and `Encoding.default_internal`
+  to UTF-8, that write raised `Encoding::UndefinedConversionError`, and the child
+  scored the mutant `errored`. The silenced stdout is binary now, so the bytes
+  are discarded and the failure still counts as a kill. This holds for
+  in-process reload and redefine runs and for daemon reload runs.
+  The daemon forces reload; redefine is not available there.
+  RSpec already writes its failure text to a StringIO, which accepts the bytes.
 - **A mutant in `define_method` or `define_singleton_method` on a load line is `ran_at_load` (#435).**
   A class method such as `greets` runs when the including class loads.
   Rails turns eager load on when `CI` is set, so that call happens before
