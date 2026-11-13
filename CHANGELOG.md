@@ -8,6 +8,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **A source that cannot load alone points at `boot:` (#376).**
+  When a source raises `NameError` (including `NoMethodError`) while it
+  loads, and the run has no `boot:` file, stderr adds one line. The names
+  it needs come from `boot:` or `--boot`, which loads before the sources.
+  Listing the entry file as an earlier source also loads it first.
+  In that run, `require:` files still load after the sources, so a source
+  cannot use them while it loads. With a boot file they load after the
+  boot file, and the parent does not require the sources.
+  `--test-command` does not load `require:` files. The hint line is absent
+  for any other load error, and for a `NameError` in the boot file or a
+  `require:` file. A dry run does not load the source, so it does not print
+  the line. `--daemon` and `--test-command` do not require sources in the
+  tool process, so they do not print it either. `--help` describes `--boot`
+  as an app entry point or a gem's `lib/<name>.rb`, and no longer limits it
+  to Rails apps.
 - **A run counts sources that have no paired test (#381).**
   The report names each skipped source and how many mutants it holds.
   JSON adds `summary.unpaired_sources`, `summary.unpaired_mutants`, and `unpaired_sources[]`.

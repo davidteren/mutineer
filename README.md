@@ -174,6 +174,8 @@ This gap is common in rushed tests and tests written by AI agents.
    test alone; a failure stops the run. With a cached map, only the tests that cover the sources run again,
    alone and together, because a mutant runs only those tests.
 4. **Run each mutant in a fork.** The parent loads code once, including the app with `--rails`.
+   A source that needs other files loaded first can use `--boot` or `boot:`, or be listed after the file that loads them.
+   Without a boot file, `require:` files load after the sources.
    Children run in parallel on Linux and macOS.
    Each loads the changed file (`reload`) or replaces the changed method (`redefine`).
    Only covering test files run: paired tests first, then fastest to slowest. In-process runs stop at the first failure unless `--matrix` requests every covering test.
@@ -214,6 +216,7 @@ Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.c
 | `--since REF` | Mutate only lines changed since git `REF`, such as `origin/main` |
 | `--baseline FILE` | Exit 1 for new survivors, or score drops on full runs, against a prior JSON report from a full run |
 | `--rails` | Boot `config/environment` once; serial without `--daemon` |
+| `--boot FILE` | Require this file once before the sources. An app entry point, or a gem's `lib/<name>.rb`. `require:` files load after this file |
 | `--[no-]daemon` | Enable or disable daemon; isolated worker databases, Minitest only |
 | `--jobs N` | Worker count; default: one per CPU |
 | `--format human\|json\|html` | Report format; default: human |
