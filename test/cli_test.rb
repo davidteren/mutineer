@@ -1375,6 +1375,171 @@ class CliTest < Minitest::Test
       assert_equal 1, status.exitstatus, err
       assert_includes err, "cannot load"
       refute_includes err, "s3cret"
+      refute_includes err, "needs other files loaded first"
+    end
+  end
+
+  # #376: cart.rb reads Shop::Price at load and does not load it. The reported
+  # files, copied into a temp project so the run cannot see this checkout.
+  SOURCE_NEEDS_BOOT = File.join(FIXTURES, "source_needs_boot")
+  # The extra stderr line, word for word. A change to the hint fails this.
+  SOURCE_NEEDS_BOOT_LINE = "mutineer: a source that needs other files loaded first takes them from " \
+                           "`boot:` (or `--boot`), which loads before the sources; " \
+                           "`require:` files load after them"
+
+  def with_source_needs_boot
+    Dir.mktmpdir("mutineer-needs-boot") do |proj|
+      FileUtils.cp_r("#{SOURCE_NEEDS_BOOT}/.", proj)
+      # A file here stops config walk-up from picking up a parent .mutineer.yml.
+      File.write(File.join(proj, ".mutineer.yml"), "threshold: 0\n")
+      yield proj
+    end
+  end
+
+  def assert_source_needs_boot(err, path)
+    assert_includes err, "mutineer: cannot load #{path}"
+    assert_includes err, SOURCE_NEEDS_BOOT_LINE
+  end
+
+  # The reporter's gem: running cart.rb alone raises NameError, prints the
+  # boot hint, and writes no report. require: still loads after the source.
+  def test_source_that_cannot_load_alone_points_at_boot
+    with_source_needs_boot do |proj|
+      out, err, status = mutineer("run", "lib/shop/cart.rb", "--test", "test/test_cart.rb",
+                                  "--format", "json", "--output", "report.json", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      assert_equal "", out
+      refute File.exist?(File.join(proj, "report.json")), "a load failure writes no report"
+      assert_source_needs_boot(err, "lib/shop/cart.rb: NameError: uninitialized constant Shop::Cart::Price")
+      assert_includes err, "mutineer: re-run with --verbose for the backtrace and causes"
+      assert_empty backtrace_lines(err)
+
+      _, verbose, verbose_status = mutineer("run", "lib/shop/cart.rb", "--test", "test/test_cart.rb",
+                                            "--verbose", chdir: proj)
+      assert_equal 1, verbose_status.exitstatus, verbose
+      assert_source_needs_boot(verbose, "lib/shop/cart.rb: NameError")
+      assert_includes verbose, "cart.rb:"
+      refute_includes verbose, "re-run with --verbose"
+
+      _, redefine, redefine_status = mutineer("run", "lib/shop/cart.rb", "--test", "test/test_cart.rb",
+                                              "--strategy", "redefine", chdir: proj)
+      assert_equal 1, redefine_status.exitstatus, redefine
+      assert_source_needs_boot(redefine, "lib/shop/cart.rb: NameError")
+    end
+  end
+
+  # #217: require: loads after the sources, so it cannot define Price first.
+  def test_require_does_not_load_before_a_source_that_needs_it
+    ["require:\n  - lib/shop.rb\n", "require:\n  - lib/shop/price.rb\n"].each do |yaml|
+      with_source_needs_boot do |proj|
+        File.write(File.join(proj, ".mutineer.yml"), yaml)
+        _, err, status = mutineer("run", "lib/shop/cart.rb", "--test", "test/test_cart.rb", chdir: proj)
+        assert_equal 1, status.exitstatus, err
+        assert_source_needs_boot(err, "lib/shop/cart.rb: NameError: uninitialized constant Shop::Cart::Price")
+        refute_includes err, "cannot load lib/shop.rb"
+        refute_includes err, "cannot load lib/shop/price.rb"
+      end
+    end
+  end
+
+  # boot: and --boot load the entry file first, so the one arithmetic mutant
+  # (`*` -> `/`) is killed. Listing the entry file as a source does the same.
+  def test_boot_runs_a_source_that_cannot_load_alone
+    expectations = [
+      ["boot: lib/shop.rb\n", []],
+      ["threshold: 0\n", ["--boot", "lib/shop.rb"]]
+    ]
+    expectations.each do |yaml, flags|
+      with_source_needs_boot do |proj|
+        File.write(File.join(proj, ".mutineer.yml"), yaml)
+        out, err, status = mutineer("run", "lib/shop/cart.rb", "--test", "test/test_cart.rb",
+                                    "--format", "json", *flags, chdir: proj)
+        assert_equal 0, status.exitstatus, err
+        refute_includes err, "needs other files loaded first"
+        doc = JSON.parse(out)
+        assert_equal [1, 1, 100.0], doc["summary"].values_at("total", "killed", "score")
+        killed = doc.fetch("killed")
+        assert_equal ["Shop::Cart.total", "arithmetic", "*"],
+                     killed.fetch(0).values_at("subject", "operator", "token")
+      end
+    end
+  end
+
+  def test_listing_the_entry_file_before_the_source_runs_it
+    with_source_needs_boot do |proj|
+      out, err, status = mutineer("run", "lib/shop.rb", "lib/shop/cart.rb", "--test", "test/test_cart.rb",
+                                  "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "needs other files loaded first"
+      doc = JSON.parse(out)
+      assert_equal [1, 1, 100.0], doc["summary"].values_at("total", "killed", "score")
+      assert_equal "Shop::Cart.total", doc.fetch("killed").fetch(0).fetch("subject")
+    end
+  end
+
+  # The hint is the NameError rule, not the shop example: a missing constant,
+  # a missing local, and a missing method.
+  def test_name_error_shapes_at_source_load_point_at_boot
+    {
+      "VALUE = MissingConst376\n" => "NameError",
+      "VALUE = unknown_size_376\n" => "NameError",
+      "VALUE = nil.no_such_method_376\n" => "NoMethodError"
+    }.each do |body, error_class|
+      with_project do |proj|
+        File.write(File.join(proj, "box.rb"), "class Box\n  #{body}  def self.size = VALUE\nend\n")
+        _, err, status = mutineer("run", "box.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+        assert_equal 1, status.exitstatus, err
+        assert_source_needs_boot(err, "box.rb: #{error_class}")
+      end
+    end
+  end
+
+  # A load error that is not a NameError, and a NameError that is not a source,
+  # stay on the old one-line message.
+  def test_other_load_errors_do_not_point_at_boot
+    {
+      "raise 'plain'\n" => "RuntimeError",
+      "require 'no_such_gem_376'\n" => "LoadError",
+      "raise NotImplementedError, 'adapter'\n" => "NotImplementedError",
+      "def oops(\n" => "SyntaxError",
+      "begin\n  MissingWrapped376\nrescue NameError\n  raise 'wrapped'\nend\n" => "RuntimeError"
+    }.each do |body, error_class|
+      with_project do |proj|
+        File.write(File.join(proj, "bad.rb"), body)
+        _, err, status = mutineer("run", "bad.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+        assert_equal 1, status.exitstatus, err
+        assert_includes err, "mutineer: cannot load bad.rb: #{error_class}"
+        refute_includes err, "needs other files loaded first"
+      end
+    end
+
+    with_project do |proj|
+      File.write(File.join(proj, "boot.rb"), "MissingBoot376\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                "--boot", "boot.rb", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "mutineer: cannot load boot.rb: NameError"
+      refute_includes err, "needs other files loaded first"
+    end
+
+    with_project do |proj|
+      File.write(File.join(proj, "extra.rb"), "MissingRequire376\n")
+      File.write(File.join(proj, ".mutineer.yml"), "require:\n  - extra.rb\n")
+      _, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "mutineer: cannot load extra.rb: NameError"
+      refute_includes err, "needs other files loaded first"
+    end
+  end
+
+  # A dry run parses the source and does not load it, so there is no hint.
+  def test_dry_run_does_not_load_a_source_that_cannot_load_alone
+    with_source_needs_boot do |proj|
+      out, err, status = mutineer("run", "lib/shop/cart.rb", "--dry-run", "--test", "test/test_cart.rb", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "needs other files loaded first"
+      assert_includes out, "Shop::Cart.total"
+      assert_includes out, "arithmetic"
     end
   end
 
@@ -1384,6 +1549,16 @@ class CliTest < Minitest::Test
     out, _, status = mutineer("--help")
     assert_equal 0, status.exitstatus
     assert_includes out, "--verbose"
+  end
+
+  # #376: --boot is how a gem loads a file that cannot load alone, not a Rails-only flag.
+  def test_help_describes_boot_for_a_gem_entry_file
+    out, _, status = mutineer("--help")
+    assert_equal 0, status.exitstatus
+    boot = out.lines.drop_while { |line| !line.include?("--boot FILE") }.take(3).join
+    assert_includes boot, "before the sources"
+    assert_includes boot, "lib/<name>.rb"
+    refute_includes boot, "Rails apps"
   end
 
   def test_verbose_and_debug_are_accepted_flags

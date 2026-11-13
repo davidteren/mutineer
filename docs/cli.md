@@ -16,7 +16,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--baseline-epsilon FLOAT` | Allowed baseline score drop (CLI only) | `0` |
 | `--jobs N` | Parallel workers | One per CPU; `1` under `--rails` without `--daemon`, `--test-command`, or `--fail-fast` |
 | `--rails` | Boot `config/environment` once; reconnect Active Record per fork | Off |
-| `--boot FILE` | Require app entry point before forking | None |
+| `--boot FILE` | Require this file once before the sources, then fork. An app entry point, or a gem's `lib/<name>.rb` | None |
 | `--[no-]daemon` | Boot once; separate worker test databases. Minitest only; requires `--rails` or `--boot` | Off |
 | `--strategy reload\|redefine` | Reload file or redefine mutated method | `reload`; `redefine` under `--rails` without `--daemon` |
 | `--test-command CMD` | Run tests in another Ruby subprocess; include `%{files}`. Forces one worker and sets `PARALLEL_WORKERS=1`; a wrapper can reset it. Run the tests in a fixed order: for Minitest, put `SEED=1` before the `mutineer` command (not inside `CMD`); for RSpec, add `--order defined` to `CMD` and keep `--order rand` out of `SPEC_OPTS` | None |
@@ -67,8 +67,8 @@ Pass sources as positional arguments and tests with `--test`.
 | `threshold` | 0 to 100; 0 disables the score gate |
 | `jobs` | Positive integer; defaults to CPU count. `test_command`, `fail_fast`, or `--rails` without `--daemon` forces 1 |
 | `only` | Fully-qualified subject, such as `Calculator#add` |
-| `require` | Extra file path or list to load before mutation |
-| `boot` | App entry point to require before forking |
+| `require` | Extra file path or list. These files load after the boot file, or after the sources when no boot file is set, so a source cannot use them while it loads. `--test-command` does not load them |
+| `boot` | File to require once before the sources. An app entry point, or a gem's entry file (`lib/<name>.rb`) |
 | `rails` | Boolean; enables Rails boot defaults |
 | `since` | Nonblank git ref; `false` disables diff scoping |
 | `framework` | `minitest` or `rspec`; preserved during test pairing |
@@ -85,6 +85,15 @@ Pass sources as positional arguments and tests with `--test`.
 | `matrix` | Boolean; runs every covering test per mutant; adds report kill matrix |
 | `allow_empty` | Boolean; suppresses warnings for expected runs without mutants |
 | `shared_databases` | File only. Test database names that parallel `--daemon` workers may share; needs Rails 7.1 or later (on Rails 7.0 every parallel mutant scores `error`). Listing the primary database exits 2. If the test environment registers a pool for a listed database, every parallel mutant scores `error`. See [More than one database](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database) |
+
+With no boot file, an in-process run requires each source, then each `require` file.
+A source that raises `NameError` while it loads cannot take the missing name from `require`.
+With a boot file, `require` files load after that file, and the parent does not require the sources.
+Point `boot` at an app entry point or a gem's entry file (`lib/<name>.rb`), or pass `--boot`.
+Listing that file as an earlier source also loads it first.
+A dry run does not load the sources, so it does not report this.
+`--daemon` loads the boot file, then the `require` files, in the daemon.
+`--test-command` does not load `require` files.
 
 | Validation | Rule |
 |------------|------|

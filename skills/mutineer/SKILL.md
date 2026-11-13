@@ -27,6 +27,11 @@ Example — mutate `lib/calculator.rb`, gate CI below 90%:
 mutineer run lib/calculator.rb --test test/calculator_test.rb --threshold 90
 ```
 
+A source that raises `NameError` (including `NoMethodError`) while it loads, with no boot file, needs `--boot` or `boot:` pointed at an app entry point or a gem's `lib/<name>.rb`.
+That file loads before the sources.
+Without a boot file, `require:` files load after the sources, so a source cannot use them while it loads.
+Listing the entry file as an earlier source also loads it first.
+
 ## Agent loop
 
 1. Edit code and tests on a branch. Fetch `origin/main` before using it below.
