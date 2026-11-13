@@ -67,7 +67,7 @@ Pass sources as positional arguments and tests with `--test`.
 | `threshold` | 0 to 100; 0 disables the score gate |
 | `jobs` | Positive integer; defaults to CPU count. `test_command`, `fail_fast`, or `--rails` without `--daemon` forces 1 |
 | `only` | Fully-qualified subject, such as `Calculator#add` |
-| `require` | Extra file path or list. These files load after the sources, so a source cannot use them while it loads |
+| `require` | Extra file path or list. These files load after the boot file, or after the sources when no boot file is set, so a source cannot use them while it loads. `--test-command` does not load them |
 | `boot` | File to require once before the sources. An app entry point, or a gem's entry file (`lib/<name>.rb`) |
 | `rails` | Boolean; enables Rails boot defaults |
 | `since` | Nonblank git ref; `false` disables diff scoping |
@@ -86,12 +86,13 @@ Pass sources as positional arguments and tests with `--test`.
 | `allow_empty` | Boolean; suppresses warnings for expected runs without mutants |
 | `shared_databases` | File only. Test database names that parallel `--daemon` workers may share; needs Rails 7.1 or later (on Rails 7.0 every parallel mutant scores `error`). Listing the primary database exits 2. If the test environment registers a pool for a listed database, every parallel mutant scores `error`. See [More than one database](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database) |
 
-A run with no `boot` file requires each source, then each `require` file.
+With no boot file, an in-process run requires each source, then each `require` file.
 A source that raises `NameError` while it loads cannot take the missing name from `require`.
-Point `boot` at the gem's entry file, such as `lib/<name>.rb`, or pass `--boot`.
-That file loads first.
+With a boot file, `require` files load after that file, and the parent does not require the sources.
+Point `boot` at an app entry point or a gem's entry file (`lib/<name>.rb`), or pass `--boot`.
 A dry run does not load the sources, so it does not report this.
-`--daemon` and `--test-command` do not require the sources in the tool process.
+`--daemon` loads the boot file, then the `require` files, in the daemon.
+`--test-command` does not load `require` files.
 
 | Validation | Rule |
 |------------|------|
