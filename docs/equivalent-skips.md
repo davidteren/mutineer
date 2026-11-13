@@ -178,7 +178,7 @@ The `collection_method` operator is not in the default set. Select it with `--op
 
 The operator swaps `each` with `map`, `all?` with `any?`, `first` with `last`, `min` with `max`, and `select` with `reject`. It skips `each` and `map` when the call's result is discarded. `each` returns the receiver. `map` returns a new array. No test can tell those apart when the value is thrown away. Each skipped call counts as declined.
 
-The check uses the syntax tree only. It does not know the receiver's class. A method named `each` that is not `Enumerable#each` follows the same rule.
+The check uses the syntax tree only. It does not know the receiver's class. A method named `each` that is not `Enumerable#each` follows the same rule. One receiver is visible in the tree: a chain that calls `lazy`, as in `xs.lazy.each` or `xs.lazy.map { }.each`. `Enumerator::Lazy#each` runs the block and `Lazy#map` does not, so that chain is still swapped. A lazy enumerator stored in a variable has no `lazy` call left in the chain, so a discarded statement on that variable is still skipped.
 
 The result is discarded, and the swap is skipped, when the call is a statement and nothing keeps that statement's value:
 
@@ -186,7 +186,8 @@ The result is discarded, and the swap is skipped, when the call is a statement a
 - It is not the last expression of a block or a lambda. The method that takes the block may use the block's result. The operator does not guess which methods do. A loop that is the last line of a block is still swapped.
 - It is not the last expression of a branch whose value is kept. A branch is an `if`, `unless`, `case`, `rescue`, `else`, ternary, or modifier.
 - A `while`, `until`, or `for` body discards its value, including the last line. An `ensure` body does too. `defined?` does not read the call's result.
-- A `begin`, parentheses, an array, a hash, a range, string interpolation, or `and` / `or` / `&&` / `||` keeps the value only when the outer expression keeps it.
+- A `begin`, parentheses, an array, a hash, a range, string or symbol interpolation, or `and` / `or` / `&&` / `||` keeps the value only when the outer expression keeps it.
+- A backtick or `%x` command, and an interpolated regexp (`/.../` or `%r{}`), always keep the swap. The command runs, and the regexp is compiled, even when the expression's result is thrown away.
 
 The result is kept, and the swap still runs, when the call is any of these:
 

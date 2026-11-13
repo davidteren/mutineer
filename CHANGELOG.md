@@ -122,6 +122,11 @@ All notable changes to this project are documented here. The format is based on
   So are assignment, an argument, a chained call, `return` / `break` / `next`,
   and a condition.
   A `while`, `until`, `for`, or `ensure` body is skipped, including its last line.
+  A backtick or `%x` command, and an interpolated regexp, still swap: the command
+  runs and the regexp is compiled even when their result is thrown away.
+  A receiver chain that calls `lazy` still swaps, because `Enumerator::Lazy#each`
+  runs the block and `Lazy#map` does not.
+  A lazy enumerator stored in a variable is still skipped.
   `all?`, `any?`, `first`, `last`, `min`, `max`, `select`, and `reject` are unchanged.
   The operator is not in the default set, so a default run's mutant count and
   score do not change.

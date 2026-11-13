@@ -230,6 +230,12 @@ class CollectionMethodTest < Minitest::Test
           :done
         end
       RUBY
+      ["discarded symbol interpolation", <<~RUBY, [], 1],
+        def m
+          :"\#{users.each { |user| user.notify }}"
+          :done
+        end
+      RUBY
       ["endpoint of a discarded range", <<~RUBY, [], 1],
         def m
           (users.each { |user| user.notify })..1
@@ -407,6 +413,48 @@ class CollectionMethodTest < Minitest::Test
           foo(begin
             users.each { |user| user.notify }
           end)
+          :done
+        end
+      RUBY
+      ["discarded backtick still runs the command", <<~RUBY, [%w[map each]], 0],
+        def m
+          `echo \#{users.map { |user| user.name }}`
+          :done
+        end
+      RUBY
+      ["discarded %x still runs the command", <<~RUBY, [%w[map each]], 0],
+        def m
+          %x{echo \#{users.map { |user| user.name }}}
+          :done
+        end
+      RUBY
+      ["discarded regexp is still compiled", <<~RUBY, [%w[map each]], 0],
+        def m
+          /\#{users.map { |user| user.name }}/
+          :done
+        end
+      RUBY
+      ["discarded %r is still compiled", <<~RUBY, [%w[map each]], 0],
+        def m
+          %r{\#{users.map { |user| user.name }}}
+          :done
+        end
+      RUBY
+      ["lazy each still runs the block", <<~RUBY, [%w[each map]], 0],
+        def m
+          xs.lazy.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy map does not run the block", <<~RUBY, [%w[map each]], 0],
+        def m
+          xs.lazy.map { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["each after a lazy map still runs the block", <<~RUBY, [%w[each map], %w[map each]], 0],
+        def m
+          xs.lazy.map { |item| item.name }.each { |item| item.touch }
           :done
         end
       RUBY

@@ -38,6 +38,9 @@ module Mutineer
       # exactly when that parent is. An assignment, an argument, a receiver,
       # or an explicit `return` / `break` / `next` is not in this list: those
       # parents use the value even when their own result is discarded.
+      # A backtick command and an interpolated regexp are not in this list
+      # either: the command runs, and the regexp is compiled, even when the
+      # expression's result is thrown away.
       VALUE_FLOWS = [
         Prism::ParenthesesNode,
         Prism::BeginNode,
@@ -53,9 +56,7 @@ module Mutineer
         Prism::SplatNode,
         Prism::RangeNode,
         Prism::InterpolatedStringNode,
-        Prism::InterpolatedXStringNode,
         Prism::InterpolatedSymbolNode,
-        Prism::InterpolatedRegularExpressionNode,
         Prism::EmbeddedStatementsNode
       ].freeze
 
@@ -110,10 +111,35 @@ module Mutineer
 
       # Returns whether this call is an `each` or `map` whose value is discarded.
       #
+      # A backtick command and an interpolated regexp are not discarded: the
+      # command runs, and the regexp is compiled, even when the expression's
+      # own result is thrown away. Those nodes are absent from {VALUE_FLOWS},
+      # so {#result_used?} keeps them. A receiver chain that calls `lazy` is
+      # kept too. `Enumerator::Lazy#each` runs the block and `Lazy#map` does
+      # not, and the syntax tree can see the `lazy` call.
+      #
       # @param node [Prism::CallNode] call node to inspect.
       # @return [Boolean] true when the swap would be equivalent.
       def unused_result?(node)
-        UNUSED_RESULT_NAMES.include?(node.name) && !result_used?(node)
+        UNUSED_RESULT_NAMES.include?(node.name) && !result_used?(node) && !lazy_chain?(node)
+      end
+
+      # Returns whether a `lazy` call sits in this call's receiver chain.
+      #
+      # `xs.lazy.each` and `xs.lazy.map { }.each` both count. A lazy
+      # enumerator stored in a variable does not: the tree no longer shows
+      # the `lazy` call.
+      #
+      # @param node [Prism::CallNode] `each` or `map` call to inspect.
+      # @return [Boolean] true when the chain calls `lazy`.
+      def lazy_chain?(node)
+        receiver = node.receiver
+        while receiver.is_a?(Prism::CallNode)
+          return true if receiver.name == :lazy
+
+          receiver = receiver.receiver
+        end
+        false
       end
 
       # Returns whether any syntax reads this node's value.
