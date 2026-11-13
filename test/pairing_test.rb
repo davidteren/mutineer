@@ -636,6 +636,20 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # The longer concern keeps its concerns-path test and does not add the
+  # namespace split. The shorter concern yields that split, so neither pairs
+  # with it.
+  def test_namespace_split_stays_unpaired_when_the_longer_concern_has_its_own_test
+    shorter = "app/models/concerns/user.rb"
+    longer = "app/models/concerns/user_session.rb"
+    with_tree(shorter, longer,
+              "test/models/concerns/user_session_test.rb",
+              "test/models/user_session_extra_test.rb") do |root|
+      assert_equal ["test/models/concerns/user_session_test.rb"], infer_tests(longer, root)
+      assert_empty infer_tests(shorter, root)
+    end
+  end
+
   # The model's only test is a split name a concern also uses. The concern
   # must not take it away.
   def test_model_keeps_its_only_split_file_when_a_concern_shares_the_name

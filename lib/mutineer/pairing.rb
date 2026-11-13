@@ -419,7 +419,9 @@ module Mutineer
 
     # Namespace exact and split tests for a concern whose `concerns/` path
     # has none. Split files a longer concern owns are left out. A longer model
-    # is already left out by {split_test_files}.
+    # is already left out by {split_test_files}. A longer concern that already
+    # has a test at its `concerns/` path does not take the namespace split
+    # either, so that file pairs with neither concern.
     #
     # @param ns [String] namespace base from {namespace_base}.
     # @param root [String] expanded project root.

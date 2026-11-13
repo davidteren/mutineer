@@ -13,6 +13,8 @@ All notable changes to this project are documented here. The format is based on
   The `concerns/` path still wins when it has any test, exact or split.
   A longer source keeps its file. That includes a longer concern and a model or `lib/` file of the longer name.
   A model keeps a split file it already pairs with. The concern may use that same file. The model does not lose it.
+  A namespace split of a longer concern stays unpaired when that concern already has a test at the `concerns/` path.
+  The shorter concern yields the file, and the longer concern does not add it.
   Before this, a namespace split name left the concern skipped, with no score.
   A concern that was skipped can now run. That can change a score or a gate.
   `--baseline` treats new survivors as new. Refresh the baseline.

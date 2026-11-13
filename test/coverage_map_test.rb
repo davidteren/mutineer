@@ -1838,6 +1838,35 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # The longer concern already has a concerns-path test, so a failed namespace
+  # split marks neither concern. Pairing would not run that file for either.
+  def test_failing_namespace_split_marks_neither_concern_when_the_longer_one_has_its_own_test
+    Dir.mktmpdir do |dir|
+      shorter = "app/models/concerns/user.rb"
+      longer_rel = "app/models/concerns/user_session.rb"
+      own = "test/models/concerns/user_session_test.rb"
+      bad_rel = "test/models/user_session_extra_test.rb"
+      [shorter, longer_rel, own].each do |rel|
+        path = File.join(dir, rel)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, "module M; def n; 1; end; end\n")
+      end
+      bad = File.join(dir, bad_rel)
+      FileUtils.mkdir_p(File.dirname(bad))
+      File.write(bad, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(
+          source_paths: [File.join(dir, shorter), File.join(dir, longer_rel)],
+          test_paths: [bad],
+          cache_dir: File.join(dir, "cache"), project_root: dir
+        ).build_or_load
+      end
+      refute map.uncapturable_source?(File.join(dir, shorter))
+      refute map.uncapturable_source?(File.join(dir, longer_rel))
+    end
+  end
+
   # A longer concern owns the namespace split. The shorter concern stays a
   # coverage gap. The longer concern is the one the failed file marks.
   def test_failing_namespace_split_owned_by_a_longer_concern_marks_that_concern
