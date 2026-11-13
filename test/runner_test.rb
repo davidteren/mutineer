@@ -43,6 +43,78 @@ class RunnerTest < Minitest::Test
     assert_predicate result, :survived?, "expected survived, got #{result.status} (#{result.details})"
   end
 
+  def test_run_uses_the_declared_source_encoding_before_mutation
+    Dir.mktmpdir("mutineer-latin1-runner") do |dir|
+      src = File.join(dir, "encoding_calc.rb")
+      File.binwrite(src, <<~RUBY.encode(Encoding::ISO_8859_1))
+        # encoding: ISO-8859-1
+        class Latin1EncodingExample
+          def value
+            # caf\u00E9
+            'caf\u00E9'.upcase
+          end
+        end
+      RUBY
+
+      parsed_source = Mutineer::Parser.parse_file(src).source.source
+      subject = Mutineer::Project.discover([src]).first
+      mutation = Mutineer::Mutators::CallToReceiver.new.mutations_for(subject, parsed_source).first
+      result = nil
+      coverage_selection = lambda do |_file, _mutation, _subject, source, _coverage_map|
+        assert_equal Encoding::ISO_8859_1, source.encoding
+        assert_includes source.b, "# caf\u00E9".encode(Encoding::ISO_8859_1).b
+        [:verdict, Mutineer::Result.killed]
+      end
+
+      Mutineer::JobPlan.stub(:coverage_selection, coverage_selection) do
+        result = Mutineer::Runner.run(mutation, source_file: src, subject: subject)
+      end
+
+      assert_predicate result, :killed?
+    end
+  end
+
+  def test_latin1_source_mutation_runs_with_reload_and_redefine
+    skip "in-process mutation needs fork support" unless Process.respond_to?(:fork)
+
+    %w[reload redefine].each do |strategy|
+      Dir.mktmpdir("mutineer-latin1-runner") do |dir|
+        src = File.join(dir, "encoding_calc.rb")
+        test = File.join(dir, "encoding_calc_test.rb")
+        File.binwrite(src, <<~RUBY.encode(Encoding::ISO_8859_1))
+          # encoding: ISO-8859-1
+          class Latin1EncodingExample
+            def value
+              # caf\u00E9
+              'caf\u00E9'.upcase
+            end
+          end
+        RUBY
+        File.write(test, <<~RUBY)
+          require "minitest/autorun"
+          require_relative "encoding_calc"
+
+          class Latin1EncodingExampleTest < Minitest::Test
+            def test_value
+              assert_equal "CAF\u00C9", Latin1EncodingExample.new.value.encode(Encoding::UTF_8)
+            end
+          end
+        RUBY
+
+        parsed_source = Mutineer::Parser.parse_file(src).source.source
+        subject = Mutineer::Project.discover([src]).first
+        mutation = Mutineer::Mutators::CallToReceiver.new.mutations_for(subject, parsed_source).first
+        require src
+
+        Mutineer::JobPlan.stub(:coverage_selection, [:run, [test]]) do
+          result = Mutineer::Runner.run(mutation, source_file: src, subject: subject,
+                                        strategy: strategy)
+          assert_predicate result, :killed?, "#{strategy}: expected killed, got #{result.status} (#{result.details})"
+        end
+      end
+    end
+  end
+
   # The marker of the second test shows which path ran it. The first test
   # writes the seed, which the mutant run pins.
   def test_mutant_run_stops_at_first_failure_but_coverage_capture_does_not

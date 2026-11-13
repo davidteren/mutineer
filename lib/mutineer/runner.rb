@@ -240,7 +240,8 @@ module Mutineer
                                                   on_result: ->(_r) { progress.tick }) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
                 subject: subject, strategy: strategy, rails: config.rails, framework: framework,
-                timeout: config.timeout || Isolation::DEFAULT_TIMEOUT, matrix: config.matrix)
+                timeout: config.timeout || Isolation::DEFAULT_TIMEOUT, matrix: config.matrix,
+                source: source_map.fetch(subject.file))
           end
           # The bare Results carry only status (Subjects hold live AST nodes that
           # do not marshal); reattach subject+mutation+id in the parent, in order.
@@ -342,7 +343,8 @@ module Mutineer
         begin
           jobs.each do |subject, mutation, id|
             r = run_external(subject, mutation, config.test_command, abs_tests,
-                             timeout: timeout, verbose: config.verbose, check_summary: check_summary)
+                             timeout: timeout, verbose: config.verbose, check_summary: check_summary,
+                             source: source_map.fetch(subject.file))
             results << r.with(subject: subject, mutation: mutation, id: id)
             progress.tick
             break if config.fail_fast && r.survived? # stop at the first survivor
@@ -362,9 +364,10 @@ module Mutineer
     # in-process path gives at the pre-fork check.
     #
     # @param check_summary [Boolean] passed to {ExternalBackend.run}.
+    # @param source [String, nil] parsed source text, including its declared encoding.
     # @return [Mutineer::Result] verdict for this mutant.
-    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:)
-      source  = File.read(subject.file, encoding: "UTF-8")
+    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:, source: nil)
+      source ||= Parser.parse_file(subject.file).source.source
       mutated = mutation.apply(source)
       return Result.skipped if Parser.invalid?(mutated)
 
@@ -420,10 +423,12 @@ module Mutineer
     # @param framework [String] test framework name.
     # @param matrix [Boolean] a `--matrix` run: run every covering test and
     #   attach the {Kills} row, with project-relative test files.
+    # @param source [String, nil] parsed source text, including its declared encoding.
     # @return [Mutineer::Result] mutant result.
     def self.run(mutation, source_file:, coverage_map: nil, subject: nil, strategy: "reload",
-                 timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest", matrix: false)
-      source  = File.read(source_file, encoding: "UTF-8")
+                 timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest", matrix: false,
+                 source: nil)
+      source ||= Parser.parse_file(source_file).source.source
       mutated = mutation.apply(source)
 
       # Validity rule: a mutant that does not re-parse is skipped before forking.

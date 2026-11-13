@@ -70,6 +70,78 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
+  def test_external_runner_writes_the_mutant_with_the_declared_source_encoding
+    Dir.mktmpdir("mutineer-latin1-external") do |dir|
+      src = File.join(dir, "encoding_calc.rb")
+      File.binwrite(src, <<~RUBY.encode(Encoding::ISO_8859_1))
+        # encoding: ISO-8859-1
+        class Latin1ExternalEncodingExample
+          def value
+            # caf\u00E9
+            'caf\u00E9'.upcase
+          end
+        end
+      RUBY
+
+      original = File.binread(src)
+      parsed_source = Mutineer::Parser.parse_file(src).source.source
+      subject = Mutineer::Project.discover([src]).first
+      mutation = Mutineer::Mutators::CallToReceiver.new.mutations_for(subject, parsed_source).first
+      expected = mutation.apply(parsed_source).b
+      external_run = lambda do |*_args, **_kwargs|
+        assert_equal expected, File.binread(src)
+        Mutineer::Result.killed
+      end
+
+      result = Mutineer::ExternalBackend.stub(:run, external_run) do
+        Mutineer::Runner.run_external(subject, mutation, "unused", [],
+                                      timeout: 30, verbose: false, check_summary: false)
+      end
+
+      assert_predicate result, :killed?
+      assert_equal original, File.binread(src), "external execution must restore the source bytes"
+    end
+  end
+
+  def test_latin1_source_mutation_runs_through_external_backend
+    skip "external process groups are unavailable on Windows" if Gem.win_platform?
+
+    Dir.mktmpdir("mutineer-latin1-external") do |dir|
+      src = File.join(dir, "encoding_calc.rb")
+      test = File.join(dir, "encoding_calc_test.rb")
+      File.binwrite(src, <<~RUBY.encode(Encoding::ISO_8859_1))
+        # encoding: ISO-8859-1
+        class Latin1ExternalEncodingExample
+          def value
+            # caf\u00E9
+            'caf\u00E9'.upcase
+          end
+        end
+      RUBY
+      File.write(test, <<~RUBY)
+        require "minitest/autorun"
+        require_relative "encoding_calc"
+
+        class Latin1ExternalEncodingExampleTest < Minitest::Test
+          def test_value
+            assert_equal "CAF\u00C9", Latin1ExternalEncodingExample.new.value.encode(Encoding::UTF_8)
+          end
+        end
+      RUBY
+
+      parsed_source = Mutineer::Parser.parse_file(src).source.source
+      subject = Mutineer::Project.discover([src]).first
+      mutation = Mutineer::Mutators::CallToReceiver.new.mutations_for(subject, parsed_source).first
+
+      result = Mutineer::Runner.run_external(subject, mutation, "#{RUBY} %{files}", [test],
+                                             timeout: 30, verbose: false, check_summary: true)
+
+      assert_predicate result, :killed?, "expected killed, got #{result.status} (#{result.details})"
+      assert_equal parsed_source, Mutineer::Parser.parse_file(src).source.source,
+                   "external execution must restore the original source bytes"
+    end
+  end
+
   # The working tree is intact after a run — no mutated bytes, no leftover backup.
   def test_source_restored_after_run
     with_project("calculator_strong_test.rb") do |proj|
