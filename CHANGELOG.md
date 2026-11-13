@@ -131,6 +131,27 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Behavior change.** A continuation-line survivor that ran is scored (#345).
+  Ruby counts one line of a statement. A mutant on a later line is a `:maybe`
+  selection (#254, #289): Mutineer runs the tests of the statement's other
+  lines, and a kill already counted. A survivor was `no_coverage` even when
+  those tests had run the mutated expression, so it left the score. The child
+  now writes a sentinel the first time that expression returns during a test.
+  That survivor moves from `no_coverage` to `survived`: it appears in
+  `survivors[]` and in `summary.survived`, and it leaves `summary.no_coverage`.
+  It enters the score. A survivor the sentinel does not record stays
+  `no_coverage`, still outside the score, and `summary.no_coverage` still
+  counts it. The same rule covers a trailing operator (`&&`, `+`), a method
+  chain, a multi-line argument list, a hash entry, and a heredoc
+  interpolation, under `reload`, `redefine`, and `--daemon`. A call that runs
+  only while the mutant file loads does not count: that write is cleared
+  before the tests. A raise inside the expression does not count, so an
+  operand that fails before a mutated operator runs stays `no_coverage`.
+  Every one of the 24,918 mutants from every operator on this gem's `lib/`
+  and `test/fixtures/` either does not re-parse, as before, or wraps. The
+  fallback that would leave an unwrappable mutant as `no_coverage` did not
+  occur. A score can fall. A `--threshold` gate that passed can fail.
+  `--baseline` treats the new survivors as new. Refresh the baseline.
 - **A coverage cache hit checks only the tests that cover the sources
   (#398).** Before, a hit ran every `--test` file alone and then all of them
   together. Now it runs only the files that cover a line of the run's
