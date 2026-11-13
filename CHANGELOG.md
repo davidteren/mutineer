@@ -124,9 +124,12 @@ All notable changes to this project are documented here. The format is based on
   So are assignment, an argument, a chained call, `return` / `break` / `next`,
   and a condition.
   A `while`, `until`, `for`, or `ensure` body is skipped, including its last line.
-  String and symbol interpolation, a backtick or `%x` command, and an
-  interpolated regexp still swap. Interpolation calls `to_s`, the command
-  runs, and the regexp is compiled, even when their result is thrown away.
+  The value read by string or symbol interpolation, a backtick or `%x`
+  command, or an interpolated regexp still swaps. Interpolation calls `to_s`
+  on that value, the command runs, and the regexp is compiled, even when
+  their result is thrown away. An earlier statement inside the interpolation
+  is still skipped. `defined?` does not evaluate its operand, so an `each` or
+  `map` inside it is skipped, including a `lazy` chain and an interpolation.
   A hash key still swaps, because insertion calls `hash` and `eql?`.
   A later `rescue` clause follows the `begin`.
   A receiver chain that calls `lazy` still swaps, because `Enumerator::Lazy#each`

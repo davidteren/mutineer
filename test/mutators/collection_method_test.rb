@@ -294,6 +294,35 @@ class CollectionMethodTest < Minitest::Test
           defined?(users.each { |user| user.notify })
         end
       RUBY
+      ["interpolation inside defined? is not evaluated", <<~RUBY, [], 1],
+        def m
+          defined?(`echo \#{users.map { |user| user.name }}`)
+        end
+      RUBY
+      ["regexp inside defined? is not evaluated", <<~RUBY, [], 1],
+        def m
+          defined?(/\#{users.map { |user| user.name }}/)
+        end
+      RUBY
+      ["string inside defined? is not evaluated", <<~RUBY, [], 1],
+        def m
+          defined?("\#{users.each { |user| user.notify }}")
+        end
+      RUBY
+      ["lazy chain inside defined? is not evaluated", <<~RUBY, [], 1],
+        def m
+          defined?(xs.lazy.each { |item| item.touch })
+        end
+      RUBY
+      ["earlier statement inside a command is discarded", <<~RUBY, [%w[map each]], 1],
+        def m
+          `echo \#{
+            users.each { |user| user.notify }
+            groups.map { |group| group.name }
+          }`
+          :done
+        end
+      RUBY
       ["not the last line of a singleton class", <<~RUBY, [], 1],
         def m
           class << obj

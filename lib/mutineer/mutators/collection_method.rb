@@ -117,11 +117,32 @@ module Mutineer
       # chain that calls `lazy` is kept too. `Enumerator::Lazy#each` runs the
       # block and `Lazy#map` does not, and the syntax tree can see the `lazy`
       # call. A lazy enumerator stored in a variable has no `lazy` call left.
+      # `defined?` does not evaluate its operand, so a call inside it is
+      # discarded even when the chain calls `lazy` or the call sits in an
+      # interpolation.
       #
       # @param node [Prism::CallNode] call node to inspect.
       # @return [Boolean] true when the swap would be equivalent.
       def unused_result?(node)
-        UNUSED_RESULT_NAMES.include?(node.name) && !result_used?(node) && !lazy_chain?(node)
+        return false unless UNUSED_RESULT_NAMES.include?(node.name)
+        return true if inside_defined?(node)
+
+        !result_used?(node) && !lazy_chain?(node)
+      end
+
+      # Returns whether `node` is inside a `defined?` operand.
+      #
+      # `defined?` does not run that operand, so an `each` or `map` there
+      # does not call `to_s`, run a command, or compile a regexp.
+      #
+      # @param node [Prism::Node] node to inspect.
+      # @return [Boolean] true when an ancestor is a DefinedNode.
+      def inside_defined?(node)
+        current = node
+        while (current = @parents[current])
+          return true if current.is_a?(Prism::DefinedNode)
+        end
+        false
       end
 
       # Returns whether a `lazy` call sits in this call's receiver chain.

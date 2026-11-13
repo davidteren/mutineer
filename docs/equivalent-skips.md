@@ -185,9 +185,9 @@ The result is discarded, and the swap is skipped, when the call is a statement a
 - It is not the last expression of the method.
 - It is not the last expression of a block or a lambda. The method that takes the block may use the block's result. The operator does not guess which methods do. A loop that is the last line of a block is still swapped.
 - It is not the last expression of a branch whose value is kept. A branch is an `if`, `unless`, `case`, `rescue`, `else`, ternary, or modifier.
-- A `while`, `until`, or `for` body discards its value, including the last line. `for` returns the collection, not the body. An `ensure` body discards its value too. `defined?` does not read the call's result.
+- A `while`, `until`, or `for` body discards its value, including the last line. `for` returns the collection, not the body. An `ensure` body discards its value too. `defined?` does not evaluate its operand, so an `each` or `map` inside it is skipped. That includes a `lazy` chain and an interpolation.
 - A `begin`, parentheses, an array, a hash value, a range, or `and` / `or` / `&&` / `||` keeps the value only when the outer expression keeps it. A hash key is always kept: insertion calls `hash` and `eql?`.
-- String interpolation, symbol interpolation, a backtick or `%x` command, and an interpolated regexp (`/.../` or `%r{}`) always keep the swap. Interpolation calls `to_s`. The command runs. The regexp is compiled. That happens even when the expression's result is thrown away.
+- The value that string interpolation, symbol interpolation, a backtick or `%x` command, or an interpolated regexp (`/.../` or `%r{}`) reads is kept, even when that expression's result is thrown away. Interpolation calls `to_s` on that value. The command runs. The regexp is compiled. An earlier statement inside the interpolation is still discarded. `defined?` does not read it.
 
 The result is kept, and the swap still runs, when the call is any of these:
 
