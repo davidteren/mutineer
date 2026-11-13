@@ -119,7 +119,8 @@ ignore:
     reason: the receiver is a record or nil, and the result is only a condition
 ```
 
-`mutineer triage REPORT.json --id ID --reason TEXT` prints one mapping.
+`mutineer triage REPORT.json --id ID --reason TEXT` prints one mapping for that survivor, and one for each id in its `copies`.
+Paste every mapping. An entry ignores only its own id.
 Repeat `--id` for each site you judge equivalent.
 Do not use `--all`.
 `--all` also maps survivors that are real gaps.

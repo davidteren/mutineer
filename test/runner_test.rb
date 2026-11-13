@@ -881,6 +881,91 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # #374: each dropped copy's id is recorded on the kept mutant. The id is the
+  # one that copy has on its own, the two copies are one edit, and a copy on
+  # a different line is not recorded.
+  def test_collect_jobs_records_each_dropped_copy_on_the_kept_mutant
+    Dir.mktmpdir do |dir|
+      [
+        [write_class(dir, "Str", %("hi")), %w[string_literal], :literal_mutation],
+        [write_chain(dir), %w[call_to_receiver], :chain_link]
+      ].each do |path, others, kept_operator|
+        operators = [kept_operator.to_s, *others]
+        jobs, ignored, _map, extras = collect(path, dir, operators)
+        assert_empty ignored, operators.inspect
+        assert_equal 1, extras[:copies].size, operators.inspect
+        kept_id, dropped_ids = extras[:copies].first
+        kept = jobs.find { |_s, _m, id| id == kept_id }
+        refute_nil kept, operators.inspect
+        assert_equal kept_operator, kept[1].operator
+        source = File.read(path)
+        kept_text = kept[1].apply(source)
+        other_jobs = collect(path, dir, others).first
+        matched = other_jobs.select { |_s, mutation, _id| mutation.apply(source) == kept_text }.map(&:last)
+        assert_equal matched.sort, dropped_ids.sort, operators.inspect
+        assert_equal dropped_ids.sort, extras[:dropped_id_map].keys.sort
+        dropped_ids.each do |dropped|
+          refute_includes extras[:id_map].keys, dropped
+          refute_includes jobs.map(&:last), dropped
+        end
+      end
+
+      path = File.join(dir, "either.rb")
+      File.write(path, "class Either\n  def a(x)\n    x || x\n  end\nend\n")
+      jobs, _ignored, _map, extras = collect(path, dir, %w[operand_removal])
+      assert_equal 1, jobs.size
+      assert_equal [jobs.first.last], extras[:copies].keys
+      assert_equal 1, extras[:copies].values.first.size
+      refute_includes extras[:id_map].keys, extras[:copies].values.first.first
+
+      quoted = write_class(dir, "Quote", "'hi'")
+      _jobs, _ignored, _map, extras = collect(quoted, dir, %w[literal_mutation string_literal])
+      assert_empty extras[:copies]
+    end
+  end
+
+  # #374: an ignore entry still ignores only its own copy. The other copy
+  # runs, and neither side records the other as dropped. When both copies are
+  # ignored, the kept one records the dropped id.
+  def test_collect_jobs_records_a_dropped_copy_only_inside_one_bucket
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      string_id = collect(path, dir, %w[string_literal]).first.first.last
+      _jobs, ignored, _map, extras = collect(path, dir, %w[literal_mutation string_literal], ignore: [string_id])
+      assert_equal [string_id], ignored.map(&:id)
+      assert_empty extras[:copies]
+
+      both = write_class(dir, "Both", %("hi" # mutineer:disable-line))
+      jobs, ignored, _map, extras = collect(both, dir, %w[literal_mutation string_literal])
+      assert_empty jobs
+      assert_equal [:literal_mutation], ignored.map { |result| result.mutation.operator }
+      _jobs, string_ignored, = collect(both, dir, %w[string_literal])
+      assert_equal [string_ignored.first.id], extras[:copies][ignored.first.id]
+    end
+  end
+
+  # #374: --since drops the copy list of a mutant outside the diff.
+  def test_scope_since_drops_copies_outside_the_diff
+    Dir.mktmpdir do |root|
+      path = File.join(root, "g.rb")
+      File.write(path, "class G\n  def changed\n    \"hi\"\n  end\n  def kept\n    \"yo\"\n  end\nend\n")
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", root, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      File.write(path, File.read(path).sub('"hi"', '"hi!"'))
+      ops = Mutineer::MutatorRegistry.resolve(%w[literal_mutation string_literal])
+      config = Mutineer::Config.new(sources: [path], project_root: root, since: "HEAD")
+      jobs, ignored, map, extras = Mutineer::JobPlan.collect_jobs(config, ops)
+      assert_operator extras[:copies].size, :>, 1
+      Mutineer::JobPlan.scope_since(jobs, ignored, map, config, extras: extras)
+      assert_equal 1, extras[:copies].size
+      kept_id = extras[:copies].keys.first
+      scoped_jobs, = Mutineer::JobPlan.scope_since(jobs, ignored, map, config, extras: extras)
+      assert_includes scoped_jobs.map(&:last), kept_id
+    end
+  end
+
   # Every row of a large matrix names the same tests; after share_tests they
   # are one frozen array per test, whatever row they came from.
   def test_share_tests_gives_every_row_the_same_test_objects
@@ -1282,6 +1367,12 @@ class RunnerTest < Minitest::Test
 
   # Writes `class <name>; def a; <body>; end; end` to dir and returns its path.
   # The body is on line 3.
+  def write_chain(dir)
+    path = File.join(dir, "chain.rb")
+    File.write(path, "class Chain\n  def a(node)\n    node.name.name\n  end\nend\n")
+    path
+  end
+
   def write_class(dir, name, body)
     path = File.join(dir, "#{name.downcase}.rb")
     File.write(path, "class #{name}\n  def a\n    #{body}\n  end\nend\n")

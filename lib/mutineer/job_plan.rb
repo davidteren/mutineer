@@ -41,7 +41,9 @@ module Mutineer
     # recorded even when a new id is also listed, since the old entry still
     # over-matches other files), `id_map` (every reported mutant's new id =>
     # its old-format id), `dropped_id_map` (the same for each dropped repeat of
-    # an edit: its id is still current for `mutineer migrate`) and `declined`
+    # an edit: its id is still current for `mutineer migrate`), `copies` (each
+    # kept mutant's id => the ids dropped as repeats of that edit, in drop
+    # order, #374) and `declined`
     # (operator name => count of candidates that operator found and did not
     # mutate, {Mutators::Base#declined}; only counts above zero, keys sorted).
     # The name is the {MutatorRegistry::ALL} key, or the class's `to_s` for an
@@ -69,7 +71,7 @@ module Mutineer
     # @param operator_classes [Array<Class>] resolved operators.
     # @return [Array(Array, Array<Result>, Hash<String,String>, Hash{Symbol => Hash})]
     #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`,
-    #   `:id_map`, `:dropped_id_map`, `:declined`, `:subjects`,
+    #   `:id_map`, `:dropped_id_map`, `:copies`, `:declined`, `:subjects`,
     #   `:unmutated_subjects`).
     def self.collect_jobs(config, operator_classes)
       # Registry order, so a repeat across operators keeps the registry-first
@@ -92,6 +94,9 @@ module Mutineer
       legacy_ignore_matches = {}
       id_map = {}
       dropped_id_map = {}
+      # Kept id => dropped ids. Separate from dropped_id_map, which migrate
+      # reads as dropped id => old-format id (#374).
+      copies = {}
       declined = Hash.new(0)
       # [id_path, def offset] => nil, or the method's entry when it got no mutation.
       subjects = {}
@@ -126,9 +131,10 @@ module Mutineer
         keys = result_keys(mutations, source, lines)
         # A repeat of an earlier edit on the same line, from any operator, is
         # dropped (#159, #275), separately among the run and the ignored
-        # mutants, so an ignored copy never hides a copy that should run. A
-        # dropped copy is not reported, but its id stays current for migrate.
-        seen = { run: Set.new, ignored: Set.new }
+        # mutants, so an ignored copy never hides a copy that should run. The
+        # dropped id stays current for migrate, and `copies` names it on the
+        # kept mutant so a report can show it (#374).
+        seen = { run: {}, ignored: {} }
         mutations.each_with_index do |mutation, i|
           id = ids[i]
           legacy = legacy_ids[i]
@@ -139,10 +145,13 @@ module Mutineer
           if ignore_set.include?(legacy)
             (legacy_ignore_matches[legacy] ||= []) << { id: id, file: id_path, subject: subject.qualified_name }
           end
-          unless seen[ignored ? :ignored : :run].add?(keys[i])
+          bucket = seen[ignored ? :ignored : :run]
+          if (kept_id = bucket[keys[i]])
             dropped_id_map[id] = legacy
+            (copies[kept_id] ||= []) << id
             next
           end
+          bucket[keys[i]] = id
 
           id_map[id] = legacy
           if ignored
@@ -157,7 +166,7 @@ module Mutineer
       infos = subjects.values
       unmutated = public_unmutated(infos)
       [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map,
-                                            dropped_id_map: dropped_id_map, declined: declined,
+                                            dropped_id_map: dropped_id_map, copies: copies, declined: declined,
                                             subjects: infos.size, unmutated_subjects: unmutated,
                                             subject_ranges: infos }]
     end
@@ -600,7 +609,8 @@ module Mutineer
     # (nil without --since), so the CLI can tell "the changes held nothing to
     # test" from "nothing was mutable at all". When `extras` is given, also
     # narrows `subjects` / `unmutated_subjects` to methods whose def range
-    # intersects the diff (#420).
+    # intersects the diff (#420), and drops `copies` whose kept mutant is out
+    # of scope (#374).
     #
     # @param jobs [Array] (subject, mutation, id) entries to run.
     # @param ignored_results [Array<Mutineer::Result>] suppressed mutants.
@@ -622,8 +632,28 @@ module Mutineer
       changed = ChangedLines.for(ref: config.since, files: files, project_root: config.project_root)
       kept = filter_since(jobs + ignored_entries, source_map, config, changed: changed)
       kept_ignored, kept_jobs = kept.partition { |entry| entry.last.is_a?(Result) }
-      narrow_subjects_since!(extras, config, changed: changed) if extras
+      if extras
+        narrow_subjects_since!(extras, config, changed: changed)
+        narrow_copies!(extras, kept_jobs, kept_ignored.map(&:last))
+      end
       [kept_jobs, kept_ignored.map(&:last), jobs.size + ignored_results.size]
+    end
+
+    # Drops copy lists whose kept mutant `--since` removed (#374). A dropped
+    # copy shares that mutant's line, so it leaves with the mutant.
+    #
+    # @api private
+    # @param extras [Hash] {collect_jobs} extras.
+    # @param kept_jobs [Array] jobs still in scope; each id is the last element.
+    # @param kept_ignored [Array<Mutineer::Result>] ignored mutants still in scope.
+    # @return [void]
+    def self.narrow_copies!(extras, kept_jobs, kept_ignored)
+      copies = extras[:copies]
+      return unless copies
+
+      keep = Set.new(kept_jobs.map(&:last))
+      kept_ignored.each { |result| keep.add(result.id) }
+      extras[:copies] = copies.select { |id, _list| keep.include?(id) }
     end
 
     # Keeps `subjects` / `unmutated_subjects` for methods whose def range

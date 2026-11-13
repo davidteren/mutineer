@@ -49,6 +49,18 @@ class HtmlReporterTest < Minitest::Test
     assert_includes html, "if price &gt; 100"  # mutated diff line, escaped
   end
 
+  # #374: the HTML summary counts dropped repeats, and a survivor card lists their ids.
+  def test_summary_and_survivor_name_dropped_copies
+    row = survivor
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([row]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "html",
+                              copies: { row.id => ["copy00000001"] })
+    html = out.string
+    assert_includes html, "<span><strong>1</strong> dropped</span>"
+    assert_includes html, "copies <span class=\"id\">copy00000001</span>"
+  end
+
   def test_summary_counts_unplaceable
     assert_includes render([Mutineer::Result.killed, Mutineer::Result.unplaceable]),
                     "<span><strong>1</strong> unplaceable</span>"

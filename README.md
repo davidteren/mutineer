@@ -203,6 +203,10 @@ mutineer migrate <source...> [--dry-run] [--operators LIST]
 mutineer config cache_dir|baseline [run options]
 ```
 
+`mutineer triage` prints an `ignore:` entry for each survivor.
+When that survivor has `copies` in the JSON report, it prints those ids too.
+Paste every entry. An entry ignores only its own id.
+
 ### Options
 
 Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md).

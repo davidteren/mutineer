@@ -200,8 +200,9 @@ is optional; write your own explanation or omit that field. Ignore mappings and
 the configuration. For the GitHub Action, check the resolved gem version selected
 by `version:`. With `use-bundler: true`, check Mutineer in `Gemfile.lock` instead.
 Older versions do not apply mapping entries and do not warn, so the named mutant
-is not ignored. Ignored mutants are excluded from the score and listed in
-`ignored[]`. Set an attempt limit for the agent, then ask a person to review
+is not ignored. When the survivor lists `copies`, add an entry for each of
+those ids too. An entry ignores only its own id. Ignored mutants are excluded
+from the score and listed in `ignored[]`. Set an attempt limit for the agent, then ask a person to review
 unresolved survivors. Failed attempts alone do not prove that a mutant is equivalent.
 
 ## Reading exit codes in a pipeline
