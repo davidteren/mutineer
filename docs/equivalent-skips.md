@@ -1,8 +1,10 @@
 # Equivalent skips
 
 Mutineer skips some code changes to reduce results that rarely help improve tests.
-These built-in skips cannot be turned off. Chain-call skips and the endless-range
-skip use the method name only, so they are not always equivalent.
+These built-in skips cannot be turned off. Chain-call skips use the method
+name only, so they are not always equivalent. The endless-range skip applies
+only when the receiver is an array or string literal, where `(1..)` and
+`(1...)` select the same elements.
 Mutineer counts every skip on this page when its operator runs. The chain-link,
 call-to-receiver and range operators are not in the default set, so their skips
 are counted only when `--operators` selects them. The dry run prints the count,
@@ -165,10 +167,10 @@ operators:
 mutineer run lib --operators arithmetic,comparison,boolean_connector,boolean_literal,statement_removal,range
 ```
 
-The `range` operator swaps `..` and `...`. It skips an endless range (`1..` or `1..nil`) only when the range is a direct argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`, `bytesplice` or `values_at`, as in `argv[1..]` or `text.byteslice(offset..)`. Index writes such as `list[1..] += x` are skipped too.
+The `range` operator swaps `..` and `...`. It skips an endless range (`1..` or `1..nil`) only when that range is a direct index argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`, `bytesplice` or `values_at` and the receiver is an array or string literal, as in `"abcd"[1..]` or `%w[a b c].values_at(1..)`. Parentheses around that literal count, as in `("abcd")[1..]`. A `begin` counts only when every branch that can supply its value is such a literal. A rescue or an else can return something else, and backticks do not count, because `` ` `` can be overridden. Index writes such as `"abcd"[1..] = "x"` skip the index too.
 
-For a slice of an Array or String, `(1..)` and `(1...)` select the same elements, so the mutant is equivalent. The check uses the method name and the receiver. A call on a class, such as `Array[1..]` or `Set[1..]`, builds a value, so it is not skipped. A constant in capitals only, such as `ARGV[1..]`, is skipped. A Hash with range keys tells `h[1..]` from `h[1...]`, a Proc called with `fn[1..]` gets the range itself, and a class of your own can define `[]` or `slice` to treat the two ranges differently. In those cases the skip hides a mutant a test can kill.
+An array or a string selects the same elements for `(1..)` and `(1...)`, so that mutant is equivalent. The literal is what fixes the class. A variable, a call, or a constant does not: `list[1..]`, `ARGV[1..]`, `text.byteslice(1..)` and `HASH[1..]` are swapped. A Hash tells `{(1..) => :a}[1..]` from `[1...]`, a Proc called as `fn[1..]` receives the range, and a class of your own can define `[]` or `slice` to treat the two ranges differently. A test can kill those mutants. An earlier assignment is not followed, so `list = [1, 2]; list[1..]` is swapped too.
 
 Every other endless range is swapped. This includes the assigned value in `h[:k] = 1..nil` and a range in parentheses, as in `list[(1..)]`. `(1..)` and `(1...)` differ on `==`, `eql?`, `hash`, `exclude_end?`, `to_s`, `inspect` and `cover?(1..)`, so a test that compares, stores or prints the range can kill the mutant.
 
-Some of these mutants are equivalent: a range in parentheses inside a slice, or a range used only with `include?`, `===`, `case`/`when`, a `case`/`in` pattern or `clamp`. In a Rails app, a range in an Active Record query, as in `where(created_at: time..)`, also gives an equivalent mutant, because both ranges become the same `>=` SQL condition. So does `validates :age, inclusion: { in: 18.. }`. Suppress such a mutant with `# mutineer:disable-line` or an `ignore:` entry, as described at the top of the page.
+Some of these swapped mutants are still equivalent. A variable that holds an Array or a String, such as `argv[1..]`, selects the same elements for both ranges. So does `list[(1..)]`: the parentheses mean it is swapped, and on an Array or a String the two ranges still select the same elements. So does a range used only with `include?`, `===`, `case`/`when`, a `case`/`in` pattern or `clamp`. In a Rails app, a range in an Active Record query also gives an equivalent mutant, because both ranges become the same `>=` SQL condition. That includes `where(created_at: time..)`, `where.not`, `find_by` and `exists?`. So does `validates :age, inclusion: { in: 18.. }`. Suppress one of these with an `ignore:` entry. `# mutineer:disable-line range` hides every `range` mutant on that line, so use it only when every one of them is equivalent.
