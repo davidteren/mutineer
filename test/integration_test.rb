@@ -67,6 +67,28 @@ class IntegrationTest < Minitest::Test
                          operator: :range, subject: "upto", token: "..", replacement: "...")
   end
 
+  # #344: an endless range used as a Hash index is swapped, and the test that
+  # looks up the inclusive key is what kills it.
+  def test_endless_range_hash_index_is_killed_by_the_key_lookup
+    result = run_mutineer(sources: ["test/fixtures/range_key.rb"],
+                          tests: ["test/fixtures/range_key_test.rb"],
+                          operators: ["range"], matrix: true)
+    assert_equal 1, result.killed_count
+    assert_equal 0, result.survived_count
+    assert_equal 100.0, result.mutation_score
+
+    row = result.results.first
+    assert_equal "open?", row.subject.name.to_s
+    assert_equal :killed, row.status
+    assert_equal :range, row.mutation.operator
+    assert_equal "..", source_token(row)
+    assert_equal "...", row.mutation.replacement
+    killer = ["test/fixtures/range_key_test.rb",
+              "RangeKeyTest#test_open_matches_the_inclusive_range_key",
+              "RangeKeyTest#test_open_matches_the_inclusive_range_key"]
+    assert_equal [killer], row.kills.killed_by
+  end
+
   def test_negation_removal_survivor
     assert_sole_survivor(source: "test/fixtures/access.rb", test: "test/fixtures/access_test.rb",
                          operator: :negation_removal, subject: "guest?", token: "!", replacement: "")

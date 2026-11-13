@@ -42,7 +42,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch; review for test gaps or equivalent behaviour */ ],
   "killed":       [ /* mutants a test caught; lean ids for joining runs (#361) */ ],
-  "no_coverage":  [ /* mutants on lines no test exercises, or that the statement's tests may not reach (#254, #289) */ ],
+  "no_coverage":  [ /* mutants on lines no test exercises, or a continuation whose sentinel the tests did not write (#254, #289, #345) */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
   "unplaceable":  [ /* mutants the strategy cannot load where the tests call them; not run */ ],
   "ran_at_load":  [ /* mutants on a line that ran while the app or class loaded; no verdict */ ],
@@ -63,7 +63,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `total` | int | Classified results included in this report, across all statuses. With `--fail-fast`, unscheduled candidates are omitted, so this is not the full generated candidate count. Mutants in sources with no paired test are not in `total`. |
 | `killed` | int | Mutants a test caught (suite went red). |
 | `survived` | int | Mutants no test caught. Review each for a missing test or equivalent behaviour. |
-| `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant in code that runs only sometimes on a later line of a multi-line statement, such as the right side of `a &&` on its own line, when the tests that ran the statement did not kill it: the run cannot tell whether they reached it. Also a mutant on a later line of a multi-line statement whose first or last line holds other code, such as a call inside a one-line block. Mutineer ran the tests that ran that first or last line (never the `def` line); they did not kill it, and they may not have run the mutant. |
+| `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant on a later line of a multi-line statement (#254, #289) — the right side of `a &&` on its own line, or a call inside a one-line block — when the tests of that statement did not kill it and the probe did not see the mutated expression return during a test (#345). The probe is a sentinel the child writes the first time that expression returns during a test; a load-time call and a raise inside the expression do not write it. Mutineer ran the tests that ran the statement's other lines (for a one-line block, the first or last line, never the `def` line). A survivor the probe saw return is `survived` and counts in the score. The probe covers a trailing operator, a method chain, a multi-line argument, a hash entry, and a heredoc interpolation. |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
 | `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically, or any method in a concern's `included` or `prepended` block; under `--strategy reload`, some methods in such a block. The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
@@ -75,7 +75,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `errored` | int | Mutants whose run crashed, or whose first failed Minitest test or RSpec example had a database connection or lock error (excluded). Each one is in `no_verdict[]` with `status` `"error"`. |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). Under `--since`, only those on changed lines. |
-| `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 or #289 no-coverage mutant did run its statement's tests). |
+| `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 or #289 no-coverage mutant did run its statement's tests; #345 keeps it no-coverage only when the mutated expression did not return during a test). |
 | `no_verdict` | int | Attempted mutants that produced no verdict: `errored + timeout + uncapturable`. The completeness gate is `no_verdict / attempted`. |
 | `score` | float \| null | `killed / (killed + survived) * 100`, rounded. **`null`** when the denominator is empty (no covered mutants) — never `0.0`. |
 | `scoped` | bool | `true` when the run was diff-scoped (`--since`): the score covers only the changed-line mutants, so it is not comparable to a full-run score. A scoped CURRENT run skips `--baseline`'s score-drop check (new-survivor detection still applies); a scoped report is REFUSED as a baseline (exit 2) because survivors outside its diff would read as new regressions. Additive key (absent in reports from older versions; treat absent as `false`). |
@@ -110,7 +110,7 @@ unscored category from a full id list.
 ### `no_coverage[]`, `uncapturable[]`, `unplaceable[]` and `ran_at_load[]` (array of object)
 
 Each entry is `{ subject, file, line, operator, token, id }`, sorted by
-`(file, line, operator, id)`. `no_coverage` is a coverage gap: no test runs the line, or (#254, #289) the tests that run a later line's statement may not reach the mutant and none killed it, so only a test that kills it clears the entry; `uncapturable` means the test that
+`(file, line, operator, id)`. `no_coverage` is a coverage gap: no test runs the line, or (#254, #289, #345) the tests that run a later line's statement did not kill the mutant and the probe did not see the mutated expression return during a test, so only a return of that expression that survives, or a test that kills it, clears the entry; `uncapturable` means the test that
 should cover the line errored while capturing coverage (fix the harness, not the test). `unplaceable` (schema
 `1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module cannot be
 named statically (an anonymous `Class.new`, a relative path such as `User::Permission` inside a namespace,
@@ -162,7 +162,11 @@ line ran while the app booted or its class loaded (for example a class body that
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.
 A one-line or endless `def` keeps its body on the `def` line, which counts when the method is defined, so its method call
-count at load is used instead.
+count at load is used instead. A block on that `def` line is not classified from the line (#389).
+A `define_method` or `define_singleton_method` whose line ran at load counts too, including the block that call
+stores (#435). Another block on that line stays scored. `each` with an empty array can count the line without running
+its block. When that `each` shares the line with `define_method`, the call can still be `ran_at_load` (#286).
+Code that runs only sometimes, such as the body of `x if c`, does not.
 
 Several mutants can share a line, so `operator` and `token` name the change and `id` identifies the mutant.
 The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` these entries were
