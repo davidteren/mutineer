@@ -5,11 +5,14 @@ require_relative "redaction"
 module Mutineer
   # Carries one line from a mutant's child to its parent: why the child
   # raised. The parent puts it in the errored mutant's `details`, so the JSON
-  # report names the cause, not only stderr (#388).
+  # report names the cause, not only stderr (#388, #417).
   #
   # The child writes the line to a pipe just before `exit!`; the parent reads
   # it after the reap, without blocking, so a grandchild that still holds the
   # write end cannot delay the result.
+  #
+  # The fork boundary {arm!}s the write end as process-local state so Minitest
+  # and RSpec can write a cause without a new runner argument (plan KTD3).
   #
   # Stdlib only: the app-side daemon loads this file without the rest of
   # mutineer.
@@ -17,7 +20,34 @@ module Mutineer
     # The longest line sent, in characters, including the `...` of a cut line.
     LIMIT = 500
 
+    # Fixed text when `--matrix` ends early after a serial database error (KTD5).
+    MATRIX_EARLY_END =
+      "a test failed with a database error, then the child ended before the suite finished"
+
+    # Fixed text when RSpec reports an error outside examples (KTD5).
+    RSPEC_OUTSIDE_EXAMPLES =
+      "RSpec reported an error outside its examples, for example a spec file that raised while it loaded"
+
     module_function
+
+    # Remembers the cause pipe for this process so suite code can write without
+    # holding the IO. Only {#write_error} / {#write_text} from the same pid succeed.
+    #
+    # @param io [IO] the pipe's write end, with `sync` on.
+    # @param owner [Integer] the pid of the mutant's child.
+    # @return [void]
+    def arm!(io, owner)
+      @armed_io = io
+      @armed_owner = owner
+    end
+
+    # Clears {arm!}. Safe when nothing was armed.
+    #
+    # @return [void]
+    def disarm!
+      @armed_io = nil
+      @armed_owner = nil
+    end
 
     # The error as `Class: first non-blank message line`, or the class alone
     # when the message is blank or is the class name. Redacted before the cut,
@@ -52,7 +82,30 @@ module Mutineer
     def write(io, error, owner)
       return unless Process.pid == owner
 
-      io.write("#{line(error)}\n")
+      write_to(io, line(error))
+    end
+
+    # Write {line} for `error` to the armed pipe (#417).
+    #
+    # @param error [Exception]
+    # @return [void]
+    def write_error(error)
+      return unless armed_here?
+
+      write_to(@armed_io, line(error))
+    end
+
+    # Write a fixed or already-built cause text to the armed pipe (#417).
+    # Redacted and cut like {line}.
+    #
+    # @param text [String]
+    # @return [void]
+    def write_text(text)
+      return unless armed_here?
+
+      body = Redaction.text(text.to_s)
+      body = body.length > LIMIT ? "#{body[0, LIMIT - 3]}..." : body
+      write_to(@armed_io, body)
     rescue StandardError
       nil
     end
@@ -75,5 +128,22 @@ module Mutineer
     rescue StandardError
       nil
     end
+
+    # @api private
+    # @return [Boolean]
+    def armed_here?
+      @armed_io && @armed_owner && Process.pid == @armed_owner
+    end
+
+    # @api private
+    # @param io [IO]
+    # @param text [String]
+    # @return [void]
+    def write_to(io, text)
+      io.write("#{text}\n")
+    rescue StandardError
+      nil
+    end
+    private_class_method :write_to
   end
 end

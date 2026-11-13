@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "outer_reporter"
+require_relative "../child_cause"
 require_relative "../redaction"
 
 module Mutineer
@@ -173,7 +174,8 @@ module Mutineer
 
         # The run's exit code: 2 instead of 1 when the armed run's first failure
         # was a database error. Then it also writes one line on stderr that
-        # names the error. `STDERR`, not `warn`: a test can leave `$stderr` as
+        # names the error, and one cause line on the armed {ChildCause} pipe
+        # (#417 / R7). `STDERR`, not `warn`: a test can leave `$stderr` as
         # a `StringIO`. The flush matters because both fork boundaries end with
         # `exit!`.
         #
@@ -185,6 +187,7 @@ module Mutineer
 
           STDERR.puts(line(error))
           STDERR.flush
+          ChildCause.write_text("a test failed with a database error: #{ChildCause.line(error)}")
           2
         end
 

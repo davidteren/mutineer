@@ -102,15 +102,21 @@ class TestRunnersRSpecTest < Minitest::Test
   end
 
   def test_spec_file_that_raises_while_loading_scores_error_not_killed
-    assert_predicate run_mutant_on(File.join(FIX, "load_error_spec.rb")), :error?
+    result = run_mutant_on(File.join(FIX, "load_error_spec.rb"))
+    assert_predicate result, :error?
+    assert_equal Mutineer::ChildCause::RSPEC_OUTSIDE_EXAMPLES, result.details
   end
 
   def test_failing_before_suite_hook_scores_error_not_killed
-    assert_predicate run_mutant_on(File.join(FIX, "before_suite_error_spec.rb")), :error?
+    result = run_mutant_on(File.join(FIX, "before_suite_error_spec.rb"))
+    assert_predicate result, :error?
+    assert_equal Mutineer::ChildCause::RSPEC_OUTSIDE_EXAMPLES, result.details
   end
 
   def test_error_outside_examples_with_no_failed_example_scores_error
-    assert_predicate run_mutant_on(File.join(FIX, "after_all_error_spec.rb")), :error?
+    result = run_mutant_on(File.join(FIX, "after_all_error_spec.rb"))
+    assert_predicate result, :error?
+    assert_equal Mutineer::ChildCause::RSPEC_OUTSIDE_EXAMPLES, result.details
   end
 
   def test_failed_example_still_kills_when_an_error_outside_examples_follows
