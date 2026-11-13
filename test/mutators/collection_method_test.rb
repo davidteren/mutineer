@@ -151,7 +151,7 @@ class CollectionMethodTest < Minitest::Test
           end
         end
       RUBY
-      ["for body", <<~RUBY, [], 1],
+      ["for body is discarded because for returns the collection", <<~RUBY, [], 1],
         def m
           for user in users
             items.each { |item| item.touch }
@@ -224,13 +224,42 @@ class CollectionMethodTest < Minitest::Test
           :done
         end
       RUBY
-      ["discarded interpolation", <<~RUBY, [], 1],
+      ["key of a discarded hash is still hashed", <<~RUBY, [%w[each map]], 0],
+        def m
+          { users.each { |user| user.notify } => 1 }
+          :done
+        end
+      RUBY
+      ["later rescue clause of a discarded begin", <<~RUBY, [], 2],
+        def m
+          begin
+            work
+          rescue A
+            users.each { |user| user.notify }
+          rescue B
+            groups.each { |group| group.notify }
+          end
+          :done
+        end
+      RUBY
+      ["later rescue clause of a returned begin", <<~RUBY, [%w[each map], %w[each map]], 0],
+        def m
+          begin
+            work
+          rescue A
+            users.each { |user| user.notify }
+          rescue B
+            groups.each { |group| group.notify }
+          end
+        end
+      RUBY
+      ["discarded string interpolation still calls to_s", <<~RUBY, [%w[each map]], 0],
         def m
           "\#{users.each { |user| user.notify }}"
           :done
         end
       RUBY
-      ["discarded symbol interpolation", <<~RUBY, [], 1],
+      ["discarded symbol interpolation still calls to_s", <<~RUBY, [%w[each map]], 0],
         def m
           :"\#{users.each { |user| user.notify }}"
           :done

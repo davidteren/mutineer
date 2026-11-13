@@ -38,9 +38,11 @@ module Mutineer
       # exactly when that parent is. An assignment, an argument, a receiver,
       # or an explicit `return` / `break` / `next` is not in this list: those
       # parents use the value even when their own result is discarded.
-      # A backtick command and an interpolated regexp are not in this list
-      # either: the command runs, and the regexp is compiled, even when the
-      # expression's result is thrown away.
+      # Interpolation is not in this list. A string or symbol calls `to_s`
+      # on the value, a backtick command runs, and a regexp is compiled,
+      # even when the expression's own result is thrown away. A hash
+      # association is not in this list either: its key is hashed on
+      # insertion, and its value is handled in {#result_used?}.
       VALUE_FLOWS = [
         Prism::ParenthesesNode,
         Prism::BeginNode,
@@ -51,12 +53,9 @@ module Mutineer
         Prism::ArrayNode,
         Prism::HashNode,
         Prism::KeywordHashNode,
-        Prism::AssocNode,
         Prism::AssocSplatNode,
         Prism::SplatNode,
         Prism::RangeNode,
-        Prism::InterpolatedStringNode,
-        Prism::InterpolatedSymbolNode,
         Prism::EmbeddedStatementsNode
       ].freeze
 
@@ -111,12 +110,13 @@ module Mutineer
 
       # Returns whether this call is an `each` or `map` whose value is discarded.
       #
-      # A backtick command and an interpolated regexp are not discarded: the
-      # command runs, and the regexp is compiled, even when the expression's
-      # own result is thrown away. Those nodes are absent from {VALUE_FLOWS},
-      # so {#result_used?} keeps them. A receiver chain that calls `lazy` is
-      # kept too. `Enumerator::Lazy#each` runs the block and `Lazy#map` does
-      # not, and the syntax tree can see the `lazy` call.
+      # Interpolation is not discarded: a string or symbol calls `to_s`, a
+      # backtick command runs, and a regexp is compiled. A hash key is not
+      # discarded either: insertion calls `hash` and `eql?`. Those nodes are
+      # absent from {VALUE_FLOWS}, so {#result_used?} keeps them. A receiver
+      # chain that calls `lazy` is kept too. `Enumerator::Lazy#each` runs the
+      # block and `Lazy#map` does not, and the syntax tree can see the `lazy`
+      # call. A lazy enumerator stored in a variable has no `lazy` call left.
       #
       # @param node [Prism::CallNode] call node to inspect.
       # @return [Boolean] true when the swap would be equivalent.
@@ -149,8 +149,11 @@ module Mutineer
       # a block may use the block's result. The operator does not guess
       # which methods do. A condition, an assignment, an argument, and a
       # receiver count as read even when the outer expression is discarded.
-      # A `while`, `until`, or `for` body does not, and neither does `ensure`
-      # or `defined?`.
+      # A `while` or `until` body does not, and neither does `ensure` or
+      # `defined?`. A `for` body does not either: `for` returns the
+      # collection, not the body. A hash key is read on insertion. The value
+      # of a hash pair follows the hash. A later `rescue` clause follows the
+      # `begin`, the same way the first clause does.
       #
       # @param node [Prism::Node] node whose value may flow outward.
       # @return [Boolean] true when the value is observable.
@@ -170,10 +173,21 @@ module Mutineer
         when Prism::WhileNode, Prism::UntilNode
           parent.predicate.equal?(node)
         when Prism::ForNode
+          # `for` returns the collection, not the body.
           !parent.statements.equal?(node)
         when Prism::EnsureNode, Prism::DefinedNode
           false
-        when Prism::RescueNode, Prism::WhenNode, Prism::InNode
+        when Prism::AssocNode
+          return true if parent.key.equal?(node)
+
+          result_used?(parent)
+        when Prism::RescueNode
+          if parent.statements.equal?(node) || parent.subsequent.equal?(node) || parent.consequent.equal?(node)
+            result_used?(parent)
+          else
+            true
+          end
+        when Prism::WhenNode, Prism::InNode
           return result_used?(parent) if parent.statements.equal?(node)
 
           true

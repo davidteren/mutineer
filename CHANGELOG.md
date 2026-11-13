@@ -114,16 +114,21 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 
 - **`collection_method` skips `each` and `map` when the result is discarded (#436).**
-  `each` returns the receiver and `map` returns a new array.
-  No test can tell them apart when that value is thrown away.
+  For Enumerable, `each` returns the receiver and `map` returns a new array.
+  No test can tell those two apart when that value is thrown away.
+  A method of either name on another class can still differ. The check does
+  not see the class, so that skip can hide the difference.
   The swap is declined, and the dry run and JSON report count it in
   `declined_by_operator`.
   The last expression of a method, block, or lambda is still swapped.
   So are assignment, an argument, a chained call, `return` / `break` / `next`,
   and a condition.
   A `while`, `until`, `for`, or `ensure` body is skipped, including its last line.
-  A backtick or `%x` command, and an interpolated regexp, still swap: the command
-  runs and the regexp is compiled even when their result is thrown away.
+  String and symbol interpolation, a backtick or `%x` command, and an
+  interpolated regexp still swap. Interpolation calls `to_s`, the command
+  runs, and the regexp is compiled, even when their result is thrown away.
+  A hash key still swaps, because insertion calls `hash` and `eql?`.
+  A later `rescue` clause follows the `begin`.
   A receiver chain that calls `lazy` still swaps, because `Enumerator::Lazy#each`
   runs the block and `Lazy#map` does not.
   A lazy enumerator stored in a variable is still skipped.

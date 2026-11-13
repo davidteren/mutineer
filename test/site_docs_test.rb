@@ -108,11 +108,11 @@ class SiteDocsTest < Minitest::Test
   # The unused each/map skip is on both twins, in its own section.
   def test_equivalent_skips_page_describes_the_unused_each_map_skip
     phrases = [
-      "collection_method", "declined", "multiple assignment", "argument", "block",
+      "each", "map", "collection_method", "declined", "multiple assignment", "argument", "block",
       "ensure", "while", "all?", "4 of 23"
     ]
-    html = File.read("docs/equivalent-skips.html")[/<h2 id="collection-method">.*/m]
-    markdown = File.read("docs/equivalent-skips.md")[/^## Collection method\n.*/m]
+    html = File.read("docs/equivalent-skips.html")[/<h2 id="collection-method">.*?(?=<h2|<\/article>)/m]
+    markdown = File.read("docs/equivalent-skips.md")[/^## Collection method\n.*?(?=^## |\z)/m]
     phrases.each do |phrase|
       assert_includes html, phrase, "equivalent-skips.html is missing #{phrase}"
       assert_includes markdown, phrase, "equivalent-skips.md is missing #{phrase}"
