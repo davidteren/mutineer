@@ -32,6 +32,21 @@ class MutantIdTest < Minitest::Test
     assert_match(/\A[0-9a-f]{12}\z/, id)
   end
 
+  def test_job_plan_collects_mutants_from_a_latin1_source_with_a_utf8_path
+    Dir.mktmpdir do |root|
+      rel = "café.rb"
+      path = File.join(root, rel)
+      source = "# encoding: ISO-8859-1\nclass Example\n  def label\n    'café'\n  end\nend\n".encode(Encoding::ISO_8859_1)
+      File.binwrite(path, source)
+      config = Mutineer::Config.new(sources: [path], project_root: root)
+
+      jobs, = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[string_literal]))
+
+      assert_equal 1, jobs.size
+      assert_match(/\A[0-9a-f]{12}\z/, jobs.first[2])
+    end
+  end
+
   def test_differs_by_operator
     src = "a + b"
     m1 = mutation(src, "+", op: :arithmetic)
@@ -85,8 +100,9 @@ class MutantIdTest < Minitest::Test
   # file's subjects exactly as a run does.
   def ids_for(root, rel, name)
     file = File.join(root, rel)
-    subject = Mutineer::Project.discover([file]).find { |s| s.name == name }
-    source = File.read(file)
+    source_map = {}
+    subject = Mutineer::Project.discover([file], source_map: source_map).find { |s| s.name == name }
+    source = source_map.fetch(file)
     mutations = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source)
     ID.for_subject(subject, source, mutations, path: Mutineer::ProjectPath.relative(file, root))
   end

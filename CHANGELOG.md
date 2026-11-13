@@ -6,10 +6,6 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Fixed
-
-- **An empty `--since` scope returns before application boot (#396).**
-
 ### Added
 
 - **A source that cannot load alone points at `boot:` (#376).**
@@ -264,6 +260,7 @@ All notable changes to this project are documented here. The format is based on
   A red suite or a boot file that fails no longer fails that run.
   A missing `--boot` or `--require` file is still a usage error.
   Thanks to @dannyward630.
+- **Mutant discovery handles sources with declared non-UTF-8 encodings.**
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and
