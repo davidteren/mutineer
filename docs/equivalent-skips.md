@@ -5,8 +5,8 @@ These built-in skips cannot be turned off. Chain-call skips use the method
 name only, so they are not always equivalent. The endless-range skip applies
 only when the receiver is an array or string literal, where `(1..)` and
 `(1...)` select the same elements.
-Mutineer counts every skip on this page when its operator runs. The chain-link,
-call-to-receiver and range operators are not in the default set, so their skips
+Mutineer counts every skip on this page when its operator runs. The collection-method,
+chain-link, call-to-receiver and range operators are not in the default set, so their skips
 are counted only when `--operators` selects them. The dry run prints the count,
 and the JSON report gives it in `summary.declined_by_operator`.
 
@@ -173,3 +173,34 @@ An array or a string selects the same elements for `(1..)` and `(1...)`, so that
 Every other endless range is swapped. This includes the assigned value in `h[:k] = 1..nil` and a range in parentheses, as in `list[(1..)]`. `(1..)` and `(1...)` differ on `==`, `eql?`, `hash`, `exclude_end?`, `to_s`, `inspect` and `cover?(1..)`, so a test that compares, stores or prints the range can kill the mutant.
 
 Some of these swapped mutants are still equivalent. A variable that holds an Array or a String, such as `argv[1..]`, selects the same elements for both ranges. So does `list[(1..)]`: the parentheses mean it is swapped, and on an Array or a String the two ranges still select the same elements. So does a range used only with `include?`, `===`, `case`/`when`, a `case`/`in` pattern or `clamp`. In a Rails app, a range in an Active Record query also gives an equivalent mutant, because both ranges become the same `>=` SQL condition. That includes `where(created_at: time..)`, `where.not`, `find_by` and `exists?`. So does `validates :age, inclusion: { in: 18.. }`. Suppress one of these with an `ignore:` entry. `# mutineer:disable-line range` hides every `range` mutant on that line, so use it only when every one of them is equivalent.
+
+## Collection method
+
+The `collection_method` operator is not in the default set. Select it with `--operators` or with `operators:` in `.mutineer.yml`. The `--operators` list replaces the default set, so name the default operators too.
+
+The operator swaps `each` with `map`, `all?` with `any?`, `first` with `last`, `min` with `max`, and `select` with `reject`. It skips `each` and `map` when the call's result is discarded. For `Enumerable`, `each` returns the receiver and `map` returns a new array, so a discarded value is the same. A method of either name on another class can still differ, and the check does not see the class, so the skip can hide that difference. Each skipped call counts as declined.
+
+The check uses the syntax tree only. It does not know the receiver's class. A method named `each` that is not `Enumerable#each` follows the same rule. One receiver is visible in the tree: a chain that calls `lazy`, as in `xs.lazy.each` or `xs.lazy.map { }.each`. `Enumerator::Lazy#each` runs the block and `Lazy#map` does not, so that chain is still swapped. A lazy enumerator stored in a variable has no `lazy` call left in the chain, so a discarded statement on that variable is still skipped.
+
+The result is discarded, and the swap is skipped, when the call is a statement and nothing keeps that statement's value:
+
+- It is not the last expression of the method.
+- It is not the last expression of a block or a lambda. The method that takes the block may use the block's result. The operator does not guess which methods do. A loop that is the last line of a block is still swapped.
+- It is not the last expression of a branch whose value is kept. A branch is an `if`, `unless`, `case`, `rescue`, `else`, ternary, or modifier.
+- A `while`, `until`, or `for` body discards its value, including the last line. `for` returns the collection, not the body. An `ensure` body discards its value too. `defined?` does not evaluate its operand, so an `each` or `map` inside it is skipped. That includes a `lazy` chain and an interpolation.
+- A `begin`, parentheses, an array, a hash value, a range, or `and` / `or` / `&&` / `||` keeps the value only when the outer expression keeps it. A hash key is always kept: insertion calls `hash` and `eql?`.
+- The value that string interpolation, symbol interpolation, a backtick or `%x` command, or an interpolated regexp (`/.../` or `%r{}`) reads is kept, even when that expression's result is thrown away. Interpolation calls `to_s` on that value. The command runs. The regexp is compiled. An earlier statement inside the interpolation is still discarded. `defined?` does not read it.
+
+The result is kept, and the swap still runs, when the call is any of these:
+
+- The last expression of the method, a block, or a lambda.
+- Assigned, including `+=`, `||=`, multiple assignment, and a pattern match (`=>`).
+- Passed as an argument, a splat, a keyword value, or a block argument.
+- The receiver of another call, as in `users.each { }.size` or `!users.each`. The next call may use the object. The swap stays even when that next call's own result is discarded.
+- Returned with `return`, `break`, or `next`.
+- The object of `class << obj`.
+- A condition of `if`, `unless`, `while`, `until`, or `case`, or a `when` value. Both results are true for an ordinary receiver, so some of these mutants are equivalent. The syntax reads the value, so the operator still emits them.
+
+`all?`, `any?`, `first`, `last`, `min`, `max`, `select`, and `reject` are swapped even when the result is discarded. `all?` and `any?` can stop on different elements. A block can show that change.
+
+The report that opened this skip found the `each` to `map` mutant in 4 of 23 ignore entries.

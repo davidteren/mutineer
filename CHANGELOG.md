@@ -131,6 +131,37 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **`collection_method` skips `each` and `map` when the result is discarded (#436).**
+  For Enumerable, `each` returns the receiver and `map` returns a new array.
+  No test can tell those two apart when that value is thrown away.
+  A method of either name on another class can still differ. The check does
+  not see the class, so that skip can hide the difference.
+  The swap is declined, and the dry run and JSON report count it in
+  `declined_by_operator`.
+  The last expression of a method, block, or lambda is still swapped.
+  So are assignment, an argument, a chained call, `return` / `break` / `next`,
+  and a condition.
+  A `while`, `until`, `for`, or `ensure` body is skipped, including its last line.
+  The value read by string or symbol interpolation, a backtick or `%x`
+  command, or an interpolated regexp still swaps. Interpolation calls `to_s`
+  on that value, the command runs, and the regexp is compiled, even when
+  their result is thrown away. An earlier statement inside the interpolation
+  is still skipped. `defined?` does not evaluate its operand, so an `each` or
+  `map` inside it is skipped, including a `lazy` chain and an interpolation.
+  A hash key still swaps, because insertion calls `hash` and `eql?`.
+  A later `rescue` clause follows the `begin`.
+  A receiver chain that calls `lazy` still swaps, because `Enumerator::Lazy#each`
+  runs the block and `Lazy#map` does not.
+  A lazy enumerator stored in a variable is still skipped.
+  `all?`, `any?`, `first`, `last`, `min`, `max`, `select`, and `reject` are unchanged.
+  The operator is not in the default set, so a default run's mutant count and
+  score do not change.
+  On `lib/` of this repository, 86 of 149 `each` and `map` calls are discarded
+  (57.7%).
+  The other 313 `collection_method` swaps on `lib/` stay.
+  The operator's mutant count there drops from 462 to 376.
+  The report that opened the issue found this mutant in 4 of 23 ignore entries.
+  See `docs/equivalent-skips.md`.
 - **Behavior change.** A continuation-line survivor that ran is scored (#345).
   Ruby counts one line of a statement. A mutant on a later line is a `:maybe`
   selection (#254, #289): Mutineer runs the tests of the statement's other
