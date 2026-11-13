@@ -9,6 +9,7 @@ require_relative "kill_channel"
 require_relative "concern_blocks"
 require_relative "redaction"
 require_relative "child_cause"
+require_relative "reach_probe"
 
 module Mutineer
   # Fork-based isolation for running one mutant. The block runs in a child
@@ -271,8 +272,12 @@ module Mutineer
     # @param mutation [Mutineer::Mutation] mutation to apply.
     # @param subject [Mutineer::Subject] subject being mutated.
     # @param source [String] full source text.
+    # @param reach_path [String, nil] sentinel for a `:maybe` mutant (#345).
+    #   The loaded def records a run of the mutated expression. Nil leaves
+    #   the def as the mutation alone.
+    # @param reach_key [String, nil] fiber-local key for `reach_path`.
     # @return [Object] whatever `load` returns.
-    def self.apply_surgical(mutation, subject, source)
+    def self.apply_surgical(mutation, subject, source, reach_path: nil, reach_key: nil)
       # Rebuild the FULL namespace nesting textually so unqualified enclosing-
       # namespace constants resolve exactly as the reload strategy would. A
       # bare redefinition on the owner would collapse Module.nesting to [owner]
@@ -288,7 +293,7 @@ module Mutineer
       # falsely survives. Re-open the singleton class so the redefinition lands on
       # the same method the test calls. `def self.foo` already carries its
       # receiver, so it is left as-is (wrapping it would mis-target).
-      inner = mutated_def(mutation, subject, source)
+      inner = mutated_def(mutation, subject, source, reach_path: reach_path, reach_key: reach_key)
       inner = "#{subject.block_owner}.class_eval do\n#{inner}\nend" if subject.block_owner
       wrapped = "#{prefix}#{inner}#{"\nend" * keywords.size}"
 
@@ -449,14 +454,20 @@ module Mutineer
     # @param mutation [Mutineer::Mutation] mutation to apply.
     # @param subject [Mutineer::Subject] subject being mutated.
     # @param source [String] full source text.
+    # @param reach_path [String, nil] see {apply_surgical}.
+    # @param reach_key [String, nil] see {apply_surgical}.
     # @return [String] the mutated def.
-    def self.mutated_def(mutation, subject, source)
+    def self.mutated_def(mutation, subject, source, reach_path: nil, reach_key: nil)
       loc = subject.def_node.location
       def_start = loc.start_offset
       snippet = source.byteslice(def_start...loc.end_offset)
       rel_s = mutation.start_offset - def_start
       rel_e = mutation.end_offset - def_start
       mutated = snippet.byteslice(0...rel_s) + mutation.replacement + snippet.byteslice(rel_e..)
+      if reach_path && rel_s >= 0 && rel_s + mutation.replacement.bytesize <= mutated.bytesize
+        probed = ReachProbe.wrap(mutated, rel_s, rel_s + mutation.replacement.bytesize, reach_path, reach_key)
+        mutated = probed if probed
+      end
       subject.singleton && subject.def_node.receiver.nil? ? "class << self\n#{mutated}\nend" : mutated
     end
 

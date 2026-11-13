@@ -7,6 +7,8 @@ require_relative "child_coverage"
 require_relative "orphan_guard"
 require_relative "concern_blocks"
 require_relative "redaction"
+require_relative "database_urls"
+require_relative "output_filter"
 require_relative "child_cause"
 
 module Mutineer
@@ -36,6 +38,10 @@ module Mutineer
   #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
   #               "tests":["test/models/order_test.rb"],"timeout":30}
+  #              (a :maybe mutant also sends "reach_path" and "reach_key" inside
+  #               "payload". The child clears that file, and the fiber-local
+  #               named by reach_key, after load and before tests, so a
+  #               load-time call is not a test reaching the expression, #345)
   #              (a mutant of a def in a concern's hook block adds to the payload
   #               "hook_def":{"line":12,"name":"total","singleton":false}, #297)
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
@@ -157,6 +163,19 @@ module Mutineer
         @framework = cfg.fetch("framework", "minitest")
         @source_dirs = Array(cfg["source_dirs"]).map { |d| File.expand_path(d) }
         Dir.chdir(cfg["project_root"]) if cfg["project_root"]
+        # The parent's drain knows the tool's DATABASE_URL. A URL the app
+        # loads from a dotenv file, or assigns before it prints, is hidden
+        # here, where this process can see it (#341). Stderr only: stdout is
+        # the protocol channel reserved above. Point fd 1 at the filtered
+        # stderr so `puts` from the app takes the same path.
+        Redaction.extra_urls = DatabaseUrls.from_files(Dir.pwd)
+        unless OutputFilter.install(streams: [:stderr]) == :started
+          raise "cannot redirect stderr, so a database password would be printed"
+        end
+        if @protocol
+          STDOUT.reopen(STDERR)
+          $stdout = STDOUT
+        end
         ENV["RAILS_ENV"] ||= "test" if cfg["rails"]
         Array(cfg["load_paths"]).each { |d| $LOAD_PATH.unshift(File.expand_path(d)) }
         # Start Coverage BEFORE the app loads, so booted source lines are
@@ -185,6 +204,8 @@ module Mutineer
         # can surface a clean error rather than hang on the handshake.
         @output.puts(JSON.generate("ready" => false, "error" => describe_error(e)))
         @output.flush
+        # exit! skips at_exit, so flush the stderr pipe before it.
+        OutputFilter.uninstall
         exit!(1)
       end
 
@@ -370,6 +391,11 @@ module Mutineer
               # A routing failure raises here and is scored `error`, never a false verdict.
               @worker_db&.after_fork(worker, first_use ? @schema_path : nil, seed: first_use)
               apply_payload(req["payload"])
+              # A reload can run the probed expression while the file loads.
+              # Drop that write before tests, matching the in-process child (#345).
+              # A request with no payload (a test stub) has nothing to clear.
+              loaded = req["payload"] || {}
+              forget_load_reach(loaded["reach_path"], loaded["reach_key"])
               # A parallel worker records each pool that runs SQL, so a test
               # that closes its shared connection is still caught below.
               if @worker_db && @shared_databases&.any?
@@ -484,6 +510,21 @@ module Mutineer
           end
           sleep POLL
         end
+      end
+
+      # Empties the reach sentinel after the mutant file has loaded. Same rule
+      # as {ReachProbe.forget_load}. Written here because this file cannot
+      # require Prism.
+      #
+      # @param path [String, nil] sentinel path, inside the run payload.
+      # @param key [String, nil] fiber-local key, `mutineer_r` plus 16 hex
+      #   digits, the same pattern as {ReachProbe::KEY_FORMAT}.
+      # @return [void]
+      def forget_load_reach(path, key)
+        return unless path.is_a?(String) && !path.empty?
+
+        Thread.current[key.to_sym] = nil if key.is_a?(String) && key.match?(/\Amutineer_r[0-9a-f]{16}\z/)
+        File.write(path, "")
       end
 
       # Write the tool-built mutated text beside the real source and `load` it,

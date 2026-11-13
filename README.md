@@ -98,9 +98,12 @@ job runs it. SQLite file means a database file, not `:memory:`.
 - Postgres worker databases are copied once at the start; MySQL 8 worker databases are created then and the rows copied.
 - A test that commits rows outside a transaction leaves them in that worker's
   database, and the next mutant on that worker sees them. Rails parallel tests have the same limit.
-- RSpec: an example that fails with a database connection error scores
-  `killed`, not `errored`, so the score can read too high
+- RSpec: the first failed example with an Active Record connection or lock
+  error scores `errored`, on the same classes as Minitest
   ([#347](https://github.com/davidteren/mutineer/issues/347)).
+  On Rails 8, `ConnectionNotDefined` is a code error and still scores `killed`.
+  On Rails 7.2 that case raises `ConnectionNotEstablished` and scores `errored`.
+  Other statement errors still score `killed`.
 
 Mutineer sets `PARALLEL_WORKERS=1`, so a `parallelize` call in `test_helper.rb` starts no Rails workers during a mutant run.
 See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#rails-parallel-tests-spring-bootsnap-and-redis).

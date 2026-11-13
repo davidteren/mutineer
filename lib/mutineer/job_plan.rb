@@ -312,11 +312,15 @@ module Mutineer
     # @param mutation [Mutineer::Mutation] the mutation.
     # @param subject [Mutineer::Subject] a subject with a {Subject#reload_hook_call}.
     # @param source [String] the original source text.
+    # @param reach_path [String, nil] sentinel for a `:maybe` mutant (#345).
+    #   The placed def records a run of the mutated expression.
+    # @param reach_key [String, nil] fiber-local key for `reach_path`.
     # @return [Array(String, Hash{Symbol => Object})] the mutant text, and the
     #   original def's `line`, `name` and `singleton`.
-    def self.hook_mutant(mutated, mutation, subject, source)
+    def self.hook_mutant(mutated, mutation, subject, source, reach_path: nil, reach_key: nil)
       at = subject.reload_hook_call.location.start_offset
-      stored = "::Mutineer::ConcernBlocks.store_hook_def do\n#{Isolation.mutated_def(mutation, subject, source)}\nend; "
+      stored = "::Mutineer::ConcernBlocks.store_hook_def do\n" \
+               "#{Isolation.mutated_def(mutation, subject, source, reach_path: reach_path, reach_key: reach_key)}\nend; "
       [mutated.byteslice(0...at) + stored + mutated.byteslice(at..),
        { line: subject.def_node.location.start_line, name: subject.name, singleton: subject.singleton }]
     end
@@ -333,8 +337,8 @@ module Mutineer
     # multi-line `a && b`, #254), and a first or last line that holds other
     # code (the opener of a one-line block, #289), but never the `def` line.
     # Those tests may not have run the mutant, so the answer is
-    # `[:maybe, abs_test_paths]` and {selection_verdict} treats a survivor as
-    # no_coverage.
+    # `[:maybe, abs_test_paths]`. {selection_verdict} keeps a survivor that
+    # the probe saw run, and leaves one it did not see as no_coverage (#345).
     #
     # An empty selection is `:ran_at_load` when the mutant's line ran while the
     # app booted or its class loaded ({ran_at_load?}): no test ran it, but the
@@ -383,18 +387,20 @@ module Mutineer
 
     # The verdict of a mutant whose tests {coverage_selection} chose as `:maybe`:
     # they ran its statement but may not have run the mutated code. A kill is a
-    # real kill. A survivor is no_coverage, because the run cannot tell "never
-    # ran" from "ran unchecked" (#254); like any no_coverage mutant it has no
-    # `--matrix` row. An error or a timeout stays what it is: the mutant ran, and
-    # a failure is reported, not hidden. A kill keeps its whole `--matrix` row.
-    # A result of any other selection comes back unchanged.
+    # real kill. A survivor the probe saw run is a real survivor and keeps its
+    # `--matrix` row (#345). A survivor the probe did not see is no_coverage,
+    # the same as any other unreached mutant, and has no `--matrix` row (#254).
+    # An error or a timeout stays what it is: the mutant ran, and a failure is
+    # reported, not hidden. A kill keeps its whole `--matrix` row. A result of
+    # any other selection comes back unchanged.
     #
     # @param kind [Symbol, nil, false] the first element of {coverage_selection}'s
     #   answer, or a falsy value when no selection ran.
     # @param result [Mutineer::Result] the mutant's verdict.
+    # @param reached [Boolean] true when the mutated expression ran in the child.
     # @return [Mutineer::Result]
-    def self.selection_verdict(kind, result)
-      return result unless kind == :maybe && result.survived?
+    def self.selection_verdict(kind, result, reached: false)
+      return result unless kind == :maybe && result.survived? && !reached
 
       result.with(status: :no_coverage, kills: nil)
     end

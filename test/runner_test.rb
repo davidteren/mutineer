@@ -421,20 +421,27 @@ class RunnerTest < Minitest::Test
     end
   end
 
-  # #254: for a `:maybe` selection a survivor is no_coverage with no --matrix
-  # row. A kill keeps its whole row, and an error or a timeout stays visible.
+  # #254, #345: a `:maybe` survivor the probe did not see is no_coverage with
+  # no --matrix row. One the probe saw run stays survived and keeps the row.
+  # A kill keeps its whole row, and an error or a timeout stays visible.
   # Any other selection is untouched.
-  def test_selection_verdict_turns_only_a_maybe_survivor_into_no_coverage
+  def test_selection_verdict_turns_only_an_unreached_maybe_survivor_into_no_coverage
     row = Mutineer::Kills.new(killed_by: [], ran: ["t_test.rb"], complete: true)
     killer = Mutineer::Kills.new(killed_by: ["k_test.rb"], ran: ["k_test.rb", "t_test.rb"], complete: true)
     survivor = Mutineer::JobPlan.selection_verdict(:maybe, Mutineer::Result.new(status: :survived, kills: row))
     assert_equal [:no_coverage, nil], [survivor.status, survivor.kills]
+    reached = Mutineer::Result.new(status: :survived, kills: row)
+    assert_same reached, Mutineer::JobPlan.selection_verdict(:maybe, reached, reached: true)
     [Mutineer::Result.new(status: :killed, kills: killer), Mutineer::Result.new(status: :error, kills: row),
      Mutineer::Result.new(status: :timeout, kills: row)].each do |result|
+      assert_same result, Mutineer::JobPlan.selection_verdict(:maybe, result, reached: true), result.status
       assert_same result, Mutineer::JobPlan.selection_verdict(:maybe, result), result.status
     end
     survived = Mutineer::Result.new(status: :survived, kills: row)
-    [:run, nil, false].each { |kind| assert_same survived, Mutineer::JobPlan.selection_verdict(kind, survived) }
+    [:run, nil, false].each do |kind|
+      assert_same survived, Mutineer::JobPlan.selection_verdict(kind, survived)
+      assert_same survived, Mutineer::JobPlan.selection_verdict(kind, survived, reached: true)
+    end
   end
 
   # --since restricts the job list to mutations on changed lines. Deterministic:
@@ -1269,6 +1276,27 @@ class RunnerTest < Minitest::Test
     refute_nil stored, code
     assert_operator stored, :<, code.index("included do\n    def doubled(x)\n      x - 2")
     assert_equal({ line: 23, name: :doubled, singleton: false }, hook_def)
+  end
+
+  # #345: the def the child places is the stored one, so the probe has to be
+  # inside it. The copy that remains in the file is not the method tests call.
+  def test_hook_mutant_puts_the_reach_probe_in_the_stored_def
+    path = File.expand_path("fixtures/singleton/concern_class_methods.rb", __dir__)
+    source = File.read(path)
+    subject = Mutineer::Project.discover([path], only: "ConcernPricing#doubled").first
+    body = subject.body_loc
+    mutation = Mutineer::Mutation.new(start_offset: body.start_offset, end_offset: body.end_offset,
+                                      replacement: "x - 2", operator: "test")
+    code, = Mutineer::JobPlan.hook_mutant(
+      mutation.apply(source), mutation, subject, source,
+      reach_path: "/tmp/mutineer-reach-hook", reach_key: "mutineer_r0123456789abcdef"
+    )
+
+    assert_empty Mutineer::Parser.parse_string(code).errors
+    stored = code[/store_hook_def do\n.*?^end;/m]
+    assert_includes stored, '::File.write("/tmp/mutineer-reach-hook"'
+    assert_includes stored, "mutineer_r0123456789abcdef"
+    refute_includes code[/def doubled\(x\)\n      x - 2\n    end\n  end\nend\n/], "::File.write"
   end
 
   def test_unpaired_counts_counts_each_source

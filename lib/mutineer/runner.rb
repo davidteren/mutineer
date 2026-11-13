@@ -16,9 +16,12 @@ require_relative "project_path"
 require_relative "file_swap"
 require_relative "external_backend"
 require_relative "daemon_backend"
+require_relative "reach_probe"
 require_relative "job_plan"
 require_relative "rails_run_env"
 require_relative "redaction"
+require_relative "database_urls"
+require_relative "output_filter"
 
 module Mutineer
   # Raised when the tool process cannot load a project file: the boot file, a
@@ -76,8 +79,24 @@ module Mutineer
     def self.execute(config)
       # Rails reads PARALLEL_WORKERS when a test helper calls parallelize.
       # Set it before any boot or child spawn, then put the caller's value back.
+      # The ensure below reads these. Set them before anything that can raise.
+      filter_owned = false
+      urls_owned = false
       previous_parallel_workers = ENV["PARALLEL_WORKERS"]
       RailsRunEnv.pin_process!
+      # The CLI installs the filter first and owns it for the report that
+      # follows this method. A library caller owns it for the run itself.
+      # Direct writes from a fork or a subprocess then go through the pipe (#341).
+      case OutputFilter.install
+      when :started
+        filter_owned = true
+      when :failed
+        raise "cannot redirect stdout and stderr for redaction"
+      end
+      if Redaction.extra_urls.empty?
+        Redaction.extra_urls = DatabaseUrls.from_files(config.project_root)
+        urls_owned = true
+      end
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
 
       # External backend: run the suite as a subprocess in the app's own runtime.
@@ -227,6 +246,10 @@ module Mutineer
     ensure
       # A caller that set PARALLEL_WORKERS keeps that value after the run.
       RailsRunEnv.restore_process!(previous_parallel_workers)
+      OutputFilter.uninstall if filter_owned
+      # The CLI set its own list before this method and restores it. Clear
+      # only the list this call loaded.
+      Redaction.extra_urls = [] if urls_owned
     end
 
     # A `--matrix` error that carries no {Kills} row (the worker crashed, or its
@@ -409,35 +432,49 @@ module Mutineer
       return kind == :maybe ? Result.no_coverage : Result.unplaceable if subject&.unplaceable?(strategy)
 
       abs_tests = payload
+      # A :maybe mutant records whether the mutated expression ran (#345).
+      sentinel = kind == :maybe ? ReachProbe.sentinel : nil
+      reach_key = sentinel && ReachProbe.reach_key
 
-      result = Isolation.run(timeout: timeout, channel: matrix) do |channel|
-        # Forking inherits the parent's live DB connection; sharing one socket
-        # across processes corrupts it. Drop it so AR reconnects per child.
-        reconnect_active_record if rails
-        if strategy == "redefine"
-          # Load each enclosing def too: its body holds the original nested def,
-          # which a call to it would define again over the mutant (#290).
-          Isolation.apply_surgical(mutation, subject, source)
-          s = subject
-          Isolation.apply_surgical(mutation, s, source) while (s = s.enclosing_subject)
-        elsif subject&.reload_hook_call
-          # #297: a def in a concern's hook block reaches each class that has it.
-          code, hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source)
-          Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
-        else
-          Isolation.apply_whole_file(mutated, source_file)
+      begin
+        result = Isolation.run(timeout: timeout, channel: matrix) do |channel|
+          # Forking inherits the parent's live DB connection; sharing one socket
+          # across processes corrupts it. Drop it so AR reconnects per child.
+          reconnect_active_record if rails
+          if strategy == "redefine"
+            # Load each enclosing def too: its body holds the original nested def,
+            # which a call to it would define again over the mutant (#290).
+            Isolation.apply_surgical(mutation, subject, source, reach_path: sentinel&.path, reach_key: reach_key)
+            s = subject
+            while (s = s.enclosing_subject)
+              Isolation.apply_surgical(mutation, s, source, reach_path: sentinel&.path, reach_key: reach_key)
+            end
+          elsif subject&.reload_hook_call
+            # #297: a def in a concern's hook block reaches each class that has it.
+            code, hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source, reach_path: sentinel&.path,
+                                                 reach_key: reach_key)
+            Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
+          else
+            Isolation.apply_whole_file(ReachProbe.wrap_mutation(mutated, mutation, sentinel&.path, reach_key),
+                                        source_file)
+          end
+          # A reload can run the expression while the file loads. That is not
+          # a test reaching it (#345).
+          ReachProbe.forget_load(sentinel.path, reach_key) if sentinel
+          if channel
+            # --matrix: every covering test runs, and each outcome goes to the parent.
+            TestRunners.for(framework).run(abs_tests, record_to: channel)
+          else
+            # One failing test already kills the mutant, so the child stops there.
+            TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
+          end
         end
-        if channel
-          # --matrix: every covering test runs, and each outcome goes to the parent.
-          TestRunners.for(framework).run(abs_tests, record_to: channel)
-        else
-          # One failing test already kills the mutant, so the child stops there.
-          TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
-        end
+        result = relative_kills(result, coverage_map.project_root)
+        result = JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
+        JobPlan.selection_verdict(kind, result, reached: ReachProbe.reached?(sentinel))
+      ensure
+        ReachProbe.close_sentinel(sentinel)
       end
-      result = relative_kills(result, coverage_map.project_root)
-      result = JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
-      JobPlan.selection_verdict(kind, result)
     end
 
     # Rewrites the test files of a result's {Kills} row relative to the project
