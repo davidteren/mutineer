@@ -21,6 +21,12 @@ A source with no paired test is not run.
 The report counts that source and its mutants.
 Those mutants are not in the score.
 
+Two changes on one line that produce the same source are one edit.
+Mutineer runs one copy and drops the other.
+The human report's `Dropped:` line counts the copies that did not run.
+They are not in the score.
+The JSON report lists their ids on the kept mutant as `copies`.
+
 The [JSON schema](https://davidteren.github.io/mutineer/json-schema.html#summary) explains the rarer Uncapturable, Unplaceable, and Ran at load results.
 
 **Mutation score:** `killed / (killed + survived)`. All other rows are excluded. An empty denominator produces an empty score (`null` in JSON), not 0.
@@ -73,10 +79,17 @@ ignore:
 
 | Command | Output |
 | --- | --- |
-| `mutineer triage REPORT.json --reason TEXT --all` | One mapping per survivor |
-| `mutineer triage REPORT.json --reason TEXT --id ID` | One mapping for the selected mutant; repeat `--id` for several |
+| `mutineer triage REPORT.json --reason TEXT --all` | One mapping per survivor, then one per id in that survivor's `copies` |
+| `mutineer triage REPORT.json --reason TEXT --id ID` | The selected survivor and its `copies`. An id from `copies` selects that survivor's whole group. Repeat `--id` for several |
 
 `triage` edits no files. Paste its mappings under `ignore:` after every gate uses 1.7 or later.
+
+An `ignore:` entry ignores only the id it names.
+If the report lists `copies`, keep an entry for each of those ids too.
+With only the id the report shows as the row, the next run reports the other copy.
+Once every copy is listed, a run shows the extra ids on the kept mutant's `copies`, and `Dropped:` counts them.
+An entry that matches no row, and is not in any `copies` list, is unused.
+An entry that appears only in `copies` is still in force.
 
 [Equivalent skips](https://davidteren.github.io/mutineer/equivalent-skips.html) lists built-in skips. You cannot disable them.
 

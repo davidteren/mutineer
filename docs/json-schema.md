@@ -75,6 +75,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `errored` | int | Mutants whose run crashed, or whose first failed Minitest test or RSpec example had a database connection or lock error (excluded). Each one is in `no_verdict[]` with `status` `"error"`. |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). Under `--since`, only those on changed lines. |
+| `dropped` | int | Repeats of a kept mutant that were not run (#159, #275). Two edits on one line that produce the same source count once. The same mutated source on two start lines stays as two mutants, and `--since` keeps each by its own start line. Not in `total` and not in the score. Each id is on the kept mutant's `copies`. Count each dropped copy once. The same `copies` list is repeated when one mutant is in two arrays: an uncapturable mutant is in `uncapturable[]` and `no_verdict[]`, and a new baseline survivor is in `survivors[]` and `baseline.new_survivors[]`. Summing `copies` across every array counts those ids twice. `--since` and `--only` narrow the count. `--fail-fast` counts only copies of mutants in this report. A mutant that did not re-parse has no row, so its repeats are not counted. Additive key (schema `1.10`, #374). |
 | `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 or #289 no-coverage mutant did run its statement's tests; #345 keeps it no-coverage only when the mutated expression did not return during a test). |
 | `no_verdict` | int | Attempted mutants that produced no verdict: `errored + timeout + uncapturable`. The completeness gate is `no_verdict / attempted`. |
 | `score` | float \| null | `killed / (killed + survived) * 100`, rounded. **`null`** when the denominator is empty (no covered mutants) — never `0.0`. |
@@ -97,6 +98,7 @@ Each surviving mutant — the records an agent or reviewer acts on:
 | `id` | string | **Offset-free id** (12 hex chars). Includes the file path relative to the project root (a source outside the root uses its absolute real path, so its ids differ between machines). Unrelated edits preserve it when the path, qualified method name, mutated token, and repeated-name/mutation order stay the same. File moves, renames, and root changes can change it. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids). Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
 | `token` | string | The exact code being mutated (whitespace-collapsed), e.g. `a + b`. |
 | `diff` | string | A unified diff with no context lines: `-original` / `+mutant` lines under a hunk header that gives each side's start line and, when it is not 1, its line count (`@@ -3,2 +3 @@`). For a `file` given relative to the project root, `git apply --unidiff-zero` run from that root accepts it. An absolute or `../` path needs `git apply --directory`/`-p` or an edit. Ready to hand to an agent as "write a test that fails under this change." |
+| `copies` | array of string | Present only when at least one other copy of this edit was dropped. Each string is that copy's id. The copies are the same change: same line, same mutated source, from this operator again or from another. Order is the order they were dropped, which follows `mutineer --list-operators` and then position in the method. An `ignore:` entry still ignores only its own id, so paste every id to ignore the edit. `mutineer triage` prints one entry per id. Absent when there are none. The same key appears on `killed[]`, `no_coverage[]`, `uncapturable[]`, `unplaceable[]`, `ran_at_load[]`, `no_verdict[]`, `ignored[]` and `baseline.new_survivors[]` when that row's mutant has a dropped copy. Additive key (schema `1.10`, #374). |
 
 ### `killed[]` (array of object)
 
@@ -227,7 +229,7 @@ gates on completeness as well (see Exit codes).
 
 ### `ignored[]` (array of object)
 
-Suppressed (equivalent) mutants, so you can audit what's silenced: `{ subject, file, line, operator, token, id }`. `reason` (string) is present only when the user wrote one, on an inline `# mutineer:disable-line ... -- reason` marker or on an `ignore:` mapping. Added in schema `1.8`. Under `--since`, only those on changed lines.
+Suppressed (equivalent) mutants, so you can audit what's silenced: `{ subject, file, line, operator, token, id }`. `reason` (string) is present only when the user wrote one, on an inline `# mutineer:disable-line ... -- reason` marker or on an `ignore:` mapping. Added in schema `1.8`. Under `--since`, only those on changed lines. `copies` (schema `1.10`, #374) lists ids dropped as repeats of this mutant. An `ignore:` entry for one of those ids matches no row on its own. It is not a dead entry: removing it brings the edit back, because an entry ignores only its own copy.
 
 ### `per_source[]` (array of object)
 
@@ -363,6 +365,7 @@ report does. `--format html` under `--dry-run` stays human and warns that the fo
     "total": 0,
     "skipped_invalid": 0,
     "ignored": 0,
+    "dropped": 0,
     "declined": 0,
     "declined_by_operator": {},
     "by_operator": { /* operator name => valid candidate count */ }
@@ -375,3 +378,8 @@ report does. `--format html` under `--dry-run` stays human and warns that the fo
 (both paths use `JobPlan.collect_jobs`). `summary.id_format` is `2`, the same marker a completed
 report carries, so a consumer that joins by id does not treat a missing key as the old format.
 `summary.total` equals `mutants.length`.
+
+`summary.dropped` (schema `1.10`, #374) counts repeats of a kept mutant, as in a finished report.
+`mutants[].copies` lists the ids for a candidate this document prints. The count also includes a
+repeat of an ignored mutant, which has no row here. A finished run lists that id on `ignored[].copies`.
+A candidate that did not re-parse has no row, and its repeats are not in the count.

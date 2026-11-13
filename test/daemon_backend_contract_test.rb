@@ -617,6 +617,34 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # #374: a run that never forks still returns the dropped-copy ids collect_jobs recorded.
+  def test_backends_carry_dropped_copy_ids
+    Dir.mktmpdir("mutineer-copies") do |root|
+      source = File.join(root, "str.rb")
+      File.binwrite(source, "class Str\n  def a\n    \"hi\" # mutineer:disable-line\n  end\nend\n")
+      ops = Mutineer::MutatorRegistry.resolve(%w[literal_mutation string_literal])
+      config = lambda { |**kw|
+        Mutineer::Config.new(sources: [source], project_root: root, framework: "minitest",
+                             operators: %w[literal_mutation string_literal], **kw)
+      }
+      jobs, ignored, _map, extras = Mutineer::JobPlan.collect_jobs(config.call, ops)
+      assert_empty jobs
+      assert_equal 1, ignored.size
+      refute_empty extras[:copies]
+
+      daemon = Mutineer::DaemonClient.stub(:new, ->(**) { flunk "booted a daemon" }) do
+        Mutineer::DaemonBackend.execute(config.call(daemon: true), ops)
+      end
+      external = Mutineer::ExternalBackend.stub(:smoke_check!, ->(*) { flunk "ran the suite" }) do
+        Mutineer::Runner.execute(config.call(test_command: "false %{files}"))
+      end
+      [daemon, external].each do |_aggregate, _map, run_extras|
+        assert_equal extras[:copies], run_extras[:copies]
+        assert_equal extras[:dropped_id_map], run_extras[:dropped_id_map]
+      end
+    end
+  end
+
   # A daemon that dies before accepting the boot payload makes the write raise
   # Errno::EPIPE. Left as a SystemCallError it reaches the CLI as a usage error
   # (exit 2), which would tell CI the flags were wrong rather than the daemon died.

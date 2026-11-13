@@ -8,6 +8,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **A report names the dropped copy of an edit (#374).**
+  When two operators, or one operator twice, make the same change on one
+  line, one copy runs and the other is dropped. The JSON report now lists
+  each dropped id on the kept mutant as `copies`, on survivors, ignored
+  mutants, and the other mutant rows. `summary.dropped` counts them. They
+  stay out of `total` and out of the score. `mutineer triage` prints an
+  `ignore:` entry for the survivor and for each of those ids, so one round
+  writes every entry. An entry still ignores only its own id. The human
+  report, the HTML report, the dry run, and the Action summary show the
+  count. A dropped copy of an ignored mutant is listed on the kept mutant,
+  so that entry no longer looks unused. Schema version stays `1.10`.
 - **A source that cannot load alone points at `boot:` (#376).**
   When a source raises `NameError` (including `NoMethodError`) while it
   loads, and the run has no `boot:` file, stderr adds one line. The names

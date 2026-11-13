@@ -290,6 +290,72 @@ class JsonReporterTest < Minitest::Test
     assert_equal [%w[comparison aaaaaaaaaaaa], %w[comparison bbbbbbbbbbbb], %w[literal_mutation aaaaaaaaaaaa]], ids
   end
 
+  # #374: a dropped repeat is listed on the kept mutant and counted. A mutant
+  # with none omits the key. A skipped mutant has no row, so its repeats
+  # are not counted.
+  def test_copies_are_listed_on_the_kept_mutant_and_counted
+    kept = survivor.with(id: "kept00000001")
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([kept]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "kept00000001" => ["drop00000001"] })
+    doc = JSON.parse(out.string)
+    assert_equal ["drop00000001"], doc["survivors"].first["copies"]
+    assert_equal 1, doc["summary"]["dropped"]
+    assert_equal 1, doc["summary"]["total"]
+    assert_equal 1, doc["summary"]["survived"]
+    assert_equal 0.0, doc["summary"]["score"]
+
+    plain = render([survivor.with(id: "kept00000002")])
+    refute plain["survivors"].first.key?("copies")
+    assert_equal 0, plain["summary"]["dropped"]
+
+    # A copy of a mutant this report does not list (an unscheduled --fail-fast
+    # mutant, for example) is not counted.
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([kept]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "kept00000001" => ["drop00000001"], "other0000001" => ["drop00000009"] })
+    assert_equal 1, JSON.parse(out.string)["summary"]["dropped"]
+
+    skipped = Mutineer::Result.skipped.with(subject: subject, id: "skip00000001",
+                                            mutation: mutation_at(">=", ">", :comparison))
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([skipped]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "skip00000001" => ["drop00000002"] })
+    assert_equal 0, JSON.parse(out.string)["summary"]["dropped"]
+  end
+
+  # An uncapturable mutant is in two arrays. Both rows show the same copies.
+  # summary.dropped counts that copy once.
+  def test_uncapturable_copies_are_listed_twice_and_counted_once
+    row = Mutineer::Result.uncapturable.with(subject: subject, id: "uncap0000001",
+                                             mutation: mutation_at(">=", ">", :comparison))
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([row]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "uncap0000001" => ["drop00000004"] })
+    doc = JSON.parse(out.string)
+    assert_equal ["drop00000004"], doc["uncapturable"].first["copies"]
+    assert_equal ["drop00000004"], doc["no_verdict"].first["copies"]
+    assert_equal 1, doc["summary"]["dropped"]
+  end
+
+  def test_ignored_row_lists_its_dropped_copies
+    ignored = Mutineer::Result.ignored.with(subject: subject, id: "ignr00000001", reason: "same edit",
+                                            mutation: mutation_at(">=", ">", :comparison))
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([ignored]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "ignr00000001" => ["drop00000003"] })
+    doc = JSON.parse(out.string)
+    row = doc["ignored"].first
+    assert_equal ["drop00000003"], row["copies"]
+    assert_equal "same edit", row["reason"]
+    assert_equal 1, doc["summary"]["dropped"]
+  end
+
   def test_survivor_entry_has_all_keys_and_diff
     s = render([survivor])["survivors"].first
     assert_equal "Pricing#total", s["subject"]

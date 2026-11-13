@@ -718,6 +718,32 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #374: a dry run counts a dropped repeat and the JSON lists its id.
+  def test_dry_run_counts_a_dropped_copy_and_json_lists_its_id
+    Dir.mktmpdir("mutineer-dropped") do |dir|
+      File.write(File.join(dir, "g.rb"), "class G\n  def a\n    \"hi\"\n  end\nend\n")
+      out, err, status = mutineer("run", "g.rb", "--dry-run",
+                                  "--operators", "literal_mutation,string_literal", chdir: dir)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "1 dropped (repeats of a kept mutant)"
+
+      json, err, status = mutineer("run", "g.rb", "--dry-run", "--format", "json",
+                                   "--operators", "literal_mutation,string_literal", chdir: dir)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(json)
+      assert_equal 1, doc["summary"]["dropped"]
+      listed = doc["mutants"].select { |row| row["copies"] }
+      assert_equal 1, listed.size
+      assert_equal "literal_mutation", listed.first["operator"]
+      string_id = Mutineer::JobPlan.collect_jobs(
+        Mutineer::Config.new(sources: [File.join(dir, "g.rb")], project_root: dir),
+        Mutineer::MutatorRegistry.resolve(%w[string_literal])
+      ).first.first.last
+      assert_equal [string_id], listed.first["copies"]
+      assert_equal "fc98a5d59649", string_id
+    end
+  end
+
   def test_dry_run_prints_breakdown
     with_project do |proj|
       out, _, status = mutineer("run", "calculator.rb", "--dry-run", chdir: proj)

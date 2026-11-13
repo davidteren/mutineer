@@ -77,6 +77,16 @@ grep '::error' "$SCRATCH/case1/stdout.txt"
 grep -A1 'report<<' "$SCRATCH/case1/gh-output.txt" | tail -1 | sed 's/^/  report: /' 
 echo "  summary head: $(head -1 "$SCRATCH/case1/summary.md")"
 
+echo; echo "== 1b: dropped copies (#374) =="
+cat > "$SCRATCH/report-dropped.json" <<'JSON'
+{"schema_version":"1.10","summary":{"total":1,"killed":0,"survived":1,"no_coverage":0,"ignored":0,"no_verdict":0,"score":0.0,"scoped":false,"dropped":2},"survivors":[{"subject":"G.kind","file":"lib/g.rb","line":2,"operator":"literal_mutation","id":"aaaaaaaaaaaa","token":".erb","diff":"d","copies":["bbbbbbbbbbbb"]}]}
+JSON
+run_step case1b STUB_REPORT="$SCRATCH/report-dropped.json" STUB_EXIT=1
+grep -q 'Dropped: 2 repeat(s) of a kept mutant' "$SCRATCH/case1b/summary.md" && echo "  OK: dropped summary line" || echo "  FAIL: dropped summary line"
+grep -q 'copies `bbbbbbbbbbbb`' "$SCRATCH/case1b/summary.md" && echo "  OK: dropped copy id on the survivor" || echo "  FAIL: copy id missing from the summary"
+grep -q 'Copies: bbbbbbbbbbbb' "$SCRATCH/case1b/stdout.txt" && echo "  OK: dropped copy id on the annotation" || echo "  FAIL: copy id missing from the annotation"
+grep -q 'Dropped:' "$SCRATCH/case1/summary.md" && echo "  FAIL: old report gained a dropped line" || echo "  OK: old report has no dropped line"
+
 echo; echo "== 2: PASSING run (expects ::warning annotations, 'passed' summary) =="
 run_step case2 STUB_EXIT=0
 grep -q '::warning file=' "$SCRATCH/case2/stdout.txt" && echo "  OK: passing-run warnings" || echo "  FAIL: no warnings on passing run"

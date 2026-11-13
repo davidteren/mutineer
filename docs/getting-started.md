@@ -108,7 +108,9 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --format jso
 bundle exec mutineer triage report.json --reason "x / 1 equals x * 1 for numbers" --id ID
 ```
 
-`triage` edits nothing. Paste its output into `.mutineer.yml`:
+`triage` edits nothing. Paste its output into `.mutineer.yml`.
+When the survivor has `copies` in the report, the output includes those ids too.
+Paste every entry. An entry ignores only its own id.
 
 ```yaml
 ignore:

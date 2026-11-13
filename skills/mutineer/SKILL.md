@@ -53,7 +53,10 @@ Listing the entry file as an earlier source also loads it first.
 Stop after a few unsuccessful attempts and ask a person to review the survivor.
 Failed attempts do not prove that a mutant is equivalent. To
 suppress it, `mutineer triage .mutineer/run.json --reason TEXT --id ID` prints an
-`ignore:` entry for `.mutineer.yml` (Mutineer 1.7 or later reads it). See
+`ignore:` entry for `.mutineer.yml`, and one entry for each id in that
+survivor's `copies`. Paste every entry. An entry ignores only its own id
+(Mutineer 1.7 or later reads it; `copies` is on reports from the version that
+lists them). See
 [Suppressing equivalent mutants](https://github.com/davidteren/mutineer/blob/main/docs/results.md#suppressing-equivalent-mutants).
 
 Keep `fail_fast` disabled (the default). If the active `.mutineer.yml` sets it to
